@@ -385,6 +385,7 @@ export const cashRegisterService = {
 
   // Actualizar la función addTransaction para incluir waiterId y tipAmount
   async addTransaction(
+    registerId: string,
     orderId: string,
     tableId: string,
     amount: number,
@@ -393,10 +394,9 @@ export const cashRegisterService = {
     cashChange?: number,
     waiterId?: string,
     tipAmount?: number,
-    totalDiscounts?: number, // Nuevo parámetro
   ): Promise<PaymentTransaction> {
     try {
-      console.log("Agregando transacción a caja:", this.currentRegisterId, {
+      console.log("Agregando transacción a caja:", registerId, {
         orderId,
         tableId,
         waiterId,
@@ -415,8 +415,7 @@ export const cashRegisterService = {
         cash_received: cashReceived,
         cash_change: cashChange,
         timestamp: new Date().toISOString(),
-        cash_register_id: this.currentRegisterId,
-        total_discounts: totalDiscounts || 0, // Guardar los descuentos
+        cash_register_id: registerId,
       }
 
       const { data, error } = await supabase.from("payment_transactions").insert(transaction).select().single()
