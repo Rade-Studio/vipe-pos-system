@@ -18,6 +18,8 @@ export function LowStockIngredients() {
   const [loading, setLoading] = useState(true)
   const [openStockDialog, setOpenStockDialog] = useState(false)
   const [selectedIngredient, setSelectedIngredient] = useState<any>(null)
+  // Agregar un nuevo estado para controlar si se muestran todos los elementos
+  const [showAll, setShowAll] = useState(false)
 
   const fetchIngredients = async () => {
     setLoading(true)
@@ -88,10 +90,14 @@ export function LowStockIngredients() {
     return <div className="text-center py-4 text-muted-foreground">No hay ingredientes con stock bajo</div>
   }
 
+  // Limitar los ingredientes a mostrar si showAll es false
+  const displayedIngredients = showAll ? ingredients : ingredients.slice(0, 9)
+  const hasMore = ingredients.length > 9
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {ingredients.map((ingredient) => (
+        {displayedIngredients.map((ingredient) => (
           <Card key={ingredient.id} className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
             <CardContent className="p-4">
               <div className="flex justify-between items-start">
@@ -141,6 +147,14 @@ export function LowStockIngredients() {
           </Card>
         ))}
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center mt-4">
+          <Button variant="outline" onClick={() => setShowAll(!showAll)} className="text-sm">
+            {showAll ? "Mostrar menos" : `Ver todos (${ingredients.length})`}
+          </Button>
+        </div>
+      )}
 
       <Dialog open={openStockDialog} onOpenChange={setOpenStockDialog}>
         <DialogContent className="sm:max-w-[600px]">

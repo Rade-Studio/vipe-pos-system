@@ -61,7 +61,7 @@ export function PaymentMethodDialog({
   const [loading, setLoading] = useState(false)
 
   const { addTransaction, isRegisterOpen, hasEnoughCashForChange, getCurrentRegisterSummary } = useCashRegisterStore()
-  const { completePayment, completePartialPayment, undoPartialPayment } = usePOSStore()
+  const { completePayment, completePartialPayment, undoPartialPayment, calculateOrderBill } = usePOSStore()
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast: toastHook } = useToast()
 
@@ -138,6 +138,11 @@ export function PaymentMethodDialog({
         quantity: item.quantity,
         comments: item.comments || undefined,
         categoryId: item.category_id || "",
+        originalPrice: item.original_price,
+        discountAmount: item.discount_amount,
+        discountPercentage: item.discount_percentage,
+        promotionId: item.promotion_id,
+        promotionName: item.promotion_name,
       }),
     )
   }, [orderData])
@@ -177,6 +182,16 @@ export function PaymentMethodDialog({
           ? orderItems.filter((item) => selectedItems.includes(item.id))
           : orderItems
 
+      // Calcular el total de descuentos
+      const totalDiscounts = invoiceItems.reduce((sum, item) => {
+        if (item.originalPrice && item.originalPrice > item.price) {
+          return sum + (item.originalPrice - item.price) * item.quantity
+        }
+        return sum
+      }, 0)
+
+      console.log("Total de descuentos calculado:", totalDiscounts)
+
       // Calcular el total para los items seleccionados
       const bill = {
         subtotal: orderData.subtotal,
@@ -185,6 +200,7 @@ export function PaymentMethodDialog({
         tip: orderData.tip,
         tipPercentage: orderData.tip_percentage,
         total: orderData.total,
+        totalDiscounts: totalDiscounts,
       }
 
       const invoice: PrintableInvoice = {
@@ -204,6 +220,12 @@ export function PaymentMethodDialog({
         cashReceived: paymentMethod === "cash" ? cashAmount : undefined,
         cashChange: paymentMethod === "cash" ? change : undefined,
       }
+
+      console.log("Datos de factura generados:", {
+        items: invoiceItems.length,
+        totalDiscounts,
+        bill,
+      })
 
       // Guardar los datos de la factura y mostrar la vista previa
       setInvoiceData(invoice)

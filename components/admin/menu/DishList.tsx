@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -23,6 +23,9 @@ import { Badge } from "@/components/ui/badge"
 import { DishForm } from "./DishForm"
 import { formatCurrency } from "@/utils/helpers"
 import { RecipeManager } from "@/components/admin/dishes/RecipeManager"
+import { Pagination } from "@/components/ui/pagination"
+import { ItemsPerPage } from "@/components/ui/items-per-page"
+import { usePagination } from "@/hooks/use-pagination"
 
 export function DishList() {
   const { toast } = useToast()
@@ -114,7 +117,15 @@ export function DishList() {
     }
   }
 
-  const filteredDishes = dishes.filter((dish) => dish.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  const filteredDishes = useMemo(() => {
+    return dishes.filter((dish) => dish.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  }, [dishes, searchTerm])
+
+  // Usar el hook de paginación
+  const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination({
+    data: filteredDishes,
+    initialItemsPerPage: 10,
+  })
 
   const getCategoryName = (categoryId: string) => {
     const category = categories.find((cat) => cat.id === categoryId)
@@ -175,47 +186,58 @@ export function DishList() {
             {searchTerm ? "No se encontraron platos con ese término de búsqueda" : "No hay platos registrados"}
           </div>
         ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead>Precio</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredDishes.map((dish) => (
-                  <TableRow key={dish.id}>
-                    <TableCell className="font-medium">{dish.name}</TableCell>
-                    <TableCell>{getCategoryName(dish.category_id)}</TableCell>
-                    <TableCell>{formatCurrency(dish.price)}</TableCell>
-                    <TableCell>
-                      <Badge variant={dish.active ? "success" : "secondary"}>
-                        {dish.active ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => handleManageRecipe(dish)} className="mr-1">
-                        <BookOpen className="h-4 w-4 mr-1" />
-                        Receta
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(dish)}>
-                        <Edit className="h-4 w-4" />
-                        <span className="sr-only">Editar</span>
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => confirmDelete(dish)}>
-                        <Trash className="h-4 w-4" />
-                        <span className="sr-only">Eliminar</span>
-                      </Button>
-                    </TableCell>
+          <>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Categoría</TableHead>
+                    <TableHead>Precio</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {paginatedData.map((dish) => (
+                    <TableRow key={dish.id}>
+                      <TableCell className="font-medium">{dish.name}</TableCell>
+                      <TableCell>{getCategoryName(dish.category_id)}</TableCell>
+                      <TableCell>{formatCurrency(dish.price)}</TableCell>
+                      <TableCell>
+                        <Badge variant={dish.active ? "success" : "secondary"}>
+                          {dish.active ? "Activo" : "Inactivo"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" onClick={() => handleManageRecipe(dish)} className="mr-1">
+                          <BookOpen className="h-4 w-4 mr-1" />
+                          Receta
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(dish)}>
+                          <Edit className="h-4 w-4" />
+                          <span className="sr-only">Editar</span>
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => confirmDelete(dish)}>
+                          <Trash className="h-4 w-4" />
+                          <span className="sr-only">Eliminar</span>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Paginación */}
+            <div className="flex items-center justify-between mt-4">
+              <ItemsPerPage itemsPerPage={itemsPerPage} onChange={setItemsPerPage} options={[10, 25, 50, 100]} />
+              <div className="text-sm text-muted-foreground">
+                Mostrando {paginatedData.length} de {filteredDishes.length} platos
+              </div>
+              <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+            </div>
+          </>
         )}
 
         {/* Diálogo para gestionar recetas */}

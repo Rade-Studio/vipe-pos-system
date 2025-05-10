@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
 import { format } from "date-fns"
 import { toast } from "@/utils/toast"
-import { Printer, Check, X, ArrowLeft, Receipt } from "lucide-react"
+import { Printer, Check, X, ArrowLeft, Receipt, Tag } from "lucide-react"
 import type { PrintableInvoice } from "@/types"
 
 interface InvoicePrintViewProps {
@@ -95,7 +95,7 @@ export function InvoicePrintView({
                 padding: 1px 0;
               }
               th.right, td.right {
-                text-align: right;
+                text-right: right;
               }
               .totals {
                 text-align: right;
@@ -103,6 +103,13 @@ export function InvoicePrintView({
               .info-row {
                 display: flex;
                 justify-content: space-between;
+              }
+              .discount {
+                color: #e53e3e;
+              }
+              .strikethrough {
+                text-decoration: line-through;
+                font-size: 8pt;
               }
             </style>
           </head>
@@ -163,7 +170,14 @@ export function InvoicePrintView({
                         ${item.name}
                         ${item.comments ? `<div style="font-size: 8pt">(${item.comments})</div>` : ""}
                       </td>
-                      <td class="right">${formatCurrency(item.price * item.quantity)}</td>
+                      <td class="right">
+                        ${
+                          item.originalPrice && item.originalPrice > item.price
+                            ? `<div class="strikethrough">${formatCurrency(item.originalPrice * item.quantity)}</div>`
+                            : ""
+                        }
+                        ${formatCurrency(item.price * item.quantity)}
+                      </td>
                     </tr>
                   `,
                     )
@@ -183,6 +197,14 @@ export function InvoicePrintView({
                   <span>IVA (${invoice.bill?.taxPercentage || 0}%):</span>
                   <span>${formatCurrency(invoice.bill?.tax || 0)}</span>
                 </div>
+                ${
+                  invoice.bill?.totalDiscounts > 0
+                    ? `<div class="info-row discount">
+                  <span>DESCUENTOS:</span>
+                  <span>-${formatCurrency(invoice.bill?.totalDiscounts || 0)}</span>
+                </div>`
+                    : ""
+                }
                 <div class="info-row bold">
                   <span>TOTAL SIN PROPINA:</span>
                   <span>${formatCurrency((invoice.bill?.subtotal || 0) + (invoice.bill?.tax || 0))}</span>
@@ -311,6 +333,9 @@ export function InvoicePrintView({
   })
   const displayItems = Object.values(groupedItems)
 
+  // Verificar si hay descuentos
+  const hasDiscounts = displayItems.some((item) => item.originalPrice && item.originalPrice > item.price)
+
   return (
     <Dialog
       open={isOpen}
@@ -380,12 +405,31 @@ export function InvoicePrintView({
                         <div key={index} className="p-2 grid grid-cols-12 text-sm dark:text-gray-300">
                           <div className="col-span-2">{item.quantity}</div>
                           <div className="col-span-7">
-                            {item.name}
+                            <div className="flex items-start">
+                              <span>{item.name}</span>
+                              {item.originalPrice && item.originalPrice > item.price && (
+                                <Tag className="h-3 w-3 ml-1 text-red-500 flex-shrink-0" />
+                              )}
+                            </div>
                             {item.comments && (
                               <div className="text-xs text-gray-500 dark:text-gray-400">({item.comments})</div>
                             )}
+                            {item.originalPrice && item.originalPrice > item.price && item.promotionName && (
+                              <div className="text-xs text-red-500 dark:text-red-400 italic">{item.promotionName}</div>
+                            )}
                           </div>
-                          <div className="col-span-3 text-right">{formatCurrency(item.price * item.quantity)}</div>
+                          <div className="col-span-3 text-right">
+                            {item.originalPrice && item.originalPrice > item.price ? (
+                              <>
+                                <div className="line-through text-xs text-gray-500">
+                                  {formatCurrency(item.originalPrice * item.quantity)}
+                                </div>
+                                <div>{formatCurrency(item.price * item.quantity)}</div>
+                              </>
+                            ) : (
+                              formatCurrency(item.price * item.quantity)
+                            )}
+                          </div>
                         </div>
                       ))
                     ) : (
@@ -406,6 +450,12 @@ export function InvoicePrintView({
                     <span>IVA ({bill?.taxPercentage || 0}%):</span>
                     <span>{formatCurrency(bill?.tax || 0)}</span>
                   </div>
+                  {bill?.totalDiscounts > 0 && (
+                    <div className="flex justify-between text-sm text-red-600 dark:text-red-400">
+                      <span>Descuentos:</span>
+                      <span>-{formatCurrency(bill?.totalDiscounts || 0)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm font-medium pt-1 border-t dark:border-gray-700">
                     <span>Total sin propina:</span>
                     <span>{formatCurrency(totalSinPropina)}</span>
@@ -510,6 +560,14 @@ export function InvoicePrintView({
                           <span>Total:</span>
                           <span className="font-medium">{formatCurrency(bill?.total || 0)}</span>
                         </div>
+                        {bill?.totalDiscounts > 0 && (
+                          <div className="flex justify-between">
+                            <span>Descuentos aplicados:</span>
+                            <span className="font-medium text-red-600">
+                              -{formatCurrency(bill?.totalDiscounts || 0)}
+                            </span>
+                          </div>
+                        )}
                         {invoice.cashReceived && invoice.cashReceived > 0 && (
                           <>
                             <div className="flex justify-between">
@@ -601,7 +659,14 @@ export function InvoicePrintView({
                         {item.comments && <div className="text-xs">({item.comments})</div>}
                       </div>
                       <div style={{ width: "30%" }} className="text-right">
-                        {formatCurrency(item.price * item.quantity)}
+                        {item.originalPrice && item.originalPrice > item.price ? (
+                          <>
+                            <div className="strikethrough">{formatCurrency(item.originalPrice * item.quantity)}</div>
+                            <div>{formatCurrency(item.price * item.quantity)}</div>
+                          </>
+                        ) : (
+                          formatCurrency(item.price * item.quantity)
+                        )}
                       </div>
                     </div>
                   ))}
@@ -619,6 +684,12 @@ export function InvoicePrintView({
                   <span>IVA ({bill?.taxPercentage || 0}%):</span>
                   <span>{formatCurrency(bill?.tax || 0)}</span>
                 </div>
+                {bill?.totalDiscounts > 0 && (
+                  <div className="info-row discount">
+                    <span>DESCUENTOS:</span>
+                    <span>-{formatCurrency(bill?.totalDiscounts || 0)}</span>
+                  </div>
+                )}
                 <div className="info-row font-bold">
                   <span>TOTAL SIN PROPINA:</span>
                   <span>{formatCurrency(totalSinPropina)}</span>

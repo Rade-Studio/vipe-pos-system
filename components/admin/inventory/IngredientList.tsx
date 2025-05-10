@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -27,12 +27,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { ingredientCategoryService } from "@/lib/supabase"
-
-// Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
-
-// Importar formatCurrency si no existe
 import { formatCurrency } from "@/utils/helpers"
+import { Pagination } from "@/components/ui/pagination"
+import { ItemsPerPage } from "@/components/ui/items-per-page"
+import { usePagination } from "@/hooks/use-pagination"
 
 export function IngredientList() {
   const { toast } = useToast()
@@ -139,17 +138,25 @@ export function IngredientList() {
   }
 
   // Aplicar filtros a los ingredientes
-  const filteredIngredients = ingredients.filter((ingredient) => {
-    // Filtro por término de búsqueda
-    const matchesSearch = ingredient.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredIngredients = useMemo(() => {
+    return ingredients.filter((ingredient) => {
+      // Filtro por término de búsqueda
+      const matchesSearch = ingredient.name.toLowerCase().includes(searchTerm.toLowerCase())
 
-    // Filtro por categoría
-    const matchesCategory = categoryFilter === "all" || ingredient.category === categoryFilter
+      // Filtro por categoría
+      const matchesCategory = categoryFilter === "all" || ingredient.category === categoryFilter
 
-    // Filtro por stock mínimo
-    const matchesLowStock = !showLowStock || ingredient.stock <= ingredient.min_stock
+      // Filtro por stock mínimo
+      const matchesLowStock = !showLowStock || ingredient.stock <= ingredient.min_stock
 
-    return matchesSearch && matchesCategory && matchesLowStock
+      return matchesSearch && matchesCategory && matchesLowStock
+    })
+  }, [ingredients, searchTerm, categoryFilter, showLowStock])
+
+  // Usar el hook de paginación
+  const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination({
+    data: filteredIngredients,
+    initialItemsPerPage: 10,
   })
 
   return (
@@ -334,61 +341,72 @@ export function IngredientList() {
                   : "No hay ingredientes registrados"}
               </div>
             ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>Stock</TableHead>
-                      <TableHead>Unidad</TableHead>
-                      <TableHead>Stock Mínimo</TableHead>
-                      <TableHead>Costo</TableHead>
-                      <TableHead>Categoría</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredIngredients.map((ingredient) => (
-                      <TableRow key={ingredient.id}>
-                        <TableCell className="font-medium">{ingredient.name}</TableCell>
-                        <TableCell>
-                          <span
-                            className={
-                              ingredient.stock <= ingredient.min_stock
-                                ? "text-red-500 font-medium flex items-center"
-                                : ""
-                            }
-                          >
-                            {ingredient.stock <= ingredient.min_stock && <AlertCircle className="h-4 w-4 mr-1" />}
-                            {ingredient.stock}
-                          </span>
-                        </TableCell>
-                        <TableCell>{ingredient.unit}</TableCell>
-                        <TableCell>{ingredient.min_stock}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(ingredient.cost)}</TableCell>
-                        <TableCell>
-                          {ingredient.category ||
-                            (ingredient.category_id ? "Categoría no encontrada" : "Sin categoría")}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => handleStockTransaction(ingredient)}>
-                            <Package className="h-4 w-4" />
-                            <span className="sr-only">Stock</span>
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(ingredient)}>
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">Editar</span>
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => confirmDelete(ingredient)}>
-                            <Trash className="h-4 w-4" />
-                            <span className="sr-only">Eliminar</span>
-                          </Button>
-                        </TableCell>
+              <>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>Stock</TableHead>
+                        <TableHead>Unidad</TableHead>
+                        <TableHead>Stock Mínimo</TableHead>
+                        <TableHead>Costo</TableHead>
+                        <TableHead>Categoría</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedData.map((ingredient) => (
+                        <TableRow key={ingredient.id}>
+                          <TableCell className="font-medium">{ingredient.name}</TableCell>
+                          <TableCell>
+                            <span
+                              className={
+                                ingredient.stock <= ingredient.min_stock
+                                  ? "text-red-500 font-medium flex items-center"
+                                  : ""
+                              }
+                            >
+                              {ingredient.stock <= ingredient.min_stock && <AlertCircle className="h-4 w-4 mr-1" />}
+                              {ingredient.stock}
+                            </span>
+                          </TableCell>
+                          <TableCell>{ingredient.unit}</TableCell>
+                          <TableCell>{ingredient.min_stock}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(ingredient.cost)}</TableCell>
+                          <TableCell>
+                            {ingredient.category ||
+                              (ingredient.category_id ? "Categoría no encontrada" : "Sin categoría")}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="icon" onClick={() => handleStockTransaction(ingredient)}>
+                              <Package className="h-4 w-4" />
+                              <span className="sr-only">Stock</span>
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleEdit(ingredient)}>
+                              <Edit className="h-4 w-4" />
+                              <span className="sr-only">Editar</span>
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => confirmDelete(ingredient)}>
+                              <Trash className="h-4 w-4" />
+                              <span className="sr-only">Eliminar</span>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Paginación */}
+                <div className="flex items-center justify-between mt-4">
+                  <ItemsPerPage itemsPerPage={itemsPerPage} onChange={setItemsPerPage} options={[10, 25, 50, 100]} />
+                  <div className="text-sm text-muted-foreground">
+                    Mostrando {paginatedData.length} de {filteredIngredients.length} ingredientes
+                  </div>
+                  <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                </div>
+              </>
             )}
 
             <Dialog open={openStockDialog} onOpenChange={setOpenStockDialog}>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Printer, RefreshCw } from "lucide-react"
@@ -13,6 +13,9 @@ import { format } from "date-fns"
 import { getOrdersByDate } from "@/lib/supabase/service"
 import { useToast } from "@/components/ui/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Pagination } from "@/components/ui/pagination"
+import { ItemsPerPage } from "@/components/ui/items-per-page"
+import { usePagination } from "@/hooks/use-pagination"
 
 interface CompletedOrdersTableProps {
   selectedDate?: Date
@@ -27,6 +30,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [dbOrders, setDbOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
 
   // Función para cargar órdenes de la base de datos
   const loadOrdersFromDB = async () => {
@@ -74,20 +78,47 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
   })
 
   // Combinar órdenes locales y de la base de datos, evitando duplicados
-  const allOrders = [...localCompletedOrders]
+  const allOrders = useMemo(() => {
+    const combinedOrders = [...localCompletedOrders]
 
-  // Agregar órdenes de la base de datos que no estén ya en el estado local
-  dbOrders.forEach((dbOrder) => {
-    if (!allOrders.some((order) => order.id === dbOrder.id)) {
-      allOrders.push(dbOrder)
-    }
-  })
+    // Agregar órdenes de la base de datos que no estén ya en el estado local
+    dbOrders.forEach((dbOrder) => {
+      if (!combinedOrders.some((order) => order.id === dbOrder.id)) {
+        combinedOrders.push(dbOrder)
+      }
+    })
 
-  // Ordenar por fecha, más reciente primero
-  const completedOrders = allOrders.sort((a, b) => {
-    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
-    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
-    return dateB - dateA
+    // Ordenar por fecha, más reciente primero
+    return combinedOrders.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return dateB - dateA
+    })
+  }, [localCompletedOrders, dbOrders])
+
+  const completedOrders = useMemo(() => {
+    return allOrders.filter((order) => {
+      if (!searchTerm) return true
+
+      // Buscar por ID
+      if (order.id.toLowerCase().includes(searchTerm.toLowerCase())) return true
+
+      // Buscar por mesa
+      const table = tables.find((t) => t.id === order.tableId)
+      if (table && table.number.toString().includes(searchTerm)) return true
+
+      // Buscar por mesero
+      const waiter = profiles.find((p) => p.id === order.waiter)
+      if (waiter && waiter.name.toLowerCase().includes(searchTerm.toLowerCase())) return true
+
+      return false
+    })
+  }, [allOrders, searchTerm, tables, profiles])
+
+  // Usar el hook de paginación
+  const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination({
+    data: completedOrders,
+    initialItemsPerPage: 10,
   })
 
   const handlePrintInvoice = (order: Order) => {
@@ -166,6 +197,16 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
         <div className="text-sm text-muted-foreground">Mostrando órdenes del {format(selectedDate, "dd/MM/yyyy")}</div>
       )}
 
+      <div className="flex items-center mb-4">
+        <input
+          type="text"
+          placeholder="Buscar por ID, mesa o mesero..."
+          className="px-3 py-2 border rounded-md w-full max-w-sm"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
       <div className="border rounded-md">
         <Table>
           <TableHeader>
@@ -205,8 +246,8 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
                     </TableCell>
                   </TableRow>
                 ))
-            ) : completedOrders.length > 0 ? (
-              completedOrders.map((order) => {
+            ) : paginatedData.length > 0 ? (
+              paginatedData.map((order) => {
                 const table = tables.find((t) => t.id === order.tableId)
                 const waiter = profiles.find((p) => p.id === order.waiter)
                 return (
@@ -230,13 +271,26 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
             ) : (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                  No hay órdenes completadas {selectedDate ? "para esta fecha" : ""}
+                  {searchTerm
+                    ? "No se encontraron órdenes con ese término de búsqueda"
+                    : `No hay órdenes completadas ${selectedDate ? "para esta fecha" : ""}`}
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+
+      {/* Paginación */}
+      {completedOrders.length > 0 && (
+        <div className="flex items-center justify-between mt-4">
+          <ItemsPerPage itemsPerPage={itemsPerPage} onChange={setItemsPerPage} options={[10, 25, 50, 100]} />
+          <div className="text-sm text-muted-foreground">
+            Mostrando {paginatedData.length} de {completedOrders.length} órdenes
+          </div>
+          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+        </div>
+      )}
 
       {selectedInvoice && (
         <InvoicePrintView invoice={selectedInvoice} open={invoiceOpen} onOpenChange={setInvoiceOpen} />

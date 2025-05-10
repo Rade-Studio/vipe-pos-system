@@ -264,10 +264,25 @@ export const usePOSStore = create<POSState>((set, get) => ({
     return items.reduce((total, item) => total + item.price * item.quantity, 0)
   },
   calculateOrderBill: (items, tipPercentage = 10, taxPercentage = 8) => {
-    const subtotal = items.reduce((total, item) => total + item.price * item.quantity, 0)
+    // Calcular el subtotal (precio con descuento ya aplicado)
+    const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+    // Calcular el total de descuentos
+    const totalDiscounts = items.reduce((sum, item) => {
+      // Si el item tiene precio original y es mayor que el precio actual, hay un descuento
+      if (item.originalPrice && item.originalPrice > item.price) {
+        return sum + (item.originalPrice - item.price) * item.quantity
+      }
+      return sum
+    }, 0)
+
+    // Calcular impuestos y propina
     const tax = subtotal * (taxPercentage / 100)
     const tip = subtotal * (tipPercentage / 100)
+
+    // Calcular el total
     const total = subtotal + tax + tip
+
     return {
       subtotal,
       tax,
@@ -275,6 +290,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       tip,
       tipPercentage,
       total,
+      totalDiscounts,
     }
   },
 
@@ -361,6 +377,12 @@ export const usePOSStore = create<POSState>((set, get) => ({
             quantity: item.quantity,
             comments: item.comments || undefined,
             categoryId: item.category_id || "",
+            // Añadir campos de promoción si existen
+            originalPrice: item.original_price,
+            discountAmount: item.discount_amount,
+            discountPercentage: item.discount_percentage,
+            promotionId: item.promotion_id,
+            promotionName: item.promotion_name,
           }))
 
           // Crear el objeto de orden para el store
@@ -376,6 +398,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
               tip: dbOrder.tip,
               tipPercentage: dbOrder.tip_percentage,
               total: dbOrder.total,
+              totalDiscounts: dbOrder.total_discounts || 0,
             },
             waiter: dbOrder.waiter_id,
             createdAt: new Date(dbOrder.created_at),

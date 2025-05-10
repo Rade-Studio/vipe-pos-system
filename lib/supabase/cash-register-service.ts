@@ -32,7 +32,7 @@ export const cashRegisterService = {
         id: data.id,
         openingTimestamp: new Date(data.opening_timestamp),
         initialCash: data.initial_cash,
-        status: data.status as "open" | "closed",
+        status: "open" as "open" | "closed",
         transactions: [],
         cashTransactions: [],
         created_at: data.created_at ? new Date(data.created_at) : undefined,
@@ -385,7 +385,6 @@ export const cashRegisterService = {
 
   // Actualizar la función addTransaction para incluir waiterId y tipAmount
   async addTransaction(
-    registerId: string,
     orderId: string,
     tableId: string,
     amount: number,
@@ -394,9 +393,10 @@ export const cashRegisterService = {
     cashChange?: number,
     waiterId?: string,
     tipAmount?: number,
+    totalDiscounts?: number, // Nuevo parámetro
   ): Promise<PaymentTransaction> {
     try {
-      console.log("Agregando transacción a caja:", registerId, {
+      console.log("Agregando transacción a caja:", this.currentRegisterId, {
         orderId,
         tableId,
         waiterId,
@@ -410,12 +410,13 @@ export const cashRegisterService = {
         table_id: tableId,
         waiter_id: waiterId,
         amount: amount,
-        tip_amount: tipAmount,
+        tip_amount: tipAmount || 0,
         method: method,
         cash_received: cashReceived,
         cash_change: cashChange,
         timestamp: new Date().toISOString(),
-        cash_register_id: registerId,
+        cash_register_id: this.currentRegisterId,
+        total_discounts: totalDiscounts || 0, // Guardar los descuentos
       }
 
       const { data, error } = await supabase.from("payment_transactions").insert(transaction).select().single()
@@ -755,4 +756,5 @@ export const cashRegisterService = {
 
     return summary
   },
+  currentRegisterId: null,
 }

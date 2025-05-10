@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ShoppingCart, Minus, Plus, Send, Percent, TableIcon } from "lucide-react"
+import { ShoppingCart, Minus, Plus, Send, Percent, TableIcon, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -118,6 +118,17 @@ export function CartSidebar({
                         <h3 className="font-medium">{item.name}</h3>
                         <span className="font-semibold">{formatCurrency(item.price * item.quantity)}</span>
                       </div>
+                      {item.originalPrice && item.originalPrice > item.price && (
+                        <div className="mt-1 flex justify-between text-xs">
+                          <div className="flex items-center">
+                            <Tag className="h-3 w-3 mr-1 text-red-500" />
+                            <span className="text-red-500">{item.promotionName || "Promoción"}</span>
+                          </div>
+                          <span className="text-muted-foreground line-through">
+                            {formatCurrency(item.originalPrice * item.quantity)}
+                          </span>
+                        </div>
+                      )}
                       <div className="mt-1 flex items-center justify-between">
                         <div className="flex items-center">
                           <Button
@@ -190,6 +201,12 @@ export function CartSidebar({
                 <span className="text-muted-foreground">Subtotal:</span>
                 <span>{formatCurrency(bill.subtotal)}</span>
               </div>
+              {bill.totalDiscounts > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Descuentos:</span>
+                  <span className="text-red-600">-{formatCurrency(bill.totalDiscounts)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Impuesto ({bill.taxPercentage}%):</span>
                 <span>{formatCurrency(bill.tax)}</span>

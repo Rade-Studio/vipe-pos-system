@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -17,9 +17,10 @@ import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-
-// Importar formatCurrency si no existe
 import { formatCurrency } from "@/utils/helpers"
+import { Pagination } from "@/components/ui/pagination"
+import { ItemsPerPage } from "@/components/ui/items-per-page"
+import { usePagination } from "@/hooks/use-pagination"
 
 export function StockTransactionsList() {
   const { toast } = useToast()
@@ -373,11 +374,19 @@ export function StockTransactionsList() {
     }
   }
 
-  const filteredTransactions = transactions.filter((transaction) => {
-    const ingredientName = transaction.ingredients?.name?.toLowerCase() || ""
-    const notes = transaction.notes?.toLowerCase() || ""
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((transaction) => {
+      const ingredientName = transaction.ingredients?.name?.toLowerCase() || ""
+      const notes = transaction.notes?.toLowerCase() || ""
 
-    return ingredientName.includes(searchTerm.toLowerCase()) || notes.includes(searchTerm.toLowerCase())
+      return ingredientName.includes(searchTerm.toLowerCase()) || notes.includes(searchTerm.toLowerCase())
+    })
+  }, [transactions, searchTerm])
+
+  // Usar el hook de paginación
+  const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination({
+    data: filteredTransactions,
+    initialItemsPerPage: 10,
   })
 
   return (
@@ -787,124 +796,135 @@ export function StockTransactionsList() {
               </Button>
             </div>
           ) : (
-            <div className="rounded-md border overflow-hidden dark:border-border">
-              <Table>
-                <TableHeader className="bg-muted/30 dark:bg-muted/10">
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Ingrediente</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Cantidad</TableHead>
-                    <TableHead>Costo Total</TableHead>
-                    <TableHead>Costo Unitario</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Notas</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTransactions.map((transaction) => (
-                    <TableRow key={transaction.id} className="hover:bg-muted/20 dark:hover:bg-muted/10">
-                      <TableCell>
-                        {formatDate(transaction.created_at)}
-                        <div className="text-xs text-muted-foreground">{formatTime(transaction.created_at)}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{transaction.ingredients?.name || "Desconocido"}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {getIngredientCategoryName(transaction.ingredients)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            transaction.transaction_type === "entrada"
-                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
-                              : transaction.transaction_type === "salida"
-                                ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
-                                : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800"
-                          }
-                        >
-                          {getTransactionTypeName(transaction.transaction_type)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {transaction.quantity} {transaction.ingredients?.unit || "unidades"}
-                      </TableCell>
-                      <TableCell className="text-right">{formatCurrency(transaction.total_cost)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(transaction.unit_cost)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+            <>
+              <div className="rounded-md border overflow-hidden dark:border-border">
+                <Table>
+                  <TableHeader className="bg-muted/30 dark:bg-muted/10">
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Ingrediente</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Cantidad</TableHead>
+                      <TableHead>Costo Total</TableHead>
+                      <TableHead>Costo Unitario</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Notas</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedData.map((transaction) => (
+                      <TableRow key={transaction.id} className="hover:bg-muted/20 dark:hover:bg-muted/10">
+                        <TableCell>
+                          {formatDate(transaction.created_at)}
+                          <div className="text-xs text-muted-foreground">{formatTime(transaction.created_at)}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{transaction.ingredients?.name || "Desconocido"}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {getIngredientCategoryName(transaction.ingredients)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
                           <Badge
                             variant="outline"
                             className={
-                              transaction.payment_status === "pendiente"
-                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800"
-                                : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+                              transaction.transaction_type === "entrada"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+                                : transaction.transaction_type === "salida"
+                                  ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+                                  : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800"
                             }
                           >
-                            {getPaymentStatusName(transaction.payment_status)}
+                            {getTransactionTypeName(transaction.transaction_type)}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {transaction.quantity} {transaction.ingredients?.unit || "unidades"}
+                        </TableCell>
+                        <TableCell className="text-right">{formatCurrency(transaction.total_cost)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(transaction.unit_cost)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={
+                                transaction.payment_status === "pendiente"
+                                  ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800"
+                                  : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+                              }
+                            >
+                              {getPaymentStatusName(transaction.payment_status)}
+                            </Badge>
 
-                          {transaction.transaction_type !== "salida" && (
+                            {transaction.transaction_type !== "salida" && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 rounded-full"
+                                      onClick={() => updatePaymentStatus(transaction.id, transaction.payment_status)}
+                                    >
+                                      {transaction.payment_status === "pendiente" ? (
+                                        <CheckCircle className="h-4 w-4 text-green-600" />
+                                      ) : (
+                                        <Clock className="h-4 w-4 text-yellow-600" />
+                                      )}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>
+                                      {transaction.payment_status === "pendiente"
+                                        ? "Marcar como pagado"
+                                        : "Marcar como pendiente"}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {transaction.notes ? (
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 rounded-full"
-                                    onClick={() => updatePaymentStatus(transaction.id, transaction.payment_status)}
+                                    onClick={() => {
+                                      setSelectedNotes(transaction.notes)
+                                      setNotesDialogOpen(true)
+                                    }}
                                   >
-                                    {transaction.payment_status === "pendiente" ? (
-                                      <CheckCircle className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                      <Clock className="h-4 w-4 text-yellow-600" />
-                                    )}
+                                    <FileText className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <p>
-                                    {transaction.payment_status === "pendiente"
-                                      ? "Marcar como pagado"
-                                      : "Marcar como pendiente"}
-                                  </p>
+                                  <p>Ver notas</p>
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">Sin notas</span>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {transaction.notes ? (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => {
-                                    setSelectedNotes(transaction.notes)
-                                    setNotesDialogOpen(true)
-                                  }}
-                                >
-                                  <FileText className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Ver notas</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">Sin notas</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Paginación */}
+              <div className="flex items-center justify-between mt-4">
+                <ItemsPerPage itemsPerPage={itemsPerPage} onChange={setItemsPerPage} options={[10, 25, 50, 100]} />
+                <div className="text-sm text-muted-foreground">
+                  Mostrando {paginatedData.length} de {filteredTransactions.length} transacciones
+                </div>
+                <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+              </div>
+            </>
           )}
         </div>
       </CardContent>

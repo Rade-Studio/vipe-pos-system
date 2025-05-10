@@ -31,6 +31,8 @@ export type OrderBill = {
   tip: number
   tipPercentage: number
   total: number
+  // Nuevo campo para descuentos
+  totalDiscounts: number
 }
 
 export type OrderItem = {
@@ -65,6 +67,12 @@ export type CartItem = {
   categoryId: string
   image: string
   comments?: string
+  // Nuevos campos para descuentos
+  originalPrice?: number
+  discountAmount?: number
+  discountPercentage?: number
+  promotionId?: string
+  promotionName?: string
 }
 
 // Category and dish types
@@ -154,6 +162,7 @@ export interface PrintableInvoice {
     tip: number
     tipPercentage: number
     total: number
+    totalDiscounts: number // Nuevo campo
   }
   waiter: string
   table: string | number

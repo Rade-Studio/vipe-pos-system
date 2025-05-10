@@ -4,9 +4,9 @@ import { useState, useEffect } from "react"
 import { CategorySelector } from "@/components/pos/CategorySelector"
 import { DishGrid } from "@/components/pos/DishGrid"
 import type { Category, Dish } from "@/types"
-import { categoryService, dishService } from "@/lib/supabase/service"
+import { categoryService } from "@/lib/supabase/service"
+import { dishServiceWithPromotions } from "@/lib/supabase/dish-service-with-promotions"
 import { useToast } from "@/hooks/use-toast"
-// Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface MenuSectionProps {
@@ -68,7 +68,8 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
   const loadDishesByCategory = async (categoryId: string) => {
     setLoadingDishes(true)
     try {
-      const data = await dishService.getByCategory(categoryId)
+      // Usar el nuevo servicio con promociones
+      const data = await dishServiceWithPromotions.getByCategoryWithPromotions(categoryId)
 
       // Convertir los datos de la base de datos al formato que espera el componente
       const formattedDishes = data.map((dish) => ({
@@ -77,6 +78,12 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
         price: dish.price,
         categoryId: dish.category_id,
         image: dish.image_url || "/placeholder.svg?height=80&width=80",
+        // Añadir campos de promoción si existen
+        originalPrice: dish.originalPrice,
+        discountAmount: dish.discountAmount,
+        discountPercentage: dish.discountPercentage,
+        promotionId: dish.promotionId,
+        promotionName: dish.promotionName,
       }))
 
       setDishes(formattedDishes)
@@ -93,9 +100,6 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
   }
 
   // Si estamos cargando categorías, mostrar un indicador de carga
-  // Reemplazar el indicador de carga de categorías
-  // Buscar:
-  // Reemplazar con:
   if (loadingCategories) {
     return (
       <div className="space-y-4">
@@ -147,9 +151,6 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
 
       {/* Dishes */}
       <div className="min-h-[300px]">
-        {/* Reemplazar el indicador de carga de platos */}
-        {/* Buscar: */}
-        {/* Reemplazar con: */}
         {loadingDishes ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (

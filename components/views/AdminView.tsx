@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
+import { PromotionList } from "@/components/admin/promotions/PromotionList"
 
 interface AdminViewProps {
   profile: Profile
@@ -318,6 +319,8 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         description: "No se pudo eliminar la orden",
         variant: "destructive",
       })
+    } finally {
+      setLoadingActiveOrders(false)
     }
   }
 
@@ -723,6 +726,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
               <div className="space-y-6">
                 <CategoryList />
                 <DishList />
+                <PromotionList />
               </div>
             </TabsContent>
 

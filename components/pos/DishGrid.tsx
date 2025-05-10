@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ShoppingCart, AlertTriangle } from "lucide-react"
+import { ShoppingCart, AlertTriangle, Tag } from "lucide-react"
 import type { Dish } from "@/types"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -195,10 +195,30 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
                         </Badge>
                       </div>
                     )}
+
+                    {/* Mostrar badge de promoción si existe */}
+                    {dish.discountAmount && dish.discountAmount > 0 && !isOutOfStock && (
+                      <Badge className="absolute top-1 right-1 bg-red-500 hover:bg-red-600">
+                        <Tag className="h-3 w-3 mr-1" />
+                        {dish.discountPercentage ? `-${dish.discountPercentage}%` : formatCurrency(dish.discountAmount)}
+                      </Badge>
+                    )}
                   </div>
                   <div>
                     <h3 className="font-medium">{dish.name}</h3>
-                    <p className="text-muted-foreground">{formatCurrency(dish.price)}</p>
+
+                    {/* Mostrar precio con descuento si existe */}
+                    {dish.originalPrice ? (
+                      <div>
+                        <span className="text-sm line-through text-muted-foreground">
+                          {formatCurrency(dish.originalPrice)}
+                        </span>
+                        <p className="text-red-600 font-medium">{formatCurrency(dish.price)}</p>
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">{formatCurrency(dish.price)}</p>
+                    )}
+
                     {isOutOfStock ? (
                       <Badge variant="outline" className="mt-2 bg-red-50 text-red-700 border-red-200">
                         <AlertTriangle className="mr-1 h-3 w-3" />
@@ -210,6 +230,9 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
                         Agregar
                       </Badge>
                     )}
+
+                    {/* Mostrar nombre de la promoción si existe */}
+                    {dish.promotionName && <p className="text-xs text-muted-foreground mt-1">{dish.promotionName}</p>}
                   </div>
                 </div>
               </CardContent>
@@ -226,8 +249,31 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span>Precio:</span>
-              <span className="font-bold">{selectedDish ? formatCurrency(selectedDish.price) : ""}</span>
+              <span className="font-bold">
+                {selectedDish && selectedDish.originalPrice ? (
+                  <>
+                    <span className="text-sm line-through text-muted-foreground mr-2">
+                      {formatCurrency(selectedDish.originalPrice)}
+                    </span>
+                    <span className="text-red-600">{formatCurrency(selectedDish.price)}</span>
+                  </>
+                ) : (
+                  selectedDish && formatCurrency(selectedDish.price)
+                )}
+              </span>
             </div>
+
+            {/* Mostrar información de promoción si existe */}
+            {selectedDish && selectedDish.promotionName && (
+              <div className="flex items-center justify-between text-sm bg-muted p-2 rounded">
+                <span className="flex items-center">
+                  <Tag className="h-4 w-4 mr-1 text-red-500" />
+                  Promoción:
+                </span>
+                <span>{selectedDish.promotionName}</span>
+              </div>
+            )}
+
             <div>
               <label htmlFor="comments" className="block text-sm font-medium mb-1">
                 Comentarios
