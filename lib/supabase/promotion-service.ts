@@ -4,22 +4,13 @@ export interface Promotion {
   id: string
   name: string
   description: string | null
-  discount_type: "percentage" | "fixed"
-  discount_value: number
+  discount_type: "percentage" | "fixed_amount"
+  discount_value: number | null
   start_date: string
   end_date: string
   active: boolean
   created_at?: string
   updated_at?: string
-}
-
-// Función para calcular el descuento
-export function calculateDiscount(price: number, promotion: Promotion): number {
-  if (promotion.discount_type === "percentage") {
-    return (price * promotion.discount_value) / 100
-  } else {
-    return Math.min(price, promotion.discount_value) // El descuento no puede ser mayor que el precio
-  }
 }
 
 export const promotionService = {
@@ -31,7 +22,6 @@ export const promotionService = {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error("Error getting all promotions:", error)
       throw error
     }
   },
@@ -49,7 +39,6 @@ export const promotionService = {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error("Error getting active promotions:", error)
       throw error
     }
   },
@@ -71,7 +60,6 @@ export const promotionService = {
       if (error) throw error
       return data?.[0]
     } catch (error) {
-      console.error("Error creating promotion:", error)
       throw error
     }
   },
@@ -91,7 +79,6 @@ export const promotionService = {
       if (error) throw error
       return data?.[0]
     } catch (error) {
-      console.error("Error updating promotion:", error)
       throw error
     }
   },
@@ -108,7 +95,6 @@ export const promotionService = {
       if (error) throw error
       return true
     } catch (error) {
-      console.error("Error deleting promotion:", error)
       throw error
     }
   },
@@ -133,7 +119,6 @@ export const promotionService = {
       if (error) throw error
       return true
     } catch (error) {
-      console.error("Error assigning dishes to promotion:", error)
       throw error
     }
   },
@@ -152,6 +137,26 @@ export const promotionService = {
       console.error("Error getting promotion dishes:", error)
       throw error
     }
+  },
+
+  // Eliminar platos de una promoción
+  removePromotionDishes: async (promotionId: string, dishIds: string[]) => {
+      // Primero eliminar asignaciones existentes
+      await supabase.from("promotion_dishes").delete().eq("promotion_id", promotionId)
+
+      // Si no hay platos para asignar, terminar
+      if (dishIds.length === 0) return true
+
+      // Crear nuevas asignaciones
+      const promotionDishes = dishIds.map((dishId) => ({
+          promotion_id: promotionId,
+          dish_id: dishId,
+      }))
+
+      const { error } = await supabase.from("promotion_dishes").insert(promotionDishes)
+
+      if (error) throw error
+      return true
   },
 
   // Eliminar todos los platos de una promoción

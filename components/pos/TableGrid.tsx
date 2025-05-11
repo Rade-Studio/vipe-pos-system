@@ -202,8 +202,6 @@ export function TableGrid({
             // Obtener el nombre del mesero
             const waiterName = getWaiterName(table.waiter)
 
-            console.log(`Mesa ${table.number} - Mesero ID: ${table.waiter}, Nombre: ${waiterName}`)
-
             return (
               <div
                 key={table.id}

@@ -1,6 +1,7 @@
-import type { CartItem, Order } from "@/types"
+import type { CartItem, Order, Profile } from "@/types"
 import { supabase as clientSupabase } from "./client"
 import ingredientTransactionService from "./ingredient-transaction-service"
+import { Waiter } from "@/types/models"
 
 // Reutilizar el cliente de Supabase ya inicializado
 export const supabase = clientSupabase
@@ -511,6 +512,7 @@ export const waiterService = {
         .from("profiles")
         .select("id, username, full_name, role")
         .eq("role", "waiter")
+        .eq("active", true)
         .order("full_name")
 
       if (error) throw error
@@ -966,8 +968,6 @@ export const orderService = {
     // Convertir a array si es un string
     const statusArray = Array.isArray(statuses) ? statuses : [statuses]
 
-    console.log("Buscando órdenes con estados:", statusArray)
-
     try {
       // Realizar la consulta a Supabase
       const { data, error } = await supabase
@@ -977,11 +977,8 @@ export const orderService = {
         .order("created_at", { ascending: false })
 
       if (error) {
-        console.error("Error al obtener órdenes por estado:", error)
         throw error
       }
-
-      console.log(`Órdenes encontradas con estado ${statusArray.join(", ")}:`, data?.length || 0)
 
       // Mostrar detalles de la primera orden si hay resultados
       if (data && data.length > 0) {
@@ -996,7 +993,6 @@ export const orderService = {
 
       return data || []
     } catch (error) {
-      console.error("Error en getByStatus:", error)
       throw error
     }
   },
@@ -1267,8 +1263,6 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
   const endDate = endOfDay.toISOString()
 
   try {
-    console.log(`Buscando órdenes entre ${startDate} y ${endDate}`)
-
     const { data, error } = await supabase
       .from("orders")
       .select(`
@@ -1280,11 +1274,8 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
       .lte("created_at", endDate)
 
     if (error) {
-      console.error("Error al obtener órdenes por fecha:", error)
       throw error
     }
-
-    console.log(`Se encontraron ${data.length} órdenes`)
 
     // Transformar los datos de la base de datos al formato de Order
     return data.map((order: any) => ({
@@ -1311,7 +1302,6 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
       updatedAt: order.updated_at,
     }))
   } catch (error) {
-    console.error("Error en getOrdersByDate:", error)
     throw error
   }
 }

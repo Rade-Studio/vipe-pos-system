@@ -54,7 +54,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
   const { tables, profiles, cartItems, calculateOrderBill } = usePOSStore()
 
   const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
-  const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
+  const { businessName, businessAddress, businessPhone, businessNIT, tipPercentage, taxPercentage } = useConfigStore()
 
   // Función para cargar órdenes desde la base de datos
   const loadOrdersFromDB = useCallback(async () => {
@@ -293,7 +293,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
         })
 
       // Calcular el total de la orden parcial
-      const bill = calculateOrderBill(partialItems)
+      const bill = calculateOrderBill(partialItems, tipPercentage, taxPercentage)
 
       // Crear la orden parcial en la base de datos
       await orderService.createPartialOrder(parentOrder.id, partialItems, bill)

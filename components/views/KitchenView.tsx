@@ -518,7 +518,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
   // Obtener órdenes activas con items en cocina
   const kitchenOrders = orders // Ahora usamos las órdenes que ya vienen filtradas por el store
-  console.log("Órdenes en cocina para mostrar:", kitchenOrders.length)
 
   // Aplicar filtros a las órdenes
   const filteredOrders = kitchenOrders.filter((order) => {

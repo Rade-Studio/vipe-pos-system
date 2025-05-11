@@ -26,8 +26,6 @@ export function TablesSection({
   isTableAccessible,
 }: TablesSectionProps) {
   // Añadir al inicio del componente, justo después de la declaración de la función
-  console.log("TablesSection renderizando con mesas:", tables)
-
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
 

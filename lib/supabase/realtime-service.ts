@@ -1,6 +1,7 @@
 import { supabase } from "./client"
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 import { orderService } from "./service"
+import {toast} from "@/components/ui/use-toast";
 
 // Tipos para las funciones de callback
 type TableCallback = (payload: RealtimePostgresChangesPayload<any>) => void
@@ -59,7 +60,6 @@ export const realtimeService = {
           table: "orders",
         },
         async (payload) => {
-          console.log("Cambio en orden detectado:", payload)
 
           // Si es un evento INSERT o UPDATE, necesitamos obtener los items de la orden
           if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
@@ -71,7 +71,6 @@ export const realtimeService = {
                 .eq("order_id", payload.new.id)
 
               if (error) {
-                console.error("Error al obtener items de la orden:", error)
                 return
               }
 
@@ -79,11 +78,12 @@ export const realtimeService = {
               payload.new.order_items = orderItems || []
 
               // Asegurarse de que todos los campos necesarios estén presentes
-              if (payload.eventType === "INSERT") {
-                console.log("Orden completa con items:", payload.new)
-              }
             } catch (error) {
-              console.error("Error al procesar cambio de orden:", error)
+              toast({
+                title: "Error",
+                description: "No se pudo procesar el cambio de orden. Intente nuevamente.",
+                variant: "destructive",
+              })
             }
           }
 
@@ -110,8 +110,6 @@ export const realtimeService = {
     orderItemCallback: OrderItemCallback,
     connectionStatusCallback: ConnectionStatusCallback,
   ) => {
-    console.log("Configurando suscripción en tiempo real para cocina...")
-
     // Inicializar el registro de items conocidos
     realtimeService.knownItems = {}
 
@@ -140,15 +138,12 @@ export const realtimeService = {
           filter: "status=eq.active",
         },
         async (payload) => {
-          console.log("Nueva orden activa recibida:", payload)
-
           // Cargar la orden completa con sus items
           try {
             const orderId = payload.new.id
             const orderDetails = await orderService.getById(orderId)
 
             if (orderDetails) {
-              console.log("Detalles de la nueva orden:", orderDetails)
 
               // Verificar si hay items en estado "kitchen"
               const kitchenItems = orderDetails.order_items?.filter((item) => item.status === "kitchen") || []
@@ -178,7 +173,11 @@ export const realtimeService = {
               }
             }
           } catch (error) {
-            console.error("Error al cargar detalles de la nueva orden:", error)
+            toast({
+              title: "Error",
+              description: "No se pudo cargar los detalles de la nueva orden. Intente nuevamente.",
+              variant: "destructive",
+            })
           }
         },
       )
@@ -196,8 +195,6 @@ export const realtimeService = {
           filter: "status=eq.kitchen",
         },
         async (payload) => {
-          console.log("Nuevo item de orden recibido:", payload)
-
           try {
             // Obtener el ID de la orden y del item
             const orderId = payload.new.order_id
@@ -205,7 +202,6 @@ export const realtimeService = {
 
             // Verificar si este item ya es conocido
             const isNewItem = !realtimeService.knownItems[orderId]?.has(itemId)
-            console.log(`Item ${itemId} para orden ${orderId} es nuevo: ${isNewItem}`)
 
             // Si es un nuevo item, registrarlo
             if (isNewItem) {
@@ -219,8 +215,6 @@ export const realtimeService = {
             const orderDetails = await orderService.getById(orderId)
 
             if (orderDetails) {
-              console.log("Detalles de la orden con nuevo item:", orderDetails)
-
               // Llamar al callback con los datos completos
               orderItemCallback(
                 {
@@ -233,7 +227,11 @@ export const realtimeService = {
               )
             }
           } catch (error) {
-            console.error("Error al procesar el nuevo item de orden:", error)
+            toast({
+              title: "Error",
+              description: "No se pudo procesar el nuevo item de orden. Intente nuevamente.",
+              variant: "destructive",
+            })
           }
         },
       )
@@ -250,7 +248,6 @@ export const realtimeService = {
           table: "order_items",
         },
         async (payload) => {
-          console.log("Item de orden actualizado:", payload)
 
           // Si el estado cambió de "kitchen" a otro estado
           if (payload.old.status === "kitchen" && payload.new.status !== "kitchen") {
@@ -265,8 +262,6 @@ export const realtimeService = {
                 // Verificar si hay más items en estado "kitchen"
                 const remainingKitchenItems =
                   orderDetails.order_items?.filter((item) => item.status === "kitchen") || []
-
-                console.log(`Quedan ${remainingKitchenItems.length} items en cocina para la orden ${orderId}`)
 
                 // Llamar al callback con los datos completos
                 orderItemCallback({

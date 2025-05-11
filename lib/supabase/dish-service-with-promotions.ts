@@ -4,7 +4,7 @@ import type { Promotion } from "./promotion-service"
 // Función para calcular el descuento
 export function calculateDiscount(price: number, promotion: Promotion): number {
   if (promotion.discount_type === "percentage") {
-    return (price * promotion.discount_value) / 100
+    return Math.round((price * promotion.discount_value) / 100)
   } else {
     return Math.min(price, promotion.discount_value) // El descuento no puede ser mayor que el precio
   }
@@ -154,7 +154,6 @@ export const dishServiceWithPromotions = {
 
       return dishesWithPromotions
     } catch (error) {
-      console.error("Error getting dishes by category with promotions:", error)
       throw error
     }
   },

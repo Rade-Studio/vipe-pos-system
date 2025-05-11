@@ -21,6 +21,7 @@ import { dishService } from "@/lib/supabase-service"
 import { promotionService } from "@/lib/supabase/promotion-service"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {toast} from "@/components/ui/use-toast";
 
 interface PromotionFormProps {
   open: boolean
@@ -38,7 +39,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
     name: "",
     description: "",
     discount_type: "percentage",
-    discount_value: "",
+    discount_value: null,
     start_date: new Date().toISOString(),
     end_date: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
     active: true,
@@ -75,10 +76,14 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
 
   const loadPromotionDishes = async (promotionId: string) => {
     try {
-      const dishIds = await promotionService.getDishesForPromotion(promotionId)
-      setSelectedDishes(dishIds)
+      const dishIds = await promotionService.getPromotionDishes(promotionId)
+      setSelectedDishes(dishIds.map((dish) => dish.id))
     } catch (error) {
-      console.error("Error loading promotion dishes:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar platos. Intente nuevamente.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -152,12 +157,12 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
         await promotionService.updatePromotion(promotion.id, formData)
 
         // Obtener los platos actuales
-        const currentDishes = await promotionService.getDishesForPromotion(promotion.id)
+        const currentDishes = await promotionService.getPromotionDishes(promotion.id)
 
         // Platos a eliminar
         const dishesToRemove = currentDishes.filter((id) => !selectedDishes.includes(id))
         if (dishesToRemove.length > 0) {
-          await promotionService.removeDishesFromPromotion(promotion.id, dishesToRemove)
+          await promotionService.removePromotionDishes(promotion.id, dishesToRemove.map((dish) => dish.id))
         }
 
         // Platos a añadir

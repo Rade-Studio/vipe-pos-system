@@ -72,8 +72,6 @@ export const cashRegisterService = {
 
   async getCurrentRegister(): Promise<CashRegister | null> {
     try {
-      console.log("Obteniendo caja actual")
-
       const { data, error } = await supabase
         .from("cash_registers")
         .select("*")
@@ -85,15 +83,11 @@ export const cashRegisterService = {
       if (error) {
         // Si no hay caja abierta, no es un error
         if (error.code === "PGRST116") {
-          console.log("No hay caja abierta actualmente")
           return null
         }
 
-        console.error("Error al obtener caja actual:", error)
         throw error
       }
-
-      console.log("Caja actual obtenida:", data)
 
       // Obtener las transacciones asociadas a esta caja
       const { data: transactions, error: transactionsError } = await supabase
@@ -103,7 +97,6 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (transactionsError) {
-        console.error("Error al obtener transacciones:", transactionsError)
         throw transactionsError
       }
 
@@ -115,7 +108,6 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (cashTransactionsError) {
-        console.error("Error al obtener transacciones de efectivo:", cashTransactionsError)
         throw cashTransactionsError
       }
 

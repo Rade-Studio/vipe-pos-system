@@ -112,7 +112,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const loadWaiters = useCallback(async () => {
     try {
       const waitersData = await waiterService.getAll()
-      console.log("Datos de meseros cargados:", waitersData.length)
 
       const waiters = waitersData.map((waiter) => ({
         id: waiter.id,
@@ -125,7 +124,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       setProfiles(waiters)
       return waiters
     } catch (err) {
-      console.error("Error al cargar meseros:", err)
       toast({
         title: "Error",
         description: "No se pudieron cargar los meseros. Intente nuevamente.",
@@ -139,14 +137,12 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const loadTables = useCallback(async () => {
     // Evitar cargas simultáneas
     if (isLoadingTablesRef.current) {
-      console.log("Ya hay una carga de mesas en progreso, ignorando solicitud")
       return []
     }
 
     isLoadingTablesRef.current = true
 
     try {
-      console.log("Cargando todas las mesas desde la base de datos...")
       const data = await tableService.getAll()
 
       const formattedTables = data.map((table) => ({
@@ -157,8 +153,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         waiter_name: table.waiter_name || undefined,
       }))
 
-      console.log("Mesas actualizadas:", formattedTables.length)
-
       // Actualizar ambos estados de forma independiente para evitar ciclos
       setTables(formattedTables)
       setZustandTables(formattedTables)
@@ -168,7 +162,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
       return formattedTables
     } catch (err) {
-      console.error("Error al cargar mesas:", err)
       toast({
         title: "Error",
         description: "No se pudieron cargar las mesas. Intente nuevamente.",
@@ -184,7 +177,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const loadOrders = useCallback(async () => {
     try {
       const activeOrdersData = await orderService.getByStatus(["active"])
-      console.log("Órdenes activas cargadas:", activeOrdersData.length)
 
       const formattedOrders = activeOrdersData.map((order) => {
         const items = order.order_items.map((item) => ({
@@ -222,7 +214,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       setActiveOrders(formattedOrders)
       return formattedOrders
     } catch (err) {
-      console.error("Error al cargar órdenes:", err)
       toast({
         title: "Error",
         description: "No se pudieron cargar las órdenes. Intente nuevamente.",
@@ -234,16 +225,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
   // Configurar suscripciones en tiempo real
   const setupRealtimeSubscriptions = useCallback(() => {
-    console.log("Configurando suscripciones en tiempo real...")
-
     // Suscripción a cambios en mesas
     const unsubscribeTables = realtimeService.subscribeToTables((payload) => {
-      console.log("CAMBIO EN MESA RECIBIDO:", payload)
-
       // Verificar si este cambio fue originado por este cliente
       const tableId = payload.new?.id || payload.old?.id
       if (tableId && localChangesRef.current.has(tableId)) {
-        console.log(`Ignorando cambio en mesa ${tableId} porque fue originado localmente`)
         localChangesRef.current.delete(tableId) // Limpiar el registro
         return
       }
@@ -305,12 +291,10 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
     // Suscripción a cambios en órdenes
     const unsubscribeOrders = realtimeService.subscribeToOrders((payload) => {
-      console.log("Cambio en orden recibido:", payload)
-
       // Verificar si este cambio fue originado por este cliente
       const orderId = payload.new?.id || payload.old?.id
       if (orderId && localChangesRef.current.has(orderId)) {
-        console.log(`Ignorando cambio en orden ${orderId} porque fue originado localmente`)
+        // ignorar cambios en órdenes localmente
         localChangesRef.current.delete(orderId) // Limpiar el registro
         return
       }
@@ -433,7 +417,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         await loadTables()
         await loadOrders()
       } catch (error) {
-        console.error("Error al inicializar datos:", error)
         toast({
           title: "Error",
           description: "No se pudieron cargar los datos iniciales. Intente nuevamente.",
@@ -485,7 +468,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       if (elapsedTime > twoMinutesInMs) {
         const cartItems = getCartByTable(activeTable)
         if (cartItems.length === 0) {
-          console.log(`Mesa ${activeTable} inactiva por más de 2 minutos sin productos, liberando...`)
           handleReleaseTable(activeTable)
         }
       }
@@ -517,7 +499,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     async (tableId: string) => {
       const items = getCartByTable(tableId)
       if (items.length === 0) {
-        console.log("Carrito vacío, verificando estado de mesa:", tableId)
         try {
           const table = tables.find((t) => t.id === tableId)
           if (table && table.status === "occupied") {
@@ -538,8 +519,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
                   : table,
               ),
             )
-          } else {
-            console.log(`Mesa en estado '${table?.status}', manteniendo estado actual`)
           }
         } catch (err) {
           console.error("Error al verificar/liberar mesa:", err)
@@ -582,7 +561,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
               )
             })
             .catch((err) => {
-              console.error("Error al actualizar estado de mesa a occupied:", err)
+              toast({
+                title: "Error",
+                description: "No se pudo actualizar el estado de la mesa",
+                variant: "destructive",
+              })
             })
         }
       } else {
@@ -600,8 +583,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         try {
           // Evitar mostrar loading
           setLoading(false)
-          console.log("Asignando mesero:", waiterId, "a mesa:", selectedTableForWaiter)
-
           // Registrar este cambio como local
           localChangesRef.current.add(selectedTableForWaiter)
 
@@ -630,7 +611,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           setSelectedTableForWaiter(null)
           setShowWaiterModal(false)
         } catch (err) {
-          console.error("Error al asignar mesero a mesa:", err)
           toast({
             title: "Error",
             description: "No se pudo asignar el mesero a la mesa. Intente nuevamente.",
@@ -649,8 +629,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         try {
           // Evitar mostrar loading
           setLoading(false)
-          console.log("Reservando mesa:", selectedTableForWaiter, "para mesero:", waiterId)
-
           // Registrar este cambio como local
           localChangesRef.current.add(selectedTableForWaiter)
 
@@ -679,7 +657,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           setSelectedTableForWaiter(null)
           setShowWaiterModal(false)
         } catch (err) {
-          console.error("Error al reservar mesa:", err)
           toast({
             title: "Error",
             description: "No se pudo reservar la mesa. Intente nuevamente.",
@@ -708,17 +685,10 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         const table = tables.find((t) => t.id === tableId)
 
         if (!table) {
-          console.error("Mesa no encontrada:", tableId)
           return
         }
 
         if (["kitchen", "delivered", "served", "reserved"].includes(table.status)) {
-          console.log(`No se puede liberar mesa en estado '${table.status}'`)
-          toast({
-            title: "Acción no permitida",
-            description: `No se puede liberar una mesa en estado ${table.status}`,
-            variant: "warning",
-          })
           return
         }
 
@@ -746,7 +716,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           return newTimes
         })
       } catch (err) {
-        console.error("Error al liberar mesa:", err)
         toast({
           title: "Error",
           description: "No se pudo liberar la mesa. Intente nuevamente.",
@@ -807,8 +776,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     }
 
     try {
-      console.log("Verificando stock antes de enviar a cocina")
-
       const normalizedCartItems = cartItems.map((item) => ({
         ...item,
         id: normalizeDishId(item.id),
@@ -827,7 +794,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
       return true
     } catch (error) {
-      console.error("Error al verificar stock:", error)
       toast({
         title: "Error",
         description: "No se pudo verificar el stock de ingredientes. Intente nuevamente.",
@@ -841,26 +807,21 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const reduceStockAfterSending = useCallback(
     async (orderId: string) => {
       if (!inventoryControlEnabled) {
-        console.log("Control de inventario desactivado, no se reducirá el stock")
         return
       }
 
       try {
-        console.log("Reduciendo stock después de enviar a cocina, orden ID:", orderId)
-
         const normalizedCartItems = cartItems.map((item) => ({
           ...item,
           id: normalizeDishId(item.id),
         }))
 
         await inventoryControlService.reduceStock(normalizedCartItems, orderId)
-        console.log("Stock reducido exitosamente")
       } catch (error) {
-        console.error("Error al reducir stock:", error)
         toast({
           title: "Advertencia",
           description: "La orden se envió correctamente, pero hubo un error al actualizar el inventario.",
-          variant: "warning",
+          variant: "destructive",
         })
       }
     },
@@ -874,7 +835,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         const tableOrders = activeOrders.filter((order) => order.tableId === tableId && order.status === "active")
         return tableOrders.length > 0 ? tableOrders[0] : null
       } catch (error) {
-        console.error("Error al verificar órdenes existentes:", error)
         return null
       }
     },
@@ -884,8 +844,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   // Agregar nuevos productos a una orden existente
   const addItemsToExistingOrder = useCallback(async (orderId: string, items: any[]) => {
     try {
-      console.log("Agregando nuevos productos a la orden existente:", orderId)
-
       const orderItems = items.map((item) => ({
         order_id: orderId,
         dish_id: item.id.includes("-") ? null : item.id,
@@ -901,15 +859,12 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       const { data: insertedItems, error: itemsError } = await orderService.addItemsToOrder(orderId, orderItems)
 
       if (itemsError) {
-        console.error("Error al agregar items a la orden:", itemsError)
         throw itemsError
       }
 
       await orderService.recalculateOrderTotals(orderId)
-      console.log("Orden actualizada con nuevos productos y totales")
       return true
     } catch (error) {
-      console.error("Error al agregar items a la orden existente:", error)
       throw error
     }
   }, [])
@@ -938,8 +893,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       const existingOrder = await checkExistingOrder(activeTable)
 
       if (existingOrder) {
-        console.log("Ya existe una orden activa para esta mesa, actualizando:", existingOrder.id)
-
         // Registrar este cambio como local
         localChangesRef.current.add(existingOrder.id)
 
@@ -980,12 +933,8 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         setActiveTable(null)
       } else {
         // No hay orden activa, crear una nueva
-        console.log("Creando nueva orden para mesa:", activeTable)
-
         // Asegurarse de que hay un mesero asignado
         if (!waiterId) {
-          console.log("No hay mesero asignado a la mesa, asignando el mesero actual:", profile.id)
-
           // Registrar este cambio como local
           localChangesRef.current.add(activeTable)
 
@@ -1028,8 +977,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         // Registrar este cambio como local
         localChangesRef.current.add(newOrder.id)
 
-        console.log("Orden creada en BD:", newOrder)
-
+        // Actualizar stock antes de enviar a cocina
         await reduceStockAfterSending(newOrder.id)
 
         // Registrar este cambio como local
@@ -1043,7 +991,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         setTables((prevTables) => prevTables.map((t) => (t.id === activeTable ? { ...t, status: "kitchen" } : t)))
 
         // Agregar la orden al store
-        const storeOrder = {
+        const storeOrder= {
           id: newOrder.id,
           tableId: activeTable,
           items: cartItems,
@@ -1055,7 +1003,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           parentOrderId: null,
         }
 
-        console.log("Agregando orden al store:", storeOrder)
+        // Agregar la orden al store
         addOrder(storeOrder)
 
         // Actualizar el estado local de órdenes activas
@@ -1083,7 +1031,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         setActiveTable(null)
       }
     } catch (error) {
-      console.error("Error al enviar la orden a cocina:", error)
       toast({
         title: "Error",
         description: "No se pudo enviar la orden a cocina. Intente nuevamente.",

@@ -64,23 +64,18 @@ export default function Home() {
           waiter: table.waiter_id || undefined,
         }))
         setTables(formattedTables)
-        console.log("Mesas cargadas:", formattedTables.length)
 
         // Cargar meseros
         const waitersData = await tableService.getWaiters()
         setProfiles(waitersData)
-        console.log("Meseros cargados:", waitersData.length)
 
         // Cargar órdenes activas
         await loadActiveOrders()
 
         // Cargar información de caja actual
         await loadCurrentRegister()
-        console.log("Información de caja cargada")
 
-        console.log("Datos iniciales cargados correctamente")
       } catch (error) {
-        console.error("Error al inicializar la aplicación:", error)
       } finally {
         // Finalizar la carga después de un breve retraso para mostrar la pantalla de carga
         setTimeout(() => {
@@ -97,7 +92,6 @@ export default function Home() {
 
         // Combinar las órdenes
         const dbOrders = [...kitchenOrders, ...deliveredOrders]
-        console.log("Órdenes activas cargadas:", dbOrders.length)
 
         // Convertir las órdenes de la base de datos al formato que espera el store
         const storeOrders = dbOrders.map((dbOrder) => {

@@ -12,21 +12,20 @@ export const metadata: Metadata = {
   description: "Sistema de punto de venta para restaurantes",
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/vipe-pos.png", type: "image/png" },
-      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
-      { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
+      {url: "/favicon.ico", sizes: "any"},
+      {url: "/vipe-pos.png", type: "image/png"},
+      {url: "/icon-192.png", type: "image/png", sizes: "192x192"},
+      {url: "/icon-512.png", type: "image/png", sizes: "512x512"},
     ],
-    apple: { url: "/apple-icon.png", type: "image/png" },
+    apple: {url: "/apple-icon.png", type: "image/png"},
   },
-    generator: 'v0.dev'
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    <body className={inter.className}>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {children}
           <Toaster />
         </ThemeProvider>

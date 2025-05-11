@@ -459,31 +459,6 @@ export function ConfigurationPanel() {
                   </Button>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="waiterPassword">Contraseña de Mesero</Label>
-                <div className="flex">
-                  <Input
-                    id="waiterPassword"
-                    type={showPasswords.waiter ? "text" : "password"}
-                    value={localPasswords.waiter}
-                    onChange={(e) => setLocalPasswords({ ...localPasswords, waiter: e.target.value })}
-                    disabled={isLoading}
-                    onChange={(e) => setLocalPasswords({ ...localPasswords, waiter: e.target.value })}
-                    disabled={isLoading}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="ml-2"
-                    onClick={() => togglePasswordVisibility("waiter")}
-                  >
-                    {showPasswords.waiter ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
             </div>
 
             <div className="rounded-md bg-blue-50 p-4 border border-blue-200">

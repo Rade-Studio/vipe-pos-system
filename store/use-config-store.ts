@@ -120,9 +120,7 @@ export const useConfigStore = create<ConfigState>()(
             isLoading: false,
           })
 
-          console.log("Configuración cargada desde la base de datos:", config)
         } catch (error) {
-          console.error("Error al cargar configuración:", error)
           set({
             isLoading: false,
             error: error instanceof Error ? error.message : "Error desconocido al cargar configuración",

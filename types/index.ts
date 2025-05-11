@@ -88,6 +88,10 @@ export type Dish = {
   price: number
   categoryId: string
   image: string
+  discountPercentage: number | null
+  discountAmount: number | null
+  originalPrice: number
+  promotionName: string
 }
 
 // Summary types for analytics

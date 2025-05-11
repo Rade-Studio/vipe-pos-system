@@ -13,6 +13,7 @@ import { formatCurrency } from "@/utils/helpers"
 import { useConfigStore } from "@/store/use-config-store"
 import inventoryControlService from "@/lib/supabase/inventory-control-service"
 import { Skeleton } from "@/components/ui/skeleton"
+import {toast} from "@/components/ui/use-toast";
 
 interface DishGridProps {
   dishes: Dish[]
@@ -54,7 +55,6 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
           const hasStock = await inventoryControlService.checkStockForDish(dish.id)
           return [dish.id, hasStock]
         } catch (error) {
-          console.error(`Error al verificar stock para plato ${dish.id}:`, error)
           // En caso de error, asumimos que el plato está disponible
           return [dish.id, true]
         }
@@ -64,7 +64,11 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
       const newStockStatus = new Map(stockResults)
       setStockStatus(newStockStatus)
     } catch (error) {
-      console.error("Error al cargar estado de stock:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron verificar los stocks. Intente nuevamente.",
+        variant: "destructive",
+      })
     } finally {
       setIsLoadingStock(false)
     }

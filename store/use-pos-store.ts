@@ -46,7 +46,6 @@ interface POSState {
   deletePartialOrder: (orderId: string) => Promise<void>
   undoPartialPayment: (orderId: string) => Promise<void>
   getTableTotalAmount: (tableId: string) => number
-  removeOrder: (orderId: string) => void
 
   // Analytics
   getTotalSales: () => number
@@ -87,11 +86,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
         ),
       )
     ) {
-      console.log("Las mesas son iguales, evitando actualización innecesaria")
       return
     }
 
-    console.log("Actualizando mesas en el store:", tables.length)
     set({ tables })
   },
   setActiveTable: (tableId) => set({ activeTable: tableId }),
@@ -106,11 +103,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
       // Verificar si la mesa ya está disponible para evitar actualizaciones innecesarias
       const table = state.tables.find((t) => t.id === tableId)
       if (table && table.status === "available" && !table.waiter) {
-        console.log(`La mesa ${tableId} ya está disponible, evitando actualización innecesaria`)
         return state // Devolver el estado sin cambios
       }
 
-      console.log(`Liberando mesa ${tableId} en el store`)
       const tables = state.tables.map((table) =>
         table.id === tableId ? { ...table, status: "available", waiter: undefined } : table,
       )
@@ -147,11 +142,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
       // Verificar si el mesero ya está asignado para evitar actualizaciones innecesarias
       const table = state.tables.find((t) => t.id === tableId)
       if (table && table.waiter === waiterId && table.status === "occupied") {
-        console.log(`El mesero ${waiterId} ya está asignado a la mesa ${tableId}, evitando actualización innecesaria`)
         return state // Devolver el estado sin cambios
       }
 
-      console.log(`Asignando mesero ${waiterId} a mesa ${tableId} en el store`)
       const tables = state.tables.map((table) => {
         if (table.id === tableId) {
           return { ...table, waiter: waiterId, status: "occupied" as Table["status"] }
