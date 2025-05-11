@@ -270,8 +270,8 @@ export const usePOSStore = create<POSState>((set, get) => ({
     }, 0)
 
     // Calcular impuestos y propina
-    const tax = subtotal * (taxPercentage / 100)
-    const tip = subtotal * (tipPercentage / 100)
+    const tax = Math.round(subtotal * (taxPercentage / 100))
+    const tip = Math.round(subtotal * (tipPercentage / 100))
 
     // Calcular el total
     const total = subtotal + tax + tip
