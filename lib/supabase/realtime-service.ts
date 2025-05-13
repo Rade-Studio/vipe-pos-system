@@ -47,6 +47,29 @@ export const realtimeService = {
     }
   },
 
+  // enviar factura a un canal de realtime
+  sendFactura: (facturaHtml: string) => {
+    // enviar factura por broadcast
+    const channel = supabase.channel("room_facturas")
+
+    channel.subscribe(() => {
+      channel.send({
+        type: "broadcast",
+        event: "new_invoice",
+        payload: {
+          html: facturaHtml
+        }
+      }).catch((error) => {
+        toast({
+          title: "Error",
+          description: "No se pudo enviar la factura a través de la red realtime. Intente nuevamente.",
+          variant: "destructive",
+        })
+      })
+    })
+
+  },
+
   // Suscribirse a cambios en las órdenes
   subscribeToOrders: (callback: OrderCallback) => {
     // Crear un canal para las órdenes

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
 import { format } from "date-fns"
 import { toast } from "@/utils/toast"
+import { realtimeService } from "@/lib/supabase/realtime-service"
 import { Printer, Check, X, ArrowLeft, Receipt, Tag } from "lucide-react"
 import type { PrintableInvoice } from "@/types"
 
@@ -29,6 +30,7 @@ export function InvoicePrintView({
   isPending = false,
 }: InvoicePrintViewProps) {
   const [isOpen, setIsOpen] = useState(open)
+  const [htmlContent, setHtmlContent] = useState("")
   const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -46,6 +48,225 @@ export function InvoicePrintView({
     })
   }, [invoice, isPending])
 
+  const handleConfirmPayment = () => {
+
+
+    const htmlContent =`
+        <html>
+          <head>
+            <title>Factura</title>
+            <style>
+              @page {
+                size: 80mm auto;
+                margin: 0mm;
+              }
+              body {
+                width: 72mm;
+                margin: 0;
+                padding: 4mm;
+                font-family: 'Courier New', monospace;
+                font-size: 10pt;
+              }
+              .ticket {
+                width: 72mm;
+              }
+              .center {
+                text-align: center;
+              }
+              .divider {
+                border-top: 1px dashed #000;
+                margin: 5px 0;
+              }
+              .bold {
+                font-weight: bold;
+              }
+              table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+              th, td {
+                text-align: left;
+                padding: 1px 0;
+              }
+              th.right, td.right {
+                text-right: right;
+              }
+              .totals {
+                text-align: right;
+              }
+              .info-row {
+                display: flex;
+                justify-content: space-between;
+              }
+              .discount {
+                color: #e53e3e;
+              }
+              .strikethrough {
+                text-decoration: line-through;
+                font-size: 8pt;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="ticket">
+              <!-- Encabezado -->
+              <div class="center mb-2">
+                <div class="text-base bold">${invoice.businessInfo?.name || "RESTAURANTE"}</div>
+                <div>NIT: ${invoice.businessInfo?.nit || "N/A"}</div>
+                <div>${invoice.businessInfo?.address || "N/A"}</div>
+                <div>Tel: ${invoice.businessInfo?.phone || "N/A"}</div>
+              </div>
+
+              <div class="divider"></div>
+
+              <!-- Información de la factura -->
+              <div class="mb-2">
+                <div class="info-row">
+                  <span>FACTURA:</span>
+                  <span>${invoice.invoiceNumber || `INV-${Date.now()}`}</span>
+                </div>
+                <div class="info-row">
+                  <span>FECHA:</span>
+                  <span>${format(invoice.date || new Date(), "dd/MM/yyyy")}</span>
+                </div>
+                <div class="info-row">
+                  <span>HORA:</span>
+                  <span>${format(invoice.date || new Date(), "HH:mm:ss")}</span>
+                </div>
+                <div class="info-row">
+                  <span>MESA:</span>
+                  <span>${invoice.table || "N/A"}</span>
+                </div>
+                <div class="info-row">
+                  <span>MESERO:</span>
+                  <span>${invoice.waiter || "No asignado"}</span>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <!-- Tabla de items -->
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 10%">CANT</th>
+                    <th style="width: 60%">DESCRIPCIÓN</th>
+                    <th style="width: 30%" class="right">IMPORTE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${displayItems
+        .map(
+            (item) => `
+                    <tr>
+                      <td>${item.quantity}</td>
+                      <td>
+                        ${item.name}
+                        ${item.comments ? `<div style="font-size: 8pt">(${item.comments})</div>` : ""}
+                      </td>
+                      <td class="right">
+                        ${
+                item.originalPrice && item.originalPrice > item.price
+                    ? `<div class="strikethrough">${formatCurrency(item.originalPrice * item.quantity)}</div>`
+                    : ""
+            }
+                        ${formatCurrency(item.price * item.quantity)}
+                      </td>
+                    </tr>
+                  `,
+        )
+        .join("")}
+                </tbody>
+              </table>
+
+              <div class="divider"></div>
+
+              <!-- Totales -->
+              <div class="totals mb-2">
+                <div class="info-row">
+                  <span>SUBTOTAL:</span>
+                  <span>${formatCurrency(invoice.bill?.subtotal || 0)}</span>
+                </div>
+                <div class="info-row">
+                  <span>IVA (${invoice.bill?.taxPercentage || 0}%):</span>
+                  <span>${formatCurrency(invoice.bill?.tax || 0)}</span>
+                </div>
+                ${
+        invoice.bill?.totalDiscounts > 0
+            ? `<div class="info-row discount">
+                  <span>DESCUENTOS:</span>
+                  <span>-${formatCurrency(invoice.bill?.totalDiscounts || 0)}</span>
+                </div>`
+            : ""
+    }
+                <div class="info-row bold">
+                  <span>TOTAL SIN PROPINA:</span>
+                  <span>${formatCurrency((invoice.bill?.subtotal || 0) + (invoice.bill?.tax || 0))}</span>
+                </div>
+                <div class="info-row">
+                  <span>PROPINA (${invoice.bill?.tipPercentage || 0}%):</span>
+                  <span>${formatCurrency(invoice.bill?.tip || 0)}</span>
+                </div>
+                <div class="info-row bold" style="font-size: 12pt">
+                  <span>TOTAL A PAGAR:</span>
+                  <span>${formatCurrency(invoice.bill?.total || 0)}</span>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <!-- Forma de pago -->
+              <div class="mb-2">
+                <div class="bold">FORMA DE PAGO: ${
+        invoice.paymentMethod === "cash"
+            ? "Efectivo"
+            : invoice.paymentMethod === "transfer"
+                ? "Transferencia"
+                : invoice.paymentMethod === "nequi"
+                    ? "Nequi"
+                    : invoice.paymentMethod === "bancolombia"
+                        ? "Bancolombia App"
+                        : invoice.paymentMethod || "N/A"
+    }</div>
+                ${
+        invoice.cashReceived && invoice.cashReceived > 0
+            ? `
+                  <div class="info-row">
+                    <span>EFECTIVO RECIBIDO:</span>
+                    <span>${formatCurrency(invoice.cashReceived)}</span>
+                  </div>
+                  <div class="info-row">
+                    <span>CAMBIO:</span>
+                    <span>${formatCurrency(invoice.cashChange || 0)}</span>
+                  </div>
+                `
+            : ""
+    }
+              </div>
+
+              <div class="divider"></div>
+
+              <!-- Pie de página -->
+              <div class="center mb-4">
+                <div>RÉGIMEN SIMPLIFICADO</div>
+                <div>RESOLUCIÓN DIAN No. 18764000001</div>
+                <div>DEL 01/01/2023 AL 31/12/2023</div>
+                <div>NUMERACIÓN: 1 AL 1000</div>
+                <div style="margin-top: 10px">¡GRACIAS POR SU COMPRA!</div>
+                <div>VUELVA PRONTO</div>
+              </div>
+            </div>
+          </body>
+        </html>
+      `
+    setHtmlContent(htmlContent)
+    realtimeService.sendFactura(htmlContent)
+
+    if (onConfirmPayment) {
+      onConfirmPayment()
+    }
+  }
+
   const handlePrint = () => {
     if (!printRef.current) return
 
@@ -57,7 +278,8 @@ export function InvoicePrintView({
 
       // Escribir el contenido en el iframe
       iframe.contentDocument?.open()
-      iframe.contentDocument?.write(`
+
+      const htmlContent =`
         <html>
           <head>
             <title>Factura</title>
@@ -264,7 +486,9 @@ export function InvoicePrintView({
             </div>
           </body>
         </html>
-      `)
+      `
+      setHtmlContent(htmlContent)
+      iframe.contentDocument?.write(htmlContent)
       iframe.contentDocument?.close()
 
       // Esperar a que el iframe se cargue completamente
@@ -528,7 +752,7 @@ export function InvoicePrintView({
                           <X className="mr-2 h-4 w-4" />
                           Cancelar
                         </Button>
-                        <Button onClick={onConfirmPayment} className="w-full">
+                        <Button onClick={handleConfirmPayment} className="w-full">
                           <Check className="mr-2 h-4 w-4" />
                           Confirmar Pago
                         </Button>
