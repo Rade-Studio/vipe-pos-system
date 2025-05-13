@@ -1,18 +1,20 @@
 ﻿# listener.py
-import os
-
-from dotenv import load_dotenv
-from supabase import create_client
-from realtime import AsyncRealtimeClient
-from escpos.printer import Usb
-from PIL import Image
-import pystray
 import asyncio
-import html2text
+import importlib.util
+import os
 import sys
 import threading
+
+import html2text
+import pystray
 import usb.core
 import usb.util
+from PIL import Image
+from dotenv import load_dotenv
+from escpos.printer import Usb
+from realtime import AsyncRealtimeClient
+from supabase import create_client
+from winotify import Notification, audio
 
 # === CONFIGURACIÓN ===
 load_dotenv()
@@ -116,10 +118,19 @@ def set_printer(printer_type):
 
 
 # === FUNCIÓN PARA IMPRIMIR HTML (convertido a texto) ===
-def imprimir_html(html_str):
-    texto = html2text.html2text(html_str)
-    # printer.text(texto + "\n")
-    # printer.cut()
+def imprimir_html(printer_type, html_str):
+    """Imprime HTML usando la impresora seleccionada"""
+    printer = selected_printers.get(printer_type)
+    if printer and html_str:
+        try:
+            # Convertir HTML a texto y enviar a la impresora
+            texto = html2text.html2text(html_str)
+            printer.text(texto + "\n")
+            printer.cut()
+        except Exception as e:
+            print(f"Error al imprimir en {printer_type}: {e}")
+    else:
+        print(f"No hay impresora {printer_type} configurada")
 
 # === CALLBACKS ===
 def handle_comanda(payload):
@@ -133,7 +144,7 @@ def handle_comanda(payload):
 
             print("Archivo factura.html creado con éxito")
             # Descomenta para imprimir después de guardar:
-            # imprimir_html(html_content)
+            # imprimir_html("comandas", html_content)
 
         except Exception as e:
             print(f"Error al escribir el archivo: {e}")
@@ -154,7 +165,7 @@ def handle_factura(payload):
 
             print("Archivo factura.html creado con éxito")
             # Descomenta para imprimir después de guardar:
-            # imprimir_html(html_content)
+            # imprimir_html("facturas",html_content)
 
         except Exception as e:
             print(f"Error al escribir el archivo: {e}")
@@ -246,8 +257,60 @@ def exit_app(icon):
     icon.stop()
     sys.exit()
 
+# Lista de librerías esenciales
+REQUIRED_LIBS = {
+    "supabase": "pip install supabase",
+    "realtime": "pip install realtime",
+    "usb": "pip install pyusb",
+    "escpos": "pip install python-escpos",
+    "pystray": "pip install pystray",
+    "PIL": "pip install Pillow",
+    "html2text": "pip install html2text"
+}
+
+def check_dependencies():
+    missing = []
+
+    for lib, install_cmd in REQUIRED_LIBS.items():
+        # Para Pillow, usa "PIL" como nombre del módulo
+        spec = importlib.util.find_spec(lib)
+        if spec is None:
+            print(f"[ERROR] Falta la librería: {lib}")
+            missing.append((lib, install_cmd))
+
+    if missing:
+        print("\n[ERROR FATAL] Faltan librerías necesarias para ejecutar la aplicación.")
+        print("Por favor, instale las siguientes librerías usando pip:")
+        print("-" * 50)
+        for lib, install_cmd in missing:
+            print(f"- {lib}: {install_cmd}")
+        print("-" * 50)
+        print("\nSi usas un entorno virtual, asegúrate de activarlo.")
+        print("Si estás usando un ejecutable, puede haber un problema con el empaquetado.")
+        input("\nPresiona Enter para salir...")
+        return False
+
+    return True
+
+def check_usb_permissions():
+    try:
+        import usb.core
+        devices = usb.core.find(find_all=True)
+        return True
+    except Exception as e:
+        print("[ADVERTENCIA] No se puede acceder a dispositivos USB.")
+        print("Es posible que necesites permisos adicionales para usar impresoras.")
+        print("En Linux: sudo usermod -a -G lp,scanner,dialout $USER")
+        return True  # Continuar ejecución aunque falle
+
 # === MAIN ===
 if __name__ == "__main__":
+    if not check_dependencies():
+        sys.exit(1)
+
+    if not check_usb_permissions():
+        sys.exit(1)
+
     # Iniciar suscripciones en un hilo asyncio
     loop = asyncio.new_event_loop()
     threading.Thread(
@@ -255,6 +318,16 @@ if __name__ == "__main__":
         args=(iniciar_suscripciones(),),
         daemon=True
     ).start()
+
+    # Configurar notificaciones
+    toast = Notification("Vipe POS",
+                         title="Notificación de la comandera",
+                         msg="Encendido y esperando facturas para imprimir.",
+                         duration="short",
+                         icon="vipe-pos.ico")
+
+    toast.set_audio(audio.Default, loop=False)
+    toast.show()
 
     # Iniciar icono de bandeja en hilo principal
     iniciar_icono_tray()
