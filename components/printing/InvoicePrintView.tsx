@@ -257,7 +257,7 @@ export function InvoicePrintView({
           </body>
         </html>
       `
-    realtimeService.sendFactura(htmlContent)
+    // realtimeService.sendFactura(htmlContent)
 
     if (onConfirmPayment) {
       onConfirmPayment()
@@ -268,13 +268,6 @@ export function InvoicePrintView({
     if (!printRef.current) return
 
     try {
-      // Crear un iframe oculto para imprimir
-      const iframe = document.createElement("iframe")
-      iframe.style.display = "none"
-      document.body.appendChild(iframe)
-
-      // Escribir el contenido en el iframe
-      iframe.contentDocument?.open()
 
       const htmlContent =`
         <html>
@@ -484,20 +477,8 @@ export function InvoicePrintView({
           </body>
         </html>
       `
-      iframe.contentDocument?.write(htmlContent)
-      iframe.contentDocument?.close()
+      realtimeService.sendFactura(htmlContent)
 
-      // Esperar a que el iframe se cargue completamente
-      iframe.onload = () => {
-        // Imprimir el iframe
-        iframe.contentWindow?.focus()
-        iframe.contentWindow?.print()
-
-        // Eliminar el iframe después de imprimir
-        setTimeout(() => {
-          document.body.removeChild(iframe)
-        }, 1000)
-      }
     } catch (error) {
       console.error("Error al imprimir:", error)
       toast.error("Error al imprimir la factura")

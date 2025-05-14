@@ -26,6 +26,8 @@ selected_printers = {
     'facturas': {'type': 'network', 'printer': None}
 }
 
+queue_facturas = []
+
 # Almacenamiento temporal para impresoras disponibles
 available_printers = []
 
@@ -181,7 +183,6 @@ def imprimir_html(printer_type, html_str):
             printer.cut()
         except Exception as e:
             print(f"Error al imprimir en {printer_type}: {e}")
-            toast.warning(f"No se pudo imprimir en {printer_type}")
     else:
         print(f"No hay impresora {printer_type} configurada")
 
@@ -194,9 +195,10 @@ def handle_comanda(payload):
 
 def handle_factura(payload):
     """Callback para facturas"""
-    print(f"payload factura: {payload}")
     html = payload.get("payload", {}).get("html")
-    if html:
+    key = payload.get("payload", {}).get("key")
+    if html and key not in queue_facturas:
+        queue_facturas.append({'html': html, 'key': key})
         imprimir_html('facturas', html)
 
 async def iniciar_suscripciones():

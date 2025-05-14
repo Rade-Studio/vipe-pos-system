@@ -58,7 +58,8 @@ export const realtimeService = {
         type: "broadcast",
         event: "new_invoice",
         payload: {
-          html: facturaHtml
+          html: facturaHtml,
+          key: `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
         }
       }).catch((error) => {
         toast({
