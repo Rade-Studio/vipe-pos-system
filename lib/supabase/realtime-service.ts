@@ -51,6 +51,7 @@ export const realtimeService = {
   sendFactura: (facturaHtml: string) => {
     // enviar factura por broadcast
     const channel = supabase.channel("room_facturas")
+    console.log("--------------- \nEnviando factura a canal de realtime: ", Date.now())
 
     channel.subscribe(() => {
       channel.send({

@@ -30,7 +30,6 @@ export function InvoicePrintView({
   isPending = false,
 }: InvoicePrintViewProps) {
   const [isOpen, setIsOpen] = useState(open)
-  const [htmlContent, setHtmlContent] = useState("")
   const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -49,7 +48,6 @@ export function InvoicePrintView({
   }, [invoice, isPending])
 
   const handleConfirmPayment = () => {
-
 
     const htmlContent =`
         <html>
@@ -259,7 +257,6 @@ export function InvoicePrintView({
           </body>
         </html>
       `
-    setHtmlContent(htmlContent)
     realtimeService.sendFactura(htmlContent)
 
     if (onConfirmPayment) {
@@ -487,7 +484,6 @@ export function InvoicePrintView({
           </body>
         </html>
       `
-      setHtmlContent(htmlContent)
       iframe.contentDocument?.write(htmlContent)
       iframe.contentDocument?.close()
 

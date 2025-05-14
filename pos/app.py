@@ -1,39 +1,78 @@
-﻿# listener.py
-import asyncio
-import importlib.util
-import os
-import sys
+﻿import os
 import threading
 
-import html2text
-import pystray
-import usb.core
-import usb.util
-from PIL import Image
 from dotenv import load_dotenv
-from escpos.printer import Usb
-from realtime import AsyncRealtimeClient
 from supabase import create_client
-from winotify import Notification, audio
+from realtime import AsyncRealtimeClient
+from escpos.printer import Usb, Network
+from PIL import Image
+import pystray
+import asyncio
+import html2text
+import sys
+import usb.core
+import tkinter as tk
+from tkinter import simpledialog
 
-# === CONFIGURACIÓN ===
+# === CONFIGURACIÓN INICIAL ===
 load_dotenv()
-
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# === CONEXIÓN ===
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 REALTIME_URL = f"{SUPABASE_URL.replace('https', 'wss')}/realtime/v1"
 
 # Impresoras seleccionadas (inicialmente vacías)
 selected_printers = {
-    'comandas': None,
-    'facturas': None
+    'comandas': {'type': 'usb', 'printer': None},
+    'facturas': {'type': 'network', 'printer': None}
 }
 
 # Almacenamiento temporal para impresoras disponibles
 available_printers = []
+
+class PrinterManager:
+    def __init__(self):
+        self.current_printers = {
+            'comandas': None,
+            'facturas': None
+        }
+        self.printer_configs = {
+            'comandas': {'type': 'usb', 'details': {}},
+            'facturas': {'type': 'network', 'details': {'ip': '192.168.1.2', 'port': 5000}}
+        }
+
+    def get_printer(self, printer_type):
+        return self.current_printers.get(printer_type)
+
+    def set_usb_printer(self, printer_type, vendor_id, product_id):
+        try:
+            self.current_printers[printer_type] = Usb(vendor_id, product_id)
+            self.printer_configs[printer_type] = {
+                'type': 'usb',
+                'details': {'vendor_id': vendor_id, 'product_id': product_id}
+            }
+            print(f"Impresora {printer_type} configurada: USB {vendor_id:04x}:{product_id:04x}")
+            return True
+        except Exception as e:
+            print(f"Error al configurar impresora USB: {e}")
+            return False
+
+    def set_network_printer(self, printer_type, ip, port=9100):
+        try:
+            self.current_printers[printer_type] = Network(ip, port=port)
+            self.printer_configs[printer_type] = {
+                'type': 'network',
+                'details': {'ip': ip, 'port': port}
+            }
+            print(f"Impresora {printer_type} configurada: {ip}:{port}")
+            return True
+        except Exception as e:
+            print(f"Error al configurar impresora de red: {e}")
+            return False
+
+    def get_config(self, printer_type):
+        return self.printer_configs.get(printer_type, {})
+
+printer_manager = PrinterManager()
 
 def detect_usb_printers():
     """Detecta todas las impresoras USB conectadas"""
@@ -71,109 +110,95 @@ def detect_usb_printers():
 
     return available_printers
 
+def detect_by_interface_class():
+    """Detecta impresoras en dispositivos con clase definida en interfaz"""
+    devices = usb.core.find(find_all=True, bDeviceClass=0x00)
+    result = []
+
+    for dev in devices:
+        for cfg in dev:
+            for intf in cfg:
+                if intf.bInterfaceClass == 7:
+                    result.append(dev)
+    return result
+
+def create_network_config_dialog(printer_type):
+    """Crea un diálogo para configurar impresora de red"""
+    root = tk.Tk()
+    root.withdraw()  # Ocultar ventana principal
+
+    ip = simpledialog.askstring(
+        f"Configurar impresora de red - {printer_type}",
+        "Ingrese la IP de la impresora:",
+        initialvalue=printer_manager.get_config(printer_type)['details'].get('ip', '192.168.1.100')
+    )
+
+    if ip:
+        port = simpledialog.askinteger(
+            f"Configurar impresora de red - {printer_type}",
+            "Ingrese el puerto (por defecto 9100):",
+            initialvalue=printer_manager.get_config(printer_type)['details'].get('port', 9100),
+            minvalue=1,
+            maxvalue=65535
+        )
+
+        if port:
+            return printer_manager.set_network_printer(printer_type, ip, port)
+
+    return False
+
+def create_usb_printer_menu(printer_type):
+    """Crea un submenú para seleccionar impresora USB"""
+    detect_usb_printers()
+
+    if not available_printers:
+        return pystray.Menu(
+            pystray.MenuItem("No hay impresoras USB", lambda _: None, enabled=False)
+        )
+
+    return pystray.Menu(*[
+        pystray.MenuItem(
+            p['name'],
+            lambda _, vid=p['vendor_id'], pid=p['product_id'], pt=printer_type: (
+                printer_manager.set_usb_printer(pt, vid, pid)
+            )
+        ) for p in available_printers
+    ])
+
 def init_default_printers():
-    """Inicializa impresoras por defecto (o deja vacío si no hay impresoras)"""
-    global selected_printers
+    """Inicializa impresoras por defecto"""
+    # Ejemplo de impresora por defecto
+    printer_manager.set_usb_printer('comandas', 0x04b8, 0x0202)
+    printer_manager.set_network_printer('facturas', '192.168.1.2', 5000)
 
-    printers = detect_usb_printers()
-
-    if printers:
-        # Si hay impresoras, usar la primera como predeterminada
-        default_printer = printers[0]
-        try:
-            selected_printers['comandas'] = Usb(
-                default_printer['vendor_id'],
-                default_printer['product_id']
-            )
-            selected_printers['facturas'] = Usb(
-                default_printer['vendor_id'],
-                default_printer['product_id']
-            )
-            print("Impresoras inicializadas por defecto")
-        except Exception as e:
-            print(f"Error al inicializar impresoras: {e}")
-            selected_printers = {'comandas': None, 'facturas': None}
-    else:
-        # Si no hay impresoras, dejar como None
-        selected_printers = {'comandas': None, 'facturas': None}
-        print("No se encontraron impresoras USB")
-
-def set_printer(printer_type):
-    """Crea una nueva instancia de impresora"""
-    def inner(item):
-        printer_info = next((p for p in available_printers if p['name'] == item.text), None)
-        if printer_info:
-            try:
-                selected_printers[printer_type] = Usb(
-                    printer_info['vendor_id'],
-                    printer_info['product_id']
-                )
-                print(f"Impresora {printer_type} configurada: {printer_info['name']}")
-            except Exception as e:
-                print(f"Error al configurar impresora: {e}")
-        else:
-            selected_printers[printer_type] = None
-            print(f"Impresora {printer_type} desconfigurada")
-    return inner
-
-
-# === FUNCIÓN PARA IMPRIMIR HTML (convertido a texto) ===
 def imprimir_html(printer_type, html_str):
     """Imprime HTML usando la impresora seleccionada"""
-    printer = selected_printers.get(printer_type)
+    printer = printer_manager.get_printer(printer_type)
     if printer and html_str:
         try:
-            # Convertir HTML a texto y enviar a la impresora
             texto = html2text.html2text(html_str)
             printer.text(texto + "\n")
             printer.cut()
         except Exception as e:
             print(f"Error al imprimir en {printer_type}: {e}")
+            toast.warning(f"No se pudo imprimir en {printer_type}")
     else:
         print(f"No hay impresora {printer_type} configurada")
 
-# === CALLBACKS ===
 def handle_comanda(payload):
-    html_content = payload.get("payload", {}).get("html")
-
-    if html_content:
-        try:
-            # Guardar el HTML en archivo con codificación UTF-8
-            with open("factura.html", "w", encoding="utf-8") as f:
-                f.write(html_content)
-
-            print("Archivo factura.html creado con éxito")
-            # Descomenta para imprimir después de guardar:
-            # imprimir_html("comandas", html_content)
-
-        except Exception as e:
-            print(f"Error al escribir el archivo: {e}")
-    else:
-        print("No se encontró contenido HTML en el payload")
+    """Callback para comandas"""
+    print(f"payload comanda: {payload}")
+    html = payload.get("payload", {}).get("html")
+    if html:
+        imprimir_html('comandas', html)
 
 def handle_factura(payload):
-    print(f"payload completo: {payload}")
+    """Callback para facturas"""
+    print(f"payload factura: {payload}")
+    html = payload.get("payload", {}).get("html")
+    if html:
+        imprimir_html('facturas', html)
 
-    # Acceder al HTML en la estructura correcta del payload
-    html_content = payload.get("payload", {}).get("html")
-
-    if html_content:
-        try:
-            # Guardar el HTML en archivo con codificación UTF-8
-            with open("factura.html", "w", encoding="utf-8") as f:
-                f.write(html_content)
-
-            print("Archivo factura.html creado con éxito")
-            # Descomenta para imprimir después de guardar:
-            # imprimir_html("facturas",html_content)
-
-        except Exception as e:
-            print(f"Error al escribir el archivo: {e}")
-    else:
-        print("No se encontró contenido HTML en el payload")
-
-
-# === SUSCRIPCIÓN A TABLAS ===
 async def iniciar_suscripciones():
     socket = AsyncRealtimeClient(REALTIME_URL, SUPABASE_KEY)
 
@@ -185,7 +210,7 @@ async def iniciar_suscripciones():
     ch_comandas.on_broadcast("new_command", handle_comanda)
     ch_facturas.on_broadcast("new_invoice", handle_factura)
 
-    # Definir callback de suscripción
+    # Callback de suscripción
     def subscription_callback(status, err):
         if status == "SUBSCRIBED":
             print(f"Suscrito a canal {ch_comandas.topic}")
@@ -200,39 +225,49 @@ async def iniciar_suscripciones():
     while True:
         await asyncio.sleep(1)
 
-# === ICONO DE BANDEJA ===
 def iniciar_icono_tray():
     # Cargar icono
     try:
         image = Image.open("vipe-pos.ico")
     except FileNotFoundError:
-        # Usar icono por defecto si no existe
-        image = Image.new('RGB', (64, 64), color = 'blue')
+        image = Image.new('RGB', (64, 64), color='blue')
+
+    def refresh_menu(icon):
+        icon.menu = create_menu()
+        icon.update_menu()
 
     def create_menu():
-        # Detectar impresoras disponibles
-        printers = detect_usb_printers()
+        # Opciones de impresoras
+        comanda_submenu = pystray.Menu(
+            pystray.MenuItem("USB", lambda _: (
+                create_usb_printer_menu('comandas')
+            )),
+            pystray.MenuItem("Red", lambda _: (
+                create_network_config_dialog('comandas')
+            ))
+        )
 
-        # Crear submenús dinámicos
-        comanda_submenu_items = [
-                                    pystray.MenuItem(p['name'], set_printer('comandas'))
-                                    for p in printers
-                                ] or [pystray.MenuItem("No hay impresoras", lambda _: None, enabled=False)]
+        factura_submenu = pystray.Menu(
+            pystray.MenuItem("USB", lambda _: (
+                create_usb_printer_menu('facturas')
+            )),
+            pystray.MenuItem("Red", lambda _: (
+                create_network_config_dialog('facturas')
+            ))
+        )
 
-        factura_submenu_items = [
-                                    pystray.MenuItem(p['name'], set_printer('facturas'))
-                                    for p in printers
-                                ] or [pystray.MenuItem("No hay impresoras", lambda _: None, enabled=False)]
+        # Información de impresoras actuales
+        comanda_info = get_printer_info('comandas')
+        factura_info = get_printer_info('facturas')
 
-        # Opciones base
-        menu_items = [
+        return pystray.Menu(
             pystray.MenuItem(
-                f"Comandera: {selected_printers['comandas'].name if selected_printers['comandas'] else 'Sin seleccionar'}",
-                pystray.Menu(*comanda_submenu_items)
+                f"Comandera: {comanda_info}",
+                comanda_submenu
             ),
             pystray.MenuItem(
-                f"Facturas: {selected_printers['facturas'].name if selected_printers['facturas'] else 'Sin seleccionar'}",
-                pystray.Menu(*factura_submenu_items)
+                f"Facturas: {factura_info}",
+                factura_submenu
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
@@ -241,77 +276,31 @@ def iniciar_icono_tray():
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Salir", lambda icon, item: exit_app(icon))
-        ]
+        )
 
-        return pystray.Menu(*menu_items)
+    def get_printer_info(printer_type):
+        config = printer_manager.get_config(printer_type)
+        if config['type'] == 'usb':
+            details = config['details']
+            return f"USB {details.get('vendor_id', '---')}:{details.get('product_id', '---')}"
+        elif config['type'] == 'network':
+            details = config['details']
+            return f"Red {details.get('ip', '---')}:{details.get('port', '---')}"
+        return "Sin configurar"
 
-    def refresh_menu(icon):
-        icon.menu = create_menu()
-        icon.update_menu()
+    def exit_app(icon):
+        icon.stop()
+        sys.exit()
 
     # Crear icono inicial
-    icon = pystray.Icon("Comandera Vipe POS", image, menu=create_menu())
+    icon = pystray.Icon("Comandera", image, menu=create_menu())
     icon.run()
 
-def exit_app(icon):
-    icon.stop()
-    sys.exit()
-
-# Lista de librerías esenciales
-REQUIRED_LIBS = {
-    "supabase": "pip install supabase",
-    "realtime": "pip install realtime",
-    "usb": "pip install pyusb",
-    "escpos": "pip install python-escpos",
-    "pystray": "pip install pystray",
-    "PIL": "pip install Pillow",
-    "html2text": "pip install html2text"
-}
-
-def check_dependencies():
-    missing = []
-
-    for lib, install_cmd in REQUIRED_LIBS.items():
-        # Para Pillow, usa "PIL" como nombre del módulo
-        spec = importlib.util.find_spec(lib)
-        if spec is None:
-            print(f"[ERROR] Falta la librería: {lib}")
-            missing.append((lib, install_cmd))
-
-    if missing:
-        print("\n[ERROR FATAL] Faltan librerías necesarias para ejecutar la aplicación.")
-        print("Por favor, instale las siguientes librerías usando pip:")
-        print("-" * 50)
-        for lib, install_cmd in missing:
-            print(f"- {lib}: {install_cmd}")
-        print("-" * 50)
-        print("\nSi usas un entorno virtual, asegúrate de activarlo.")
-        print("Si estás usando un ejecutable, puede haber un problema con el empaquetado.")
-        input("\nPresiona Enter para salir...")
-        return False
-
-    return True
-
-def check_usb_permissions():
-    try:
-        import usb.core
-        devices = usb.core.find(find_all=True)
-        return True
-    except Exception as e:
-        print("[ADVERTENCIA] No se puede acceder a dispositivos USB.")
-        print("Es posible que necesites permisos adicionales para usar impresoras.")
-        print("En Linux: sudo usermod -a -G lp,scanner,dialout $USER")
-        return True  # Continuar ejecución aunque falle
-
-# === MAIN ===
 if __name__ == "__main__":
-    if not check_dependencies():
-        sys.exit(1)
+    # Iniciar impresoras por defecto
+    init_default_printers()
 
-    if not check_usb_permissions():
-        sys.exit(1)
-
-    # Iniciar suscripciones en un hilo asyncio
+    # Iniciar hilos
     loop = asyncio.new_event_loop()
     threading.Thread(
         target=loop.run_until_complete,
@@ -319,15 +308,4 @@ if __name__ == "__main__":
         daemon=True
     ).start()
 
-    # Configurar notificaciones
-    toast = Notification("Vipe POS",
-                         title="Notificación de la comandera",
-                         msg="Encendido y esperando facturas para imprimir.",
-                         duration="short",
-                         icon="vipe-pos.ico")
-
-    toast.set_audio(audio.Default, loop=False)
-    toast.show()
-
-    # Iniciar icono de bandeja en hilo principal
     iniciar_icono_tray()
