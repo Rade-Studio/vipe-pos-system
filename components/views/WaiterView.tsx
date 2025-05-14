@@ -7,7 +7,7 @@ import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { MenuSection } from "@/components/pos/MenuSection"
 import { CartSidebar } from "@/components/pos/CartSidebar"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintView"
@@ -30,6 +30,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 // Importar el nuevo componente CompactOrderCard
 import { CompactOrderCard } from "@/components/pos/CompactOrderCard"
+// Importar el hook para detectar dispositivos móviles
+import { useIsMobile } from "@/hooks/use-mobile"
 
 // Definir un ancho personalizado para el sidebar
 const CUSTOM_SIDEBAR_WIDTH = "22rem" // Ajustado para optimizar espacio
@@ -75,6 +77,9 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const [realtimeConnected, setRealtimeConnected] = useState(false)
   const [forceRender, setForceRender] = useState(0)
 
+  // Estado para controlar la visibilidad del sidebar en móviles
+  const [showMobileCart, setShowMobileCart] = useState(false)
+
   // Referencias
   const unsubscribeRef = useRef<(() => void) | null>(null)
   const menuSectionRef = useRef<HTMLDivElement>(null)
@@ -87,6 +92,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   // Hooks
   const { toast } = useToast()
   const { tipPercentage, taxPercentage, inventoryControlEnabled } = useConfigStore()
+  const isMobile = useIsMobile()
 
   // Zustand store
   const {
@@ -225,6 +231,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
   // Configurar suscripciones en tiempo real
   const setupRealtimeSubscriptions = useCallback(() => {
+
     // Suscripción a cambios en mesas
     const unsubscribeTables = realtimeService.subscribeToTables((payload) => {
       // Verificar si este cambio fue originado por este cliente
@@ -294,7 +301,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       // Verificar si este cambio fue originado por este cliente
       const orderId = payload.new?.id || payload.old?.id
       if (orderId && localChangesRef.current.has(orderId)) {
-        // ignorar cambios en órdenes localmente
         localChangesRef.current.delete(orderId) // Limpiar el registro
         return
       }
@@ -502,7 +508,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         try {
           const table = tables.find((t) => t.id === tableId)
           if (table && table.status === "occupied") {
-            console.log("Mesa en estado 'occupied', liberando:", tableId)
 
             // Registrar este cambio como local
             localChangesRef.current.add(tableId)
@@ -521,7 +526,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
             )
           }
         } catch (err) {
-          console.error("Error al verificar/liberar mesa:", err)
+          toast({
+            title: "Error",
+            description: "No se pudo verificar/liberar la mesa. Intente nuevamente.",
+            variant: "destructive",
+          })
         }
       }
     },
@@ -563,7 +572,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
             .catch((err) => {
               toast({
                 title: "Error",
-                description: "No se pudo actualizar el estado de la mesa",
+                description: "No se pudo actualizar el estado de la mesa. Intente nuevamente.",
                 variant: "destructive",
               })
             })
@@ -572,8 +581,13 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         setSelectedTableForWaiter(tableId)
         setShowWaiterModal(true)
       }
+
+      // Si estamos en móvil y seleccionamos una mesa, mostrar el carrito
+      if (isMobile && tableId) {
+        setShowMobileCart(true)
+      }
     },
-    [activeTable, checkEmptyCartAndReleaseTable, tables, updateZustandTableStatus],
+    [activeTable, checkEmptyCartAndReleaseTable, tables, updateZustandTableStatus, isMobile],
   )
 
   // Manejar selección de mesero
@@ -583,6 +597,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         try {
           // Evitar mostrar loading
           setLoading(false)
+
           // Registrar este cambio como local
           localChangesRef.current.add(selectedTableForWaiter)
 
@@ -610,6 +625,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           setActiveTable(selectedTableForWaiter)
           setSelectedTableForWaiter(null)
           setShowWaiterModal(false)
+
+          // Si estamos en móvil, mostrar el carrito
+          if (isMobile) {
+            setShowMobileCart(true)
+          }
         } catch (err) {
           toast({
             title: "Error",
@@ -619,7 +639,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         }
       }
     },
-    [selectedTableForWaiter, toast, assignZustandWaiterToTable, profiles],
+    [selectedTableForWaiter, toast, assignZustandWaiterToTable, profiles, isMobile],
   )
 
   // Completar reserva después de seleccionar mesero
@@ -629,6 +649,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         try {
           // Evitar mostrar loading
           setLoading(false)
+
           // Registrar este cambio como local
           localChangesRef.current.add(selectedTableForWaiter)
 
@@ -656,6 +677,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           setActiveTable(selectedTableForWaiter)
           setSelectedTableForWaiter(null)
           setShowWaiterModal(false)
+
+          // Si estamos en móvil, mostrar el carrito
+          if (isMobile) {
+            setShowMobileCart(true)
+          }
         } catch (err) {
           toast({
             title: "Error",
@@ -665,7 +691,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         }
       }
     },
-    [selectedTableForWaiter, toast, assignZustandWaiterToTable, profiles],
+    [selectedTableForWaiter, toast, assignZustandWaiterToTable, profiles, isMobile],
   )
 
   // Manejar reserva de mesa
@@ -673,8 +699,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     setSelectedTableForWaiter(tableId)
     setShowWaiterModal(true)
   }, [])
-
-  // Completar reserva después de seleccionar mesero
 
   // Manejar liberación de mesa
   const handleReleaseTable = useCallback(
@@ -689,6 +713,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         }
 
         if (["kitchen", "delivered", "served", "reserved"].includes(table.status)) {
+          toast({
+            title: "Acción no permitida",
+            description: `No se puede liberar una mesa en estado ${table.status}`,
+            variant: "destructive",
+          })
           return
         }
 
@@ -708,6 +737,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
         if (activeTable === tableId) {
           setActiveTable(null)
+
+          // Si estamos en móvil, ocultar el carrito
+          if (isMobile) {
+            setShowMobileCart(false)
+          }
         }
 
         setTableSelectionTime((prev) => {
@@ -723,7 +757,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         })
       }
     },
-    [tables, activeTable, toast, releaseZustandTable],
+    [tables, activeTable, toast, releaseZustandTable, isMobile],
   )
 
   // Agregar plato al carrito
@@ -741,7 +775,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         comments,
       })
     },
-    [activeTable, addToCart],
+    [activeTable, addToCart, isMobile],
   )
 
   // Actualizar cantidad de producto
@@ -931,8 +965,12 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         })
 
         setActiveTable(null)
+
+        // Si estamos en móvil, ocultar el carrito
+        if (isMobile) {
+          setShowMobileCart(false)
+        }
       } else {
-        // No hay orden activa, crear una nueva
         // Asegurarse de que hay un mesero asignado
         if (!waiterId) {
           // Registrar este cambio como local
@@ -977,7 +1015,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         // Registrar este cambio como local
         localChangesRef.current.add(newOrder.id)
 
-        // Actualizar stock antes de enviar a cocina
         await reduceStockAfterSending(newOrder.id)
 
         // Registrar este cambio como local
@@ -991,7 +1028,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         setTables((prevTables) => prevTables.map((t) => (t.id === activeTable ? { ...t, status: "kitchen" } : t)))
 
         // Agregar la orden al store
-        const storeOrder= {
+        const storeOrder = {
           id: newOrder.id,
           tableId: activeTable,
           items: cartItems,
@@ -1003,7 +1040,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           parentOrderId: null,
         }
 
-        // Agregar la orden al store
         addOrder(storeOrder)
 
         // Actualizar el estado local de órdenes activas
@@ -1029,6 +1065,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         })
 
         setActiveTable(null)
+
+        // Si estamos en móvil, ocultar el carrito
+        if (isMobile) {
+          setShowMobileCart(false)
+        }
       }
     } catch (error) {
       toast({
@@ -1059,6 +1100,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     toast,
     updateZustandTableStatus,
     assignZustandWaiterToTable,
+    isMobile,
   ])
 
   // Manejar envío forzado a cocina
@@ -1118,7 +1160,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           </div>
         </div>
 
-        <div className="h-screen border-l border-border bg-background" style={{ width: "22rem" }}>
+        <div className="h-screen border-l border-border bg-background hidden md:block" style={{ width: "22rem" }}>
           <div className="p-4">
             <Skeleton className="h-8 w-32 mb-4" />
             <Skeleton className="h-6 w-full mb-2" />
@@ -1194,18 +1236,39 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         </div>
       </div>
 
-      {/* Sidebar fijo a la derecha */}
-      <div
-        className="h-screen border-l border-border bg-background"
-        style={{
-          width: CUSTOM_SIDEBAR_WIDTH,
-          position: "fixed",
-          right: 0,
-          top: 0,
-          bottom: 0,
-          zIndex: 40,
-        }}
-      >
+      {/* Sidebar fijo a la derecha (solo visible en desktop) */}
+      {!isMobile && (
+        <div
+          className="h-screen border-l border-border bg-background hidden md:block"
+          style={{
+            width: CUSTOM_SIDEBAR_WIDTH,
+            position: "fixed",
+            right: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 40,
+          }}
+        >
+          <CartSidebar
+            tableNumber={activeTableNumber}
+            cartItems={cartItems}
+            cartTotal={cartTotal}
+            onUpdateQuantity={handleUpdateQuantity}
+            onUpdateComments={handleUpdateComments}
+            onClearCart={handleClearCart}
+            onSendToKitchen={handleSendToKitchen}
+            onToggleSidebar={() => {}}
+            isSending={sendingToKitchen}
+            hasActiveTable={activeTable !== null}
+          />
+        </div>
+      )}
+
+      {/* Espacio para compensar el sidebar fijo (solo en desktop) */}
+      <div className="hidden md:block" style={{ width: CUSTOM_SIDEBAR_WIDTH, flexShrink: 0 }}></div>
+
+      {/* Versión móvil del carrito como modal */}
+      {isMobile && (
         <CartSidebar
           tableNumber={activeTableNumber}
           cartItems={cartItems}
@@ -1214,14 +1277,31 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           onUpdateComments={handleUpdateComments}
           onClearCart={handleClearCart}
           onSendToKitchen={handleSendToKitchen}
-          onToggleSidebar={() => {}}
+          onToggleSidebar={() => setShowMobileCart(!showMobileCart)}
           isSending={sendingToKitchen}
           hasActiveTable={activeTable !== null}
+          isMobile={true}
+          isOpen={showMobileCart}
+          onOpenChange={setShowMobileCart}
         />
-      </div>
+      )}
 
-      {/* Espacio para compensar el sidebar fijo */}
-      <div style={{ width: CUSTOM_SIDEBAR_WIDTH, flexShrink: 0 }}></div>
+      {/* Botón flotante para mostrar carrito en móvil */}
+      {isMobile && activeTable && (
+        <Button
+          onClick={() => setShowMobileCart(true)}
+          className="fixed bottom-4 right-4 rounded-full w-14 h-14 shadow-lg flex items-center justify-center z-50"
+          size="icon"
+          variant="default"
+        >
+          <ShoppingCart className="h-6 w-6" />
+          {cartItems.length > 0 && (
+            <span className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+              {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
+            </span>
+          )}
+        </Button>
+      )}
 
       {/* Modal para selección de mesero */}
       <WaiterSelectionModal
