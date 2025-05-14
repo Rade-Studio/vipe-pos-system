@@ -59,6 +59,7 @@ export function PaymentMethodDialog({
   const [insufficientCash, setInsufficientCash] = useState(false)
   const [orderData, setOrderData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [paying, setPaying] = useState(false)
 
   const { addTransaction, isRegisterOpen, hasEnoughCashForChange, getCurrentRegisterSummary } = useCashRegisterStore()
   const { completePayment, completePartialPayment, undoPartialPayment, calculateOrderBill } = usePOSStore()
@@ -109,7 +110,7 @@ export function PaymentMethodDialog({
   const subtotalWithTax = orderData ? orderData.subtotal + orderData.tax : 0
 
   // Usar el total sin propina si includeTip es false
-  const finalAmount = includeTip ? tableTotal || amount : subtotalWithTax
+  const finalAmount = includeTip ? amount : subtotalWithTax
 
   // Calcular el cambio
   const cashAmount = Number.parseFloat(cashReceived || "0")
@@ -243,15 +244,19 @@ export function PaymentMethodDialog({
   }
 
   const handleCashInputSubmit = () => {
+    setPaying(true)
+
     const cashAmount = Number.parseFloat(cashReceived || "0")
 
     if (isNaN(cashAmount) || cashAmount < finalAmount) {
       setError(`El monto recibido debe ser al menos ${formatCurrency(finalAmount)}`)
+      setPaying(false)
       return
     }
 
     // Verificar si hay suficiente efectivo para dar cambio
     if (!checkCashAvailability()) {
+      setPaying(false)
       return
     }
 
@@ -641,7 +646,7 @@ export function PaymentMethodDialog({
                       !cashReceived ||
                       isNaN(Number(cashReceived)) ||
                       Number(cashReceived) < finalAmount ||
-                      insufficientCash
+                      insufficientCash || paying
                     }
                   >
                     Confirmar Pago
