@@ -1,33 +1,52 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import {X, Trash2, Send, ShoppingCart, Percent, Minus, Plus} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import type { CartItem } from "@/types"
-import { formatCurrency } from "@/utils/helpers"
-import { Badge } from "@/components/ui/badge"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog"
-import { Slider } from "../ui/slider"
-import { useConfigStore } from "@/store/use-config-store"
-import {usePOSStore} from "@/store/use-pos-store";
+import { useState } from "react";
+import {
+  X,
+  Trash2,
+  Send,
+  ShoppingCart,
+  Percent,
+  Minus,
+  Plus,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import type { CartItem } from "@/types";
+import { formatCurrency } from "@/utils/helpers";
+import { Badge } from "@/components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Slider } from "../ui/slider";
+import { useConfigStore } from "@/store/use-config-store";
+import { usePOSStore } from "@/store/use-pos-store";
 
 interface CartSidebarProps {
-  tableNumber?: number
-  cartItems: CartItem[]
-  cartTotal: number
-  onUpdateQuantity: (itemId: string, change: number) => void
-  onUpdateComments: (itemId: string, comments: string) => void
-  onClearCart: () => void
-  onSendToKitchen: () => void
-  onToggleSidebar: () => void
-  isSending: boolean
-  hasActiveTable: boolean
-  isMobile?: boolean
-  isOpen?: boolean
-  onOpenChange?: (open: boolean) => void
+  tableNumber?: number;
+  cartItems: CartItem[];
+  cartTotal: number;
+  onUpdateQuantity: (itemId: string, change: number) => void;
+  onUpdateComments: (itemId: string, comments: string) => void;
+  onClearCart: () => void;
+  onSendToKitchen: () => void;
+  onToggleSidebar: () => void;
+  isSending: boolean;
+  hasActiveTable: boolean;
+  isMobile?: boolean;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function CartSidebar({
@@ -45,69 +64,85 @@ export function CartSidebar({
   isOpen = true,
   onOpenChange,
 }: CartSidebarProps) {
-  const [editingComments, setEditingComments] = useState<Record<string, string>>({})
-  const [showTipDialog, setShowTipDialog] = useState(false)
-  const { tipPercentage, taxPercentage, setTipPercentage } = useConfigStore()
-  const { calculateOrderBill } = usePOSStore()
+  const [editingComments, setEditingComments] = useState<
+    Record<string, string>
+  >({});
+  const [showTipDialog, setShowTipDialog] = useState(false);
+  const { tipPercentage, taxPercentage, setTipPercentage } = useConfigStore();
+  const { calculateOrderBill } = usePOSStore();
 
-  const bill = calculateOrderBill(cartItems, tipPercentage, taxPercentage)
+  const bill = calculateOrderBill(cartItems, tipPercentage, taxPercentage);
 
   const handleCommentsChange = (itemId: string, value: string) => {
     setEditingComments((prev) => ({
       ...prev,
       [itemId]: value,
-    }))
-  }
+    }));
+  };
 
   const handleCommentsSave = (itemId: string) => {
-    const comments = editingComments[itemId] || ""
-    onUpdateComments(itemId, comments)
+    const comments = editingComments[itemId] || "";
+    onUpdateComments(itemId, comments);
     setEditingComments((prev) => {
-      const newState = { ...prev }
-      delete newState[itemId]
-      return newState
-    })
-  }
+      const newState = { ...prev };
+      delete newState[itemId];
+      return newState;
+    });
+  };
 
   const handleCommentsCancel = (itemId: string) => {
     setEditingComments((prev) => {
-      const newState = { ...prev }
-      delete newState[itemId]
-      return newState
-    })
-  }
+      const newState = { ...prev };
+      delete newState[itemId];
+      return newState;
+    });
+  };
 
   const handleTipChange = (value: number[]) => {
-    setTipPercentage(value[0])
-  }
+    setTipPercentage(value[0]);
+  };
 
   const startEditingComments = (itemId: string, currentComments = "") => {
     setEditingComments((prev) => ({
       ...prev,
       [itemId]: currentComments,
-    }))
-  }
+    }));
+  };
 
   const cartContent = (
     <>
       <div className="flex justify-between items-center">
         <div className="flex items-center">
-          <h2 className="text-lg font-semibold">{tableNumber ? `Mesa ${tableNumber}` : "Carrito"}</h2>
+          <h2 className="text-lg font-semibold">
+            {tableNumber ? `Mesa ${tableNumber}` : "Carrito"}
+          </h2>
           {cartItems.length > 0 && (
             <Badge variant="outline" className="ml-2">
-              {cartItems.length} {cartItems.length === 1 ? "producto" : "productos"}
+              {cartItems.length}{" "}
+              {cartItems.length === 1 ? "producto" : "productos"}
             </Badge>
           )}
         </div>
         <div className="flex gap-2">
           {cartItems.length > 0 && (
-            <Button variant="outline" size="icon" onClick={onClearCart} className="h-8 w-8" title="Vaciar carrito">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={onClearCart}
+              className="h-8 w-8"
+              title="Vaciar carrito"
+            >
               <Trash2 className="h-4 w-4" />
               <span className="sr-only">Vaciar carrito</span>
             </Button>
           )}
           {isMobile && (
-            <Button variant="outline" size="icon" onClick={() => onOpenChange?.(false)} className="h-8 w-8 md:hidden">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => onOpenChange?.(false)}
+              className="h-8 w-8 md:hidden"
+            >
               <X className="h-4 w-4" />
               <span className="sr-only">Cerrar</span>
             </Button>
@@ -122,19 +157,26 @@ export function CartSidebar({
           <ShoppingCart className="h-12 w-12 mb-2 opacity-20" />
           <p className="text-sm">El carrito está vacío</p>
           {!hasActiveTable && (
-            <p className="text-xs mt-1 text-center">Selecciona una mesa para comenzar a agregar productos</p>
+            <p className="text-xs mt-1 text-center">
+              Selecciona una mesa para comenzar a agregar productos
+            </p>
           )}
         </div>
       ) : (
         <>
-          <ScrollArea className="flex-1 pr-4" style={{ height: "calc(100vh - 340px)" }}>
+          <ScrollArea
+            className="flex-1 pr-4"
+            style={{ height: "calc(100vh - 380px)" }}
+          >
             <div className="space-y-4 mt-4">
               {cartItems.map((item) => (
                 <div key={item.id} className="bg-muted/50 rounded-lg p-3">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <h3 className="font-medium">{item.name}</h3>
-                      <p className="text-sm text-muted-foreground">{formatCurrency(item.price)}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatCurrency(item.price)}
+                      </p>
                     </div>
                     <div className="flex items-center space-x-1">
                       <Button
@@ -164,7 +206,9 @@ export function CartSidebar({
                       <textarea
                         className="w-full text-sm p-2 border rounded-md"
                         value={editingComments[item.id]}
-                        onChange={(e) => handleCommentsChange(item.id, e.target.value)}
+                        onChange={(e) =>
+                          handleCommentsChange(item.id, e.target.value)
+                        }
                         placeholder="Agregar comentarios..."
                         rows={2}
                       />
@@ -192,7 +236,9 @@ export function CartSidebar({
                       {item.comments ? (
                         <div
                           className="text-xs text-muted-foreground bg-background/50 p-1.5 rounded cursor-pointer"
-                          onClick={() => startEditingComments(item.id, item.comments)}
+                          onClick={() =>
+                            startEditingComments(item.id, item.comments)
+                          }
                         >
                           {item.comments}
                         </div>
@@ -227,17 +273,26 @@ export function CartSidebar({
               {bill.totalDiscounts > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Descuentos:</span>
-                  <span className="text-red-600">-{formatCurrency(bill.totalDiscounts)}</span>
+                  <span className="text-red-600">
+                    -{formatCurrency(bill.totalDiscounts)}
+                  </span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Impuesto ({bill.taxPercentage}%):</span>
+                <span className="text-muted-foreground">
+                  Impuesto ({bill.taxPercentage}%):
+                </span>
                 <span>{formatCurrency(bill.tax)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="flex items-center text-muted-foreground">
                   Propina ({bill.tipPercentage}%):
-                  <Button variant="ghost" size="icon" className="ml-1 h-5 w-5" onClick={() => setShowTipDialog(true)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="ml-1 h-5 w-5"
+                    onClick={() => setShowTipDialog(true)}
+                  >
                     <Percent className="h-3 w-3" />
                   </Button>
                 </span>
@@ -251,10 +306,18 @@ export function CartSidebar({
             </div>
 
             <div className="mt-4 flex space-x-2">
-              <Button variant="outline" className="flex-1" onClick={onClearCart}>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={onClearCart}
+              >
                 Limpiar
               </Button>
-              <Button className="flex-1" onClick={onSendToKitchen} disabled={cartItems.length === 0 || isSending}>
+              <Button
+                className="flex-1"
+                onClick={onSendToKitchen}
+                disabled={cartItems.length === 0 || isSending}
+              >
                 {isSending ? (
                   "Enviando..."
                 ) : (
@@ -280,7 +343,13 @@ export function CartSidebar({
                 <span>Porcentaje de propina:</span>
                 <span className="font-semibold">{tipPercentage}%</span>
               </div>
-              <Slider value={[tipPercentage]} min={0} max={25} step={1} onValueChange={handleTipChange} />
+              <Slider
+                value={[tipPercentage]}
+                min={0}
+                max={25}
+                step={1}
+                onValueChange={handleTipChange}
+              />
             </div>
             <div className="space-y-2">
               <div className="flex justify-between">
@@ -288,8 +357,12 @@ export function CartSidebar({
                 <span>{formatCurrency(bill.subtotal)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Propina ({tipPercentage}%):</span>
-                <span>{formatCurrency(bill.subtotal * (tipPercentage / 100))}</span>
+                <span className="text-muted-foreground">
+                  Propina ({tipPercentage}%):
+                </span>
+                <span>
+                  {formatCurrency(bill.subtotal * (tipPercentage / 100))}
+                </span>
               </div>
             </div>
           </div>
@@ -299,7 +372,7 @@ export function CartSidebar({
         </DialogContent>
       </Dialog>
     </>
-  )
+  );
 
   // Si es móvil, renderizamos como un Sheet (modal)
   if (isMobile) {
@@ -312,11 +385,9 @@ export function CartSidebar({
           {cartContent}
         </SheetContent>
       </Sheet>
-    )
+    );
   }
 
-
-
   // Si no es móvil, renderizamos como sidebar normal
-  return <div className="h-full p-4 flex flex-col">{cartContent}</div>
+  return <div className="h-full p-4 flex flex-col">{cartContent}</div>;
 }
