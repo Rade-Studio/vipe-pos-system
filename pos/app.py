@@ -1,37 +1,78 @@
-﻿# listener.py
-import os
+﻿import os
+import threading
+from datetime import datetime
 
 from dotenv import load_dotenv
-from supabase import create_client
 from realtime import AsyncRealtimeClient
-from escpos.printer import Usb
+from escpos.printer import Usb, Network
 from PIL import Image
 import pystray
 import asyncio
 import html2text
 import sys
-import threading
 import usb.core
-import usb.util
+import tkinter as tk
+from tkinter import simpledialog
 
-# === CONFIGURACIÓN ===
+# === CONFIGURACIÓN INICIAL ===
 load_dotenv()
-
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# === CONEXIÓN ===
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 REALTIME_URL = f"{SUPABASE_URL.replace('https', 'wss')}/realtime/v1"
 
 # Impresoras seleccionadas (inicialmente vacías)
 selected_printers = {
-    'comandas': None,
-    'facturas': None
+    'comandas': {'type': 'usb', 'printer': None},
+    'facturas': {'type': 'network', 'printer': None}
 }
 
 # Almacenamiento temporal para impresoras disponibles
 available_printers = []
+
+class PrinterManager:
+    def __init__(self):
+        self.current_printers = {
+            'comandas': None,
+            'facturas': None
+        }
+        self.printer_configs = {
+            'comandas': {'type': 'usb', 'details': {}},
+            'facturas': {'type': 'network', 'details': {'ip': '192.168.1.2', 'port': 5000}}
+        }
+
+    def get_printer(self, printer_type) -> Usb | Network:
+        return self.current_printers.get(printer_type)
+
+    def set_usb_printer(self, printer_type, vendor_id, product_id):
+        try:
+            self.current_printers[printer_type] = Usb(vendor_id, product_id)
+            self.printer_configs[printer_type] = {
+                'type': 'usb',
+                'details': {'vendor_id': vendor_id, 'product_id': product_id}
+            }
+            print(f"Impresora {printer_type} configurada: USB {vendor_id:04x}:{product_id:04x}")
+            return True
+        except Exception as e:
+            print(f"Error al configurar impresora USB: {e}")
+            return False
+
+    def set_network_printer(self, printer_type, ip, port=9100):
+        try:
+            self.current_printers[printer_type] = Network(ip, port=port)
+            self.printer_configs[printer_type] = {
+                'type': 'network',
+                'details': {'ip': ip, 'port': port}
+            }
+            print(f"Impresora {printer_type} configurada: {ip}:{port}")
+            return True
+        except Exception as e:
+            print(f"Error al configurar impresora de red: {e}")
+            return False
+
+    def get_config(self, printer_type):
+        return self.printer_configs.get(printer_type, {})
+
+printer_manager = PrinterManager()
 
 def detect_usb_printers():
     """Detecta todas las impresoras USB conectadas"""
@@ -69,100 +110,237 @@ def detect_usb_printers():
 
     return available_printers
 
+def detect_by_interface_class():
+    """Detecta impresoras en dispositivos con clase definida en interfaz"""
+    devices = usb.core.find(find_all=True, bDeviceClass=0x00)
+    result = []
+
+    for dev in devices:
+        for cfg in dev:
+            for intf in cfg:
+                if intf.bInterfaceClass == 7:
+                    result.append(dev)
+    return result
+
+def create_network_config_dialog(printer_type):
+    """Crea un diálogo para configurar impresora de red"""
+    root = tk.Tk()
+    root.withdraw()  # Ocultar ventana principal
+
+    ip = simpledialog.askstring(
+        f"Configurar impresora de red - {printer_type}",
+        "Ingrese la IP de la impresora:",
+        initialvalue=printer_manager.get_config(printer_type)['details'].get('ip', '192.168.1.100')
+    )
+
+    if ip:
+        port = simpledialog.askinteger(
+            f"Configurar impresora de red - {printer_type}",
+            "Ingrese el puerto (por defecto 9100):",
+            initialvalue=printer_manager.get_config(printer_type)['details'].get('port', 9100),
+            minvalue=1,
+            maxvalue=65535
+        )
+
+        if port:
+            return printer_manager.set_network_printer(printer_type, ip, port)
+
+    return False
+
+def create_usb_printer_menu(printer_type):
+    """Crea un submenú para seleccionar impresora USB"""
+    detect_usb_printers()
+
+    if not available_printers:
+        return pystray.Menu(
+            pystray.MenuItem("No hay impresoras USB", lambda _: None, enabled=False)
+        )
+
+    return pystray.Menu(*[
+        pystray.MenuItem(
+            p['name'],
+            lambda _, vid=p['vendor_id'], pid=p['product_id'], pt=printer_type: (
+                printer_manager.set_usb_printer(pt, vid, pid)
+            )
+        ) for p in available_printers
+    ])
+
 def init_default_printers():
-    """Inicializa impresoras por defecto (o deja vacío si no hay impresoras)"""
-    global selected_printers
+    """Inicializa impresoras por defecto"""
+    # Ejemplo de impresora por defecto
+    printer_manager.set_usb_printer('comandas', 0x04b8, 0x0202)
+    printer_manager.set_network_printer('facturas', '192.168.1.2', 5000)
 
-    printers = detect_usb_printers()
-
-    if printers:
-        # Si hay impresoras, usar la primera como predeterminada
-        default_printer = printers[0]
+def imprimir_html(printer_type, html_str):
+    """Imprime HTML usando la impresora seleccionada"""
+    printer = printer_manager.get_printer(printer_type)
+    if printer and html_str:
         try:
-            selected_printers['comandas'] = Usb(
-                default_printer['vendor_id'],
-                default_printer['product_id']
-            )
-            selected_printers['facturas'] = Usb(
-                default_printer['vendor_id'],
-                default_printer['product_id']
-            )
-            print("Impresoras inicializadas por defecto")
+            texto = html2text.html2text(html_str)
+            printer.text(texto + "\n")
+            printer.cut()
         except Exception as e:
-            print(f"Error al inicializar impresoras: {e}")
-            selected_printers = {'comandas': None, 'facturas': None}
+            print(f"Error al imprimir en {printer_type}: {e}")
     else:
-        # Si no hay impresoras, dejar como None
-        selected_printers = {'comandas': None, 'facturas': None}
-        print("No se encontraron impresoras USB")
+        print(f"No hay impresora {printer_type} configurada")
 
-def set_printer(printer_type):
-    """Crea una nueva instancia de impresora"""
-    def inner(item):
-        printer_info = next((p for p in available_printers if p['name'] == item.text), None)
-        if printer_info:
-            try:
-                selected_printers[printer_type] = Usb(
-                    printer_info['vendor_id'],
-                    printer_info['product_id']
+def imprimir_pos(printer_type, text, barcode_data=None, image_path=None):
+    """
+    Imprime una factura con:
+    - Imagen opcional en blanco y negro al inicio
+    - Texto con soporte CP1252
+    - Código de barras opcional después de un separador
+    """
+    printer = printer_manager.get_printer(printer_type)
+    if printer and text:
+        try:
+            # Establecer código de página CP1252 (Latin-1)
+            printer._raw(b'\x1b\x74\x10')
+
+            # Imprimir imagen si se proporciona
+            if image_path:
+                try:
+                    img = Image.open(image_path).convert('1')  # Convertir a blanco y negro
+                    printer.image(img)
+                except Exception as img_error:
+                    print(f"Error al cargar la imagen: {img_error}")
+
+            # Imprimir el texto
+            encoded_text = text.encode('cp1252', errors='replace')
+            printer._raw(encoded_text + b'\n')
+
+            # Agregar separador y código de barras si se proporciona
+            if barcode_data:
+                separator = ('-' * 40 + '\n').encode('cp1252')
+                printer._raw(separator)
+
+                # Validar que barcode_data sea string
+                barcode_str = str(barcode_data)
+
+                # Eliminar 'pos' si genera conflicto en tu modelo
+                printer.barcode(
+                    barcode_str,
+                    'CODE39',
+                    width=2,
+                    height=100,
+                    font='A'
                 )
-                print(f"Impresora {printer_type} configurada: {printer_info['name']}")
-            except Exception as e:
-                print(f"Error al configurar impresora: {e}")
-        else:
-            selected_printers[printer_type] = None
-            print(f"Impresora {printer_type} desconfigurada")
-    return inner
 
-
-# === FUNCIÓN PARA IMPRIMIR HTML (convertido a texto) ===
-def imprimir_html(html_str):
-    texto = html2text.html2text(html_str)
-    # printer.text(texto + "\n")
-    # printer.cut()
-
-# === CALLBACKS ===
-def handle_comanda(payload):
-    html_content = payload.get("payload", {}).get("html")
-
-    if html_content:
-        try:
-            # Guardar el HTML en archivo con codificación UTF-8
-            with open("factura.html", "w", encoding="utf-8") as f:
-                f.write(html_content)
-
-            print("Archivo factura.html creado con éxito")
-            # Descomenta para imprimir después de guardar:
-            # imprimir_html(html_content)
+            # Corte de papel
+            printer.cut()
 
         except Exception as e:
-            print(f"Error al escribir el archivo: {e}")
+            print(f"Error al imprimir en {printer_type}: {e}")
     else:
-        print("No se encontró contenido HTML en el payload")
+        print(f"No hay impresora {printer_type} configurada")
+
+def handle_comanda(payload):
+    """Callback para comandas"""
+    print(f"payload comanda: {payload}")
+    html = payload.get("payload", {}).get("html")
+    if html:
+        imprimir_html('comandas', html)
 
 def handle_factura(payload):
-    print(f"payload completo: {payload}")
+    """Callback para facturas"""
+    data = payload.get("payload", {})
+    invoice_number = data.get("invoiceNumber")
+    invoice = data.get("invoice")
+    display_items = data.get("displayItems")
 
-    # Acceder al HTML en la estructura correcta del payload
-    html_content = payload.get("payload", {}).get("html")
+    if invoice_number:
+        text = generate_invoice_pos(invoice_number, invoice, display_items)
+        imprimir_pos('facturas', text, barcode_data=123456789)
 
-    if html_content:
-        try:
-            # Guardar el HTML en archivo con codificación UTF-8
-            with open("factura.html", "w", encoding="utf-8") as f:
-                f.write(html_content)
 
-            print("Archivo factura.html creado con éxito")
-            # Descomenta para imprimir después de guardar:
-            # imprimir_html(html_content)
-
-        except Exception as e:
-            print(f"Error al escribir el archivo: {e}")
+def obtener_texto_pago(payment_method):
+    """Obtiene el texto de pago según el método de pago"""
+    if payment_method == "cash":
+        return "Efectivo"
+    elif payment_method == "transfer":
+        return "Transferencia"
+    elif payment_method == "nequi":
+        return "Nequi"
+    elif payment_method == "bancolombia":
+        return "Bancolombia App"
     else:
-        print("No se encontró contenido HTML en el payload")
+        return "N/A"
 
 
-# === SUSCRIPCIÓN A TABLAS ===
+
+def generate_invoice_pos(invoice_number, invoice, display_items):
+    """Generar factura POS"""
+    lines = []
+    center = lambda text: text.center(40)
+
+    business = invoice.get('businessInfo', {})
+    bill = invoice.get('bill', {})
+
+    # Encabezado
+    lines.append(center(""))
+    lines.append(center(business.get('name', 'RESTAURANTE').upper()))
+    lines.append(center(f"NIT: {business.get('nit', 'N/A')}"))
+    lines.append(center(business.get('address', 'N/A')))
+    lines.append(center(f"Tel: {business.get('phone', 'N/A')}"))
+    lines.append('-' * 40)
+
+     # Información general
+    lines.append(f"FACTURA: {invoice.get('invoiceNumber', 'INV-0001')}")
+    lines.append(f"FECHA: {format_date(invoice.get('date', ''))}")
+    lines.append(f"MESA: {invoice.get('table', 'N/A')}")
+    lines.append(f"MESERO: {invoice.get('waiter', 'N/A')}")
+    lines.append('-' * 40)
+
+    # Detalle de productos
+    lines.append("CANT DESCRIPCION            IMPORTE")
+    for item in display_items:
+        name = item.get('name', '')
+        quantity = str(item.get('quantity', 1))
+        price = format_currency(item.get('price', 0) * item.get('quantity', 1))
+        lines.append(f"{quantity:<4} {name:<20.20} {price:>10}")
+
+    lines.append('-' * 40)
+
+    # Totales
+    lines.append(f"SUBTOTAL: {format_currency(bill.get('subtotal', 0))}")
+    lines.append(f"IVA: {format_currency(bill.get('tax', 0))}")
+    if bill.get('totalDiscounts', 0) > 0:
+        lines.append(f"DESCUENTOS: -{format_currency(bill.get('totalDiscounts', 0))}")
+    lines.append(f"TOTAL SIN PROPINA: {format_currency(bill.get('subtotal', 0) + bill.get('tax', 0))}")
+    lines.append(f"PROPINA VOLUNTARIA ({bill.get('tipPercentage', 0)}%): {format_currency(bill.get('tip', 0))}")
+    lines.append(f"TOTAL A PAGAR: {format_currency(bill.get('total', 0))}")
+    lines.append('-' * 40)
+
+    # Forma de pago
+    # debo cambiar metodo de pago, para traducirlo a español con un switch
+    payment_method_text = obtener_texto_pago(invoice.get('paymentMethod', 'N/A'))
+
+    payment_method = invoice.get('paymentMethod', 'N/A').capitalize()
+    lines.append(f"FORMA DE PAGO: {payment_method_text}")
+    if invoice.get('cashReceived', 0) > 0:
+        lines.append(f"RECIBIDO: {format_currency(invoice.get('cashReceived', 0))}")
+        lines.append(f"CAMBIO: {format_currency(invoice.get('cashChange', 0))}")
+    lines.append('-' * 40)
+
+    # Pie de página
+    lines.append(center("¡GRACIAS POR SU COMPRA!"))
+    lines.append(center("VUELVA PRONTO"))
+    lines.append('\n\n\n')
+
+    return "\n".join(lines)
+
+def format_currency(value):
+    """Formatea sin decimales y con separadores de miles"""
+    return f"{int(round(value)):,}".replace(",", ".")
+
+def format_date(datetime_string):
+    """Formatea fecha y hora en formato dd/mm/yyyy hh:mm:ss"""
+    try:
+        dt = datetime.fromisoformat(datetime_string)
+    except Exception:
+        dt = datetime.now()
+    return dt.strftime("%d/%m/%Y %H:%M:%S")
+
 async def iniciar_suscripciones():
     socket = AsyncRealtimeClient(REALTIME_URL, SUPABASE_KEY)
 
@@ -174,7 +352,7 @@ async def iniciar_suscripciones():
     ch_comandas.on_broadcast("new_command", handle_comanda)
     ch_facturas.on_broadcast("new_invoice", handle_factura)
 
-    # Definir callback de suscripción
+    # Callback de suscripción
     def subscription_callback(status, err):
         if status == "SUBSCRIBED":
             print(f"Suscrito a canal {ch_comandas.topic}")
@@ -189,39 +367,49 @@ async def iniciar_suscripciones():
     while True:
         await asyncio.sleep(1)
 
-# === ICONO DE BANDEJA ===
 def iniciar_icono_tray():
     # Cargar icono
     try:
         image = Image.open("vipe-pos.ico")
     except FileNotFoundError:
-        # Usar icono por defecto si no existe
-        image = Image.new('RGB', (64, 64), color = 'blue')
+        image = Image.new('RGB', (64, 64), color='blue')
+
+    def refresh_menu(icon):
+        icon.menu = create_menu()
+        icon.update_menu()
 
     def create_menu():
-        # Detectar impresoras disponibles
-        printers = detect_usb_printers()
+        # Opciones de impresoras
+        comanda_submenu = pystray.Menu(
+            pystray.MenuItem("USB", lambda _: (
+                create_usb_printer_menu('comandas')
+            )),
+            pystray.MenuItem("Red", lambda _: (
+                create_network_config_dialog('comandas')
+            ))
+        )
 
-        # Crear submenús dinámicos
-        comanda_submenu_items = [
-                                    pystray.MenuItem(p['name'], set_printer('comandas'))
-                                    for p in printers
-                                ] or [pystray.MenuItem("No hay impresoras", lambda _: None, enabled=False)]
+        factura_submenu = pystray.Menu(
+            pystray.MenuItem("USB", lambda _: (
+                create_usb_printer_menu('facturas')
+            )),
+            pystray.MenuItem("Red", lambda _: (
+                create_network_config_dialog('facturas')
+            ))
+        )
 
-        factura_submenu_items = [
-                                    pystray.MenuItem(p['name'], set_printer('facturas'))
-                                    for p in printers
-                                ] or [pystray.MenuItem("No hay impresoras", lambda _: None, enabled=False)]
+        # Información de impresoras actuales
+        comanda_info = get_printer_info('comandas')
+        factura_info = get_printer_info('facturas')
 
-        # Opciones base
-        menu_items = [
+        return pystray.Menu(
             pystray.MenuItem(
-                f"Comandera: {selected_printers['comandas'].name if selected_printers['comandas'] else 'Sin seleccionar'}",
-                pystray.Menu(*comanda_submenu_items)
+                f"Comandera: {comanda_info}",
+                comanda_submenu
             ),
             pystray.MenuItem(
-                f"Facturas: {selected_printers['facturas'].name if selected_printers['facturas'] else 'Sin seleccionar'}",
-                pystray.Menu(*factura_submenu_items)
+                f"Facturas: {factura_info}",
+                factura_submenu
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
@@ -230,25 +418,31 @@ def iniciar_icono_tray():
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Salir", lambda icon, item: exit_app(icon))
-        ]
+        )
 
-        return pystray.Menu(*menu_items)
+    def get_printer_info(printer_type):
+        config = printer_manager.get_config(printer_type)
+        if config['type'] == 'usb':
+            details = config['details']
+            return f"USB {details.get('vendor_id', '---')}:{details.get('product_id', '---')}"
+        elif config['type'] == 'network':
+            details = config['details']
+            return f"Red {details.get('ip', '---')}:{details.get('port', '---')}"
+        return "Sin configurar"
 
-    def refresh_menu(icon):
-        icon.menu = create_menu()
-        icon.update_menu()
+    def exit_app(icon):
+        icon.stop()
+        sys.exit()
 
     # Crear icono inicial
-    icon = pystray.Icon("Comandera Vipe POS", image, menu=create_menu())
+    icon = pystray.Icon("Comandera", image, menu=create_menu())
     icon.run()
 
-def exit_app(icon):
-    icon.stop()
-    sys.exit()
-
-# === MAIN ===
 if __name__ == "__main__":
-    # Iniciar suscripciones en un hilo asyncio
+    # Iniciar impresoras por defecto
+    init_default_printers()
+
+    # Iniciar hilos
     loop = asyncio.new_event_loop()
     threading.Thread(
         target=loop.run_until_complete,
@@ -256,5 +450,4 @@ if __name__ == "__main__":
         daemon=True
     ).start()
 
-    # Iniciar icono de bandeja en hilo principal
     iniciar_icono_tray()

@@ -175,7 +175,7 @@ export function PaymentMethodDialog({
       }
 
       // Crear datos para la factura
-      const invoiceNumber = `PREV-${Date.now()}`
+      const invoiceNumber = orderId.substring(0, 8)
 
       // Determinar los items a incluir en la factura
       const invoiceItems =
@@ -377,7 +377,7 @@ export function PaymentMethodDialog({
           console.error("Error al completar pago en el store:", error)
           // Si hay un error al actualizar el store, pero la transacción se completó,
           // generamos un número de factura para continuar
-          invoiceNumber = `INV-${Date.now()}`
+          invoiceNumber = orderId.substring(0, 8)
         }
 
         // Actualizar el número de factura en los datos
