@@ -11,8 +11,13 @@ import asyncio
 import html2text
 import sys
 import usb.core
-import tkinter as tk
 from tkinter import simpledialog
+import customtkinter as ctk
+import queue
+
+ctk.set_appearance_mode("System")  # opcional, ajusta el tema al sistema
+root = ctk.CTk()                   # creas el root de CTk
+root.withdraw()                    # lo ocultas inmediatamente
 
 # === CONFIGURACIÓN INICIAL ===
 load_dotenv()
@@ -122,30 +127,72 @@ def detect_by_interface_class():
                     result.append(dev)
     return result
 
+def center_window(window):
+    """
+    Centra cualquier ventana de Tk/CTk (Toplevel) en la pantalla.
+    """
+    window.update_idletasks()  # Actualiza el tamaño de la ventana
+    width = window.winfo_width()
+    height = window.winfo_height()
+    x = (window.winfo_screenwidth() // 2) - (width // 2)
+    y = (window.winfo_screenheight() // 2) - (height // 2)
+    window.geometry(f"{width}x{height}+{x}+{y}")
+    window.deiconify()  # Muestra la ventana centrada
+    window.focus_force()  # Lleva el foco a la ventana
+    window.grab_set()  # Bloquea la interacción con otras ventanas
+
 def create_network_config_dialog(printer_type):
-    """Crea un diálogo para configurar impresora de red"""
-    root = tk.Tk()
-    root.withdraw()  # Ocultar ventana principal
+    """
+    Muestra dos CTkInputDialog en el root oculto para configurar una impresora de red.
+    Devuelve True si se actualizó correctamente, False en caso contrario.
+    """
+    result_queue = queue.Queue()
 
-    ip = simpledialog.askstring(
-        f"Configurar impresora de red - {printer_type}",
-        "Ingrese la IP de la impresora:",
-        initialvalue=printer_manager.get_config(printer_type)['details'].get('ip', '192.168.1.100')
-    )
+    def ask_dialog():
+        # Obtiene la configuración actual (IP y puerto por defecto)
+        config       = printer_manager.get_config(printer_type)
+        ip_default   = config["details"].get("ip",   "192.168.1.100")
+        port_default = config["details"].get("port", 9100)
 
-    if ip:
-        port = simpledialog.askinteger(
-            f"Configurar impresora de red - {printer_type}",
-            "Ingrese el puerto (por defecto 9100):",
-            initialvalue=printer_manager.get_config(printer_type)['details'].get('port', 9100),
-            minvalue=1,
-            maxvalue=65535
+        # --- Diálogo para la IP ---
+        ip_dialog = ctk.CTkInputDialog(
+            text  = f"IP de la impresora actual: {ip_default}\n\nIngrese la nueva IP:",
+            title = f"Configurar impresora de red – {printer_type}"
         )
+        # Centrar el Toplevel interno del diálogo
+        center_window(ip_dialog._top_window)
+        ip = ip_dialog.get_input()
+        if not ip:
+            result_queue.put(False)
+            return
 
-        if port:
-            return printer_manager.set_network_printer(printer_type, ip, port)
+        # --- Diálogo para el puerto ---
+        port_dialog = ctk.CTkInputDialog(
+            text  = f"Puerto actual: {port_default}\n\nIngrese el nuevo puerto:",
+            title = f"Configurar impresora de red – {printer_type}"
+        )
+        center_window(port_dialog._top_window)
+        port = port_dialog.get_input()
+        if not port:
+            result_queue.put(False)
+            return
 
-    return False
+        # Validar puerto
+        try:
+            port = int(port)
+        except ValueError:
+            print("Puerto inválido, debe ser un número entero.")
+            result_queue.put(False)
+            return
+
+        # Guardar configuración
+        result_queue.put(printer_manager.set_network_printer(printer_type, ip, port))
+
+    # Llamada directa al diálogo (estamos en el hilo de GUI)
+    ask_dialog()
+    return result_queue.get()
+
+
 
 def create_usb_printer_menu(printer_type):
     """Crea un submenú para seleccionar impresora USB"""
@@ -340,7 +387,6 @@ def format_date(datetime_string):
     except Exception:
         dt = datetime.now()
     return dt.strftime("%d/%m/%Y %H:%M:%S")
-
 async def iniciar_suscripciones():
     socket = AsyncRealtimeClient(REALTIME_URL, SUPABASE_KEY)
 
@@ -439,10 +485,15 @@ def iniciar_icono_tray():
     icon.run()
 
 if __name__ == "__main__":
+    # --- Inicializa root oculto de CTk (como ya lo tienes) ---
+    # ctk.set_appearance_mode("System")
+    # root = ctk.CTk()
+    # root.withdraw()
+
     # Iniciar impresoras por defecto
     init_default_printers()
 
-    # Iniciar hilos
+    # Iniciar suscripciones de Supabase en un hilo
     loop = asyncio.new_event_loop()
     threading.Thread(
         target=loop.run_until_complete,
@@ -450,4 +501,11 @@ if __name__ == "__main__":
         daemon=True
     ).start()
 
-    iniciar_icono_tray()
+    # *** Levanta el icono de bandeja en un hilo secundario ***
+    threading.Thread(
+        target=iniciar_icono_tray,
+        daemon=True
+    ).start()
+
+    # *** Arranca el bucle de eventos de CustomTkinter en el hilo principal ***
+    root.mainloop()
