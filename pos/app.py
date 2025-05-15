@@ -1,8 +1,8 @@
 ﻿import os
 import threading
+from datetime import datetime
 
 from dotenv import load_dotenv
-from supabase import create_client
 from realtime import AsyncRealtimeClient
 from escpos.printer import Usb, Network
 from PIL import Image
@@ -26,8 +26,6 @@ selected_printers = {
     'facturas': {'type': 'network', 'printer': None}
 }
 
-queue_facturas = []
-
 # Almacenamiento temporal para impresoras disponibles
 available_printers = []
 
@@ -42,7 +40,7 @@ class PrinterManager:
             'facturas': {'type': 'network', 'details': {'ip': '192.168.1.2', 'port': 5000}}
         }
 
-    def get_printer(self, printer_type):
+    def get_printer(self, printer_type) -> Usb | Network:
         return self.current_printers.get(printer_type)
 
     def set_usb_printer(self, printer_type, vendor_id, product_id):
@@ -186,6 +184,56 @@ def imprimir_html(printer_type, html_str):
     else:
         print(f"No hay impresora {printer_type} configurada")
 
+def imprimir_pos(printer_type, text, barcode_data=None, image_path=None):
+    """
+    Imprime una factura con:
+    - Imagen opcional en blanco y negro al inicio
+    - Texto con soporte CP1252
+    - Código de barras opcional después de un separador
+    """
+    printer = printer_manager.get_printer(printer_type)
+    if printer and text:
+        try:
+            # Establecer código de página CP1252 (Latin-1)
+            printer._raw(b'\x1b\x74\x10')
+
+            # Imprimir imagen si se proporciona
+            if image_path:
+                try:
+                    img = Image.open(image_path).convert('1')  # Convertir a blanco y negro
+                    printer.image(img)
+                except Exception as img_error:
+                    print(f"Error al cargar la imagen: {img_error}")
+
+            # Imprimir el texto
+            encoded_text = text.encode('cp1252', errors='replace')
+            printer._raw(encoded_text + b'\n')
+
+            # Agregar separador y código de barras si se proporciona
+            if barcode_data:
+                separator = ('-' * 40 + '\n').encode('cp1252')
+                printer._raw(separator)
+
+                # Validar que barcode_data sea string
+                barcode_str = str(barcode_data)
+
+                # Eliminar 'pos' si genera conflicto en tu modelo
+                printer.barcode(
+                    barcode_str,
+                    'CODE39',
+                    width=2,
+                    height=100,
+                    font='A'
+                )
+
+            # Corte de papel
+            printer.cut()
+
+        except Exception as e:
+            print(f"Error al imprimir en {printer_type}: {e}")
+    else:
+        print(f"No hay impresora {printer_type} configurada")
+
 def handle_comanda(payload):
     """Callback para comandas"""
     print(f"payload comanda: {payload}")
@@ -195,11 +243,103 @@ def handle_comanda(payload):
 
 def handle_factura(payload):
     """Callback para facturas"""
-    html = payload.get("payload", {}).get("html")
-    key = payload.get("payload", {}).get("key")
-    if html and key not in queue_facturas:
-        queue_facturas.append({'html': html, 'key': key})
-        imprimir_html('facturas', html)
+    data = payload.get("payload", {})
+    invoice_number = data.get("invoiceNumber")
+    invoice = data.get("invoice")
+    display_items = data.get("displayItems")
+
+    if invoice_number:
+        text = generate_invoice_pos(invoice_number, invoice, display_items)
+        imprimir_pos('facturas', text, barcode_data=123456789)
+
+
+def obtener_texto_pago(payment_method):
+    """Obtiene el texto de pago según el método de pago"""
+    if payment_method == "cash":
+        return "Efectivo"
+    elif payment_method == "transfer":
+        return "Transferencia"
+    elif payment_method == "nequi":
+        return "Nequi"
+    elif payment_method == "bancolombia":
+        return "Bancolombia App"
+    else:
+        return "N/A"
+
+
+
+def generate_invoice_pos(invoice_number, invoice, display_items):
+    """Generar factura POS"""
+    lines = []
+    center = lambda text: text.center(40)
+
+    business = invoice.get('businessInfo', {})
+    bill = invoice.get('bill', {})
+
+    # Encabezado
+    lines.append(center(""))
+    lines.append(center(business.get('name', 'RESTAURANTE').upper()))
+    lines.append(center(f"NIT: {business.get('nit', 'N/A')}"))
+    lines.append(center(business.get('address', 'N/A')))
+    lines.append(center(f"Tel: {business.get('phone', 'N/A')}"))
+    lines.append('-' * 40)
+
+     # Información general
+    lines.append(f"FACTURA: {invoice.get('invoiceNumber', 'INV-0001')}")
+    lines.append(f"FECHA: {format_date(invoice.get('date', ''))}")
+    lines.append(f"MESA: {invoice.get('table', 'N/A')}")
+    lines.append(f"MESERO: {invoice.get('waiter', 'N/A')}")
+    lines.append('-' * 40)
+
+    # Detalle de productos
+    lines.append("CANT DESCRIPCION            IMPORTE")
+    for item in display_items:
+        name = item.get('name', '')
+        quantity = str(item.get('quantity', 1))
+        price = format_currency(item.get('price', 0) * item.get('quantity', 1))
+        lines.append(f"{quantity:<4} {name:<20.20} {price:>10}")
+
+    lines.append('-' * 40)
+
+    # Totales
+    lines.append(f"SUBTOTAL: {format_currency(bill.get('subtotal', 0))}")
+    lines.append(f"IVA: {format_currency(bill.get('tax', 0))}")
+    if bill.get('totalDiscounts', 0) > 0:
+        lines.append(f"DESCUENTOS: -{format_currency(bill.get('totalDiscounts', 0))}")
+    lines.append(f"TOTAL SIN PROPINA: {format_currency(bill.get('subtotal', 0) + bill.get('tax', 0))}")
+    lines.append(f"PROPINA VOLUNTARIA ({bill.get('tipPercentage', 0)}%): {format_currency(bill.get('tip', 0))}")
+    lines.append(f"TOTAL A PAGAR: {format_currency(bill.get('total', 0))}")
+    lines.append('-' * 40)
+
+    # Forma de pago
+    # debo cambiar metodo de pago, para traducirlo a español con un switch
+    payment_method_text = obtener_texto_pago(invoice.get('paymentMethod', 'N/A'))
+
+    payment_method = invoice.get('paymentMethod', 'N/A').capitalize()
+    lines.append(f"FORMA DE PAGO: {payment_method_text}")
+    if invoice.get('cashReceived', 0) > 0:
+        lines.append(f"RECIBIDO: {format_currency(invoice.get('cashReceived', 0))}")
+        lines.append(f"CAMBIO: {format_currency(invoice.get('cashChange', 0))}")
+    lines.append('-' * 40)
+
+    # Pie de página
+    lines.append(center("¡GRACIAS POR SU COMPRA!"))
+    lines.append(center("VUELVA PRONTO"))
+    lines.append('\n\n\n')
+
+    return "\n".join(lines)
+
+def format_currency(value):
+    """Formatea sin decimales y con separadores de miles"""
+    return f"{int(round(value)):,}".replace(",", ".")
+
+def format_date(datetime_string):
+    """Formatea fecha y hora en formato dd/mm/yyyy hh:mm:ss"""
+    try:
+        dt = datetime.fromisoformat(datetime_string)
+    except Exception:
+        dt = datetime.now()
+    return dt.strftime("%d/%m/%Y %H:%M:%S")
 
 async def iniciar_suscripciones():
     socket = AsyncRealtimeClient(REALTIME_URL, SUPABASE_KEY)
