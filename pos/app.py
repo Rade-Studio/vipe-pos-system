@@ -19,6 +19,11 @@ ctk.set_appearance_mode("System")  # opcional, ajusta el tema al sistema
 root = ctk.CTk()                   # creas el root de CTk
 root.withdraw()                    # lo ocultas inmediatamente
 
+def show_network_config(printer_type):
+    """
+    Lanza create_network_config_dialog en el hilo de GUI via root.after.
+    """
+    root.after(0, lambda: create_network_config_dialog(printer_type))
 # === CONFIGURACIÓN INICIAL ===
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -127,70 +132,87 @@ def detect_by_interface_class():
                     result.append(dev)
     return result
 
-def center_window(window):
-    """
-    Centra cualquier ventana de Tk/CTk (Toplevel) en la pantalla.
-    """
-    window.update_idletasks()  # Actualiza el tamaño de la ventana
-    width = window.winfo_width()
-    height = window.winfo_height()
-    x = (window.winfo_screenwidth() // 2) - (width // 2)
-    y = (window.winfo_screenheight() // 2) - (height // 2)
-    window.geometry(f"{width}x{height}+{x}+{y}")
-    window.deiconify()  # Muestra la ventana centrada
-    window.focus_force()  # Lleva el foco a la ventana
-    window.grab_set()  # Bloquea la interacción con otras ventanas
 
 def create_network_config_dialog(printer_type):
     """
-    Muestra dos CTkInputDialog en el root oculto para configurar una impresora de red.
-    Devuelve True si se actualizó correctamente, False en caso contrario.
+    Muestra un diálogo CTk con dos campos (IP y puerto), redimensiona
+    al tamaño mínimo necesario y lo centra. Devuelve True si guardó.
     """
-    result_queue = queue.Queue()
+    global root
 
-    def ask_dialog():
-        # Obtiene la configuración actual (IP y puerto por defecto)
-        config       = printer_manager.get_config(printer_type)
-        ip_default   = config["details"].get("ip",   "192.168.1.100")
-        port_default = config["details"].get("port", 9100)
+    # 1) Valores por defecto
+    config       = printer_manager.get_config(printer_type)
+    ip_default   = config["details"].get("ip",   "192.168.1.100")
+    port_default = config["details"].get("port", 9100)
 
-        # --- Diálogo para la IP ---
-        ip_dialog = ctk.CTkInputDialog(
-            text  = f"IP de la impresora actual: {ip_default}\n\nIngrese la nueva IP:",
-            title = f"Configurar impresora de red – {printer_type}"
-        )
-        # Centrar el Toplevel interno del diálogo
-        center_window(ip_dialog._top_window)
-        ip = ip_dialog.get_input()
-        if not ip:
-            result_queue.put(False)
+    result = {"ok": False}
+
+    # 2) Crear Toplevel
+    dialog = ctk.CTkToplevel(root)
+    dialog.title(f"Configurar impresora de red – {printer_type}")
+    dialog.resizable(False, False)
+
+    # 3) Configurar columnas para que la segunda “expanda”
+    dialog.grid_columnconfigure(0, weight=0, pad=10)
+    dialog.grid_columnconfigure(1, weight=1, pad=10)
+
+    # 4) Widgets
+    ctk.CTkLabel(dialog, text="IP de la impresora:")\
+        .grid(row=0, column=0, sticky="w", pady=(10,2))
+    ip_entry = ctk.CTkEntry(dialog)
+    ip_entry.insert(0, ip_default)
+    ip_entry.grid(row=0, column=1, sticky="ew", pady=(10,2))
+
+    ctk.CTkLabel(dialog, text="Puerto de la impresora:")\
+        .grid(row=1, column=0, sticky="w", pady=2)
+    port_entry = ctk.CTkEntry(dialog)
+    port_entry.insert(0, str(port_default))
+    port_entry.grid(row=1, column=1, sticky="ew", pady=2)
+
+    # 5) Botones
+    def on_ok():
+        ip_val   = ip_entry.get().strip()
+        port_val = port_entry.get().strip()
+        if not ip_val:
+            print("Debe ingresar una IP válida.")
             return
-
-        # --- Diálogo para el puerto ---
-        port_dialog = ctk.CTkInputDialog(
-            text  = f"Puerto actual: {port_default}\n\nIngrese el nuevo puerto:",
-            title = f"Configurar impresora de red – {printer_type}"
-        )
-        center_window(port_dialog._top_window)
-        port = port_dialog.get_input()
-        if not port:
-            result_queue.put(False)
-            return
-
-        # Validar puerto
         try:
-            port = int(port)
+            port_int = int(port_val)
         except ValueError:
-            print("Puerto inválido, debe ser un número entero.")
-            result_queue.put(False)
+            print("El puerto debe ser un número entero.")
             return
+        success = printer_manager.set_network_printer(printer_type, ip_val, port_int)
+        result["ok"] = success
+        dialog.destroy()
 
-        # Guardar configuración
-        result_queue.put(printer_manager.set_network_printer(printer_type, ip, port))
+    def on_cancel():
+        dialog.destroy()
 
-    # Llamada directa al diálogo (estamos en el hilo de GUI)
-    ask_dialog()
-    return result_queue.get()
+    btn_frame = ctk.CTkFrame(dialog)
+    btn_frame.grid(row=2, column=0, columnspan=2, pady=10)
+    ctk.CTkButton(btn_frame, text="Guardar",  command=on_ok)\
+        .grid(row=0, column=0, padx=5)
+    ctk.CTkButton(btn_frame, text="Cancelar", command=on_cancel)\
+        .grid(row=0, column=1, padx=5)
+
+    # 6) Forzar cálculo de “request size” y aplicar geometría
+    dialog.update_idletasks()
+    req_w = dialog.winfo_reqwidth()
+    req_h = dialog.winfo_reqheight()
+
+    # Centrar
+    screen_w = dialog.winfo_screenwidth()
+    screen_h = dialog.winfo_screenheight()
+    x = (screen_w - req_w) // 2
+    y = (screen_h - req_h) // 2
+
+    dialog.geometry(f"{req_w}x{req_h}+{x}+{y}")
+
+    # 7) Modal y espera
+    dialog.grab_set()
+    dialog.wait_window()
+
+    return result["ok"]
 
 
 
@@ -427,21 +449,13 @@ def iniciar_icono_tray():
     def create_menu():
         # Opciones de impresoras
         comanda_submenu = pystray.Menu(
-            pystray.MenuItem("USB", lambda _: (
-                create_usb_printer_menu('comandas')
-            )),
-            pystray.MenuItem("Red", lambda _: (
-                create_network_config_dialog('comandas')
-            ))
+            pystray.MenuItem("USB", lambda _ : create_usb_printer_menu('comandas')),
+            pystray.MenuItem("Red", lambda _ : show_network_config('comandas'))
         )
 
         factura_submenu = pystray.Menu(
-            pystray.MenuItem("USB", lambda _: (
-                create_usb_printer_menu('facturas')
-            )),
-            pystray.MenuItem("Red", lambda _: (
-                create_network_config_dialog('facturas')
-            ))
+            pystray.MenuItem("USB", lambda _ : create_usb_printer_menu('facturas')),
+            pystray.MenuItem("Red", lambda _ : show_network_config('facturas'))
         )
 
         # Información de impresoras actuales
