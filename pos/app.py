@@ -1,4 +1,4 @@
-﻿import os
+﻿import os, sys
 import threading
 from datetime import datetime
 
@@ -25,9 +25,66 @@ def show_network_config(printer_type):
     """
     root.after(0, lambda: create_network_config_dialog(printer_type))
 # === CONFIGURACIÓN INICIAL ===
-load_dotenv()
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# ===============================
+# Detectar entorno
+# ===============================
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
+
+# Permitir también pasar --dev como argumento
+if "--dev" in sys.argv:
+    ENVIRONMENT = "dev"
+
+# ===============================
+# Función para leer del registro (solo Windows)
+# ===============================
+if sys.platform == "win32":
+    import winreg
+    def read_reg_env(varname):
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment")
+            value, _ = winreg.QueryValueEx(key, varname)
+            winreg.CloseKey(key)
+            return value
+        except FileNotFoundError:
+            return None
+else:
+    def read_reg_env(varname):
+        return None
+
+# ===============================
+# Función genérica para obtener variables
+# ===============================
+def get_secret(varname):
+    val = os.getenv(varname)
+    if val:
+        return val
+    return read_reg_env(varname)
+
+# ===============================
+# Cargar variables según el entorno
+# ===============================
+if ENVIRONMENT == "dev":
+    print("🛠️  Ambiente de Desarrollo Detectado (usando .env)")
+    try:
+        from dotenv import load_dotenv
+        dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
+        load_dotenv(dotenv_path)
+    except ImportError:
+        raise RuntimeError("Falta instalar python-dotenv para entorno dev")
+
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+else:
+    print("🚀 Ambiente de Producción Detectado (registro o entorno)")
+    SUPABASE_URL = get_secret("SUPABASE_URL")
+    SUPABASE_KEY = get_secret("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError(
+        "No hay SUPABASE_URL o SUPABASE_KEY en variables de entorno. "
+        + "Reinstala o revisa tu configuración."
+    )
+
 REALTIME_URL = f"{SUPABASE_URL.replace('https', 'wss')}/realtime/v1"
 
 # Impresoras seleccionadas (inicialmente vacías)
@@ -132,7 +189,6 @@ def detect_by_interface_class():
                     result.append(dev)
     return result
 
-
 def create_network_config_dialog(printer_type):
     """
     Muestra un diálogo CTk con dos campos (IP y puerto), redimensiona
@@ -213,8 +269,6 @@ def create_network_config_dialog(printer_type):
     dialog.wait_window()
 
     return result["ok"]
-
-
 
 def create_usb_printer_menu(printer_type):
     """Crea un submenú para seleccionar impresora USB"""
