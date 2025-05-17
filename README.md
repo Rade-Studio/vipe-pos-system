@@ -143,7 +143,7 @@ En dispositivos móviles, el carrito se muestra como un botón flotante que abre
 
 ## 📁 Estructura del Proyecto
 
-\`\`\`
+```
 restaurant-pos/
 ├── app/                    # Rutas y páginas de Next.js
 ├── components/             # Componentes React
@@ -165,7 +165,7 @@ restaurant-pos/
 ├── store/                  # Estado global (Zustand)
 ├── types/                  # Definiciones de tipos TypeScript
 └── utils/                  # Funciones utilitarias
-\`\`\`
+```
 
 ## 🔄 Flujo de Datos
 
