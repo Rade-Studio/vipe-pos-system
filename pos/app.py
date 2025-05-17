@@ -2,7 +2,6 @@
 import threading
 from datetime import datetime
 
-from dotenv import load_dotenv
 from realtime import AsyncRealtimeClient
 from escpos.printer import Usb, Network
 from PIL import Image
@@ -14,77 +13,85 @@ import usb.core
 from tkinter import simpledialog
 import customtkinter as ctk
 import queue
+from pathlib import Path
 
 ctk.set_appearance_mode("System")  # opcional, ajusta el tema al sistema
 root = ctk.CTk()                   # creas el root de CTk
 root.withdraw()                    # lo ocultas inmediatamente
 
-def show_network_config(printer_type):
-    """
-    Lanza create_network_config_dialog en el hilo de GUI via root.after.
-    """
-    root.after(0, lambda: create_network_config_dialog(printer_type))
-# === CONFIGURACIÓN INICIAL ===
-# ===============================
-# Detectar entorno
-# ===============================
-ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
+# Variables y funciones comunes
+SUPABASE_URL = None
+SUPABASE_KEY = None
+CONFIG_DIR = None
+CONFIG_FILE = None
 
-# Permitir también pasar --dev como argumento
+def encrypt_blob(plaintext: str) -> bytes:
+    if sys.platform != "win32":
+        raise RuntimeError("Solo Windows es soportado para producción")
+    import win32crypt
+    return win32crypt.CryptProtectData(plaintext.encode("utf-8"), None, None, None, None, 0)
+
+def decrypt_blob(blob: bytes) -> str:
+    if sys.platform != "win32":
+        raise RuntimeError("Solo Windows es soportado para producción")
+    import win32crypt
+    desc, data = win32crypt.CryptUnprotectData(blob, None, None, None, 0)
+    return data.decode("utf-8")
+
+def load_credentials():
+    if not CONFIG_FILE or not CONFIG_FILE.exists():
+        return None, None
+    blob = CONFIG_FILE.read_bytes()
+    txt = decrypt_blob(blob)
+    url, key = txt.split("|", 1)
+    return url, key
+
+def save_credentials(url: str, key: str):
+    if not CONFIG_DIR:
+        raise RuntimeError("CONFIG_DIR no está definido")
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    blob = encrypt_blob(f"{url}|{key}")
+    CONFIG_FILE.write_bytes(blob)
+
+# -----------------
+# Detectar entorno
+# -----------------
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
 if "--dev" in sys.argv:
     ENVIRONMENT = "dev"
 
-# ===============================
-# Función para leer del registro (solo Windows)
-# ===============================
-if sys.platform == "win32":
-    import winreg
-    def read_reg_env(varname):
-        try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment")
-            value, _ = winreg.QueryValueEx(key, varname)
-            winreg.CloseKey(key)
-            return value
-        except FileNotFoundError:
-            return None
-else:
-    def read_reg_env(varname):
-        return None
-
-# ===============================
-# Función genérica para obtener variables
-# ===============================
-def get_secret(varname):
-    val = os.getenv(varname)
-    if val:
-        return val
-    return read_reg_env(varname)
-
-# ===============================
-# Cargar variables según el entorno
-# ===============================
 if ENVIRONMENT == "dev":
+    from dotenv import load_dotenv
     print("🛠️  Ambiente de Desarrollo Detectado (usando .env)")
-    try:
-        from dotenv import load_dotenv
-        dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
-        load_dotenv(dotenv_path)
-    except ImportError:
-        raise RuntimeError("Falta instalar python-dotenv para entorno dev")
+    dotenv_path = Path(__file__).parent / ".env"
+    load_dotenv(dotenv_path)
 
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise RuntimeError("Faltan SUPABASE_URL o SUPABASE_KEY en el archivo .env")
+
 else:
-    print("🚀 Ambiente de Producción Detectado (registro o entorno)")
-    SUPABASE_URL = get_secret("SUPABASE_URL")
-    SUPABASE_KEY = get_secret("SUPABASE_KEY")
+    print("🚀 Ambiente de Producción Detectado (AppData cifrado)")
+    CONFIG_DIR = Path(os.getenv("APPDATA", os.path.expanduser("~"))) / "VipePOS"
+    CONFIG_FILE = CONFIG_DIR / "credentials.dat"
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError(
-        "No hay SUPABASE_URL o SUPABASE_KEY en variables de entorno. "
-        + "Reinstala o revisa tu configuración."
-    )
+    SUPABASE_URL, SUPABASE_KEY = load_credentials()
 
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        dialog = ctk.CTkInputDialog(text="Ingresa tu URL Supabase:", title="Configuración inicial")
+        SUPABASE_URL = dialog.get_input().strip() or None
+
+        key_dialog = ctk.CTkInputDialog(text="Ingresa tu API Key Supabase:", title="Configuración inicial")
+        SUPABASE_KEY = key_dialog.get_input().strip() or None
+
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise RuntimeError("Debes ingresar ambas credenciales para continuar.")
+
+        save_credentials(SUPABASE_URL, SUPABASE_KEY)
+
+# Ya puedes usar estas variables globales en cualquier parte
 REALTIME_URL = f"{SUPABASE_URL.replace('https', 'wss')}/realtime/v1"
 
 # Impresoras seleccionadas (inicialmente vacías)
@@ -140,6 +147,12 @@ class PrinterManager:
         return self.printer_configs.get(printer_type, {})
 
 printer_manager = PrinterManager()
+
+def show_network_config(printer_type):
+    """
+    Lanza create_network_config_dialog en el hilo de GUI via root.after.
+    """
+    root.after(0, lambda: create_network_config_dialog(printer_type))
 
 def detect_usb_printers():
     """Detecta todas las impresoras USB conectadas"""
@@ -463,31 +476,69 @@ def format_date(datetime_string):
     except Exception:
         dt = datetime.now()
     return dt.strftime("%d/%m/%Y %H:%M:%S")
+
 async def iniciar_suscripciones():
-    socket = AsyncRealtimeClient(REALTIME_URL, SUPABASE_KEY)
-
-    # Configurar canales
-    ch_comandas = socket.channel("room_comandas")
-    ch_facturas = socket.channel("room_facturas")
-
-    # Configurar suscriptores
-    ch_comandas.on_broadcast("new_command", handle_comanda)
-    ch_facturas.on_broadcast("new_invoice", handle_factura)
-
-    # Callback de suscripción
-    def subscription_callback(status, err):
-        if status == "SUBSCRIBED":
-            print(f"Suscrito a canal {ch_comandas.topic}")
-        elif status == "ERROR":
-            print(f"Error en suscripción: {err}")
-
-    # Suscribirse a ambos canales
-    await ch_comandas.subscribe(subscription_callback)
-    await ch_facturas.subscribe(subscription_callback)
-
-    # Mantener la conexión activa
     while True:
-        await asyncio.sleep(1)
+        try:
+            global SUPABASE_KEY, REALTIME_URL
+            print("Intentando conectar a Supabase...")
+            socket = AsyncRealtimeClient(REALTIME_URL, SUPABASE_KEY)
+
+            # Configurar canales
+            ch_comandas = socket.channel("room_comandas")
+            ch_facturas = socket.channel("room_facturas")
+
+            # Configurar suscriptores
+            ch_comandas.on_broadcast("new_command", handle_comanda)
+            ch_facturas.on_broadcast("new_invoice", handle_factura)
+
+            # Callback de suscripción
+            def subscription_callback_comandas(status, err):
+                if status == "SUBSCRIBED":
+                    print(f"✅ Suscrito a canal {ch_comandas.topic}. Iniciando conexión...")
+                elif status == "ERROR":
+                    raise RuntimeError(f"❌ Error en suscripción: {err}")
+
+            def subscription_callback_facturas(status, err):
+                if status == "SUBSCRIBED":
+                    print(f"✅ Suscrito a canal {ch_facturas.topic}. Iniciando conexión...")
+                elif status == "ERROR":
+                    raise RuntimeError(f"❌ Error en suscripción: {err}")
+
+
+            # Suscribirse a ambos canales
+            await ch_comandas.subscribe(subscription_callback_comandas)
+            await ch_facturas.subscribe(subscription_callback_facturas)
+
+            # Mantener la conexión activa
+            while True:
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            print(f"❌ Error conectando a Supabase: {e}")
+
+            # Volver a pedir credenciales al usuario
+            dialog = ctk.CTkInputDialog(text="Ingresa tu URL Supabase:", title="Reconectar Supabase")
+            new_url = dialog.get_input().strip() or None
+
+            key_dialog = ctk.CTkInputDialog(text="Ingresa tu API Key Supabase:", title="Reconectar Supabase")
+            new_key = key_dialog.get_input().strip() or None
+
+            if not new_url or not new_key:
+                print("⚠️  Credenciales inválidas. Reintentando en 5 segundos...")
+                await asyncio.sleep(5)
+                continue
+
+            # Guardar las nuevas credenciales cifradas
+            save_credentials(new_url, new_key)
+
+            # Actualizar variables globales
+            SUPABASE_URL = new_url
+            SUPABASE_KEY = new_key
+            REALTIME_URL = f"{SUPABASE_URL.replace('https','wss')}/realtime/v1"
+
+            print("🔄 Credenciales actualizadas. Reintentando conexión...")
+            await asyncio.sleep(1)
 
 def iniciar_icono_tray():
     # Cargar icono

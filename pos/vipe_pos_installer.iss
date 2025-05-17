@@ -1,12 +1,15 @@
-﻿; -- vipe_pos_installer.iss --
+﻿; ------------------------------------------
+; vipe_pos_installer.iss
+; Instalador para Vipe POS - Producción con autoarranque
+; ------------------------------------------
+
 #define AppName      "Vipe POS"
 #define AppVersion   "1.0"
-#define AppPublisher "TuNombre"
-#define AppExeName   "vipe_pos.exe"
-#define SrcDir       "dist\vipe_pos"  ; carpeta generada por PyInstaller
+#define AppPublisher "RADE STUDIO"
+#define AppExeName   "Vipe POS"
+#define SrcDir       "dist\vipe_pos"
 
 [Setup]
-; Datos generales
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
@@ -15,29 +18,27 @@ DisableProgramGroupPage=yes
 OutputBaseFilename=VipePOS_Setup
 Compression=lzma
 SolidCompression=yes
+ChangesEnvironment=no
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Files]
-; Copia todos los archivos de tu carpeta dist\vipe_pos
+; Copia todos los archivos empaquetados por PyInstaller
 Source: "{#SrcDir}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
-; Acceso directo en Menú Inicio
+; Menú Inicio
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
-; Acceso directo en Escritorio
+
+; Escritorio
 Name: "{commondesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
-; Acceso directo en la carpeta “Inicio” para autoarranque
+
+; Autoarranque en carpeta “Inicio” del usuario
 Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
 
-[Registry]
-; Alternativa: crear clave Run en registro (HKCU) para autoarranque
-; Uncomment si prefieres registro en vez de acceso directo en Startup
-;Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
-;     ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; \
-;     Flags: uninsdeletevalue
+; Si prefieres usar el Registro en lugar de la carpeta Startup, descomenta esto y comenta la línea anterior:
+;[Registry]
+;Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; Flags: uninsdeletevalue
 
-[Run]
-; Ejecutar app al terminar la instalación (opcional)
-Filename: "{app}\{#AppExeName}"; Description: "Iniciar {#AppName} ahora"; Flags: nowait postinstall skipifsilent
+; No necesitas [Code] porque la app se encarga de pedir y guardar las credenciales en AppData
