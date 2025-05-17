@@ -42,28 +42,28 @@ Un sistema completo de punto de venta (POS) para restaurantes, diseñado para op
 
 ### 1. Clonar el repositorio
 
-\`\`\`bash
+```bash
 git clone https://github.com/tu-usuario/restaurant-pos.git
 cd restaurant-pos
-\`\`\`
+```
 
 ### 2. Instalar dependencias
 
-\`\`\`bash
+```bash
 npm install
 # o
 yarn install
-\`\`\`
+```
 
 ### 3. Configurar variables de entorno
 
 Crea un archivo `.env` en la raíz del proyecto con las siguientes variables:
 
-\`\`\`
+```
 NEXT_PUBLIC_SUPABASE_URL=tu_url_de_supabase
 NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_clave_anonima_de_supabase
 SUPABASE_SERVICE_ROLE_KEY=tu_clave_de_servicio_de_supabase
-\`\`\`
+```
 
 ### 4. Configurar la base de datos
 
@@ -83,11 +83,11 @@ Puedes ejecutar estos scripts desde la interfaz SQL de Supabase o usando la herr
 
 ### 5. Iniciar el servidor de desarrollo
 
-\`\`\`bash
+```bash
 npm run dev
 # o
 yarn dev
-\`\`\`
+```
 
 La aplicación estará disponible en `http://localhost:3000`.
 
@@ -225,11 +225,11 @@ Personaliza la información que aparece en las facturas:
 
 ## 🧪 Pruebas
 
-\`\`\`bash
+```bash
 npm run test
 # o
 yarn test
-\`\`\`
+```
 
 ---
 
@@ -389,11 +389,11 @@ Si necesitas cambiar las credenciales:
 
 La aplicación está optimizada para desplegarse en Vercel:
 
-\`\`\`bash
+```bash
 npm run build
 # o
 yarn build
-\`\`\`
+```
 
 Para otros proveedores, asegúrate de configurar correctamente las variables de entorno.
 
