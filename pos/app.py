@@ -211,7 +211,7 @@ if ENVIRONMENT == "dev":
 
 else:
     print("🚀 Ambiente de Producción Detectado (AppData cifrado)")
-    CONFIG_DIR  = Path(os.getenv("APPDATA", os.path.expanduser("~"))) / "VipePOS2"
+    CONFIG_DIR  = Path(os.getenv("APPDATA", os.path.expanduser("~"))) / "VipePOS"
     CONFIG_FILE = CONFIG_DIR / "credentials.dat"
     print(f"🔑 Cargando credenciales de {CONFIG_FILE}")
     print(f"🔑 Cargando credenciales de {CONFIG_DIR}")
@@ -414,7 +414,7 @@ def show_usb_config_dialog(printer_type):
     printers = detect_usb_printers()
 
     # Si no hay impresoras, informamos y salimos
-    if not printers:
+    if not printers and ENVIRONMENT == "dev":
         printers = [
             { 'vendor_id': 0x1234, 'product_id': 0x0001, 'name': 'USB de Prueba 1' },  # PRUEBA
             { 'vendor_id': 0x1234, 'product_id': 0x0002, 'name': 'USB de Prueba 2' },  # PRUEBA
@@ -425,11 +425,13 @@ def show_usb_config_dialog(printer_type):
             { 'vendor_id': 0x1234, 'product_id': 0x0003, 'name': 'USB de Prueba 3' },   # PRUEBA
             { 'vendor_id': 0x1234, 'product_id': 0x0003, 'name': 'USB de Prueba 3' }   # PRUEBA
         ]
-        # messagebox.showinfo(
-        #     "Sin impresoras USB",
-        #     "No se encontraron impresoras USB conectadas."
-        # )
-        # return False
+    else:   
+        messagebox.showinfo(
+            "Sin impresoras USB",
+            "No se encontraron impresoras USB conectadas."
+            )
+        return False
+
 
     # --- Si hay impresoras, construimos el diálogo ---
     dlg = styled_toplevel(f"Seleccionar impresora USB – {printer_type}")
