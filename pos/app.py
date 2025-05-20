@@ -1,7 +1,6 @@
 ﻿import os, sys
 import threading
 from datetime import datetime
-
 from realtime import AsyncRealtimeClient
 from escpos.printer import Usb, Network
 from PIL import Image
@@ -10,14 +9,35 @@ import asyncio
 import html2text
 import sys
 import usb.core
-from tkinter import simpledialog
+from tkinter import messagebox
 import customtkinter as ctk
-import queue
+import re
 from pathlib import Path
+import ctypes
 
-ctk.set_appearance_mode("System")  # opcional, ajusta el tema al sistema
-root = ctk.CTk()                   # creas el root de CTk
-root.withdraw()                    # lo ocultas inmediatamente
+ICON_PATH = str(Path(__file__).parent / "vipe-pos.ico")
+# === TEMA GLOBAL ===
+PRIMARY_COLOR = "#6A0DAD"   # violeta
+ACCENT_COLOR  = "#8A2BE2"   # violeta claro
+
+# === TEMAS DE CUSTOMTKINTER ===
+BG_COLOR        = "#22232d"   # fondo general
+CARD_BORDER     = "#8A2BE2"   # borde de los cards
+ENTRY_BG        = "#333333"   # fondo de los entries
+ENTRY_BORDER    = "#6A0DAD"   # borde de los entries
+BUTTON_BG       = "#6A0DAD"   # fondo normal de botones
+BUTTON_HOVER    = "#8A2BE2"   # hover de botones
+BUTTON_TEXT     = "#FFFFFF"   # texto de botones
+LABEL_TEXT      = "#FFFFFF"   # color de etiquetas
+
+# === CARGA DE TEMA JSON ===
+
+
+# === ROOT OCULTO ===
+ctk.set_appearance_mode("System")
+root = ctk.CTk()
+root.iconbitmap(ICON_PATH)
+root.withdraw()
 
 # Variables y funciones comunes
 SUPABASE_URL = None
@@ -25,6 +45,60 @@ SUPABASE_KEY = None
 CONFIG_DIR = None
 CONFIG_FILE = None
 
+# === FUNCIONES WRAPPER ===
+def ThemedLabel(parent, **kwargs):
+    return ctk.CTkLabel(
+        parent,
+        text_color=LABEL_TEXT,
+        **kwargs
+    )
+
+def ThemedEntry(parent, **kwargs):
+    return ctk.CTkEntry(
+        parent,
+        fg_color=ENTRY_BG,
+        border_color=ENTRY_BORDER,
+        text_color=LABEL_TEXT,
+        **kwargs
+    )
+
+def ThemedButton(parent, **kwargs):
+    return ctk.CTkButton(
+        parent,
+        fg_color=BUTTON_BG,
+        hover_color=BUTTON_HOVER,
+        text_color=BUTTON_TEXT,
+        **kwargs
+    )
+
+def ThemedFrame(parent, **kwargs):
+    return ctk.CTkFrame(
+        parent,
+        fg_color=BG_COLOR,
+        border_color=CARD_BORDER,
+        **kwargs
+    )
+
+def center_window(win):
+    """Centra una ventana en la pantalla."""
+    win.update_idletasks()
+    w = win.winfo_reqwidth()
+    h = win.winfo_reqheight()
+    sw = win.winfo_screenwidth()
+    sh = win.winfo_screenheight()
+    x = (sw - w) // 2
+    y = (sh - h) // 2
+    win.geometry(f"{w}x{h}+{x}+{y}")
+
+def styled_toplevel(title: str):
+    dlg = ctk.CTkToplevel(root)
+    dlg.title(title)
+    dlg.iconbitmap(ICON_PATH)
+    # PINTA TODO el fondo del diálogo
+    dlg.configure(fg_color=BG_COLOR)
+    return dlg
+
+# -----------------
 def encrypt_blob(plaintext: str) -> bytes:
     if sys.platform != "win32":
         raise RuntimeError("Solo Windows es soportado para producción")
@@ -56,6 +130,69 @@ def save_credentials(url: str, key: str):
 # -----------------
 # Detectar entorno
 # -----------------
+def ask_supabase_url():
+    dlg = styled_toplevel("Configurar Supabase URL")
+
+    # Etiqueta
+    ThemedLabel(dlg, text="URL Supabase:")\
+        .pack(padx=20, pady=(20,5), anchor="w")
+
+    # Campo de texto
+    entry = ThemedEntry(dlg, width=300)
+    entry.pack(padx=20, pady=(0,20))
+
+    # Frame de botones
+    btn_frame = ThemedFrame(dlg)
+    btn_frame.pack(pady=(0,20))
+
+    result = {"url": None}
+    def on_ok():
+        result["url"] = entry.get().strip() or None
+        dlg.destroy()
+    def on_cancel():
+        dlg.destroy()
+
+    # Botones
+    btn_guardar = ThemedButton(btn_frame, text="Guardar", width=120, command=on_ok)
+    btn_cancel  = ThemedButton(btn_frame, text="Cancelar", width=120, command=on_cancel)
+    btn_guardar.grid(row=0, column=0, padx=10)
+    btn_cancel .grid(row=0, column=1, padx=10)
+
+    center_window(dlg)
+    dlg.grab_set()
+    dlg.wait_window()
+    return result["url"]
+
+def ask_supabase_key():
+    dlg = styled_toplevel("Configurar Supabase Key")
+
+    ThemedLabel(dlg, text="API Key Supabase:")\
+        .pack(padx=20, pady=(20,5), anchor="w")
+
+    entry = ThemedEntry(dlg, width=300, show="*")
+    entry.pack(padx=20, pady=(0,20))
+
+    btn_frame = ThemedFrame(dlg)
+    btn_frame.pack(pady=(0,20))
+
+    result = {"key": None}
+    def on_ok():
+        result["key"] = entry.get().strip() or None
+        dlg.destroy()
+    def on_cancel():
+        dlg.destroy()
+
+    btn_guardar = ThemedButton(btn_frame, text="Guardar", width=120, command=on_ok)
+    btn_cancel  = ThemedButton(btn_frame, text="Cancelar", width=120, command=on_cancel)
+    btn_guardar.grid(row=0, column=0, padx=10)
+    btn_cancel .grid(row=0, column=1, padx=10)
+
+    center_window(dlg)
+    dlg.grab_set()
+    dlg.wait_window()
+    return result["key"]
+
+
 ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
 if "--dev" in sys.argv:
     ENVIRONMENT = "dev"
@@ -74,17 +211,16 @@ if ENVIRONMENT == "dev":
 
 else:
     print("🚀 Ambiente de Producción Detectado (AppData cifrado)")
-    CONFIG_DIR = Path(os.getenv("APPDATA", os.path.expanduser("~"))) / "VipePOS"
+    CONFIG_DIR  = Path(os.getenv("APPDATA", os.path.expanduser("~"))) / "VipePOS"
     CONFIG_FILE = CONFIG_DIR / "credentials.dat"
-
+    print(f"🔑 Cargando credenciales de {CONFIG_FILE}")
+    print(f"🔑 Cargando credenciales de {CONFIG_DIR}")
     SUPABASE_URL, SUPABASE_KEY = load_credentials()
 
     if not SUPABASE_URL or not SUPABASE_KEY:
-        dialog = ctk.CTkInputDialog(text="Ingresa tu URL Supabase:", title="Configuración inicial")
-        SUPABASE_URL = dialog.get_input().strip() or None
-
-        key_dialog = ctk.CTkInputDialog(text="Ingresa tu API Key Supabase:", title="Configuración inicial")
-        SUPABASE_KEY = key_dialog.get_input().strip() or None
+        # — reemplazamos CTkInputDialog por nuestras funciones —
+        SUPABASE_URL = ask_supabase_url()
+        SUPABASE_KEY = ask_supabase_key()
 
         if not SUPABASE_URL or not SUPABASE_KEY:
             raise RuntimeError("Debes ingresar ambas credenciales para continuar.")
@@ -202,88 +338,191 @@ def detect_by_interface_class():
                     result.append(dev)
     return result
 
+def create_card(dlg):
+    """Crea un frame con padding y bordes para usar como card."""
+    card = ThemedFrame(
+        dlg,
+        corner_radius=12,
+        border_width=2
+    )
+    card.pack(padx=20, pady=20, fill="both", expand=True)
+    return card
+
 def create_network_config_dialog(printer_type):
-    """
-    Muestra un diálogo CTk con dos campos (IP y puerto), redimensiona
-    al tamaño mínimo necesario y lo centra. Devuelve True si guardó.
-    """
-    global root
+    config   = printer_manager.get_config(printer_type)
+    ip_def   = config["details"].get("ip",   "192.168.1.100")
+    port_def = config["details"].get("port", 9100)
+    result   = {"ok": False}
+    dlg = styled_toplevel(f"Configurar impresora - {printer_type}")
 
-    # 1) Valores por defecto
-    config       = printer_manager.get_config(printer_type)
-    ip_default   = config["details"].get("ip",   "192.168.1.100")
-    port_default = config["details"].get("port", 9100)
+    card = ThemedFrame(
+        dlg,
+        corner_radius=12,
+        border_width=2
+    )
+    card.pack(padx=20, pady=20, fill="both", expand=True)
 
-    result = {"ok": False}
+    # Grid interno
+    card.grid_columnconfigure(0, weight=0, pad=10)
+    card.grid_columnconfigure(1, weight=1, pad=10)
 
-    # 2) Crear Toplevel
-    dialog = ctk.CTkToplevel(root)
-    dialog.title(f"Configurar impresora de red – {printer_type}")
-    dialog.resizable(False, False)
+    # IP
+    ThemedLabel(card, text="IP de la impresora:")\
+        .grid(row=0, column=0, sticky="w", pady=(0,10))
+    ip_entry = ThemedEntry(card, width=200)
+    ip_entry.insert(0, ip_def)
+    ip_entry.grid(row=0, column=1, sticky="ew", pady=(0,10))
 
-    # 3) Configurar columnas para que la segunda “expanda”
-    dialog.grid_columnconfigure(0, weight=0, pad=10)
-    dialog.grid_columnconfigure(1, weight=1, pad=10)
+    # Puerto
+    ThemedLabel(card, text="Puerto de la impresora:")\
+        .grid(row=1, column=0, sticky="w", pady=(0,20))
+    port_entry = ThemedEntry(card, width=200)
+    port_entry.insert(0, str(port_def))
+    port_entry.grid(row=1, column=1, sticky="ew", pady=(0,20))
 
-    # 4) Widgets
-    ctk.CTkLabel(dialog, text="IP de la impresora:")\
-        .grid(row=0, column=0, sticky="w", pady=(10,2))
-    ip_entry = ctk.CTkEntry(dialog)
-    ip_entry.insert(0, ip_default)
-    ip_entry.grid(row=0, column=1, sticky="ew", pady=(10,2))
+    # Botones
+    btn_frame = ThemedFrame(card)
+    btn_frame.grid(row=2, column=0, columnspan=2, pady=(0,10))
+    btn_frame.grid_columnconfigure((0,1), weight=1, uniform="a")
 
-    ctk.CTkLabel(dialog, text="Puerto de la impresora:")\
-        .grid(row=1, column=0, sticky="w", pady=2)
-    port_entry = ctk.CTkEntry(dialog)
-    port_entry.insert(0, str(port_default))
-    port_entry.grid(row=1, column=1, sticky="ew", pady=2)
+    btn_guardar = ThemedButton(
+        btn_frame,
+        text="Guardar",
+        width=120,
+        command=lambda: _on_ok(ip_entry, port_entry, result, dlg, printer_type)
+    )
+    btn_cancel = ThemedButton(
+        btn_frame,
+        text="Cancelar",
+        width=120,
+        command=dlg.destroy
+    )
+    btn_guardar.grid(row=0, column=0, padx=5)
+    btn_cancel .grid(row=0, column=1, padx=5)
 
-    # 5) Botones
-    def on_ok():
-        ip_val   = ip_entry.get().strip()
-        port_val = port_entry.get().strip()
-        if not ip_val:
-            print("Debe ingresar una IP válida.")
-            return
-        try:
-            port_int = int(port_val)
-        except ValueError:
-            print("El puerto debe ser un número entero.")
-            return
-        success = printer_manager.set_network_printer(printer_type, ip_val, port_int)
-        result["ok"] = success
-        dialog.destroy()
-
-    def on_cancel():
-        dialog.destroy()
-
-    btn_frame = ctk.CTkFrame(dialog)
-    btn_frame.grid(row=2, column=0, columnspan=2, pady=10)
-    ctk.CTkButton(btn_frame, text="Guardar",  command=on_ok)\
-        .grid(row=0, column=0, padx=5)
-    ctk.CTkButton(btn_frame, text="Cancelar", command=on_cancel)\
-        .grid(row=0, column=1, padx=5)
-
-    # 6) Forzar cálculo de “request size” y aplicar geometría
-    dialog.update_idletasks()
-    req_w = dialog.winfo_reqwidth()
-    req_h = dialog.winfo_reqheight()
-
-    # Centrar
-    screen_w = dialog.winfo_screenwidth()
-    screen_h = dialog.winfo_screenheight()
-    x = (screen_w - req_w) // 2
-    y = (screen_h - req_h) // 2
-
-    dialog.geometry(f"{req_w}x{req_h}+{x}+{y}")
-
-    # 7) Modal y espera
-    dialog.grab_set()
-    dialog.wait_window()
+    center_window(dlg)
+    dlg.grab_set()
+    dlg.wait_window()
 
     return result["ok"]
+    
+def show_usb_config_dialog(printer_type):
+    """
+    Muestra un diálogo estilizado para seleccionar impresora USB.
+    Si no hay impresoras, avisa y no abre la ventana.
+    """
+    printers = detect_usb_printers()
 
-def create_usb_printer_menu(printer_type):
+    # Si no hay impresoras, informamos y salimos
+    if not printers and ENVIRONMENT == "dev":
+        printers = [
+            { 'vendor_id': 0x1234, 'product_id': 0x0001, 'name': 'USB de Prueba 1' },  # PRUEBA
+            { 'vendor_id': 0x1234, 'product_id': 0x0002, 'name': 'USB de Prueba 2' },  # PRUEBA
+            { 'vendor_id': 0x1234, 'product_id': 0x0003, 'name': 'USB de Prueba 3' },   # PRUEBA
+            { 'vendor_id': 0x1234, 'product_id': 0x0003, 'name': 'USB de Prueba 3' },   # PRUEBA
+            { 'vendor_id': 0x1234, 'product_id': 0x0003, 'name': 'USB de Prueba 3' },   # PRUEBA
+            { 'vendor_id': 0x1234, 'product_id': 0x0003, 'name': 'USB de Prueba 3' },   # PRUEBA
+            { 'vendor_id': 0x1234, 'product_id': 0x0003, 'name': 'USB de Prueba 3' },   # PRUEBA
+            { 'vendor_id': 0x1234, 'product_id': 0x0003, 'name': 'USB de Prueba 3' }   # PRUEBA
+        ]
+    else:   
+        messagebox.showinfo(
+            "Sin impresoras USB",
+            "No se encontraron impresoras USB conectadas."
+            )
+        return False
+
+
+    # --- Si hay impresoras, construimos el diálogo ---
+    dlg = styled_toplevel(f"Seleccionar impresora USB – {printer_type}")
+    dlg.geometry("400x300")
+    dlg.resizable(False, False)
+
+    container = ThemedFrame(dlg, corner_radius=12, border_width=2)
+    container.pack(fill="both", expand=True, padx=15, pady=15)
+
+    ThemedLabel(container, text="Elige una impresora USB:")\
+        .pack(anchor="w", pady=(0,10))
+
+    scroll = ctk.CTkScrollableFrame(
+        container,
+        width=360,
+        height=180,
+        fg_color=BG_COLOR,
+        border_color=CARD_BORDER,
+        border_width=1,
+        corner_radius=8
+    )
+    scroll.pack(fill="both", expand=False, pady=(0,10))
+
+    for p in printers:
+        name = p["name"]
+        vid  = p["vendor_id"]
+        pid  = p["product_id"]
+        display = f"{name}  ({vid:04x}:{pid:04x})"
+
+        def on_select(v=vid, prod=pid, disp=display):
+            ok = printer_manager.set_usb_printer(printer_type, v, prod)
+            if ok:
+                messagebox.showinfo("Listo", f"Impresora USB seleccionada:\n{disp}")
+                dlg.destroy()
+            else:
+                messagebox.showerror("Error", "No se pudo configurar la impresora USB.")
+
+        ThemedButton(
+            scroll,
+            text=display,
+            width=340,
+            anchor="w",
+            command=on_select
+        ).pack(pady=5, padx=5)
+
+    # Botón cancelar
+    footer = ThemedFrame(container)
+    footer.pack(fill="x", pady=(10,0))
+    ThemedButton(footer, text="Cancelar", width=120, command=dlg.destroy)\
+        .pack(side="right", padx=(0,10))
+
+    center_window(dlg)
+    dlg.grab_set()
+    dlg.wait_window()
+    return True
+
+def _on_ok(ip_entry, port_entry, result, dlg, printer_type):
+    ip_val   = ip_entry.get().strip()
+    port_val = port_entry.get().strip()
+
+    # 1) Validar IP
+    ip_pattern = r"^\d{1,3}(\.\d{1,3}){3}$"
+    if not re.match(ip_pattern, ip_val):
+        messagebox.showerror("IP inválida", "La dirección IP no tiene un formato correcto.")
+        return
+
+    # 2) Validar puerto
+    try:
+        port_int = int(port_val)
+        if not (1 <= port_int <= 65535):
+            raise ValueError()
+    except ValueError:
+        messagebox.showerror("Puerto inválido", "El puerto debe ser un número entre 1 y 65535.")
+        return
+
+    # 3) Intentar guardar en el manager
+    success = printer_manager.set_network_printer(printer_type, ip_val, port_int)
+    if not success:
+        messagebox.showerror("Error", "No se pudo configurar la impresora de red.")
+        return
+
+    # 4) Mensaje de éxito
+    messagebox.showinfo(
+        "Configuración guardada",
+        f"IP guardada: {ip_val}\nPuerto guardado: {port_int}"
+    )
+
+    # Marcar OK y cerrar diálogo
+    result["ok"] = True
+    dlg.destroy()
+
     """Crea un submenú para seleccionar impresora USB"""
     detect_usb_printers()
 
@@ -388,7 +627,6 @@ def handle_factura(payload):
         text = generate_invoice_pos(invoice_number, invoice, display_items)
         imprimir_pos('facturas', text, barcode_data=123456789)
 
-
 def obtener_texto_pago(payment_method):
     """Obtiene el texto de pago según el método de pago"""
     if payment_method == "cash":
@@ -401,8 +639,6 @@ def obtener_texto_pago(payment_method):
         return "Bancolombia App"
     else:
         return "N/A"
-
-
 
 def generate_invoice_pos(invoice_number, invoice, display_items):
     """Generar factura POS"""
@@ -554,12 +790,12 @@ def iniciar_icono_tray():
     def create_menu():
         # Opciones de impresoras
         comanda_submenu = pystray.Menu(
-            pystray.MenuItem("USB", lambda _ : create_usb_printer_menu('comandas')),
+            pystray.MenuItem("USB", lambda _ : show_usb_config_dialog('comandas')),
             pystray.MenuItem("Red", lambda _ : show_network_config('comandas'))
         )
 
         factura_submenu = pystray.Menu(
-            pystray.MenuItem("USB", lambda _ : create_usb_printer_menu('facturas')),
+            pystray.MenuItem("USB", lambda _ : show_usb_config_dialog('facturas')),
             pystray.MenuItem("Red", lambda _ : show_network_config('facturas'))
         )
 
@@ -604,14 +840,11 @@ def iniciar_icono_tray():
     icon.run()
 
 if __name__ == "__main__":
-    # --- Inicializa root oculto de CTk (como ya lo tienes) ---
-    # ctk.set_appearance_mode("System")
-    # root = ctk.CTk()
-    # root.withdraw()
-
     # Iniciar impresoras por defecto
     init_default_printers()
-
+    # — Establecemos el AppUserModelID para que Windows muestre nuestro ícono en la barra de tareas —
+    myappid = 'com.miempresa.vipepos'  
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     # Iniciar suscripciones de Supabase en un hilo
     loop = asyncio.new_event_loop()
     threading.Thread(
