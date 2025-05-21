@@ -150,7 +150,7 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
         total_cost: Number(formData.total_cost || 0),
         unit_cost: unitCost || 0,
         transaction_type: formData.transaction_type as "entrada" | "salida" | "ajuste",
-        payment_status: formData.payment_status as "pagado" | "pendiente",
+        payment_status: formData.payment_status as "pagado" | "pendiente" | "ajustado" | "eliminado",
         notes: formData.notes,
       })
 
@@ -280,8 +280,7 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
             type="number"
             value={formData.quantity}
             onChange={handleChange}
-            min="0"
-            step="0.01"
+            step="1"
             required
           />
         </div>
@@ -295,8 +294,7 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
               type="number"
               value={formData.total_cost}
               onChange={handleChange}
-              min="0"
-              step="0.01"
+              step="1"
               required={formData.transaction_type !== "salida"}
             />
           </div>

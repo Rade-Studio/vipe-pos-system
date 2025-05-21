@@ -1108,10 +1108,13 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     setForceSubmit(true)
     setShowStockDetailWarning(false)
 
-    setTimeout(() => {
-      handleSendToKitchen()
-    }, 100)
+    setTimeout(handleSendToKitchen, 100)
   }, [handleSendToKitchen])
+
+  const handleCancelForceSendToKitchen = useCallback(() => {
+    setForceSubmit(false)
+    setShowStockDetailWarning(false)
+  }, [])
 
   // Verificar acceso a mesa
   const checkTableAccess = useCallback((tableId: string) => {
@@ -1370,7 +1373,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
             </p>
           </div>
           <DialogFooter className="flex justify-between sm:justify-between">
-            <Button variant="outline" onClick={() => setShowStockDetailWarning(false)}>
+            <Button variant="outline" onClick={() => handleCancelForceSendToKitchen()}>
               Cancelar
             </Button>
             <Button variant="destructive" onClick={handleForceSendToKitchen}>

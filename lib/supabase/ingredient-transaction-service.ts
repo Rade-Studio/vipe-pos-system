@@ -7,7 +7,7 @@ interface IngredientTransaction {
   total_cost: number
   unit_cost: number
   transaction_type: "entrada" | "salida" | "ajuste"
-  payment_status: "pagado" | "pendiente"
+  payment_status: "pagado" | "pendiente" | "ajustado" | "eliminado"
   notes?: string
   created_at?: string
   updated_at?: string
