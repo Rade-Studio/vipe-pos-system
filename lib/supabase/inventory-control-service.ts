@@ -339,9 +339,9 @@ const inventoryControlService = {
 
       // Verificar primero si hay suficiente stock
       const stockCheck = await this.checkOrderStock(items)
-      if (!stockCheck.hasStock) {
-        throw new Error("No hay suficiente stock para completar esta orden")
-      }
+      // if (!stockCheck.hasStock) {
+      //   throw new Error("No hay suficiente stock para completar esta orden")
+      // }
 
       // Filtrar solo los items con IDs válidos
       const validItems = items.filter((item) => {
@@ -440,24 +440,26 @@ const inventoryControlService = {
               continue
             }
 
-            // Registrar la transacción de ingrediente
-            const { error: transactionError } = await supabase.from("ingredient_transactions").insert({
-              ingredient_id: recipeIngredient.ingredient_id,
-              quantity: quantityToReduce,
-              total_cost: quantityToReduce * (ingredient.cost || 0),
-              unit_cost: ingredient.cost || 0,
-              transaction_type: "salida",
-              payment_status: "pagado",
-              notes: `Orden #${orderId} - ${item.name} (${item.quantity}x)`,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
+            // Registrar la transacción de ingrediente si hay suficiente stock
+            if (stockCheck.hasStock) {
+              const {error: transactionError} = await supabase.from("ingredient_transactions").insert({
+                ingredient_id: recipeIngredient.ingredient_id,
+                quantity: quantityToReduce,
+                total_cost: quantityToReduce * (ingredient.cost || 0),
+                unit_cost: ingredient.cost || 0,
+                transaction_type: "salida",
+                payment_status: "pagado",
+                notes: `Orden #${orderId} - ${item.name} (${item.quantity}x)`,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
 
-            if (transactionError) {
-              console.error(
-                `Error al crear transacción de ingrediente ${recipeIngredient.ingredient_id}:`,
-                transactionError,
-              )
+              if (transactionError) {
+                console.error(
+                    `Error al crear transacción de ingrediente ${recipeIngredient.ingredient_id}:`,
+                    transactionError,
+                )
+              }
             }
           } catch (error) {
             console.error(`Error al procesar ingrediente ${recipeIngredient.ingredient_id}:`, error)

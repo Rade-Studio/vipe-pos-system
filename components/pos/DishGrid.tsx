@@ -76,9 +76,9 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
 
   const handleDishClick = (dish: Dish) => {
     // Si el control de inventario está activado y el plato está agotado, no hacer nada
-    if (inventoryControlEnabled && stockStatus.has(dish.id) && !stockStatus.get(dish.id)) {
-      return
-    }
+    // if (inventoryControlEnabled && stockStatus.has(dish.id) && !stockStatus.get(dish.id)) {
+    //   return
+    // }
 
     // Click izquierdo: agregar directamente al carrito
     onAddToCart(dish)
@@ -88,9 +88,9 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
     e.preventDefault() // Prevenir el menú contextual del navegador
 
     // Si el control de inventario está activado y el plato está agotado, no hacer nada
-    if (inventoryControlEnabled && stockStatus.has(dish.id) && !stockStatus.get(dish.id)) {
-      return
-    }
+    // if (inventoryControlEnabled && stockStatus.has(dish.id) && !stockStatus.get(dish.id)) {
+    //   return
+    // }
 
     setSelectedDish(dish)
     setComments("")
@@ -101,9 +101,9 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
     if (!isTouchDevice) return
 
     // Si el control de inventario está activado y el plato está agotado, no hacer nada
-    if (inventoryControlEnabled && stockStatus.has(dish.id) && !stockStatus.get(dish.id)) {
-      return
-    }
+    // if (inventoryControlEnabled && stockStatus.has(dish.id) && !stockStatus.get(dish.id)) {
+    //   return
+    // }
 
     // Iniciar temporizador para detectar pulsación larga
     const timer = setTimeout(() => {
@@ -170,17 +170,15 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {dishes.map((dish) => {
           // Verificar si el plato está agotado
-          const isOutOfStock = inventoryControlEnabled && stockStatus.has(dish.id) && !stockStatus.get(dish.id)
+          const isOutOfStock = inventoryControlEnabled && !stockStatus.get(dish.id)
 
           return (
             <Card
               key={dish.id}
-              className={`overflow-hidden transition-shadow ${
-                isOutOfStock ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:shadow-md"
-              }`}
-              onClick={() => !isOutOfStock && handleDishClick(dish)}
-              onContextMenu={(e) => !isOutOfStock && handleDishRightClick(e, dish)}
-              onTouchStart={() => !isOutOfStock && handleTouchStart(dish)}
+              className={`overflow-hidden transition-shadow cursor-pointer hover:shadow-md`}
+              onClick={() => handleDishClick(dish)}
+              onContextMenu={(e) => handleDishRightClick(e, dish)}
+              onTouchStart={() => handleTouchStart(dish)}
               onTouchEnd={handleTouchEnd}
               onTouchMove={handleTouchMove}
             >

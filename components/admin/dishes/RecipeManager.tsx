@@ -551,7 +551,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
                   onChange={(e) =>
                     setNewIngredient({
                       ...newIngredient,
-                      quantity: Number.parseFloat(e.target.value) || 0,
+                      quantity: Number.parseFloat(e.target.value),
                     })
                   }
                 />
