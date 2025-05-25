@@ -182,3 +182,10 @@ export type PrintableKitchenOrder = {
   waiter: string
   items: CartItem[]
 }
+
+export type CommandPayload = {
+  invoiceNumber: string;
+  items: any[];
+  waiter: string;
+  table: number;
+}
