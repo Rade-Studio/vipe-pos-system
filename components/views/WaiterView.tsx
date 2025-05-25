@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { usePOSStore } from "@/store/use-pos-store"
-import type { Profile, Dish, Table, Order } from "@/types"
+import type { Profile, Dish, Table, Order, CommandPayload } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { MenuSection } from "@/components/pos/MenuSection"
@@ -947,16 +947,16 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
         const orderNumber = `${Math.floor(Math.random() * 9000) + 1000}`
 
-        const kitchenOrder: PrintableKitchenOrder = {
-          orderNumber,
-          date: new Date(),
+        const kitchenOrder: CommandPayload = {
+          invoiceNumber: orderNumber,
           table: table.number,
           waiter: profiles.find((p) => p.id === waiterId)?.name || "Mesero",
           items: cartItems,
         }
 
-        setKitchenOrderData(kitchenOrder)
-        setShowKitchenOrder(true)
+        realtimeService.sendCommand(kitchenOrder)
+        // setKitchenOrderData(kitchenOrder)
+        // setShowKitchenOrder(true)
         clearCart(activeTable)
 
         toast({
@@ -1047,16 +1047,16 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
         const orderNumber = `${Math.floor(Math.random() * 9000) + 1000}`
 
-        const kitchenOrder: PrintableKitchenOrder = {
-          orderNumber,
-          date: new Date(),
+        const kitchenOrder: CommandPayload = {
+          invoiceNumber: orderNumber,
           table: table.number,
           waiter: profiles.find((p) => p.id === waiterId)?.name || "Mesero",
           items: cartItems,
         }
 
-        setKitchenOrderData(kitchenOrder)
-        setShowKitchenOrder(true)
+        realtimeService.sendCommand(kitchenOrder)
+        // setKitchenOrderData(kitchenOrder)
+        // setShowKitchenOrder(true)
         clearCart(activeTable)
 
         toast({

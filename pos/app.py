@@ -24,6 +24,7 @@ from realtime import AsyncRealtimeClient  # Asegúrate de que este import funcio
 ICON_PATH = str(Path(__file__).parent / "vipe-pos.ico")
 APPDATA = os.getenv("APPDATA", os.path.expanduser("~"))
 PRINTERS_CONFIG_DIR  = Path(APPDATA) / "VipePOS"
+print(PRINTERS_CONFIG_DIR)
 PRINTERS_CONFIG_FILE = PRINTERS_CONFIG_DIR / "printers_config.json"
 
 # Tema de CustomTkinter
@@ -439,8 +440,8 @@ async def iniciar_suscripciones():
     while True:
         try:
             socket = AsyncRealtimeClient(REALTIME_URL, SUPABASE_KEY)
-            ch1 = socket.channel("room_comandas"); ch1.on_broadcast("new_command", handle_comanda)
-            ch2 = socket.channel("room_facturas"); ch2.on_broadcast("new_invoice", handle_factura)
+            ch1 = socket.channel("room_commands"); ch1.on_broadcast("new_command", handle_comanda)
+            ch2 = socket.channel("room_bills"); ch2.on_broadcast("new_invoice", handle_factura)
             await ch1.subscribe(lambda s,e: print("✅ Comandas ok") if s=="SUBSCRIBED" else None)
             await ch2.subscribe(lambda s,e: print("✅ Facturas ok") if s=="SUBSCRIBED" else None)
             while True:
@@ -461,10 +462,10 @@ def imprimir_html(pt, html_str):
         except Exception as e:
             print("Error imprimir HTML:", e)
 
-def imprimir_pos(pt, text, barcode=None, img_path=None):
-    pr = printer_manager.get_printer(pt)
+def imprimir_pos(printer_type, text, barcode=None, img_path=None):
+    pr = printer_manager.get_printer(printer_type)
     if not pr:
-        return print(f"Sin impresora {pt}")
+        return print(f"Sin impresora {printer_type}")
     try:
         pr._raw(b'\x1b\x74\x10')  # CP1252
         if img_path:
@@ -478,9 +479,17 @@ def imprimir_pos(pt, text, barcode=None, img_path=None):
     except Exception as e:
         print("Error imprimir POS:", e)
 
+# invoiceNumber: string;
+# items: any[];
+# waiter: string;
 def handle_comanda(payload):
-    html = payload.get("payload",{}).get("html")
-    if html: imprimir_html('comandas', html)
+    data = payload.get("payload", {})
+    print("✅ Comanda recibida:", data)
+    invoice_number, items, waiter, table = data.get("invoiceNumber"), data.get("items"), data.get("waiter"), data.get("table")
+    if items and waiter:
+        txt = generate_comanda_text(invoice_number, table, waiter, items)
+        imprimir_pos('comandas', txt)
+
 
 def handle_factura(payload):
     data = payload.get("payload",{})
@@ -488,6 +497,37 @@ def handle_factura(payload):
     if num:
         txt = generate_invoice_pos(num, inv, items)
         imprimir_pos('facturas', txt, barcode=123456789)
+
+
+def generate_comanda_text(order_number: str, table: str, waiter: str, items: list[dict], date = None) -> str:
+    """Genera el texto a imprimir para una comanda"""
+    lines = []
+    center = lambda text: text.center(40)
+    if not date:
+        now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S").capitalize()
+    else:
+        now = datetime.strptime(date, "%Y-%m-%dT%H:%M:%S").strftime("%d de %B de %Y").capitalize()
+
+    # Encabezado
+    lines.append(center(f"COMANDA {order_number}"))
+    lines.append("")
+    lines.append(f"Fecha:      {now}")
+    lines.append(f"Mesa:       {table}")
+    lines.append(f"Mesero:     {waiter}")
+    lines.append("-" * 40)
+
+    # Productos
+    for item in items:
+        name = item.get("name", "").upper()
+        qty = item.get("quantity", 1)
+        comments = item.get("comments", "").strip()
+
+        lines.append(f"{name:<30} x{qty}")
+        if comments:
+            lines.append(f"{' ' * 2}{comments.capitalize()}")
+
+    lines.append("\n\n\n")  # Espacio para corte
+    return "\n".join(lines)
 
 def generate_invoice_pos(invoice_number, invoice, display_items):
     """Generar factura POS"""

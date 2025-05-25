@@ -2,7 +2,7 @@ import { supabase } from "./client"
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 import { orderService } from "./service"
 import {toast} from "@/components/ui/use-toast";
-import {CartItem, PrintableInvoice} from "@/types";
+import {CartItem, CommandPayload, PrintableInvoice} from "@/types";
 
 // Tipos para las funciones de callback
 type BillPayload = {
@@ -10,11 +10,14 @@ type BillPayload = {
   invoice: any;
   displayItems: any[];
 };
+type GenericPayload = Record<string, any>;
+type PosEventCallback<T extends GenericPayload> = (payload: T) => void;
 type TableCallback = (payload: RealtimePostgresChangesPayload<any>) => void
 type OrderCallback = (payload: RealtimePostgresChangesPayload<any>, isNewOrder?: boolean) => void
 type OrderItemCallback = (payload: RealtimePostgresChangesPayload<any>, isNewItem?: boolean) => void
 type ConnectionStatusCallback = (status: boolean) => void
-type PosEventCallback = (payload: BillPayload) => void
+
+const CHANNEL_KEY_POS = "room_pos"
 
 // Servicio para manejar suscripciones en tiempo real
 export const realtimeService = {
@@ -54,15 +57,10 @@ export const realtimeService = {
     }
   },
 
-  subscribeToPosEvents: (callback: PosEventCallback) => {
-    const channelKey = "room_facturas"
+  subscribeToPosEvents: <T extends GenericPayload>(channelKey: string, eventName: string, callback: PosEventCallback<T>) => {
 
     if (!realtimeService.channels[channelKey]) {
       const channel = supabase.channel(channelKey)
-
-      channel.on("broadcast", { event: "new_invoice"}, ({payload}) => {
-        callback(payload as BillPayload)
-      })
 
       channel.subscribe(() => {
         realtimeService.isConnected = true
@@ -72,13 +70,18 @@ export const realtimeService = {
 
     }
 
+    const channel = realtimeService.channels[channelKey]
+    channel.on("broadcast", { event: eventName}, ({payload}) => {
+      callback(payload as T)
+    })
+
   },
 
   // enviar factura a un canal de realtime
   sendFactura: (invoiceNumber: string, invoice: PrintableInvoice, displayItems: CartItem[]) => {
     // enviar factura por broadcast
-    const channelKey = "room_facturas"
-    realtimeService.subscribeToPosEvents(() => {})
+    const channelKey = "room_bills"
+    realtimeService.subscribeToPosEvents(channelKey, "new_invoice", () => {})
     const payload = {
       invoiceNumber,
       invoice,
@@ -96,8 +99,26 @@ export const realtimeService = {
         variant: "destructive",
       })
     })
+  },
 
+  sendCommand: (command: CommandPayload) => {
+      // enviar factura por broadcast
+      const channelKey = "room_commands"
+      realtimeService.subscribeToPosEvents(channelKey, "new_command", () => {})
 
+      realtimeService.channels[channelKey].send({
+        type: "broadcast",
+        event: "new_command",
+        payload: {
+          ...command,
+        },
+      }).catch((error) => {
+        toast({
+          title: "Error",
+          description: "No se pudo enviar la factura a través de la red realtime. Intente nuevamente.",
+          variant: "destructive",
+        })
+      })
   },
 
   // Suscribirse a cambios en las órdenes
