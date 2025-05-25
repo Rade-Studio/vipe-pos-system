@@ -37,6 +37,52 @@ BUTTON_TEXT  = "#FFFFFF"
 LABEL_TEXT   = "#FFFFFF"
 
 # ------------------------
+# WIDGETS ESTILIZADOS
+# ------------------------
+
+ctk.set_appearance_mode("System")
+root = ctk.CTk()
+root.iconbitmap(ICON_PATH)
+root.withdraw()
+
+def ThemedLabel(parent, **kwargs):
+    return ctk.CTkLabel(parent, text_color=LABEL_TEXT, **kwargs)
+
+def ThemedEntry(parent, **kwargs):
+    return ctk.CTkEntry(parent,
+                        fg_color=ENTRY_BG,
+                        border_color=ENTRY_BORDER,
+                        text_color=LABEL_TEXT,
+                        **kwargs)
+
+def ThemedButton(parent, **kwargs):
+    return ctk.CTkButton(parent,
+                         fg_color=BUTTON_BG,
+                         hover_color=BUTTON_HOVER,
+                         text_color=BUTTON_TEXT,
+                         **kwargs)
+
+def ThemedFrame(parent, **kwargs):
+    return ctk.CTkFrame(parent,
+                        fg_color=BG_COLOR,
+                        border_color=CARD_BORDER,
+                        **kwargs)
+
+def center_window(win):
+    win.update_idletasks()
+    w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+    sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+    win.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+
+def styled_toplevel(title: str):
+    dlg = ctk.CTkToplevel(root)
+    dlg.title(title)
+    dlg.iconbitmap(ICON_PATH)
+    dlg.configure(fg_color=BG_COLOR)
+    return dlg
+
+
+# ------------------------
 # CONFIG / CREDENCIALES
 # ------------------------
 CONFIG_DIR  = None
@@ -150,45 +196,6 @@ def save_printers_config(cfg: dict):
         print("❌ Error escribiendo printers_config.json:", e)
 
 # ------------------------
-# WIDGETS ESTILIZADOS
-# ------------------------
-def ThemedLabel(parent, **kwargs):
-    return ctk.CTkLabel(parent, text_color=LABEL_TEXT, **kwargs)
-
-def ThemedEntry(parent, **kwargs):
-    return ctk.CTkEntry(parent,
-                       fg_color=ENTRY_BG,
-                       border_color=ENTRY_BORDER,
-                       text_color=LABEL_TEXT,
-                       **kwargs)
-
-def ThemedButton(parent, **kwargs):
-    return ctk.CTkButton(parent,
-                        fg_color=BUTTON_BG,
-                        hover_color=BUTTON_HOVER,
-                        text_color=BUTTON_TEXT,
-                        **kwargs)
-
-def ThemedFrame(parent, **kwargs):
-    return ctk.CTkFrame(parent,
-                       fg_color=BG_COLOR,
-                       border_color=CARD_BORDER,
-                       **kwargs)
-
-def center_window(win):
-    win.update_idletasks()
-    w, h = win.winfo_reqwidth(), win.winfo_reqheight()
-    sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-    win.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
-
-def styled_toplevel(title: str):
-    dlg = ctk.CTkToplevel(root)
-    dlg.title(title)
-    dlg.iconbitmap(ICON_PATH)
-    dlg.configure(fg_color=BG_COLOR)
-    return dlg
-
-# ------------------------
 # GESTOR DE IMPRESORAS
 # ------------------------
 class PrinterManager:
@@ -200,72 +207,68 @@ class PrinterManager:
     def get_printer(self, pt):
         return self.current_printers.get(pt)
 
-    def set_usb_printer(self, pt, vendor_id, product_id):
+    def set_usb_printer(self, printer_type, vendor_id, product_id, is_initialized=False):
         try:
             # 1) Configurar la impresora en memoria
-            self.current_printers[pt] = Usb(vendor_id, product_id)
+            self.current_printers[printer_type] = Usb(vendor_id, product_id)
 
             # 2) Cargar JSON existente y actualizar solo esta clave
             cfg = load_printers_config()
-            cfg[pt] = {
+            cfg[printer_type] = {
                 'type': 'usb',
                 'vendor_id': vendor_id,
                 'product_id': product_id
             }
             save_printers_config(cfg)
             # 3) Mostrar mensaje de éxito
-            messagebox.showinfo("Listo", f"USB {vendor_id:04x}: {product_id:04x} configurada")
+            if not is_initialized:
+                messagebox.showinfo("Listo", f"USB {vendor_id:04x}: {product_id:04x} configurada")
+
             return True
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo configurar USB: {e}")
+            messagebox.showerror("Error", "No se pudo configurar USB")
             return False
 
-    def set_network_printer(self, pt, ip, port):
+    def set_network_printer(self, printer_type, ip, port, is_initialized=False):
         try:
-            self.current_printers[pt] = Network(ip, port=port)
+            self.current_printers[printer_type] = Network(ip, port=port)
 
             cfg = load_printers_config()
-            cfg[pt] = {
+            cfg[printer_type] = {
                 'type': 'network',
                 'ip': ip,
                 'port': port
             }
             save_printers_config(cfg)
 
-            messagebox.showinfo("Listo", f"Red {ip}: {port} configurada")
+            if not is_initialized:
+                messagebox.showinfo("Listo", f"Red {ip}: {port} configurada")
             return True
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo configurar Red: {e}")
             return False
 
-    def get_config(self, pt):
+    def get_config(self, printer_type):
         # Para mostrar en los diálogos
-        return load_printers_config().get(pt, {})
+        return load_printers_config().get(printer_type, {})
 
 printer_manager = PrinterManager()
 
-# ------------------------
-# INICIO DE LA APP OCULTA
-# ------------------------
-ctk.set_appearance_mode("System")
-root = ctk.CTk()
-root.iconbitmap(ICON_PATH)
-root.withdraw()
 
 # Cargamos impresoras guardadas
 _saved = load_printers_config()
-for pt in ("comandas","facturas"):
-    cfg = _saved.get(pt)
+for printer_type in ("comandas", "facturas"):
+    cfg = _saved.get(printer_type)
     if cfg:
         if cfg["type"] == "usb":
-            printer_manager.set_usb_printer(pt, cfg["vendor_id"], cfg["product_id"])
+            printer_manager.set_usb_printer(printer_type, cfg["vendor_id"], cfg["product_id"], is_initialized=True)
         else:
-            printer_manager.set_network_printer(pt, cfg["ip"], cfg["port"])
+            printer_manager.set_network_printer(printer_type, cfg["ip"], cfg["port"], is_initialized=True)
 
 # Si no existía config, cargamos valores por defecto
 if not _saved:
-    printer_manager.set_usb_printer('comandas', 0x04b8, 0x0202)
-    printer_manager.set_network_printer('facturas', '192.168.1.2', 5000)
+    printer_manager.set_usb_printer('comandas', 0x04b8, 0x0202, is_initialized=True)
+    printer_manager.set_network_printer('facturas', '192.168.1.2', 5000, is_initialized=True)
 
 # ------------------------
 # DETECCIÓN USB
@@ -282,7 +285,7 @@ def detect_usb_printers():
 
     try:
         # Si tenemos backend, lo pasamos; si no, usb.core.find lo ignora
-        find_kwargs = {'find_all': True, 'bDeviceClass': 7}
+        find_kwargs = {'find_all': True}
         if backend:
             find_kwargs['backend'] = backend
 
@@ -310,11 +313,9 @@ def detect_usb_printers():
 # DIÁLOGOS
 # ------------------------
 def show_usb_config_dialog(printer_type):
-    # 1) En DEV, siempre muestro ejemplos:
-    printers = detect_usb_printers()
-    if not printers:
+    if ENVIRONMENT == "dev":
         printers = [
-            {'vendor_id': 0x1234, 'product_id': 0x0001, 'name': 'USB de Prueba 1'},
+            {'vendor_id': 0x1532, 'product_id': 0x0552, 'name': 'USB de Prueba 1'},
             {'vendor_id': 0x1234, 'product_id': 0x0002, 'name': 'USB de Prueba 2'},
             {'vendor_id': 0x1234, 'product_id': 0x0003, 'name': 'USB de Prueba 3'},
         ]
@@ -345,9 +346,9 @@ def show_usb_config_dialog(printer_type):
 
     for p in printers:
         disp = f"{p['name']}  ({p['vendor_id']:04x}:{p['product_id']:04x})"
-        def select_cb(v=p['vendor_id'], pr=p['product_id']):
+        def select_cb(vendor_id=p['vendor_id'], product_id=p['product_id']):
             # 4) Al guardar, solo actualizamos esa impresora
-            if printer_manager.set_usb_printer(printer_type, v, pr):
+            if printer_manager.set_usb_printer(printer_type, vendor_id, product_id):
                 dlg.destroy()
         ThemedButton(
             scroll,
@@ -488,16 +489,91 @@ def handle_factura(payload):
         txt = generate_invoice_pos(num, inv, items)
         imprimir_pos('facturas', txt, barcode=123456789)
 
-def generate_invoice_pos(num, inv, items) -> str:
+def generate_invoice_pos(invoice_number, invoice, display_items):
+    """Generar factura POS"""
     lines = []
-    c = lambda t: t.center(40)
-    biz, bill = inv.get('businessInfo',{}), inv.get('bill',{})
-    lines += [c(biz.get('name','').upper()), c(f"NIT {biz.get('nit','')}"), '-'*40]
-    for it in items:
-        q,p = it['quantity'], it['price']*it['quantity']
-        lines.append(f"{q:<4} {it['name']:<20} {int(p):>10}")
-    lines += ['-'*40, f"TOTAL: {int(bill.get('total',0))}", '\n\n\n']
+    center = lambda text: text.center(40)
+
+    business = invoice.get('businessInfo', {})
+    bill = invoice.get('bill', {})
+
+    # Encabezado
+    lines.append(center(""))
+    lines.append(center(business.get('name', 'RESTAURANTE').upper()))
+    lines.append(center(f"NIT: {business.get('nit', 'N/A')}"))
+    lines.append(center(business.get('address', 'N/A')))
+    lines.append(center(f"Tel: {business.get('phone', 'N/A')}"))
+    lines.append('-' * 40)
+
+    # Información general
+    lines.append(f"FACTURA: {invoice.get('invoiceNumber', invoice_number)}")
+    lines.append(f"FECHA: {format_date(invoice.get('date', ''))}")
+    lines.append(f"MESA: {invoice.get('table', 'N/A')}")
+    lines.append(f"MESERO: {invoice.get('waiter', 'N/A')}")
+    lines.append('-' * 40)
+
+    # Detalle de productos
+    lines.append("CANT DESCRIPCION            IMPORTE")
+    for item in display_items:
+        name = item.get('name', '')
+        quantity = str(item.get('quantity', 1))
+        price = format_currency(item.get('price', 0) * item.get('quantity', 1))
+        lines.append(f"{quantity:<4} {name:<20.20} {price:>10}")
+
+    lines.append('-' * 40)
+
+    # Totales
+    lines.append(f"SUBTOTAL: {format_currency(bill.get('subtotal', 0))}")
+    lines.append(f"IVA: {format_currency(bill.get('tax', 0))}")
+    if bill.get('totalDiscounts', 0) > 0:
+        lines.append(f"DESCUENTOS: -{format_currency(bill.get('totalDiscounts', 0))}")
+    lines.append(f"TOTAL SIN PROPINA: {format_currency(bill.get('subtotal', 0) + bill.get('tax', 0))}")
+    lines.append(f"PROPINA VOLUNTARIA ({bill.get('tipPercentage', 0)}%): {format_currency(bill.get('tip', 0))}")
+    lines.append(f"TOTAL A PAGAR: {format_currency(bill.get('total', 0))}")
+    lines.append('-' * 40)
+
+    # Forma de pago
+    # debo cambiar metodo de pago, para traducirlo a español con un switch
+    payment_method_text = obtener_texto_pago(invoice.get('paymentMethod', 'N/A'))
+
+    payment_method = invoice.get('paymentMethod', 'N/A').capitalize()
+    lines.append(f"FORMA DE PAGO: {payment_method_text}")
+    if invoice.get('cashReceived', 0) > 0:
+        lines.append(f"RECIBIDO: {format_currency(invoice.get('cashReceived', 0))}")
+        lines.append(f"CAMBIO: {format_currency(invoice.get('cashChange', 0))}")
+    lines.append('-' * 40)
+
+    # Pie de página
+    lines.append(center("¡GRACIAS POR SU COMPRA!"))
+    lines.append(center("VUELVA PRONTO"))
+    lines.append('\n\n\n')
+
     return "\n".join(lines)
+
+def obtener_texto_pago(payment_method):
+    """Obtiene el texto de pago según el método de pago"""
+    if payment_method == "cash":
+        return "Efectivo"
+    elif payment_method == "transfer":
+        return "Transferencia"
+    elif payment_method == "nequi":
+        return "Nequi"
+    elif payment_method == "bancolombia":
+        return "Bancolombia App"
+    else:
+        return "N/A"
+
+def format_currency(value):
+    """Formatea sin decimales y con separadores de miles"""
+    return f"{int(round(value)):,}".replace(",", ".")
+
+def format_date(datetime_string):
+    """Formatea fecha y hora en formato dd/mm/yyyy hh:mm:ss"""
+    try:
+        dt = datetime.fromisoformat(datetime_string)
+    except Exception:
+        dt = datetime.now()
+    return dt.strftime("%d/%m/%Y %H:%M:%S")
 
 # ------------------------
 # MAIN
