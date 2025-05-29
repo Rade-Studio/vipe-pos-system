@@ -1,6 +1,7 @@
 "use client"
 import { Button } from "@/components/ui/button"
 import { SkipBackIcon as Backspace, X, CornerDownLeft } from "lucide-react"
+import {useEffect} from "react";
 
 interface NumericKeypadProps {
   onValueChange: (value: string) => void
@@ -42,6 +43,28 @@ export function NumericKeypad({
       onEnter()
     }
   }
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= "0" && e.key <= "9") {
+        if (value.length < maxLength) {
+          onValueChange(value + e.key);
+        }
+      } else if (e.key === "Backspace") {
+        onValueChange(value.slice(0, -1));
+      } else if (e.key === "Enter") {
+        onEnter?.();
+      } else if (e.key === "." && allowDecimal && !value.includes(".")) {
+        onValueChange(value + ".");
+      } else if (e.key.toLowerCase() === "c") {
+        // tecla "c" para limpiar
+        onValueChange("");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [value, maxLength, allowDecimal, onValueChange, onEnter]);
 
   return (
     <div className={`grid grid-cols-3 gap-2 ${className}`}>

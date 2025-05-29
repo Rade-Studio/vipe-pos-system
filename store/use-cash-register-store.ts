@@ -23,7 +23,9 @@ type CashRegisterState = {
     orderId: string,
     tableId: string,
     amount: number,
-    method: PaymentMethod,
+    method: PaymentMethod | "multiple",
+    paymentsMethod?: Record<PaymentMethod, boolean> | undefined,
+    paymentsAmount?: Record<PaymentMethod, string> | undefined,
     cashReceived?: number,
     cashChange?: number,
     waiterId?: string,
@@ -251,7 +253,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
         }
       },
 
-      addTransaction: async (orderId, tableId, amount, method, cashReceived, cashChange, waiterId, tipAmount) => {
+      addTransaction: async (orderId, tableId, amount, method, paymentsMethod, paymentsAmount, cashReceived, cashChange, waiterId, tipAmount) => {
         const { currentRegister } = get()
 
         if (!currentRegister || currentRegister.status === "closed") {
@@ -268,12 +270,14 @@ export const useCashRegisterStore = create<CashRegisterState>()(
           }
 
           // Agregar transacción a Supabase
-          const transaction = await cashRegisterService.addTransaction(
+          const transactions = await cashRegisterService.addTransaction(
             currentRegister.id,
             orderId,
             tableId,
             amount,
             method,
+            paymentsMethod,
+            paymentsAmount,
             cashReceived,
             cashChange,
             waiterId,
@@ -283,7 +287,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
           // Actualizar el registro actual
           const updatedRegister: CashRegister = {
             ...currentRegister,
-            transactions: [...currentRegister.transactions, transaction],
+            transactions: [...currentRegister.transactions, ...transactions],
           }
 
           set((state) => ({
@@ -291,7 +295,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
             registers: state.registers.map((reg) => (reg.id === updatedRegister.id ? updatedRegister : reg)),
           }))
 
-          return transaction
+          return transactions[0]
         } catch (error) {
           console.error("Error al agregar transacción:", error)
           throw error

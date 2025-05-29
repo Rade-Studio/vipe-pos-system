@@ -170,7 +170,8 @@ export interface PrintableInvoice {
   }
   waiter: string
   table: string | number
-  paymentMethod: string
+  paymentMethod: PaymentMethod | "multiple"
+  multiplePayments?: Record<PaymentMethod, boolean> | undefined
   cashReceived?: number
   cashChange?: number
 }
