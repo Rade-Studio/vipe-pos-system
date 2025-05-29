@@ -1054,8 +1054,6 @@ export const orderService = {
   },
 
   async completePayment(orderId: string, paymentMethod: string, cashReceived?: number, cashChange?: number) {
-    console.log("Completando pago para orden:", orderId, "método:", paymentMethod)
-
     // Primero obtenemos la orden actual para verificar sus datos
     const { data: currentOrder, error: getOrderError } = await supabase
       .from("orders")
@@ -1067,13 +1065,6 @@ export const orderService = {
       console.error("Error al obtener la orden actual:", getOrderError)
       throw getOrderError
     }
-
-    console.log("Datos actuales de la orden:", {
-      id: currentOrder.id,
-      table_id: currentOrder.table_id,
-      waiter_id: currentOrder.waiter_id,
-      status: currentOrder.status,
-    })
 
     // Actualizar el estado de la orden a "paid"
     // Eliminamos los campos que no existen en el esquema (payment_method, cash_received, cash_change)
@@ -1113,7 +1104,6 @@ export const orderService = {
           console.error("Error al verificar órdenes activas:", activeOrdersError)
         } else if (!activeOrders || activeOrders.length === 0) {
           // Si no hay otras órdenes activas, liberar la mesa
-          console.log(`No hay más órdenes activas para la mesa ${order.table_id}, liberando...`)
           await tableService.releaseTable(order.table_id)
         }
       }
