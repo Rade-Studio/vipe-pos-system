@@ -9,7 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { IngredientForm } from "./IngredientForm"
 import { StockTransactionForm } from "./StockTransactionForm"
 import { useToast } from "@/hooks/use-toast"
-import { ingredientService } from "@/lib/supabase"
 import { AlertCircle, Edit, Plus, Search, Trash, Package, Filter } from "lucide-react"
 import {
   AlertDialog,
@@ -26,12 +25,12 @@ import { StockTransactionsList } from "./StockTransactionsList"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { ingredientCategoryService } from "@/lib/supabase"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/utils/helpers"
 import { Pagination } from "@/components/ui/pagination"
 import { ItemsPerPage } from "@/components/ui/items-per-page"
 import { usePagination } from "@/hooks/use-pagination"
+import { repositories } from "@/lib"
 
 export function IngredientList() {
   const { toast } = useToast()
@@ -51,10 +50,10 @@ export function IngredientList() {
     setLoading(true)
     try {
       // Primero obtenemos las categorías
-      const categoriesData = await ingredientCategoryService.getAll()
+      const categoriesData = await repositories.ingredientCategories.getAll()
 
       // Luego obtenemos los ingredientes
-      const data = await ingredientService.getAll()
+      const data = await repositories.ingredients.getAll()
 
       // Enriquecemos los ingredientes con los nombres de las categorías
       const enrichedIngredients = data.map((ingredient) => {
@@ -101,7 +100,7 @@ export function IngredientList() {
     if (!selectedIngredient) return
 
     try {
-      await ingredientService.delete(selectedIngredient.id)
+      await repositories.ingredients.delete(selectedIngredient.id)
 
       toast({
         title: "Ingrediente eliminado",

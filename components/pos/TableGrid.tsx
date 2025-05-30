@@ -6,11 +6,11 @@ import { Badge } from "@/components/ui/badge"
 import { getStatusColor, getStatusLabel } from "@/utils/helpers"
 import { LockIcon, UnlockIcon, Users2, Coffee, UtensilsCrossed, CheckCircle2, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { tableService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
+import {repositories} from "@/lib";
 
 interface TableGridProps {
   activeTable: string | null
@@ -89,7 +89,7 @@ export function TableGrid({
     const loadTables = async () => {
       try {
         setLoading(true)
-        const data = await tableService.getAll()
+        const data = await repositories.tables.getAll()
 
         // Convertir las mesas de la base de datos al formato que espera el componente
         const formattedTables = data.map((table) => ({
@@ -122,7 +122,7 @@ export function TableGrid({
             ? {
                 ...table,
                 status: payload.status,
-                waiter: payload.waiter_id || undefined,
+                waiter_id: payload.waiter_id || undefined,
               }
             : table,
         ),
@@ -197,10 +197,10 @@ export function TableGrid({
             const isActive = activeTable === table.id
             const accessible = isAccessible(table.id)
             const isReserved = table.status === "reserved"
-            const isOwnedByCurrentWaiter = table.waiter === waiterId
+            const isOwnedByCurrentWaiter = table.waiter_id === waiterId
 
             // Obtener el nombre del mesero
-            const waiterName = getWaiterName(table.waiter)
+            const waiterName = getWaiterName(table.waiter_id)
 
             return (
               <div

@@ -2,7 +2,7 @@ import { supabase } from "./client"
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 import { orderService } from "./service"
 import {toast} from "@/components/ui/use-toast";
-import {CartItem, PrintableInvoice} from "@/types";
+import {CartItem, PrintableInvoice, Order} from "@/types";
 
 // Tipos para las funciones de callback
 type BillPayload = {
@@ -11,7 +11,7 @@ type BillPayload = {
   displayItems: any[];
 };
 type TableCallback = (payload: RealtimePostgresChangesPayload<any>) => void
-type OrderCallback = (payload: RealtimePostgresChangesPayload<any>, isNewOrder?: boolean) => void
+type OrderCallback = (payload: RealtimePostgresChangesPayload<Order>, isNewOrder?: boolean) => void
 type OrderItemCallback = (payload: RealtimePostgresChangesPayload<any>, isNewItem?: boolean) => void
 type ConnectionStatusCallback = (status: boolean) => void
 type PosEventCallback = (payload: BillPayload) => void

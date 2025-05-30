@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { usePOSStore } from "@/store/use-pos-store"
-import type { Profile, Dish, Table, Order } from "@/types"
+import type {Profile, Dish, Table, Order, OrderByStatusWithAllData, OrderBill, OrderItem} from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { MenuSection } from "@/components/pos/MenuSection"
@@ -17,6 +17,7 @@ import { realtimeService } from "@/lib/supabase/realtime-service"
 import { useToast } from "@/hooks/use-toast"
 import { useConfigStore } from "@/store/use-config-store"
 import inventoryControlService from "@/lib/supabase/inventory-control-service"
+import { repositories } from "@/lib"
 import {
   Dialog,
   DialogContent,
@@ -182,40 +183,49 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   // Cargar órdenes - función memoizada
   const loadOrders = useCallback(async () => {
     try {
-      const activeOrdersData = await orderService.getByStatus(["active"])
+      const activeOrdersData = await repositories.orders.getByStatusWithAllData(["active"])
+      console.log("Cargando órdenes:", activeOrdersData)
 
-      const formattedOrders = activeOrdersData.map((order) => {
-        const items = order.order_items.map((item) => ({
+      const formattedOrders: Order[] = activeOrdersData.map((order) => {
+        // Mapeo de los ítems de la orden
+        const items: OrderItem[] = order.order_items.map((item) => ({
           id: item.id,
-          dishId: item.dish_id || `item-${item.id}`,
+          dishId: item.dish_id || `item-${item.id}`, // Asegúrate que dish_id existe en OrderItem
           name: item.name,
           price: item.price,
           quantity: item.quantity,
           comments: item.comments || undefined,
-          categoryId: item.category_id || "",
-          image: "/placeholder.svg?height=50&width=50",
+          categoryId: (item as any).categoryId || "", // Si categoryId no está en OrderItem, puede necesitar un 'as any' o actualizar OrderItem
+          image: "/placeholder.svg?height=50&width=50", // Este es un valor fijo
           status: item.status,
-        }))
+        }));
+
+        // Mapeo del objeto bill
+        const orderBill: OrderBill = {
+          subtotal: order.subtotal || 0,
+          tax: order.tax || 0,
+          taxPercentage: order.tax_percentage || 0,
+          tip: order.tip || 0,
+          tipPercentage: order.tip_percentage || 0,
+          total: order.total || 0,
+          totalDiscounts: order.total_discounts || 0,
+        };
 
         return {
           id: order.id,
-          tableId: order.table_id,
-          items,
+          table_id: order.table_id, // <-- Corregido: table_id
+          order_items: items,
+          items_json: order.items_json, // <-- Añadido
           status: order.status,
-          bill: {
-            subtotal: order.subtotal || 0,
-            tax: order.tax || 0,
-            taxPercentage: order.tax_percentage || 0,
-            tip: order.tip || 0,
-            tipPercentage: order.tip_percentage || 0,
-            total: order.total || 0,
-          },
-          waiter: order.waiter_id,
-          createdAt: new Date(order.created_at),
-          isPartialOrder: order.is_partial_order || false,
-          parentOrderId: order.parent_order_id || null,
-        }
-      })
+          bill: orderBill, // <-- Asignamos el objeto bill mapeado
+          waiter_id: order.waiter_id,
+          created_at: new Date(order.created_at || ""),
+          is_partial_order: order.is_partial_order || false,
+          parent_order_id: order.parent_order_id,
+          // Nota: 'profile', 'table', 'updated_at' y otros campos de OrderByStatusWithAllData no son parte de Order
+          // y no deben incluirse aquí si el tipo Order no los define.
+        };
+      });
 
       setActiveOrders(formattedOrders)
       return formattedOrders
@@ -320,7 +330,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
               price: item.price,
               quantity: item.quantity,
               comments: item.comments || undefined,
-              categoryId: item.category_id || "",
+              categoryId: item.dish?.categoryId || "",
               image: "/placeholder.svg?height=50&width=50",
               status: item.status,
             })),
@@ -360,7 +370,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
                       total: payload.new.total || order.bill.total,
                     },
                     // Si hay items en el payload, actualizarlos también
-                    items: payload.new.order_items
+                    order_items: payload.new.order_items
                       ? payload.new.order_items.map((item) => ({
                           id: item.id,
                           dishId: item.dish_id || `item-${item.id}`,
@@ -372,7 +382,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
                           image: "/placeholder.svg?height=50&width=50",
                           status: item.status,
                         }))
-                      : order.items,
+                      : order.order_items,
                   }
                 : order,
             ),
@@ -520,7 +530,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
             setTables((prevTables) =>
               prevTables.map((table) =>
                 table.id === tableId
-                  ? { ...table, status: "available", waiter: undefined, waiter_name: undefined }
+                  ? { ...table, status: "available", waiter_id: undefined, waiter_name: undefined }
                   : table,
               ),
             )
@@ -550,7 +560,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       }
 
       const table = tables.find((t) => t.id === tableId)
-      const currentWaiter = table?.waiter
+      const currentWaiter = table?.waiter_id
 
       if (currentWaiter) {
         setActiveTable(tableId)
@@ -598,6 +608,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           // Evitar mostrar loading
           setLoading(false)
 
+          console.warn("Seleccionando mesero:", waiterId)
           // Registrar este cambio como local
           localChangesRef.current.add(selectedTableForWaiter)
 
@@ -615,7 +626,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
                 ? {
                     ...table,
                     status: "occupied",
-                    waiter: waiterId,
+                    waiter_id: waiterId,
                     waiter_name: waiterName,
                   }
                 : table,
@@ -667,7 +678,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
                 ? {
                     ...table,
                     status: "occupied",
-                    waiter: waiterId,
+                    waiter_id: waiterId,
                     waiter_name: waiterName,
                   }
                 : table,
@@ -731,7 +742,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         releaseZustandTable(tableId)
         setTables((prevTables) =>
           prevTables.map((table) =>
-            table.id === tableId ? { ...table, status: "available", waiter: undefined, waiter_name: undefined } : table,
+            table.id === tableId ? { ...table, status: "available", waiter_id: undefined, waiter_name: undefined } : table,
           ),
         )
 
@@ -866,7 +877,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const checkExistingOrder = useCallback(
     async (tableId: string) => {
       try {
-        const tableOrders = activeOrders.filter((order) => order.tableId === tableId && order.status === "active")
+        const tableOrders = activeOrders.filter((order) => order.table_id === tableId && order.status === "active")
         return tableOrders.length > 0 ? tableOrders[0] : null
       } catch (error) {
         return null
@@ -923,7 +934,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         throw new Error("Mesa no encontrada")
       }
 
-      const waiterId = table.waiter || profile.id
+      const waiterId = table.waiter_id || profile.id
       const existingOrder = await checkExistingOrder(activeTable)
 
       if (existingOrder) {
@@ -987,7 +998,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
                 ? {
                     ...t,
                     status: "occupied",
-                    waiter: profile.id,
+                    waiter_id: profile.id,
                     waiter_name: profile.name,
                   }
                 : t,
@@ -1003,12 +1014,12 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           table_id: activeTable,
           waiter_id: waiterId,
           items: cartItems,
-          subtotal: bill.subtotal,
-          tax: bill.tax,
-          tax_percentage: bill.taxPercentage,
-          tip: bill.tip,
-          tip_percentage: bill.tipPercentage,
-          total: bill.total,
+          subtotal: bill?.subtotal,
+          tax: bill?.tax,
+          tax_percentage: bill?.taxPercentage,
+          tip: bill?.tip,
+          tip_percentage: bill?.tipPercentage,
+          total: bill?.total,
           status: "active", // Estado inicial: activo
         })
 
@@ -1226,8 +1237,8 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mt-2">
                     {activeOrders.map((order) => {
-                      const table = tables.find((t) => t.id === order.tableId)
-                      const waiter = profiles.find((p) => p.id === order.waiter)
+                      const table = tables.find((t) => t.id === order.table_id)
+                      const waiter = profiles.find((p) => p.id === order.waiter_id)
 
                       return <CompactOrderCard key={order.id} order={order} table={table} waiter={waiter} />
                     })}

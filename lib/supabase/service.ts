@@ -1,172 +1,9 @@
 import type { CartItem, Order, Profile } from "@/types"
 import { supabase as clientSupabase } from "./client"
 import ingredientTransactionService from "./ingredient-transaction-service"
-import { Waiter } from "@/types/models"
 
 // Reutilizar el cliente de Supabase ya inicializado
 export const supabase = clientSupabase
-
-// Servicio para ingredientes
-export const ingredientService = {
-  getAll: async () => {
-    try {
-      // Obtenemos los ingredientes con un join a las categorías
-      const { data: ingredients, error: ingError } = await supabase
-        .from("ingredients")
-        .select(`
-        *,
-        ingredient_categories(id, name)
-      `)
-        .order("name")
-
-      if (ingError) throw ingError
-
-      // Procesamos los datos para un formato más fácil de usar
-      return (ingredients || []).map((ingredient) => {
-        return {
-          ...ingredient,
-          category: ingredient.ingredient_categories ? ingredient.ingredient_categories.name : "Sin categoría",
-          // Mantenemos el category_id para edición
-          category_id: ingredient.category_id,
-        }
-      })
-    } catch (error) {
-      console.error("Error en getAll de ingredientes:", error)
-      throw error
-    }
-  },
-
-  getById: async (id: string) => {
-    try {
-      // Obtenemos el ingrediente con un join a la categoría
-      const { data: ingredient, error: ingError } = await supabase
-        .from("ingredients")
-        .select(`
-        *,
-        ingredient_categories(id, name)
-      `)
-        .eq("id", id)
-        .single()
-
-      if (ingError) throw ingError
-
-      // Procesamos los datos para un formato más fácil de usar
-      return {
-        ...ingredient,
-        category: ingredient.ingredient_categories ? ingredient.ingredient_categories.name : "Sin categoría",
-        // Mantenemos el category_id para edición
-        category_id: ingredient.category_id,
-      }
-    } catch (error) {
-      console.error("Error en getById de ingredientes:", error)
-      throw error
-    }
-  },
-
-  create: async (ingredient: any) => {
-    const { data, error } = await supabase.from("ingredients").insert([ingredient]).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  update: async (id: string, ingredient: any) => {
-    const { data, error } = await supabase.from("ingredients").update(ingredient).eq("id", id).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  delete: async (id: string) => {
-    const { error } = await supabase.from("ingredients").delete().eq("id", id)
-    if (error) throw error
-    return true
-  },
-}
-
-// Servicio para categorías de ingredientes
-export const ingredientCategoryService = {
-  getAll: async () => {
-    const { data, error } = await supabase.from("ingredient_categories").select("*").order("name")
-    if (error) throw error
-    return data || []
-  },
-}
-
-// Servicio para categorías
-export const categoryService = {
-  getAll: async () => {
-    const { data, error } = await supabase.from("categories").select("*").order("name")
-    if (error) throw error
-    return data || []
-  },
-
-  getById: async (id: string) => {
-    const { data, error } = await supabase.from("categories").select("*").eq("id", id).single()
-    if (error) throw error
-    return data
-  },
-
-  create: async (category: any) => {
-    const { data, error } = await supabase.from("categories").insert([category]).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  update: async (id: string, category: any) => {
-    const { data, error } = await supabase.from("categories").update(category).eq("id", id).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  delete: async (id: string) => {
-    const { error } = await supabase.from("categories").delete().eq("id", id)
-    if (error) throw error
-    return true
-  },
-}
-
-// Servicio para platos
-export const dishService = {
-  getAll: async () => {
-    const { data, error } = await supabase.from("dishes").select("*").order("name")
-    if (error) throw error
-    return data || []
-  },
-
-  getByCategory: async (categoryId: string) => {
-    const { data, error } = await supabase
-      .from("dishes")
-      .select("*")
-      .eq("category_id", categoryId)
-      .eq("active", true)
-      .order("name")
-    if (error) throw error
-    return data || []
-  },
-
-  getById: async (id: string) => {
-    const { data, error } = await supabase.from("dishes").select("*").eq("id", id).single()
-    if (error) throw error
-    return data
-  },
-
-  create: async (dish: any) => {
-    const { data, error } = await supabase.from("dishes").insert([dish]).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  update: async (id: string, dish: any) => {
-    const { data, error } = await supabase.from("dishes").update(dish).eq("id", id).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  delete: async (id: string) => {
-    const { error } = await supabase.from("dishes").delete().eq("id", id)
-    if (error) throw error
-    return true
-  },
-}
 
 // Servicio para mesas
 export const tableService = {
@@ -853,7 +690,7 @@ export const orderService = {
     for (const partialItem of partialOrder.order_items) {
       // Buscar si el item ya existe en la orden original
       const parentItem = parentOrder.order_items.find(
-        (item) => item.name === partialItem.name && (item.comments || "") === (partialItem.comments || ""),
+        (item: any) => item.name === partialItem.name && (item.comments || "") === (partialItem.comments || ""),
       )
 
       if (parentItem) {
@@ -1278,29 +1115,40 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
     }
 
     // Transformar los datos de la base de datos al formato de Order
-    return data.map((order: any) => ({
-      id: order.id,
-      tableId: order.table_id,
-      waiter: order.waiter_id,
-      status: order.status,
-      items: order.order_items || [],
-      bill: {
+    return data.map((order: any) => {
+      const items = order.order_items || []
+      return {
+        id: order.id,
+        tableId: order.table_id,
+        waiter: order.waiter_id,
+        status: order.status,
+        items: items,
+        bill: {
+          subtotal: order.subtotal || 0,
+          tax: order.tax || 0,
+          taxPercentage: order.tax_percentage || 0,
+          tip: order.tip || 0,
+          tipPercentage: order.tip_percentage || 0,
+          total: order.total || 0,
+          totalDiscounts: order.total_discounts || 0,
+          // Agregar propina y tipo de pago
+          paymentMethod: order.payment_method,
+          paymentType: order.payment_method === "cash" ? "cash" : "transfer",
+        },
         subtotal: order.subtotal || 0,
         tax: order.tax || 0,
         taxPercentage: order.tax_percentage || 0,
         tip: order.tip || 0,
         tipPercentage: order.tip_percentage || 0,
         total: order.total || 0,
-      },
-      subtotal: order.subtotal || 0,
-      tax: order.tax || 0,
-      taxPercentage: order.tax_percentage || 0,
-      tip: order.tip || 0,
-      tipPercentage: order.tip_percentage || 0,
-      total: order.total || 0,
-      createdAt: order.created_at,
-      updatedAt: order.updated_at,
-    }))
+        totalDiscounts: order.total_discounts || 0,
+        createdAt: order.created_at,
+        updatedAt: order.updated_at,
+        isPartialOrder: order.is_partial_order || false,
+        parentOrderId: order.parent_order_id || null,
+      }
+    })
+
   } catch (error) {
     throw error
   }
@@ -1308,10 +1156,6 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
 
 // Actualizar la exportación de services
 export const services = {
-  categories: categoryService,
-  dishes: dishService,
-  ingredients: ingredientService,
-  ingredientCategories: ingredientCategoryService,
   waiters: waiterService,
   tables: tableService,
   orders: orderService,

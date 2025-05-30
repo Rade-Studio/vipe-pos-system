@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import { v4 as uuidv4 } from "uuid"
-import type { Table, CartItem, Order, Profile, Dish, Category } from "@/types"
-import { supabase, tableService, orderService } from "@/lib/supabase"
+import type {Table, CartItem, Order, Profile, Dish, Category, OrderByStatusWithAllData} from "@/types"
+import {repositories} from "@/lib";
 
 interface POSState {
   // Tables
@@ -28,7 +28,7 @@ interface POSState {
   calculateOrderBill: (items: CartItem[], tipPercentage?: number, taxPercentage?: number) => Order["bill"]
 
   // Orders
-  orders: Order[]
+  orders: OrderByStatusWithAllData[]
   addOrder: (order: Order) => void
   // Actualizar una orden existente
   updateOrder: (orderId: string, updatedOrder: Order) => void
@@ -37,7 +37,7 @@ interface POSState {
   updateOrderStatus: (orderId: string, status: Order["status"]) => void
   getOrdersByStatus: (status: Order["status"][]) => Order[]
   getOrdersByTable: (tableId: string) => Order[]
-  setOrders: (orders: Order[]) => void
+  setOrders: (orders: OrderByStatusWithAllData[]) => void
   loadOrders: () => Promise<void>
   getOrderById: (orderId: string) => Order | undefined
   completePayment: (orderId: string) => Promise<string>
@@ -82,7 +82,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
           (newTable) =>
             newTable.id === currentTable.id &&
             newTable.status === currentTable.status &&
-            newTable.waiter === currentTable.waiter,
+            newTable.waiter_id === currentTable.waiter,
         ),
       )
     ) {
@@ -99,14 +99,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
       ),
     })),
   releaseTable: (tableId) => {
-    set((state) => {
+    set((state: any) => {
       // Verificar si la mesa ya está disponible para evitar actualizaciones innecesarias
-      const table = state.tables.find((t) => t.id === tableId)
+      const table = state.tables.find((t: Table) => t.id === tableId)
       if (table && table.status === "available" && !table.waiter) {
         return state // Devolver el estado sin cambios
       }
 
-      const tables = state.tables.map((table) =>
+      const tables = state.tables.map((table: Table) =>
         table.id === tableId ? { ...table, status: "available", waiter: undefined } : table,
       )
       return { tables }
@@ -312,19 +312,21 @@ export const usePOSStore = create<POSState>((set, get) => ({
       orders: state.orders.filter((order) => order.id !== orderId),
     }))
   },
+
   updateOrderStatus: (orderId, status) =>
     set((state) => ({
       orders: state.orders.map((order) => (order.id === orderId ? { ...order, status } : order)),
     })),
-  // Modificar la función getOrdersByStatus para asegurarnos de que filtra correctamente
+
   getOrdersByStatus: (statuses) => {
     const filteredOrders = get().orders.filter((order) => statuses.includes(order.status))
-    console.log("Filtrando órdenes por estados:", statuses, "Resultado:", filteredOrders.length)
     return filteredOrders
   },
+
   getOrdersByTable: (tableId) => {
-    return get().orders.filter((order) => order.tableId === tableId)
+    return get().orders.filter((order) => order.table_id === tableId)
   },
+
   setOrders: (orders) => set({ orders }),
   // Revisemos la función loadOrders para asegurarnos de que el waiter_id se carga correctamente
 
@@ -332,26 +334,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   loadOrders: async () => {
     try {
       // Cargar órdenes en cocina, entregadas y activas
-      const kitchenOrders = await orderService.getByStatus(["kitchen"])
-      const deliveredOrders = await orderService.getByStatus(["delivered"])
-      const activeOrders = await orderService.getByStatus(["active"])
-
-      console.log("Órdenes activas cargadas:", activeOrders.length)
-      console.log("Órdenes en cocina cargadas:", kitchenOrders.length)
-      console.log("Órdenes entregadas cargadas:", deliveredOrders.length)
-
-      // Combinar las órdenes
-      const dbOrders = [...kitchenOrders, ...deliveredOrders, ...activeOrders]
-
-      console.log(
-        "Órdenes cargadas de la BD:",
-        dbOrders.map((o) => ({
-          id: o.id,
-          table_id: o.table_id,
-          waiter_id: o.waiter_id,
-          status: o.status,
-        })),
-      )
+      const dbOrders = await repositories.orders.getByStatusWithAllData(["kitchen", "delivered", "active"])
 
       // Obtener los IDs de las órdenes que ya están en el store
       const existingOrderIds = get().orders.map((order) => order.id)
@@ -360,58 +343,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
       const newOrders = dbOrders.filter((dbOrder) => !existingOrderIds.includes(dbOrder.id))
 
       if (newOrders.length > 0) {
-        // Convertir las órdenes de la base de datos al formato que espera el store
-        const storeOrders = newOrders.map((dbOrder) => {
-          // Convertir los items de la orden
-          const items = dbOrder.order_items.map((item) => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            comments: item.comments || undefined,
-            categoryId: item.category_id || "",
-            // Añadir campos de promoción si existen
-            originalPrice: item.original_price,
-            discountAmount: item.discount_amount,
-            discountPercentage: item.discount_percentage,
-            promotionId: item.promotion_id,
-            promotionName: item.promotion_name,
-          }))
-
-          // Crear el objeto de orden para el store
-          const storeOrder = {
-            id: dbOrder.id,
-            tableId: dbOrder.table_id,
-            items,
-            status: dbOrder.status,
-            bill: {
-              subtotal: dbOrder.subtotal,
-              tax: dbOrder.tax,
-              taxPercentage: dbOrder.tax_percentage,
-              tip: dbOrder.tip,
-              tipPercentage: dbOrder.tip_percentage,
-              total: dbOrder.total,
-              totalDiscounts: dbOrder.total_discounts || 0,
-            },
-            waiter: dbOrder.waiter_id,
-            createdAt: new Date(dbOrder.created_at),
-            isPartialOrder: dbOrder.is_partial_order || false,
-            parentOrderId: dbOrder.parent_order_id || null,
-          }
-
-          console.log("Orden convertida para el store:", {
-            id: storeOrder.id,
-            tableId: storeOrder.tableId,
-            waiter: storeOrder.waiter,
-            status: storeOrder.status,
-          })
-
-          return storeOrder
-        })
-
         // Actualizar todas las órdenes de una vez
-        set((state) => ({
-          orders: [...state.orders, ...storeOrders],
+        set((state: POSState) => ({
+          orders: [...state.orders, ...newOrders],
         }))
       }
     } catch (err) {
@@ -424,14 +358,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   getOrderById: (orderId) => {
     const order = get().orders.find((order) => order.id === orderId)
 
-    if (order) {
-      console.log("Orden encontrada en el store:", {
-        id: order.id,
-        tableId: order.tableId,
-        waiter: order.waiter,
-        status: order.status,
-      })
-    } else {
+    if (!order) {
       console.log("Orden no encontrada en el store:", orderId)
     }
 
@@ -444,7 +371,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       const order = get().getOrderById(orderId)
 
       // Completar el pago en la base de datos (esto funciona correctamente)
-      const invoiceNumber = await orderService.completePayment(orderId, "cash")
+      const invoiceNumber = await repositories.orders.completePayment(orderId, "cash")
 
       // Actualizar el estado de la orden en el store si existe
       if (order) {
@@ -454,33 +381,28 @@ export const usePOSStore = create<POSState>((set, get) => ({
 
         // Verificar si hay otras órdenes activas para esta mesa
         const activeOrders = get()
-          .getOrdersByTable(order.tableId)
+          .getOrdersByTable(order.table_id)
           .filter(
             (o) => o.id !== orderId && (o.status === "kitchen" || o.status === "delivered" || o.status === "active"),
           )
 
         if (activeOrders.length === 0) {
           // Si no hay otras órdenes activas, liberar la mesa
-          console.log(`No hay más órdenes activas para la mesa ${order.tableId}, liberando...`)
-          get().releaseTable(order.tableId)
+          console.log(`No hay más órdenes activas para la mesa ${order.table_id}, liberando...`)
+          get().releaseTable(order.table_id)
         }
       } else {
         // Si la orden no está en el store, intentar obtener la información de la mesa desde la base de datos
         try {
-          const dbOrder = await orderService.getById(orderId)
+          const dbOrder = await repositories.orders.getById(orderId)
           if (dbOrder && dbOrder.table_id) {
             // Verificar si hay otras órdenes activas para esta mesa
-            const { data: activeOrders } = await supabase
-              .from("orders")
-              .select("id")
-              .eq("table_id", dbOrder.table_id)
-              .neq("id", orderId)
-              .neq("status", "paid")
+            const activeOrders = await repositories.orders.getByTable(dbOrder.table_id, orderId)
 
             if (!activeOrders || activeOrders.length === 0) {
               // Si no hay otras órdenes activas, liberar la mesa
               console.log(`No hay más órdenes activas para la mesa ${dbOrder.table_id}, liberando...`)
-              await tableService.releaseTable(dbOrder.table_id)
+              await repositories.tables.releaseTable(dbOrder.table_id)
             }
           }
         } catch (dbError) {
@@ -500,7 +422,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   completePartialPayment: async (orderId, selectedItems) => {
     try {
       // Completar el pago parcial en la base de datos
-      const invoiceNumber = await orderService.completePartialPayment(orderId, selectedItems)
+      const invoiceNumber = await repositories.orders.completePayment(orderId, "cash");
 
       // Actualizar el estado de la orden en el store si existe
       const order = get().getOrderById(orderId)
@@ -522,7 +444,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       if (!parentOrder) throw new Error("No se encontró la orden padre")
 
       // Filtrar los items seleccionados
-      const partialItems = parentOrder.items
+      const partialItems = parentOrder.order_items
         .filter((item) => selectedItems.some((selected) => selected.itemId === item.id && selected.quantity > 0))
         .map((item) => {
           const selectedItem = selectedItems.find((selected) => selected.itemId === item.id)
@@ -536,16 +458,16 @@ export const usePOSStore = create<POSState>((set, get) => ({
       const bill = get().calculateOrderBill(partialItems)
 
       // Crear la orden parcial en la base de datos
-      const partialOrderData = await orderService.createPartialOrder(orderId, partialItems, bill)
+      const partialOrderData = await repositories.orders.createPartialOrder(orderId, partialItems, bill)
 
       // Actualizar la orden original en el store
       // Eliminar los items que se movieron a la orden parcial
-      const updatedItems = parentOrder.items.filter(
+      const updatedItems = parentOrder.order_items.filter(
         (item) => !partialItems.some((pi) => pi.id === item.id && pi.quantity === item.quantity),
       )
 
       // Reducir la cantidad de los items que se movieron parcialmente
-      const reducedItems = parentOrder.items
+      const reducedItems = parentOrder.order_items
         .filter((item) => partialItems.some((pi) => pi.id === item.id && pi.quantity < item.quantity))
         .map((item) => {
           const partialItem = partialItems.find((pi) => pi.id === item.id)
@@ -569,18 +491,18 @@ export const usePOSStore = create<POSState>((set, get) => ({
       // Crear la orden parcial en el store manualmente para evitar retrasos
       const newPartialOrder = {
         id: partialOrderData.id,
-        tableId: parentOrder.tableId,
+        tableId: parentOrder.table_id,
         items: partialItems,
         status: "active",
         bill: bill,
-        waiter: parentOrder.waiter,
+        waiter: parentOrder.waiter_id,
         createdAt: new Date(),
         isPartialOrder: true,
         parentOrderId: orderId,
       }
 
       // Añadir la orden parcial al store
-      set((state) => ({
+      set((state: any) => ({
         orders: [...state.orders, newPartialOrder],
       }))
 
@@ -593,25 +515,25 @@ export const usePOSStore = create<POSState>((set, get) => ({
   deletePartialOrder: async (orderId) => {
     try {
       // Eliminar la orden parcial de la base de datos
-      await orderService.deletePartialOrder(orderId)
+      await repositories.orders.deletePartialOrder(orderId)
 
       // Obtener la orden parcial del store
       const partialOrder = get().getOrderById(orderId)
-      if (!partialOrder || !partialOrder.isPartialOrder || !partialOrder.parentOrderId) {
+      if (!partialOrder || !partialOrder.is_partial_order || !partialOrder.parent_order_id) {
         throw new Error("No es una orden parcial válida")
       }
 
       // Obtener la orden original
-      const parentOrder = get().getOrderById(partialOrder.parentOrderId)
+      const parentOrder = get().getOrderById(partialOrder.parent_order_id)
       if (!parentOrder) {
         throw new Error("No se encontró la orden original")
       }
 
       // Combinar los items de la orden parcial con la original
-      const updatedItems = [...parentOrder.items]
+      const updatedItems = [...parentOrder.order_items]
 
       // Para cada item en la orden parcial
-      partialOrder.items.forEach((partialItem) => {
+      partialOrder.order_items.forEach((partialItem) => {
         // Buscar si el item ya existe en la orden original
         const existingItemIndex = updatedItems.findIndex(
           (item) => item.name === partialItem.name && item.comments === partialItem.comments,
@@ -651,7 +573,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   undoPartialPayment: async (orderId) => {
     try {
       const partialOrder = get().getOrderById(orderId)
-      if (!partialOrder || !partialOrder.isPartialOrder || !partialOrder.parentOrderId) {
+      if (!partialOrder || !partialOrder.is_partial_order || !partialOrder.parent_order_id) {
         throw new Error("No es una orden parcial válida")
       }
 
@@ -666,10 +588,6 @@ export const usePOSStore = create<POSState>((set, get) => ({
     const orders = get().getOrdersByTable(tableId)
     return orders.reduce((total, order) => total + order.bill.total, 0)
   },
-  removeOrder: (orderId: string) =>
-    set((state) => ({
-      orders: state.orders.filter((order) => order.id !== orderId),
-    })),
 
   // Analytics
   getTotalSales: () => {
@@ -704,12 +622,12 @@ export const usePOSStore = create<POSState>((set, get) => ({
     return result
   },
   getPopularDishes: (limit) => {
-    const dishCounts = {}
+    const dishCounts = {} as Record<string, number>
 
     get()
       .orders.filter((order) => order.status === "paid")
       .forEach((order) => {
-        order.items.forEach((item) => {
+        order.order_items.forEach((item) => {
           if (!dishCounts[item.name]) {
             dishCounts[item.name] = 0
           }
@@ -723,12 +641,12 @@ export const usePOSStore = create<POSState>((set, get) => ({
       .slice(0, limit)
   },
   getCategorySales: () => {
-    const categorySales = {}
+    const categorySales = {} as Record<string, number>
 
     get()
       .orders.filter((order) => order.status === "paid")
       .forEach((order) => {
-        order.items.forEach((item) => {
+        order.order_items.forEach((item) => {
           if (!categorySales[item.categoryId]) {
             categorySales[item.categoryId] = 0
           }

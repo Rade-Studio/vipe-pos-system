@@ -16,12 +16,12 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { CalendarIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Promotion } from "@/lib/supabase/promotion-service"
-import { dishService } from "@/lib/supabase-service"
 import { promotionService } from "@/lib/supabase/promotion-service"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {toast} from "@/components/ui/use-toast";
+import {repositories} from "@/lib";
+import type {Promotion} from "@/types";
 
 interface PromotionFormProps {
   open: boolean
@@ -39,7 +39,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
     name: "",
     description: "",
     discount_type: "percentage",
-    discount_value: null,
+    discount_value: 0,
     start_date: new Date().toISOString(),
     end_date: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
     active: true,
@@ -67,7 +67,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
 
   const loadDishes = async () => {
     try {
-      const dishesData = await dishService.getAll()
+      const dishesData = await repositories.dishes.getAll()
       setDishes(dishesData)
     } catch (error) {
       console.error("Error loading dishes:", error)
@@ -92,7 +92,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
       name: "",
       description: "",
       discount_type: "percentage",
-      discount_value: "",
+      discount_value: 0,
       start_date: new Date().toISOString(),
       end_date: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
       active: true,

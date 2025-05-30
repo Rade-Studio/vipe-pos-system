@@ -7,7 +7,7 @@ import { Printer, RefreshCw } from "lucide-react"
 import { formatCurrency, formatDate } from "@/utils/helpers"
 import { usePOSStore } from "@/store/use-pos-store"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
-import type { Order, PrintableInvoice } from "@/types"
+import type {Order, OrderByStatusWithAllData, PrintableInvoice} from "@/types"
 import { useConfigStore } from "@/store/use-config-store"
 import { format } from "date-fns"
 import { getOrdersByDate } from "@/lib/supabase/service"
@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Pagination } from "@/components/ui/pagination"
 import { ItemsPerPage } from "@/components/ui/items-per-page"
 import { usePagination } from "@/hooks/use-pagination"
+import {repositories} from "@/lib";
 
 interface CompletedOrdersTableProps {
   selectedDate?: Date
@@ -28,7 +29,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
 
   const [selectedInvoice, setSelectedInvoice] = useState<PrintableInvoice | null>(null)
   const [invoiceOpen, setInvoiceOpen] = useState(false)
-  const [dbOrders, setDbOrders] = useState<Order[]>([])
+  const [dbOrders, setDbOrders] = useState<OrderByStatusWithAllData[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
 
@@ -38,7 +39,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
 
     setIsLoading(true)
     try {
-      const fetchedOrders = await getOrdersByDate(selectedDate)
+      const fetchedOrders = await repositories.orders.getOrdersByDate(selectedDate)
       setDbOrders(fetchedOrders)
     } catch (error) {
       console.error("Error al cargar órdenes:", error)
@@ -66,7 +67,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     if (order.status !== "paid") return false
 
     if (selectedDate) {
-      const orderDate = new Date(order.createdAt)
+      const orderDate = new Date(order.created_at)
       return (
         orderDate.getFullYear() === selectedDate.getFullYear() &&
         orderDate.getMonth() === selectedDate.getMonth() &&
@@ -90,8 +91,8 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
 
     // Ordenar por fecha, más reciente primero
     return combinedOrders.sort((a, b) => {
-      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
-      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
       return dateB - dateA
     })
   }, [localCompletedOrders, dbOrders])
@@ -104,11 +105,11 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       if (order.id.toLowerCase().includes(searchTerm.toLowerCase())) return true
 
       // Buscar por mesa
-      const table = tables.find((t) => t.id === order.tableId)
+      const table = tables.find((t) => t.id === order.table_id)
       if (table && table.number.toString().includes(searchTerm)) return true
 
       // Buscar por mesero
-      const waiter = profiles.find((p) => p.id === order.waiter)
+      const waiter = profiles.find((p) => p.id === order.waiter_id)
       if (waiter && waiter.name.toLowerCase().includes(searchTerm.toLowerCase())) return true
 
       return false
@@ -121,28 +122,28 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     initialItemsPerPage: 10,
   })
 
-  const handlePrintInvoice = (order: Order) => {
+  const handlePrintInvoice = (order: OrderByStatusWithAllData) => {
     // Encontrar la mesa correspondiente
-    const table = tables.find((t) => t.id === order.tableId)
+    const table = tables.find((t) => t.id === order.table_id)
     // Encontrar el mesero correspondiente
-    const waiter = profiles.find((p) => p.id === order.waiter)
+    const waiter = profiles.find((p) => p.id === order.waiter_id)
 
     if (!table || !waiter) {
       console.error("Mesa o mesero no encontrado para la orden:", order.id)
       toast({
         title: "Advertencia",
         description: "No se encontró información completa de la mesa o mesero para esta orden",
-        variant: "warning",
+        variant: "destructive",
       })
     }
 
     // Asegurarnos de que tenemos todos los valores necesarios para la factura
-    const subtotal = order.subtotal || order.bill?.subtotal || 0
-    const tax = order.tax || order.bill?.tax || 0
-    const taxPercentage = order.taxPercentage || order.bill?.taxPercentage || 0
-    const tip = order.tip || order.bill?.tip || 0
-    const tipPercentage = order.tipPercentage || order.bill?.tipPercentage || 0
-    const total = order.total || order.bill?.total || 0
+    const subtotal = order.subtotal || order.subtotal || 0
+    const tax = order.tax || order.tax || 0
+    const taxPercentage = order.tax_percentage || 0
+    const tip = order.tip || 0
+    const tipPercentage = order.tip_percentage || 0
+    const total = order.total || 0
 
     console.log("Datos de la orden para factura:", {
       id: order.id,
@@ -152,28 +153,20 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       tip,
       tipPercentage,
       total,
-      items: order.items?.length || 0,
+      items: order.order_items?.length || 0,
     })
 
     // Generar la factura
     const invoice: PrintableInvoice = {
       invoiceNumber: order.id.substring(0, 8),
-      date: order.createdAt || new Date(),
+      date: new Date(),
       businessInfo: {
         name: businessName,
         address: businessAddress,
         phone: businessPhone,
         nit: businessNIT,
       },
-      items: order.items || [],
-      bill: {
-        subtotal,
-        tax,
-        taxPercentage,
-        tip,
-        tipPercentage,
-        total,
-      },
+      items: order.order_items || [],
       waiter: waiter?.name || "Desconocido",
       table: table?.number.toString() || "N/A",
       paymentMethod: "cash", // Por defecto, ya que no tenemos el método real guardado
@@ -248,16 +241,14 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
                 ))
             ) : paginatedData.length > 0 ? (
               paginatedData.map((order) => {
-                const table = tables.find((t) => t.id === order.tableId)
-                const waiter = profiles.find((p) => p.id === order.waiter)
                 return (
                   <TableRow key={order.id}>
                     <TableCell className="font-medium">{order.id.substring(0, 8)}</TableCell>
-                    <TableCell>{order.createdAt ? formatDate(order.createdAt) : "Fecha no disponible"}</TableCell>
-                    <TableCell>{table ? table.number : "N/A"}</TableCell>
-                    <TableCell>{waiter ? waiter.name : "Desconocido"}</TableCell>
+                    <TableCell>{order.created_at ? formatDate(order.created_at) : "Fecha no disponible"}</TableCell>
+                    <TableCell>{order.table ? order.table.number : "N/A"}</TableCell>
+                    <TableCell>{order.profile ? order.profile.full_name : "Desconocido"}</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(order.total || order.bill?.total || 0)}
+                      {formatCurrency(order.total || 0)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" onClick={() => handlePrintInvoice(order)}>

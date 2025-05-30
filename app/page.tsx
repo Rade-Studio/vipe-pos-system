@@ -12,8 +12,9 @@ import { Loader2 } from "lucide-react"
 import { useConfigStore } from "@/store/use-config-store"
 import { usePOSStore } from "@/store/use-pos-store"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
-import { tableService, orderService } from "@/lib/supabase/service"
 import { supabase } from "@/lib/supabase/client"
+import {repositories} from "@/lib";
+import {Order} from "@/types";
 
 export default function Home() {
   const { profiles, selectedProfile, showProfileSelection, selectProfile, changeProfile } = useProfile()
@@ -56,7 +57,7 @@ export default function Home() {
         await loadConfigFromDB()
 
         // Cargar mesas
-        const tablesData = await tableService.getAll()
+        const tablesData = await repositories.tables.getAll()
         const formattedTables = tablesData.map((table) => ({
           id: table.id,
           number: table.number,
@@ -66,7 +67,7 @@ export default function Home() {
         setTables(formattedTables)
 
         // Cargar meseros
-        const waitersData = await tableService.getWaiters()
+        const waitersData = await repositories.profiles.getByRole("waiter", true)
         setProfiles(waitersData)
 
         // Cargar órdenes activas
@@ -87,8 +88,8 @@ export default function Home() {
     async function loadActiveOrders() {
       try {
         // Cargar órdenes en cocina y entregadas
-        const kitchenOrders = await orderService.getByStatus("kitchen")
-        const deliveredOrders = await orderService.getByStatus("delivered")
+        const kitchenOrders = await repositories.orders.getByStatusWithItems("kitchen")
+        const deliveredOrders = await repositories.orders.getByStatusWithItems("delivered")
 
         // Combinar las órdenes
         const dbOrders = [...kitchenOrders, ...deliveredOrders]
@@ -97,12 +98,12 @@ export default function Home() {
         const storeOrders = dbOrders.map((dbOrder) => {
           // Convertir los items de la orden
           const items = dbOrder.order_items.map((item) => ({
-            id: item.dish_id || `item-${item.id}`,
+            id: `item-${item.id}`,
             name: item.name,
             price: item.price,
             quantity: item.quantity,
             comments: item.comments || undefined,
-            categoryId: item.category_id || "",
+            categoryId: item.categoryId || "",
           }))
 
           // Crear el objeto de orden para el store
@@ -112,22 +113,22 @@ export default function Home() {
             items,
             status: dbOrder.status as any,
             bill: {
-              subtotal: dbOrder.subtotal,
-              tax: dbOrder.tax,
-              taxPercentage: dbOrder.tax_percentage,
-              tip: dbOrder.tip,
-              tipPercentage: dbOrder.tip_percentage,
-              total: dbOrder.total,
+              subtotal: dbOrder.bill.subtotal,
+              tax: dbOrder.bill.tax,
+              taxPercentage: dbOrder.bill.taxPercentage,
+              tip: dbOrder.bill.tip,
+              tipPercentage: dbOrder.bill.tipPercentage,
+              total: dbOrder.bill.total,
             },
             waiter: dbOrder.waiter_id,
             createdAt: new Date(dbOrder.created_at),
             isPartialOrder: dbOrder.is_partial_order || false,
-            parentOrderId: dbOrder.parent_order_id || null,
+            parentOrderId: dbOrder.parentOrderId || null,
           }
         })
 
         // Actualizar el store con las órdenes
-        usePOSStore.getState().setOrders(storeOrders)
+        usePOSStore.getState().setOrders(storeOrders as Order[])
       } catch (error) {
         console.error("Error al cargar órdenes activas:", error)
       }

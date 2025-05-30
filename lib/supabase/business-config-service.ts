@@ -1,31 +1,5 @@
 import { supabase } from "@/lib/supabase"
-
-// Tipo para los valores de configuración
-export type BusinessConfigValues = {
-  tax_percentage: number
-  tip_percentage: number
-  price_suggestion: number
-  business_name: string
-  business_address: string
-  business_phone: string
-  business_nit: string
-  inventory_control_enabled: boolean
-  // Añadimos las contraseñas de los perfiles
-  kitchen_password: string
-  cashier_password: string
-  admin_password: string
-  waiter_password: string
-  [key: string]: string | number | boolean
-}
-
-// Tipo para un registro individual de configuración
-export type BusinessConfigRecord = {
-  id: string
-  key: string
-  value: string
-  created_at?: string
-  updated_at?: string
-}
+import { BusinessConfigValues } from "@/types"
 
 export const businessConfigService = {
   /**
@@ -49,16 +23,16 @@ export const businessConfigService = {
         business_phone: "123-456-7890",
         business_nit: "123456789",
         inventory_control_enabled: false,
-        // Valores por defecto para las contraseñas
         kitchen_password: "1234",
         cashier_password: "5678",
         admin_password: "9999",
         waiter_password: "0000",
+        price_suggestion: 300,
       }
 
       // Llenar el objeto con los valores de la base de datos
       if (data && data.length > 0) {
-        data.forEach((item: BusinessConfigRecord) => {
+        data.forEach((item) => {
           // Convertir valores según su tipo
           if (item.key === "tax_percentage" || item.key === "tip_percentage") {
             config[item.key] = Number.parseFloat(item.value)

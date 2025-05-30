@@ -4,10 +4,9 @@ import { useState, useEffect } from "react"
 import { CategorySelector } from "@/components/pos/CategorySelector"
 import { DishGrid } from "@/components/pos/DishGrid"
 import type { Category, Dish } from "@/types"
-import { categoryService } from "@/lib/supabase/service"
-import { dishServiceWithPromotions } from "@/lib/supabase/dish-service-with-promotions"
 import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import {repositories} from "@/lib";
 
 interface MenuSectionProps {
   onAddToCart: (dish: Dish, comments?: string) => void
@@ -37,14 +36,16 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
   const loadCategories = async () => {
     setLoadingCategories(true)
     try {
-      const data = await categoryService.getAll()
+      const data = await repositories.categories.getAll()
 
       // Convertir los datos de la base de datos al formato que espera el componente
-      const formattedCategories = data.map((category) => ({
-        id: category.id,
-        name: category.name,
-        icon: category.icon || null, // Asumiendo que el icono se guarda como string
-      }))
+      const formattedCategories = data.map((category) => {
+        return {
+          id: category.id,
+          name: category.name,
+          icon: category.icon || null, // Asumiendo que el icono se guarda como string
+        }
+      })
 
       setCategories(formattedCategories)
 
@@ -69,15 +70,15 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
     setLoadingDishes(true)
     try {
       // Usar el nuevo servicio con promociones
-      const data = await dishServiceWithPromotions.getByCategoryWithPromotions(categoryId)
+      const data = await repositories.dishes.getByCategoryWithPromotions(categoryId)
 
       // Convertir los datos de la base de datos al formato que espera el componente
       const formattedDishes = data.map((dish) => ({
         id: dish.id,
         name: dish.name,
         price: dish.price,
-        categoryId: dish.category_id,
-        image: dish.image_url || "/placeholder.svg?height=80&width=80",
+        categoryId: dish.categoryId,
+        image: dish.image || "/placeholder.svg?height=80&width=80",
         // Añadir campos de promoción si existen
         originalPrice: dish.originalPrice,
         discountAmount: dish.discountAmount,

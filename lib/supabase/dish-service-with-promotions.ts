@@ -1,5 +1,5 @@
+import { Promotion } from "@/types/models"
 import { supabase } from "./client"
-import type { Promotion } from "./promotion-service"
 
 // Función para calcular el descuento
 export function calculateDiscount(price: number, promotion: Promotion): number {

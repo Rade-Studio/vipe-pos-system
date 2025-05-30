@@ -7,11 +7,12 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { tableService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, Plus, Search, Filter } from "lucide-react"
 import { getStatusLabel } from "@/utils/helpers"
+import {repositories} from "@/lib";
+import {TableStatus} from "@/types";
 
 export function TableManagementPanel() {
   const [tables, setTables] = useState<any[]>([])
@@ -21,7 +22,7 @@ export function TableManagementPanel() {
   const [newTableNumber, setNewTableNumber] = useState("")
   const [editTableId, setEditTableId] = useState<string | null>(null)
   const [editTableNumber, setEditTableNumber] = useState("")
-  const [editTableStatus, setEditTableStatus] = useState("")
+  const [editTableStatus, setEditTableStatus] = useState<TableStatus | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -34,7 +35,7 @@ export function TableManagementPanel() {
     const loadTables = async () => {
       setLoading(true)
       try {
-        const data = await tableService.getAll()
+        const data = await repositories.tables.getAll()
         setTables(data)
       } catch (error) {
         console.error("Error al cargar mesas:", error)
@@ -91,7 +92,7 @@ export function TableManagementPanel() {
     }
 
     try {
-      await tableService.create({
+      await repositories.tables.create({
         number: Number.parseInt(newTableNumber),
         status: "available",
       })
@@ -134,7 +135,7 @@ export function TableManagementPanel() {
     }
 
     try {
-      await tableService.update(editTableId, {
+      await repositories.tables.update(editTableId, {
         number: Number.parseInt(editTableNumber),
         status: editTableStatus,
       })
@@ -167,7 +168,7 @@ export function TableManagementPanel() {
     if (!tableToDelete) return
 
     try {
-      await tableService.delete(tableToDelete)
+      await repositories.tables.delete(tableToDelete)
       setShowDeleteDialog(false)
       setTableToDelete(null)
 
@@ -288,7 +289,7 @@ export function TableManagementPanel() {
                           <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary mr-2">
                             {table.profiles?.full_name
                               ?.split(" ")
-                              .map((name) => name[0])
+                              .map((name: string[]) => name[0])
                               .join("")
                               .toUpperCase() || "??"}
                           </div>

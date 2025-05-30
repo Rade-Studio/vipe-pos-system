@@ -70,8 +70,8 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       // Convertir datos de la BD al formato de la aplicación
       const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
         id: dbOrder.id,
-        tableId: dbOrder.table_id,
-        items: dbOrder.order_items.map((item: any) => ({
+        table_id: dbOrder.table_id,
+        order_items: dbOrder.order_items.map((item: any) => ({
           id: item.id,
           name: item.name,
           price: item.price,
@@ -88,9 +88,9 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
           tipPercentage: dbOrder.tip_percentage,
           total: dbOrder.total,
         },
-        waiter: dbOrder.waiter_id,
-        createdAt: new Date(dbOrder.created_at),
-        isPartialOrder: dbOrder.is_partial_order || false,
+        waiter_id: dbOrder.waiter_id,
+        created_at: new Date(dbOrder.created_at),
+        is_partial_order: dbOrder.is_partial_order || false,
         parentOrderId: dbOrder.parent_order_id || null,
       })
 
@@ -198,7 +198,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
   const getAllTableItems = useCallback(
     (tableId: string): CartItem[] => {
       const tableOrders = getOrdersByTable(tableId)
-      const items = tableOrders.flatMap((order) => order.items)
+      const items = tableOrders.flatMap((order) => order.order_items)
 
       // Agrupar items por nombre y comentarios
       const groupedItems: Record<string, CartItem> = {}
@@ -282,7 +282,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
 
       // Filtrar los items seleccionados
       const parentOrder = tableOrders[0]
-      const partialItems = parentOrder.items
+      const partialItems = parentOrder.order_items
         .filter((item) => items.some((selected) => selected.itemId === item.id && selected.quantity > 0))
         .map((item) => {
           const selectedItem = items.find((selected) => selected.itemId === item.id)
@@ -331,13 +331,13 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
     const order = getOrderById(orderId)
     if (!order) return
 
-    const table = tables.find((t) => t.id === order.tableId)
-    const waiter = profiles.find((p) => p.id === order.waiter)
+    const table = tables.find((t) => t.id === order.table_id)
+    const waiter = profiles.find((p) => p.id === order.waiter_id)
 
     if (!table || !waiter) return
 
     // Asegurarse de que los items y el bill estén correctos
-    const items = order.items
+    const items = order.order_items
     const bill = order.bill
 
     if (items.length === 0 || !bill) {
@@ -392,7 +392,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
         const dateStr = date.toISOString().split("T")[0]
 
         const amount = paidOrders
-          .filter((order) => order.createdAt.toISOString().split("T")[0] === dateStr)
+          .filter((order) => order.created_at.toISOString().split("T")[0] === dateStr)
           .reduce((sum, order) => sum + order.bill.total, 0)
 
         result.push({ date: dateStr, amount })
@@ -406,7 +406,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       const dishCounts: Record<string, number> = {}
 
       paidOrders.forEach((order) => {
-        order.items.forEach((item) => {
+        order.order_items.forEach((item) => {
           if (!dishCounts[item.name]) {
             dishCounts[item.name] = 0
           }
@@ -425,7 +425,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       const sales: Record<string, number> = {}
 
       paidOrders.forEach((order) => {
-        order.items.forEach((item) => {
+        order.order_items.forEach((item) => {
           if (!sales[item.categoryId]) {
             sales[item.categoryId] = 0
           }
@@ -595,12 +595,12 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
                         ))
                       : // Contenido real de órdenes parciales
                         partialOrders.map((order) => {
-                          const table = tables.find((t) => t.id === order.tableId)
-                          const waiter = profiles?.find((p) => p.id === order.waiter)
+                          const table = tables.find((t) => t.id === order.table_id)
+                          const waiter = profiles?.find((p) => p.id === order.waiter_id)
 
                           // Agrupar items por nombre y comentarios
                           const groupedItems: Record<string, CartItem> = {}
-                          order.items.forEach((item) => {
+                          order.order_items.forEach((item) => {
                             const key = `${item.name}-${item.comments || ""}`
                             if (!groupedItems[key]) {
                               groupedItems[key] = { ...item }
@@ -629,7 +629,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
                                     </div>
                                   )}
                                   <div className="text-sm text-muted-foreground">
-                                    Creado: {formatDate(order.createdAt)}
+                                    Creado: {formatDate(order.created_at)}
                                   </div>
                                 </div>
 
@@ -744,7 +744,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
                     const isSingleItemWithQuantityOne = allItems.length === 1 && allItems[0].quantity === 1
 
                     // Get the waiter from the first order
-                    const waiter = profiles?.find((p) => p.id === orders[0].waiter)
+                    const waiter = profiles?.find((p) => p.id === orders[0].waiter_id)
 
                     return (
                       <Card key={tableId} className="overflow-hidden">
@@ -765,7 +765,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
                               </div>
                             )}
                             <div className="text-sm text-muted-foreground">
-                              Última actualización: {formatDate(orders[orders.length - 1].createdAt)}
+                              Última actualización: {formatDate(orders[orders.length - 1].created_at)}
                             </div>
                           </div>
 
@@ -848,11 +848,11 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
           open={paymentMethodDialogOpen}
           onOpenChange={setPaymentMethodDialogOpen}
           orderId={selectedOrderId}
-          tableId={getOrderById(selectedOrderId)?.tableId || ""}
+          tableId={getOrderById(selectedOrderId)?.table_id || ""}
           amount={getOrderById(selectedOrderId)?.bill.total || 0}
-          tableTotal={getTableTotalAmount(getOrderById(selectedOrderId)?.tableId || "")}
+          tableTotal={getTableTotalAmount(getOrderById(selectedOrderId)?.table_id || "")}
           onSuccess={handlePaymentComplete}
-          isPartialPayment={getOrderById(selectedOrderId)?.isPartialOrder || false}
+          isPartialPayment={getOrderById(selectedOrderId)?.is_partial_order || false}
           selectedItems={[]}
         />
       )}

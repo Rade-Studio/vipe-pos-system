@@ -32,7 +32,7 @@ export function CompactOrderCard({ order, waiter, table }: CompactOrderCardProps
   }
 
   // Fecha localizada
-  const localTime = new Date(order.createdAt).toLocaleTimeString([], {
+  const localTime = new Date(order.created_at).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   })
@@ -64,7 +64,7 @@ export function CompactOrderCard({ order, waiter, table }: CompactOrderCardProps
     return Array.from(groupedMap.values())
   }
 
-  const groupedItems = groupItems(order.items)
+  const groupedItems = groupItems(order.order_items)
 
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow">
@@ -129,7 +129,7 @@ export function CompactOrderCard({ order, waiter, table }: CompactOrderCardProps
 
         <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
           <div className="text-xs text-muted-foreground">{waiter?.name || "Sin mesero"}</div>
-          <div className="font-medium">{formatCurrency(order.bill.total)}</div>
+          <div className="font-medium">{formatCurrency(order.bill?.total || 0)}</div>
         </div>
       </CardContent>
     </Card>

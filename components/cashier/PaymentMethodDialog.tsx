@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, JSX } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -20,8 +20,8 @@ import { NumericKeypad } from "@/components/ui/numeric-keypad"
 import { toast } from "@/utils/toast"
 import { Switch } from "@/components/ui/switch"
 import { AddCashDialog } from "@/components/cashier/AddCashDialog"
-import { orderService, tableService } from "@/lib/supabase/service"
-import { supabase } from "@/lib/supabase/client"
+import {cn} from "@/lib/utils";
+import { repositories } from "@/lib"
 
 interface PaymentMethodDialogProps {
   open: boolean
@@ -46,13 +46,28 @@ export function PaymentMethodDialog({
   isPartialPayment = false,
   selectedItems = [],
 }: PaymentMethodDialogProps) {
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "multiple">("cash")
   const [cashReceived, setCashReceived] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
   const [showInvoice, setShowInvoice] = useState(false)
   const [invoiceData, setInvoiceData] = useState<PrintableInvoice | null>(null)
   const [processingPayment, setProcessingPayment] = useState(false)
+  const [selectedMethods, setSelectedMethods] = useState<Record<PaymentMethod, boolean>>({
+    cash: false,
+    transfer: false,
+    nequi: false,
+    bancolombia: false,
+  })
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<PaymentMethod, string>>({
+    cash: "",
+    transfer: "",
+    nequi: "",
+    bancolombia: "",
+  });
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
+  const [paymentLeft, setPaymentLeft] = useState<string>("")
   const [showCashInput, setShowCashInput] = useState(false)
+  const [showMultiplePayment, setShowMultiplePayment] = useState(false)
   const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false)
   const [includeTip, setIncludeTip] = useState(true)
   const [showAddCashDialog, setShowAddCashDialog] = useState(false)
@@ -66,6 +81,20 @@ export function PaymentMethodDialog({
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast: toastHook } = useToast()
 
+  const paymentLabels: Record<PaymentMethod, string> = {
+    cash: "Efectivo",
+    transfer: "Transferencia Bancaria",
+    nequi: "Nequi",
+    bancolombia: "Bancolombia App"
+  };
+  const paymentIcons: Record<PaymentMethod, JSX.Element> = {
+    cash: <Banknote className="mr-2 h-5 w-5" />,
+    transfer: <CreditCard className="mr-2 h-5 w-5" />,
+    nequi: <Smartphone className="mr-2 h-5 w-5" />,
+    bancolombia: <Smartphone className="mr-2 h-5 w-5" />
+  };
+  const paymentMethods: PaymentMethod[] = ["cash", "transfer", "nequi", "bancolombia"];
+
   // Cargar la orden directamente desde la base de datos
   useEffect(() => {
     async function loadOrderData() {
@@ -74,20 +103,18 @@ export function PaymentMethodDialog({
       setLoading(true)
       try {
         // Obtener la orden desde la base de datos
-        const order = await orderService.getById(orderId)
+        const order = await repositories.orders.getById(orderId)
         if (!order) {
           throw new Error("No se pudo encontrar la orden")
         }
 
+        console.log("Order data:", order)
+
         // Obtener información de la mesa
-        const tableInfo = await tableService.getById(order.table_id)
+        const tableInfo = await repositories.tables.getById(order.table_id)
 
         // Obtener información del mesero
-        const { data: waiterInfo } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .eq("id", order.waiter_id)
-          .single()
+        const waiterInfo = await repositories.profiles.getById(order.waiter_id)
 
         setOrderData({
           ...order,
@@ -95,7 +122,6 @@ export function PaymentMethodDialog({
           waiterInfo,
         })
       } catch (error) {
-        console.error("Error al cargar datos de la orden:", error)
         toast.error("No se pudo cargar la información de la orden")
         onOpenChange(false)
       } finally {
@@ -144,6 +170,7 @@ export function PaymentMethodDialog({
         discountPercentage: item.discount_percentage,
         promotionId: item.promotion_id,
         promotionName: item.promotion_name,
+        image: item.image || "/placeholder.svg?height=50&width=50",
       }),
     )
   }, [orderData])
@@ -180,11 +207,11 @@ export function PaymentMethodDialog({
       // Determinar los items a incluir en la factura
       const invoiceItems =
         isPartialPayment && selectedItems.length > 0
-          ? orderItems.filter((item) => selectedItems.includes(item.id))
+          ? orderItems.filter((item: any) => selectedItems.includes(item.id))
           : orderItems
 
       // Calcular el total de descuentos
-      const totalDiscounts = invoiceItems.reduce((sum, item) => {
+      const totalDiscounts = invoiceItems.reduce((sum: number, item: CartItem) => {
         if (item.originalPrice && item.originalPrice > item.price) {
           return sum + (item.originalPrice - item.price) * item.quantity
         }
@@ -218,6 +245,7 @@ export function PaymentMethodDialog({
         waiter: orderData.waiterInfo.full_name,
         table: orderData.tableInfo.number,
         paymentMethod,
+        multiplePayments: paymentMethod === "multiple" ? selectedMethods : undefined,
         cashReceived: paymentMethod === "cash" ? cashAmount : undefined,
         cashChange: paymentMethod === "cash" ? change : undefined,
       }
@@ -241,6 +269,22 @@ export function PaymentMethodDialog({
     setCashReceived(value)
     setError(null)
     setInsufficientCash(false)
+  }
+
+  const handleAmountChange = (method: PaymentMethod, value: string) => {
+    const parsed = parseFloat(value.replace(/[^0-9.]/g, '')) || 0;
+    setPaymentAmounts((prev) => ({ ...prev, [method]: parsed }));
+  };
+
+  const handleCompleteAmountPayment = (selectedMethod: PaymentMethod) => {
+    const totalAmount = Object.values(paymentAmounts).reduce(
+        (sum, amount) => sum + (Number(amount) || 0),
+        0
+    );
+
+    setPaymentLeft(!isNaN(totalAmount) ? finalAmount - Number(totalAmount) : finalAmount);
+    setSelectedMethod(null)
+    setSelectedMethods((prev) => ({ ...prev, [selectedMethod]: true }));
   }
 
   const handleCashInputSubmit = () => {
@@ -297,6 +341,11 @@ export function PaymentMethodDialog({
       return
     }
 
+    if (paymentMethod === "multiple") {
+      setShowMultiplePayment(true)
+      return
+    }
+
     // Para otros métodos de pago, mostrar la pantalla de confirmación
     setShowPaymentConfirmation(true)
   }
@@ -338,6 +387,18 @@ export function PaymentMethodDialog({
       return
     }
 
+    if (paymentMethod === "multiple") {
+      const totalAmount = Object.values(paymentAmounts).reduce(
+          (sum, amount) => sum + (Number(amount) || 0),
+          0
+      );
+      if (totalAmount < finalAmount) {
+        setError("La totalidad de los pagos no coincide con la cantidad a pagar")
+        return
+      }
+
+    }
+
     setProcessingPayment(true)
 
     try {
@@ -353,6 +414,8 @@ export function PaymentMethodDialog({
         orderTableId,
         finalAmount,
         paymentMethod,
+        paymentMethod === "multiple" ? selectedMethods : undefined,
+        paymentMethod === "multiple" ? paymentAmounts : undefined,
         paymentMethod === "cash" ? cashAmount : undefined,
         paymentMethod === "cash" ? change : undefined,
         waiterId,
@@ -364,12 +427,11 @@ export function PaymentMethodDialog({
         let invoiceNumber
 
         try {
+          invoiceNumber = await repositories.orders.completePayment(orderId, paymentMethod)
           if (isPartialPayment) {
-            invoiceNumber = await orderService.completePayment(orderId, paymentMethod)
             // También actualizamos el store para mantener la coherencia
             await completePartialPayment(orderId, selectedItems)
           } else {
-            invoiceNumber = await orderService.completePayment(orderId, paymentMethod)
             // También actualizamos el store para mantener la coherencia
             await completePayment(orderId)
           }
@@ -396,6 +458,15 @@ export function PaymentMethodDialog({
         setError(null)
         setShowCashInput(false)
         setShowPaymentConfirmation(false)
+        setPaymentLeft("")
+        setSelectedMethod(null)
+
+        setPaymentAmounts({
+          cash: "",
+          transfer: "",
+          nequi: "",
+          bancolombia: "",
+        })
 
         onSuccess()
       } else {
@@ -411,7 +482,7 @@ export function PaymentMethodDialog({
 
   const handleUndoPartialPayment = async () => {
     try {
-      await orderService.deletePartialOrder(orderId)
+      await repositories.orders.deletePartialOrder(orderId)
       undoPartialPayment(orderId)
       setShowInvoice(false)
       onOpenChange(false)
@@ -662,6 +733,130 @@ export function PaymentMethodDialog({
     )
   }
 
+  // Si estamos mostrando la pantalla de múltiples pagos, mostrar la vista de múltiples pagos
+  if (showMultiplePayment) {
+    return (
+        <Dialog open={showMultiplePayment} onOpenChange={(open) => !open && setShowMultiplePayment(false)}>
+          <DialogContent className="sm:max-w-[800px] md:h-full max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Múltiples pagos</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+
+              <div className="flex flex-col md:flex-row max-h-[80vh] overflow-y-auto">
+                {/* Columna izquierda - Teclado numérico */}
+                <div className="w-full md:w-1/2 p-6 border-b md:border-b-0 md:border-r">
+                  <div className="space-y-4">
+                    <div className="h-12 flex items-center justify-end text-xl font-mono border rounded-md bg-muted/20 px-3">
+                      {selectedMethod ? formatCurrency(Number(paymentAmounts[selectedMethod as PaymentMethod] || 0)) : formatCurrency(0)}
+                    </div>
+
+                    <NumericKeypad
+                        value={String(paymentAmounts[selectedMethod as PaymentMethod]) || ""}
+                        onValueChange={(value) => handleAmountChange(selectedMethod as PaymentMethod, value)}
+                        allowDecimal={false}
+                        onEnter={() => handleCompleteAmountPayment(selectedMethod as PaymentMethod)}
+                    />
+                  </div>
+
+                </div>
+
+
+                {/* Columna derecha */}
+                <div className="w-full md:w-1/2 p-6 flex flex-col justify-between">
+                  <div className="space-y-6">
+                    {/* Desglose de valores */}
+                    <div className="space-y-2">
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-md">
+                          <span>Subtotal + Impuestos:</span>
+                          <span>{formatCurrency(subtotalWithTax)}</span>
+                        </div>
+
+                        {orderData && orderData.tip > 0 && (
+                            <div className="flex justify-between text-md">
+                              <span>Propina ({orderData.tip_percentage}%):</span>
+                              <span>{formatCurrency(orderData.tip)}</span>
+                            </div>
+                        )}
+
+                        <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                          <span>Total a Pagar:</span>
+                          <span>{formatCurrency(finalAmount)}</span>
+                        </div>
+
+                        {Number(paymentLeft) !== finalAmount && Number(paymentLeft) > 0 &&
+                            <>
+                              <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                                <span className="text-primary">Pendiente:</span>
+                                <span className="text-primary">{formatCurrency(Number(paymentLeft))}</span>
+                              </div>
+                            </>
+                        }
+                      </div>
+
+                      {/* Opción para incluir propina */}
+                      {orderData && orderData.tip > 0 && (
+                          <div className="flex items-center justify-between space-x-2 p-3 rounded-md border">
+                            <Label htmlFor="includeTip" className="cursor-pointer">
+                              Incluir propina en el pago
+                            </Label>
+                            <Switch id="includeTip" checked={includeTip} onCheckedChange={setIncludeTip} />
+                          </div>
+                      )}
+
+                      {/* Mostrar mensaje de error de forma elegante */}
+                      {error && <p className="text-sm text-destructive">{error}</p>}
+
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+
+
+              <div className="grid gap-2 grid-cols-1 md:grid-cols-2">
+                {paymentMethods.map((method) => (
+                    <div key={method} className="rounded-md border hover:bg-muted space-y-2">
+                      <button
+                          type="button"
+                          onClick={() => setSelectedMethod(method === selectedMethod ? null : method)}
+                          className={cn(
+                              "flex items-center w-full text-left cursor-pointer border rounded-md p-3 transition-all duration-200",
+                              selectedMethod === method
+                                  ? "bg-primary/10 border-primary ring-2 ring-primary"
+                                  : "hover:bg-muted"
+                          )}
+                      >
+                        {paymentIcons[method]}
+                        <span className="flex-1">{paymentLabels[method]}</span>
+
+                        <div className="h-12 flex items-center justify-end text-xl font-mono border rounded-md bg-muted/20 px-3">
+                          {paymentAmounts[method] ? formatCurrency(Number(paymentAmounts[method])) : formatCurrency(0)}
+                        </div>
+                      </button>
+                    </div>
+                ))}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowPaymentConfirmation(false)}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Volver
+              </Button>
+              <Button onClick={handlePaymentConfirmationSubmit} disabled={processingPayment}>
+                <Check className="mr-2 h-4 w-4" />
+                Confirmar Pago
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+
+        </Dialog>
+    )
+  }
+
   // Si estamos mostrando la factura, mostrar la vista de impresión con botón de confirmar
   if (showInvoice && invoiceData) {
     return (
@@ -727,6 +922,14 @@ export function PaymentMethodDialog({
                   <Label htmlFor="bancolombia" className="flex items-center cursor-pointer flex-1">
                     <Smartphone className="mr-2 h-5 w-5" />
                     Bancolombia App
+                  </Label>
+                </div>
+
+                <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-muted">
+                  <RadioGroupItem value="multiple" id="multiple" />
+                  <Label htmlFor="multiple" className="flex items-center cursor-pointer flex-1">
+                    <PlusCircle className="mr-2 h-5 w-5" />
+                    Múltiple
                   </Label>
                 </div>
               </div>

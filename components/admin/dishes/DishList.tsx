@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Plus, Edit, Trash2, BookOpen } from "lucide-react"
-import { dishService, categoryService } from "@/lib/supabase-service"
-import type { Dish, Category } from "@/types/models"
+import type { Dish, Category } from "@/types"
 import { DishForm } from "./DishForm"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -23,6 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/utils/helpers"
 import { RecipeManager } from "./RecipeManager"
 import { Skeleton } from "@/components/ui/skeleton"
+import {repositories} from "@/lib";
 
 export function DishList() {
   const [dishes, setDishes] = useState<Dish[]>([])
@@ -43,7 +43,7 @@ export function DishList() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [dishesData, categoriesData] = await Promise.all([dishService.getAll(), categoryService.getAll()])
+      const [dishesData, categoriesData] = await Promise.all([repositories.dishes.getAll(), repositories.categories.getAll()])
       setDishes(dishesData)
       setCategories(categoriesData)
     } catch (error) {
@@ -219,7 +219,7 @@ export function DishList() {
                     <TableCell>{getCategoryName(dish.categoryId)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(dish.price)}</TableCell>
                     <TableCell>
-                      <Badge variant={dish.available ? "default" : "outline"}>
+                      <Badge variant={dish.available ? "default" : "destructive"}>
                         {dish.available ? "Disponible" : "No disponible"}
                       </Badge>
                     </TableCell>

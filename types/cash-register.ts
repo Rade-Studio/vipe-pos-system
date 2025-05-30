@@ -1,6 +1,6 @@
 export type PaymentMethod = "cash" | "transfer" | "nequi" | "bancolombia"
 
-export interface PaymentTransaction {
+export type PaymentTransaction = {
   id: string
   orderId: string
   tableId: string
@@ -14,7 +14,7 @@ export interface PaymentTransaction {
   cash_register_id: string
 }
 
-export interface CashTransaction {
+export type CashTransaction = {
   id: string
   amount: number
   type: "deposit" | "withdrawal"
@@ -23,21 +23,7 @@ export interface CashTransaction {
   cash_register_id: string
 }
 
-export interface SupabaseTransaction {
-  id: string
-  order_id: string
-  table_id: string
-  waiter_id?: string
-  amount: number
-  tip_amount?: number
-  method: PaymentMethod
-  cash_received?: number
-  cash_change?: number
-  timestamp: string
-  cash_register_id: string
-}
-
-export interface CashRegister {
+export type CashRegister = {
   id: string
   openingTimestamp: Date
   closingTimestamp?: Date
@@ -50,7 +36,7 @@ export interface CashRegister {
   updated_at?: Date
 }
 
-export interface CashRegisterSummary {
+export type CashRegisterSummary = {
   initialCash: number
   totalCash: number
   totalTransfer: number

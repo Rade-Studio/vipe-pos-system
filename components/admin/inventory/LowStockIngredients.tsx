@@ -5,12 +5,12 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Package } from "lucide-react"
-import { ingredientService } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { StockTransactionForm } from "./StockTransactionForm"
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
+import {repositories} from "@/lib";
 
 export function LowStockIngredients() {
   const { toast } = useToast()
@@ -24,7 +24,7 @@ export function LowStockIngredients() {
   const fetchIngredients = async () => {
     setLoading(true)
     try {
-      const data = await ingredientService.getAll()
+      const data = await repositories.ingredients.getAll()
       // Filtrar solo los ingredientes con stock bajo
       const lowStockItems = data.filter((item) => item.stock <= item.min_stock)
       setIngredients(lowStockItems)

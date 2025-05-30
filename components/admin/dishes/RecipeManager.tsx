@@ -9,14 +9,14 @@ import { Loader2, Plus, Trash2, AlertCircle, RefreshCw, Check, ChevronsUpDown } 
 import { DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { recipeService, ingredientService } from "@/lib/supabase"
-import type { Dish, Ingredient, Recipe, RecipeIngredient } from "@/types/models"
+import type { Dish, Ingredient, Recipe, RecipeIngredient } from "@/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { useConfigStore } from "@/store/use-config-store"
 import { formatCurrency } from "@/utils/helpers"
+import { repositories } from "@/lib"
 
 
 interface RecipeManagerProps {
@@ -59,21 +59,21 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
     try {
       setLoading(true)
       // Cargar ingredientes disponibles
-      const ingredientsData = await ingredientService.getAll()
+      const ingredientsData = await repositories.ingredients.getAll()
       console.log("Ingredientes cargados:", ingredientsData)
       setIngredients(ingredientsData)
 
       // Buscar si ya existe una receta para este plato
-      const recipeData = await recipeService.getByDishId(dish.id)
+      const recipeData = await repositories.recipes.getByDishId(dish.id)
 
       if (recipeData) {
         setRecipe(recipeData)
         // Cargar los ingredientes de la receta
-        const recipeIngredientsData = await recipeService.getRecipeIngredients(recipeData.id)
+        const recipeIngredientsData = await repositories.recipes.getRecipeIngredients(recipeData.id)
 
         // Enriquecer los datos de los ingredientes de la receta con información completa
         const enrichedRecipeIngredients = recipeIngredientsData.map((recipeIng) => {
-          const fullIngredient = ingredientsData.find((ing) => ing.id === recipeIng.ingredientId)
+          const fullIngredient = ingredientsData.find((ing) => ing.id === recipeIng.ingredient_id)
           return {
             ...recipeIng,
             ingredient: {
@@ -109,7 +109,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
   const refreshIngredients = async () => {
     try {
       setRefreshing(true)
-      const ingredientsData = await ingredientService.getAll()
+      const ingredientsData = await repositories.ingredients.getAll()
       setIngredients(ingredientsData)
       toast({
         title: "Ingredientes actualizados",
@@ -138,7 +138,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
     let limitingIngName = null
 
     recipeItems.forEach((item) => {
-      const ingredient = allIngredients.find((ing) => ing.id === item.ingredientId)
+      const ingredient = allIngredients.find((ing) => ing.id === item.ingredient_id)
       if (ingredient) {
         const possibleServings = Math.floor(ingredient.stock / item.quantity)
         if (possibleServings < minServings) {
@@ -193,26 +193,26 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       // Si no existe una receta, crearla primero
       let recipeId = recipe?.id
       if (!recipeId) {
-        const newRecipe = await recipeService.create({
-          dishId: dish.id,
+        const newRecipe = await repositories.recipes.create({
+          dish_id: dish.id,
         })
         setRecipe(newRecipe)
         recipeId = newRecipe.id
       }
 
       // Verificar si el ingrediente ya existe en la receta
-      const existingIngredient = recipeIngredients.find((item) => item.ingredientId === newIngredient.ingredientId)
+      const existingIngredient = recipeIngredients.find((item) => item.ingredient_id === newIngredient.ingredientId)
 
       if (existingIngredient) {
         console.log("Ingrediente existente encontrado, actualizando cantidad:", existingIngredient)
 
         // Actualizar la cantidad del ingrediente existente
-        const updatedIngredient = await recipeService.updateRecipeIngredient(existingIngredient.id, {
+        const updatedIngredient = await repositories.recipes.updateRecipeIngredient(existingIngredient.id, {
           quantity: existingIngredient.quantity + newIngredient.quantity,
         })
 
         // Obtener el ingrediente completo de la lista de ingredientes
-        const ingredientDetails = ingredients.find((ing) => ing.id === updatedIngredient.ingredientId)
+        const ingredientDetails = ingredients.find((ing) => ing.id === updatedIngredient.ingredient_id)
 
         // Actualizar el ingrediente en la lista con datos completos
         setRecipeIngredients(
@@ -242,16 +242,14 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
           const ingredientIdToAdd = newIngredient.ingredientId
 
           // Añadir nuevo ingrediente a la receta
-          const addedIngredient = await recipeService.addIngredientToRecipe({
-            recipeId,
-            ingredientId: ingredientIdToAdd,
+          const addedIngredient = await repositories.recipes.addIngredientToRecipe({
+            recipe_id: recipeId,
+            ingredient_id: ingredientIdToAdd,
             quantity: newIngredient.quantity,
           })
 
-          console.log("Ingrediente añadido:", addedIngredient)
-
           // Usar el ID del ingrediente que conocemos, en caso de que la respuesta no lo incluya
-          const ingredientId = addedIngredient.ingredientId || ingredientIdToAdd
+          const ingredientId = addedIngredient.ingredient_id || ingredientIdToAdd
 
           if (!ingredientId) {
             throw new Error("No se pudo determinar el ID del ingrediente añadido")
@@ -269,14 +267,14 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
             // Usar los datos del ingrediente seleccionado originalmente
             const newRecipeIngredient = {
               id: addedIngredient.id || `temp-${Date.now()}`,
-              recipeId: addedIngredient.recipeId || recipeId,
+              recipeId: addedIngredient.recipe_id || recipeId,
               ingredientId: ingredientId,
               quantity: addedIngredient.quantity || newIngredient.quantity,
-              createdAt: addedIngredient.createdAt || new Date().toISOString(),
+              createdAt: addedIngredient.created_at || new Date().toISOString(),
               ingredient: {
-                name: selectedIngredient.name,
-                unit: selectedIngredient.unit,
-                stock: selectedIngredient.stock,
+                name: selectedIngredient?.name,
+                unit: selectedIngredient?.unit,
+                stock: selectedIngredient?.stock,
               },
             }
 
@@ -287,15 +285,13 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
               description: "El ingrediente ha sido añadido a la receta",
             })
           } else {
-            console.log("Detalles del ingrediente encontrado:", ingredientDetails)
-
             // Crear un objeto completo con todos los datos necesarios
             const newRecipeIngredient = {
               id: addedIngredient.id || `temp-${Date.now()}`,
-              recipeId: addedIngredient.recipeId || recipeId,
+              recipeId: addedIngredient.recipe_id || recipeId,
               ingredientId: ingredientId,
               quantity: addedIngredient.quantity || newIngredient.quantity,
-              createdAt: addedIngredient.createdAt || new Date().toISOString(),
+              createdAt: addedIngredient.created_at || new Date().toISOString(),
               ingredient: {
                 name: ingredientDetails.name,
                 unit: ingredientDetails.unit,
@@ -321,14 +317,14 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
             console.log("Error de duplicado detectado, intentando actualizar en su lugar")
 
             // Recargar los ingredientes de la receta para obtener el ID del ingrediente existente
-            const recipeIngredientsData = await recipeService.getRecipeIngredients(recipeId)
+            const recipeIngredientsData = await repositories.recipes.getRecipeIngredients(recipeId)
             const duplicateIngredient = recipeIngredientsData.find(
-              (item) => item.ingredientId === newIngredient.ingredientId,
+              (item) => item.ingredient_id === newIngredient.ingredientId,
             )
 
             if (duplicateIngredient) {
               // Actualizar la cantidad del ingrediente existente
-              const updatedIngredient = await recipeService.updateRecipeIngredient(duplicateIngredient.id, {
+              const updatedIngredient = await repositories.recipes.updateRecipeIngredient(duplicateIngredient.id, {
                 quantity: duplicateIngredient.quantity + newIngredient.quantity,
               })
 
@@ -373,7 +369,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
   const handleRemoveIngredient = async (ingredientId: string) => {
     try {
       setLoading(true)
-      await recipeService.removeIngredientFromRecipe(ingredientId)
+      await repositories.recipes.removeIngredientFromRecipe(ingredientId)
 
       const updatedIngredients = recipeIngredients.filter((item) => item.id !== ingredientId)
       setRecipeIngredients(updatedIngredients)
@@ -624,12 +620,12 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
                     ) : (
                       recipeIngredients.map((item) => {
                         // Buscar el ingrediente completo en la lista de ingredientes
-                        const ingredientData = ingredients.find((ing) => ing.id === item.ingredientId)
+                        const ingredientData = ingredients.find((ing) => ing.id === item.ingredient_id)
 
                         // Usar los datos del ingrediente encontrado o los datos del item
                         const ingredientName = ingredientData?.name || item.ingredient?.name || "Desconocido"
                         const ingredientUnit = ingredientData?.unit || item.ingredient?.unit || ""
-                        const stock = ingredientData?.stock || item.ingredient?.stock || 0
+                        const stock = ingredientData?.stock || item.ingredient?.stock|| 0
                         const isLow = stock < item.quantity
                         const cost = ingredientData?.cost || 0
                         const itemCost = cost * item.quantity

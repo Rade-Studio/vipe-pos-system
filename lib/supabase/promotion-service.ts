@@ -1,17 +1,5 @@
+import { Promotion } from "@/types/models"
 import { supabase } from "./client"
-
-export interface Promotion {
-  id: string
-  name: string
-  description: string | null
-  discount_type: "percentage" | "fixed_amount"
-  discount_value: number | null
-  start_date: string
-  end_date: string
-  active: boolean
-  created_at?: string
-  updated_at?: string
-}
 
 export const promotionService = {
   // Obtener todas las promociones

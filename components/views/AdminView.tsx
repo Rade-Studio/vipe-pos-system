@@ -35,6 +35,7 @@ import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
+import {repositories} from "@/lib";
 
 interface AdminViewProps {
   profile: Profile
@@ -181,22 +182,9 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
     setLoadingActiveOrders(true)
     try {
       // Obtener órdenes con estado "active", "kitchen" y "delivered" de la base de datos
-      const { data: dbOrders, error } = await supabase
-        .from("orders")
-        .select(`
-        *,
-        order_items(*),
-        tables(number),
-        profiles(full_name)
-      `)
-        .in("status", ["active", "kitchen", "delivered"])
-        .order("created_at", { ascending: false })
+      const dbOrders = await repositories.orders.getByStatusWithAllData(["active", "kitchen", "delivered"])
 
-      if (error) {
-        throw error
-      }
-
-      console.log("Órdenes activas cargadas desde DB:", dbOrders?.length || 0)
+      console.log("Órdenes cargadas desde DB:", dbOrders)
 
       // Transformar los datos al formato que espera la aplicación
       const formattedOrders =
@@ -205,13 +193,13 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
           tableId: order.table_id,
           waiter: order.waiter_id,
           status: order.status, // Mantener el estado original de la orden
-          items:
+          order_items:
             order.order_items?.map((item) => ({
               id: item.id,
               name: item.name,
               price: item.price,
               quantity: item.quantity,
-              categoryId: item.category_id || "",
+              categoryId: item.categoryId || "",
               image: "",
               comments: item.comments || "",
               status: item.status || "kitchen", // Estado del item
@@ -224,10 +212,10 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
             tipPercentage: order.tip_percentage || 0,
             total: order.total || 0,
           },
-          createdAt: new Date(order.created_at),
+          createdAt: new Date(order.created_at || ""),
           // Información adicional para mostrar
-          tableName: order.tables?.number || "N/A",
-          waiterName: order.profiles?.full_name || "Desconocido",
+          tableName: order.table?.number || "N/A",
+          waiterName: order.profile?.full_name || "Desconocido",
         })) || []
 
       setActiveOrdersFromDB(formattedOrders)
@@ -269,7 +257,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   const paidOrders = getOrdersByStatus(["paid"])
 
   // Combinar órdenes del store con las de la base de datos, evitando duplicados
-  const combinedActiveOrders = [...activeOrders]
+  const combinedActiveOrders = [...activeOrders, ...paidOrders]
 
   // Agregar órdenes de la base de datos que no estén ya en el store
   activeOrdersFromDB.forEach((dbOrder) => {
@@ -503,7 +491,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
                       {profiles
                         ?.filter((p) => p.role === "waiter")
                         .map((waiter) => {
-                          const assignedTables = tables.filter((t) => t.waiter === waiter.id)
+                          const assignedTables = tables.filter((t) => t.waiter_id === waiter.id)
                           return (
                             <div
                               key={waiter.id}
@@ -546,7 +534,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
                         {
                           getOrdersByStatus(["paid"]).filter((order) => {
                             const today = new Date()
-                            const orderDate = new Date(order.createdAt)
+                            const orderDate = new Date(order.created_at)
                             return orderDate.setHours(0, 0, 0, 0) === today.setHours(0, 0, 0, 0)
                           }).length
                         }
@@ -643,11 +631,11 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {combinedActiveOrders.map((order) => {
-                    const table = tables.find((t) => t.id === order.tableId)
-                    const waiter = profiles?.find((p) => p.id === order.waiter)
+                    const table = tables.find((t) => t.id === order.table_id)
+                    const waiter = profiles?.find((p) => p.id === order.waiter_id)
 
                     // Determinar si la orden es nueva (menos de 30 segundos)
-                    const isNewOrder = new Date().getTime() - new Date(order.createdAt).getTime() < 30000
+                    const isNewOrder = new Date().getTime() - new Date(order.created_at).getTime() < 30000
 
                     // Determinar la clase de borde según el estado
                     let borderClass = ""

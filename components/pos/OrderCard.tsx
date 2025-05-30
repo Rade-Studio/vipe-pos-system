@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import type { Order, Profile, Table } from "@/types"
+import type {Order, OrderByStatusWithAllData, Profile, Table} from "@/types"
 import { formatCurrency } from "@/utils/helpers"
 import { AlertCircle, CheckCircle2, ClipboardEdit, Trash2, User, MapPin } from "lucide-react"
 import { useState } from "react"
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog"
 
 interface OrderCardProps {
-  order: Order
+  order: OrderByStatusWithAllData
   waiter?: Profile
   table?: Table
   onEdit?: (orderId: string) => void
@@ -106,10 +106,10 @@ export function OrderCard({
   }
 
   // Fecha localizada
-  const localDate = new Date(order.createdAt).toLocaleString()
+  const localDate = new Date(order.created_at).toLocaleString()
 
   // Agrupar items idénticos (mismo nombre y comentarios)
-  const groupedItems = order.items.reduce((acc, item) => {
+  const groupedItems = order.order_items.reduce((acc: any, item) => {
     // Crear una clave única basada en nombre y comentarios
     const key = `${item.name}|${item.comments || ""}`
 
@@ -149,7 +149,7 @@ export function OrderCard({
                     <span className="font-bold">Mesa {table?.number || "?"}</span>
                   </div>
                   <Badge variant="outline" className="ml-2">
-                    {order.items.length} item(s)
+                    {order.order_items.length} item(s)
                   </Badge>
                 </>
               )}
@@ -183,7 +183,7 @@ export function OrderCard({
               order.status === "active" && isKitchenView
                 ? "destructive"
                 : order.status === "paid" || order.status === "delivered" || order.status === "served"
-                  ? "success"
+                  ? "default"
                   : "secondary"
             }
             className="text-sm"
@@ -273,7 +273,7 @@ export function OrderCard({
             {isKitchenView && onMarkAllAsDelivered && (
               <>
                 <Button
-                  variant="success"
+                  variant="default"
                   size="sm"
                   onClick={() => setShowCompleteDialog(true)}
                   disabled={loading}

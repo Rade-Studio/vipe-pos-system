@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
-import type { Database } from "@/types/supabase"
+import type { Database } from "@/types/supabase.types"
 
 // Valores de respaldo para desarrollo local
 const FALLBACK_SUPABASE_URL = "https://xyzcompany.supabase.co"

@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import {repositories} from "@/lib";
 
 export function CategoryList() {
   const [categories, setCategories] = useState<Category[]>([])
@@ -38,7 +39,7 @@ export function CategoryList() {
   const loadCategories = async () => {
     try {
       setLoading(true)
-      const data = await categoryService.getAll()
+      const data = await repositories.categories.getAll()
       setCategories(data)
     } catch (error) {
       console.error("Error loading categories:", error)

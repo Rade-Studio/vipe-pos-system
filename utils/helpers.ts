@@ -1,3 +1,5 @@
+import { Promotion } from "@/types/models"
+
 // Verificar la función getStatusColor para asegurar que el estado "kitchen" tenga el color correcto
 export function getStatusColor(status: string): string {
   switch (status) {
@@ -135,5 +137,19 @@ export function formatDateTime(date: Date | string | null | undefined): string {
   } catch (error) {
     console.error("Error al formatear fecha y hora:", error)
     return "N/A"
+  }
+}
+
+/**
+ * Calcula el descuento para un plato dado una promoción.
+ * @param price El precio original del plato.
+ * @param promotion La promoción a aplicar.
+ * @returns El monto del descuento.
+ */
+export function calculateDiscount(price: number, promotion: Promotion): number {
+  if (promotion.discount_type === "percentage") {
+    return Math.round((price * (promotion.discount_value ?? 1)) / 100);
+  } else {
+    return Math.min(price, promotion.discount_value ?? 0); // El descuento no puede ser mayor que el precio
   }
 }

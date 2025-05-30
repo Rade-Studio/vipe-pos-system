@@ -1,14 +1,13 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import type { Profile } from "@/types"
+import type {CartItem, Order, OrderByStatusWithAllData, OrderItem, Profile} from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
 import { OrderCard } from "@/components/pos/OrderCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
-import { orderService, tableService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { useToast } from "@/hooks/use-toast"
 import { Bell, RefreshCw, Wifi, WifiOff, Filter } from "lucide-react"
@@ -35,6 +34,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {repositories} from "@/lib";
 
 interface KitchenViewProps {
   profile: Profile
@@ -98,53 +98,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     }
   }, [])
 
-  // Convertir orden de la base de datos al formato del store
-  const convertDbOrderToStoreOrder = (dbOrder) => {
-    // Asegurarse de que order_items existe y es un array
-    const orderItems = Array.isArray(dbOrder.order_items) ? dbOrder.order_items : []
-
-    // Filtrar solo los items que están en estado "kitchen"
-    const kitchenItems = orderItems.filter((item) => item.status === "kitchen")
-
-    // Si no hay items en cocina, no incluir esta orden
-    if (kitchenItems.length === 0) {
-      return null
-    }
-
-    // Convertir los items de la orden
-    const items = kitchenItems.map((item) => ({
-      id: item.id, // Usar el ID del item
-      dishId: item.dish_id || `item-${item.id}`,
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity,
-      comments: item.comments || undefined,
-      categoryId: item.category_id || "",
-      image: "/placeholder.svg?height=50&width=50", // Imagen por defecto
-      status: item.status, // Incluir el estado del item
-    }))
-
-    // Crear el objeto de orden para el store
-    return {
-      id: dbOrder.id,
-      tableId: dbOrder.table_id,
-      items,
-      status: dbOrder.status,
-      bill: {
-        subtotal: dbOrder.subtotal || 0,
-        tax: dbOrder.tax || 0,
-        taxPercentage: dbOrder.tax_percentage || 0,
-        tip: dbOrder.tip || 0,
-        tipPercentage: dbOrder.tip_percentage || 0,
-        total: dbOrder.total || 0,
-      },
-      waiter: dbOrder.waiter_id,
-      createdAt: new Date(dbOrder.created_at),
-      isPartialOrder: dbOrder.is_partial_order || false,
-      parentOrderId: dbOrder.parent_order_id || null,
-    }
-  }
-
   // Configurar suscripción en tiempo real
   const setupRealtimeSubscription = () => {
     try {
@@ -203,14 +156,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       if (!orderDetails) return
 
       // Cargar la orden completa con sus items
-      const fullOrderDetails = await orderService.getById(orderDetails.id)
-      if (!fullOrderDetails) {
-        console.error("No se pudo cargar la orden completa:", orderDetails.id)
-        return
-      }
-
-      // Convertir la orden al formato del store
-      const storeOrder = convertDbOrderToStoreOrder(fullOrderDetails)
+      const storeOrder = await repositories.orders.getById(orderDetails.id)
 
       // Si no hay items en cocina, no procesar
       if (!storeOrder) return
@@ -229,16 +175,16 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
         // Si es una nueva orden, mostrar notificación
         if (isNewOrder) {
-          const table = tables.find((t) => t.id === storeOrder.tableId)
+          const table = tables.find((t) => t.id === storeOrder.table_id)
           toast({
             title: "¡Nueva orden!",
-            description: `Nueva orden recibida para la mesa ${table?.number || storeOrder.tableId}.`,
+            description: `Nueva orden recibida para la mesa ${table?.number || storeOrder.table_id}.`,
           })
 
           // Marcar todos los items como nuevos
           setNewItems((prev) => ({
             ...prev,
-            [orderDetails.id]: storeOrder.items.map((item) => item.id),
+            [orderDetails.id]: storeOrder.order_items.map((item) => item.id),
           }))
 
           // Actualizar el contador de nuevas órdenes y mostrar alerta
@@ -277,7 +223,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         })
 
         // Cargar la orden completa para verificar si todavía tiene items en cocina
-        const orderDetails = await orderService.getById(orderId)
+        const orderDetails = await repositories.orders.getById(orderId)
         if (!orderDetails) return
 
         // Verificar si hay más items en estado "kitchen"
@@ -294,13 +240,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
             return newState
           })
         } else {
-          // Convertir la orden al formato del store
-          const storeOrder = convertDbOrderToStoreOrder(orderDetails)
-
           // Si aún hay items en cocina, actualizar la orden
-          if (storeOrder) {
-            updateOrder(orderId, storeOrder)
-          }
+            updateOrder(orderId, orderDetails)
         }
 
         return
@@ -309,22 +250,15 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       // Si es un nuevo item o un item actualizado a estado "kitchen"
       if (isNewItem || (payload.old && payload.old.status !== "kitchen" && payload.new.status === "kitchen")) {
         // Cargar la orden completa con sus items
-        const orderDetails = await orderService.getById(orderId)
+        const orderDetails = await repositories.orders.getById(orderId)
         if (!orderDetails) return
-
-        // Convertir la orden al formato del store
-        const storeOrder = convertDbOrderToStoreOrder(orderDetails)
-
-        // Si no hay items en cocina, no procesar
-        if (!storeOrder) return
 
         // Verificar si la orden ya existe en el store
         const existingOrder = ordersRef.current.find((o) => o.id === orderId)
 
         if (existingOrder) {
           // Si existe, actualizar la orden
-          console.log("Actualizando orden existente en el store con nuevo item:", orderId)
-          updateOrder(orderId, storeOrder)
+          updateOrder(orderId, orderDetails)
 
           // Marcar el item como nuevo
           setNewItems((prev) => ({
@@ -333,10 +267,10 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           }))
 
           // Notificar al usuario
-          const table = tables.find((t) => t.id === storeOrder.tableId)
+          const table = tables.find((t) => t.id === orderDetails.table_id)
           toast({
             title: "¡Nuevo producto en cocina!",
-            description: `Se ha agregado un nuevo producto a la orden de la mesa ${table?.number || storeOrder.tableId}.`,
+            description: `Se ha agregado un nuevo producto a la orden de la mesa ${table?.number || table.number}.`,
           })
 
           // Actualizar el contador de nuevas órdenes
@@ -345,7 +279,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         } else {
           // Si no existe, agregar la orden
           console.log("Agregando orden con nuevo item al store:", orderId)
-          addOrder(storeOrder)
+          addOrder(orderDetails)
 
           // Marcar el item como nuevo
           setNewItems((prev) => ({
@@ -354,10 +288,10 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           }))
 
           // Notificar al usuario
-          const table = tables.find((t) => t.id === storeOrder.tableId)
+          const table = tables.find((t) => t.id === orderDetails.table_id)
           toast({
             title: "¡Nueva orden en cocina!",
-            description: `Se ha recibido una nueva orden para la mesa ${table?.number || storeOrder.tableId}.`,
+            description: `Se ha recibido una nueva orden para la mesa ${table?.number || table?.number}.`,
           })
 
           // Actualizar el contador de nuevas órdenes
@@ -386,7 +320,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     setLoading(true)
     try {
       // Cargar mesas
-      const tablesData = await tableService.getAll()
+      const tablesData = await repositories.tables.getAll()
       const formattedTables = tablesData.map((table) => ({
         id: table.id,
         number: table.number,
@@ -415,20 +349,15 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       console.log("Iniciando carga de órdenes con items en cocina...")
 
       // Obtener órdenes con estado "active" de la base de datos
-      const activeOrders = await orderService.getByStatus("active")
-      console.log("Órdenes activas obtenidas de la BD:", activeOrders.length)
+      const activeOrders = await repositories.orders.getByStatusWithItems("active")
+      console.log("Órdenes activas obtenidas de la BD:", activeOrders)
 
       // Filtrar las órdenes que tienen al menos un item en estado "kitchen"
-      const ordersWithKitchenItems = activeOrders.filter((order) =>
+      const ordersWithKitchenItems = activeOrders.filter((order: Order) =>
         order.order_items?.some((item) => item.status === "kitchen"),
       )
 
       console.log("Órdenes con items en cocina:", ordersWithKitchenItems.length)
-
-      // Procesar las órdenes para el store
-      const storeOrders = ordersWithKitchenItems.map(convertDbOrderToStoreOrder).filter(Boolean) // Eliminar nulls
-
-      console.log("Órdenes convertidas para el store:", storeOrders.length)
 
       // Limpiar órdenes anteriores en el store
       setOrders([])
@@ -437,15 +366,15 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       setNewItems({})
 
       // Agregar las órdenes al store
-      storeOrders.forEach((order) => {
+      ordersWithKitchenItems.forEach((order) => {
         console.log("Agregando orden al store:", order.id)
         addOrder(order)
 
         // Registrar los items de esta orden en el servicio de tiempo real
-        if (order.items && order.items.length > 0) {
+        if (order.order_items && order.order_items.length > 0) {
           realtimeService.registerItems(
             order.id,
-            order.items.map((item) => item.id),
+            order.order_items.map((item) => item.id),
           )
         }
       })
@@ -522,13 +451,13 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   // Aplicar filtros a las órdenes
   const filteredOrders = kitchenOrders.filter((order) => {
     // Filtrar por mesero si hay un filtro activo
-    if (filterWaiter && order.waiter !== filterWaiter) {
+    if (filterWaiter && order.waiter_id !== filterWaiter) {
       return false
     }
 
     // Filtrar por mesa si hay un filtro activo
     if (filterTable) {
-      const table = tables.find((t) => t.id === order.tableId)
+      const table = tables.find((t) => t.id === order.table_id)
       if (!table || table.number !== filterTable) {
         return false
       }
@@ -559,15 +488,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       }
 
       // Actualizar el estado del item a "served" en la base de datos
-      const { error } = await supabase
-        .from("order_items")
-        .update({ status: "served", updated_at: new Date().toISOString() })
-        .eq("id", itemId)
-
-      if (error) {
-        console.error("Error al actualizar estado del item:", error)
-        throw error
-      }
+      await repositories.orders.updateOrderItemsStatus(orderId, "served")
 
       toast({
         title: "Producto entregado",
@@ -580,11 +501,11 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         .map((order) => {
           if (order.id === orderId) {
             // Filtrar el item que se marcó como entregado
-            const updatedItems = order.items.filter((item) => item.id !== itemId)
+            const updatedItems = order.order_items.filter((item) => item.id !== itemId)
 
             // Si no quedan items, no incluir esta orden
             if (updatedItems.length === 0) {
-              return null
+              return null // Devolver null para eliminar la orden
             }
 
             return {
@@ -594,7 +515,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           }
           return order
         })
-        .filter(Boolean) // Eliminar nulls
+        .filter(Boolean) // Eliminar nulls (ordenes eliminadas)
 
       // Actualizar el store con las órdenes actualizadas
       setOrders(updatedOrders)
@@ -612,12 +533,12 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       // Verificar si quedan más items en la orden
       const order = orders.find((o) => o.id === orderId)
       if (order) {
-        const remainingItems = order.items.filter((item) => item.id !== itemId)
+        const remainingItems = order.order_items.filter((item) => item.id !== itemId)
 
         // Si no quedan más items, actualizar el estado de la mesa a "served"
         if (remainingItems.length === 0) {
-          const tableId = order.tableId
-          await tableService.updateTableStatus(tableId, "served")
+          const tableId = order.table_id
+          await repositories.tables.updateTableStatus(tableId, "served")
 
           // Actualizar también en el store local
           updateTableStatus(tableId, "served")
@@ -629,7 +550,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         }
       }
     } catch (error) {
-      console.error("Error al marcar el item como entregado:", error)
       toast({
         title: "Error",
         description: "No se pudo marcar el producto como entregado. Intente nuevamente.",
@@ -653,13 +573,13 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       // Obtener la orden del store
       const order = orders.find((o) => o.id === orderToDeliver)
 
-      if (!order || order.items.length === 0) {
+      if (!order || order.order_items.length === 0) {
         console.error("Orden no encontrada o sin items")
         return
       }
 
       // Obtener los IDs de todos los items en estado "kitchen"
-      const itemIds = order.items.map((item) => item.id)
+      const itemIds = order.order_items.map((item) => item.id)
 
       if (itemIds.length === 0) {
         console.log("No hay items para marcar como entregados")
@@ -678,8 +598,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       }
 
       // Actualizar el estado de la mesa a "served"
-      const tableId = order.tableId
-      await tableService.updateTableStatus(tableId, "served")
+      const tableId = order.table_id
+      await repositories.tables.updateTableStatus(tableId, "served")
 
       // Actualizar también en el store local
       updateTableStatus(tableId, "served")
@@ -923,8 +843,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
               </div>
             ) : (
               filteredOrders.map((order) => {
-                const table = tables.find((t) => t.id === order.tableId)
-                const waiter = profiles?.find((p) => p.id === order.waiter)
+                const table = tables.find((t) => t.id === order.table_id)
+                const waiter = profiles?.find((p) => p.id === order.waiter_id)
 
                 return (
                   <OrderCard
