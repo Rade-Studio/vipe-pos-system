@@ -62,7 +62,12 @@ export function PopularDishesChart({ data }: PopularDishesChartProps) {
               <LabelList
                 dataKey="count"
                 position="top"
-                formatter={(value: number, entry: any) => `${value} (${entry.percent.toFixed(1)}%)`}
+                formatter={(value: number, entry: any) => {
+                  const percent = entry && typeof entry.percent === 'number' ? entry.percent : undefined
+                  return percent !== undefined
+                    ? `${value} (${percent.toFixed(1)}%)`
+                    : `${value}`
+                }}
               />
             </Bar>
           </BarChart>
