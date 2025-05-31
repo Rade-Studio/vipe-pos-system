@@ -105,14 +105,6 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     // Buscar por ID (contiene el término)
     const byId = allOrders.filter((order: Order) => order.id.toLowerCase().includes(lowerSearch))
 
-    // Buscar por número de mesa (exacto si es numérico, contiene si es texto)
-    const byTable = allOrders.filter((order: Order) => {
-      const table = tables.find((t: any) => t.id === order.tableId)
-      if (!table) return false
-      if (isNumeric) return table.number.toString() === lowerSearch
-      return table.number.toString().includes(lowerSearch)
-    })
-
     // Buscar por nombre de mesero (contiene el término)
     const byWaiter = allOrders.filter((order: Order) => {
       const waiter = profiles.find((p: any) => p.id === order.waiter)
@@ -120,7 +112,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     })
 
     // Unir resultados sin duplicados
-    const allMatches = [...byId, ...byTable, ...byWaiter]
+    const allMatches = [...byId, ...byWaiter]
     const uniqueOrders = Array.from(new Map(allMatches.map((o: Order) => [o.id, o])).values())
     return uniqueOrders
   }, [allOrders, searchTerm, tables, profiles])
@@ -211,7 +203,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       <div className="flex items-center mb-4">
         <input
           type="text"
-          placeholder="Buscar por ID, mesa o mesero..."
+          placeholder="Buscar por ID o mesero..."
           className="px-3 py-2 border rounded-md w-full max-w-sm"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}

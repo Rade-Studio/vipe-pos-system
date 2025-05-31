@@ -55,7 +55,6 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   // Estados para los datos de las gráficas
   const [dailySales, setDailySales] = useState<DailySales[]>([])
   const [popularDishes, setPopularDishes] = useState<PopularDish[]>([])
-  const [categorySales, setCategorySales] = useState<CategorySales[]>([])
 
   // Estado para controlar la carga de datos
   const [isLoading, setIsLoading] = useState<boolean>(true)
@@ -95,11 +94,9 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         // Cargar datos para las gráficas
         const salesData = await dashboardService.getDailySales(30)
         const dishesData = await dashboardService.getPopularDishes(10)
-        const categoryData = await dashboardService.getCategorySales()
 
         setDailySales(salesData)
         setPopularDishes(dishesData)
-        setCategorySales(categoryData)
 
         // Obtener mesas asignadas a meseros
         const { data: assignedTablesData } = await supabase.from("tables").select("id").not("waiter_id", "is", null)
@@ -446,11 +443,11 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
                 </Card>
               </div>
 
-              {/* Gráficas */}
+              {/* Gráficas 2 columnas la primera con 3 partes y la segunda con 1 partes */}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <SalesChart data={dailySales} />
                 <PopularDishesChart data={popularDishes} />
-                <CategorySalesChart data={categorySales} categories={categoryMap} />
               </div>
 
               {/* Alertas de inventario */}
