@@ -440,26 +440,23 @@ const inventoryControlService = {
               continue
             }
 
-            // Registrar la transacción de ingrediente si hay suficiente stock
-            if (stockCheck.hasStock) {
-              const {error: transactionError} = await supabase.from("ingredient_transactions").insert({
-                ingredient_id: recipeIngredient.ingredient_id,
-                quantity: quantityToReduce,
-                total_cost: quantityToReduce * (ingredient.cost || 0),
-                unit_cost: ingredient.cost || 0,
-                transaction_type: "salida",
-                payment_status: "pagado",
-                notes: `Orden #${orderId} - ${item.name} (${item.quantity}x)`,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
+            const {error: transactionError} = await supabase.from("ingredient_transactions").insert({
+              ingredient_id: recipeIngredient.ingredient_id,
+              quantity: quantityToReduce,
+              total_cost: quantityToReduce * (ingredient.cost || 0),
+              unit_cost: ingredient.cost || 0,
+              transaction_type: "salida",
+              payment_status: "pagado",
+              notes: `Orden #${orderId} - ${item.name} (${item.quantity}x)`,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
 
-              if (transactionError) {
-                console.error(
-                    `Error al crear transacción de ingrediente ${recipeIngredient.ingredient_id}:`,
-                    transactionError,
-                )
-              }
+            if (transactionError) {
+              console.error(
+                  `Error al crear transacción de ingrediente ${recipeIngredient.ingredient_id}:`,
+                  transactionError,
+              )
             }
           } catch (error) {
             console.error(`Error al procesar ingrediente ${recipeIngredient.ingredient_id}:`, error)
