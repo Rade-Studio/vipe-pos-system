@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CompactOrderCard } from "@/components/pos/CompactOrderCard"
 // Importar el hook para detectar dispositivos móviles
 import { useIsMobile } from "@/hooks/use-mobile"
+import {animated, useSpring} from "@react-spring/web"
 
 // Definir un ancho personalizado para el sidebar
 const CUSTOM_SIDEBAR_WIDTH = "22rem" // Ajustado para optimizar espacio
@@ -79,6 +80,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
   // Estado para controlar la visibilidad del sidebar en móviles
   const [showMobileCart, setShowMobileCart] = useState(false)
+  const [cartStyle, cartApi] = useSpring(() => ({ scale: 1 }))
 
   // Referencias
   const unsubscribeRef = useRef<(() => void) | null>(null)
@@ -408,6 +410,20 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       setRealtimeConnected(false)
     }
   }, [setZustandTables, activeTable])
+
+  // Efecto para animar el carrito
+  useEffect(() => {
+    const bounce = () => {
+      cartApi.start({ scale: 1.3 })
+      setTimeout(() => cartApi.start({ scale: 1 }), 200)
+    }
+
+    window.addEventListener("cart:bounce", bounce)
+
+    return () => {
+      window.removeEventListener("cart:bounce", bounce)
+    }
+  }, [cartApi])
 
   // Efecto para inicializar datos y suscripciones
   useEffect(() => {
@@ -1291,19 +1307,23 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
       {/* Botón flotante para mostrar carrito en móvil */}
       {isMobile && activeTable && (
-        <Button
-          onClick={() => setShowMobileCart(true)}
-          className="fixed bottom-4 right-4 rounded-full w-14 h-14 shadow-lg flex items-center justify-center z-50"
-          size="icon"
-          variant="default"
-        >
-          <ShoppingCart className="h-6 w-6" />
-          {cartItems.length > 0 && (
-            <span className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+          <animated.div style={cartStyle}>
+            <Button
+                id="cart-icon"
+                onClick={() => setShowMobileCart(true)}
+                className="fixed bottom-4 right-4 rounded-full w-14 h-14 shadow-lg flex items-center justify-center z-50"
+                size="icon"
+                variant="default"
+            >
+              <ShoppingCart className="h-6 w-6"/>
+              {cartItems.length > 0 && (
+                  <span
+                      className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
               {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
             </span>
-          )}
-        </Button>
+              )}
+            </Button>
+          </animated.div>
       )}
 
       {/* Modal para selección de mesero */}

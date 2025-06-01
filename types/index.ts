@@ -21,7 +21,7 @@ export type Table = {
 }
 
 // Order types
-export type OrderStatus = "active" | "cancelled" | "paid"
+export type OrderStatus = "active" | "cancelled" | "paid" | "delivered" | "kitchen"
 export type OrderItemStatus = "kitchen" | "served"
 
 export type OrderBill = {

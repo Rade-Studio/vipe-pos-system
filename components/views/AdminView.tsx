@@ -63,6 +63,10 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false)
   const [newOrdersCount, setNewOrdersCount] = useState<number>(0)
 
+  const handleChangeRegisterDetails = (registerDate: Date) => {
+    setSelectedDate(registerDate)
+  }
+
   const {
     tables,
     profiles,
@@ -705,7 +709,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
             </Tabs>
 
             <h2 className="text-xl font-semibold mt-8 mb-4">Historial de Aperturas de Caja</h2>
-            <RegisterHistoryTable />
+            <RegisterHistoryTable changeRegisterDetails={handleChangeRegisterDetails} />
           </div>
         </TabsContent>
 
