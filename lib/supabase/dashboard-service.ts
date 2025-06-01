@@ -85,48 +85,6 @@ export const dashboardService = {
   },
 
   /**
-   * Obtiene las ventas agrupadas por categoría
-   */
-  async getCategorySales(): Promise<CategorySales[]> {
-    try {
-      // Consulta para obtener los items de órdenes pagadas con información de platos y categorías
-      const { data, error } = await supabase
-        .from("order_items")
-        .select(`
-          quantity,
-          price,
-          dishes(category_id),
-          orders!inner(status)
-        `)
-        .eq("orders.status", "paid")
-        .not("dishes", "is", null)
-
-      if (error) throw error
-
-      // Agrupar ventas por categoría
-      const salesByCategory = new Map<string, number>()
-
-      data.forEach((item) => {
-        if (item.dishes && item.dishes.category_id) {
-          const categoryId = item.dishes.category_id
-          const amount = item.price * item.quantity
-          const currentAmount = salesByCategory.get(categoryId) || 0
-          salesByCategory.set(categoryId, currentAmount + amount)
-        }
-      })
-
-      // Convertir a array de CategorySales
-      return Array.from(salesByCategory.entries()).map(([category, amount]) => ({
-        category,
-        amount,
-      }))
-    } catch (error) {
-      console.error("Error al obtener ventas por categoría:", error)
-      return []
-    }
-  },
-
-  /**
    * Obtiene estadísticas generales del dashboard
    */
   async getDashboardStats() {

@@ -155,8 +155,6 @@ export const cashRegisterService = {
 
   async getAllRegisters(): Promise<CashRegister[]> {
     try {
-      console.log("Obteniendo todas las cajas")
-
       const { data, error } = await supabase
         .from("cash_registers")
         .select("*")
@@ -167,7 +165,11 @@ export const cashRegisterService = {
         throw error
       }
 
+      // Cargar todas las transacciones
+      const transactions = await this.loadTransactionsForRegisters(data.map(r => r.id))
+
       console.log("Cajas obtenidas:", data.length)
+      console.log("------------------- data -------------------", data)
 
       // Convertir el formato de la base de datos al formato del store
       return data.map((register) => ({
@@ -177,8 +179,8 @@ export const cashRegisterService = {
         initialCash: register.initial_cash,
         finalCash: register.final_cash || undefined,
         status: register.status as "open" | "closed",
-        transactions: [], // No cargamos las transacciones para todas las cajas por eficiencia
-        cashTransactions: [], // No cargamos las transacciones de efectivo para todas las cajas por eficiencia
+        transactions:  transactions.transactions.filter(t => t.cash_register_id === register.id),
+        cashTransactions: transactions.cashTransactions.filter(t => t.cash_register_id === register.id),
         created_at: register.created_at ? new Date(register.created_at) : undefined,
         updated_at: register.updated_at ? new Date(register.updated_at) : undefined,
       }))
@@ -662,6 +664,61 @@ export const cashRegisterService = {
       }))
     } catch (error) {
       console.error("Error en getCashTransactionsByDateRange:", error)
+      throw error
+    }
+  },
+
+  async getTransactionsByRegisters(registers: string[]): Promise<PaymentTransaction[]> {
+    try {
+      const { data, error } = await supabase
+        .from("payment_transactions")
+        .select("*")
+        .in("cash_register_id", registers)
+        .order("timestamp", { ascending: false })
+
+      if (error) throw error
+
+      // Transformar los datos de la base de datos al formato de la aplicación
+      return data.map((t) => ({
+        id: t.id,
+        orderId: t.order_id,
+        tableId: t.table_id,
+        waiterId: t.waiter_id,
+        amount: t.amount,
+        tipAmount: t.tip_amount,
+        method: t.method,
+        cashReceived: t.cash_received,
+        cashChange: t.cash_change,
+        timestamp: new Date(t.timestamp),
+        cash_register_id: t.cash_register_id,
+      }))
+    } catch (error) {
+      console.error("Error en getTransactionsByRegisters:", error)
+      throw error
+    }
+  },
+
+  async getCashTransactionsByRegisters(registers: string[]): Promise<CashTransaction[]> {
+    try {
+      const { data, error } = await supabase
+        .from("cash_transactions")
+        .select("*")
+        .in("cash_register_id", registers)
+        .order("timestamp", { ascending: false })
+
+      if (error) throw error
+
+      // Transformar los datos de la base de datos al formato de la aplicación
+      return data.map((t) => ({
+        id: t.id,
+        amount: t.amount,
+        type: t.type,
+        description: t.description,
+        timestamp: new Date(t.timestamp),
+        cash_register_id: t.cash_register_id,
+      }))
+    } catch (error) {
+      console.error("Error en getCashTransactionsByRegisters:", error)
       throw error
     }
   },

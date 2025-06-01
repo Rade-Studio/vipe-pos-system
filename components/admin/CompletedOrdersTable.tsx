@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Table as TableUI, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Printer, RefreshCw } from "lucide-react"
-import { formatCurrency, formatDate } from "@/utils/helpers"
+import {formatCurrency, formatDate, formatDateTime} from "@/utils/helpers"
 import { usePOSStore } from "@/store/use-pos-store"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
-import type { Order, PrintableInvoice } from "@/types"
+import type { Order, Table, Profile, PrintableInvoice } from "@/types"
 import { useConfigStore } from "@/store/use-config-store"
 import { format } from "date-fns"
 import { getOrdersByDate } from "@/lib/supabase/service"
@@ -97,22 +97,24 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
   }, [localCompletedOrders, dbOrders])
 
   const completedOrders = useMemo(() => {
-    return allOrders.filter((order) => {
-      if (!searchTerm) return true
+    if (!searchTerm) return allOrders
 
-      // Buscar por ID
-      if (order.id.toLowerCase().includes(searchTerm.toLowerCase())) return true
+    const lowerSearch = searchTerm.toLowerCase().trim()
+    const isNumeric = /^\d+$/.test(lowerSearch)
 
-      // Buscar por mesa
-      const table = tables.find((t) => t.id === order.tableId)
-      if (table && table.number.toString().includes(searchTerm)) return true
+    // Buscar por ID (contiene el término)
+    const byId = allOrders.filter((order: Order) => order.id.toLowerCase().includes(lowerSearch))
 
-      // Buscar por mesero
-      const waiter = profiles.find((p) => p.id === order.waiter)
-      if (waiter && waiter.name.toLowerCase().includes(searchTerm.toLowerCase())) return true
-
-      return false
+    // Buscar por nombre de mesero (contiene el término)
+    const byWaiter = allOrders.filter((order: Order) => {
+      const waiter = profiles.find((p: any) => p.id === order.waiter)
+      return waiter && waiter.name.toLowerCase().includes(lowerSearch)
     })
+
+    // Unir resultados sin duplicados
+    const allMatches = [...byId, ...byWaiter]
+    const uniqueOrders = Array.from(new Map(allMatches.map((o: Order) => [o.id, o])).values())
+    return uniqueOrders
   }, [allOrders, searchTerm, tables, profiles])
 
   // Usar el hook de paginación
@@ -173,6 +175,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
         tip,
         tipPercentage,
         total,
+        totalDiscounts: order.bill?.totalDiscounts || 0,
       },
       waiter: waiter?.name || "Desconocido",
       table: table?.number.toString() || "N/A",
@@ -200,7 +203,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       <div className="flex items-center mb-4">
         <input
           type="text"
-          placeholder="Buscar por ID, mesa o mesero..."
+          placeholder="Buscar por ID o mesero..."
           className="px-3 py-2 border rounded-md w-full max-w-sm"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -208,12 +211,11 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       </div>
 
       <div className="border rounded-md">
-        <Table>
+        <TableUI>
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead>
               <TableHead>Fecha</TableHead>
-              <TableHead>Mesa</TableHead>
               <TableHead>Mesero</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
@@ -233,9 +235,6 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
                       <Skeleton className="h-5 w-32" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-5 w-10" />
-                    </TableCell>
-                    <TableCell>
                       <Skeleton className="h-5 w-24" />
                     </TableCell>
                     <TableCell className="text-right">
@@ -248,16 +247,14 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
                 ))
             ) : paginatedData.length > 0 ? (
               paginatedData.map((order) => {
-                const table = tables.find((t) => t.id === order.tableId)
                 const waiter = profiles.find((p) => p.id === order.waiter)
                 return (
                   <TableRow key={order.id}>
                     <TableCell className="font-medium">{order.id.substring(0, 8)}</TableCell>
-                    <TableCell>{order.createdAt ? formatDate(order.createdAt) : "Fecha no disponible"}</TableCell>
-                    <TableCell>{table ? table.number : "N/A"}</TableCell>
+                    <TableCell>{order.createdAt ? formatDateTime(order.createdAt) : "Fecha no disponible"}</TableCell>
                     <TableCell>{waiter ? waiter.name : "Desconocido"}</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(order.total || order.bill?.total || 0)}
+                      {formatCurrency(order.bill?.total || 0)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" onClick={() => handlePrintInvoice(order)}>
@@ -278,7 +275,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
               </TableRow>
             )}
           </TableBody>
-        </Table>
+        </TableUI>
       </div>
 
       {/* Paginación */}

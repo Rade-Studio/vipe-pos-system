@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import type { Profile } from "@/types"
+import {Profile, ProfileRole} from "@/types"
+import {usePOSStore} from "@/store/use-pos-store";
 
 // Mock data for profiles - ahora con un solo perfil de mesero
 const profiles: Profile[] = [
@@ -19,26 +20,14 @@ export function useProfile() {
   const selectProfile = (profile: Profile) => {
     setSelectedProfile(profile)
     setShowProfileSelection(false)
-
-    // Store in localStorage for persistence
-    localStorage.setItem("selectedProfile", JSON.stringify(profile))
   }
 
   // Change profile
   const changeProfile = () => {
     setSelectedProfile(null)
     setShowProfileSelection(true)
-    localStorage.removeItem("selectedProfile")
+    setSelectedProfile(null)
   }
-
-  // Check for stored profile on mount
-  useEffect(() => {
-    const storedProfile = localStorage.getItem("selectedProfile")
-    if (storedProfile) {
-      setSelectedProfile(JSON.parse(storedProfile))
-      setShowProfileSelection(false)
-    }
-  }, [])
 
   return {
     profiles,

@@ -1,44 +1,108 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import type { PopularDish } from "@/types"
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, Legend } from "recharts"
+import {TrendingUp} from "lucide-react"
+import {Pie, PieChart, ResponsiveContainer} from "recharts"
 
-interface PopularDishesChartProps {
-  data: PopularDish[]
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card"
+import {
+    ChartConfig,
+    ChartContainer, ChartLegend, ChartLegendContent,
+    ChartTooltip,
+    ChartTooltipContent,
+} from "@/components/ui/chart"
+
+import type {PopularDish} from "@/types"
+
+interface PopularDishesPieChartProps {
+    data: PopularDish[]
 }
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8", "#82CA9D", "#FF6B6B"]
+export function PopularDishesChart({data}: PopularDishesPieChartProps) {
+    if (!data || data.length === 0) {
+        return (
+            <Card className="col-span-2">
+                <CardHeader>
+                    <CardTitle>Platos Populares</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-[300px]">
+                    <p className="text-muted-foreground">
+                        No hay datos disponibles para platos populares.
+                    </p>
+                </CardContent>
+            </Card>
+        )
+    }
 
-export function PopularDishesChart({ data }: PopularDishesChartProps) {
-  return (
-    <Card className="col-span-2">
-      <CardHeader>
-        <CardTitle>Platos Populares</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie
-              data={data}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              outerRadius={80}
-              fill="#8884d8"
-              dataKey="count"
-              nameKey="name"
-              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-            >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip formatter={(value) => [`${value} unidades`, "Cantidad"]} />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  )
+    const sorted = [...data].sort((a, b) => b.count - a.count)
+    const top5 = sorted.slice(0, 5)
+    const rest = sorted.slice(5)
+    const total = data.reduce((sum, item) => sum + item.count, 0)
+    const otherCount = rest.reduce((sum, item) => sum + item.count, 0)
+
+    const normalizeKey = (str: string) =>
+        str.toLowerCase().replace(/\s+/g, "-")
+
+    const chartData = [...top5]
+    if (otherCount > 0) {
+        chartData.push({name: "Otros", count: otherCount})
+    }
+
+    const formattedData = chartData.map((item, index) => ({
+        name: item.name,
+        key: normalizeKey(item.name),
+        value: item.count,
+        fill: `var(--chart-${index + 1})`,
+    }))
+
+    const chartConfig = formattedData.reduce(
+        (acc, item, index) => ({
+            ...acc,
+            [item.key]: {
+                label: item.name,
+                color: `var(--chart-${index + 1})`,
+            },
+        }),
+        {
+            value: {label: ""},
+        } as ChartConfig
+    )
+
+    return (
+        <Card className="flex flex-col">
+            <CardHeader className="items-center pb-0">
+                <CardTitle>Platos Populares</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 pb-0">
+                <ResponsiveContainer width="100%" height={300}>
+                    <ChartContainer
+                        config={chartConfig}
+                        className="mx-auto aspect-square max-h-[100%] px-0"
+                    >
+                        <PieChart>
+                            <ChartTooltip
+                                content={<ChartTooltipContent nameKey="name"/>}
+                            />
+                            <Pie
+                                data={formattedData}
+                                dataKey="value"
+                                nameKey="name"
+                                labelLine={false}
+                            />
+                            <ChartLegend
+                                content={<ChartLegendContent nameKey="key" />}
+                                className="-translate-y-2 flex-wrap gap-2 *:basis-1/4 *:justify-center"
+                            />
+                        </PieChart>
+                    </ChartContainer>
+                </ResponsiveContainer>
+            </CardContent>
+        </Card>
+    )
 }
