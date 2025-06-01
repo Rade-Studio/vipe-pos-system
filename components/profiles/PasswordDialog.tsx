@@ -56,6 +56,7 @@ export function PasswordDialog({ open, onOpenChange, profile, onSuccess }: Passw
       onOpenChange(false)
     } else {
       setError(true)
+      setPassword("")
     }
   }
 

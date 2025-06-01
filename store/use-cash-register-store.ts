@@ -58,10 +58,13 @@ type CashRegisterState = {
   ) => Promise<
     (CashRegisterSummary & { transactions: PaymentTransaction[]; cashTransactions: CashTransaction[] }) | null
   >
+  loadTransactionsByRegisters: (registers: string[]) => Promise<
+    (CashRegisterSummary & { transactions: PaymentTransaction[]; cashTransactions: CashTransaction[] }) | null
+  >
 }
 
 export const useCashRegisterStore = create<CashRegisterState>()(
-  persist(
+
     (set, get) => ({
       currentRegister: null,
       registers: [],
@@ -173,6 +176,47 @@ export const useCashRegisterStore = create<CashRegisterState>()(
           const tempRegister: CashRegister = {
             id: "temp-" + date.toISOString(),
             openingTimestamp: startDate,
+            status: "open",
+            initialCash: 0, // No tenemos este dato para días pasados
+            transactions: transactions,
+            cashTransactions: cashTransactions, // Ahora incluimos las transacciones de efectivo
+          }
+
+          // Calcular el resumen para este registro temporal
+          const summary = cashRegisterService.calculateRegisterSummary(tempRegister)
+
+          // Agregar las transacciones al resumen para poder exportarlas
+          return {
+            ...summary,
+            transactions: transactions,
+            cashTransactions: cashTransactions, // Incluimos las transacciones de efectivo en el resultado
+          }
+        } catch (error) {
+          console.error("Error al cargar transacciones por fecha:", error)
+          return null
+        } finally {
+          set({ isLoading: false })
+        }
+      },
+
+      loadTransactionsByRegisters: async (registers: string[]) => {
+        try {
+          set({ isLoading: true })
+
+          // Obtener transacciones para el rango de fechas
+          const transactions = await cashRegisterService.getTransactionsByRegisters(registers)
+
+          // Obtener transacciones de efectivo para el rango de fechas
+          const cashTransactions = await cashRegisterService.getCashTransactionsByRegisters(registers)
+
+          if ((!transactions || transactions.length === 0) && (!cashTransactions || cashTransactions.length === 0)) {
+            return null
+          }
+
+          // Crear un registro temporal con las transacciones del día
+          const tempRegister: CashRegister = {
+            id: "temp-" + new Date().toISOString(),
+            openingTimestamp: new Date(),
             status: "open",
             initialCash: 0, // No tenemos este dato para días pasados
             transactions: transactions,
@@ -397,16 +441,4 @@ export const useCashRegisterStore = create<CashRegisterState>()(
         return get().registers
       },
     }),
-    {
-      name: "cash-register-storage",
-      partialize: (state) => ({
-        // Solo persistir algunos datos para evitar conflictos con Supabase
-        registers: state.registers.map((register) => ({
-          ...register,
-          transactions: [], // No persistir transacciones localmente
-          cashTransactions: [], // No persistir transacciones de efectivo localmente
-        })),
-      }),
-    },
-  ),
 )

@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { updateBusinessConfig } from "@/lib/api/business-config"
+import { businessConfigService } from "@/lib/supabase/business-config-service"
 
 interface BusinessConfigFormProps {
   initialData: {

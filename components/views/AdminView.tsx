@@ -6,7 +6,6 @@ import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
 import { SalesChart } from "@/components/admin/SalesChart"
 import { PopularDishesChart } from "@/components/admin/PopularDishesChart"
-import { CategorySalesChart } from "@/components/admin/CategorySalesChart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { OrderCard } from "@/components/pos/OrderCard"
 import { ConfigurationPanel } from "@/components/admin/ConfigurationPanel"
@@ -19,7 +18,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { CashRegisterStatus } from "@/components/cashier/CashRegisterStatus"
 import { RegisterHistoryTable } from "@/components/cashier/RegisterHistoryTable"
 import { CashRegisterSummary } from "@/components/admin/CashRegisterSummary"
-import { TransactionsByDateList } from "@/components/admin/TransactionsByDateList"
+import { TransactionsByRegisterId } from "@/components/admin/TransactionsByRegisterId"
 import { orderService } from "@/lib/supabase/service"
 import { dashboardService } from "@/lib/supabase/dashboard-service"
 import { AlertCircle, RefreshCw } from "lucide-react"
@@ -701,7 +700,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
               </TabsContent>
 
               <TabsContent value="transactions">
-                <TransactionsByDateList selectedDate={selectedDate} />
+                <TransactionsByRegisterId selectedDate={selectedDate} />
               </TabsContent>
             </Tabs>
 

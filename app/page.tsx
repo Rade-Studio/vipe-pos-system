@@ -18,7 +18,7 @@ import { supabase } from "@/lib/supabase/client"
 export default function Home() {
   const { profiles, selectedProfile, showProfileSelection, selectProfile, changeProfile } = useProfile()
   const { setTables, setProfiles } = usePOSStore()
-  const { loadCurrentRegister } = useCashRegisterStore()
+  const { loadCurrentRegister, loadAllRegisters } = useCashRegisterStore()
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const { loadConfigFromDB } = useConfigStore()
@@ -74,6 +74,8 @@ export default function Home() {
 
         // Cargar información de caja actual
         await loadCurrentRegister()
+
+        await loadAllRegisters()
 
       } catch (error) {
       } finally {
@@ -138,7 +140,7 @@ export default function Home() {
     } else {
       setIsLoading(false)
     }
-  }, [loadConfigFromDB, setTables, setProfiles, loadCurrentRegister, isAuthenticated])
+  }, [loadConfigFromDB, setTables, setProfiles, loadCurrentRegister, loadAllRegisters, isAuthenticated])
 
   // Pantalla de carga mientras se inicializa la aplicación
   if (isLoading) {

@@ -16,18 +16,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { CashTransaction, PaymentTransaction } from "@/types/cash-register"
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
+import {cashRegisterService} from "@/lib/supabase/cash-register-service";
 
 interface TransactionsByDateListProps {
   selectedDate?: Date
 }
 
-export function TransactionsByDateList({ selectedDate: propSelectedDate }: TransactionsByDateListProps) {
+export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: TransactionsByDateListProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date>(propSelectedDate || new Date())
+  const [registers, setRegisters] = useState<string[]>([])
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([])
   const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([])
-  const { loadTransactionsByDate } = useCashRegisterStore()
+  const { loadTransactionsByRegisters } = useCashRegisterStore()
   const { toast } = useToast()
   const { profiles } = usePOSStore()
 
@@ -63,7 +65,9 @@ export function TransactionsByDateList({ selectedDate: propSelectedDate }: Trans
     const loadData = async () => {
       setIsLoading(true)
       try {
-        const result = await loadTransactionsByDate(selectedDate)
+        const registersForDate = await cashRegisterService.getRegistersByDate(selectedDate)
+        const registersIds = registersForDate.map((r) => r.id)
+        const result = await loadTransactionsByRegisters(registersIds)
         if (result) {
           setTransactions(result.transactions || [])
           // Cargar las transacciones de efectivo si existen
@@ -86,7 +90,7 @@ export function TransactionsByDateList({ selectedDate: propSelectedDate }: Trans
     }
 
     loadData()
-  }, [selectedDate, loadTransactionsByDate])
+  }, [selectedDate, registers])
 
   // Filtrar transacciones por término de búsqueda
   const filteredTransactions = transactions.filter(
@@ -131,7 +135,8 @@ export function TransactionsByDateList({ selectedDate: propSelectedDate }: Trans
     }
 
     const headers = [
-      "ID",
+      "Caja",
+      "Transaccion",
       "Orden",
       "Mesero",
       "Monto",
@@ -146,6 +151,7 @@ export function TransactionsByDateList({ selectedDate: propSelectedDate }: Trans
     const csvData = transactions.map((tx) => {
       const date = new Date(tx.timestamp)
       return [
+        tx.cash_register_id.substring(0, 8), // Solo los primeros 8 caracteres del ID
         tx.id.substring(0, 8), // Solo los primeros 8 caracteres del ID
         tx.orderId?.substring(0, 8) || "N/A", // Solo los primeros 8 caracteres de la orden
         tx.waiterId ? getWaiterName(tx.waiterId) : "No asignado", // Nombre del mesero en lugar del UUID
@@ -187,11 +193,12 @@ export function TransactionsByDateList({ selectedDate: propSelectedDate }: Trans
       return
     }
 
-    const headers = ["ID", "Tipo", "Descripción", "Monto", "Fecha", "Hora"]
+    const headers = ["Caja", "Transaccion", "Tipo", "Descripción", "Monto", "Fecha", "Hora"]
 
     const csvData = cashTransactions.map((tx) => {
       const date = new Date(tx.timestamp)
       return [
+        tx.cash_register_id.substring(0, 8), // Solo los primeros 8 caracteres del ID
         tx.id.substring(0, 8), // Solo los primeros 8 caracteres del ID
         tx.type === "deposit" ? "Ingreso" : "Retiro",
         tx.description,

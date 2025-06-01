@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { Table as TableUI, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Printer, RefreshCw } from "lucide-react"
-import { formatCurrency, formatDate } from "@/utils/helpers"
+import {formatCurrency, formatDate, formatDateTime} from "@/utils/helpers"
 import { usePOSStore } from "@/store/use-pos-store"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { Order, Table, Profile, PrintableInvoice } from "@/types"
@@ -216,7 +216,6 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
             <TableRow>
               <TableHead>ID</TableHead>
               <TableHead>Fecha</TableHead>
-              <TableHead>Mesa</TableHead>
               <TableHead>Mesero</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
@@ -236,9 +235,6 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
                       <Skeleton className="h-5 w-32" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-5 w-10" />
-                    </TableCell>
-                    <TableCell>
                       <Skeleton className="h-5 w-24" />
                     </TableCell>
                     <TableCell className="text-right">
@@ -251,16 +247,14 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
                 ))
             ) : paginatedData.length > 0 ? (
               paginatedData.map((order) => {
-                const table = tables.find((t) => t.id === order.tableId)
                 const waiter = profiles.find((p) => p.id === order.waiter)
                 return (
                   <TableRow key={order.id}>
                     <TableCell className="font-medium">{order.id.substring(0, 8)}</TableCell>
-                    <TableCell>{order.createdAt ? formatDate(order.createdAt) : "Fecha no disponible"}</TableCell>
-                    <TableCell>{table ? table.number : "N/A"}</TableCell>
+                    <TableCell>{order.createdAt ? formatDateTime(order.createdAt) : "Fecha no disponible"}</TableCell>
                     <TableCell>{waiter ? waiter.name : "Desconocido"}</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(order.total || order.bill?.total || 0)}
+                      {formatCurrency(order.bill?.total || 0)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" onClick={() => handlePrintInvoice(order)}>

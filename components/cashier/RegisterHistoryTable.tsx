@@ -3,10 +3,13 @@
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {useEffect} from "react";
 
 export function RegisterHistoryTable() {
-  const { getAllRegisters } = useCashRegisterStore()
+  const { getAllRegisters} = useCashRegisterStore()
   const registers = getAllRegisters()
+
+  console.log("------------------- registers -------------------", registers)
 
   // Ordenar registros por fecha (más reciente primero)
   const sortedRegisters = [...registers].sort(
@@ -33,7 +36,11 @@ export function RegisterHistoryTable() {
         <TableBody>
           {sortedRegisters.map((register) => {
             // Calcular ventas totales
-            const totalSales = register.transactions.reduce((sum, tx) => sum + tx.amount, 0)
+            const totalSales = Math.round(register.transactions.reduce((sum, tx) => sum + tx.amount, 0))
+            const totalSalesCash = Math.round(register.cashTransactions.reduce((sum, tx) => sum + tx.amount, 0))
+
+            const totalSalesValue = totalSales + totalSalesCash
+
 
             return (
               <TableRow key={register.id}>
@@ -43,7 +50,7 @@ export function RegisterHistoryTable() {
                   {register.closingTimestamp ? new Date(register.closingTimestamp).toLocaleTimeString() : "-"}
                 </TableCell>
                 <TableCell>{formatCurrency(register.initialCash)}</TableCell>
-                <TableCell>{formatCurrency(totalSales)}</TableCell>
+                <TableCell>{formatCurrency(totalSalesValue)}</TableCell>
                 <TableCell>
                   <span
                     className={`px-2 py-1 rounded-full text-xs ${
