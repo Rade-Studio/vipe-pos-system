@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import {useEffect, useState } from "react";
 import {
   X,
   Trash2,
@@ -126,7 +126,7 @@ export function CartSidebar({
 
   const cartContent = (
     <>
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center" id="cart-icon">
         <div className="flex items-center">
           <h2 className="text-lg font-semibold">
             {tableNumber ? `Mesa ${tableNumber}` : "Carrito"}

@@ -14,6 +14,8 @@ import { useConfigStore } from "@/store/use-config-store"
 import inventoryControlService from "@/lib/supabase/inventory-control-service"
 import { Skeleton } from "@/components/ui/skeleton"
 import {toast} from "@/components/ui/use-toast";
+import { createPortal } from "react-dom"
+import { FlyImage } from "@/components/animations/FlyImage"
 
 interface DishGridProps {
   dishes: Dish[]
@@ -28,6 +30,11 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
   const [isTouchDevice, setIsTouchDevice] = useState(false)
   const [stockStatus, setStockStatus] = useState<Map<string, boolean>>(new Map())
   const [isLoadingStock, setIsLoadingStock] = useState(false)
+  const [flyImg, setFlyImg] = useState<null | {
+    src: string
+    from: { x: number; y: number }
+    to: { x: number; y: number }
+  }>(null)
 
   const { inventoryControlEnabled } = useConfigStore()
 
@@ -74,12 +81,28 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
     }
   }
 
+  const triggerImageFly = (img: HTMLImageElement) => {
+    const fromRect = img.getBoundingClientRect()
+    const toElement = document.getElementById("cart-icon")
+    if (!toElement) return
+
+    const toRect = toElement.getBoundingClientRect()
+
+    setFlyImg({
+      src: img.src,
+      from: { x: fromRect.left, y: fromRect.top },
+      to: {
+        x: toRect.left + toRect.width / 2 - 40,
+        y: toRect.top + toRect.height / 2 - 40,
+      },
+    })
+  }
+
   const handleDishClick = (dish: Dish) => {
     // Si el control de inventario está activado y el plato está agotado, no hacer nada
     // if (inventoryControlEnabled && stockStatus.has(dish.id) && !stockStatus.get(dish.id)) {
     //   return
     // }
-
     // Click izquierdo: agregar directamente al carrito
     onAddToCart(dish)
   }
@@ -173,72 +196,79 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
           const isOutOfStock = inventoryControlEnabled && !stockStatus.get(dish.id)
 
           return (
-            <Card
-              key={dish.id}
-              className={`overflow-hidden transition-shadow cursor-pointer hover:shadow-md`}
-              onClick={() => handleDishClick(dish)}
-              onContextMenu={(e) => handleDishRightClick(e, dish)}
-              onTouchStart={() => handleTouchStart(dish)}
-              onTouchEnd={handleTouchEnd}
-              onTouchMove={handleTouchMove}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                  <div className="relative h-20 w-20">
-                    <img
-                      src={dish.image || "/placeholder.svg"}
-                      alt={dish.name}
-                      className={`h-20 w-20 object-cover rounded-md ${isOutOfStock ? "grayscale" : ""}`}
-                    />
-                    {isOutOfStock && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded-md">
-                        <Badge variant="destructive" className="absolute top-1 right-1">
-                          Agotado
-                        </Badge>
-                      </div>
-                    )}
+              <Card
+                  key={dish.id}
+                  className={`overflow-hidden transition-shadow cursor-pointer hover:shadow-md`}
+                  onClick={(e) => {
+                    const img = e.currentTarget.querySelector("img") as HTMLImageElement
+                    if (img) triggerImageFly(img)
+                    handleDishClick(dish)
+                    window.dispatchEvent(new Event("cart:bounce"))
+                  }}
+                  onContextMenu={(e) => handleDishRightClick(e, dish)}
+                  onTouchStart={() => handleTouchStart(dish)}
+                  onTouchEnd={handleTouchEnd}
+                  onTouchMove={handleTouchMove}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="relative h-20 w-20">
+                      <img
+                          src={dish.image || "/placeholder.svg"}
+                          alt={dish.name}
+                          className={`h-20 w-20 object-cover rounded-md ${isOutOfStock ? "grayscale" : ""}`}
+                      />
+                      {isOutOfStock && (
+                          <div
+                              className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40 rounded-md">
+                            <Badge variant="destructive" className="absolute top-1 right-1">
+                              Agotado
+                            </Badge>
+                          </div>
+                      )}
 
-                    {/* Mostrar badge de promoción si existe */}
-                    {dish.discountAmount && dish.discountAmount > 0 && !isOutOfStock && (
-                      <Badge className="absolute top-1 right-1 bg-red-500 hover:bg-red-600">
-                        <Tag className="h-3 w-3 mr-1" />
-                        {dish.discountPercentage ? `-${dish.discountPercentage}%` : formatCurrency(dish.discountAmount)}
-                      </Badge>
-                    )}
+                      {/* Mostrar badge de promoción si existe */}
+                      {dish.discountAmount && dish.discountAmount > 0 && !isOutOfStock && (
+                          <Badge className="absolute top-1 right-1 bg-red-500 hover:bg-red-600">
+                            <Tag className="h-3 w-3 mr-1"/>
+                            {dish.discountPercentage ? `-${dish.discountPercentage}%` : formatCurrency(dish.discountAmount)}
+                          </Badge>
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-medium">{dish.name}</h3>
+
+                      {/* Mostrar precio con descuento si existe */}
+                      {dish.originalPrice ? (
+                          <div>
+                      <span className="text-sm line-through text-muted-foreground">
+                        {formatCurrency(dish.originalPrice)}
+                      </span>
+                            <p className="text-red-600 font-medium">{formatCurrency(dish.price)}</p>
+                          </div>
+                      ) : (
+                          <p className="text-muted-foreground">{formatCurrency(dish.price)}</p>
+                      )}
+
+                      {isOutOfStock ? (
+                          <Badge variant="outline" className="mt-2 bg-red-50 text-red-700 border-red-200">
+                            <AlertTriangle className="mr-1 h-3 w-3"/>
+                            Agotado
+                          </Badge>
+                      ) : (
+                          <Badge variant="outline" className="mt-2">
+                            <ShoppingCart className="mr-1 h-3 w-3"/>
+                            Agregar
+                          </Badge>
+                      )}
+
+                      {/* Mostrar nombre de la promoción si existe */}
+                      {dish.promotionName &&
+                          <p className="text-xs text-muted-foreground mt-1">{dish.promotionName}</p>}
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-medium">{dish.name}</h3>
-
-                    {/* Mostrar precio con descuento si existe */}
-                    {dish.originalPrice ? (
-                      <div>
-                        <span className="text-sm line-through text-muted-foreground">
-                          {formatCurrency(dish.originalPrice)}
-                        </span>
-                        <p className="text-red-600 font-medium">{formatCurrency(dish.price)}</p>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground">{formatCurrency(dish.price)}</p>
-                    )}
-
-                    {isOutOfStock ? (
-                      <Badge variant="outline" className="mt-2 bg-red-50 text-red-700 border-red-200">
-                        <AlertTriangle className="mr-1 h-3 w-3" />
-                        Agotado
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="mt-2">
-                        <ShoppingCart className="mr-1 h-3 w-3" />
-                        Agregar
-                      </Badge>
-                    )}
-
-                    {/* Mostrar nombre de la promoción si existe */}
-                    {dish.promotionName && <p className="text-xs text-muted-foreground mt-1">{dish.promotionName}</p>}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
           )
         })}
       </div>
@@ -300,6 +330,18 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {flyImg &&
+          createPortal(
+              <FlyImage
+                  src={flyImg.src}
+                  from={flyImg.from}
+                  to={flyImg.to}
+                  onDone={() => setFlyImg(null)}
+              />,
+              document.body
+          )}
+
     </>
   )
 }
