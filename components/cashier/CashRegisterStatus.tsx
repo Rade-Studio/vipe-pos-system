@@ -27,21 +27,21 @@ export function CashRegisterStatus() {
     <>
       <div className="mb-6">
         {isOpen ? (
-          <Alert className="bg-green-50 border-green-200 shadow-sm">
+          <Alert className="bg-green-50 shadow-sm dark:bg-primary/5">
             <CheckCircle2 className="h-4 w-4 text-green-600" />
-            <AlertTitle className="text-green-800 font-semibold">Caja Abierta</AlertTitle>
-            <AlertDescription className="text-green-700">
+            <AlertTitle className="dark:text-white text-green-700 font-semibold">Caja Abierta</AlertTitle>
+            <AlertDescription>
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mt-2 gap-2">
                 <div className="flex items-center">
-                  <span className="mr-1">Efectivo actual:</span>
-                  <span className="font-medium text-green-900">{formatCurrency(summary?.finalCash || 0)}</span>
+                  <span className="mr-1 font-semibold dark:text-white">Efectivo actual:</span>
+                  <span className="font-medium font-semibold text-green-900 dark:text-white">{formatCurrency(summary?.finalCash || 0)}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setAddCashDialog(true)}
-                    className="bg-white hover:bg-green-50"
+                    className="bg-dark hover:bg-green-600/30 dark:bg-dark text-green-700 dark:hover:bg-green-900/70"
                   >
                     <PlusCircle className="h-4 w-4 mr-1 text-green-600" />
                     Agregar Efectivo
@@ -50,16 +50,16 @@ export function CashRegisterStatus() {
                     variant="outline"
                     size="sm"
                     onClick={() => setWithdrawCashDialog(true)}
-                    className="bg-white hover:bg-green-50"
+                    className="bg-dark hover:bg-red-600/30 text-red-700 dark:bg-dark dark:hover:bg-red-900/70"
                   >
-                    <MinusCircle className="h-4 w-4 mr-1 text-green-600" />
+                    <MinusCircle className="h-4 w-4 mr-1 text-red-600" />
                     Retirar Efectivo
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setCloseDialog(true)}
-                    className="bg-white hover:bg-green-50"
+                    className="bg-dark"
                   >
                     Cerrar Caja
                   </Button>
