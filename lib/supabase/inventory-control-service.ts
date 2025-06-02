@@ -427,6 +427,7 @@ const inventoryControlService = {
 
           try {
             // Calcular el nuevo stock
+            const isLowerThanZero = (ingredient.stock - quantityToReduce) < 0
             const newStock = Math.max(0, ingredient.stock - quantityToReduce)
 
             console.log(`Stock actual de ${ingredient.name}: ${ingredient.stock}, nuevo stock: ${newStock}`)
@@ -439,6 +440,11 @@ const inventoryControlService = {
 
             if (updateError) {
               console.error(`Error al actualizar stock del ingrediente ${recipeIngredient.ingredient_id}:`, updateError)
+              continue
+            }
+
+            // Si el stock pasaria a negativo, no crear ninguna transacción
+            if (isLowerThanZero) {
               continue
             }
 

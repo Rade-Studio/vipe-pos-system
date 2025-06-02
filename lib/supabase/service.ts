@@ -1157,6 +1157,44 @@ export const orderService = {
         throw transactionsError
       }
 
+      // Obtener las transacciones de ingredientes de la orden
+      const { data: transactionsIngredients, error: transactionsIngredientsError } = await supabase
+          .from("ingredient_transactions")
+          .select("*")
+          .in("id", transactions.map(t => t.ingredient_transaction_id))
+
+      // Recalcular el stock de ingredientes y sumar lo gastado
+      const updatedIngredients = transactionsIngredients?.map(transaction => async () => {
+        const { data: ingredient, error: ingredientError } = await supabase
+            .from("ingredients")
+            .select("*")
+            .eq("id", transaction.ingredient_id ?? "")
+            .single()
+
+        if (ingredientError) {
+          console.error("Error al actualizar stock de ingredientes:", ingredientError)
+          throw ingredientError
+        }
+
+        const { data: updatedIngredient, error: updatedIngredientError } = await supabase
+            .from("ingredients")
+            .update({
+              stock: ingredient.stock + transaction.quantity
+            })
+            .eq("id", transaction.ingredient_id ?? "")
+
+        if (updatedIngredientError) {
+          console.error("Error al actualizar stock de ingredientes:", updatedIngredientError)
+          throw updatedIngredientError
+        }
+
+        console.log("------ Ingrediente actualizado ------", updatedIngredient)
+
+      })
+
+      if (updatedIngredients)
+        await Promise.all(updatedIngredients.map(update => update()))
+
       // Eliminar las transacciones de ingredientes
       const {  error: transactionsDeleteError } = await supabase
           .from("ingredient_transactions")
