@@ -34,6 +34,7 @@ interface OrderCardProps {
   isPaid?: boolean
   showActions?: boolean
   newItems?: string[] // IDs de los nuevos items agregados
+  isAdmin?: boolean
 }
 
 export function OrderCard({
@@ -51,9 +52,12 @@ export function OrderCard({
   isPaid = false,
   showActions = true,
   newItems = [],
+  isAdmin = false,
 }: OrderCardProps) {
   const [loading, setLoading] = useState(false)
   const [showCompleteDialog, setShowCompleteDialog] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null)
 
   // Estado de la orden (traducido)
   const orderStatus = {
@@ -97,12 +101,19 @@ export function OrderCard({
     if (!onDelete) return
     setLoading(true)
     try {
-      await onDelete(order.id)
+      onDelete(order.id)
     } catch (error) {
       console.error("Error al eliminar la orden:", error)
     } finally {
       setLoading(false)
+      setIsDeleteDialogOpen(false)
+      setOrderToDelete(null)
     }
+  }
+
+  const handleSelectToDelete = (order: Order) => {
+    setOrderToDelete(order)
+    setIsDeleteDialogOpen(true)
   }
 
   // Fecha localizada
@@ -182,9 +193,11 @@ export function OrderCard({
             variant={
               order.status === "active" && isKitchenView
                 ? "destructive"
-                : order.status === "paid" || order.status === "delivered" || order.status === "served"
-                  ? "success"
-                  : "secondary"
+                : order.status === "paid" || order.status === "delivered"
+                  ? "default"
+                  : order.status === "kitchen"
+                    ? "warning"
+                      : "secondary"
             }
             className="text-sm"
           >
@@ -216,7 +229,8 @@ export function OrderCard({
                     </div>
                     {item.comments && (
                       <div className="text-sm text-muted-foreground mt-1 bg-white dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600">
-                        <span className="font-medium">Nota:</span> {item.comments}
+                        {/* mostrar mas cuando sea admin y sobrepase el limite de caracteres de 10 */}
+                        <span className="font-medium">Nota:</span> {item.comments.length > 10 && isAdmin ? item.comments.substring(0, 150) + "..." : item.comments}
                       </div>
                     )}
                   </div>
@@ -273,7 +287,7 @@ export function OrderCard({
             {isKitchenView && onMarkAllAsDelivered && (
               <>
                 <Button
-                  variant="success"
+                  variant="default"
                   size="sm"
                   onClick={() => setShowCompleteDialog(true)}
                   disabled={loading}
@@ -309,8 +323,8 @@ export function OrderCard({
                   </Button>
                 )}
                 {onDelete && (
-                  <Button variant="destructive" size="sm" onClick={handleDelete} disabled={loading}>
-                    <Trash2 className="h-4 w-4 mr-1" /> Eliminar
+                  <Button variant="destructive" size="sm" onClick={() => handleSelectToDelete(order)} disabled={loading}>
+                    <Trash2 className="h-4 w-4 mr-1" /> Cancelar Orden
                   </Button>
                 )}
                 {onPay && (
@@ -328,6 +342,22 @@ export function OrderCard({
           </div>
         )}
       </CardFooter>
+
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará permanentemente la orden {order.id.substring(0, 8)} de la mesa {table?.number}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Eliminar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

@@ -415,7 +415,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       console.log("Iniciando carga de órdenes con items en cocina...")
 
       // Obtener órdenes con estado "active" de la base de datos
-      const activeOrders = await orderService.getByStatus("active")
+      const activeOrders = await orderService.getByStatus("kitchen")
       console.log("Órdenes activas obtenidas de la BD:", activeOrders.length)
 
       // Filtrar las órdenes que tienen al menos un item en estado "kitchen"
@@ -618,6 +618,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         if (remainingItems.length === 0) {
           const tableId = order.tableId
           await tableService.updateTableStatus(tableId, "served")
+          await orderService.updateStatus(orderId, "delivered")
 
           // Actualizar también en el store local
           updateTableStatus(tableId, "served")

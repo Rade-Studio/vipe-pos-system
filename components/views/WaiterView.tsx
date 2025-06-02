@@ -184,7 +184,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   // Cargar órdenes - función memoizada
   const loadOrders = useCallback(async () => {
     try {
-      const activeOrdersData = await orderService.getByStatus(["active"])
+      const activeOrdersData = await orderService.getByStatus(["active", "kitchen", "delivered"])
 
       const formattedOrders = activeOrdersData.map((order) => {
         const items = order.order_items.map((item) => ({
@@ -913,6 +913,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       }
 
       await orderService.recalculateOrderTotals(orderId)
+      await orderService.updateStatus(orderId, "kitchen")
       return true
     } catch (error) {
       throw error
@@ -1025,7 +1026,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           tip: bill.tip,
           tip_percentage: bill.tipPercentage,
           total: bill.total,
-          status: "active", // Estado inicial: activo
+          status: "kitchen", // Estado inicial: activo
         })
 
         // Registrar este cambio como local
@@ -1048,7 +1049,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           id: newOrder.id,
           tableId: activeTable,
           items: cartItems,
-          status: "active" as any,
+          status: "kitchen" as any,
           bill,
           waiter: waiterId,
           createdAt: new Date(),

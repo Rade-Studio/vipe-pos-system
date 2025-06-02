@@ -27,10 +27,10 @@ export interface Dish {
 export interface Table {
   id: number
   number: number
-  capacity: number
+  waiter_id: string | null
   status: "available" | "occupied" | "reserved" | "maintenance"
-  location?: string
-  createdAt?: string
+  created_at?: string
+  updated_at?: string
 }
 
 export interface Waiter {

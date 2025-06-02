@@ -144,7 +144,7 @@ export const tableService = {
     return data
   },
 
-  create: async (table: Omit<Table, "id" | "createdAt">): Promise<Table> => {
+  create: async (table: Omit<Table, "id" | "created_at">): Promise<Table> => {
     const { data, error } = await supabase.from("tables").insert([table]).select().single()
 
     if (error) {
@@ -155,7 +155,7 @@ export const tableService = {
     return data
   },
 
-  update: async (id: number, table: Partial<Table>): Promise<void> => {
+  update: async (id: string, table: Partial<Table>): Promise<void> => {
     const { error } = await supabase.from("tables").update(table).eq("id", id)
 
     if (error) {
