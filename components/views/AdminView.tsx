@@ -687,7 +687,6 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
 
         <TabsContent value="cash">
           <div className="space-y-6">
-            <CashRegisterStatus />
             <div className="mb-4 flex items-center gap-2">
               <span>Filtrar por fecha:</span>
               <DatePicker date={selectedDate} onDateChange={setSelectedDate} />

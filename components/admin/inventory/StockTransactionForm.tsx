@@ -254,14 +254,14 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Stock Actual</Label>
-            <div className="p-2 border rounded-md bg-gray-50">
-              {selectedIngredient.stock} {selectedIngredient.unit}
+            <div className="p-2 border rounded-md">
+              {selectedIngredient.stock} {selectedIngredient.unit.toUpperCase()}
             </div>
           </div>
           <div className="space-y-2">
             <Label>Costo Actual</Label>
-            <div className="p-2 border rounded-md bg-gray-50">
-              {formatCurrency(selectedIngredient?.cost || 0)} por {selectedIngredient?.unit}
+            <div className="p-2 border rounded-md">
+              {formatCurrency(selectedIngredient?.cost || 0)} por {selectedIngredient?.unit.toUpperCase()}
             </div>
           </div>
         </div>
