@@ -99,6 +99,12 @@ export const categoryService = {
     return data || []
   },
 
+  getAllActive: async () => {
+    const { data, error } = await supabase.from("categories").select("*").eq("active", true).order("name")
+    if (error) throw error
+    return data || []
+  },
+
   getById: async (id: string) => {
     const { data, error } = await supabase.from("categories").select("*").eq("id", id).single()
     if (error) throw error

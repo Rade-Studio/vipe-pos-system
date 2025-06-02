@@ -37,7 +37,7 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
   const loadCategories = async () => {
     setLoadingCategories(true)
     try {
-      const data = await categoryService.getAll()
+      const data = await categoryService.getAllActive()
 
       // Convertir los datos de la base de datos al formato que espera el componente
       const formattedCategories = data.map((category) => ({
