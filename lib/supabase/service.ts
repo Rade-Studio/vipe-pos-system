@@ -99,6 +99,12 @@ export const categoryService = {
     return data || []
   },
 
+  getAllActive: async () => {
+    const { data, error } = await supabase.from("categories").select("*").eq("active", true).order("name")
+    if (error) throw error
+    return data || []
+  },
+
   getById: async (id: string) => {
     const { data, error } = await supabase.from("categories").select("*").eq("id", id).single()
     if (error) throw error
@@ -609,12 +615,6 @@ export const orderService = {
     is_partial_order?: boolean
     parent_order_id?: string | null
   }) {
-    console.log("Creando orden en BD con datos:", {
-      table_id: order.table_id,
-      waiter_id: order.waiter_id,
-      items_count: order.items.length,
-      status: order.status,
-    })
 
     // Primero creamos la orden
     const { data: orderData, error: orderError } = await supabase
@@ -628,7 +628,7 @@ export const orderService = {
         tip: order.tip,
         tip_percentage: order.tip_percentage,
         total: order.total,
-        status: "active", // Always set to active when creating
+        status: "kitchen", // Always set to kitchen when creating
         is_partial_order: order.is_partial_order || false,
         parent_order_id: order.parent_order_id || null,
         created_at: new Date().toISOString(),
@@ -1054,8 +1054,6 @@ export const orderService = {
   },
 
   async completePayment(orderId: string, paymentMethod: string, cashReceived?: number, cashChange?: number) {
-    console.log("Completando pago para orden:", orderId, "método:", paymentMethod)
-
     // Primero obtenemos la orden actual para verificar sus datos
     const { data: currentOrder, error: getOrderError } = await supabase
       .from("orders")
@@ -1067,13 +1065,6 @@ export const orderService = {
       console.error("Error al obtener la orden actual:", getOrderError)
       throw getOrderError
     }
-
-    console.log("Datos actuales de la orden:", {
-      id: currentOrder.id,
-      table_id: currentOrder.table_id,
-      waiter_id: currentOrder.waiter_id,
-      status: currentOrder.status,
-    })
 
     // Actualizar el estado de la orden a "paid"
     // Eliminamos los campos que no existen en el esquema (payment_method, cash_received, cash_change)
@@ -1113,7 +1104,6 @@ export const orderService = {
           console.error("Error al verificar órdenes activas:", activeOrdersError)
         } else if (!activeOrders || activeOrders.length === 0) {
           // Si no hay otras órdenes activas, liberar la mesa
-          console.log(`No hay más órdenes activas para la mesa ${order.table_id}, liberando...`)
           await tableService.releaseTable(order.table_id)
         }
       }
@@ -1153,6 +1143,29 @@ export const orderService = {
       if (itemsError) {
         console.error("Error al eliminar items de la orden:", itemsError)
         throw itemsError
+      }
+
+      // Eliminar las transacciones de ingredientes
+      // Tomar las transacciones de ingredientes de la orden
+      const { data: transactions, error: transactionsError } = await supabase
+          .from("ingredient_transactions_orders")
+          .select("*")
+          .eq("order_id", orderId)
+
+      if (transactionsError) {
+        console.error("Error al eliminar transacciones de ingredientes de la orden:", transactionsError)
+        throw transactionsError
+      }
+
+      // Eliminar las transacciones de ingredientes
+      const {  error: transactionsDeleteError } = await supabase
+          .from("ingredient_transactions")
+          .delete()
+          .in("id", transactions.map(t => t.ingredient_transaction_id))
+
+      if (transactionsDeleteError) {
+        console.error("Error al eliminar transacciones de ingredientes de la orden:", transactionsDeleteError)
+        throw transactionsDeleteError
       }
 
       // Eliminar la orden

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import {useEffect, useState } from "react";
 import {
   X,
   Trash2,
@@ -32,6 +32,8 @@ import {
 import { Slider } from "../ui/slider";
 import { useConfigStore } from "@/store/use-config-store";
 import { usePOSStore } from "@/store/use-pos-store";
+import { useDrag } from "@use-gesture/react";
+import { useSpring, animated } from "@react-spring/web";
 
 interface CartSidebarProps {
   tableNumber?: number;
@@ -72,6 +74,19 @@ export function CartSidebar({
   const { calculateOrderBill } = usePOSStore();
 
   const bill = calculateOrderBill(cartItems, tipPercentage, taxPercentage);
+  const [{x}, api] = useSpring(() => ({x: 0}));
+
+  const bind = useDrag(
+      ({down, movement: [mx], cancel, canceled}) => {
+        if (mx > 80 && !canceled) {
+          onOpenChange?.(false);
+          cancel();
+        } else {
+          api.start({x: down ? mx : 0});
+        }
+      },
+      {axis: "x", filterTaps: true}
+  );
 
   const handleCommentsChange = (itemId: string, value: string) => {
     setEditingComments((prev) => ({
@@ -111,7 +126,7 @@ export function CartSidebar({
 
   const cartContent = (
     <>
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center" id="cart-icon">
         <div className="flex items-center">
           <h2 className="text-lg font-semibold">
             {tableNumber ? `Mesa ${tableNumber}` : "Carrito"}
@@ -121,31 +136,6 @@ export function CartSidebar({
               {cartItems.length}{" "}
               {cartItems.length === 1 ? "producto" : "productos"}
             </Badge>
-          )}
-        </div>
-        <div className="flex gap-2">
-          {cartItems.length > 0 && (
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={onClearCart}
-              className="h-8 w-8"
-              title="Vaciar carrito"
-            >
-              <Trash2 className="h-4 w-4" />
-              <span className="sr-only">Vaciar carrito</span>
-            </Button>
-          )}
-          {isMobile && (
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => onOpenChange?.(false)}
-              className="h-8 w-8 md:hidden"
-            >
-              <X className="h-4 w-4" />
-              <span className="sr-only">Cerrar</span>
-            </Button>
           )}
         </div>
       </div>
@@ -377,14 +367,23 @@ export function CartSidebar({
   // Si es móvil, renderizamos como un Sheet (modal)
   if (isMobile) {
     return (
-      <Sheet open={isOpen} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-full sm:max-w-md p-4">
-          <SheetHeader className="text-left">
-            <SheetTitle>Carrito</SheetTitle>
-          </SheetHeader>
-          {cartContent}
-        </SheetContent>
-      </Sheet>
+        <Sheet open={isOpen} onOpenChange={onOpenChange}>
+          <SheetContent
+              side="right"
+              className="w-full sm:max-w-md p-0 overflow-hidden"
+          >
+            <animated.div
+                {...bind()}
+                style={{ x }}
+                className="h-full w-full p-4 touch-pan-y"
+            >
+              <SheetHeader className="text-left">
+                <SheetTitle>Carrito</SheetTitle>
+              </SheetHeader>
+              {cartContent}
+            </animated.div>
+          </SheetContent>
+        </Sheet>
     );
   }
 

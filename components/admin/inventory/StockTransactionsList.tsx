@@ -83,12 +83,12 @@ export function StockTransactionsList() {
 
         query = query.gte("created_at", sevenDaysAgo.toISOString())
       }
-
+      console.log(categoryFilter, "categoryFilter")
       // Solo aplicar el filtro de categoría si no es "all" y no es null
       if (categoryFilter && categoryFilter !== "all") {
         query = query.eq("ingredients.category_id", categoryFilter)
       }
-
+      console.log(query)
       // Solo aplicar el filtro de estado si no es "all" y no es null
       if (statusFilter && statusFilter !== "all") {
         query = query.eq("payment_status", statusFilter)
@@ -133,10 +133,11 @@ export function StockTransactionsList() {
       }
 
       const { data, error } = await query
-
+      console.log(data, "data")
       if (error) throw error
+      const dataFiltered = data.filter(item => item.ingredients)
 
-      setTransactions(data || [])
+      setTransactions(dataFiltered || [])
     } catch (error: any) {
       console.error("Error fetching transactions:", error)
       toast({

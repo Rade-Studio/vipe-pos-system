@@ -21,7 +21,7 @@ export type Table = {
 }
 
 // Order types
-export type OrderStatus = "active" | "cancelled" | "paid"
+export type OrderStatus = "active" | "cancelled" | "paid" | "delivered" | "kitchen"
 export type OrderItemStatus = "kitchen" | "served"
 
 export type OrderBill = {
@@ -170,7 +170,8 @@ export interface PrintableInvoice {
   }
   waiter: string
   table: string | number
-  paymentMethod: string
+  paymentMethod: PaymentMethod | "multiple"
+  multiplePayments?: Record<PaymentMethod, boolean> | undefined
   cashReceived?: number
   cashChange?: number
 }
@@ -181,4 +182,16 @@ export type PrintableKitchenOrder = {
   table: number
   waiter: string
   items: CartItem[]
+}
+
+export type CommandPayload = {
+  invoiceNumber: string;
+  items: any[];
+  waiter: string;
+  table: number;
+}
+
+export type IngredientTransactionsOrders = {
+  ingredient_transaction_id: string
+  order_id: string
 }

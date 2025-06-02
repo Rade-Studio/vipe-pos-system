@@ -2,8 +2,8 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { CategorySales } from "@/types"
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, Legend } from "recharts"
-import { useEffect } from "react"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, LabelList, ResponsiveContainer } from "recharts"
+import React, { useEffect } from "react"
 
 interface CategorySalesChartProps {
   data: CategorySales[]
@@ -27,19 +27,19 @@ export function CategorySalesChart({ data, categories }: CategorySalesChartProps
           <CardTitle>Ventas por Categoría</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-[300px]">
-          <p className="text-muted-foreground">No hay datos disponibles</p>
+          <p className="text-muted-foreground">Aún no se han registrado ventas por categoría en el período seleccionado.</p>
         </CardContent>
       </Card>
     )
   }
 
-  // Transform data to include category names
+  // Transform data to include category names and calculate total
+  const total = data.reduce((sum, item) => sum + item.amount, 0)
   const transformedData = data.map((item) => ({
     ...item,
     name: categories[item.category] || `Categoría ${item.category}`,
+    percent: total > 0 ? (item.amount / total) * 100 : 0,
   }))
-
-  console.log("CategorySalesChart - Datos transformados:", transformedData)
 
   return (
     <Card className="col-span-2">
@@ -48,25 +48,28 @@ export function CategorySalesChart({ data, categories }: CategorySalesChartProps
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie
-              data={transformedData}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              outerRadius={80}
-              fill="#8884d8"
-              dataKey="amount"
-              nameKey="name"
-              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-            >
-              {transformedData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip formatter={(value) => [`${value.toLocaleString("es-CO")}`, "Ventas"]} />
-            <Legend />
-          </PieChart>
+          <BarChart
+            data={transformedData}
+            layout="vertical"
+            margin={{ left: 40, right: 30, top: 10, bottom: 10 }}
+          >
+            <XAxis type="number" hide domain={[0, 'dataMax']} />
+            <YAxis type="category" dataKey="name" width={160} />
+            <Tooltip
+              formatter={(value: number, _name: string, props: any) => [
+                `${value.toLocaleString("es-CO")}`,
+                `Ventas (${props.payload.percent.toFixed(1)}%)`
+              ]}
+              labelFormatter={(label: string) => `Categoría: ${label}`}
+            />
+            <Bar dataKey="amount" fill="#0088FE">
+              <LabelList
+                dataKey="amount"
+                position="right"
+                formatter={(value: number, entry: any) => `${value.toLocaleString("es-CO")}\n(${entry.percent.toFixed(1)}%)`}
+              />
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       </CardContent>
     </Card>

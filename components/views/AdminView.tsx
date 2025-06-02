@@ -6,7 +6,6 @@ import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
 import { SalesChart } from "@/components/admin/SalesChart"
 import { PopularDishesChart } from "@/components/admin/PopularDishesChart"
-import { CategorySalesChart } from "@/components/admin/CategorySalesChart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { OrderCard } from "@/components/pos/OrderCard"
 import { ConfigurationPanel } from "@/components/admin/ConfigurationPanel"
@@ -19,7 +18,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { CashRegisterStatus } from "@/components/cashier/CashRegisterStatus"
 import { RegisterHistoryTable } from "@/components/cashier/RegisterHistoryTable"
 import { CashRegisterSummary } from "@/components/admin/CashRegisterSummary"
-import { TransactionsByDateList } from "@/components/admin/TransactionsByDateList"
+import { TransactionsByRegisterId } from "@/components/admin/TransactionsByRegisterId"
 import { orderService } from "@/lib/supabase/service"
 import { dashboardService } from "@/lib/supabase/dashboard-service"
 import { AlertCircle, RefreshCw } from "lucide-react"
@@ -35,6 +34,7 @@ import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
+import {tableService} from "@/lib/supabase-service";
 
 interface AdminViewProps {
   profile: Profile
@@ -55,7 +55,6 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   // Estados para los datos de las gráficas
   const [dailySales, setDailySales] = useState<DailySales[]>([])
   const [popularDishes, setPopularDishes] = useState<PopularDish[]>([])
-  const [categorySales, setCategorySales] = useState<CategorySales[]>([])
 
   // Estado para controlar la carga de datos
   const [isLoading, setIsLoading] = useState<boolean>(true)
@@ -64,6 +63,10 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   // Añadir estados para el manejo de realtime
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false)
   const [newOrdersCount, setNewOrdersCount] = useState<number>(0)
+
+  const handleChangeRegisterDetails = (registerDate: Date) => {
+    setSelectedDate(registerDate)
+  }
 
   const {
     tables,
@@ -95,11 +98,9 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         // Cargar datos para las gráficas
         const salesData = await dashboardService.getDailySales(30)
         const dishesData = await dashboardService.getPopularDishes(10)
-        const categoryData = await dashboardService.getCategorySales()
 
         setDailySales(salesData)
         setPopularDishes(dishesData)
-        setCategorySales(categoryData)
 
         // Obtener mesas asignadas a meseros
         const { data: assignedTablesData } = await supabase.from("tables").select("id").not("waiter_id", "is", null)
@@ -269,7 +270,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   const paidOrders = getOrdersByStatus(["paid"])
 
   // Combinar órdenes del store con las de la base de datos, evitando duplicados
-  const combinedActiveOrders = [...activeOrders]
+  const combinedActiveOrders = [...activeOrders, ...paidOrders]
 
   // Agregar órdenes de la base de datos que no estén ya en el store
   activeOrdersFromDB.forEach((dbOrder) => {
@@ -304,6 +305,10 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
 
       // Actualizar la lista de órdenes activas
       setActiveOrdersFromDB((prev) => prev.filter((order) => order.id !== orderId))
+      await tableService.update(order.tableId, {
+        status: "available",
+        waiter_id: null,
+      })
 
       // Mantener este toast ya que es una acción importante iniciada por el usuario
       toast({
@@ -316,7 +321,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
       // Mantener este toast ya que es un error importante
       toast({
         title: "Error",
-        description: "No se pudo eliminar la orden",
+        description: error.message,
         variant: "destructive",
       })
     } finally {
@@ -446,11 +451,11 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
                 </Card>
               </div>
 
-              {/* Gráficas */}
+              {/* Gráficas 2 columnas la primera con 3 partes y la segunda con 1 partes */}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <SalesChart data={dailySales} />
                 <PopularDishesChart data={popularDishes} />
-                <CategorySalesChart data={categorySales} categories={categoryMap} />
               </div>
 
               {/* Alertas de inventario */}
@@ -649,24 +654,15 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
                     // Determinar si la orden es nueva (menos de 30 segundos)
                     const isNewOrder = new Date().getTime() - new Date(order.createdAt).getTime() < 30000
 
-                    // Determinar la clase de borde según el estado
-                    let borderClass = ""
-                    if (order.status === "kitchen") {
-                      borderClass = "border-l-4 border-orange-500"
-                    } else if (order.status === "delivered") {
-                      borderClass = "border-l-4 border-green-500"
-                    } else {
-                      borderClass = "border-l-4 border-blue-500"
-                    }
-
                     return (
-                      <div key={order.id} className={`${isNewOrder ? "animate-pulse-light" : ""} ${borderClass}`}>
+                      <div key={order.id} className={`${isNewOrder ? "animate-pulse-light" : ""}`}>
                         <OrderCard
                           order={order}
                           table={table}
                           waiter={waiter}
                           isAdmin={true}
-                          onDeleteOrder={handleDeleteOrder}
+                          showActions={true}
+                          onDelete={handleDeleteOrder}
                         />
                       </div>
                     )
@@ -687,7 +683,6 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
 
         <TabsContent value="cash">
           <div className="space-y-6">
-            <CashRegisterStatus />
             <div className="mb-4 flex items-center gap-2">
               <span>Filtrar por fecha:</span>
               <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
@@ -704,12 +699,12 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
               </TabsContent>
 
               <TabsContent value="transactions">
-                <TransactionsByDateList selectedDate={selectedDate} />
+                <TransactionsByRegisterId selectedDate={selectedDate} />
               </TabsContent>
             </Tabs>
 
             <h2 className="text-xl font-semibold mt-8 mb-4">Historial de Aperturas de Caja</h2>
-            <RegisterHistoryTable />
+            <RegisterHistoryTable changeRegisterDetails={handleChangeRegisterDetails} />
           </div>
         </TabsContent>
 

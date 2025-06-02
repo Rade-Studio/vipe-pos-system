@@ -55,7 +55,6 @@ type ConfigState = {
 }
 
 export const useConfigStore = create<ConfigState>()(
-  persist(
     (set, get) => ({
       // Valores por defecto
       tipPercentage: 10,
@@ -163,8 +162,4 @@ export const useConfigStore = create<ConfigState>()(
         }
       },
     }),
-    {
-      name: "pos-config-storage",
-    },
-  ),
 )

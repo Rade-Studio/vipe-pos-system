@@ -2,6 +2,7 @@ import { create } from "zustand"
 import { v4 as uuidv4 } from "uuid"
 import type { Table, CartItem, Order, Profile, Dish, Category } from "@/types"
 import { supabase, tableService, orderService } from "@/lib/supabase"
+import {Payment} from "@/types/models";
 
 interface POSState {
   // Tables
@@ -40,7 +41,7 @@ interface POSState {
   setOrders: (orders: Order[]) => void
   loadOrders: () => Promise<void>
   getOrderById: (orderId: string) => Order | undefined
-  completePayment: (orderId: string) => Promise<string>
+  completePayment: (orderId: string, paymentMethod?: Payment["method"]) => Promise<string>
   completePartialPayment: (orderId: string, selectedItems: string[]) => Promise<string>
   createPartialOrder: (orderId: string, selectedItems: { itemId: string; quantity: number }[]) => Promise<string>
   deletePartialOrder: (orderId: string) => Promise<void>

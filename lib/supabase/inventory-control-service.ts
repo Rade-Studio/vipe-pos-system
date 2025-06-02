@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase"
-import type { CartItem } from "@/types"
+import type {CartItem, IngredientTransactionsOrders} from "@/types"
 
 // Validar si un string es un UUID válido
 function isValidUUID(str: string) {
@@ -410,6 +410,8 @@ const inventoryControlService = {
           continue
         }
 
+        const transactionsInserted: IngredientTransactionsOrders[] = []
+
         // Para cada ingrediente en la receta, reducir el stock
         for (const recipeIngredient of recipeIngredients) {
           const ingredient = ingredients?.find((ing) => ing.id === recipeIngredient.ingredient_id)
@@ -440,30 +442,37 @@ const inventoryControlService = {
               continue
             }
 
-            // Registrar la transacción de ingrediente si hay suficiente stock
-            if (stockCheck.hasStock) {
-              const {error: transactionError} = await supabase.from("ingredient_transactions").insert({
-                ingredient_id: recipeIngredient.ingredient_id,
-                quantity: quantityToReduce,
-                total_cost: quantityToReduce * (ingredient.cost || 0),
-                unit_cost: ingredient.cost || 0,
-                transaction_type: "salida",
-                payment_status: "pagado",
-                notes: `Orden #${orderId} - ${item.name} (${item.quantity}x)`,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
+            const { data: newTransaction, error: transactionError} = await supabase.from("ingredient_transactions").insert({
+              ingredient_id: recipeIngredient.ingredient_id,
+              quantity: quantityToReduce,
+              total_cost: quantityToReduce * (ingredient.cost || 0),
+              unit_cost: ingredient.cost || 0,
+              transaction_type: "salida",
+              payment_status: "pagado",
+              notes: `Orden #${orderId} - ${item.name} (${item.quantity}x)`,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).select().single()
 
-              if (transactionError) {
-                console.error(
-                    `Error al crear transacción de ingrediente ${recipeIngredient.ingredient_id}:`,
-                    transactionError,
-                )
-              }
+            if (transactionError) {
+              console.error(
+                  `Error al crear transacción de ingrediente ${recipeIngredient.ingredient_id}:`,
+                  transactionError,
+              )
             }
+
+            if (!newTransaction) {
+              continue
+            }
+
+            transactionsInserted.push( {ingredient_transaction_id: newTransaction.id, order_id: orderId})
           } catch (error) {
             console.error(`Error al procesar ingrediente ${recipeIngredient.ingredient_id}:`, error)
           }
+        }
+
+        if (transactionsInserted.length > 0) {
+          await supabase.from("ingredient_transactions_orders").insert(transactionsInserted)
         }
       }
 
