@@ -105,7 +105,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       setLoading(false)
     }
   }
-
+  // Función para refrescar la lista de ingredientes
   const refreshIngredients = async () => {
     try {
       setRefreshing(true)
@@ -126,7 +126,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       setRefreshing(false)
     }
   }
-
+  // Función para calcular el máximo de platos que se pueden preparar
   const calculateMaxServings = (recipeItems: RecipeIngredient[], allIngredients: Ingredient[]) => {
     if (!recipeItems.length) {
       setMaxServings(null)
@@ -151,7 +151,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
     setMaxServings(minServings === Number.POSITIVE_INFINITY ? 0 : minServings)
     setLimitingIngredient(limitingIngName)
   }
-
+  // Función para resetear el formulario y los estados
   const resetForm = () => {
     setRecipe(null)
     setRecipeIngredients([])
@@ -163,7 +163,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
     setLimitingIngredient(null)
     setSearchQuery("")
   }
-
+  // Función para añadir un ingrediente a la receta
   const handleAddIngredient = async () => {
     if (!dish || !newIngredient.ingredientId || newIngredient.quantity <= 0) {
       toast({
@@ -173,7 +173,6 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       })
       return
     }
-
     try {
       setLoading(true)
 
@@ -592,7 +591,6 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
                     className="cursor-pointer hover:bg-primary/10"
                     onClick={() => {
                       setNewIngredient({ ingredientId: ing.id, quantity: 1 })
-                      handleAddIngredient()
                     }}
                   >
                     {ing.name} ({ing.stock} {ing.unit})
