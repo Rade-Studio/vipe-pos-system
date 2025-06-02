@@ -106,6 +106,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     // Filtrar solo los items que están en estado "kitchen"
     const kitchenItems = orderItems.filter((item) => item.status === "kitchen")
 
+    // Ordenar los items por fecha de creación
+    kitchenItems.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
     // Si no hay items en cocina, no incluir esta orden
     if (kitchenItems.length === 0) {
       return null
