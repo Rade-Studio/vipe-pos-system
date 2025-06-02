@@ -139,6 +139,17 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
             })
           }
 
+          // Decrementar contador de nuevas órdenes si es una eliminación
+          if (payload.eventType === "DELETE") {
+            setNewOrdersCount((prev) => prev - 1)
+
+            // Mostrar toast para eliminaciones de órdenes
+            toast({
+              title: "Orden eliminada",
+              description: `Se ha eliminado la orden #${payload.old.id.substring(0, 8)}`,
+            })
+          }
+
           // Actualizar la lista de órdenes
           await loadActiveOrdersFromDB(false) // Pasar false para no mostrar toast
         }
