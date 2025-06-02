@@ -34,6 +34,7 @@ import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
+import {tableService} from "@/lib/supabase-service";
 
 interface AdminViewProps {
   profile: Profile
@@ -269,7 +270,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   const paidOrders = getOrdersByStatus(["paid"])
 
   // Combinar órdenes del store con las de la base de datos, evitando duplicados
-  const combinedActiveOrders = [...activeOrders]
+  const combinedActiveOrders = [...activeOrders, ...paidOrders]
 
   // Agregar órdenes de la base de datos que no estén ya en el store
   activeOrdersFromDB.forEach((dbOrder) => {
@@ -304,6 +305,10 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
 
       // Actualizar la lista de órdenes activas
       setActiveOrdersFromDB((prev) => prev.filter((order) => order.id !== orderId))
+      await tableService.update(order.tableId, {
+        status: "available",
+        waiter_id: null,
+      })
 
       // Mantener este toast ya que es una acción importante iniciada por el usuario
       toast({
@@ -316,7 +321,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
       // Mantener este toast ya que es un error importante
       toast({
         title: "Error",
-        description: "No se pudo eliminar la orden",
+        description: error.message,
         variant: "destructive",
       })
     } finally {
@@ -649,24 +654,15 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
                     // Determinar si la orden es nueva (menos de 30 segundos)
                     const isNewOrder = new Date().getTime() - new Date(order.createdAt).getTime() < 30000
 
-                    // Determinar la clase de borde según el estado
-                    let borderClass = ""
-                    if (order.status === "kitchen") {
-                      borderClass = "border-l-4 border-orange-500"
-                    } else if (order.status === "delivered") {
-                      borderClass = "border-l-4 border-green-500"
-                    } else {
-                      borderClass = "border-l-4 border-blue-500"
-                    }
-
                     return (
-                      <div key={order.id} className={`${isNewOrder ? "animate-pulse-light" : ""} ${borderClass}`}>
+                      <div key={order.id} className={`${isNewOrder ? "animate-pulse-light" : ""}`}>
                         <OrderCard
                           order={order}
                           table={table}
                           waiter={waiter}
                           isAdmin={true}
-                          onDeleteOrder={handleDeleteOrder}
+                          showActions={true}
+                          onDelete={handleDeleteOrder}
                         />
                       </div>
                     )

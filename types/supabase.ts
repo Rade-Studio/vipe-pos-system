@@ -280,6 +280,36 @@ export type Database = {
           },
         ]
       }
+      ingredient_transactions_orders: {
+        Row: {
+          ingredient_transaction_id: string
+          order_id: string | null
+        }
+        Insert: {
+          ingredient_transaction_id: string
+          order_id?: string | null
+        }
+        Update: {
+          ingredient_transaction_id?: string
+          order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingredient_transactions_orders_ingredient_transactions_id_fk"
+            columns: ["ingredient_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "ingredient_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_transactions_orders_orders_id_fk"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ingredients: {
         Row: {
           category_id: string | null

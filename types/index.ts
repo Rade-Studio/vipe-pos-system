@@ -190,3 +190,8 @@ export type CommandPayload = {
   waiter: string;
   table: number;
 }
+
+export type IngredientTransactionsOrders = {
+  ingredient_transaction_id: string
+  order_id: string
+}
