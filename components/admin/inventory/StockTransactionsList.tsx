@@ -135,8 +135,9 @@ export function StockTransactionsList() {
       const { data, error } = await query
 
       if (error) throw error
+      const dataFiltered = data.filter(item => item.ingredients)
 
-      setTransactions(data || [])
+      setTransactions(dataFiltered || [])
     } catch (error: any) {
       console.error("Error fetching transactions:", error)
       toast({
