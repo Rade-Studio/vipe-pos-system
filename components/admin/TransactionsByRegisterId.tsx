@@ -97,6 +97,7 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
     (tx) =>
       tx.orderId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tx.method?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tx.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (tx.waiterId && getWaiterName(tx.waiterId).toLowerCase().includes(searchTerm.toLowerCase())),
   )
 
@@ -424,6 +425,7 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
                     <TableHeader>
                       <TableRow>
                         <TableHead>Fecha</TableHead>
+                        <TableHead>Transaccion</TableHead>
                         <TableHead>Orden</TableHead>
                         <TableHead>Mesero</TableHead>
                         <TableHead>Método</TableHead>
@@ -438,6 +440,9 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
                         <TableRow key={transaction.id}>
                           <TableCell className="font-medium">
                             {new Date(transaction.timestamp).toLocaleTimeString()}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {transaction.id.substring(0, 8)} {/* Mostrar solo los primeros 8 caracteres */}
                           </TableCell>
                           <TableCell>{transaction.orderId?.substring(0, 8) || "N/A"}</TableCell>
                           <TableCell>{transaction.waiterId ? getWaiterName(transaction.waiterId) : "N/A"}</TableCell>
