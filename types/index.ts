@@ -44,6 +44,7 @@ export type OrderItem = {
   image: string
   comments?: string
   status: OrderItemStatus
+  addedAt?: Date
 }
 
 export type Order = {
