@@ -667,10 +667,6 @@ export const usePOSStore = create<POSState>((set, get) => ({
     const orders = get().getOrdersByTable(tableId)
     return orders.reduce((total, order) => total + order.bill.total, 0)
   },
-  removeOrder: (orderId: string) =>
-    set((state) => ({
-      orders: state.orders.filter((order) => order.id !== orderId),
-    })),
 
   // Analytics
   getTotalSales: () => {
