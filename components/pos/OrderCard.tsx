@@ -122,7 +122,7 @@ export function OrderCard({
   // Agrupar items idénticos (mismo nombre y comentarios)
   const groupedItems = order.items.reduce((acc, item) => {
     // Crear una clave única basada en nombre y comentarios
-    const key = `${item.name}|${item.comments || ""}`
+    const key = `${item.name}|${item.comments || ""}|${item.addedAt?.getTime()}`
 
     if (!acc[key]) {
       acc[key] = {
@@ -142,9 +142,9 @@ export function OrderCard({
   const groupedItemsArray = Object.values(groupedItems)
 
   return (
-    <Card className={`mb-4 ${newItems.length > 0 && isKitchenView ? "border-yellow-500 border-2" : ""}`}>
+    <Card className={`mb-4 ${newItems.length > 0 && isKitchenView ? "border-yellow-500 border-2 dark:border-primary" : ""}`}>
       {newItems.length > 0 && isKitchenView && (
-        <div className="bg-yellow-100 text-yellow-800 px-4 py-2 flex items-center">
+        <div className="bg-yellow-100 text-yellow-800 px-4 py-2 flex items-center dark:bg-primary/40 dark:text-white border-b-2 border-yellow-500 dark:border-primary">
           <AlertCircle className="h-4 w-4 mr-2" />
           <span className="font-medium">¡Nuevos productos agregados!</span>
         </div>
@@ -153,7 +153,7 @@ export function OrderCard({
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="text-lg flex items-center">
-              {isKitchenView && (
+              {(isKitchenView || isAdmin) && (
                 <>
                   <div className="flex items-center bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-lg mr-2">
                     <MapPin className="h-4 w-4 mr-1 text-red-500" />
@@ -164,9 +164,13 @@ export function OrderCard({
                   </Badge>
                 </>
               )}
-              {isWaiterView && <>Mesa {table?.number || "?"}</>}
-              {!isKitchenView && !isWaiterView && <>Orden {order.id.slice(0, 8)}</>}
             </CardTitle>
+
+            {isAdmin && (
+                <div className="flex items-center mt-2 text-sm text-muted-foreground">
+                  <span className="font-medium">Orden <span className="font-extrabold">#{order.id.slice(0, 8)}</span></span>
+                </div>
+            )}
 
             {isKitchenView && (
               <div className="flex items-center mt-2 text-sm text-muted-foreground">
@@ -189,20 +193,22 @@ export function OrderCard({
               </p>
             )}
           </div>
-          <Badge
-            variant={
-              order.status === "active" && isKitchenView
-                ? "destructive"
-                : order.status === "paid" || order.status === "delivered"
-                  ? "default"
-                  : order.status === "kitchen"
-                    ? "warning"
-                      : "secondary"
-            }
-            className="text-sm"
-          >
-            {orderStatus[order.status] || order.status}
-          </Badge>
+          {!isKitchenView && (
+              <Badge
+                  variant={
+                    order.status === "active" && isKitchenView
+                        ? "destructive"
+                        : order.status === "paid" || order.status === "delivered"
+                            ? "default"
+                            : order.status === "kitchen"
+                                ? "warning"
+                                : "secondary"
+                  }
+                  className="text-sm"
+              >
+                {orderStatus[order.status] || order.status}
+              </Badge>
+          )}
         </div>
       </CardHeader>
 
@@ -215,17 +221,18 @@ export function OrderCard({
             return (
               <div
                 key={index}
-                className={`p-3 rounded-md ${isAnyItemNew && isKitchenView ? "bg-yellow-50 border-l-4 border-yellow-500" : "bg-gray-50 dark:bg-gray-800"}`}
+                className={`p-3 rounded-md ${isAnyItemNew && isKitchenView ? "bg-yellow-50 border-l-4 border-yellow-500 dark:bg-primary/10 dark:border-primary" : "bg-gray-50 dark:bg-gray-800"}`}
               >
                 <div className="flex justify-between items-start">
                   <div className="flex flex-col">
                     <div className="font-medium flex items-center text-lg">
                       {isAnyItemNew && isKitchenView && (
-                        <Badge variant="outline" className="mr-2 bg-yellow-100 text-yellow-800 border-yellow-500">
+                        <Badge variant="outline" className="mr-2 bg-yellow-100 text-yellow-800 border-yellow-500 dark:bg-primary dark:text-white dark:border-primary px-2 py-0.5 flex items-center justify-center text-xs font-semibold">
                           NUEVO
                         </Badge>
                       )}
-                      <span className="font-bold text-xl mr-2">{item.quantity}x</span> {item.name}
+                      <span className="font-bold text-x mr-2">{item.quantity}x</span> 
+                      <p className={`${isAnyItemNew && isKitchenView ? "" : ""}`}>{item.name}</p>
                     </div>
                     {item.comments && (
                       <div className="text-sm text-muted-foreground mt-1 bg-white dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600">

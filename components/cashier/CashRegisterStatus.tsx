@@ -68,7 +68,7 @@ export function CashRegisterStatus() {
             </AlertDescription>
           </Alert>
         ) : (
-          <Alert variant="destructive" className="shadow-sm">
+          <Alert variant="destructive" className="bg-dark-80 shadow-sm dark:bg-red-60">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle className="font-semibold">Caja Cerrada</AlertTitle>
             <AlertDescription>
@@ -78,7 +78,6 @@ export function CashRegisterStatus() {
                   variant="outline"
                   size="sm"
                   onClick={() => setOpenDialog(true)}
-                  className="bg-white hover:bg-red-50"
                 >
                   Abrir Caja
                 </Button>

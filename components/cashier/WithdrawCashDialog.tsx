@@ -105,17 +105,23 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Retirar Efectivo</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="amount">Monto a Retirar</Label>
-            <div className="relative">
-              <Input id="amount" value={formattedAmount} readOnly className="text-right pr-10 font-mono text-lg" />
-              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-                <span className="text-muted-foreground"></span>
+          <div className="py-4 space-y-4">
+            <div className="p-3 bg-muted rounded-md">
+              <div className="flex justify-between">
+                <span>Efectivo actual en caja:</span>
+                <span className="font-medium">{formatCurrency(getCurrentRegisterSummary()?.finalCash || 0)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="amount">Monto a Retirar</Label>
+              <div className="h-12 flex items-center justify-end text-xl font-mono border rounded-md bg-muted/20 px-3">
+                {amount ? formatCurrency(Number(amount)) : formatCurrency(0)}
               </div>
             </div>
           </div>
@@ -137,13 +143,6 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
-
-          <div className="bg-muted/30 p-3 rounded-md">
-            <p className="text-sm text-muted-foreground">
-              Efectivo disponible en caja:{" "}
-              <span className="font-medium">{formatCurrency(getCurrentRegisterSummary()?.finalCash || 0)}</span>
-            </p>
-          </div>
 
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
