@@ -700,7 +700,7 @@ export function PaymentMethodDialog({
                     !isNaN(Number(cashReceived)) &&
                     Number(cashReceived) >= finalAmount &&
                     !insufficientCash && (
-                      <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                      <div className="p-4 bg-green-50 border border-green-200 rounded-md dark:bg-green-900/50 dark:border-green-800">
                         <div className="flex justify-between font-medium text-lg">
                           <span>Cambio a entregar:</span>
                           <span className="text-green-600 font-bold">{formatCurrency(change)}</span>

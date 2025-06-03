@@ -369,13 +369,13 @@ export function TableManagementPanel() {
 
         {/* Diálogo para añadir mesa */}
         <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="w-full max-w-s p-4">
             <DialogHeader>
-              <DialogTitle>Añadir Nueva Mesa</DialogTitle>
+              <DialogTitle className="text-lg">Añadir Nueva Mesa</DialogTitle>
             </DialogHeader>
-            <div className="py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
               <div>
-                <Label htmlFor="tableNumber">Número de Mesa</Label>
+                <Label htmlFor="tableNumber" className="text-sm">Número de Mesa</Label>
                 <Input
                   id="tableNumber"
                   type="number"
@@ -384,11 +384,11 @@ export function TableManagementPanel() {
                   placeholder="Ej: 1"
                   className="mt-1"
                 />
-              </div>
-              <div className="flex items-end">
-                <p className="text-sm text-muted-foreground">
-                  Al crear una nueva mesa, su estado inicial será "Disponible".
-                </p>
+                <div className="flex items-end">
+                  <p className="text-xs text-muted-foreground leading-snug mt-3">
+                   Al crear una nueva mesa, su estado inicial será <strong>"Disponible"</strong>.
+                  </p>
+                </div>
               </div>
             </div>
             <DialogFooter>
