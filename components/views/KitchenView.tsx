@@ -125,6 +125,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       categoryId: item.category_id || "",
       image: "/placeholder.svg?height=50&width=50", // Imagen por defecto
       status: item.status, // Incluir el estado del item
+      addedAt: item.added_at ? new Date(item.created_at) : undefined,
     }))
 
     // Crear el objeto de orden para el store

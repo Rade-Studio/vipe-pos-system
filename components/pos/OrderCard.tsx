@@ -122,7 +122,7 @@ export function OrderCard({
   // Agrupar items idénticos (mismo nombre y comentarios)
   const groupedItems = order.items.reduce((acc, item) => {
     // Crear una clave única basada en nombre y comentarios
-    const key = `${item.name}|${item.comments || ""}`
+    const key = `${item.name}|${item.comments || ""}|${item.addedAt?.getTime()}`
 
     if (!acc[key]) {
       acc[key] = {
