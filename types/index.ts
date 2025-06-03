@@ -11,7 +11,7 @@ export type Profile = {
 }
 
 // Table types
-export type TableStatus = "available" | "reserved" | "occupied" | "kitchen" | "delivered"
+export type TableStatus = "available" | "reserved" | "occupied" | "kitchen" | "served"
 
 export type Table = {
   id: string

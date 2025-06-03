@@ -620,11 +620,11 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         // Si no quedan más items, actualizar el estado de la mesa a "served"
         if (remainingItems.length === 0) {
           const tableId = order.tableId
-          await tableService.updateTableStatus(tableId, "served")
           await orderService.updateStatus(orderId, "delivered")
 
           // Actualizar también en el store local
           updateTableStatus(tableId, "served")
+          updateOrderStatus(orderId, "delivered")
 
           toast({
             title: "Mesa actualizada",
@@ -683,10 +683,11 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
       // Actualizar el estado de la mesa a "served"
       const tableId = order.tableId
-      await tableService.updateTableStatus(tableId, "served")
+      await orderService.updateStatus(order.id, "delivered")
 
       // Actualizar también en el store local
       updateTableStatus(tableId, "served")
+      updateOrderStatus(order.id, "delivered")
 
       toast({
         title: "Orden entregada",

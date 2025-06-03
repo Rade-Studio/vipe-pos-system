@@ -153,7 +153,7 @@ export function OrderCard({
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="text-lg flex items-center">
-              {isKitchenView && (
+              {(isKitchenView || isAdmin) && (
                 <>
                   <div className="flex items-center bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-lg mr-2">
                     <MapPin className="h-4 w-4 mr-1 text-red-500" />
@@ -164,9 +164,13 @@ export function OrderCard({
                   </Badge>
                 </>
               )}
-              {isWaiterView && <>Mesa {table?.number || "?"}</>}
-              {!isKitchenView && !isWaiterView && <>Orden {order.id.slice(0, 8)}</>}
             </CardTitle>
+
+            {isAdmin && (
+                <div className="flex items-center mt-2 text-sm text-muted-foreground">
+                  <span className="font-medium">Orden <span className="font-extrabold">#{order.id.slice(0, 8)}</span></span>
+                </div>
+            )}
 
             {isKitchenView && (
               <div className="flex items-center mt-2 text-sm text-muted-foreground">
@@ -189,20 +193,22 @@ export function OrderCard({
               </p>
             )}
           </div>
-          <Badge
-            variant={
-              order.status === "active" && isKitchenView
-                ? "destructive"
-                : order.status === "paid" || order.status === "delivered"
-                  ? "default"
-                  : order.status === "kitchen"
-                    ? "warning"
-                      : "secondary"
-            }
-            className="text-sm"
-          >
-            {orderStatus[order.status] || order.status}
-          </Badge>
+          {!isKitchenView && (
+              <Badge
+                  variant={
+                    order.status === "active" && isKitchenView
+                        ? "destructive"
+                        : order.status === "paid" || order.status === "delivered"
+                            ? "default"
+                            : order.status === "kitchen"
+                                ? "warning"
+                                : "secondary"
+                  }
+                  className="text-sm"
+              >
+                {orderStatus[order.status] || order.status}
+              </Badge>
+          )}
         </div>
       </CardHeader>
 
