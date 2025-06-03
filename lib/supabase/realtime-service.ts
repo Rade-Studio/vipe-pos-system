@@ -209,7 +209,7 @@ export const realtimeService = {
           event: "INSERT",
           schema: "public",
           table: "orders",
-          filter: "status=eq.active",
+          filter: "status=eq.kitchen",
         },
         async (payload) => {
           // Cargar la orden completa con sus items

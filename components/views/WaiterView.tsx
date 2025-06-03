@@ -882,7 +882,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const checkExistingOrder = useCallback(
     async (tableId: string) => {
       try {
-        const tableOrders = activeOrders.filter((order) => order.tableId === tableId && order.status === "kitchen")
+        const tableOrders = activeOrders.filter((order) => order.tableId === tableId && (order.status === "kitchen" || order.status === "delivered"))
         return tableOrders.length > 0 ? tableOrders[0] : null
       } catch (error) {
         return null
