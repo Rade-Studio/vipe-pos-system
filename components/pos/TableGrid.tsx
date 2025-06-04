@@ -115,18 +115,33 @@ export function TableGrid({
     const unsubscribe = realtimeService.subscribeToTables((payload) => {
       console.log("Cambio en mesa recibido:", payload)
 
-      // Actualizar el estado local directamente para forzar re-renderización
-      setTables((prevTables) =>
-        prevTables.map((table) =>
-          table.id === payload.id
-            ? {
-                ...table,
-                status: payload.status,
-                waiter: payload.waiter_id || undefined,
-              }
-            : table,
-        ),
-      )
+      setTables((prevTables) => {
+        if (payload.eventType === "INSERT") {
+          const newTable = {
+            id: payload.new.id,
+            number: payload.new.number,
+            status: payload.new.status as any,
+            waiter: payload.new.waiter_id || undefined,
+            waiter_name: payload.new.waiter_name || undefined,
+          }
+          return [...prevTables, newTable]
+        } else if (payload.eventType === "UPDATE") {
+          const updatedTable = {
+            id: payload.new.id,
+            number: payload.new.number,
+            status: payload.new.status as any,
+            waiter: payload.new.waiter_id || undefined,
+            waiter_name: payload.new.waiter_name || undefined,
+          }
+          return prevTables.map((table) =>
+            table.id === updatedTable.id ? updatedTable : table,
+          )
+        } else if (payload.eventType === "DELETE") {
+          const deletedTableId = payload.old.id
+          return prevTables.filter((table) => table.id !== deletedTableId)
+        }
+        return prevTables
+      })
     })
 
     // Limpiar suscripción al desmontar
