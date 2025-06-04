@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Table as TableUI, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import DataTable, { TableColumn } from "react-data-table-component"
 import { Button } from "@/components/ui/button"
 import { Printer, RefreshCw } from "lucide-react"
-import {formatCurrency, formatDate, formatDateTime} from "@/utils/helpers"
+import {formatCurrency, formatDateTime} from "@/utils/helpers"
 import { usePOSStore } from "@/store/use-pos-store"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { Order, Table, Profile, PrintableInvoice } from "@/types"
@@ -12,10 +12,6 @@ import { useConfigStore } from "@/store/use-config-store"
 import { format } from "date-fns"
 import { getOrdersByDate } from "@/lib/supabase/service"
 import { useToast } from "@/components/ui/use-toast"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Pagination } from "@/components/ui/pagination"
-import { ItemsPerPage } from "@/components/ui/items-per-page"
-import { usePagination } from "@/hooks/use-pagination"
 
 interface CompletedOrdersTableProps {
   selectedDate?: Date
@@ -117,11 +113,6 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     return uniqueOrders
   }, [allOrders, searchTerm, tables, profiles])
 
-  // Usar el hook de paginación
-  const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination({
-    data: completedOrders,
-    initialItemsPerPage: 10,
-  })
 
   const handlePrintInvoice = (order: Order) => {
     // Encontrar la mesa correspondiente
@@ -186,6 +177,47 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     setInvoiceOpen(true)
   }
 
+  const columns: TableColumn<Order>[] = [
+    {
+      name: "ID",
+      selector: (row) => row.id.substring(0, 8),
+      sortable: true,
+    },
+    {
+      name: "Fecha",
+      selector: (row) => (row.createdAt ? formatDateTime(row.createdAt) : ""),
+      sortable: true,
+    },
+    {
+      name: "Mesero",
+      selector: (row) => {
+        const waiter = profiles.find((p) => p.id === row.waiter)
+        return waiter ? waiter.name : "Desconocido"
+      },
+      sortable: true,
+    },
+    {
+      name: "Total",
+      selector: (row) => row.bill?.total || 0,
+      sortable: true,
+      right: true,
+      format: (row) => formatCurrency(row.bill?.total || 0),
+    },
+    {
+      name: "Acciones",
+      cell: (row) => (
+        <Button variant="outline" size="sm" onClick={() => handlePrintInvoice(row)}>
+          <Printer className="h-4 w-4 mr-1" />
+          Factura
+        </Button>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+      button: true,
+      right: true,
+    },
+  ]
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -210,84 +242,21 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
         />
       </div>
 
-      <div className="border rounded-md">
-        <TableUI>
-          <TableHeader>
-            <TableRow>
-              <TableHead>ID</TableHead>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Mesero</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              // Mostrar skeletons durante la carga
-              Array(5)
-                .fill(0)
-                .map((_, index) => (
-                  <TableRow key={`skeleton-${index}`}>
-                    <TableCell>
-                      <Skeleton className="h-5 w-16" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-5 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-5 w-24" />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Skeleton className="h-5 w-20 ml-auto" />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Skeleton className="h-8 w-24 ml-auto" />
-                    </TableCell>
-                  </TableRow>
-                ))
-            ) : paginatedData.length > 0 ? (
-              paginatedData.map((order) => {
-                const waiter = profiles.find((p) => p.id === order.waiter)
-                return (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-medium">{order.id.substring(0, 8)}</TableCell>
-                    <TableCell>{order.createdAt ? formatDateTime(order.createdAt) : "Fecha no disponible"}</TableCell>
-                    <TableCell>{waiter ? waiter.name : "Desconocido"}</TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(order.bill?.total || 0)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => handlePrintInvoice(order)}>
-                        <Printer className="h-4 w-4 mr-1" />
-                        Factura
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              })
-            ) : (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                  {searchTerm
-                    ? "No se encontraron órdenes con ese término de búsqueda"
-                    : `No hay órdenes completadas ${selectedDate ? "para esta fecha" : ""}`}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </TableUI>
-      </div>
-
-      {/* Paginación */}
-      {completedOrders.length > 0 && (
-        <div className="flex items-center justify-between mt-4">
-          <ItemsPerPage itemsPerPage={itemsPerPage} onChange={setItemsPerPage} options={[10, 25, 50, 100]} />
-          <div className="text-sm text-muted-foreground">
-            Mostrando {paginatedData.length} de {completedOrders.length} órdenes
+      <DataTable
+        columns={columns}
+        data={completedOrders}
+        progressPending={isLoading}
+        pagination
+        paginationPerPage={10}
+        paginationRowsPerPageOptions={[10, 25, 50, 100]}
+        noDataComponent={
+          <div className="py-4 text-muted-foreground text-center">
+            {searchTerm
+              ? "No se encontraron órdenes con ese término de búsqueda"
+              : `No hay órdenes completadas ${selectedDate ? "para esta fecha" : ""}`}
           </div>
-          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
-        </div>
-      )}
+        }
+      />
 
       {selectedInvoice && (
         <InvoicePrintView invoice={selectedInvoice} open={invoiceOpen} onOpenChange={setInvoiceOpen} />
