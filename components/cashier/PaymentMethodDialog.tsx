@@ -145,6 +145,23 @@ export function PaymentMethodDialog({
   const cashAmount = Number.parseFloat(cashReceived || "0")
   const change = !isNaN(cashAmount) ? Math.max(0, cashAmount - finalAmount) : 0
 
+  const totalPaid = useMemo(
+    () =>
+      Object.values(paymentAmounts).reduce(
+        (sum, amount) => sum + (Number(amount) || 0),
+        0,
+      ),
+    [paymentAmounts],
+  )
+
+  const changeMultiple = Math.max(0, totalPaid - finalAmount)
+
+  useEffect(() => {
+    setPaymentLeft((finalAmount - totalPaid).toString())
+  }, [finalAmount, totalPaid])
+
+  const confirmDisabled = processingPayment || totalPaid < finalAmount
+
   // Verificar si hay suficiente efectivo para dar cambio
   const checkCashAvailability = () => {
     if (paymentMethod === "cash" && change > 0) {
@@ -789,14 +806,36 @@ export function PaymentMethodDialog({
                           <span>{formatCurrency(finalAmount)}</span>
                         </div>
 
-                        {Number(paymentLeft) !== finalAmount && Number(paymentLeft) > 0 &&
-                            <>
-                              <div className="flex justify-between font-bold text-lg pt-2 border-t">
-                                <span className="text-primary">Pendiente:</span>
-                                <span className="text-primary">{formatCurrency(Number(paymentLeft))}</span>
+                        {Number(paymentLeft) !== finalAmount && Number(paymentLeft) > 0 && (
+                          <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                            <span className="text-primary">Pendiente:</span>
+                            <span className="text-primary">{formatCurrency(Number(paymentLeft))}</span>
+                          </div>
+                        )}
+                        {totalPaid > finalAmount && (
+                          <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                            <span className="text-destructive">Total excedido:</span>
+                            <span className="text-destructive">{formatCurrency(totalPaid - finalAmount)}</span>
+                          </div>
+                        )}
+                        {totalPaid > 0 && (
+                          <div className="space-y-1 pt-2 border-t">
+                            <div className="flex justify-between text-sm">
+                              <span>Total pagado:</span>
+                              <span>{formatCurrency(totalPaid)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span>Total a pagar:</span>
+                              <span>{formatCurrency(finalAmount)}</span>
+                            </div>
+                            {changeMultiple > 0 && (
+                              <div className="flex justify-between text-sm font-semibold">
+                                <span>Cambio a entregar:</span>
+                                <span>{formatCurrency(changeMultiple)}</span>
                               </div>
-                            </>
-                        }
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Opción para incluir propina */}
@@ -849,7 +888,11 @@ export function PaymentMethodDialog({
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Volver
               </Button>
-              <Button onClick={handlePaymentConfirmationSubmit} disabled={processingPayment}>
+              <Button
+                onClick={handlePaymentConfirmationSubmit}
+                disabled={confirmDisabled}
+                variant={totalPaid > finalAmount ? "destructive" : "default"}
+              >
                 <Check className="mr-2 h-4 w-4" />
                 Confirmar Pago
               </Button>
