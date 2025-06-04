@@ -591,6 +591,38 @@ export const cashRegisterService = {
     }
   },
 
+  async getTransactionsByOrderId(orderId: string): Promise<PaymentTransaction[]> {
+    try {
+      const { data, error } = await supabase
+        .from("payment_transactions")
+        .select("*")
+        .eq("order_id", orderId)
+        .order("timestamp", { ascending: true })
+
+      if (error) {
+        console.error("Error al obtener transacciones por orden:", error)
+        throw error
+      }
+
+      return data.map((t) => ({
+        id: t.id,
+        orderId: t.order_id,
+        tableId: t.table_id,
+        waiterId: t.waiter_id,
+        amount: t.amount,
+        tipAmount: t.tip_amount,
+        method: t.method,
+        cashReceived: t.cash_received,
+        cashChange: t.cash_change,
+        timestamp: new Date(t.timestamp),
+        cash_register_id: t.cash_register_id,
+      }))
+    } catch (error) {
+      console.error("Error en getTransactionsByOrderId:", error)
+      throw error
+    }
+  },
+
   // Actualizar la función getTransactionsByDateRange para incluir waiterId y tipAmount
   async getTransactionsByDateRange(startDate: Date, endDate: Date): Promise<PaymentTransaction[]> {
     try {

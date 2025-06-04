@@ -57,6 +57,7 @@ export type Order = {
   createdAt: Date
   isPartialOrder?: boolean
   parentOrderId?: string
+  paymentMethod?: PaymentMethod | "multiple"
 }
 
 // Cart types
