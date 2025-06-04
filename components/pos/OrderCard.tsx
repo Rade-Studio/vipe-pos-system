@@ -223,7 +223,7 @@ export function OrderCard({
                 key={index}
                 className={`p-3 rounded-md ${isAnyItemNew && isKitchenView ? "bg-yellow-50 border-l-4 border-yellow-500 dark:bg-primary/10 dark:border-primary" : "bg-gray-50 dark:bg-gray-800"}`}
               >
-                <div className="flex justify-between items-start">
+                <div className="grid grid-cols-[1fr_auto] items-start gap-2">
                   <div className="flex flex-col">
                     <div className="font-medium flex items-center text-lg">
                       {isAnyItemNew && isKitchenView && (
