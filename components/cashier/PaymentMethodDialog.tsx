@@ -801,35 +801,31 @@ export function PaymentMethodDialog({
                             </div>
                         )}
 
-                        <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                        <div className="flex justify-between font-bold text-xl pt-2 border-t">
                           <span>Total a Pagar:</span>
                           <span>{formatCurrency(finalAmount)}</span>
                         </div>
 
                         {Number(paymentLeft) !== finalAmount && Number(paymentLeft) > 0 && (
-                          <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                          <div className="flex justify-between font-bold text-xl pt-2 border-t">
                             <span className="text-primary">Pendiente:</span>
                             <span className="text-primary">{formatCurrency(Number(paymentLeft))}</span>
                           </div>
                         )}
                         {totalPaid > finalAmount && (
-                          <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                          <div className="flex justify-between font-bold text-xl pt-2 border-t">
                             <span className="text-destructive">Total excedido:</span>
                             <span className="text-destructive">{formatCurrency(totalPaid - finalAmount)}</span>
                           </div>
                         )}
                         {totalPaid > 0 && (
                           <div className="space-y-1 pt-2 border-t">
-                            <div className="flex justify-between text-sm">
+                            <div className="flex justify-between text-lg font-bold">
                               <span>Total pagado:</span>
                               <span>{formatCurrency(totalPaid)}</span>
                             </div>
-                            <div className="flex justify-between text-sm">
-                              <span>Total a pagar:</span>
-                              <span>{formatCurrency(finalAmount)}</span>
-                            </div>
                             {changeMultiple > 0 && (
-                              <div className="flex justify-between text-sm font-semibold">
+                              <div className="flex justify-between text-lg font-bold">
                                 <span>Cambio a entregar:</span>
                                 <span>{formatCurrency(changeMultiple)}</span>
                               </div>
