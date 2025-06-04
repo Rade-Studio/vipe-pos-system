@@ -11,12 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { supabase } from "@/lib/supabase"
-import { ChevronsUpDown } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import * as LucideIcons from "lucide-react"
+import { IconSelector } from "@/components/ui/icon-selector"
 
 // Esquema de validación para el formulario
 const categorySchema = z.object({
@@ -33,99 +28,10 @@ interface CategoryFormProps {
   onSuccess?: () => void
 }
 
-// Lista de iconos de cocina/restaurante disponibles en Lucide
-const kitchenIcons = [
-  "Coffee",
-  "UtensilsCrossed",
-  "Utensils",
-  "ChefHat",
-  "Apple",
-  "Beer",
-  "Beef",
-  "Cake",
-  "Cherry",
-  "Cookie",
-  "Croissant",
-  "Egg",
-  "Fish",
-  "Flame",
-  "IceCream",
-  "Lemon",
-  "Milk",
-  "Pizza",
-  "Salad",
-  "Sandwich",
-  "Soup",
-  "Wine",
-  "Banana",
-  "Carrot",
-  "Cheese",
-  "Drumstick",
-  "Hamburger",
-  "Popcorn",
-  "Taco",
-  "Vegetable",
-  "Wheat",
-  "Cocktail",
-  "Coffee",
-  "Dessert",
-  "Drink",
-  "Fruit",
-  "GlassWater",
-  "Grape",
-  "IceCream2",
-  "Martini",
-  "Meat",
-  "Orange",
-  "Pasta",
-  "Pepper",
-  "Pie",
-  "Rice",
-  "Salad",
-  "Sushi",
-  "Tea",
-  "Tomato",
-  "Watermelon",
-  "Bread",
-  "Broccoli",
-  "Candy",
-  "Chili",
-  "Chocolate",
-  "Coconut",
-  "CupSoda",
-  "Donut",
-  "Fridge",
-  "Grill",
-  "HotDog",
-  "IceCreams",
-  "Kebab",
-  "Lollipop",
-  "Microwave",
-  "Mug",
-  "Mushroom",
-  "Noodles",
-  "Oven",
-  "Pear",
-  "Pineapple",
-  "Potato",
-  "Pretzel",
-  "Refrigerator",
-  "Sausage",
-  "Shrimp",
-  "Steak",
-  "Strawberry",
-  "Toaster",
-  "Waffle",
-  "Yogurt",
-]
-
-// Filtrar solo los iconos que existen en Lucide
-const validIcons = kitchenIcons.filter((icon) => Boolean((LucideIcons as any)[icon]))
 
 export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [open, setOpen] = useState(false)
 
   // Inicializar el formulario con los valores por defecto o los valores de la categoría existente
   const form = useForm<CategoryFormValues>({
@@ -244,62 +150,12 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
               render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <FormLabel>Icono</FormLabel>
-                  <Popover open={open} onOpenChange={setOpen}>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button variant="outline" role="combobox" aria-expanded={open} className="justify-between">
-                          {field.value ? (
-                            <div className="flex items-center">
-                              {(() => {
-                                const IconComponent = field.value ? (LucideIcons as any)[field.value] : null
-                                return IconComponent ? <IconComponent className="h-5 w-5" /> : "Seleccionar icono"
-                              })()}
-                            </div>
-                          ) : (
-                            "Seleccionar icono"
-                          )}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0 w-[300px]">
-                      <Command>
-                        <CommandInput placeholder="Buscar icono..." />
-                        <ScrollArea className="h-[350px]">
-                          <CommandList className="max-h-none">
-                            <CommandEmpty>No se encontraron iconos.</CommandEmpty>
-                            <CommandGroup>
-                              <div className="grid grid-cols-5 gap-2 p-2">
-                                {validIcons.map((icon) => {
-                                  const IconComponent = (LucideIcons as any)[icon]
-                                  return (
-                                    <CommandItem
-                                      key={icon}
-                                      value={icon}
-                                      onSelect={(value) => {
-                                        form.setValue("icon", value)
-                                        setOpen(false)
-                                      }}
-                                      className="flex flex-col items-center justify-center p-2 h-14 w-full"
-                                    >
-                                      <div
-                                        className={cn(
-                                          "flex items-center justify-center rounded-md p-2 w-full h-full",
-                                          field.value === icon ? "bg-primary/20" : "hover:bg-accent",
-                                        )}
-                                      >
-                                        <IconComponent className="h-6 w-6" />
-                                      </div>
-                                    </CommandItem>
-                                  )
-                                })}
-                              </div>
-                            </CommandGroup>
-                          </CommandList>
-                        </ScrollArea>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  <FormControl>
+                    <IconSelector
+                      selectedIcon={field.value}
+                      onSelectIcon={(icon) => form.setValue("icon", icon)}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
