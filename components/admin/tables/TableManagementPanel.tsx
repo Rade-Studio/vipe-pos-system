@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Skeleton } from "@/components/ui/skeleton"
 import { tableService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { useToast } from "@/hooks/use-toast"
@@ -200,8 +202,54 @@ export function TableManagementPanel() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="w-full">
+        <div className="rounded-md border">
+          <table className="w-full caption-bottom text-sm">
+            <thead className="[&_tr]:border-b">
+              <tr className="border-b transition-colors hover:bg-muted/50">
+                <th className="h-12 px-4 text-left align-middle font-medium">
+                  <Skeleton className="h-4 w-20" />
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium">
+                  <Skeleton className="h-4 w-20" />
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium">
+                  <Skeleton className="h-4 w-24" />
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium">
+                  <Skeleton className="h-4 w-24" />
+                </th>
+                <th className="h-12 px-4 text-right align-middle font-medium">
+                  <Skeleton className="h-4 w-20 ml-auto" />
+                </th>
+              </tr>
+            </thead>
+            <tbody className="[&_tr:last-child]:border-0">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <tr key={i} className="border-b transition-colors hover:bg-muted/50">
+                  <td className="p-4 align-middle">
+                    <Skeleton className="h-4 w-20" />
+                  </td>
+                  <td className="p-4 align-middle">
+                    <Skeleton className="h-4 w-16" />
+                  </td>
+                  <td className="p-4 align-middle">
+                    <Skeleton className="h-4 w-24" />
+                  </td>
+                  <td className="p-4 align-middle">
+                    <Skeleton className="h-4 w-24" />
+                  </td>
+                  <td className="p-4 align-middle text-right">
+                    <div className="flex justify-end gap-2">
+                      <Skeleton className="h-8 w-8 rounded-full" />
+                      <Skeleton className="h-8 w-8 rounded-full" />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     )
   }
@@ -254,118 +302,64 @@ export function TableManagementPanel() {
           </Select>
         </div>
 
-        {/* Lista de mesas */}
-        {filteredTables.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            {searchQuery || statusFilter
-              ? "No se encontraron mesas con los criterios de búsqueda."
-              : "No hay mesas creadas."}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredTables.map((table) => (
-              <Card
-                key={table.id}
-                className="overflow-hidden border-t-4"
-                style={{ borderTopColor: getStatusColor(table.status) }}
-              >
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-xl font-bold">Mesa {table.number}</h3>
-                    <Badge status={table.status} />
-                  </div>
-
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center text-sm">
-                      <div className="w-24 font-medium">Estado:</div>
-                      <div>{getStatusLabel(table.status)}</div>
-                    </div>
-
-                    {table.waiter_id && (
-                      <div className="flex items-center text-sm">
-                        <div className="w-24 font-medium">Mesero:</div>
-                        <div className="flex items-center">
-                          <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary mr-2">
-                            {table.profiles?.full_name
-                              ?.split(" ")
-                              .map((name) => name[0])
-                              .join("")
-                              .toUpperCase() || "??"}
-                          </div>
-                          <span>{table.profiles?.full_name || "Desconocido"}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex items-center text-sm">
-                      <div className="w-24 font-medium">Última act.:</div>
-                      <div>
-                        {table.updated_at
-                          ? new Date(table.updated_at).toLocaleString("es-ES", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "N/A"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between gap-2 mt-auto">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 flex items-center justify-center"
-                      onClick={() => handleOpenEditDialog(table)}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="mr-1"
-                      >
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                      </svg>
-                      Editar
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="flex-1 flex items-center justify-center"
-                      onClick={() => handleOpenDeleteDialog(table.id)}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="mr-1"
-                      >
-                        <path d="M3 6h18"></path>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      </svg>
-                      Eliminar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+          {/* Lista de mesas */}
+          {filteredTables.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {searchQuery || statusFilter
+                ? "No se encontraron mesas con los criterios de búsqueda."
+                : "No hay mesas creadas."}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mesa</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Mesero</TableHead>
+                  <TableHead>Última act.</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTables.map((table) => (
+                  <TableRow key={table.id}>
+                    <TableCell className="font-medium">{table.number}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={table.status} />
+                    </TableCell>
+                    <TableCell>{table.profiles?.full_name || "-"}</TableCell>
+                    <TableCell>
+                      {table.updated_at
+                        ? new Date(table.updated_at).toLocaleString("es-ES", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(table)}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-49.5-9.5z"></path>
+                        </svg>
+                        <span className="sr-only">Editar</span>
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(table.id)}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+                          <path d="M3 6h18"></path>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        <span className="sr-only">Eliminar</span>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
 
         {/* Diálogo para añadir mesa */}
         <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
@@ -470,7 +464,7 @@ export function TableManagementPanel() {
 }
 
 // Componente Badge para mostrar el estado
-function Badge({ status }: { status: string }) {
+function StatusBadge({ status }: { status: string }) {
   const getStatusClass = () => {
     switch (status) {
       case "available":
