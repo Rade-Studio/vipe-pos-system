@@ -358,7 +358,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       bill: bill,
       waiter: waiter.name,
       table: table.number,
-      paymentMethod: "cash", // Por defecto
+      paymentMethod: (order as any).paymentMethod || "cash"
     }
 
     setCompletedInvoiceData(invoice)
