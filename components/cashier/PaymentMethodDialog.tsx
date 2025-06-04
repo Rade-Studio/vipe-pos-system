@@ -298,13 +298,24 @@ export function PaymentMethodDialog({
   const handleCompleteAmountPayment = (selectedMethod: PaymentMethod) => {
     const totalAmount = Object.values(paymentAmounts).reduce(
         (sum, amount) => sum + (Number(amount) || 0),
-        0
+        0,
     );
 
     setPaymentLeft(!isNaN(totalAmount) ? finalAmount - Number(totalAmount) : finalAmount);
-    setSelectedMethod(null)
+    setSelectedMethod(null);
     setSelectedMethods((prev) => ({ ...prev, [selectedMethod]: true }));
-  }
+  };
+
+  const handleSelectPaymentMethod = (method: PaymentMethod) => {
+    if (selectedMethod && selectedMethod !== method) {
+      handleCompleteAmountPayment(selectedMethod);
+      setSelectedMethod(method);
+    } else if (selectedMethod === method) {
+      handleCompleteAmountPayment(method);
+    } else {
+      setSelectedMethod(method);
+    }
+  };
 
   const handleCashInputSubmit = () => {
     setPaying(true)
@@ -860,7 +871,7 @@ export function PaymentMethodDialog({
                     <div key={method} className="rounded-md border hover:bg-muted space-y-2">
                       <button
                           type="button"
-                          onClick={() => setSelectedMethod(method === selectedMethod ? null : method)}
+                          onClick={() => handleSelectPaymentMethod(method)}
                           className={cn(
                               "flex items-center w-full text-left cursor-pointer border rounded-md p-3 transition-all duration-200",
                               selectedMethod === method
