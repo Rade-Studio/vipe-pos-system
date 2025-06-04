@@ -15,6 +15,7 @@ import { ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import * as LucideIcons from "lucide-react"
 
 // Esquema de validación para el formulario
@@ -261,39 +262,41 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="p-0 w-[300px] max-h-[400px]">
+                    <PopoverContent className="p-0 w-[300px]">
                       <Command>
                         <CommandInput placeholder="Buscar icono..." />
-                        <CommandList className="max-h-[350px] overflow-y-auto">
-                          <CommandEmpty>No se encontraron iconos.</CommandEmpty>
-                          <CommandGroup>
-                            <div className="grid grid-cols-5 gap-2 p-2">
-                              {validIcons.map((icon) => {
-                                const IconComponent = (LucideIcons as any)[icon]
-                                return (
-                                  <CommandItem
-                                    key={icon}
-                                    value={icon}
-                                    onSelect={(value) => {
-                                      form.setValue("icon", value)
-                                      setOpen(false)
-                                    }}
-                                    className="flex flex-col items-center justify-center p-2 h-14 w-full"
-                                  >
-                                    <div
-                                      className={cn(
-                                        "flex items-center justify-center rounded-md p-2 w-full h-full",
-                                        field.value === icon ? "bg-primary/20" : "hover:bg-accent",
-                                      )}
+                        <ScrollArea className="h-[350px]">
+                          <CommandList className="max-h-none">
+                            <CommandEmpty>No se encontraron iconos.</CommandEmpty>
+                            <CommandGroup>
+                              <div className="grid grid-cols-5 gap-2 p-2">
+                                {validIcons.map((icon) => {
+                                  const IconComponent = (LucideIcons as any)[icon]
+                                  return (
+                                    <CommandItem
+                                      key={icon}
+                                      value={icon}
+                                      onSelect={(value) => {
+                                        form.setValue("icon", value)
+                                        setOpen(false)
+                                      }}
+                                      className="flex flex-col items-center justify-center p-2 h-14 w-full"
                                     >
-                                      <IconComponent className="h-6 w-6" />
-                                    </div>
-                                  </CommandItem>
-                                )
-                              })}
-                            </div>
-                          </CommandGroup>
-                        </CommandList>
+                                      <div
+                                        className={cn(
+                                          "flex items-center justify-center rounded-md p-2 w-full h-full",
+                                          field.value === icon ? "bg-primary/20" : "hover:bg-accent",
+                                        )}
+                                      >
+                                        <IconComponent className="h-6 w-6" />
+                                      </div>
+                                    </CommandItem>
+                                  )
+                                })}
+                              </div>
+                            </CommandGroup>
+                          </CommandList>
+                        </ScrollArea>
                       </Command>
                     </PopoverContent>
                   </Popover>
