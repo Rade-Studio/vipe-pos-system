@@ -112,36 +112,10 @@ export function TableGrid({
     loadTables()
 
     // Suscribirse a cambios en tiempo real
-    const unsubscribe = realtimeService.subscribeToTables((payload) => {
+    const unsubscribe = realtimeService.subscribeToTables(async (payload) => {
       console.log("Cambio en mesa recibido:", payload)
-
-      setTables((prevTables) => {
-        if (payload.eventType === "INSERT") {
-          const newTable = {
-            id: payload.new.id,
-            number: payload.new.number,
-            status: payload.new.status as any,
-            waiter: payload.new.waiter_id || undefined,
-            waiter_name: payload.new.waiter_name || undefined,
-          }
-          return [...prevTables, newTable]
-        } else if (payload.eventType === "UPDATE") {
-          const updatedTable = {
-            id: payload.new.id,
-            number: payload.new.number,
-            status: payload.new.status as any,
-            waiter: payload.new.waiter_id || undefined,
-            waiter_name: payload.new.waiter_name || undefined,
-          }
-          return prevTables.map((table) =>
-            table.id === updatedTable.id ? updatedTable : table,
-          )
-        } else if (payload.eventType === "DELETE") {
-          const deletedTableId = payload.old.id
-          return prevTables.filter((table) => table.id !== deletedTableId)
-        }
-        return prevTables
-      })
+      // Recargar la lista completa de mesas para mantener la interfaz al día
+      await loadTables()
     })
 
     // Limpiar suscripción al desmontar
