@@ -145,6 +145,23 @@ export function PaymentMethodDialog({
   const cashAmount = Number.parseFloat(cashReceived || "0")
   const change = !isNaN(cashAmount) ? Math.max(0, cashAmount - finalAmount) : 0
 
+  const totalPaid = useMemo(
+    () =>
+      Object.values(paymentAmounts).reduce(
+        (sum, amount) => sum + (Number(amount) || 0),
+        0,
+      ),
+    [paymentAmounts],
+  )
+
+  const changeMultiple = Math.max(0, totalPaid - finalAmount)
+
+  useEffect(() => {
+    setPaymentLeft((finalAmount - totalPaid).toString())
+  }, [finalAmount, totalPaid])
+
+  const confirmDisabled = processingPayment || totalPaid < finalAmount
+
   // Verificar si hay suficiente efectivo para dar cambio
   const checkCashAvailability = () => {
     if (paymentMethod === "cash" && change > 0) {
@@ -281,13 +298,24 @@ export function PaymentMethodDialog({
   const handleCompleteAmountPayment = (selectedMethod: PaymentMethod) => {
     const totalAmount = Object.values(paymentAmounts).reduce(
         (sum, amount) => sum + (Number(amount) || 0),
-        0
+        0,
     );
 
     setPaymentLeft(!isNaN(totalAmount) ? finalAmount - Number(totalAmount) : finalAmount);
-    setSelectedMethod(null)
+    setSelectedMethod(null);
     setSelectedMethods((prev) => ({ ...prev, [selectedMethod]: true }));
-  }
+  };
+
+  const handleSelectPaymentMethod = (method: PaymentMethod) => {
+    if (selectedMethod && selectedMethod !== method) {
+      handleCompleteAmountPayment(selectedMethod);
+      setSelectedMethod(method);
+    } else if (selectedMethod === method) {
+      handleCompleteAmountPayment(method);
+    } else {
+      setSelectedMethod(method);
+    }
+  };
 
   const handleCashInputSubmit = () => {
     setPaying(true)
@@ -784,19 +812,37 @@ export function PaymentMethodDialog({
                             </div>
                         )}
 
-                        <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                        <div className="flex justify-between font-bold text-xl pt-2 border-t">
                           <span>Total a Pagar:</span>
                           <span>{formatCurrency(finalAmount)}</span>
                         </div>
 
-                        {Number(paymentLeft) !== finalAmount && Number(paymentLeft) > 0 &&
-                            <>
-                              <div className="flex justify-between font-bold text-lg pt-2 border-t">
-                                <span className="text-primary">Pendiente:</span>
-                                <span className="text-primary">{formatCurrency(Number(paymentLeft))}</span>
+                        {Number(paymentLeft) !== finalAmount && Number(paymentLeft) > 0 && (
+                          <div className="flex justify-between font-bold text-xl pt-2 border-t">
+                            <span className="text-primary">Pendiente:</span>
+                            <span className="text-primary">{formatCurrency(Number(paymentLeft))}</span>
+                          </div>
+                        )}
+                        {totalPaid > finalAmount && (
+                          <div className="flex justify-between font-bold text-xl pt-2 border-t">
+                            <span className="text-destructive">Total excedido:</span>
+                            <span className="text-destructive">{formatCurrency(totalPaid - finalAmount)}</span>
+                          </div>
+                        )}
+                        {totalPaid > 0 && (
+                          <div className="space-y-1 pt-2 border-t">
+                            <div className="flex justify-between text-lg font-bold">
+                              <span>Total pagado:</span>
+                              <span>{formatCurrency(totalPaid)}</span>
+                            </div>
+                            {changeMultiple > 0 && (
+                              <div className="flex justify-between text-lg font-bold">
+                                <span>Cambio a entregar:</span>
+                                <span>{formatCurrency(changeMultiple)}</span>
                               </div>
-                            </>
-                        }
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Opción para incluir propina */}
@@ -825,7 +871,7 @@ export function PaymentMethodDialog({
                     <div key={method} className="rounded-md border hover:bg-muted space-y-2">
                       <button
                           type="button"
-                          onClick={() => setSelectedMethod(method === selectedMethod ? null : method)}
+                          onClick={() => handleSelectPaymentMethod(method)}
                           className={cn(
                               "flex items-center w-full text-left cursor-pointer border rounded-md p-3 transition-all duration-200",
                               selectedMethod === method
@@ -849,7 +895,11 @@ export function PaymentMethodDialog({
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Volver
               </Button>
-              <Button onClick={handlePaymentConfirmationSubmit} disabled={processingPayment}>
+              <Button
+                onClick={handlePaymentConfirmationSubmit}
+                disabled={confirmDisabled}
+                variant={totalPaid > finalAmount ? "destructive" : "default"}
+              >
                 <Check className="mr-2 h-4 w-4" />
                 Confirmar Pago
               </Button>

@@ -179,7 +179,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       },
       waiter: waiter?.name || "Desconocido",
       table: table?.number.toString() || "N/A",
-      paymentMethod: "cash", // Por defecto, ya que no tenemos el método real guardado
+      paymentMethod: order.paymentMethod || "cash"
     }
 
     setSelectedInvoice(invoice)

@@ -112,21 +112,10 @@ export function TableGrid({
     loadTables()
 
     // Suscribirse a cambios en tiempo real
-    const unsubscribe = realtimeService.subscribeToTables((payload) => {
+    const unsubscribe = realtimeService.subscribeToTables(async (payload) => {
       console.log("Cambio en mesa recibido:", payload)
-
-      // Actualizar el estado local directamente para forzar re-renderización
-      setTables((prevTables) =>
-        prevTables.map((table) =>
-          table.id === payload.id
-            ? {
-                ...table,
-                status: payload.status,
-                waiter: payload.waiter_id || undefined,
-              }
-            : table,
-        ),
-      )
+      // Recargar la lista completa de mesas para mantener la interfaz al día
+      await loadTables()
     })
 
     // Limpiar suscripción al desmontar

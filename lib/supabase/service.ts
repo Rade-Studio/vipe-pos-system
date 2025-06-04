@@ -1,4 +1,4 @@
-import type { CartItem, Order, Profile } from "@/types"
+import type { CartItem, Order, Profile, PaymentMethod } from "@/types"
 import { supabase as clientSupabase } from "./client"
 import ingredientTransactionService from "./ingredient-transaction-service"
 import { Waiter } from "@/types/models"
@@ -1328,30 +1328,51 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
       throw error
     }
 
-    // Transformar los datos de la base de datos al formato de Order
-    return data.map((order: any) => ({
-      id: order.id,
-      tableId: order.table_id,
-      waiter: order.waiter_id,
-      status: order.status,
-      items: order.order_items || [],
-      bill: {
-        subtotal: order.subtotal || 0,
-        tax: order.tax || 0,
-        taxPercentage: order.tax_percentage || 0,
-        tip: order.tip || 0,
-        tipPercentage: order.tip_percentage || 0,
-        total: order.total || 0,
-      },
-      subtotal: order.subtotal || 0,
-      tax: order.tax || 0,
-      taxPercentage: order.tax_percentage || 0,
-      tip: order.tip || 0,
-      tipPercentage: order.tip_percentage || 0,
-      total: order.total || 0,
-      createdAt: order.created_at,
-      updatedAt: order.updated_at,
-    }))
+    const orders = await Promise.all(
+      data.map(async (order: any) => {
+        const { data: payments, error: payError } = await supabase
+          .from("payment_transactions")
+          .select("method")
+          .eq("order_id", order.id)
+
+        if (payError) {
+          console.error("Error al obtener métodos de pago:", payError)
+        }
+
+        let paymentMethod: PaymentMethod | "multiple" | undefined
+        if (payments && payments.length > 0) {
+          const unique = Array.from(new Set(payments.map((p) => p.method)))
+          paymentMethod = unique.length > 1 ? "multiple" : (unique[0] as PaymentMethod)
+        }
+
+        return {
+          id: order.id,
+          tableId: order.table_id,
+          waiter: order.waiter_id,
+          status: order.status,
+          items: order.order_items || [],
+          bill: {
+            subtotal: order.subtotal || 0,
+            tax: order.tax || 0,
+            taxPercentage: order.tax_percentage || 0,
+            tip: order.tip || 0,
+            tipPercentage: order.tip_percentage || 0,
+            total: order.total || 0,
+          },
+          subtotal: order.subtotal || 0,
+          tax: order.tax || 0,
+          taxPercentage: order.tax_percentage || 0,
+          tip: order.tip || 0,
+          tipPercentage: order.tip_percentage || 0,
+          total: order.total || 0,
+          createdAt: order.created_at,
+          updatedAt: order.updated_at,
+          paymentMethod,
+        }
+      })
+    )
+
+    return orders
   } catch (error) {
     throw error
   }
