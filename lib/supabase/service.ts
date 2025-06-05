@@ -628,7 +628,7 @@ export const orderService = {
         tip: order.tip,
         tip_percentage: order.tip_percentage,
         total: order.total,
-        status: "kitchen", // Always set to kitchen when creating
+        status: "pending", // Start pending until kitchen confirms
         is_partial_order: order.is_partial_order || false,
         parent_order_id: order.parent_order_id || null,
         created_at: new Date().toISOString(),
@@ -657,7 +657,7 @@ export const orderService = {
       price: item.price,
       quantity: item.quantity,
       comments: item.comments || null,
-      status: "kitchen", // Set initial status to kitchen
+      status: "pending", // Items start pending
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }))
@@ -1132,9 +1132,9 @@ export const orderService = {
         throw new Error("No se encontró la orden")
       }
 
-      // Verificar que la orden esté en estado "kitchen"
-      if (order.status !== "kitchen") {
-        throw new Error("Solo se pueden eliminar órdenes que estén en cocina")
+      // Verificar que la orden esté en estado "kitchen" o "pending"
+      if (order.status !== "kitchen" && order.status !== "pending") {
+        throw new Error("Solo se pueden eliminar órdenes pendientes o en cocina")
       }
 
       // Eliminar los items de la orden

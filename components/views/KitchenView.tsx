@@ -83,9 +83,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     missingIngredients: { name: string; required: number; available: number; unit: string }[]
   }>({ dishesWithoutStock: [], missingIngredients: [] })
   const stockOrderIdRef = useRef<string | null>(null)
+  const [orderStockIssues, setOrderStockIssues] = useState<Record<string, boolean>>({})
 
-  // Ordenes nuevas pendientes de confirmación
-  const [pendingOrders, setPendingOrders] = useState<Order[]>([])
+  // No usamos un estado separado para pendientes; se calculan desde las órdenes
   const confirmedOrdersRef = useRef<Set<string>>(new Set())
 
   const {
@@ -134,19 +134,11 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     // Asegurarse de que order_items existe y es un array
     const orderItems = Array.isArray(dbOrder.order_items) ? dbOrder.order_items : []
 
-    // Filtrar solo los items que están en estado "kitchen"
-    const kitchenItems = orderItems.filter((item) => item.status === "kitchen")
-
     // Ordenar los items por fecha de creación
-    kitchenItems.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    orderItems.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
-    // Si no hay items en cocina, no incluir esta orden
-    if (kitchenItems.length === 0) {
-      return null
-    }
-
-    // Convertir los items de la orden
-    const items = kitchenItems.map((item) => ({
+    // Convertir los items de la orden conservando su estado
+    const items = orderItems.map((item) => ({
       id: item.id, // Usar el ID del item
       dishId: item.dish_id || `item-${item.id}`,
       name: item.name,
@@ -200,9 +192,11 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           })
           stockOrderIdRef.current = order.id
           setShowStockDetailWarning(true)
+          setOrderStockIssues((prev) => ({ ...prev, [order.id]: true }))
           return false
         }
 
+        setOrderStockIssues((prev) => ({ ...prev, [order.id]: false }))
         return true
       } catch (error) {
         toast({
@@ -319,10 +313,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         // Si no existe, agregar la orden
         console.log("Agregando nueva orden al store:", orderDetails.id)
         addOrder(storeOrder)
-        // Registrar como pendiente de confirmación si es una nueva orden
-        if (isNewOrder) {
-          setPendingOrders((prev) => [...prev, storeOrder])
-        }
 
         // Si es una nueva orden, mostrar notificación
         if (isNewOrder) {
@@ -513,19 +503,14 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     try {
       console.log("Iniciando carga de órdenes con items en cocina...")
 
-      // Obtener órdenes con estado "active" de la base de datos
-      const activeOrders = await orderService.getByStatus("kitchen")
-      console.log("Órdenes activas obtenidas de la BD:", activeOrders.length)
+      // Obtener órdenes pendientes y en cocina de la base de datos
+      const activeOrders = await orderService.getByStatus(["pending", "kitchen"])
+      console.log("Órdenes obtenidas de la BD:", activeOrders.length)
 
-      // Filtrar las órdenes que tienen al menos un item en estado "kitchen"
-      const ordersWithKitchenItems = activeOrders.filter((order) =>
-        order.order_items?.some((item) => item.status === "kitchen"),
-      )
-
-      console.log("Órdenes con items en cocina:", ordersWithKitchenItems.length)
-
-      // Procesar las órdenes para el store
-      const storeOrders = ordersWithKitchenItems.map(convertDbOrderToStoreOrder).filter(Boolean) // Eliminar nulls
+      // Procesar las órdenes para el store (incluyendo items pendientes)
+      const storeOrders = activeOrders
+        .map(convertDbOrderToStoreOrder)
+        .filter((o) => o && o.items.length > 0)
 
       console.log("Órdenes convertidas para el store:", storeOrders.length)
 
@@ -616,13 +601,16 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     }
   }
 
-  // Obtener órdenes activas con items en cocina
-  const kitchenOrders = orders // Ahora usamos las órdenes que ya vienen filtradas por el store
+  // Separar órdenes con items pendientes y en cocina
+  const pendingOrders = orders.filter((order) =>
+    order.items.some((item) => item.status === "pending"),
+  )
+  const kitchenOrders = orders.filter((order) =>
+    order.items.some((item) => item.status === "kitchen"),
+  )
 
-  // Aplicar filtros a las órdenes
-  const pendingIds = new Set(pendingOrders.map((o) => o.id))
+  // Aplicar filtros a las órdenes en cocina
   const filteredOrders = kitchenOrders.filter((order) => {
-    if (pendingIds.has(order.id)) return false
     // Filtrar por mesero si hay un filtro activo
     if (filterWaiter && order.waiter !== filterWaiter) {
       return false
@@ -822,7 +810,11 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       try {
         await orderService.deleteOrder(orderId)
         removeOrder(orderId)
-        setPendingOrders((prev) => prev.filter((o) => o.id !== orderId))
+        setOrderStockIssues((prev) => {
+          const n = { ...prev }
+          delete n[orderId]
+          return n
+        })
         setNewItems((prev) => {
           const newState = { ...prev }
           delete newState[orderId]
@@ -854,8 +846,35 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
       if (hasStock) {
         confirmedOrdersRef.current.add(orderId)
-        setPendingOrders((prev) => prev.filter((o) => o.id !== orderId))
         reduceStockForOrder(order)
+      }
+    },
+    [checkStockForOrder, reduceStockForOrder],
+  )
+
+  // Confirmar un item específico
+  const handleConfirmItem = useCallback(
+    async (orderId: string, itemId: string) => {
+      const order = ordersRef.current.find((o) => o.id === orderId)
+      if (!order) return
+
+      const item = order.items.find((i) => i.id === itemId)
+      if (!item) return
+
+      const hasStock = await checkStockForOrder({ ...order, items: [item] })
+
+      if (hasStock) {
+        await supabase
+          .from("order_items")
+          .update({ status: "kitchen", updated_at: new Date().toISOString() })
+          .eq("id", itemId)
+
+        if (order.status === "pending") {
+          await orderService.updateStatus(orderId, "kitchen")
+        }
+
+        reduceStockForOrder({ ...order, items: [item] })
+        setOrderStockIssues((prev) => ({ ...prev, [orderId]: false }))
       }
     },
     [checkStockForOrder, reduceStockForOrder],
@@ -868,8 +887,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       const order = ordersRef.current.find((o) => o.id === id)
       if (order) {
         confirmedOrdersRef.current.add(id)
-        setPendingOrders((prev) => prev.filter((o) => o.id !== id))
         reduceStockForOrder(order)
+        setOrderStockIssues((prev) => ({ ...prev, [id]: false }))
       }
       stockOrderIdRef.current = null
     }
@@ -1099,8 +1118,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
                       order={order}
                       table={table}
                       waiter={waiter}
-                      onConfirm={() => handleConfirmOrder(order.id)}
-                      onCancel={() => handleCancelOrder(order.id)}
+                      hasStockIssue={orderStockIssues[order.id]}
+                      onConfirmItem={(itemId) => handleConfirmItem(order.id, itemId)}
+                      onCancelOrder={() => handleCancelOrder(order.id)}
                     />
                   )
                 })}
