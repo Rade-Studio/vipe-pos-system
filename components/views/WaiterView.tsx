@@ -821,37 +821,9 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
   // Verificar stock antes de enviar a cocina
   const checkStockBeforeSending = useCallback(async () => {
-    if (!inventoryControlEnabled || forceSubmit) {
-      return true
-    }
-
-    try {
-      const normalizedCartItems = cartItems.map((item) => ({
-        ...item,
-        id: normalizeDishId(item.id),
-      }))
-
-      const stockCheck = await inventoryControlService.checkOrderStock(normalizedCartItems)
-
-      if (!stockCheck.hasStock) {
-        setStockDetailWarning({
-          dishesWithoutStock: stockCheck.dishesWithoutStock,
-          missingIngredients: stockCheck.missingIngredients,
-        })
-        setShowStockDetailWarning(true)
-        return false
-      }
-
-      return true
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo verificar el stock de ingredientes. Intente nuevamente.",
-        variant: "destructive",
-      })
-      return false
-    }
-  }, [inventoryControlEnabled, forceSubmit, cartItems, toast])
+    // El mesero ya no valida inventario antes de enviar la orden
+    return true
+  }, [])
 
   // Reducir stock después de enviar a cocina
   const reduceStockAfterSending = useCallback(

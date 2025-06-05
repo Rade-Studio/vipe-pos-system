@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import type { Profile } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
@@ -11,7 +11,7 @@ import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { orderService, tableService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { useToast } from "@/hooks/use-toast"
-import { Bell, RefreshCw, Wifi, WifiOff, Filter } from "lucide-react"
+import { Bell, RefreshCw, Wifi, WifiOff, Filter, AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase/client"
@@ -27,6 +27,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { useConfigStore } from "@/store/use-config-store"
+import inventoryControlService from "@/lib/supabase/inventory-control-service"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -39,6 +49,14 @@ import {
 interface KitchenViewProps {
   profile: Profile
   onChangeProfile: () => void
+}
+
+// Normalizar IDs de platos para verificación de inventario
+const normalizeDishId = (id: string): string => {
+  if (id.length > 36 && id.includes("-")) {
+    return id.substring(0, 36)
+  }
+  return id
 }
 
 export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
@@ -56,6 +74,14 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   const [filterWaiter, setFilterWaiter] = useState<string | null>(null)
   const [filterTable, setFilterTable] = useState<number | null>(null)
   const { toast } = useToast()
+  const { inventoryControlEnabled } = useConfigStore()
+
+  const [showStockDetailWarning, setShowStockDetailWarning] = useState(false)
+  const [stockDetailWarning, setStockDetailWarning] = useState<{
+    dishesWithoutStock: { id: string; name: string }[]
+    missingIngredients: { name: string; required: number; available: number; unit: string }[]
+  }>({ dishesWithoutStock: [], missingIngredients: [] })
+  const stockOrderIdRef = useRef<string | null>(null)
 
   const {
     tables,
@@ -149,6 +175,38 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     }
   }
 
+  // Verificar stock de una orden al llegar a cocina
+  const checkStockForOrder = useCallback(
+    async (order) => {
+      if (!inventoryControlEnabled) return
+
+      try {
+        const normalizedItems = order.items.map((item) => ({
+          ...item,
+          id: normalizeDishId(item.dishId || item.id),
+        }))
+
+        const stockCheck = await inventoryControlService.checkOrderStock(normalizedItems)
+
+        if (!stockCheck.hasStock) {
+          setStockDetailWarning({
+            dishesWithoutStock: stockCheck.dishesWithoutStock,
+            missingIngredients: stockCheck.missingIngredients,
+          })
+          stockOrderIdRef.current = order.id
+          setShowStockDetailWarning(true)
+        }
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "No se pudo verificar el stock de ingredientes.",
+          variant: "destructive",
+        })
+      }
+    },
+    [inventoryControlEnabled, toast],
+  )
+
   // Configurar suscripción en tiempo real
   const setupRealtimeSubscription = () => {
     try {
@@ -226,10 +284,12 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         // Si existe, actualizar la orden
         console.log("Actualizando orden existente en el store:", orderDetails.id)
         updateOrder(orderDetails.id, storeOrder)
+        checkStockForOrder(storeOrder)
       } else {
         // Si no existe, agregar la orden
         console.log("Agregando nueva orden al store:", orderDetails.id)
         addOrder(storeOrder)
+        checkStockForOrder(storeOrder)
 
         // Si es una nueva orden, mostrar notificación
         if (isNewOrder) {
@@ -329,6 +389,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           // Si existe, actualizar la orden
           console.log("Actualizando orden existente en el store con nuevo item:", orderId)
           updateOrder(orderId, storeOrder)
+          checkStockForOrder(storeOrder)
 
           // Marcar el item como nuevo
           setNewItems((prev) => ({
@@ -350,6 +411,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           // Si no existe, agregar la orden
           console.log("Agregando orden con nuevo item al store:", orderId)
           addOrder(storeOrder)
+          checkStockForOrder(storeOrder)
 
           // Marcar el item como nuevo
           setNewItems((prev) => ({
@@ -444,6 +506,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       storeOrders.forEach((order) => {
         console.log("Agregando orden al store:", order.id)
         addOrder(order)
+        checkStockForOrder(order)
 
         // Registrar los items de esta orden en el servicio de tiempo real
         if (order.items && order.items.length > 0) {
@@ -969,6 +1032,70 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         waiters={waiters}
         onSelect={handleWaiterSelect}
       />
+
+      {/* Advertencia de inventario */}
+      <Dialog open={showStockDetailWarning} onOpenChange={setShowStockDetailWarning}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-amber-600">
+              <AlertTriangle className="h-5 w-5 mr-2" />
+              Advertencia de Inventario
+            </DialogTitle>
+            <DialogDescription>
+              No hay suficiente stock de ingredientes para completar esta orden:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {stockDetailWarning.dishesWithoutStock.length > 0 && (
+              <div className="mb-4">
+                <h3 className="font-medium mb-2">Platos sin stock suficiente:</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  {stockDetailWarning.dishesWithoutStock.map((dish) => (
+                    <li key={dish.id} className="text-amber-700">
+                      {dish.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {stockDetailWarning.missingIngredients.length > 0 && (
+              <div>
+                <h3 className="font-medium mb-2">Ingredientes insuficientes:</h3>
+                <div className="overflow-auto max-h-40">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Ingrediente</th>
+                        <th className="text-right py-2">Disponible</th>
+                        <th className="text-right py-2">Requerido</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockDetailWarning.missingIngredients.map((ing, idx) => (
+                        <tr key={idx} className="border-b border-muted">
+                          <td className="py-2">{ing.name}</td>
+                          <td className="text-right py-2 text-red-500">
+                            {ing.available} {ing.unit}
+                          </td>
+                          <td className="text-right py-2">
+                            {ing.required} {ing.unit}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex justify-end">
+            <Button variant="outline" onClick={() => setShowStockDetailWarning(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm Dialog for Mark All as Delivered */}
       <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
