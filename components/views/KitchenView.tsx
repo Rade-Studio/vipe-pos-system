@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import type { Profile } from "@/types"
+import type { Profile, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
 import { OrderCard } from "@/components/pos/OrderCard"
@@ -82,6 +82,19 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     missingIngredients: { name: string; required: number; available: number; unit: string }[]
   }>({ dishesWithoutStock: [], missingIngredients: [] })
   const stockOrderIdRef = useRef<string | null>(null)
+
+  // Ordenes que requieren confirmación al llegar
+  const [orderConfirmQueue, setOrderConfirmQueue] = useState<Order[]>([])
+  const [orderToConfirm, setOrderToConfirm] = useState<Order | null>(null)
+  const confirmedOrdersRef = useRef<Set<string>>(new Set())
+
+  // Procesar la cola de confirmación
+  useEffect(() => {
+    if (!orderToConfirm && orderConfirmQueue.length > 0) {
+      setOrderToConfirm(orderConfirmQueue[0])
+      setOrderConfirmQueue((prev) => prev.slice(1))
+    }
+  }, [orderConfirmQueue, orderToConfirm])
 
   const {
     tables,
@@ -177,8 +190,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
   // Verificar stock de una orden al llegar a cocina
   const checkStockForOrder = useCallback(
-    async (order) => {
-      if (!inventoryControlEnabled) return
+    async (order): Promise<boolean> => {
+      if (!inventoryControlEnabled) return true
 
       try {
         const normalizedItems = order.items.map((item) => ({
@@ -195,13 +208,17 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           })
           stockOrderIdRef.current = order.id
           setShowStockDetailWarning(true)
+          return false
         }
+
+        return true
       } catch (error) {
         toast({
           title: "Error",
           description: "No se pudo verificar el stock de ingredientes.",
           variant: "destructive",
         })
+        return false
       }
     },
     [inventoryControlEnabled, toast],
@@ -289,7 +306,10 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         // Si no existe, agregar la orden
         console.log("Agregando nueva orden al store:", orderDetails.id)
         addOrder(storeOrder)
-        checkStockForOrder(storeOrder)
+        // Colocar la orden en la cola de confirmación si es una nueva orden
+        if (isNewOrder) {
+          setOrderConfirmQueue((prev) => [...prev, storeOrder])
+        }
 
         // Si es una nueva orden, mostrar notificación
         if (isNewOrder) {
@@ -781,6 +801,69 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     }
   }
 
+  // Cancelar una orden recién llegada
+  const handleCancelOrder = useCallback(
+    async (orderId: string) => {
+      try {
+        await orderService.deleteOrder(orderId)
+        removeOrder(orderId)
+        setNewItems((prev) => {
+          const newState = { ...prev }
+          delete newState[orderId]
+          return newState
+        })
+        toast({
+          title: "Orden cancelada",
+          description: "La orden fue eliminada correctamente.",
+        })
+      } catch (error) {
+        console.error("Error al cancelar la orden:", error)
+        toast({
+          title: "Error",
+          description: "No se pudo cancelar la orden.",
+          variant: "destructive",
+        })
+      } finally {
+        setOrderToConfirm(null)
+      }
+    },
+    [removeOrder, toast],
+  )
+
+  // Confirmar la orden y verificar stock
+  const handleConfirmOrder = useCallback(
+    async (orderId: string) => {
+      const order = ordersRef.current.find((o) => o.id === orderId)
+      if (!order) return
+
+      const hasStock = await checkStockForOrder(order)
+
+      if (hasStock) {
+        confirmedOrdersRef.current.add(orderId)
+        setOrderToConfirm(null)
+      }
+    },
+    [checkStockForOrder],
+  )
+
+  // Forzar confirmación cuando no hay stock
+  const handleForceConfirmOrder = useCallback(() => {
+    if (stockOrderIdRef.current) {
+      confirmedOrdersRef.current.add(stockOrderIdRef.current)
+      stockOrderIdRef.current = null
+    }
+    setShowStockDetailWarning(false)
+    setOrderToConfirm(null)
+  }, [])
+
+  const handleCancelStockWarning = useCallback(() => {
+    if (stockOrderIdRef.current) {
+      handleCancelOrder(stockOrderIdRef.current)
+      stockOrderIdRef.current = null
+    }
+    setShowStockDetailWarning(false)
+  }, [handleCancelOrder])
+
   // Handle table selection
   const handleTableSelect = (tableId: string | null) => {
     if (!tableId) {
@@ -1033,6 +1116,39 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         onSelect={handleWaiterSelect}
       />
 
+      {/* Confirmar recepción de nueva orden */}
+      <AlertDialog
+        open={!!orderToConfirm}
+        onOpenChange={(open) => {
+          if (!open) setOrderToConfirm(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar orden</AlertDialogTitle>
+            <AlertDialogDescription>
+              {orderToConfirm &&
+                `¿Desea aceptar la orden para la mesa ${
+                  tables.find((t) => t.id === orderToConfirm.tableId)?.number ||
+                  orderToConfirm.tableId
+                }?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => orderToConfirm && handleCancelOrder(orderToConfirm.id)}
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => orderToConfirm && handleConfirmOrder(orderToConfirm.id)}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Advertencia de inventario */}
       <Dialog open={showStockDetailWarning} onOpenChange={setShowStockDetailWarning}>
         <DialogContent className="sm:max-w-md">
@@ -1089,9 +1205,12 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
               </div>
             )}
           </div>
-          <DialogFooter className="flex justify-end">
-            <Button variant="outline" onClick={() => setShowStockDetailWarning(false)}>
-              Cerrar
+          <DialogFooter className="flex justify-between sm:justify-between">
+            <Button variant="outline" onClick={handleCancelStockWarning}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleForceConfirmOrder}>
+              Preparar de todos modos
             </Button>
           </DialogFooter>
         </DialogContent>
