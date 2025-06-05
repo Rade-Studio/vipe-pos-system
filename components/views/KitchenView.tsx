@@ -5,6 +5,7 @@ import type { Profile, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
 import { OrderCard } from "@/components/pos/OrderCard"
+import { ConfirmOrderCard } from "@/components/pos/ConfirmOrderCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
@@ -83,18 +84,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   }>({ dishesWithoutStock: [], missingIngredients: [] })
   const stockOrderIdRef = useRef<string | null>(null)
 
-  // Ordenes que requieren confirmación al llegar
-  const [orderConfirmQueue, setOrderConfirmQueue] = useState<Order[]>([])
-  const [orderToConfirm, setOrderToConfirm] = useState<Order | null>(null)
+  // Ordenes nuevas pendientes de confirmación
+  const [pendingOrders, setPendingOrders] = useState<Order[]>([])
   const confirmedOrdersRef = useRef<Set<string>>(new Set())
-
-  // Procesar la cola de confirmación
-  useEffect(() => {
-    if (!orderToConfirm && orderConfirmQueue.length > 0) {
-      setOrderToConfirm(orderConfirmQueue[0])
-      setOrderConfirmQueue((prev) => prev.slice(1))
-    }
-  }, [orderConfirmQueue, orderToConfirm])
 
   const {
     tables,
@@ -224,6 +216,27 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     [inventoryControlEnabled, toast],
   )
 
+  const reduceStockForOrder = useCallback(
+    async (order: Order) => {
+      if (!inventoryControlEnabled) return
+
+      try {
+        const normalizedItems = order.items.map((item) => ({
+          ...item,
+          id: normalizeDishId(item.dishId || item.id),
+        }))
+        await inventoryControlService.reduceStock(normalizedItems, order.id)
+      } catch (error) {
+        toast({
+          title: "Advertencia",
+          description: "La orden se confirmó, pero hubo un error al actualizar el inventario.",
+          variant: "destructive",
+        })
+      }
+    },
+    [inventoryControlEnabled, toast],
+  )
+
   // Configurar suscripción en tiempo real
   const setupRealtimeSubscription = () => {
     try {
@@ -306,9 +319,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         // Si no existe, agregar la orden
         console.log("Agregando nueva orden al store:", orderDetails.id)
         addOrder(storeOrder)
-        // Colocar la orden en la cola de confirmación si es una nueva orden
+        // Registrar como pendiente de confirmación si es una nueva orden
         if (isNewOrder) {
-          setOrderConfirmQueue((prev) => [...prev, storeOrder])
+          setPendingOrders((prev) => [...prev, storeOrder])
         }
 
         // Si es una nueva orden, mostrar notificación
@@ -607,7 +620,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   const kitchenOrders = orders // Ahora usamos las órdenes que ya vienen filtradas por el store
 
   // Aplicar filtros a las órdenes
+  const pendingIds = new Set(pendingOrders.map((o) => o.id))
   const filteredOrders = kitchenOrders.filter((order) => {
+    if (pendingIds.has(order.id)) return false
     // Filtrar por mesero si hay un filtro activo
     if (filterWaiter && order.waiter !== filterWaiter) {
       return false
@@ -807,6 +822,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       try {
         await orderService.deleteOrder(orderId)
         removeOrder(orderId)
+        setPendingOrders((prev) => prev.filter((o) => o.id !== orderId))
         setNewItems((prev) => {
           const newState = { ...prev }
           delete newState[orderId]
@@ -823,8 +839,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           description: "No se pudo cancelar la orden.",
           variant: "destructive",
         })
-      } finally {
-        setOrderToConfirm(null)
       }
     },
     [removeOrder, toast],
@@ -840,21 +854,27 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
       if (hasStock) {
         confirmedOrdersRef.current.add(orderId)
-        setOrderToConfirm(null)
+        setPendingOrders((prev) => prev.filter((o) => o.id !== orderId))
+        reduceStockForOrder(order)
       }
     },
-    [checkStockForOrder],
+    [checkStockForOrder, reduceStockForOrder],
   )
 
   // Forzar confirmación cuando no hay stock
   const handleForceConfirmOrder = useCallback(() => {
     if (stockOrderIdRef.current) {
-      confirmedOrdersRef.current.add(stockOrderIdRef.current)
+      const id = stockOrderIdRef.current
+      const order = ordersRef.current.find((o) => o.id === id)
+      if (order) {
+        confirmedOrdersRef.current.add(id)
+        setPendingOrders((prev) => prev.filter((o) => o.id !== id))
+        reduceStockForOrder(order)
+      }
       stockOrderIdRef.current = null
     }
     setShowStockDetailWarning(false)
-    setOrderToConfirm(null)
-  }, [])
+  }, [reduceStockForOrder])
 
   const handleCancelStockWarning = useCallback(() => {
     if (stockOrderIdRef.current) {
@@ -1066,6 +1086,28 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
             </div>
           )}
 
+          {pendingOrders.length > 0 && (
+            <div className="mb-6">
+              <h2 className="font-semibold mb-2">Órdenes nuevas por confirmar</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                {pendingOrders.map((order) => {
+                  const table = tables.find((t) => t.id === order.tableId)
+                  const waiter = profiles?.find((p) => p.id === order.waiter)
+                  return (
+                    <ConfirmOrderCard
+                      key={order.id}
+                      order={order}
+                      table={table}
+                      waiter={waiter}
+                      onConfirm={() => handleConfirmOrder(order.id)}
+                      onCancel={() => handleCancelOrder(order.id)}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredOrders.length === 0 ? (
               <div className="col-span-full text-center py-10 text-muted-foreground">
@@ -1116,38 +1158,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         onSelect={handleWaiterSelect}
       />
 
-      {/* Confirmar recepción de nueva orden */}
-      <AlertDialog
-        open={!!orderToConfirm}
-        onOpenChange={(open) => {
-          if (!open) setOrderToConfirm(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar orden</AlertDialogTitle>
-            <AlertDialogDescription>
-              {orderToConfirm &&
-                `¿Desea aceptar la orden para la mesa ${
-                  tables.find((t) => t.id === orderToConfirm.tableId)?.number ||
-                  orderToConfirm.tableId
-                }?`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => orderToConfirm && handleCancelOrder(orderToConfirm.id)}
-            >
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => orderToConfirm && handleConfirmOrder(orderToConfirm.id)}
-            >
-              Confirmar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Advertencia de inventario */}
       <Dialog open={showStockDetailWarning} onOpenChange={setShowStockDetailWarning}>
