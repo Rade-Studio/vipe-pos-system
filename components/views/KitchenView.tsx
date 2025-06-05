@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import type { Profile, Order } from "@/types"
+import type { Profile, Order, OrderItem } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
 import { OrderCard } from "@/components/pos/OrderCard"
@@ -83,7 +83,17 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     missingIngredients: { name: string; required: number; available: number; unit: string }[]
   }>({ dishesWithoutStock: [], missingIngredients: [] })
   const stockOrderIdRef = useRef<string | null>(null)
+  const forceItemsRef = useRef<OrderItem[]>([])
   const [orderStockIssues, setOrderStockIssues] = useState<Record<string, boolean>>({})
+  const [orderStockDetails, setOrderStockDetails] = useState<
+    Record<
+      string,
+      {
+        dishesWithoutStock: { id: string; name: string }[]
+        missingIngredients: { name: string; required: number; available: number; unit: string }[]
+      }
+    >
+  >({})
 
   // No usamos un estado separado para pendientes; se calculan desde las órdenes
   const confirmedOrdersRef = useRef<Set<string>>(new Set())
@@ -174,7 +184,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
   // Verificar stock de una orden al llegar a cocina
   const checkStockForOrder = useCallback(
-    async (order): Promise<boolean> => {
+    async (order, showDialog = false): Promise<boolean> => {
       if (!inventoryControlEnabled) return true
 
       try {
@@ -185,14 +195,26 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
         const stockCheck = await inventoryControlService.checkOrderStock(normalizedItems)
 
-        if (!stockCheck.hasStock) {
-          setStockDetailWarning({
+        setOrderStockDetails((prev) => ({
+          ...prev,
+          [order.id]: {
             dishesWithoutStock: stockCheck.dishesWithoutStock,
             missingIngredients: stockCheck.missingIngredients,
-          })
-          stockOrderIdRef.current = order.id
-          setShowStockDetailWarning(true)
+          },
+        }))
+
+        if (!stockCheck.hasStock) {
           setOrderStockIssues((prev) => ({ ...prev, [order.id]: true }))
+
+          if (showDialog) {
+            setStockDetailWarning({
+              dishesWithoutStock: stockCheck.dishesWithoutStock,
+              missingIngredients: stockCheck.missingIngredients,
+            })
+            stockOrderIdRef.current = order.id
+            setShowStockDetailWarning(true)
+          }
+
           return false
         }
 
@@ -842,11 +864,26 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       const order = ordersRef.current.find((o) => o.id === orderId)
       if (!order) return
 
-      const hasStock = await checkStockForOrder(order)
+      const pendingItems = order.items.filter((i) => i.status === "pending")
+      if (pendingItems.length === 0) return
+
+      forceItemsRef.current = pendingItems
+      const hasStock = await checkStockForOrder({ ...order, items: pendingItems }, true)
 
       if (hasStock) {
+        await supabase
+          .from("order_items")
+          .update({ status: "kitchen", updated_at: new Date().toISOString() })
+          .eq("order_id", orderId)
+          .eq("status", "pending")
+
+        if (order.status === "pending") {
+          await orderService.updateStatus(orderId, "kitchen")
+        }
+
         confirmedOrdersRef.current.add(orderId)
-        reduceStockForOrder(order)
+        reduceStockForOrder({ ...order, items: pendingItems })
+        setOrderStockIssues((prev) => ({ ...prev, [orderId]: false }))
       }
     },
     [checkStockForOrder, reduceStockForOrder],
@@ -861,7 +898,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       const item = order.items.find((i) => i.id === itemId)
       if (!item) return
 
-      const hasStock = await checkStockForOrder({ ...order, items: [item] })
+      forceItemsRef.current = [item]
+      const hasStock = await checkStockForOrder({ ...order, items: [item] }, true)
 
       if (hasStock) {
         await supabase
@@ -881,27 +919,59 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   )
 
   // Forzar confirmación cuando no hay stock
-  const handleForceConfirmOrder = useCallback(() => {
+  const handleForceConfirmOrder = useCallback(async () => {
     if (stockOrderIdRef.current) {
       const id = stockOrderIdRef.current
       const order = ordersRef.current.find((o) => o.id === id)
       if (order) {
+        const items = forceItemsRef.current.length
+          ? forceItemsRef.current
+          : order.items.filter((i) => i.status === "pending")
+        const itemIds = items.map((i) => i.id)
+
+        if (itemIds.length > 0) {
+          await supabase
+            .from("order_items")
+            .update({ status: "kitchen", updated_at: new Date().toISOString() })
+            .in("id", itemIds)
+
+          if (order.status === "pending") {
+            await orderService.updateStatus(id, "kitchen")
+          }
+
+          reduceStockForOrder({ ...order, items })
+        }
+
         confirmedOrdersRef.current.add(id)
-        reduceStockForOrder(order)
         setOrderStockIssues((prev) => ({ ...prev, [id]: false }))
       }
       stockOrderIdRef.current = null
+      forceItemsRef.current = []
     }
     setShowStockDetailWarning(false)
-  }, [reduceStockForOrder])
+  }, [reduceStockForOrder, orderService])
 
   const handleCancelStockWarning = useCallback(() => {
     if (stockOrderIdRef.current) {
       handleCancelOrder(stockOrderIdRef.current)
       stockOrderIdRef.current = null
     }
+    forceItemsRef.current = []
     setShowStockDetailWarning(false)
   }, [handleCancelOrder])
+
+  const handleShowStockDetails = useCallback(
+    (orderId: string) => {
+      const details = orderStockDetails[orderId]
+      if (!details) return
+
+      stockOrderIdRef.current = orderId
+      forceItemsRef.current = []
+      setStockDetailWarning(details)
+      setShowStockDetailWarning(true)
+    },
+    [orderStockDetails],
+  )
 
   // Handle table selection
   const handleTableSelect = (tableId: string | null) => {
@@ -1120,7 +1190,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
                       waiter={waiter}
                       hasStockIssue={orderStockIssues[order.id]}
                       onConfirmItem={(itemId) => handleConfirmItem(order.id, itemId)}
+                      onConfirmAll={() => handleConfirmOrder(order.id)}
                       onCancelOrder={() => handleCancelOrder(order.id)}
+                      onShowStockDetails={() => handleShowStockDetails(order.id)}
                     />
                   )
                 })}

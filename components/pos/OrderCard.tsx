@@ -120,7 +120,11 @@ export function OrderCard({
   const localDate = new Date(order.createdAt).toLocaleString()
 
   // Agrupar items idénticos (mismo nombre y comentarios)
-  const groupedItems = order.items.reduce((acc, item) => {
+  const visibleItems = isKitchenView
+    ? order.items.filter((it) => it.status === "kitchen")
+    : order.items
+
+  const groupedItems = visibleItems.reduce((acc, item) => {
     // Crear una clave única basada en nombre y comentarios
     const key = `${item.name}|${item.comments || ""}|${item.addedAt?.getTime()}`
 

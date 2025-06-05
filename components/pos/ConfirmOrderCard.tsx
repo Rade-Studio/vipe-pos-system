@@ -12,11 +12,13 @@ interface ConfirmOrderCardProps {
   table?: Table
   hasStockIssue?: boolean
   onConfirmItem: (itemId: string) => void
+  onConfirmAll: () => void
   onCancelOrder: () => void
+  onShowStockDetails?: () => void
 }
 
 
-export function ConfirmOrderCard({ order, waiter, table, hasStockIssue, onConfirmItem, onCancelOrder }: ConfirmOrderCardProps) {
+export function ConfirmOrderCard({ order, waiter, table, hasStockIssue, onConfirmItem, onConfirmAll, onCancelOrder, onShowStockDetails }: ConfirmOrderCardProps) {
 
   const time = new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 
@@ -29,7 +31,12 @@ export function ConfirmOrderCard({ order, waiter, table, hasStockIssue, onConfir
           </span>
           <span className="text-sm text-muted-foreground flex items-center gap-1">
             {formatCurrency(order.bill.total)}
-            {hasStockIssue && <AlertTriangle className="h-4 w-4 text-amber-600" />}
+            {hasStockIssue && (
+              <AlertTriangle
+                className="h-4 w-4 text-amber-600 cursor-pointer"
+                onClick={onShowStockDetails}
+              />
+            )}
           </span>
         </CardTitle>
         <div className="flex items-center text-sm text-muted-foreground mt-1">
@@ -60,6 +67,9 @@ export function ConfirmOrderCard({ order, waiter, table, hasStockIssue, onConfir
           ))}
       </CardContent>
       <CardFooter className="flex justify-end space-x-2">
+        <Button variant="default" onClick={onConfirmAll}>
+          Confirmar todo
+        </Button>
         <Button variant="outline" onClick={onCancelOrder}>Cancelar orden</Button>
       </CardFooter>
     </Card>
