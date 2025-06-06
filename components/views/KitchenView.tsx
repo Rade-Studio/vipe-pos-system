@@ -1179,31 +1179,32 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           {pendingOrders.length > 0 && (
             <div className="mb-6">
               <h2 className="font-semibold mb-2">Órdenes nuevas por confirmar</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+              <div className="flex overflow-x-auto space-x-4 pb-4">
                 {pendingOrders.map((order) => {
                   const table = tables.find((t) => t.id === order.tableId)
                   const waiter = profiles?.find((p) => p.id === order.waiter)
                   return (
-                    <ConfirmOrderCard
-                      key={order.id}
-                      order={order}
-                      table={table}
-                      waiter={waiter}
-                      hasStockIssue={orderStockIssues[order.id]}
-                      onConfirmItem={(itemId) => handleConfirmItem(order.id, itemId)}
-                      onConfirmAll={() => handleConfirmOrder(order.id)}
-                      onCancelOrder={() => handleCancelOrder(order.id)}
-                      onShowStockDetails={() => handleShowStockDetails(order.id)}
-                    />
+                    <div key={order.id} className="min-w-[20rem]">
+                      <ConfirmOrderCard
+                        order={order}
+                        table={table}
+                        waiter={waiter}
+                        hasStockIssue={orderStockIssues[order.id]}
+                        onConfirmItem={(itemId) => handleConfirmItem(order.id, itemId)}
+                        onConfirmAll={() => handleConfirmOrder(order.id)}
+                        onCancelOrder={() => handleCancelOrder(order.id)}
+                        onShowStockDetails={() => handleShowStockDetails(order.id)}
+                      />
+                    </div>
                   )
                 })}
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="flex overflow-x-auto space-x-4">
             {filteredOrders.length === 0 ? (
-              <div className="col-span-full text-center py-10 text-muted-foreground">
+              <div className="text-center py-10 text-muted-foreground w-full">
                 {kitchenOrders.length === 0
                   ? "No hay órdenes pendientes en cocina"
                   : "No hay órdenes que coincidan con los filtros seleccionados"}
@@ -1214,16 +1215,17 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
                 const waiter = profiles?.find((p) => p.id === order.waiter)
 
                 return (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    table={table}
-                    waiter={waiter}
-                    onMarkAsDelivered={(itemId) => handleMarkAsDelivered(order.id, itemId)}
-                    onMarkAllAsDelivered={() => handleMarkAllAsDelivered(order.id)}
-                    isKitchenView={true}
-                    newItems={newItems[order.id] || []}
-                  />
+                  <div key={order.id} className="min-w-[20rem]">
+                    <OrderCard
+                      order={order}
+                      table={table}
+                      waiter={waiter}
+                      onMarkAsDelivered={(itemId) => handleMarkAsDelivered(order.id, itemId)}
+                      onMarkAllAsDelivered={() => handleMarkAllAsDelivered(order.id)}
+                      isKitchenView={true}
+                      newItems={newItems[order.id] || []}
+                    />
+                  </div>
                 )
               })
             )}
