@@ -1050,11 +1050,11 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   }, [reduceStockForOrder, orderService])
 
   const handleCancelStockWarning = useCallback(() => {
-    if (stockOrderIdRef.current) {
-      handleCancelOrder(stockOrderIdRef.current)
-      stockOrderIdRef.current = null
-    }
-    forceItemsRef.current = []
+    // if (stockOrderIdRef.current) {
+    //   handleCancelOrder(stockOrderIdRef.current)
+    //   stockOrderIdRef.current = null
+    // }
+    // forceItemsRef.current = []
     setShowStockDetailWarning(false)
   }, [handleCancelOrder])
 
@@ -1146,7 +1146,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         <div className="flex items-center mb-4 flex-wrap gap-2">
           <TabsList className="mr-4">
             <TabsTrigger value="orders">Órdenes Pendientes</TabsTrigger>
-            <TabsTrigger value="tables">Mesas</TabsTrigger>
           </TabsList>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -1190,24 +1189,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
                       {waiter.name}
                     </DropdownMenuItem>
                   ))}
-                </DropdownMenuGroup>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Mesa</DropdownMenuLabel>
-                  {tables
-                    .filter((table) => table.status !== "available")
-                    .sort((a, b) => a.number - b.number)
-                    .map((table) => (
-                      <DropdownMenuItem
-                        key={table.id}
-                        className={filterTable === table.number ? "bg-accent" : ""}
-                        onClick={() => setFilterTable(filterTable === table.number ? null : table.number)}
-                      >
-                        Mesa {table.number}
-                      </DropdownMenuItem>
-                    ))}
                 </DropdownMenuGroup>
 
                 <DropdownMenuSeparator />
@@ -1297,6 +1278,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
                   )
                 })}
               </div>
+
+              <div className="flex flex-wrap gap-3 justify-center border-t border-slate-200 dark:border-slate-800 pt-3 mt-4 text-xs">
+              </div>
             </div>
           )}
 
@@ -1330,27 +1314,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="tables">
-          <TablesSection
-            tables={tables}
-            activeTable={selectedTable}
-            profile={profile}
-            onSelectTable={handleTableSelect}
-            onReserveTable={() => {}}
-            onReleaseTable={() => {}}
-            isTableAccessible={isTableAccessible}
-          />
-        </TabsContent>
       </Tabs>
-
-      {/* Waiter Selection Dialog */}
-      <WaiterSelectionModal
-        open={showWaiterDialog}
-        onOpenChange={setShowWaiterDialog}
-        waiters={waiters}
-        onSelect={handleWaiterSelect}
-      />
-
 
       {/* Advertencia de inventario */}
       <Dialog open={showStockDetailWarning} onOpenChange={setShowStockDetailWarning}>

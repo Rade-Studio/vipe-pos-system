@@ -64,14 +64,14 @@ export function ConfirmOrderCard({ order, waiter, table, hasStockIssue, onConfir
               <div className="flex gap-2">
                 <Button
                   size="icon"
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => onConfirmItem(item.id)}
                 >
                   <Check className="h-4 w-4" />
                 </Button>
                 <Button
                   size="icon"
-                  variant="ghost"
+                  variant="destructive"
                   onClick={() => onCancelItem(item.id)}
                 >
                   <X className="h-4 w-4" />
