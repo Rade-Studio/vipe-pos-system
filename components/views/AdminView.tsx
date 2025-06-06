@@ -355,7 +355,10 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
           <TabsTrigger value="tables">Mesas</TabsTrigger>
           <TabsTrigger value="orders">Órdenes</TabsTrigger>
           <TabsTrigger value="cash">Caja</TabsTrigger>
-          <TabsTrigger value="config">Configuración</TabsTrigger>
+          <TabsTrigger value="config_menu">Menú</TabsTrigger>
+          <TabsTrigger value="config_inventory">Inventario</TabsTrigger>
+          <TabsTrigger value="config_personal">Personal</TabsTrigger>
+          <TabsTrigger value="config_business">Negocio</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard">
@@ -724,41 +727,30 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="config">
-          <Tabs defaultValue="menu">
-            <TabsList className="mb-4">
-              <TabsTrigger value="menu">Menú</TabsTrigger>
-              <TabsTrigger value="inventory">Inventario</TabsTrigger>
-              <TabsTrigger value="waiters">Meseros</TabsTrigger>
-              <TabsTrigger value="settings">Ajustes</TabsTrigger>
-            </TabsList>
+        <TabsContent value="config_menu">
+          <div className="space-y-6">
+            <CategoryList />
+            <DishList />
+            <PromotionList />
+          </div>
+        </TabsContent>
 
-            <TabsContent value="menu">
-              <div className="space-y-6">
-                <CategoryList />
-                <DishList />
-                <PromotionList />
-              </div>
-            </TabsContent>
+        <TabsContent value="config_inventory">
+          <div className="space-y-6">
+            <IngredientList />
+          </div>
+        </TabsContent>
 
-            <TabsContent value="inventory">
-              <div className="space-y-6">
-                <IngredientList />
-              </div>
-            </TabsContent>
+        <TabsContent value="config_personal">
+          <div className="space-y-6">
+            <WaiterList />
+          </div>
+        </TabsContent>
 
-            <TabsContent value="waiters">
-              <div className="space-y-6">
-                <WaiterList />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="settings">
-              <div className="space-y-6">
-                <ConfigurationPanel />
-              </div>
-            </TabsContent>
-          </Tabs>
+        <TabsContent value="config_business">
+          <div className="space-y-6">
+            <ConfigurationPanel />
+          </div>
         </TabsContent>
       </Tabs>
     </AdminLayout>

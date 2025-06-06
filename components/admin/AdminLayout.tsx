@@ -7,6 +7,10 @@ import {
   ClipboardList,
   CreditCard,
   Settings,
+  Utensils,
+  Boxes,
+  Users,
+  Store,
 } from "lucide-react"
 import React from "react"
 
@@ -18,12 +22,29 @@ interface AdminLayoutProps {
   onSelectTab: (tab: string) => void
 }
 
-const navItems = [
+interface NavItem {
+  label: string
+  value: string
+  icon: React.ComponentType<{ className?: string }>
+  children?: NavItem[]
+}
+
+const navItems: NavItem[] = [
   { label: "Dashboard", value: "dashboard", icon: LayoutDashboard },
   { label: "Mesas", value: "tables", icon: Table },
   { label: "Órdenes", value: "orders", icon: ClipboardList },
   { label: "Caja", value: "cash", icon: CreditCard },
-  { label: "Configuración", value: "config", icon: Settings },
+  {
+    label: "Configuración",
+    value: "config",
+    icon: Settings,
+    children: [
+      { label: "Menú", value: "config_menu", icon: Utensils },
+      { label: "Inventario y Stock", value: "config_inventory", icon: Boxes },
+      { label: "Personal", value: "config_personal", icon: Users },
+      { label: "Negocio", value: "config_business", icon: Store },
+    ],
+  },
 ]
 
 export function AdminLayout({
@@ -39,17 +60,36 @@ export function AdminLayout({
         <div className="p-4 text-lg font-semibold">Admin</div>
         <nav className="flex-1 px-2 space-y-1">
           {navItems.map((item) => (
-            <button
-              key={item.value}
-              onClick={() => onSelectTab(item.value)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted",
-                activeTab === item.value && "bg-muted"
+            <div key={item.value} className="space-y-1">
+              <button
+                onClick={() => item.children ? null : onSelectTab(item.value)}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted",
+                  activeTab === item.value && "bg-muted",
+                  item.children && "cursor-default"
+                )}
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </button>
+              {item.children && (
+                <div className="ml-4 space-y-1">
+                  {item.children.map((child) => (
+                    <button
+                      key={child.value}
+                      onClick={() => onSelectTab(child.value)}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted",
+                        activeTab === child.value && "bg-muted"
+                      )}
+                    >
+                      <child.icon className="h-4 w-4" />
+                      {child.label}
+                    </button>
+                  ))}
+                </div>
               )}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </button>
+            </div>
           ))}
         </nav>
       </aside>
