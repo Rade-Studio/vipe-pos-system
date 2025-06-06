@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useTheme } from "next-themes";
 import Image from "next/image";
 import PublicMenu from "@/components/public-menu/PublicMenu";
 import { Button } from "@/components/ui/button";
@@ -32,7 +31,6 @@ export default function PublicMenuPage() {
     loadConfigFromDB,
     isLoading,
   } = useConfigStore();
-  const { setTheme } = useTheme();
 
   const [mode, setMode] = useState<"view" | "delivery" | null>(null);
   const { items: cart, add, update, remove } = usePublicCart();
@@ -46,9 +44,19 @@ export default function PublicMenuPage() {
     loadConfigFromDB();
   }, [loadConfigFromDB]);
 
+  const originalDarkRef = useRef<boolean>();
+
   useEffect(() => {
-    setTheme(menuDarkMode ? "dark" : "light");
-  }, [menuDarkMode, setTheme]);
+    if (originalDarkRef.current === undefined) {
+      originalDarkRef.current = document.documentElement.classList.contains("dark");
+    }
+    document.documentElement.classList.toggle("dark", menuDarkMode);
+    return () => {
+      if (originalDarkRef.current !== undefined) {
+        document.documentElement.classList.toggle("dark", originalDarkRef.current);
+      }
+    };
+  }, [menuDarkMode]);
 
   useEffect(() => {
     const primary = hexToHsl(menuPrimaryColor);
@@ -79,17 +87,23 @@ export default function PublicMenuPage() {
   const total = cart.reduce((t, i) => t + i.price * i.quantity, 0);
 
   const sendWhatsApp = () => {
-    const items = cart
-      .map(
-        (i) => `${i.quantity}x ${i.name}${i.comment ? ` (${i.comment})` : ""}`,
-      )
-      .join("%0A");
-    let message = `Hola, quiero hacer un pedido:%0A${items}%0ATotal: ${formatCurrency(total)}`;
-    if (orderComments) message += `%0AComentarios: ${orderComments}`;
-    message += `%0AForma de pago: ${paymentMethod}`;
-    message += `%0ANombre: ${customerName}`;
-    message += `%0ADirección: ${customerAddress}`;
-    const url = `https://wa.me/${businessPhone}?text=${encodeURIComponent(message)}`;
+    const lines = [
+      "Hola, quiero hacer un pedido.",
+      "",
+      "*Productos:*",
+      ...cart.map(
+        (i) => `- ${i.quantity}x ${i.name}${i.comment ? ` (${i.comment})` : ""}`,
+      ),
+      "",
+      `*Total:* ${formatCurrency(total)}`,
+    ];
+    if (orderComments) {
+      lines.push("", "*Comentarios:*", orderComments);
+    }
+    lines.push("", `*Forma de pago:* ${paymentMethod}`);
+    lines.push(`*Nombre:* ${customerName}`);
+    lines.push(`*Dirección:* ${customerAddress}`);
+    const url = `https://wa.me/${businessPhone}?text=${encodeURIComponent(lines.join("\n"))}`;
     window.open(url, "_blank");
   };
 
