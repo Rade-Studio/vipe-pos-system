@@ -825,7 +825,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     try {
       const orderItems = items.map((item) => ({
         order_id: orderId,
-        dish_id: item.id.includes("-") ? null : item.id,
+        dish_id: item.id,
         name: item.name,
         price: item.price,
         quantity: item.quantity,

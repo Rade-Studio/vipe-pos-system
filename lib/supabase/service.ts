@@ -652,7 +652,7 @@ export const orderService = {
     // Luego creamos los items de la orden
     const orderItems = order.items.map((item) => ({
       order_id: orderId,
-      dish_id: item.id.includes("-") ? null : item.id, // Si el ID contiene un guión, es un ID temporal
+      dish_id: item.id, // Referencia directa al plato
       name: item.name,
       price: item.price,
       quantity: item.quantity,
@@ -728,7 +728,7 @@ export const orderService = {
       // Insertar los items de la orden parcial
       const orderItems = items.map((item) => ({
         order_id: partialOrder.id,
-        dish_id: item.id.includes("-") ? null : item.id,
+        dish_id: item.id,
         name: item.name,
         price: item.price,
         quantity: item.quantity,
