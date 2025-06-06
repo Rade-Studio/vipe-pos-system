@@ -54,25 +54,27 @@ export default function DishGrid({
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         {dishes.map((d) => (
           <Card key={d.id} className="overflow-hidden" data-dish-id={d.id}>
-            <CardContent className="p-4 flex flex-col items-center text-center space-y-2">
-              <Image
-                src={d.image_url || "/placeholder.svg?height=160&width=160"}
-                alt={d.name}
-                width={160}
-                height={120}
-                className="rounded-md object-cover w-full h-32"
-              />
-              <div className="space-y-1">
-                <p className="font-medium line-clamp-2">{d.name}</p>
-                {d.description && (
-                  <p className="text-xs text-muted-foreground line-clamp-2">
-                    {d.description}
-                  </p>
-                )}
-                <p className="text-sm text-muted-foreground">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center gap-4 sm:flex-col sm:text-center">
+                <Image
+                  src={d.image_url || "/placeholder.svg?height=160&width=160"}
+                  alt={d.name}
+                  width={160}
+                  height={120}
+                  className="rounded-md object-cover w-20 h-20 sm:w-full sm:h-32"
+                />
+                <div className="flex-1 space-y-1">
+                  <p className="font-medium line-clamp-2">{d.name}</p>
+                  {d.description && (
+                    <p className="text-xs text-muted-foreground break-words">
+                      {d.description}
+                    </p>
+                  )}
+                </div>
+                <p className="text-sm font-medium text-muted-foreground sm:mt-2 sm:w-full sm:text-center">
                   {formatCurrency(d.price)}
                 </p>
               </div>
