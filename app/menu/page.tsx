@@ -44,7 +44,7 @@ export default function PublicMenuPage() {
     loadConfigFromDB();
   }, [loadConfigFromDB]);
 
-  const originalDarkRef = useRef<boolean>();
+  const originalDarkRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (originalDarkRef.current === undefined) {
