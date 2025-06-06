@@ -30,6 +30,8 @@ export function ConfigurationPanel() {
     menuSecondaryColor,
     menuLogo,
     menuSchedule,
+    menuDarkMode,
+    deliveryEnabled,
     setTipPercentage,
     setTaxPercentage,
     setPriceSuggestion,
@@ -64,6 +66,8 @@ export function ConfigurationPanel() {
     secondaryColor: menuSecondaryColor,
     logo: menuLogo,
     schedule: menuSchedule,
+    darkMode: menuDarkMode,
+    deliveryEnabled: deliveryEnabled,
   })
   const [showPasswords, setShowPasswords] = useState({
     kitchen: false,
@@ -101,6 +105,8 @@ export function ConfigurationPanel() {
       secondaryColor: menuSecondaryColor,
       logo: menuLogo,
       schedule: menuSchedule,
+      darkMode: menuDarkMode,
+      deliveryEnabled: deliveryEnabled,
     })
   }, [
     tipPercentage,
@@ -409,7 +415,7 @@ export function ConfigurationPanel() {
               <ul className="list-disc list-inside text-sm text-amber-700 mt-2 space-y-1">
                 <li>Se verificará el stock de ingredientes al enviar órdenes a cocina</li>
                 <li>Se descontará automáticamente el stock de los ingredientes</li>
-                <li>Los platos sin stock suficiente se mostrarán como "Agotado"</li>
+                <li>Los platos sin stock suficiente se mostrarán como &quot;Agotado&quot;</li>
                 <li>Los platos sin receta definida no serán afectados</li>
               </ul>
             </div>
@@ -560,6 +566,28 @@ export function ConfigurationPanel() {
                 id="menuSchedule"
                 value={localMenuConfig.schedule}
                 onChange={(e) => setLocalMenuConfig({ ...localMenuConfig, schedule: e.target.value })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="darkMode">Modo Oscuro</Label>
+                <p className="text-sm text-muted-foreground">Tema para la página pública</p>
+              </div>
+              <Switch
+                id="darkMode"
+                checked={localMenuConfig.darkMode}
+                onCheckedChange={(v) => setLocalMenuConfig({ ...localMenuConfig, darkMode: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="deliveryEnabled">Habilitar Domicilios</Label>
+                <p className="text-sm text-muted-foreground">Muestra el botón de domicilios en la página</p>
+              </div>
+              <Switch
+                id="deliveryEnabled"
+                checked={localMenuConfig.deliveryEnabled}
+                onCheckedChange={(v) => setLocalMenuConfig({ ...localMenuConfig, deliveryEnabled: v })}
               />
             </div>
           </CardContent>

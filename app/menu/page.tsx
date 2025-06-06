@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useTheme } from "next-themes";
 import Image from "next/image";
 import PublicMenu from "@/components/public-menu/PublicMenu";
 import { Button } from "@/components/ui/button";
@@ -26,9 +27,12 @@ export default function PublicMenuPage() {
     menuSecondaryColor,
     menuLogo,
     menuSchedule,
+    menuDarkMode,
+    deliveryEnabled,
     loadConfigFromDB,
     isLoading,
   } = useConfigStore();
+  const { setTheme } = useTheme();
 
   const [mode, setMode] = useState<"view" | "delivery" | null>(null);
   const { items: cart, add, update, remove } = usePublicCart();
@@ -41,6 +45,10 @@ export default function PublicMenuPage() {
   useEffect(() => {
     loadConfigFromDB();
   }, [loadConfigFromDB]);
+
+  useEffect(() => {
+    setTheme(menuDarkMode ? "dark" : "light");
+  }, [menuDarkMode, setTheme]);
 
   useEffect(() => {
     const primary = hexToHsl(menuPrimaryColor);
@@ -127,7 +135,9 @@ export default function PublicMenuPage() {
           <Button variant="secondary" onClick={() => setMode("view")}>
             Ver Carta
           </Button>
-          <Button onClick={() => setMode("delivery")}>Domicilio</Button>
+          {deliveryEnabled && (
+            <Button onClick={() => setMode("delivery")}>Domicilio</Button>
+          )}
         </div>
       </div>
     );
@@ -135,17 +145,17 @@ export default function PublicMenuPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between bg-primary text-primary-foreground p-2 rounded-md">
+      <header className="sticky top-0 z-10 rounded-b-lg bg-gradient-to-r from-primary to-secondary text-primary-foreground shadow-md flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-2">
           {menuLogo && (
-            <Image src={menuLogo} alt="logo" width={40} height={40} />
+            <Image src={menuLogo} alt="logo" width={40} height={40} className="rounded-md" />
           )}
-          <h1 className="font-bold">{businessName}</h1>
+          <h1 className="font-semibold text-lg">{businessName}</h1>
         </div>
-        <Button variant="outline" onClick={() => setMode(null)}>
+        <Button variant="outline" size="sm" onClick={() => setMode(null)}>
           Inicio
         </Button>
-      </div>
+      </header>
 
       <PublicMenu onAdd={addToCart} enableAdd={mode === "delivery"} />
 

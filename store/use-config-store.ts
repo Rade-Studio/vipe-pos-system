@@ -26,6 +26,8 @@ type ConfigState = {
   menuSecondaryColor: string
   menuLogo: string
   menuSchedule: string
+  menuDarkMode: boolean
+  deliveryEnabled: boolean
 
   // Contraseñas de perfiles
   kitchenPassword: string
@@ -54,6 +56,8 @@ type ConfigState = {
     secondaryColor?: string
     logo?: string
     schedule?: string
+    darkMode?: boolean
+    deliveryEnabled?: boolean
   }) => void
 
   // Estado de carga
@@ -79,6 +83,8 @@ export const useConfigStore = create<ConfigState>()(
       menuSecondaryColor: "#f97316",
       menuLogo: "",
       menuSchedule: "",
+      menuDarkMode: false,
+      deliveryEnabled: true,
       kitchenPassword: "1234",
       cashierPassword: "5678",
       adminPassword: "9999",
@@ -113,6 +119,14 @@ export const useConfigStore = create<ConfigState>()(
           menuSecondaryColor: config.secondaryColor ?? state.menuSecondaryColor,
           menuLogo: config.logo ?? state.menuLogo,
           menuSchedule: config.schedule ?? state.menuSchedule,
+          menuDarkMode:
+            typeof config.darkMode === "boolean"
+              ? config.darkMode
+              : state.menuDarkMode,
+          deliveryEnabled:
+            typeof config.deliveryEnabled === "boolean"
+              ? config.deliveryEnabled
+              : state.deliveryEnabled,
         })),
 
       // Cargar configuración desde la base de datos
@@ -139,6 +153,8 @@ export const useConfigStore = create<ConfigState>()(
             menuSecondaryColor: config.menu_secondary_color,
             menuLogo: config.menu_logo,
             menuSchedule: config.menu_schedule,
+            menuDarkMode: config.menu_dark_mode,
+            deliveryEnabled: config.delivery_enabled,
             kitchenPassword: config.kitchen_password,
             cashierPassword: config.cashier_password,
             adminPassword: config.admin_password,
@@ -173,6 +189,8 @@ export const useConfigStore = create<ConfigState>()(
             menu_secondary_color: state.menuSecondaryColor,
             menu_logo: state.menuLogo,
             menu_schedule: state.menuSchedule,
+            menu_dark_mode: state.menuDarkMode,
+            delivery_enabled: state.deliveryEnabled,
             kitchen_password: state.kitchenPassword,
             cashier_password: state.cashierPassword,
             admin_password: state.adminPassword,
