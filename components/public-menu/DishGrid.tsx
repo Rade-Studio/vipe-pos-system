@@ -48,7 +48,7 @@ export default function DishGrid({ dishes, onAdd, showAddButton }: DishGridProps
           <Card key={d.id} className="overflow-hidden" data-dish-id={d.id}>
             <CardContent className="p-4 flex flex-col items-center text-center space-y-2">
               <Image
-                src={d.image || "/placeholder.svg?height=160&width=160"}
+                src={d.image_url || "/placeholder.svg?height=160&width=160"}
                 alt={d.name}
                 width={160}
                 height={120}
