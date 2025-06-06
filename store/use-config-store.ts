@@ -22,6 +22,10 @@ type ConfigState = {
   businessAddress: string
   businessPhone: string
   businessNIT: string
+  menuPrimaryColor: string
+  menuSecondaryColor: string
+  menuLogo: string
+  menuSchedule: string
 
   // Contraseñas de perfiles
   kitchenPassword: string
@@ -45,6 +49,13 @@ type ConfigState = {
     waiter?: string
   }) => void
 
+  setMenuConfig: (config: {
+    primaryColor?: string
+    secondaryColor?: string
+    logo?: string
+    schedule?: string
+  }) => void
+
   // Estado de carga
   isLoading: boolean
   error: string | null
@@ -64,6 +75,10 @@ export const useConfigStore = create<ConfigState>()(
       businessAddress: "Calle Principal #123, Ciudad",
       businessPhone: "123-456-7890",
       businessNIT: "900.123.456-7",
+      menuPrimaryColor: "#4f46e5",
+      menuSecondaryColor: "#f97316",
+      menuLogo: "",
+      menuSchedule: "",
       kitchenPassword: "1234",
       cashierPassword: "5678",
       adminPassword: "9999",
@@ -92,6 +107,14 @@ export const useConfigStore = create<ConfigState>()(
           waiterPassword: passwords.waiter ?? state.waiterPassword,
         })),
 
+      setMenuConfig: (config) =>
+        set((state) => ({
+          menuPrimaryColor: config.primaryColor ?? state.menuPrimaryColor,
+          menuSecondaryColor: config.secondaryColor ?? state.menuSecondaryColor,
+          menuLogo: config.logo ?? state.menuLogo,
+          menuSchedule: config.schedule ?? state.menuSchedule,
+        })),
+
       // Cargar configuración desde la base de datos
       loadConfigFromDB: async () => {
         try {
@@ -112,6 +135,10 @@ export const useConfigStore = create<ConfigState>()(
             businessAddress: config.business_address,
             businessPhone: config.business_phone,
             businessNIT: config.business_nit,
+            menuPrimaryColor: config.menu_primary_color,
+            menuSecondaryColor: config.menu_secondary_color,
+            menuLogo: config.menu_logo,
+            menuSchedule: config.menu_schedule,
             kitchenPassword: config.kitchen_password,
             cashierPassword: config.cashier_password,
             adminPassword: config.admin_password,
@@ -142,6 +169,10 @@ export const useConfigStore = create<ConfigState>()(
             business_address: state.businessAddress,
             business_phone: state.businessPhone,
             business_nit: state.businessNIT,
+            menu_primary_color: state.menuPrimaryColor,
+            menu_secondary_color: state.menuSecondaryColor,
+            menu_logo: state.menuLogo,
+            menu_schedule: state.menuSchedule,
             kitchen_password: state.kitchenPassword,
             cashier_password: state.cashierPassword,
             admin_password: state.adminPassword,

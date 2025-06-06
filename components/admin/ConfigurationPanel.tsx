@@ -26,12 +26,17 @@ export function ConfigurationPanel() {
     cashierPassword,
     adminPassword,
     waiterPassword,
+    menuPrimaryColor,
+    menuSecondaryColor,
+    menuLogo,
+    menuSchedule,
     setTipPercentage,
     setTaxPercentage,
     setPriceSuggestion,
     setInventoryControlEnabled,
     setBusinessInfo,
     setProfilePasswords,
+    setMenuConfig,
     isLoading,
     error,
     loadConfigFromDB,
@@ -53,6 +58,12 @@ export function ConfigurationPanel() {
     cashier: cashierPassword,
     admin: adminPassword,
     waiter: waiterPassword,
+  })
+  const [localMenuConfig, setLocalMenuConfig] = useState({
+    primaryColor: menuPrimaryColor,
+    secondaryColor: menuSecondaryColor,
+    logo: menuLogo,
+    schedule: menuSchedule,
   })
   const [showPasswords, setShowPasswords] = useState({
     kitchen: false,
@@ -85,6 +96,12 @@ export function ConfigurationPanel() {
       admin: adminPassword,
       waiter: waiterPassword,
     })
+    setLocalMenuConfig({
+      primaryColor: menuPrimaryColor,
+      secondaryColor: menuSecondaryColor,
+      logo: menuLogo,
+      schedule: menuSchedule,
+    })
   }, [
     tipPercentage,
     taxPercentage,
@@ -97,6 +114,10 @@ export function ConfigurationPanel() {
     cashierPassword,
     adminPassword,
     waiterPassword,
+    menuPrimaryColor,
+    menuSecondaryColor,
+    menuLogo,
+    menuSchedule,
   ])
 
   // Mostrar errores si ocurren
@@ -167,6 +188,24 @@ export function ConfigurationPanel() {
     }
   }
 
+  const handleSaveMenuConfig = async () => {
+    setMenuConfig(localMenuConfig)
+
+    try {
+      await saveConfigToDB()
+      toast({
+        title: "Configuración guardada",
+        description: "La configuración del menú público se ha guardado.",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo guardar la configuración. Intente nuevamente.",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleRefresh = async () => {
     try {
       await loadConfigFromDB()
@@ -198,6 +237,7 @@ export function ConfigurationPanel() {
           <TabsTrigger value="business">Información del Negocio</TabsTrigger>
           <TabsTrigger value="inventory">Control de Inventario</TabsTrigger>
           <TabsTrigger value="passwords">Contraseñas</TabsTrigger>
+          <TabsTrigger value="menu">Menú Público</TabsTrigger>
         </TabsList>
 
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
@@ -476,6 +516,57 @@ export function ConfigurationPanel() {
             <Button onClick={handleSavePasswords} disabled={isLoading}>
               {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
               Guardar Contraseñas
+            </Button>
+          </CardFooter>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="menu">
+        <Card>
+          <CardHeader>
+            <CardTitle>Menú Público</CardTitle>
+            <CardDescription>Personaliza los colores y horario de la página pública.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="primaryColor">Color Primario</Label>
+              <Input
+                id="primaryColor"
+                type="color"
+                value={localMenuConfig.primaryColor}
+                onChange={(e) => setLocalMenuConfig({ ...localMenuConfig, primaryColor: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="secondaryColor">Color Secundario</Label>
+              <Input
+                id="secondaryColor"
+                type="color"
+                value={localMenuConfig.secondaryColor}
+                onChange={(e) => setLocalMenuConfig({ ...localMenuConfig, secondaryColor: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="menuLogo">URL del Logo</Label>
+              <Input
+                id="menuLogo"
+                value={localMenuConfig.logo}
+                onChange={(e) => setLocalMenuConfig({ ...localMenuConfig, logo: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="menuSchedule">Horario de Atención</Label>
+              <Input
+                id="menuSchedule"
+                value={localMenuConfig.schedule}
+                onChange={(e) => setLocalMenuConfig({ ...localMenuConfig, schedule: e.target.value })}
+              />
+            </div>
+          </CardContent>
+          <CardFooter>
+            <Button onClick={handleSaveMenuConfig} disabled={isLoading}>
+              {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+              Guardar Configuración
             </Button>
           </CardFooter>
         </Card>

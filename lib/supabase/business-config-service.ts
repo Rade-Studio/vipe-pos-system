@@ -9,6 +9,10 @@ export type BusinessConfigValues = {
   business_address: string
   business_phone: string
   business_nit: string
+  menu_primary_color: string
+  menu_secondary_color: string
+  menu_logo: string
+  menu_schedule: string
   inventory_control_enabled: boolean
   // Añadimos las contraseñas de los perfiles
   kitchen_password: string
@@ -48,6 +52,10 @@ export const businessConfigService = {
         business_address: "Dirección del Restaurante",
         business_phone: "123-456-7890",
         business_nit: "123456789",
+        menu_primary_color: "#4f46e5",
+        menu_secondary_color: "#f97316",
+        menu_logo: "",
+        menu_schedule: "",
         inventory_control_enabled: false,
         // Valores por defecto para las contraseñas
         kitchen_password: "1234",
@@ -166,6 +174,10 @@ export const businessConfigService = {
         business_address: "Dirección del Restaurante",
         business_phone: "123-456-7890",
         business_nit: "123456789",
+        menu_primary_color: "#4f46e5",
+        menu_secondary_color: "#f97316",
+        menu_logo: "",
+        menu_schedule: "",
         inventory_control_enabled: false,
         // Valores por defecto para las contraseñas
         kitchen_password: "1234",
