@@ -355,10 +355,6 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
           <TabsTrigger value="tables">Mesas</TabsTrigger>
           <TabsTrigger value="orders">Órdenes</TabsTrigger>
           <TabsTrigger value="cash">Caja</TabsTrigger>
-          <TabsTrigger value="config_menu">Menú</TabsTrigger>
-          <TabsTrigger value="config_inventory">Inventario</TabsTrigger>
-          <TabsTrigger value="config_personal">Personal</TabsTrigger>
-          <TabsTrigger value="config_business">Negocio</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard">
