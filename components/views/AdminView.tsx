@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import type { Profile, DailySales, PopularDish, CategorySales } from "@/types"
 import { Header } from "@/components/layout/Header"
+import { AdminLayout } from "@/components/admin/AdminLayout"
 import { usePOSStore } from "@/store/use-pos-store"
 import { SalesChart } from "@/components/admin/SalesChart"
 import { PopularDishesChart } from "@/components/admin/PopularDishesChart"
@@ -63,6 +64,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   // Añadir estados para el manejo de realtime
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false)
   const [newOrdersCount, setNewOrdersCount] = useState<number>(0)
+  const [activeTab, setActiveTab] = useState<string>("dashboard")
 
   const handleChangeRegisterDetails = (registerDate: Date) => {
     setSelectedDate(registerDate)
@@ -341,16 +343,18 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-screen p-4">
-      <Header profile={profile} onChangeProfile={onChangeProfile} title="Panel de Administración" />
-
-      <Tabs defaultValue="dashboard">
-        <TabsList className="mb-4">
+    <AdminLayout
+      profile={profile}
+      onChangeProfile={onChangeProfile}
+      activeTab={activeTab}
+      onSelectTab={setActiveTab}
+    >
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-4 md:hidden">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="tables">Mesas</TabsTrigger>
           <TabsTrigger value="orders">Órdenes</TabsTrigger>
           <TabsTrigger value="cash">Caja</TabsTrigger>
-          <TabsTrigger value="config">Configuración</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard">
@@ -719,43 +723,32 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="config">
-          <Tabs defaultValue="menu">
-            <TabsList className="mb-4">
-              <TabsTrigger value="menu">Menú</TabsTrigger>
-              <TabsTrigger value="inventory">Inventario</TabsTrigger>
-              <TabsTrigger value="waiters">Meseros</TabsTrigger>
-              <TabsTrigger value="settings">Ajustes</TabsTrigger>
-            </TabsList>
+        <TabsContent value="config_menu">
+          <div className="space-y-6">
+            <CategoryList />
+            <DishList />
+            <PromotionList />
+          </div>
+        </TabsContent>
 
-            <TabsContent value="menu">
-              <div className="space-y-6">
-                <CategoryList />
-                <DishList />
-                <PromotionList />
-              </div>
-            </TabsContent>
+        <TabsContent value="config_inventory">
+          <div className="space-y-6">
+            <IngredientList />
+          </div>
+        </TabsContent>
 
-            <TabsContent value="inventory">
-              <div className="space-y-6">
-                <IngredientList />
-              </div>
-            </TabsContent>
+        <TabsContent value="config_personal">
+          <div className="space-y-6">
+            <WaiterList />
+          </div>
+        </TabsContent>
 
-            <TabsContent value="waiters">
-              <div className="space-y-6">
-                <WaiterList />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="settings">
-              <div className="space-y-6">
-                <ConfigurationPanel />
-              </div>
-            </TabsContent>
-          </Tabs>
+        <TabsContent value="config_business">
+          <div className="space-y-6">
+            <ConfigurationPanel />
+          </div>
         </TabsContent>
       </Tabs>
-    </div>
+    </AdminLayout>
   )
 }
