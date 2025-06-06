@@ -1,7 +1,15 @@
 "use client"
 
 import type { Category } from "@/types"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetClose,
+} from "@/components/ui/sheet"
+import { Button } from "@/components/ui/button"
 
 interface CategoryListProps {
   categories: Category[]
@@ -10,15 +18,36 @@ interface CategoryListProps {
 }
 
 export default function CategoryList({ categories, selected, onSelect }: CategoryListProps) {
+  const selectedCategory = categories.find((c) => c.id === selected)
+
   return (
-    <Tabs value={selected ?? undefined} onValueChange={onSelect} className="w-full">
-      <TabsList className="w-full overflow-x-auto">
-        {categories.map((c) => (
-          <TabsTrigger key={c.id} value={c.id} className="whitespace-nowrap">
-            {c.name}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
+    <Sheet>
+      <div className="flex items-center justify-between">
+        <p className="font-semibold text-lg">{selectedCategory?.name}</p>
+        <SheetTrigger asChild>
+          <Button variant="outline" size="sm">
+            Categorías
+          </Button>
+        </SheetTrigger>
+      </div>
+      <SheetContent side="top" className="p-4">
+        <SheetHeader>
+          <SheetTitle>Elige una categoría</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4 grid gap-2">
+          {categories.map((c) => (
+            <SheetClose asChild key={c.id}>
+              <Button
+                variant={selected === c.id ? "default" : "outline"}
+                onClick={() => onSelect(c.id)}
+                className="w-full justify-start"
+              >
+                {c.name}
+              </Button>
+            </SheetClose>
+          ))}
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }

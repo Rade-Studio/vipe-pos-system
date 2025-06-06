@@ -69,7 +69,7 @@ export default function DishGrid({
                 <div className="flex-1 space-y-1">
                   <p className="font-medium line-clamp-2">{d.name}</p>
                   {d.description && (
-                    <p className="text-xs text-muted-foreground line-clamp-2">
+                    <p className="text-xs text-muted-foreground break-words">
                       {d.description}
                     </p>
                   )}
