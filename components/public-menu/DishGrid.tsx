@@ -1,44 +1,55 @@
-"use client"
+"use client";
 
-import Image from "next/image"
-import { createPortal } from "react-dom"
-import { useState } from "react"
-import type { Dish } from "@/types"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { formatCurrency } from "@/utils/helpers"
-import { FlyImage } from "@/components/animations/FlyImage"
-import { Plus } from "lucide-react"
+import Image from "next/image";
+import { createPortal } from "react-dom";
+import { useState } from "react";
+import type { Dish } from "@/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { formatCurrency } from "@/utils/helpers";
+import { FlyImage } from "@/components/animations/FlyImage";
+import { Plus } from "lucide-react";
 
 interface DishGridProps {
-  dishes: Dish[]
-  onAdd?: (dish: Dish) => void
-  showAddButton?: boolean
+  dishes: Dish[];
+  onAdd?: (dish: Dish) => void;
+  showAddButton?: boolean;
 }
 
-export default function DishGrid({ dishes, onAdd, showAddButton }: DishGridProps) {
+export default function DishGrid({
+  dishes,
+  onAdd,
+  showAddButton,
+}: DishGridProps) {
   const [flyImg, setFlyImg] = useState<null | {
-    src: string
-    from: { x: number; y: number }
-    to: { x: number; y: number }
-  }>(null)
+    src: string;
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+  }>(null);
 
   const triggerImageFly = (img: HTMLImageElement) => {
-    const fromRect = img.getBoundingClientRect()
-    const toElement = document.getElementById("cart-icon")
-    if (!toElement) return
+    const fromRect = img.getBoundingClientRect();
+    const toElement = document.getElementById("cart-icon");
+    if (!toElement) return;
 
-    const toRect = toElement.getBoundingClientRect()
+    const toRect = toElement.getBoundingClientRect();
 
     setFlyImg({
       src: img.src,
       from: { x: fromRect.left, y: fromRect.top },
-      to: { x: toRect.left + toRect.width / 2 - 40, y: toRect.top + toRect.height / 2 - 40 },
-    })
-  }
+      to: {
+        x: toRect.left + toRect.width / 2 - 40,
+        y: toRect.top + toRect.height / 2 - 40,
+      },
+    });
+  };
 
   if (dishes.length === 0) {
-    return <p className="text-center text-muted-foreground py-10">No hay productos disponibles</p>
+    return (
+      <p className="text-center text-muted-foreground py-10">
+        No hay productos disponibles
+      </p>
+    );
   }
 
   return (
@@ -56,17 +67,29 @@ export default function DishGrid({ dishes, onAdd, showAddButton }: DishGridProps
               />
               <div className="space-y-1">
                 <p className="font-medium line-clamp-2">{d.name}</p>
-                <p className="text-sm text-muted-foreground">{formatCurrency(d.price)}</p>
+                {d.description && (
+                  <p className="text-xs text-muted-foreground line-clamp-2">
+                    {d.description}
+                  </p>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  {formatCurrency(d.price)}
+                </p>
               </div>
               {showAddButton && onAdd && (
                 <Button
                   size="sm"
                   className="w-full"
                   onClick={(e) => {
-                    const card = (e.currentTarget.closest("[data-dish-id]") as HTMLElement) || undefined
-                    const img = card?.querySelector("img") as HTMLImageElement | null
-                    if (img) triggerImageFly(img)
-                    onAdd(d)
+                    const card =
+                      (e.currentTarget.closest(
+                        "[data-dish-id]",
+                      ) as HTMLElement) || undefined;
+                    const img = card?.querySelector(
+                      "img",
+                    ) as HTMLImageElement | null;
+                    if (img) triggerImageFly(img);
+                    onAdd(d);
                   }}
                 >
                   <Plus className="h-4 w-4 mr-1" /> Agregar
@@ -76,10 +99,16 @@ export default function DishGrid({ dishes, onAdd, showAddButton }: DishGridProps
           </Card>
         ))}
       </div>
-      {flyImg && createPortal(
-        <FlyImage src={flyImg.src} from={flyImg.from} to={flyImg.to} onDone={() => setFlyImg(null)} />,
-        document.body
-      )}
+      {flyImg &&
+        createPortal(
+          <FlyImage
+            src={flyImg.src}
+            from={flyImg.from}
+            to={flyImg.to}
+            onDone={() => setFlyImg(null)}
+          />,
+          document.body,
+        )}
     </>
-  )
+  );
 }
