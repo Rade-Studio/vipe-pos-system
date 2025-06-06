@@ -45,6 +45,39 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+export function hexToHsl(hex: string): string {
+  const sanitized = hex.replace("#", "")
+  const bigint = parseInt(sanitized, 16)
+  const r = (bigint >> 16) & 255
+  const g = (bigint >> 8) & 255
+  const b = bigint & 255
+  const rNorm = r / 255
+  const gNorm = g / 255
+  const bNorm = b / 255
+  const max = Math.max(rNorm, gNorm, bNorm)
+  const min = Math.min(rNorm, gNorm, bNorm)
+  let h = 0
+  let s = 0
+  const l = (max + min) / 2
+  if (max !== min) {
+    const d = max - min
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+    switch (max) {
+      case rNorm:
+        h = (gNorm - bNorm) / d + (gNorm < bNorm ? 6 : 0)
+        break
+      case gNorm:
+        h = (bNorm - rNorm) / d + 2
+        break
+      default:
+        h = (rNorm - gNorm) / d + 4
+        break
+    }
+    h /= 6
+  }
+  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`
+}
+
 // Función para formatear fecha
 export function formatDate(date: Date | string | null | undefined): string {
   if (!date) return "Fecha no disponible"

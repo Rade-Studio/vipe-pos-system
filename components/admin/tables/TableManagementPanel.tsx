@@ -386,7 +386,7 @@ export function TableManagementPanel() {
                 />
                 <div className="flex items-end">
                   <p className="text-xs text-muted-foreground leading-snug mt-3">
-                   Al crear una nueva mesa, su estado inicial será <strong>"Disponible"</strong>.
+                   Al crear una nueva mesa, su estado inicial será <strong>&quot;Disponible&quot;</strong>.
                   </p>
                 </div>
               </div>
