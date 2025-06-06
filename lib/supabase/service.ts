@@ -787,8 +787,8 @@ export const orderService = {
 
       // Calcular nuevo subtotal
       const newSubtotal = itemsArray.reduce((sum, item) => sum + item.price * item.quantity, 0)
-      const newTax = newSubtotal * (parentOrder.tax_percentage / 100)
-      const newTip = newSubtotal * (parentOrder.tip_percentage / 100)
+      const newTax = Math.round(newSubtotal * (parentOrder.tax_percentage / 100))
+      const newTip = Math.round(newSubtotal * (parentOrder.tip_percentage / 100))
       const newTotal = newSubtotal + newTax + newTip
 
       // Actualizar la orden original
@@ -890,8 +890,8 @@ export const orderService = {
 
     // Calcular nuevo subtotal
     const newSubtotal = updatedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-    const newTax = newSubtotal * (parentOrder.tax_percentage / 100)
-    const newTip = newSubtotal * (parentOrder.tip_percentage / 100)
+    const newTax = Math.round(newSubtotal * (parentOrder.tax_percentage / 100))
+    const newTip = Math.round(newSubtotal * (parentOrder.tip_percentage / 100))
     const newTotal = newSubtotal + newTax + newTip
 
     // Actualizar la orden original
@@ -900,6 +900,7 @@ export const orderService = {
       .update({
         subtotal: newSubtotal,
         tax: newTax,
+        tip: newTip,
         total: newTotal,
       })
       .eq("id", parentOrder.id)
@@ -1272,10 +1273,10 @@ export const orderService = {
       const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
       // Calcular impuestos y propina
-      const taxPercentage = order.tax_percentage || 8
-      const tipPercentage = order.tip_percentage || 10
-      const tax = subtotal * (taxPercentage / 100)
-      const tip = subtotal * (tipPercentage / 100)
+      const taxPercentage = order.tax_percentage
+      const tipPercentage = order.tip_percentage
+      const tax = Math.round(subtotal * (taxPercentage / 100))
+      const tip = Math.round(subtotal * (tipPercentage / 100))
       const total = subtotal + tax + tip
 
       // Actualizar la orden
