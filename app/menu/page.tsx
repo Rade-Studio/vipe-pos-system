@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import Image from "next/image"
 import PublicMenu from "@/components/public-menu/PublicMenu"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { useConfigStore } from "@/store/use-config-store"
 import { usePublicCart } from "@/store/use-public-cart"
 import type { Dish, PaymentMethod } from "@/types"
 import { formatCurrency } from "@/utils/helpers"
+import { toast } from "@/hooks/use-toast"
 
 export default function PublicMenuPage() {
   const {
@@ -24,6 +25,7 @@ export default function PublicMenuPage() {
 
   const [mode, setMode] = useState<"view" | "delivery" | null>(null)
   const { items: cart, add, update } = usePublicCart()
+  const cartAnchorRef = useRef<HTMLDivElement>(null)
   const [customerName, setCustomerName] = useState("")
   const [customerAddress, setCustomerAddress] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
@@ -38,7 +40,10 @@ export default function PublicMenuPage() {
     document.documentElement.style.setProperty("--secondary", menuSecondaryColor)
   }, [menuPrimaryColor, menuSecondaryColor])
 
-  const addToCart = (dish: Dish) => add(dish)
+  const addToCart = (dish: Dish) => {
+    add(dish)
+    toast.success("Producto agregado")
+  }
   const updateQuantity = (id: string, qty: number) => update(id, qty)
 
   const total = cart.reduce((t, i) => t + i.price * i.quantity, 0)
@@ -60,7 +65,7 @@ export default function PublicMenuPage() {
         {menuLogo && (
           <Image src={menuLogo} alt="logo" width={120} height={120} className="mx-auto" />
         )}
-        <h1 className="text-2xl font-bold">{businessName}</h1>
+        <h1 className="text-2xl font-bold bg-primary text-primary-foreground px-4 py-2 rounded-md">{businessName}</h1>
         {menuSchedule && <p className="text-sm text-muted-foreground">{menuSchedule}</p>}
         <div className="flex gap-4 mt-4">
           <Button onClick={() => setMode("view")}>Ver Carta</Button>
@@ -72,7 +77,7 @@ export default function PublicMenuPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between bg-primary text-primary-foreground p-2 rounded-md">
         <div className="flex items-center gap-2">
           {menuLogo && <Image src={menuLogo} alt="logo" width={40} height={40} />}
           <h1 className="font-bold">{businessName}</h1>
@@ -82,8 +87,24 @@ export default function PublicMenuPage() {
 
       <PublicMenu onAdd={addToCart} enableAdd={mode === "delivery"} />
 
+      {mode === "delivery" && cart.length > 0 && (
+        <Button
+          id="cart-icon"
+          className="fixed bottom-4 right-4 rounded-full w-14 h-14 shadow-lg flex items-center justify-center z-50"
+          size="icon"
+          onClick={() => cartAnchorRef.current?.scrollIntoView({ behavior: 'smooth' })}
+        >
+          <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 9h12l-2-9M9 21a2 2 0 100-4 2 2 0 000 4zm8 0a2 2 0 100-4 2 2 0 000 4z" />
+          </svg>
+          <span className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+            {cart.reduce((t, i) => t + i.quantity, 0)}
+          </span>
+        </Button>
+      )}
+
       {mode === "delivery" && (
-        <div className="space-y-4">
+        <div ref={cartAnchorRef} className="space-y-4">
           <h2 className="font-semibold">Tu Pedido</h2>
           {cart.length === 0 && <p className="text-sm">El carrito está vacío</p>}
           {cart.map((item) => (
