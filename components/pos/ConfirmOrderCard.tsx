@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { MapPin, Clock, AlertTriangle } from "lucide-react"
+import { MapPin, Clock, AlertTriangle, Check, X } from "lucide-react"
 import type { Order, Profile, Table } from "@/types"
 import { formatCurrency } from "@/utils/helpers"
 
@@ -12,13 +12,14 @@ interface ConfirmOrderCardProps {
   table?: Table
   hasStockIssue?: boolean
   onConfirmItem: (itemId: string) => void
+  onCancelItem: (itemId: string) => void
   onConfirmAll: () => void
   onCancelOrder: () => void
   onShowStockDetails?: () => void
 }
 
 
-export function ConfirmOrderCard({ order, waiter, table, hasStockIssue, onConfirmItem, onConfirmAll, onCancelOrder, onShowStockDetails }: ConfirmOrderCardProps) {
+export function ConfirmOrderCard({ order, waiter, table, hasStockIssue, onConfirmItem, onCancelItem, onConfirmAll, onCancelOrder, onShowStockDetails }: ConfirmOrderCardProps) {
 
   const time = new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 
@@ -60,9 +61,22 @@ export function ConfirmOrderCard({ order, waiter, table, hasStockIssue, onConfir
                   </span>
                 )}
               </div>
-              <Button size="sm" onClick={() => onConfirmItem(item.id)}>
-                Confirmar
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onConfirmItem(item.id)}
+                >
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onCancelItem(item.id)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ))}
       </CardContent>
