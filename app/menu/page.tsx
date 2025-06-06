@@ -2,20 +2,14 @@
 
 import { useEffect, useState } from "react"
 import Image from "next/image"
-import { MenuSection } from "@/components/pos/MenuSection"
+import PublicMenu from "@/components/public-menu/PublicMenu"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useConfigStore } from "@/store/use-config-store"
+import { usePublicCart } from "@/store/use-public-cart"
 import type { Dish, PaymentMethod } from "@/types"
 import { formatCurrency } from "@/utils/helpers"
-
-interface CartItem {
-  id: string
-  name: string
-  price: number
-  quantity: number
-}
 
 export default function PublicMenuPage() {
   const {
@@ -29,7 +23,7 @@ export default function PublicMenuPage() {
   } = useConfigStore()
 
   const [mode, setMode] = useState<"view" | "delivery" | null>(null)
-  const [cart, setCart] = useState<CartItem[]>([])
+  const { items: cart, add, update } = usePublicCart()
   const [customerName, setCustomerName] = useState("")
   const [customerAddress, setCustomerAddress] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
@@ -44,19 +38,8 @@ export default function PublicMenuPage() {
     document.documentElement.style.setProperty("--secondary", menuSecondaryColor)
   }, [menuPrimaryColor, menuSecondaryColor])
 
-  const addToCart = (dish: Dish) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.id === dish.id)
-      if (existing) {
-        return prev.map((i) => (i.id === dish.id ? { ...i, quantity: i.quantity + 1 } : i))
-      }
-      return [...prev, { id: dish.id, name: dish.name, price: dish.price, quantity: 1 }]
-    })
-  }
-
-  const updateQuantity = (id: string, qty: number) => {
-    setCart((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: qty } : i)))
-  }
+  const addToCart = (dish: Dish) => add(dish)
+  const updateQuantity = (id: string, qty: number) => update(id, qty)
 
   const total = cart.reduce((t, i) => t + i.price * i.quantity, 0)
 
@@ -97,7 +80,7 @@ export default function PublicMenuPage() {
         <Button variant="outline" onClick={() => setMode(null)}>Inicio</Button>
       </div>
 
-      <MenuSection onAddToCart={mode === "delivery" ? addToCart : () => {}} />
+      <PublicMenu onAdd={addToCart} enableAdd={mode === "delivery"} />
 
       {mode === "delivery" && (
         <div className="space-y-4">
