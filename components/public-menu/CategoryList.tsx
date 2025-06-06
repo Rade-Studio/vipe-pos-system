@@ -1,7 +1,7 @@
 "use client"
 
 import type { Category } from "@/types"
-import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface CategoryListProps {
   categories: Category[]
@@ -11,17 +11,14 @@ interface CategoryListProps {
 
 export default function CategoryList({ categories, selected, onSelect }: CategoryListProps) {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2">
-      {categories.map((c) => (
-        <Button
-          key={c.id}
-          variant={selected === c.id ? "default" : "outline"}
-          onClick={() => onSelect(c.id)}
-          className="whitespace-nowrap"
-        >
-          {c.name}
-        </Button>
-      ))}
-    </div>
+    <Tabs value={selected ?? undefined} onValueChange={onSelect} className="w-full">
+      <TabsList className="w-full overflow-x-auto">
+        {categories.map((c) => (
+          <TabsTrigger key={c.id} value={c.id} className="whitespace-nowrap">
+            {c.name}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }
