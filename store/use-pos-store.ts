@@ -196,7 +196,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
         return {
           cartItems: {
             ...state.cartItems,
-            [tableId]: [...tableCart, { ...newItem, id: `${newItem.id}-${uuidv4()}` }],
+            [tableId]: [...tableCart, { ...newItem, id: newItem.id }],
           },
         }
       }

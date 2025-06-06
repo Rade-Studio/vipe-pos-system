@@ -82,20 +82,6 @@ export function OrderCard({
     }
   }
 
-  // Manejador de entrega de todos los items
-  const handleMarkAllAsDelivered = async () => {
-    if (!onMarkAllAsDelivered) return
-    setLoading(true)
-    try {
-      await onMarkAllAsDelivered(order.id)
-      setShowCompleteDialog(false)
-    } catch (error) {
-      console.error("Error al marcar todos los items como entregados:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // Manejador de borrado
   const handleDelete = async () => {
     if (!onDelete) return
@@ -120,7 +106,11 @@ export function OrderCard({
   const localDate = new Date(order.createdAt).toLocaleString()
 
   // Agrupar items idénticos (mismo nombre y comentarios)
-  const groupedItems = order.items.reduce((acc, item) => {
+  const visibleItems = isKitchenView
+    ? order.items.filter((it) => it.status === "kitchen")
+    : order.items
+
+  const groupedItems = visibleItems.reduce((acc, item) => {
     // Crear una clave única basada en nombre y comentarios
     const key = `${item.name}|${item.comments || ""}|${item.addedAt?.getTime()}`
 
@@ -313,7 +303,7 @@ export function OrderCard({
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleMarkAllAsDelivered} className="bg-green-600 hover:bg-green-700">
+                      <AlertDialogAction onClick={onMarkAllAsDelivered} className="bg-green-600 hover:bg-green-700">
                         Entregar Todo
                       </AlertDialogAction>
                     </AlertDialogFooter>

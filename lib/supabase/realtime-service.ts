@@ -209,7 +209,7 @@ export const realtimeService = {
           event: "INSERT",
           schema: "public",
           table: "orders",
-          filter: "status=eq.kitchen",
+          filter: "status=in.(pending,kitchen)",
         },
         async (payload) => {
           // Cargar la orden completa con sus items
@@ -304,6 +304,55 @@ export const realtimeService = {
             toast({
               title: "Error",
               description: "No se pudo procesar el nuevo item de orden. Intente nuevamente.",
+              variant: "destructive",
+            })
+          }
+        },
+      )
+      .subscribe()
+
+    // Suscribirse a inserciones de items en estado "pending"
+    const pendingItemsChannel = supabase
+      .channel("kitchen-pending-items-channel")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "order_items",
+          filter: "status=eq.pending",
+        },
+        async (payload) => {
+          try {
+            const orderId = payload.new.order_id
+            const itemId = payload.new.id
+
+            const isNewItem = !realtimeService.knownItems[orderId]?.has(itemId)
+
+            if (isNewItem) {
+              if (!realtimeService.knownItems[orderId]) {
+                realtimeService.knownItems[orderId] = new Set()
+              }
+              realtimeService.knownItems[orderId].add(itemId)
+            }
+
+            const orderDetails = await orderService.getById(orderId)
+
+            if (orderDetails) {
+              orderItemCallback(
+                {
+                  ...payload,
+                  order: orderDetails,
+                  isNewItem: isNewItem,
+                  newItemId: itemId,
+                },
+                isNewItem,
+              )
+            }
+          } catch (error) {
+            toast({
+              title: "Error",
+              description: "No se pudo procesar el nuevo item pendiente. Intente nuevamente.",
               variant: "destructive",
             })
           }
@@ -424,6 +473,7 @@ export const realtimeService = {
     realtimeService.channels["kitchen-status"] = statusChannel
     realtimeService.channels["kitchen-orders"] = ordersChannel
     realtimeService.channels["kitchen-new-items"] = newItemsChannel
+    realtimeService.channels["kitchen-pending-items"] = pendingItemsChannel
     realtimeService.channels["kitchen-item-updates"] = itemUpdatesChannel
     realtimeService.channels["kitchen-order-deletes"] = orderDeletesChannel
 
@@ -434,12 +484,14 @@ export const realtimeService = {
       supabase.removeChannel(statusChannel)
       supabase.removeChannel(ordersChannel)
       supabase.removeChannel(newItemsChannel)
+      supabase.removeChannel(pendingItemsChannel)
       supabase.removeChannel(itemUpdatesChannel)
       supabase.removeChannel(orderDeletesChannel)
 
       delete realtimeService.channels["kitchen-status"]
       delete realtimeService.channels["kitchen-orders"]
       delete realtimeService.channels["kitchen-new-items"]
+      delete realtimeService.channels["kitchen-pending-items"]
       delete realtimeService.channels["kitchen-item-updates"]
       delete realtimeService.channels["kitchen-order-deletes"]
 

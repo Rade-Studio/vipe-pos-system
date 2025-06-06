@@ -7,7 +7,7 @@ import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { MenuSection } from "@/components/pos/MenuSection"
 import { CartSidebar } from "@/components/pos/CartSidebar"
-import { AlertTriangle, ShoppingCart } from "lucide-react"
+import { ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintView"
@@ -16,15 +16,6 @@ import { tableService, orderService, waiterService } from "@/lib/supabase/servic
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { useToast } from "@/hooks/use-toast"
 import { useConfigStore } from "@/store/use-config-store"
-import inventoryControlService from "@/lib/supabase/inventory-control-service"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog"
 
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
@@ -42,15 +33,6 @@ interface WaiterViewProps {
   onChangeProfile: () => void
 }
 
-// Función para normalizar IDs de platos
-const normalizeDishId = (id: string): string => {
-  // Si el ID contiene un guión, tomar solo la primera parte (hasta 36 caracteres)
-  if (id.length > 36 && id.includes("-")) {
-    return id.substring(0, 36)
-  }
-  return id
-}
-
 export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   // Estados principales
   const [activeView, setActiveView] = useState<"tables" | "orders">("tables")
@@ -64,16 +46,10 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const [selectedTableForWaiter, setSelectedTableForWaiter] = useState<string | null>(null)
   const [showKitchenOrder, setShowKitchenOrder] = useState(false)
   const [kitchenOrderData, setKitchenOrderData] = useState<PrintableKitchenOrder | null>(null)
-  const [showStockDetailWarning, setShowStockDetailWarning] = useState(false)
-  const [stockDetailWarning, setStockDetailWarning] = useState<{
-    dishesWithoutStock: { id: string; name: string }[]
-    missingIngredients: { name: string; required: number; available: number; unit: string }[]
-  }>({ dishesWithoutStock: [], missingIngredients: [] })
 
   // Estados de control
   const [loading, setLoading] = useState(true)
   const [sendingToKitchen, setSendingToKitchen] = useState(false)
-  const [forceSubmit, setForceSubmit] = useState(false)
   const [tableSelectionTime, setTableSelectionTime] = useState<Record<string, number>>({})
   const [realtimeConnected, setRealtimeConnected] = useState(false)
   const [forceRender, setForceRender] = useState(0)
@@ -93,7 +69,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
   // Hooks
   const { toast } = useToast()
-  const { tipPercentage, taxPercentage, inventoryControlEnabled } = useConfigStore()
+  const { tipPercentage, taxPercentage } = useConfigStore()
   const isMobile = useIsMobile()
 
   // Zustand store
@@ -184,7 +160,12 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   // Cargar órdenes - función memoizada
   const loadOrders = useCallback(async () => {
     try {
-      const activeOrdersData = await orderService.getByStatus(["active", "kitchen", "delivered"])
+      const activeOrdersData = await orderService.getByStatus([
+        "active",
+        "pending",
+        "kitchen",
+        "delivered",
+      ])
 
       const formattedOrders = activeOrdersData.map((order) => {
         const items = order.order_items.map((item) => ({
@@ -820,69 +801,17 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   }, [activeTable, clearCart])
 
   // Verificar stock antes de enviar a cocina
-  const checkStockBeforeSending = useCallback(async () => {
-    if (!inventoryControlEnabled || forceSubmit) {
-      return true
-    }
-
-    try {
-      const normalizedCartItems = cartItems.map((item) => ({
-        ...item,
-        id: normalizeDishId(item.id),
-      }))
-
-      const stockCheck = await inventoryControlService.checkOrderStock(normalizedCartItems)
-
-      if (!stockCheck.hasStock) {
-        setStockDetailWarning({
-          dishesWithoutStock: stockCheck.dishesWithoutStock,
-          missingIngredients: stockCheck.missingIngredients,
-        })
-        setShowStockDetailWarning(true)
-        return false
-      }
-
-      return true
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo verificar el stock de ingredientes. Intente nuevamente.",
-        variant: "destructive",
-      })
-      return false
-    }
-  }, [inventoryControlEnabled, forceSubmit, cartItems, toast])
-
-  // Reducir stock después de enviar a cocina
-  const reduceStockAfterSending = useCallback(
-    async (orderId: string) => {
-      if (!inventoryControlEnabled) {
-        return
-      }
-
-      try {
-        const normalizedCartItems = cartItems.map((item) => ({
-          ...item,
-          id: normalizeDishId(item.id),
-        }))
-
-        await inventoryControlService.reduceStock(normalizedCartItems, orderId)
-      } catch (error) {
-        toast({
-          title: "Advertencia",
-          description: "La orden se envió correctamente, pero hubo un error al actualizar el inventario.",
-          variant: "destructive",
-        })
-      }
-    },
-    [inventoryControlEnabled, cartItems, toast],
-  )
+  // El mesero ya no valida inventario ni actualiza stock
 
   // Verificar si ya existe una orden activa para la mesa
   const checkExistingOrder = useCallback(
     async (tableId: string) => {
       try {
-        const tableOrders = activeOrders.filter((order) => order.tableId === tableId && (order.status === "kitchen" || order.status === "delivered"))
+        const tableOrders = activeOrders.filter(
+          (order) =>
+            order.tableId === tableId &&
+            ["kitchen", "pending", "delivered"].includes(order.status),
+        )
         return tableOrders.length > 0 ? tableOrders[0] : null
       } catch (error) {
         return null
@@ -896,12 +825,12 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     try {
       const orderItems = items.map((item) => ({
         order_id: orderId,
-        dish_id: item.id.includes("-") ? null : item.id,
+        dish_id: item.id,
         name: item.name,
         price: item.price,
         quantity: item.quantity,
         comments: item.comments || null,
-        status: "kitchen",
+        status: "pending",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }))
@@ -913,7 +842,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       }
 
       await orderService.recalculateOrderTotals(orderId)
-      await orderService.updateStatus(orderId, "kitchen")
       return true
     } catch (error) {
       throw error
@@ -924,12 +852,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const handleSendToKitchen = useCallback(async () => {
     if (!activeTable || cartItems.length === 0) return
 
-    const stockOk = await checkStockBeforeSending()
-    if (!stockOk) return
-
-    if (forceSubmit) {
-      setForceSubmit(false)
-    }
+    // Ya no se valida inventario desde la vista de mesero
 
     setSendingToKitchen(true)
 
@@ -948,7 +871,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         localChangesRef.current.add(existingOrder.id)
 
         await addItemsToExistingOrder(existingOrder.id, cartItems)
-        await reduceStockAfterSending(existingOrder.id)
 
         if (table.status !== "kitchen") {
           // Registrar este cambio como local
@@ -1026,13 +948,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           tip: bill.tip,
           tip_percentage: bill.tipPercentage,
           total: bill.total,
-          status: "kitchen", // Estado inicial: activo
+          status: "pending",
         })
 
         // Registrar este cambio como local
         localChangesRef.current.add(newOrder.id)
-
-        await reduceStockAfterSending(newOrder.id)
 
         // Registrar este cambio como local
         localChangesRef.current.add(activeTable)
@@ -1049,7 +969,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           id: newOrder.id,
           tableId: activeTable,
           items: cartItems,
-          status: "kitchen" as any,
+          status: "pending" as any,
           bill,
           waiter: waiterId,
           createdAt: new Date(),
@@ -1100,13 +1020,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   }, [
     activeTable,
     cartItems,
-    checkStockBeforeSending,
     tables,
     profile.id,
     profile.name,
     checkExistingOrder,
     addItemsToExistingOrder,
-    reduceStockAfterSending,
     tableService,
     profiles,
     clearCart,
@@ -1120,18 +1038,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     isMobile,
   ])
 
-  // Manejar envío forzado a cocina
-  const handleForceSendToKitchen = useCallback(() => {
-    setForceSubmit(true)
-    setShowStockDetailWarning(false)
 
-    setTimeout(handleSendToKitchen, 100)
-  }, [handleSendToKitchen])
-
-  const handleCancelForceSendToKitchen = useCallback(() => {
-    setForceSubmit(false)
-    setShowStockDetailWarning(false)
-  }, [])
 
   // Verificar acceso a mesa
   const checkTableAccess = useCallback((tableId: string) => {
@@ -1335,74 +1242,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         defaultWaiterId={undefined}
       />
 
-      {/* Diálogo de advertencia de stock insuficiente detallado */}
-      <Dialog open={showStockDetailWarning} onOpenChange={setShowStockDetailWarning}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center text-amber-600">
-              <AlertTriangle className="h-5 w-5 mr-2" />
-              Advertencia de Inventario
-            </DialogTitle>
-            <DialogDescription>No hay suficiente stock de ingredientes para completar esta orden:</DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            {stockDetailWarning.dishesWithoutStock.length > 0 && (
-              <div className="mb-4">
-                <h3 className="font-medium mb-2">Platos sin stock suficiente:</h3>
-                <ul className="list-disc list-inside space-y-1">
-                  {stockDetailWarning.dishesWithoutStock.map((dish) => (
-                    <li key={dish.id} className="text-amber-700">
-                      {dish.name}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {stockDetailWarning.missingIngredients.length > 0 && (
-              <div>
-                <h3 className="font-medium mb-2">Ingredientes insuficientes:</h3>
-                <div className="overflow-auto max-h-40">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2">Ingrediente</th>
-                        <th className="text-right py-2">Disponible</th>
-                        <th className="text-right py-2">Requerido</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stockDetailWarning.missingIngredients.map((ing, idx) => (
-                        <tr key={idx} className="border-b border-muted">
-                          <td className="py-2">{ing.name}</td>
-                          <td className="text-right py-2 text-red-500">
-                            {ing.available} {ing.unit}
-                          </td>
-                          <td className="text-right py-2">
-                            {ing.required} {ing.unit}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            <p className="mt-4 text-sm text-muted-foreground">
-              ¿Desea continuar de todos modos? Esto podría resultar en problemas en la cocina.
-            </p>
-          </div>
-          <DialogFooter className="flex justify-between sm:justify-between">
-            <Button variant="outline" onClick={() => handleCancelForceSendToKitchen()}>
-              Cancelar
-            </Button>
-            <Button variant="destructive" onClick={handleForceSendToKitchen}>
-              Enviar de todos modos
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
