@@ -182,7 +182,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     }
   }
 
-  // Verificar stock de una orden al llegar a cocina
+  // Verificar stock al confirmar una orden o ítem
   const checkStockForOrder = useCallback(
     async (order, showDialog = false): Promise<boolean> => {
       if (!inventoryControlEnabled) return true
@@ -330,7 +330,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         // Si existe, actualizar la orden
         console.log("Actualizando orden existente en el store:", orderDetails.id)
         updateOrder(orderDetails.id, storeOrder)
-        checkStockForOrder(storeOrder)
       } else {
         // Si no existe, agregar la orden
         console.log("Agregando nueva orden al store:", orderDetails.id)
@@ -434,7 +433,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           // Si existe, actualizar la orden
           console.log("Actualizando orden existente en el store con nuevo item:", orderId)
           updateOrder(orderId, storeOrder)
-          checkStockForOrder(storeOrder)
 
           // Marcar el item como nuevo
           setNewItems((prev) => ({
@@ -456,7 +454,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           // Si no existe, agregar la orden
           console.log("Agregando orden con nuevo item al store:", orderId)
           addOrder(storeOrder)
-          checkStockForOrder(storeOrder)
 
           // Marcar el item como nuevo
           setNewItems((prev) => ({
@@ -546,7 +543,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       storeOrders.forEach((order) => {
         console.log("Agregando orden al store:", order.id)
         addOrder(order)
-        checkStockForOrder(order)
 
         // Registrar los items de esta orden en el servicio de tiempo real
         if (order.items && order.items.length > 0) {
@@ -908,7 +904,12 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           .eq("id", itemId)
 
         if (order.status === "pending") {
-          await orderService.updateStatus(orderId, "kitchen")
+          const remaining = order.items.filter(
+            (i) => i.status === "pending" && i.id !== itemId,
+          )
+          if (remaining.length === 0) {
+            await orderService.updateStatus(orderId, "kitchen")
+          }
         }
 
         reduceStockForOrder({ ...order, items: [item] })
