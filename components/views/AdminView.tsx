@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import type { Profile, DailySales, PopularDish, CategorySales } from "@/types"
 import { Header } from "@/components/layout/Header"
+import { AdminLayout } from "@/components/admin/AdminLayout"
 import { usePOSStore } from "@/store/use-pos-store"
 import { SalesChart } from "@/components/admin/SalesChart"
 import { PopularDishesChart } from "@/components/admin/PopularDishesChart"
@@ -63,6 +64,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   // Añadir estados para el manejo de realtime
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false)
   const [newOrdersCount, setNewOrdersCount] = useState<number>(0)
+  const [activeTab, setActiveTab] = useState<string>("dashboard")
 
   const handleChangeRegisterDetails = (registerDate: Date) => {
     setSelectedDate(registerDate)
@@ -341,11 +343,14 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-screen p-4">
-      <Header profile={profile} onChangeProfile={onChangeProfile} title="Panel de Administración" />
-
-      <Tabs defaultValue="dashboard">
-        <TabsList className="mb-4">
+    <AdminLayout
+      profile={profile}
+      onChangeProfile={onChangeProfile}
+      activeTab={activeTab}
+      onSelectTab={setActiveTab}
+    >
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-4 md:hidden">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="tables">Mesas</TabsTrigger>
           <TabsTrigger value="orders">Órdenes</TabsTrigger>
@@ -756,6 +761,6 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
           </Tabs>
         </TabsContent>
       </Tabs>
-    </div>
+    </AdminLayout>
   )
 }
