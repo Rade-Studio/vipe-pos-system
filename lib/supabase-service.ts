@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase"
+import { supabase } from "@/lib/db/client"
 import type { Category, Dish, Table, Waiter } from "@/types/models"
 
 // Servicio para categorías

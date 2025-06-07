@@ -10,8 +10,9 @@ const uow = new OrderUnitOfWork(orderRepo, tableRepo)
 export const orderService = {
   createOrderAndAssignTable: (
     order: OrderCreate,
-    tableId: string
-  ): Promise<Order> => uow.createOrderAndAssignTable(order, tableId),
+    tableId: string,
+    items: any[]
+  ): Promise<Order> => uow.createOrderAndAssignTable(order, tableId, items),
   getById: (id: string) => orderRepo.getById(id),
   getByStatus: (statuses: Order['status'][]) => orderRepo.getByStatus(statuses),
   addItemsToOrder: (orderId: string, items: any[]) =>

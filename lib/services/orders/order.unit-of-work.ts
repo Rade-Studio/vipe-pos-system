@@ -8,10 +8,17 @@ export class OrderUnitOfWork {
     private tableRepo: TableRepository
   ) {}
 
-  async createOrderAndAssignTable(order: OrderCreate, tableId: string): Promise<Order> {
+  async createOrderAndAssignTable(
+    order: OrderCreate,
+    tableId: string,
+    items: any[]
+  ): Promise<Order> {
     await this.orderRepo.beginTransaction()
     try {
       const created = await this.orderRepo.create(order)
+      if (items.length) {
+        await this.orderRepo.addItemsToOrder(created.id, items)
+      }
       await this.tableRepo.updateStatus(tableId, 'kitchen')
       await this.orderRepo.commit()
       return created

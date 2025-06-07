@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Loader2, Lock, Mail, Music, Utensils, Coffee } from "lucide-react"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
-import { supabase } from "@/lib/supabase/client"
+import { supabase } from "@/lib/db/client"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 

@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase"
+import { supabase } from "@/lib/db/client"
 import type {CartItem, IngredientTransactionsOrders} from "@/types"
 
 // Validar si un string es un UUID válido

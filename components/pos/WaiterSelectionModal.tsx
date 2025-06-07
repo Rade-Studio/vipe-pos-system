@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { waiterService } from "@/lib/supabase/service"
+import { waiterService } from "@/lib/services/waiters/waiter.service"
 import { Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 

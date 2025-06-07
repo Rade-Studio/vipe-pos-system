@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DatePicker } from "@/components/ui/date-picker"
 import { StockTransactionForm } from "./StockTransactionForm"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
+import { supabase } from "@/lib/db/client"
 import { Search, Plus, FileDown, FileText, RefreshCw, Filter, X, Calendar, CheckCircle, Clock } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"

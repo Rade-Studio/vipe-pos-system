@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { IngredientForm } from "./IngredientForm"
 import { StockTransactionForm } from "./StockTransactionForm"
 import { useToast } from "@/hooks/use-toast"
-import { ingredientService } from "@/lib/supabase"
+import { ingredientService } from "@/lib/services/ingredients/ingredient.service"
 import { AlertCircle, Edit, Plus, Search, Trash, Package, Filter } from "lucide-react"
 import {
   AlertDialog,
@@ -26,7 +26,7 @@ import { StockTransactionsList } from "./StockTransactionsList"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { ingredientCategoryService } from "@/lib/supabase"
+import { ingredientCategoryService } from "@/lib/services/ingredients/ingredient-category.service"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/utils/helpers"
 import { Pagination } from "@/components/ui/pagination"

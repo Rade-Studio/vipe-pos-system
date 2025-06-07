@@ -1,1 +1,1 @@
-export { default as inventoryControlService } from '@/lib/supabase/inventory-control-service'
+export { default as inventoryControlService } from './inventory-control.service'

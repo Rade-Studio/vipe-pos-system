@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { formatCurrency } from "@/utils/helpers"
 import { useConfigStore } from "@/store/use-config-store"
-import inventoryControlService from "@/lib/supabase/inventory-control-service"
+import inventoryControlService from "@/lib/services/inventory/inventory-control.service"
 import { Skeleton } from "@/components/ui/skeleton"
 import {toast} from "@/components/ui/use-toast";
 import { createPortal } from "react-dom"

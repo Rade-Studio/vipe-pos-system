@@ -954,6 +954,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
             status: "pending",
           },
           activeTable,
+          cartItems,
         )
 
         // Registrar este cambio como local

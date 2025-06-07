@@ -31,7 +31,7 @@ describe('OrderUnitOfWork', () => {
       total: 0,
       status: 'pending'
     }
-    await uow.createOrderAndAssignTable(order, 't1')
+    await uow.createOrderAndAssignTable(order, 't1', [])
     expect(orderRepo.beginTransaction).toHaveBeenCalled()
     expect(orderRepo.commit).toHaveBeenCalled()
     expect(orderRepo.rollback).not.toHaveBeenCalled()
@@ -55,7 +55,7 @@ describe('OrderUnitOfWork', () => {
       total: 0,
       status: 'pending'
     }
-    await expect(uow.createOrderAndAssignTable(order, 't1')).rejects.toThrow('fail')
+    await expect(uow.createOrderAndAssignTable(order, 't1', [])).rejects.toThrow('fail')
     expect(orderRepo.rollback).toHaveBeenCalled()
   })
 })

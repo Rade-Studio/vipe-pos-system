@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { supabase } from "@/lib/supabase"
+import { waiterService } from "@/lib/services/waiters/waiter.service"
 import { useToast } from "@/hooks/use-toast"
 
 interface WaiterFormProps {
@@ -85,9 +85,7 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
           updateData.password = formData.password
         }
 
-        const { error } = await supabase.from("profiles").update(updateData).eq("id", waiter.id)
-
-        if (error) throw error
+        await waiterService.update(waiter.id, updateData)
 
         toast({
           title: "Mesero actualizado",
@@ -95,18 +93,13 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
         })
       } else {
         // Crear nuevo mesero
-        const { error } = await supabase.from("profiles").insert({
+        await waiterService.create({
           full_name: formData.full_name,
           username: formData.username,
           email: formData.email || null,
           password: formData.password,
-          role: "waiter",
           active: formData.active,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         })
-
-        if (error) throw error
 
         toast({
           title: "Mesero creado",

@@ -7,7 +7,7 @@ import { getStatusColor, getStatusLabel } from "@/utils/helpers"
 import { LockIcon, UnlockIcon, Users2, Coffee, UtensilsCrossed, CheckCircle2, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { tableService } from "@/lib/services/tables/table.service"
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { realtimeService } from "@/lib/services/realtime/realtime.service"
 
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"

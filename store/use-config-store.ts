@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import businessConfigService from "@/lib/supabase/business-config-service"
+import businessConfigService from "@/lib/services/business-config/business-config.service"
 
 type ConfigState = {
   // Impuestos y propinas

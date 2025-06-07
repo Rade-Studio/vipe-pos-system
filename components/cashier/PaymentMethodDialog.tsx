@@ -22,7 +22,7 @@ import { Switch } from "@/components/ui/switch"
 import { AddCashDialog } from "@/components/cashier/AddCashDialog"
 import { orderService } from "@/lib/services/orders/order.service"
 import { tableService } from "@/lib/services/tables/table.service"
-import { supabase } from "@/lib/supabase/client"
+import { supabase } from "@/lib/db/client"
 import {cn} from "@/lib/utils";
 
 interface PaymentMethodDialogProps {

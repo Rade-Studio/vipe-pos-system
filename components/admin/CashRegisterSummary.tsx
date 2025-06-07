@@ -13,7 +13,7 @@ import type {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { RegisterSelector } from "./RegisterSelector"
-import { cashRegisterService } from "@/lib/supabase/cash-register-service"
+import { cashRegisterService } from "@/lib/services/transactions/cash-register.service"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface CashRegisterSummaryProps {

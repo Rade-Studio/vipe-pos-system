@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase/client'
+import { supabase } from '@/lib/db/client'
 import type { Table, TableStatus } from './types'
 import { UnitOfWork } from '../unit-of-work'
 
