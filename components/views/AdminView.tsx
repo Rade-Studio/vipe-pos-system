@@ -20,22 +20,22 @@ import { CashRegisterStatus } from "@/components/cashier/CashRegisterStatus"
 import { RegisterHistoryTable } from "@/components/cashier/RegisterHistoryTable"
 import { CashRegisterSummary } from "@/components/admin/CashRegisterSummary"
 import { TransactionsByRegisterId } from "@/components/admin/TransactionsByRegisterId"
-import { orderService } from "@/lib/supabase/service"
-import { dashboardService } from "@/lib/supabase/dashboard-service"
+import { orderService } from "@/lib/services/orders/order.service"
+import { dashboardService } from "@/lib/services/dashboard/dashboard.service"
 import { AlertCircle, RefreshCw } from "lucide-react"
 import { formatCurrency } from "@/utils/helpers"
 import { LowStockIngredients } from "@/components/admin/inventory/LowStockIngredients"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TableManagementPanel } from "@/components/admin/tables/TableManagementPanel"
-import { supabase } from "@/lib/supabase/client"
+// supabase client replaced by tableService
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { realtimeService } from "@/lib/services/realtime/realtime.service"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
-import {tableService} from "@/lib/supabase-service";
+import { tableService } from "@/lib/services/tables/table.service";
 
 interface AdminViewProps {
   profile: Profile
@@ -105,9 +105,9 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         setPopularDishes(dishesData)
 
         // Obtener mesas asignadas a meseros
-        const { data: assignedTablesData } = await supabase.from("tables").select("id").not("waiter_id", "is", null)
-
-        setAssignedTables(assignedTablesData?.length || 0)
+        const tablesData = await tableService.getAll()
+        const assignedTablesData = tablesData.filter((t) => t.waiter_id)
+        setAssignedTables(assignedTablesData.length)
       } catch (error) {
         console.error("Error al cargar datos del dashboard:", error)
       } finally {
@@ -195,20 +195,11 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
     setLoadingActiveOrders(true)
     try {
       // Obtener órdenes con estado "active", "kitchen" y "delivered" de la base de datos
-      const { data: dbOrders, error } = await supabase
-        .from("orders")
-        .select(`
-        *,
-        order_items(*),
-        tables(number),
-        profiles(full_name)
-      `)
-        .in("status", ["active", "kitchen", "delivered"])
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        throw error
-      }
+      const dbOrders = await orderService.getDetailedByStatus([
+        "active",
+        "kitchen",
+        "delivered",
+      ])
 
       console.log("Órdenes activas cargadas desde DB:", dbOrders?.length || 0)
 

@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { CashTransaction, PaymentTransaction } from "@/types/cash-register"
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
-import {cashRegisterService} from "@/lib/supabase/cash-register-service";
+import {cashRegisterService} from "@/lib/services/transactions/cash-register.service";
 
 interface TransactionsByDateListProps {
   selectedDate?: Date

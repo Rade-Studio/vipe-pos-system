@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Loader2, Upload, X } from "lucide-react"
 import Image from "next/image"
 import { useToast } from "@/hooks/use-toast"
-import { storageService } from "@/lib/supabase/storage-service"
+import { storageService } from "@/lib/services/storage/storage.service"
 
 interface ImageUploadProps {
   value: string

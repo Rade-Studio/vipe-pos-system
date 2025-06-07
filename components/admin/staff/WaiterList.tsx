@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { WaiterForm } from "./WaiterForm"
-import { supabase } from "@/lib/supabase"
+import { waiterService } from "@/lib/services/waiters/waiter.service"
 import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { Edit, Trash, Plus } from "lucide-react"
@@ -42,11 +42,8 @@ export function WaiterList() {
   const fetchWaiters = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase.from("profiles").select("*").eq("role", "waiter").order("full_name")
-
-      if (error) throw error
-
-      setWaiters(data || [])
+      const data = await waiterService.getAll()
+      setWaiters(data)
     } catch (error: any) {
       console.error("Error fetching waiters:", error)
       toast({
@@ -82,9 +79,7 @@ export function WaiterList() {
     if (!waiterToDelete) return
 
     try {
-      const { error } = await supabase.from("profiles").delete().eq("id", waiterToDelete.id)
-
-      if (error) throw error
+      await waiterService.delete(waiterToDelete.id)
 
       setWaiters(waiters.filter((w) => w.id !== waiterToDelete.id))
       toast({

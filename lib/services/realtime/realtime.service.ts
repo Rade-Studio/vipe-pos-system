@@ -1,6 +1,6 @@
-import { supabase } from "./client"
+import { supabase } from "@/lib/db/client"
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js"
-import { orderService } from "./service"
+import { orderService } from "../orders/order.service"
 import {toast} from "@/components/ui/use-toast";
 import {CartItem, CommandPayload, PrintableInvoice} from "@/types";
 

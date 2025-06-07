@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
 import { format } from "date-fns"
 import { toast } from "@/utils/toast"
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { realtimeService } from "@/lib/services/realtime/realtime.service"
 import { Printer, Check, X, ArrowLeft, Receipt, Tag } from "lucide-react"
 import type { PrintableInvoice } from "@/types"
 

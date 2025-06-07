@@ -1,4 +1,4 @@
-import { supabase } from "./client"
+import { supabase } from "@/lib/db/client"
 import type {
   CashRegister,
   CashRegisterSummary,

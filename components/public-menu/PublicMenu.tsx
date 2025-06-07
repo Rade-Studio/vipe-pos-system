@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import type { Category, Dish } from "@/types";
-import { categoryService } from "@/lib/supabase/service";
-import { dishServiceWithPromotions } from "@/lib/supabase/dish-service-with-promotions";
+import { categoryService } from "@/lib/supabase-service";
+import { dishServiceWithPromotions } from "@/lib/services/dishes/dish-with-promotions.service";
 import CategoryList from "./CategoryList";
 import DishGrid from "./DishGrid";
 import { useConfigStore } from "@/store/use-config-store";

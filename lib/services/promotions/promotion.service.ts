@@ -1,4 +1,4 @@
-import { supabase } from "./client"
+import { supabase } from "@/lib/db/client"
 
 export interface Promotion {
   id: string

@@ -7,7 +7,7 @@ import type {
   PaymentTransaction,
   CashTransaction,
 } from "@/types/cash-register"
-import { cashRegisterService } from "@/lib/supabase/cash-register-service"
+import { cashRegisterService } from "@/lib/services/transactions/cash-register.service"
 
 type CashRegisterState = {
   currentRegister: CashRegister | null

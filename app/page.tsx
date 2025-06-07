@@ -12,8 +12,9 @@ import { Loader2 } from "lucide-react"
 import { useConfigStore } from "@/store/use-config-store"
 import { usePOSStore } from "@/store/use-pos-store"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
-import { tableService, orderService } from "@/lib/supabase/service"
-import { supabase } from "@/lib/supabase/client"
+import { tableService } from "@/lib/services/tables/table.service"
+import { orderService } from "@/lib/services/orders/order.service"
+import { supabase } from "@/lib/db/client"
 
 export default function Home() {
   const { profiles, selectedProfile, showProfileSelection, selectProfile, changeProfile } = useProfile()

@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase"
+import { supabase } from "@/lib/db/client"
 
 // Tipo para los valores de configuración
 export type BusinessConfigValues = {

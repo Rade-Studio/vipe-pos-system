@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
-import ingredientTransactionService from "@/lib/supabase/ingredient-transaction-service"
+import ingredientTransactionService from "@/lib/services/transactions/ingredient-transaction.service"
+import { ingredientCategoryService } from "@/lib/services/ingredients/ingredient-category.service"
+import { ingredientService } from "@/lib/services/ingredients/ingredient.service"
 import { formatCurrency } from "@/utils/helpers"
 
 interface StockTransactionFormProps {
@@ -38,9 +39,8 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const { data, error } = await supabase.from("ingredient_categories").select("*").order("name")
-        if (error) throw error
-        setCategories(data || [])
+        const data = await ingredientCategoryService.getAll()
+        setCategories(data)
       } catch (error: any) {
         console.error("Error loading categories:", error)
       }
@@ -54,9 +54,7 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
     const fetchIngredients = async () => {
       try {
         // Consulta simple sin join para evitar errores de relación
-        const { data, error } = await supabase.from("ingredients").select("*").order("name")
-
-        if (error) throw error
+        const data = await ingredientService.getAll()
 
         // Si tenemos categorías, enriquecemos los ingredientes con los nombres de categoría
         if (categories.length > 0) {
@@ -172,12 +170,7 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
         updateData.cost = unitCost
       }
 
-      const { error: updateError } = await supabase
-        .from("ingredients")
-        .update(updateData)
-        .eq("id", formData.ingredient_id)
-
-      if (updateError) throw updateError
+      await ingredientService.update(formData.ingredient_id, updateData)
 
       toast({
         title: "Transacción registrada",

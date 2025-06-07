@@ -9,7 +9,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { PlusCircle, Edit, Trash2, AlertCircle } from "lucide-react"
 import { PromotionForm } from "./PromotionForm"
-import { promotionService, type Promotion } from "@/lib/supabase/promotion-service"
+import { promotionService, type Promotion } from "@/lib/services/promotions/promotion.service"
 import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,

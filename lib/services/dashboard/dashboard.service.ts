@@ -1,4 +1,4 @@
-import { supabase } from "./client"
+import { supabase } from "@/lib/db/client"
 import type { DailySales, PopularDish, CategorySales } from "@/types"
 
 export const dashboardService = {
