@@ -30,4 +30,38 @@ export class TableRepository extends UnitOfWork {
     if (error) throw error
     return data as Table
   }
+
+  async assignWaiter(
+    tableId: string,
+    waiterId: string,
+    status: TableStatus = 'reserved'
+  ): Promise<Table | null> {
+    const { data, error } = await supabase
+      .from('tables')
+      .update({
+        waiter_id: waiterId,
+        status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', tableId)
+      .select()
+      .single()
+    if (error) throw error
+    return data as Table
+  }
+
+  async release(tableId: string): Promise<Table | null> {
+    const { data, error } = await supabase
+      .from('tables')
+      .update({
+        waiter_id: null,
+        status: 'available',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', tableId)
+      .select()
+      .single()
+    if (error) throw error
+    return data as Table
+  }
 }

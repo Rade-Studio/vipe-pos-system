@@ -22,8 +22,8 @@ import { PartialPaymentDialog } from "@/components/cashier/PartialPaymentDialog"
 import { toast } from "@/utils/toast"
 import { TransactionsList } from "@/components/cashier/TransactionsList"
 import { Skeleton } from "@/components/ui/skeleton"
-import { realtimeService } from "@/lib/supabase/realtime-service"
-import { orderService } from "@/lib/supabase/service"
+import { realtimeService } from "@/lib/services/realtime/realtime.service"
+import { orderService } from "@/lib/services/orders/order.service"
 
 interface CashierViewProps {
   profile: Profile

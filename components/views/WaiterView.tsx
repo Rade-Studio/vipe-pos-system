@@ -14,8 +14,8 @@ import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintVi
 import type { PrintableKitchenOrder } from "@/types"
 import { tableService } from "@/lib/services/tables/table.service"
 import { orderService } from "@/lib/services/orders/order.service"
-import { waiterService } from "@/lib/supabase/service"
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { waiterService } from "@/lib/services/waiters/waiter.service"
+import { realtimeService } from "@/lib/services/realtime/realtime.service"
 import { useToast } from "@/hooks/use-toast"
 import { useConfigStore } from "@/store/use-config-store"
 

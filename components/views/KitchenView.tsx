@@ -9,13 +9,14 @@ import { ConfirmOrderCard } from "@/components/pos/ConfirmOrderCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
-import { orderService, tableService } from "@/lib/supabase/service"
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { orderService } from "@/lib/services/orders/order.service"
+import { tableService } from "@/lib/services/tables/table.service"
+import { realtimeService } from "@/lib/services/realtime/realtime.service"
 import { useToast } from "@/hooks/use-toast"
 import { Bell, RefreshCw, Wifi, WifiOff, Filter, AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { supabase } from "@/lib/supabase/client"
+import { inventoryControlService } from "@/lib/services/inventory/inventory.service"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   AlertDialog,
@@ -36,7 +37,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { useConfigStore } from "@/store/use-config-store"
-import inventoryControlService from "@/lib/supabase/inventory-control-service"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -691,16 +691,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         return
       }
 
-      // Actualizar el estado del item a "served" en la base de datos
-      const { error } = await supabase
-        .from("order_items")
-        .update({ status: "served", updated_at: new Date().toISOString() })
-        .eq("id", itemId)
-
-      if (error) {
-        console.error("Error al actualizar estado del item:", error)
-        throw error
-      }
+      // Actualizar el estado del item a "served" en la base de datos a través del servicio
+      await orderService.updateItemStatus(itemId, "served")
 
       toast({
         title: "Producto entregado",
@@ -800,16 +792,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         return
       }
 
-      // Actualizar todos los items a estado "served" en la base de datos
-      const { error } = await supabase
-        .from("order_items")
-        .update({ status: "served", updated_at: new Date().toISOString() })
-        .in("id", itemIds)
-
-      if (error) {
-        console.error("Error al actualizar estado de los items:", error)
-        throw error
-      }
+      // Actualizar todos los items a estado "served"
+      await orderService.updateItemsStatus(itemIds, "served")
 
       // Actualizar el estado de la mesa a "served"
       const tableId = order.tableId
@@ -859,11 +843,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         )
 
         if (hasKitchenItems) {
-          await supabase
-            .from("order_items")
-            .delete()
-            .eq("order_id", orderId)
-            .eq("status", "pending")
+          await orderService.deletePendingItems(orderId)
 
           const remainingItems = order.items.filter((i) => i.status !== "pending")
           updateOrder(orderId, { ...order, items: remainingItems })
@@ -918,11 +898,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       const hasStock = await checkStockForOrder({ ...order, items: pendingItems }, true)
 
       if (hasStock) {
-        await supabase
-          .from("order_items")
-          .update({ status: "kitchen", updated_at: new Date().toISOString() })
-          .eq("order_id", orderId)
-          .eq("status", "pending")
+        const ids = pendingItems.map((i) => i.id)
+        await orderService.updateItemsStatus(ids, "kitchen")
 
         if (order.status === "pending") {
           await orderService.updateStatus(orderId, "kitchen")
@@ -950,10 +927,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       const hasStock = await checkStockForOrder({ ...order, items: [item] }, true)
 
       if (hasStock) {
-        await supabase
-          .from("order_items")
-          .update({ status: "kitchen", updated_at: new Date().toISOString() })
-          .eq("id", itemId)
+        await orderService.updateItemStatus(itemId, "kitchen")
 
         if (order.status === "pending") {
           const remaining = order.items.filter(
@@ -984,8 +958,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       if (!order) return
 
       try {
-        await supabase.from("order_items").delete().eq("id", itemId)
-        await orderService.recalculateOrderTotals(orderId)
+        await orderService.deleteItem(itemId)
+        await orderService.recalcTotals(orderId)
 
         const updatedItems = order.items.filter((i) => i.id !== itemId)
 
@@ -1022,10 +996,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         const itemIds = items.map((i) => i.id)
 
         if (itemIds.length > 0) {
-          await supabase
-            .from("order_items")
-            .update({ status: "kitchen", updated_at: new Date().toISOString() })
-            .in("id", itemIds)
+          await orderService.updateItemsStatus(itemIds, "kitchen")
 
           if (order.status === "pending") {
             await orderService.updateStatus(id, "kitchen")
