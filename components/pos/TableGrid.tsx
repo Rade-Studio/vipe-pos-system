@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { getStatusColor, getStatusLabel } from "@/utils/helpers"
 import { LockIcon, UnlockIcon, Users2, Coffee, UtensilsCrossed, CheckCircle2, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { tableService } from "@/lib/supabase/service"
+import { tableService } from "@/lib/services/tables/table.service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 
 // Importar el componente Skeleton

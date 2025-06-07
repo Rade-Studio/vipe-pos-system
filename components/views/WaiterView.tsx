@@ -12,7 +12,9 @@ import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintView"
 import type { PrintableKitchenOrder } from "@/types"
-import { tableService, orderService, waiterService } from "@/lib/supabase/service"
+import { tableService } from "@/lib/services/tables/table.service"
+import { orderService } from "@/lib/services/orders/order.service"
+import { waiterService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { useToast } from "@/hooks/use-toast"
 import { useConfigStore } from "@/store/use-config-store"
@@ -937,28 +939,28 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         // Calcular totales usando la función del store
         const bill = calculateOrderBill(cartItems, tipPercentage, taxPercentage)
 
-        // Crear la orden en la base de datos
-        const newOrder = await orderService.create({
-          table_id: activeTable,
-          waiter_id: waiterId,
-          items: cartItems,
-          subtotal: bill.subtotal,
-          tax: bill.tax,
-          tax_percentage: bill.taxPercentage,
-          tip: bill.tip,
-          tip_percentage: bill.tipPercentage,
-          total: bill.total,
-          status: "pending",
-        })
+        // Crear la orden y asignar la mesa usando UnitOfWork
+        const newOrder = await orderService.createOrderAndAssignTable(
+          {
+            table_id: activeTable,
+            waiter_id: waiterId,
+            items: cartItems,
+            subtotal: bill.subtotal,
+            tax: bill.tax,
+            tax_percentage: bill.taxPercentage,
+            tip: bill.tip,
+            tip_percentage: bill.tipPercentage,
+            total: bill.total,
+            status: "pending",
+          },
+          activeTable,
+        )
 
         // Registrar este cambio como local
         localChangesRef.current.add(newOrder.id)
 
         // Registrar este cambio como local
         localChangesRef.current.add(activeTable)
-
-        // Actualizar en base de datos
-        await tableService.updateTableStatus(activeTable, "kitchen")
 
         // Actualizar directamente en el store y estado local
         updateZustandTableStatus(activeTable, "kitchen")

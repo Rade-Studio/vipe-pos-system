@@ -20,7 +20,8 @@ import { NumericKeypad } from "@/components/ui/numeric-keypad"
 import { toast } from "@/utils/toast"
 import { Switch } from "@/components/ui/switch"
 import { AddCashDialog } from "@/components/cashier/AddCashDialog"
-import { orderService, tableService } from "@/lib/supabase/service"
+import { orderService } from "@/lib/services/orders/order.service"
+import { tableService } from "@/lib/services/tables/table.service"
 import { supabase } from "@/lib/supabase/client"
 import {cn} from "@/lib/utils";
 

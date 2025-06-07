@@ -1,7 +1,9 @@
 import { create } from "zustand"
 import { v4 as uuidv4 } from "uuid"
 import type { Table, CartItem, Order, Profile, Dish, Category } from "@/types"
-import { supabase, tableService, orderService } from "@/lib/supabase"
+import { supabase } from "@/lib/supabase"
+import { tableService } from "@/lib/services/tables/table.service"
+import { orderService } from "@/lib/services/orders/order.service"
 import {Payment} from "@/types/models";
 
 interface POSState {
