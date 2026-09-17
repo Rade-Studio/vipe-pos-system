@@ -67,19 +67,14 @@ SUPABASE_SERVICE_ROLE_KEY=tu_clave_de_servicio_de_supabase
 
 ### 4. Configurar la base de datos
 
-Ejecuta los scripts SQL en el siguiente orden para configurar la base de datos en Supabase:
+La base de datos se configura automaticamente mediante las migraciones de Supabase. Para inicializar el entorno local:
 
-1. `create-database-schema.sql` - Crea las tablas principales
-2. `create-storage-bucket.sql` - Configura el almacenamiento
-3. `create-business-config-table.sql` - Tabla de configuración
-4. `create-payment-transactions-table.sql` - Transacciones de pago
-5. `create-cash-transactions-table.sql` - Transacciones de caja
-6. `create-ingredient-transactions-table.sql` - Transacciones de ingredientes
-7. `create-recipes-tables.sql` - Tablas de recetas
-8. `create-promotions-table.sql` - Tabla de promociones
-9. `insert-sample-data.sql` - Datos de ejemplo (opcional)
+```bash
+docker compose up -d
+supabase db reset && pnpm docker:dev:seed
+```
 
-Puedes ejecutar estos scripts desde la interfaz SQL de Supabase o usando la herramienta CLI.
+Esto aplica todas las migraciones en `supabase/migrations/` y luego carga los datos de ejemplo desde `supabase/seed.sql`.
 
 ### 5. Iniciar el servidor de desarrollo
 
