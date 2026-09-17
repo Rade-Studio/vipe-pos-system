@@ -1,0 +1,254 @@
+# ============================================
+# VIPE POS - Desarrollo Local con Supabase
+# ============================================
+# Uso:
+#   cp env.docker.template .env.docker
+#   docker-compose up -d
+#   # Esperar ~30s, luego ejecutar seed:
+#   docker exec -i supabase-db psql -U postgres -d postgres < supabase/seed.sql
+# ============================================
+
+services:
+  # -------------------------------
+  # SUPABASE LOCAL
+  # -------------------------------
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: supabase-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - supabase-db-data:/var/lib/postgresql/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kong:
+    image: kong:3.4
+    container_name: supabase-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+    volumes:
+      - ./supabase/kong.yml:/var/lib/kong/kong.yml:ro
+    ports:
+      - "54321:8000"  # API Gateway
+      - "54322:8001"  # Admin
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # -------------------------------
+  # SUPABASE REALTIME (WebSocket subscriptions a cambios en DB)
+  # -------------------------------
+  realtime:
+    image: supabase/realtime:v2.135.5
+    container_name: supabase-realtime
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      # Realtime seed usa supabase_admin como user; ya creado en init.sql con
+      # BYPASSRLS + GRANTs sobre los schemas.
+      DB_USER: supabase_admin
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      DB_SSL: "false"
+      # Activar seed automático (crea tenant + extension postgres_cdc_rls)
+      SEED_SELF_HOST: "true"
+      # external_id del tenant — debe coincidir con lo que Kong pasa como Host
+      # en la conexión WS. Kong usa "realtime" (nombre del servicio upstream).
+      SELF_HOST_TENANT_NAME: realtime
+      # JWT secret compartido con GoTrue para validar tokens emitidos al login
+      API_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      # Realtime cifra el jwt_secret del tenant antes de guardarlo — necesita
+      # una clave de 16 bytes (AES-128). (GCM es opcional vía DB_ENC_KEY_GCM).
+      DB_ENC_KEY: "1234567890123456"
+      # Desactivar API key y anonymous-user features para simplificar
+      API_KEY: dummy
+      SERVICE_KEY: dummy
+      ANONYMOUS_USERS_ENABLED: "false"
+      # Obligatorio en :prod: nombre de la app para libcluster
+      APP_NAME: realtime
+      # Obligatorios en v2.x — Phoenix signing key + JWT del endpoint /metrics
+      METRICS_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      SECRET_KEY_BASE: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # -------------------------------
+  # SUPABASE STUDIO + META
+  # -------------------------------
+  meta:
+    image: supabase/postgres-meta:v0.99.0
+    container_name: supabase-meta
+    restart: unless-stopped
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: postgres
+      PG_META_DB_USER: postgres
+      PG_META_DB_PASSWORD: postgres
+    ports:
+      - "5555:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  studio:
+    image: supabase/studio:2026.09.14-sha-4dd8a95
+    container_name: supabase-studio
+    restart: unless-stopped
+    ports:
+      - "54323:3000"
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # Password del rol supabase_admin (creado en init.sql) — Studio la usa
+      # para abrir conexiones privilegiadas en nombre del usuario.
+      SUPABASE_ADMIN_PASSWORD: postgres
+      DEFAULT_ORGANIZATION_NAME: VIPE POS
+      DEFAULT_PROJECT_NAME: Local Dev
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: http://localhost:54321
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1cGFiYXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1MTczMDYsImV4cCI6MjEwNDg3NzMwNn0.sr1bx6PtAEkmXRtGPmFT0Jq0gCDKcDzJyb8oXa9HCVU
+      SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1cGFiYXNlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTUxNzMwNiwiZXhwIjoyMTA0ODc3MzA2fQ.Uqx_dirXgVO1VPZHiXPVlCgQR27KmsDEZg2lBBfMjO0
+    depends_on:
+      db:
+        condition: service_healthy
+      meta:
+        condition: service_started
+
+  rest:
+    image: postgrest/postgrest:v12.0.2
+    container_name: supabase-rest
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: postgresql://postgres:postgres@db:5432/postgres
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  storage:
+    image: supabase/storage-api:v1.4.0
+    container_name: supabase-storage
+    restart: unless-stopped
+    environment:
+      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1cGFiYXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1MTczMDYsImV4cCI6MjEwNDg3NzMwNn0.sr1bx6PtAEkmXRtGPmFT0Jq0gCDKcDzJyb8oXa9HCVU
+      SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1cGFiYXNlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTUxNzMwNiwiZXhwIjoyMTA0ODc3MzA2fQ.Uqx_dirXgVO1VPZHiXPVlCgQR27KmsDEZg2lBBfMjO0
+      POSTGREST_URL: http://rest:3000
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: stub
+      GLOBAL_S3_BUCKET: stub
+    volumes:
+      - supabase-storage-data:/var/lib/storage
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  auth:
+    image: supabase/gotrue:v2.158.1
+    container_name: supabase-auth
+    restart: unless-stopped
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: http://localhost:54321
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      GOTRUE_SITE_URL: http://localhost:3000
+      GOTRUE_URI_ALLOW_LIST: '*'
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+    ports:
+      - "9999:9999"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # -------------------------------
+  # APP NEXT.JS
+  # -------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # IMPORTANTE: NEXT_PUBLIC_* se inlinean al build time en Next.js, no son
+      # runtime. Sin estos args, el cliente usa el fallback xyzcompany.supabase.co
+      # definido en lib/supabase/client.ts y la app apunta a producción.
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1cGFiYXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1MTczMDYsImV4cCI6MjEwNDg3NzMwNn0.sr1bx6PtAEkmXRtGPmFT0Jq0gCDKcDzJyb8oXa9HCVU
+    container_name: vipe-pos-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1cGFiYXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1MTczMDYsImV4cCI6MjEwNDg3NzMwNn0.sr1bx6PtAEkmXRtGPmFT0Jq0gCDKcDzJyb8oXa9HCVU
+    ports:
+      - "3003:3000"
+    # Sin bind-mount: la imagen standalone ya contiene build + node_modules minimal.
+    # Volúmenes anónimos como /app/node_modules o /app/.next enmascaran el build
+    # de la imagen y rompen `npm start` / healthcheck (next / curl no found).
+    # Para dev con hot-reload: usar un Dockerfile dev o bind-mounts selectivos.
+    depends_on:
+      realtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# -------------------------------
+# VOLUMES
+# -------------------------------
+volumes:
+  supabase-db-data:
+    driver: local
+  supabase-storage-data:
+    driver: local
