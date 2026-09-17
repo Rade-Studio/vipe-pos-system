@@ -1,5 +1,6 @@
 "use client"
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
@@ -16,6 +17,7 @@ import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintVi
 import type { PrintableKitchenOrder } from "@/types"
 import { tableService, orderService, waiterService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
+import { queryClient } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
 import { useConfigStore } from "@/store/use-config-store"
 import inventoryControlService from "@/lib/supabase/inventory-control-service"
@@ -78,7 +80,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const [forceSubmit, setForceSubmit] = useState(false)
   const [tableSelectionTime, setTableSelectionTime] = useState<Record<string, number>>({})
   const [realtimeConnected, setRealtimeConnected] = useState(false)
-  const [forceRender, setForceRender] = useState(0)
 
   // Estado para controlar la visibilidad del sidebar en móviles
   const [showMobileCart, setShowMobileCart] = useState(false)
@@ -87,16 +88,74 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   // Referencias
   const unsubscribeRef = useRef<(() => void) | null>(null)
   const menuSectionRef = useRef<HTMLDivElement>(null)
-  const isFirstRender = useRef(true)
   const tablesSubscriptionRef = useRef<(() => void) | null>(null)
   const ordersSubscriptionRef = useRef<(() => void) | null>(null)
-  const isLoadingTablesRef = useRef(false) // Referencia para evitar cargas simultáneas
   const localChangesRef = useRef<Set<string>>(new Set()) // Para rastrear cambios locales
 
   // Hooks
   const { toast } = useToast()
   const { tipPercentage, taxPercentage, inventoryControlEnabled } = useConfigStore()
   const isMobile = useIsMobile()
+  const queryClient = useQueryClient()
+
+  // Query functions for React Query
+  const fetchTables = async () => {
+    const data = await tableService.getAll()
+    return data.map((table) => ({
+      id: table.id,
+      number: table.number,
+      status: table.status as any,
+      waiter: table.waiter_id || undefined,
+      waiter_name: table.waiter_name || undefined,
+    })) as Table[]
+  }
+
+  const fetchOrders = async () => {
+    const activeOrdersData = await orderService.getByStatus(["active", "kitchen", "delivered"])
+    return activeOrdersData.map((order) => {
+      const items = order.order_items.map((item) => ({
+        id: item.id,
+        dishId: item.dish_id || `item-${item.id}`,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        comments: item.comments || undefined,
+        categoryId: item.category_id || "",
+        image: "/placeholder.svg?height=50&width=50",
+        status: item.status,
+      }))
+
+      return {
+        id: order.id,
+        tableId: order.table_id,
+        items,
+        status: order.status,
+        bill: {
+          subtotal: order.subtotal || 0,
+          tax: order.tax || 0,
+          taxPercentage: order.tax_percentage || 0,
+          tip: order.tip || 0,
+          tipPercentage: order.tip_percentage || 0,
+          total: order.total || 0,
+        },
+        waiter: order.waiter_id,
+        createdAt: new Date(order.created_at),
+        isPartialOrder: order.is_partial_order || false,
+        parentOrderId: order.parent_order_id || null,
+      } as Order
+    })
+  }
+
+  // React Query hooks for tables and orders
+  const { data: tablesData = [] } = useQuery({
+    queryKey: ['tables'],
+    queryFn: fetchTables,
+  })
+
+  const { data: ordersData = [] } = useQuery({
+    queryKey: ['orders'],
+    queryFn: fetchOrders,
+  })
 
   // Individual store selectors
   const addToCart = useCartStore((s) => s.addToCart)
@@ -136,95 +195,19 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     }
   }, [toast])
 
-  // Cargar mesas - función memoizada completa (para carga inicial)
-  const loadTables = useCallback(async () => {
-    // Evitar cargas simultáneas
-    if (isLoadingTablesRef.current) {
-      return []
+  // Sync React Query data to local state for rendering
+  useEffect(() => {
+    if (tablesData.length > 0) {
+      setTables(tablesData)
+      useTableStore.getState().setTables(tablesData)
     }
+  }, [tablesData])
 
-    isLoadingTablesRef.current = true
-
-    try {
-      const data = await tableService.getAll()
-
-      const formattedTables = data.map((table) => ({
-        id: table.id,
-        number: table.number,
-        status: table.status as any,
-        waiter: table.waiter_id || undefined,
-        waiter_name: table.waiter_name || undefined,
-      }))
-
-      // Actualizar ambos estados de forma independiente para evitar ciclos
-      setTables(formattedTables)
-      useTableStore.getState().setTables(formattedTables)
-
-      // Forzar re-renderizado
-      setForceRender((prev) => prev + 1)
-
-      return formattedTables
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las mesas. Intente nuevamente.",
-        variant: "destructive",
-      })
-      return []
-    } finally {
-      isLoadingTablesRef.current = false
+  useEffect(() => {
+    if (ordersData.length > 0) {
+      setActiveOrders(ordersData)
     }
-  }, [toast])
-
-  // Cargar órdenes - función memoizada
-  const loadOrders = useCallback(async () => {
-    try {
-      const activeOrdersData = await orderService.getByStatus(["active", "kitchen", "delivered"])
-
-      const formattedOrders = activeOrdersData.map((order) => {
-        const items = order.order_items.map((item) => ({
-          id: item.id,
-          dishId: item.dish_id || `item-${item.id}`,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          comments: item.comments || undefined,
-          categoryId: item.category_id || "",
-          image: "/placeholder.svg?height=50&width=50",
-          status: item.status,
-        }))
-
-        return {
-          id: order.id,
-          tableId: order.table_id,
-          items,
-          status: order.status,
-          bill: {
-            subtotal: order.subtotal || 0,
-            tax: order.tax || 0,
-            taxPercentage: order.tax_percentage || 0,
-            tip: order.tip || 0,
-            tipPercentage: order.tip_percentage || 0,
-            total: order.total || 0,
-          },
-          waiter: order.waiter_id,
-          createdAt: new Date(order.created_at),
-          isPartialOrder: order.is_partial_order || false,
-          parentOrderId: order.parent_order_id || null,
-        }
-      })
-
-      setActiveOrders(formattedOrders)
-      return formattedOrders
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las órdenes. Intente nuevamente.",
-        variant: "destructive",
-      })
-      return []
-    }
-  }, [toast])
+  }, [ordersData])
 
   // Configurar suscripciones en tiempo real
   const setupRealtimeSubscriptions = useCallback(() => {
@@ -238,61 +221,19 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         return
       }
 
-      // Procesar el cambio que vino de otro cliente
-      if (payload.eventType === "INSERT") {
-        // Nueva mesa añadida
-        const newTable = {
-          id: payload.new.id,
-          number: payload.new.number,
-          status: payload.new.status,
-          waiter: payload.new.waiter_id || undefined,
-          waiter_name: payload.new.waiter_name || undefined,
+      // Invalidate queries so React Query refetches in background
+      queryClient.invalidateQueries({ queryKey: ['tables'] })
+
+      // Handle active table cleanup for UPDATE/DELETE on the active table
+      if (payload.eventType === "UPDATE" && payload.new) {
+        if (activeTable === payload.new.id && payload.new.status === "available") {
+          setActiveTable(null)
         }
-
-        // Actualizar estado local y store
-        setTables((prevTables) => [...prevTables, newTable])
-        useTableStore.getState().setTables([...useTableStore.getState().tables, newTable])
-      } else if (payload.eventType === "UPDATE") {
-        // Mesa actualizada
-        const updatedTable = {
-          id: payload.new.id,
-          number: payload.new.number,
-          status: payload.new.status,
-          waiter: payload.new.waiter_id || undefined,
-          waiter_name: payload.new.waiter_name || undefined,
-        }
-
-        // Actualizar estado local y store
-        setTables((prevTables) => prevTables.map((table) => (table.id === updatedTable.id ? updatedTable : table)))
-        useTableStore.getState().setTables(
-          useTableStore.getState().tables.map((t) => (t.id === updatedTable.id ? updatedTable : t)),
-        )
-
-        // Si es la mesa activa, actualizar también el estado de mesa activa
-        if (activeTable === updatedTable.id) {
-          // Si la mesa fue liberada, limpiar la selección
-          if (updatedTable.status === "available") {
-            setActiveTable(null)
-          }
-        }
-      } else if (payload.eventType === "DELETE") {
-        // Mesa eliminada
-        const deletedTableId = payload.old.id
-
-        // Actualizar estado local y store
-        setTables((prevTables) => prevTables.filter((table) => table.id !== deletedTableId))
-        useTableStore.getState().setTables(
-          useTableStore.getState().tables.filter((t) => t.id !== deletedTableId),
-        )
-
-        // Si es la mesa activa, limpiar la selección
-        if (activeTable === deletedTableId) {
+      } else if (payload.eventType === "DELETE" && payload.old) {
+        if (activeTable === payload.old.id) {
           setActiveTable(null)
         }
       }
-
-      // Forzar re-renderizado
-      setForceRender((prev) => prev + 1)
     })
 
     // Suscripción a cambios en órdenes
@@ -304,90 +245,8 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         return
       }
 
-      // Procesar el cambio que vino de otro cliente
-      if (payload.eventType === "INSERT") {
-        // Nueva orden añadida
-        if (payload.new && payload.new.status === "active") {
-          // Convertir la orden al formato que espera el componente
-          const newOrder = {
-            id: payload.new.id,
-            tableId: payload.new.table_id,
-            items: (payload.new.order_items || []).map((item) => ({
-              id: item.id,
-              dishId: item.dish_id || `item-${item.id}`,
-              name: item.name,
-              price: item.price,
-              quantity: item.quantity,
-              comments: item.comments || undefined,
-              categoryId: item.category_id || "",
-              image: "/placeholder.svg?height=50&width=50",
-              status: item.status,
-            })),
-            status: payload.new.status,
-            bill: {
-              subtotal: payload.new.subtotal || 0,
-              tax: payload.new.tax || 0,
-              taxPercentage: payload.new.tax_percentage || 0,
-              tip: payload.new.tip || 0,
-              tipPercentage: payload.new.tip_percentage || 0,
-              total: payload.new.total || 0,
-            },
-            waiter: payload.new.waiter_id,
-            createdAt: new Date(payload.new.created_at),
-            isPartialOrder: payload.new.is_partial_order || false,
-            parentOrderId: payload.new.parent_order_id || null,
-          }
-
-          // Actualizar el estado local
-          setActiveOrders((prev) => [...prev, newOrder])
-        }
-      } else if (payload.eventType === "UPDATE") {
-        // Orden actualizada
-        if (payload.new) {
-          setActiveOrders((prev) =>
-            prev.map((order) =>
-              order.id === payload.new.id
-                ? {
-                    ...order,
-                    status: payload.new.status,
-                    bill: {
-                      subtotal: payload.new.subtotal || order.bill.subtotal,
-                      tax: payload.new.tax || order.bill.tax,
-                      taxPercentage: payload.new.tax_percentage || order.bill.taxPercentage,
-                      tip: payload.new.tip || order.bill.tip,
-                      tipPercentage: payload.new.tip_percentage || order.bill.tipPercentage,
-                      total: payload.new.total || order.bill.total,
-                    },
-                    // Si hay items en el payload, actualizarlos también
-                    items: payload.new.order_items
-                      ? payload.new.order_items.map((item) => ({
-                          id: item.id,
-                          dishId: item.dish_id || `item-${item.id}`,
-                          name: item.name,
-                          price: item.price,
-                          quantity: item.quantity,
-                          comments: item.comments || undefined,
-                          categoryId: item.category_id || "",
-                          image: "/placeholder.svg?height=50&width=50",
-                          status: item.status,
-                        }))
-                      : order.items,
-                  }
-                : order,
-            ),
-          )
-
-          // Si la orden cambió a estado "paid", eliminarla de las órdenes activas
-          if (payload.new.status === "paid") {
-            setActiveOrders((prev) => prev.filter((order) => order.id !== payload.new.id))
-          }
-        }
-      } else if (payload.eventType === "DELETE") {
-        // Orden eliminada
-        if (payload.old) {
-          setActiveOrders((prev) => prev.filter((order) => order.id !== payload.old.id))
-        }
-      }
+      // Invalidate queries so React Query refetches in background
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
     })
 
     // Guardar referencias para limpieza
@@ -424,29 +283,8 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
   // Efecto para inicializar datos y suscripciones
   useEffect(() => {
-    const initializeData = async () => {
-      // Solo mostrar loading en la carga inicial
-      if (isFirstRender.current) {
-        setLoading(true)
-        isFirstRender.current = false
-      }
-
-      try {
-        await loadWaiters()
-        await loadTables()
-        await loadOrders()
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar los datos iniciales. Intente nuevamente.",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    initializeData()
+    // Cargar waiters (not yet migrated to useQuery)
+    loadWaiters()
 
     // Configurar suscripciones en tiempo real
     const cleanupSubscriptions = setupRealtimeSubscriptions()
@@ -455,12 +293,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     return () => {
       cleanupSubscriptions()
     }
-  }, [loadWaiters, loadTables, loadOrders, setupRealtimeSubscriptions, toast])
+  }, [loadWaiters, setupRealtimeSubscriptions])
 
   // Efecto para registrar tiempo de selección de mesa
   useEffect(() => {
-    if (!activeTable || isFirstRender.current) {
-      isFirstRender.current = false
+    if (!activeTable || tableSelectionTime[activeTable]) {
       return
     }
 
@@ -1222,7 +1059,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
                   onReserveTable={handleReserveTable}
                   onReleaseTable={handleReleaseTable}
                   isTableAccessible={checkTableAccess}
-                  key={`tables-section-${forceRender}`}
+                  key={`tables-section-${activeTable ?? 'none'}`}
                 />
 
                 {activeTable && (
