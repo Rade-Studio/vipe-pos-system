@@ -77,7 +77,7 @@ export function PaymentMethodDialog({
   const [loading, setLoading] = useState(false)
   const [paying, setPaying] = useState(false)
 
-  const { addTransaction, isRegisterOpen, hasEnoughCashForChange, getCurrentRegisterSummary } = useCashRegisterStore()
+  const { isRegisterOpen, hasEnoughCashForChange, getCurrentRegisterSummary } = useCashRegisterStore()
   const { completePayment, completePartialPayment, undoPartialPayment, calculateOrderBill } = usePOSStore()
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast: toastHook } = useToast()
@@ -435,41 +435,44 @@ export function PaymentMethodDialog({
       const orderTableId = orderData.table_id
       const waiterId = orderData.waiter_id
 
-      // Calcular el monto de propina
-      const tipAmount = includeTip && orderData.tip ? orderData.tip : 0
+      // Build payment methods array in 'method:amount' format for the RPC
+      const paymentMethods: string[] = []
+      if (paymentMethod === "multiple") {
+        for (const [method, isSelected] of Object.entries(selectedMethods)) {
+          if (isSelected) {
+            const amount = Number(paymentAmounts[method as PaymentMethod]) || 0
+            if (amount > 0) {
+              paymentMethods.push(`${method}:${amount}`)
+            }
+          }
+        }
+      } else {
+        const amount = paymentMethod === "cash" ? Number(cashReceived || 0) : finalAmount
+        paymentMethods.push(`${paymentMethod}:${amount}`)
+      }
 
-      // Procesar el pago con el monto final (con o sin propina)
-      const transaction = await addTransaction(
-        orderId,
-        orderTableId,
-        finalAmount,
-        paymentMethod,
-        paymentMethod === "multiple" ? selectedMethods : undefined,
-        paymentMethod === "multiple" ? paymentAmounts : undefined,
-        paymentMethod === "cash" ? cashAmount : undefined,
-        paymentMethod === "cash" ? change : undefined,
-        waiterId,
-        tipAmount,
-      )
+      // Get current cash register ID for the RPC
+      const registerId = useCashRegisterStore.getState().currentRegister?.id ?? ""
 
-      if (transaction) {
+      // Atomic RPC: replaces addTransaction + completePayment two-step pattern
+      const result = await orderService.completePaymentRpc(orderId, paymentMethods, registerId)
+
+      if (result) {
         // Completar el pago en la base de datos
         let invoiceNumber
 
         try {
           if (isPartialPayment) {
-            invoiceNumber = await orderService.completePayment(orderId, paymentMethod)
-            // También actualizamos el store para mantener la coherencia
+            // Also update the store for partial payments (existing behavior)
             await completePartialPayment(orderId, selectedItems)
+            invoiceNumber = `INV-${orderId.substring(0, 8)}`
           } else {
-            invoiceNumber = await orderService.completePayment(orderId, paymentMethod)
-            // También actualizamos el store para mantener la coherencia
-            await completePayment(orderId)
+            invoiceNumber = result.status === "already_paid"
+              ? `INV-${orderId.substring(0, 8)}-repaid`
+              : `INV-${orderId.substring(0, 8)}`
           }
         } catch (error) {
           console.error("Error al completar pago en el store:", error)
-          // Si hay un error al actualizar el store, pero la transacción se completó,
-          // generamos un número de factura para continuar
           invoiceNumber = orderId.substring(0, 8)
         }
 
