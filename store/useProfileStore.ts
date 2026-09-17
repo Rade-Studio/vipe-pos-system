@@ -13,6 +13,7 @@ interface ProfileState {
   profiles: Profile[]
   selectedProfile: Profile | null
   showProfileSelection: boolean
+  setProfiles: (profiles: Profile[]) => void
   setSelectedProfile: (profile: Profile | null) => void
   selectProfile: (profile: Profile) => void
   changeProfile: () => void
@@ -22,6 +23,8 @@ export const useProfileStore = create<ProfileState>((set) => ({
   profiles: mockProfiles,
   selectedProfile: null,
   showProfileSelection: true,
+
+  setProfiles: (profiles) => set({ profiles }),
 
   setSelectedProfile: (profile) =>
     set({ selectedProfile: profile }),

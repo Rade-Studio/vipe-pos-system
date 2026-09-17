@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -41,7 +42,7 @@ export function PromotionList() {
       const data = await promotionService.getAllPromotions()
       setPromotions(data || [])
     } catch (error) {
-      console.error("Error loading promotions:", error)
+      log.error("Error loading promotions:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudieron cargar las promociones",
@@ -78,7 +79,7 @@ export function PromotionList() {
         description: "La promoción ha sido eliminada correctamente",
       })
     } catch (error) {
-      console.error("Error deleting promotion:", error)
+      log.error("Error deleting promotion:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudo eliminar la promoción",

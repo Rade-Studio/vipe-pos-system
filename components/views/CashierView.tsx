@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
 import { useOrderStore } from "@/store/useOrderStore"
@@ -29,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { orderService } from "@/lib/supabase/service"
 import { queryClient } from "@/lib/queryClient"
+import { log } from "@/lib/log"
 
 interface CashierViewProps {
   profile: Profile
@@ -118,7 +119,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
   })
 
   const tables = useTableStore((s) => s.tables)
-  const profiles = usePOSStore((s) => s.profiles)
+  const profiles = useProfileStore((s) => s.profiles)
   const cartItems = useCartStore((s) => s.cartItems)
   const calculateOrderBill = (items: CartItem[], tipPercentage?: number, taxPercentage?: number) =>
     useCartStore.getState().calculateOrderBill(items, tipPercentage, taxPercentage)
@@ -196,7 +197,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       setPartialOrders(partialOrdersFiltered)
       setOrdersByTable(ordersByTableGrouped)
     } catch (error) {
-      console.error("Error al cargar órdenes:", error)
+      log.error("Error al cargar órdenes:", { error: String(error) })
       toast.error("Error al cargar órdenes desde la base de datos")
     } finally {
       setIsLoading(false)
@@ -228,7 +229,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
 
     // Suscribirse a cambios en órdenes
     const unsubscribe = realtimeService.subscribeToOrders((payload) => {
-      console.log("Cambio en orden recibido:", payload)
+      log.info("Cambio en orden recibido:", { payload })
 
       // Invalidate queries so React Query refetches in background
       queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })
@@ -315,7 +316,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
         // Recargar órdenes
         await loadOrdersFromDB()
       } catch (error) {
-        console.error("Error al procesar el pago:", error)
+        log.error("Error al procesar el pago:", { error: String(error) })
       }
     }
   }
@@ -377,7 +378,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       setPartialPaymentDialogOpen(false)
       await loadOrdersFromDB()
     } catch (error) {
-      console.error("Error al crear la orden parcial:", error)
+      log.error("Error al crear la orden parcial:", { error: String(error) })
       toast.error("No se pudo crear la orden parcial")
     } finally {
       setIsCreatingPartialOrder(false)
@@ -394,7 +395,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       // Recargar órdenes
       await loadOrdersFromDB()
     } catch (error) {
-      console.error("Error al eliminar la orden parcial:", error)
+      log.error("Error al eliminar la orden parcial:", { error: String(error) })
       toast.error("No se pudo eliminar la orden parcial")
     }
   }

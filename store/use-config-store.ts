@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import businessConfigService from "@/lib/supabase/business-config-service"
+import { log } from "@/lib/log"
 
 type ConfigState = {
   // Impuestos y propinas
@@ -142,9 +143,9 @@ export const useConfigStore = create<ConfigState>()(
 
           set({ isLoading: false })
 
-          console.log("Configuración guardada en la base de datos")
+          log.info("Configuración guardada en la base de datos")
         } catch (error) {
-          console.error("Error al guardar configuración:", error)
+          log.error("Error al guardar configuración:", { error: String(error) })
           set({
             isLoading: false,
             error: error instanceof Error ? error.message : "Error desconocido al guardar configuración",

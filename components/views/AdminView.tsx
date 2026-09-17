@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, DailySales, PopularDish, CategorySales, OrderStatus } from "@/types"
 import { Header } from "@/components/layout/Header"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { SalesChart } from "@/components/admin/SalesChart"
@@ -25,6 +25,7 @@ import { TransactionsByRegisterId } from "@/components/admin/TransactionsByRegis
 import { orderService } from "@/lib/supabase/service"
 import { dashboardService } from "@/lib/supabase/dashboard-service"
 import { queryClient } from "@/lib/queryClient"
+import { log } from "@/lib/log"
 import { AlertCircle, RefreshCw } from "lucide-react"
 import { formatCurrency } from "@/utils/helpers"
 import { LowStockIngredients } from "@/components/admin/inventory/LowStockIngredients"
@@ -132,7 +133,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   const loadOrders = useOrderStore((s) => s.loadOrders)
   const getOrdersByStatus = (statuses: OrderStatus[]) => useOrderStore.getState().getOrdersByStatus(statuses)
 
-  const profiles = usePOSStore((s) => s.profiles)
+  const profiles = useProfileStore((s) => s.profiles)
 
   // Cargar datos del dashboard
   useEffect(() => {
@@ -160,7 +161,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
 
         setAssignedTables(assignedTablesData?.length || 0)
       } catch (error) {
-        console.error("Error al cargar datos del dashboard:", error)
+        log.error("Error al cargar datos del dashboard:", { error: String(error) })
       } finally {
         setIsLoading(false)
       }
@@ -182,11 +183,11 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
 
     const setupRealtimeSubscription = async () => {
       try {
-        console.log("Configurando suscripción en tiempo real para órdenes...")
+        log.info("Configurando suscripción en tiempo real para órdenes...")
 
         // Función para manejar cambios en órdenes
         const handleOrderChange = async (payload: any, isNewOrder?: boolean) => {
-          console.log("Cambio en orden detectado:", payload.eventType, payload.new?.id)
+          log.info("Cambio en orden detectado:", { eventType: payload.eventType, newId: payload.new?.id })
 
           // Incrementar contador de nuevas órdenes si es una inserción
           if (payload.eventType === "INSERT") {
@@ -224,7 +225,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         //   description: "Las órdenes se actualizarán automáticamente",
         // })
       } catch (error) {
-        console.error("Error al configurar suscripción en tiempo real:", error)
+        log.error("Error al configurar suscripción en tiempo real:", { error: String(error) })
         setRealtimeConnected(false)
 
         // Mantener este toast ya que es un error importante que el usuario debe conocer
@@ -241,7 +242,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
     // Limpiar suscripción al desmontar (sin mostrar toast)
     return () => {
       if (unsubscribe) {
-        console.log("Cancelando suscripción en tiempo real")
+        log.info("Cancelando suscripción en tiempo real")
         unsubscribe()
         setRealtimeConnected(false)
       }
@@ -268,7 +269,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         throw error
       }
 
-      console.log("Órdenes activas cargadas desde DB:", dbOrders?.length || 0)
+      log.info("Órdenes activas cargadas desde DB:", { count: dbOrders?.length || 0 })
 
       // Transformar los datos al formato que espera la aplicación
       const formattedOrders =
@@ -318,7 +319,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         })
       }
     } catch (error) {
-      console.error("Error al cargar órdenes activas:", error)
+      log.error("Error al cargar órdenes activas:", { error: String(error) })
 
       // Mantener este toast ya que es un error importante
       toast({
@@ -387,7 +388,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         description: "La orden ha sido eliminada correctamente",
       })
     } catch (error) {
-      console.error("Error al eliminar la orden:", error)
+      log.error("Error al eliminar la orden:", { error: String(error) })
 
       // Mantener este toast ya que es un error importante
       toast({

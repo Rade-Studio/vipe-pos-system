@@ -10,14 +10,17 @@ import { LoginView } from "@/components/auth/LoginView"
 import { useProfile } from "@/hooks/use-profile"
 import { Loader2 } from "lucide-react"
 import { useConfigStore } from "@/store/use-config-store"
-import { usePOSStore } from "@/store/use-pos-store"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
+import { useTableStore } from "@/store/useTableStore"
+import { useProfileStore } from "@/store/useProfileStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import { tableService, orderService } from "@/lib/supabase/service"
 import { supabase } from "@/lib/supabase/client"
 
 export default function Home() {
   const { profiles, selectedProfile, showProfileSelection, selectProfile, changeProfile } = useProfile()
-  const { setTables, setProfiles } = usePOSStore()
+  const { setTables } = useTableStore()
+  const { setProfiles } = useProfileStore()
   const { loadCurrentRegister, loadAllRegisters } = useCashRegisterStore()
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -129,7 +132,7 @@ export default function Home() {
         })
 
         // Actualizar el store con las órdenes
-        usePOSStore.getState().setOrders(storeOrders)
+        useOrderStore.getState().setOrders(storeOrders)
       } catch (error) {
         console.error("Error al cargar órdenes activas:", error)
       }

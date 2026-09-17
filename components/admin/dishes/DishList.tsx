@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Plus, Edit, Trash2, BookOpen } from "lucide-react"
-import { dishService, categoryService } from "@/lib/supabase-service"
-import type { Dish, Category } from "@/types/models"
+import { dishService, categoryService } from "@/lib/supabase/service"
+import type { Dish, Category } from "@/types"
+import { log } from "@/lib/log"
 import { DishForm } from "./DishForm"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -47,7 +48,7 @@ export function DishList() {
       setDishes(dishesData)
       setCategories(categoriesData)
     } catch (error) {
-      console.error("Error loading data:", error)
+      log.error("Error loading data:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -89,7 +90,7 @@ export function DishList() {
       })
       loadData()
     } catch (error) {
-      console.error("Error deleting dish:", error)
+      log.error("Error deleting dish:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -119,7 +120,7 @@ export function DishList() {
       setShowForm(false)
       loadData()
     } catch (error) {
-      console.error("Error saving dish:", error)
+      log.error("Error saving dish:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

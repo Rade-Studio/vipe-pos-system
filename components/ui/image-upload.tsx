@@ -8,6 +8,7 @@ import { Loader2, Upload, X } from "lucide-react"
 import Image from "next/image"
 import { useToast } from "@/hooks/use-toast"
 import { storageService } from "@/lib/supabase/storage-service"
+import { log } from "@/lib/log"
 
 interface ImageUploadProps {
   value: string
@@ -41,12 +42,12 @@ export function ImageUpload({
     setImageError(false)
 
     try {
-      console.log("Iniciando carga de imagen usando StorageService...")
+      log.info("Iniciando carga de imagen usando StorageService...")
 
       // Usar el servicio para subir la imagen
       const imageUrl = await storageService.uploadImage(file, bucketName)
 
-      console.log("URL de imagen obtenida:", imageUrl)
+      log.info("URL de imagen obtenida:", { imageUrl })
 
       setPreview(imageUrl)
       onChange(imageUrl)
@@ -56,7 +57,7 @@ export function ImageUpload({
         description: "La imagen se ha subido correctamente",
       })
     } catch (error: any) {
-      console.error("Error completo al subir imagen:", error)
+      log.error("Error completo al subir imagen:", { error: String(error) })
 
       // Usar un placeholder en caso de error
       const placeholderUrl = storageService.getPlaceholderUrl(file.name.split(".")[0])
@@ -78,7 +79,7 @@ export function ImageUpload({
     const file = e.target.files?.[0]
     if (!file) return
 
-    console.log("Archivo seleccionado:", file.name, file.type, file.size)
+    log.info("Archivo seleccionado:", { name: file.name, type: file.type, size: file.size })
 
     // Check file type
     if (!file.type.startsWith("image/")) {
@@ -108,10 +109,10 @@ export function ImageUpload({
       try {
         // Intentar eliminar la imagen del storage
         storageService.deleteImage(preview).catch((err) => {
-          console.error("Error al eliminar imagen:", err)
+          log.error("Error al eliminar imagen:", { err: String(err) })
         })
       } catch (e) {
-        console.error("Error al intentar eliminar imagen:", e)
+        log.error("Error al intentar eliminar imagen:", { e: String(e) })
       }
     }
 
@@ -121,7 +122,7 @@ export function ImageUpload({
   }
 
   const handleImageError = () => {
-    console.warn("Error al cargar la imagen:", preview)
+    log.warn("Error al cargar la imagen:", { preview })
     setImageError(true)
 
     // Si hay un error al cargar la imagen, usar un placeholder

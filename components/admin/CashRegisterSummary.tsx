@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
+import { log } from "@/lib/log"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type {
@@ -47,7 +48,7 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
             setSelectedRegisters([])
           }
         } catch (error) {
-          console.error("Error al cargar cajas por fecha:", error)
+          log.error("Error al cargar cajas por fecha:", { error: String(error) })
           setRegisters([])
           setSelectedRegisters([])
         } finally {
@@ -66,7 +67,7 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
               setSelectedRegisters([])
             }
           } catch (error) {
-            console.error("Error al cargar registro actual:", error)
+            log.error("Error al cargar registro actual:", { error: String(error) })
             setRegisters([])
             setSelectedRegisters([])
           }
@@ -117,7 +118,7 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
         setSummary(combinedSummary)
         setCashTransactions(cashTxs)
       } catch (error) {
-        console.error("Error al cargar datos:", error)
+        log.error("Error al cargar datos:", { error: String(error) })
         setSummary(null)
         setCashTransactions([])
       } finally {

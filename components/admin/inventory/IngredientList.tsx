@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { IngredientForm } from "./IngredientForm"
 import { StockTransactionForm } from "./StockTransactionForm"
+import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { ingredientService } from "@/lib/supabase"
 import { AlertCircle, Edit, Plus, Search, Trash, Package, Filter } from "lucide-react"
@@ -72,7 +73,7 @@ export function IngredientList() {
 
       setCategories(uniqueCategories)
     } catch (error: any) {
-      console.error("Error fetching ingredients:", error)
+      log.error("Error fetching ingredients:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -110,7 +111,7 @@ export function IngredientList() {
 
       fetchIngredients()
     } catch (error: any) {
-      console.error("Error deleting ingredient:", error)
+      log.error("Error deleting ingredient:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

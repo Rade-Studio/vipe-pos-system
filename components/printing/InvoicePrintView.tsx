@@ -10,6 +10,7 @@ import { realtimeService } from "@/lib/supabase/realtime-service"
 import { Printer, Check, X, ArrowLeft, Receipt, Tag } from "lucide-react"
 import { renderInvoice } from "@/lib/print/renderKitchenOrder"
 import type { PrintableInvoice } from "@/types"
+import { log } from "@/lib/log"
 
 interface InvoicePrintViewProps {
   invoice: PrintableInvoice
@@ -40,7 +41,7 @@ export function InvoicePrintView({
 
   useEffect(() => {
     // Log para verificar que los datos del mesero y la mesa se están recibiendo correctamente
-    console.log("InvoicePrintView recibió:", {
+    log.info("InvoicePrintView recibió:", {
       waiter: invoice?.waiter,
       table: invoice?.table,
       items: invoice?.items?.length,
@@ -72,7 +73,7 @@ export function InvoicePrintView({
 
   const { invoiceNumber, date, businessInfo, items, bill, waiter, table, paymentMethod } = invoice
 
-  console.log("Renderizando factura con datos:", {
+  log.info("Renderizando factura con datos:", {
     waiter,
     table,
     items: items?.length || 0,

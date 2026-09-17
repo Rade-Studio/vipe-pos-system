@@ -3,6 +3,7 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/
 import { orderService } from "./service"
 import {toast} from "@/components/ui/use-toast";
 import {CartItem, CommandPayload, PrintableInvoice} from "@/types";
+import { log } from "@/lib/log"
 
 // Tipos para las funciones de callback
 type BillPayload = {
@@ -241,11 +242,11 @@ export const realtimeService = {
     // Activar el canal de tiempo real para verificar la conexión
     const statusChannel = supabase.channel("public:kitchen-status").subscribe((status) => {
       if (status === "SUBSCRIBED") {
-        console.log("Suscripción a cocina activada")
+        log.info("Suscripción a cocina activada")
         connectionStatusCallback(true)
         realtimeService.isConnected = true
       } else {
-        console.log("Estado de suscripción:", status)
+        log.info("Estado de suscripción:", { status })
         connectionStatusCallback(status === "SUBSCRIBED")
         realtimeService.isConnected = status === "SUBSCRIBED"
       }
@@ -403,7 +404,7 @@ export const realtimeService = {
                 }
               }
             } catch (error) {
-              console.error("Error al actualizar orden tras cambio de estado de item:", error)
+              log.error("Error al actualizar orden tras cambio de estado de item:", { error: String(error) })
             }
           }
           // Si el estado cambió a "kitchen"
@@ -414,7 +415,7 @@ export const realtimeService = {
 
               // Verificar si este item ya es conocido
               const isNewItem = !realtimeService.knownItems[orderId]?.has(itemId)
-              console.log(`Item ${itemId} actualizado a estado kitchen, es nuevo: ${isNewItem}`)
+              log.info(`Item ${itemId} actualizado a estado kitchen, es nuevo: ${isNewItem}`)
 
               // Si es un nuevo item, registrarlo
               if (isNewItem) {
@@ -440,7 +441,7 @@ export const realtimeService = {
                 )
               }
             } catch (error) {
-              console.error("Error al procesar item actualizado a estado kitchen:", error)
+              log.error("Error al procesar item actualizado a estado kitchen:", { error: String(error) })
             }
           }
         },
@@ -458,7 +459,7 @@ export const realtimeService = {
           table: "orders",
         },
         (payload) => {
-          console.log("Orden eliminada:", payload)
+          log.info("Orden eliminada:", { payload })
 
           // Eliminar la orden del registro de items conocidos
           if (payload.old && payload.old.id && realtimeService.knownItems[payload.old.id]) {
@@ -478,7 +479,7 @@ export const realtimeService = {
     realtimeService.channels["kitchen-item-updates"] = itemUpdatesChannel
     realtimeService.channels["kitchen-order-deletes"] = orderDeletesChannel
 
-    console.log("Suscripción a cocina configurada correctamente")
+    log.info("Suscripción a cocina configurada correctamente")
 
     // Devolver función para cancelar todas las suscripciones
     return () => {
@@ -522,7 +523,7 @@ export const realtimeService = {
       realtimeService.knownItems[orderId] = new Set()
     }
     realtimeService.knownItems[orderId].add(itemId)
-    console.log(`Registrando item ${itemId} para orden ${orderId}`)
+    log.info(`Registrando item ${itemId} para orden ${orderId}`)
   },
 
   // Registrar múltiples items como conocidos
@@ -531,14 +532,14 @@ export const realtimeService = {
       realtimeService.knownItems[orderId] = new Set()
     }
     itemIds.forEach((id) => realtimeService.knownItems[orderId].add(id))
-    console.log(`Registrando ${itemIds.length} items para orden ${orderId}`)
+    log.info(`Registrando ${itemIds.length} items para orden ${orderId}`)
   },
 
   // Eliminar un item del registro
   unregisterItem: (orderId: string, itemId: string): void => {
     if (realtimeService.knownItems[orderId]) {
       realtimeService.knownItems[orderId].delete(itemId)
-      console.log(`Eliminando registro de item ${itemId} para orden ${orderId}`)
+      log.info(`Eliminando registro de item ${itemId} para orden ${orderId}`)
     }
   },
 
@@ -546,7 +547,7 @@ export const realtimeService = {
   unregisterOrder: (orderId: string): void => {
     if (realtimeService.knownItems[orderId]) {
       delete realtimeService.knownItems[orderId]
-      console.log(`Eliminando registro completo para orden ${orderId}`)
+      log.info(`Eliminando registro completo para orden ${orderId}`)
     }
   },
 

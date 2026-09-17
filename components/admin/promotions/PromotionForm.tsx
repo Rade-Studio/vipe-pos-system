@@ -17,7 +17,7 @@ import { es } from "date-fns/locale"
 import { CalendarIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Promotion } from "@/lib/supabase/promotion-service"
-import { dishService } from "@/lib/supabase-service"
+import { log } from "@/lib/log"
 import { promotionService } from "@/lib/supabase/promotion-service"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -70,7 +70,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
       const dishesData = await dishService.getAll()
       setDishes(dishesData)
     } catch (error) {
-      console.error("Error loading dishes:", error)
+      log.error("Error loading dishes:", { error: String(error) })
     }
   }
 
@@ -187,7 +187,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
       onOpenChange(false)
       resetForm()
     } catch (error) {
-      console.error("Error saving promotion:", error)
+      log.error("Error saving promotion:", { error: String(error) })
     } finally {
       setLoading(false)
     }

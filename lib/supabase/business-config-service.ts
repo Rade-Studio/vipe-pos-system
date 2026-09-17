@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/log"
 
 // Tipo para los valores de configuración
 export type BusinessConfigValues = {
@@ -31,7 +32,7 @@ export const businessConfigService = {
       const { data, error } = await supabase.from("business_config").select("key, value")
 
       if (error) {
-        console.error("Error al obtener configuraciones:", error)
+        log.error("Error al obtener configuraciones:", { error: String(error) })
         throw error
       }
 
@@ -63,7 +64,7 @@ export const businessConfigService = {
 
       return config
     } catch (error) {
-      console.error("Error en getAllConfig:", error)
+      log.error("Error en getAllConfig:", { error: String(error) })
       throw error
     }
   },
@@ -80,13 +81,13 @@ export const businessConfigService = {
           // No se encontró el registro
           return null
         }
-        console.error(`Error al obtener configuración para ${key}:`, error)
+        log.error(`Error al obtener configuración para ${key}:`, { error: String(error) })
         throw error
       }
 
       return data?.value || null
     } catch (error) {
-      console.error(`Error en getConfigValue para ${key}:`, error)
+      log.error(`Error en getConfigValue para ${key}:`, { error: String(error) })
       return null
     }
   },
@@ -111,7 +112,7 @@ export const businessConfigService = {
           .eq("key", key)
 
         if (error) {
-          console.error(`Error al actualizar configuración para ${key}:`, error)
+          log.error(`Error al actualizar configuración para ${key}:`, { error: String(error) })
           throw error
         }
       } else {
@@ -119,12 +120,12 @@ export const businessConfigService = {
         const { error } = await supabase.from("business_config").insert({ key, value: stringValue })
 
         if (error) {
-          console.error(`Error al insertar configuración para ${key}:`, error)
+          log.error(`Error al insertar configuración para ${key}:`, { error: String(error) })
           throw error
         }
       }
     } catch (error) {
-      console.error(`Error en saveConfigValue para ${key}:`, error)
+      log.error(`Error en saveConfigValue para ${key}:`, { error: String(error) })
       throw error
     }
   },
@@ -139,7 +140,7 @@ export const businessConfigService = {
 
       await Promise.all(promises)
     } catch (error) {
-      console.error("Error en saveMultipleConfig:", error)
+      log.error("Error en saveMultipleConfig:", { error: String(error) })
       throw error
     }
   },
@@ -168,7 +169,7 @@ export const businessConfigService = {
         }
       }
     } catch (error) {
-      console.error("Error al inicializar configuración por defecto:", error)
+      log.error("Error al inicializar configuración por defecto:", { error: String(error) })
       throw error
     }
   },

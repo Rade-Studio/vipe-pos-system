@@ -10,7 +10,8 @@ import { DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { recipeService, ingredientService } from "@/lib/supabase"
-import type { Dish, Ingredient, Recipe, RecipeIngredient } from "@/types/models"
+import type { Dish, Ingredient, Recipe, RecipeIngredient } from "@/types"
+import { log } from "@/lib/log"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -60,7 +61,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       setLoading(true)
       // Cargar ingredientes disponibles
       const ingredientsData = await ingredientService.getAll()
-      console.log("Ingredientes cargados:", ingredientsData)
+      log.info("Ingredientes cargados:", { ingredientsData })
       setIngredients(ingredientsData)
 
       // Buscar si ya existe una receta para este plato
@@ -95,7 +96,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
         setLimitingIngredient(null)
       }
     } catch (error) {
-      console.error("Error loading recipe data:", error)
+      log.error("Error loading recipe data:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -116,7 +117,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
         description: "La lista de ingredientes ha sido actualizada",
       })
     } catch (error) {
-      console.error("Error refreshing ingredients:", error)
+      log.error("Error refreshing ingredients:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -203,7 +204,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       const existingIngredient = recipeIngredients.find((item) => item.ingredientId === newIngredient.ingredientId)
 
       if (existingIngredient) {
-        console.log("Ingrediente existente encontrado, actualizando cantidad:", existingIngredient)
+        log.info("Ingrediente existente encontrado, actualizando cantidad:", { existingIngredient })
 
         // Actualizar la cantidad del ingrediente existente
         const updatedIngredient = await recipeService.updateRecipeIngredient(existingIngredient.id, {
@@ -234,7 +235,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
           description: "Se ha actualizado la cantidad del ingrediente en la receta",
         })
       } else {
-        console.log("Añadiendo nuevo ingrediente a la receta:", newIngredient)
+        log.info("Añadiendo nuevo ingrediente a la receta:", { newIngredient })
 
         try {
           // Guardar el ID del ingrediente antes de la llamada a la API
@@ -247,7 +248,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
             quantity: newIngredient.quantity,
           })
 
-          console.log("Ingrediente añadido:", addedIngredient)
+          log.info("Ingrediente añadido:", { addedIngredient })
 
           // Usar el ID del ingrediente que conocemos, en caso de que la respuesta no lo incluya
           const ingredientId = addedIngredient.ingredientId || ingredientIdToAdd
@@ -261,7 +262,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
 
           // Verificar que se encontró el ingrediente
           if (!ingredientDetails) {
-            console.warn(
+            log.warn(
               "No se encontró el ingrediente después de añadirlo. Usando datos del ingrediente seleccionado.",
             )
 
@@ -286,7 +287,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
               description: "El ingrediente ha sido añadido a la receta",
             })
           } else {
-            console.log("Detalles del ingrediente encontrado:", ingredientDetails)
+            log.info("Detalles del ingrediente encontrado:", { ingredientDetails })
 
             // Crear un objeto completo con todos los datos necesarios
             const newRecipeIngredient = {
@@ -313,11 +314,11 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
           // Recargar datos para asegurar consistencia
           loadData()
         } catch (error: any) {
-          console.error("Error al añadir ingrediente:", error)
+          log.error("Error al añadir ingrediente:", { error: String(error) })
 
           // Si el error es por duplicado, intentar actualizar en su lugar
           if (error.message && error.message.includes("duplicate key value")) {
-            console.log("Error de duplicado detectado, intentando actualizar en su lugar")
+            log.info("Error de duplicado detectado, intentando actualizar en su lugar")
 
             // Recargar los ingredientes de la receta para obtener el ID del ingrediente existente
             const recipeIngredientsData = await recipeService.getRecipeIngredients(recipeId)
@@ -358,7 +359,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       // Recalcular el máximo de platos que se pueden preparar con los datos actualizados
       calculateMaxServings(recipeIngredients, ingredients)
     } catch (error) {
-      console.error("Error adding ingredient:", error)
+      log.error("Error adding ingredient:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error al añadir ingrediente",
@@ -385,7 +386,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
         description: "El ingrediente ha sido eliminado de la receta",
       })
     } catch (error) {
-      console.error("Error removing ingredient:", error)
+      log.error("Error removing ingredient:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

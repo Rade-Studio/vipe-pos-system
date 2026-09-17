@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { log } from "@/lib/log"
 import { CategorySelector } from "@/components/pos/CategorySelector"
 import { DishGrid } from "@/components/pos/DishGrid"
 import type { Category, Dish } from "@/types"
@@ -53,7 +54,7 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
         setSelectedCategory(formattedCategories[0].id)
       }
     } catch (err) {
-      console.error("Error al cargar categorías:", err)
+      log.error("Error al cargar categorías:", { err: String(err) })
       toast({
         title: "Error",
         description: "No se pudieron cargar las categorías. Intente nuevamente.",
@@ -88,7 +89,7 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
 
       setDishes(formattedDishes)
     } catch (err) {
-      console.error("Error al cargar platos:", err)
+      log.error("Error al cargar platos:", { err: String(err) })
       toast({
         title: "Error",
         description: "No se pudieron cargar los platos. Intente nuevamente.",

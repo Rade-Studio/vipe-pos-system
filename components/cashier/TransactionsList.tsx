@@ -5,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { log } from "@/lib/log"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDateTime } from "@/utils/helpers"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { Search, Download, Loader2 } from "lucide-react"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CashTransactionsList } from "./CashTransactionsList"
 import { useToast } from "@/hooks/use-toast"
@@ -18,7 +19,7 @@ export function TransactionsList() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const { currentRegister, loadCurrentRegister } = useCashRegisterStore()
-  const { profiles } = usePOSStore()
+  const { profiles } = useProfileStore()
   const { toast } = useToast()
 
   // Función para obtener el nombre del mesero por ID
@@ -49,7 +50,7 @@ export function TransactionsList() {
       try {
         await loadCurrentRegister()
       } catch (error) {
-        console.error("Error al cargar registro actual:", error)
+        log.error("Error al cargar registro actual:", { error: String(error) })
       } finally {
         setIsLoading(false)
       }
@@ -159,7 +160,7 @@ export function TransactionsList() {
         description: `Reimprimiendo factura para la orden ${orderId.substring(0, 8)}`,
       })
     } catch (error) {
-      console.error("Error al reimprimir factura:", error)
+      log.error("Error al reimprimir factura:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudo reimprimir la factura",

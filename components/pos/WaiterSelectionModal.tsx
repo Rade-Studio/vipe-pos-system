@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { waiterService } from "@/lib/supabase/service"
+import { log } from "@/lib/log"
 import { Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -53,7 +54,7 @@ export function WaiterSelectionModal({ open, onOpenChange, onSelect, defaultWait
       const data = await waiterService.getAll()
       setWaiters(data)
     } catch (err) {
-      console.error("Error al cargar meseros:", err)
+      log.error("Error al cargar meseros:", { err: String(err) })
       setError("No se pudieron cargar los meseros. Intente nuevamente.")
       toast({
         title: "Error",

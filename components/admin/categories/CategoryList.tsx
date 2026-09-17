@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Plus, Edit, Trash2 } from "lucide-react"
-import { categoryService } from "@/lib/supabase-service"
-import type { Category } from "@/types/models"
+import { categoryService } from "@/lib/supabase/service"
+import type { Category } from "@/types"
+import { log } from "@/lib/log"
 import { CategoryForm } from "../menu/CategoryForm"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -41,7 +42,7 @@ export function CategoryList() {
       const data = await categoryService.getAll()
       setCategories(data)
     } catch (error) {
-      console.error("Error loading categories:", error)
+      log.error("Error loading categories:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -78,7 +79,7 @@ export function CategoryList() {
       })
       loadCategories()
     } catch (error) {
-      console.error("Error deleting category:", error)
+      log.error("Error deleting category:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -108,7 +109,7 @@ export function CategoryList() {
       setShowForm(false)
       loadCategories()
     } catch (error) {
-      console.error("Error saving category:", error)
+      log.error("Error saving category:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

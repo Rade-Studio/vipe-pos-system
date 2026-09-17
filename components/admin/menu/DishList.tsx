@@ -58,7 +58,7 @@ export function DishList() {
       setDishes(dishesData || [])
       setCategories(categoriesData || [])
     } catch (error: any) {
-      console.error("Error fetching data:", error)
+      log.error("Error fetching data:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -93,7 +93,7 @@ export function DishList() {
 
       fetchData()
     } catch (error: any) {
-      console.error("Error deleting dish:", error)
+      log.error("Error deleting dish:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

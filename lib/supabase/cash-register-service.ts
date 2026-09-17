@@ -1,4 +1,5 @@
 import { supabase } from "./client"
+import { log } from "@/lib/log"
 import type {
   CashRegister,
   CashRegisterSummary,
@@ -10,7 +11,7 @@ import type {
 export const cashRegisterService = {
   async openRegister(initialCash: number): Promise<CashRegister> {
     try {
-      console.log("Abriendo caja con efectivo inicial:", initialCash)
+      log.info("Abriendo caja con efectivo inicial:", { initialCash })
 
       const newRegister = {
         opening_timestamp: new Date().toISOString(),
@@ -21,11 +22,11 @@ export const cashRegisterService = {
       const { data, error } = await supabase.from("cash_registers").insert(newRegister).select().single()
 
       if (error) {
-        console.error("Error al abrir caja:", error)
+        log.error("Error al abrir caja:", { error: String(error) })
         throw error
       }
 
-      console.log("Caja abierta con éxito:", data)
+      log.info("Caja abierta con éxito:", { data })
 
       // Convertir el formato de la base de datos al formato del store
       return {
@@ -39,14 +40,14 @@ export const cashRegisterService = {
         updated_at: data.updated_at ? new Date(data.updated_at) : undefined,
       }
     } catch (error) {
-      console.error("Error en openRegister:", error)
+      log.error("Error en openRegister:", { error: String(error) })
       throw error
     }
   },
 
   async closeRegister(registerId: string, finalCash: number): Promise<void> {
     try {
-      console.log("Cerrando caja:", registerId, "con efectivo final:", finalCash)
+      log.info("Cerrando caja:", { registerId, finalCash })
 
       const { error } = await supabase
         .from("cash_registers")
@@ -59,13 +60,13 @@ export const cashRegisterService = {
         .eq("id", registerId)
 
       if (error) {
-        console.error("Error al cerrar caja:", error)
+        log.error("Error al cerrar caja:", { error: String(error) })
         throw error
       }
 
-      console.log("Caja cerrada con éxito")
+      log.info("Caja cerrada con éxito")
     } catch (error) {
-      console.error("Error en closeRegister:", error)
+      log.error("Error en closeRegister:", { error: String(error) })
       throw error
     }
   },
@@ -148,7 +149,7 @@ export const cashRegisterService = {
         updated_at: data.updated_at ? new Date(data.updated_at) : undefined,
       }
     } catch (error) {
-      console.error("Error en getCurrentRegister:", error)
+      log.error("Error en getCurrentRegister:", { error: String(error) })
       throw error
     }
   },
@@ -161,15 +162,15 @@ export const cashRegisterService = {
         .order("opening_timestamp", { ascending: false })
 
       if (error) {
-        console.error("Error al obtener todas las cajas:", error)
+        log.error("Error al obtener todas las cajas:", { error: String(error) })
         throw error
       }
 
       // Cargar todas las transacciones
       const transactions = await this.loadTransactionsForRegisters(data.map(r => r.id))
 
-      console.log("Cajas obtenidas:", data.length)
-      console.log("------------------- data -------------------", data)
+      log.info("Cajas obtenidas:", { count: data.length })
+      log.info("------------------- data -------------------", { data })
 
       // Convertir el formato de la base de datos al formato del store
       return data.map((register) => ({
@@ -185,19 +186,19 @@ export const cashRegisterService = {
         updated_at: register.updated_at ? new Date(register.updated_at) : undefined,
       }))
     } catch (error) {
-      console.error("Error en getAllRegisters:", error)
+      log.error("Error en getAllRegisters:", { error: String(error) })
       throw error
     }
   },
 
   async getRegisterById(registerId: string): Promise<CashRegister | null> {
     try {
-      console.log("Obteniendo caja por ID:", registerId)
+      log.info("Obteniendo caja por ID:", { registerId })
 
       const { data, error } = await supabase.from("cash_registers").select("*").eq("id", registerId).single()
 
       if (error) {
-        console.error("Error al obtener caja por ID:", error)
+        log.error("Error al obtener caja por ID:", { error: String(error) })
         throw error
       }
 
@@ -209,7 +210,7 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (transactionsError) {
-        console.error("Error al obtener transacciones:", transactionsError)
+        log.error("Error al obtener transacciones:", { transactionsError: String(transactionsError) })
         throw transactionsError
       }
 
@@ -221,7 +222,7 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (cashTransactionsError) {
-        console.error("Error al obtener transacciones de efectivo:", cashTransactionsError)
+        log.error("Error al obtener transacciones de efectivo:", { cashTransactionsError: String(cashTransactionsError) })
         throw cashTransactionsError
       }
 
@@ -262,7 +263,7 @@ export const cashRegisterService = {
         updated_at: data.updated_at ? new Date(data.updated_at) : undefined,
       }
     } catch (error) {
-      console.error("Error en getRegisterById:", error)
+      log.error("Error en getRegisterById:", { error: String(error) })
       throw error
     }
   },
@@ -270,7 +271,7 @@ export const cashRegisterService = {
   // Nuevo método para obtener cajas por fecha
   async getRegistersByDate(date: Date): Promise<CashRegister[]> {
     try {
-      console.log("Obteniendo cajas por fecha:", date.toISOString())
+      log.info("Obteniendo cajas por fecha:", { date: date.toISOString() })
 
       const startOfDay = new Date(date)
       startOfDay.setHours(0, 0, 0, 0)
@@ -286,11 +287,11 @@ export const cashRegisterService = {
         .order("opening_timestamp", { ascending: false })
 
       if (error) {
-        console.error("Error al obtener cajas por fecha:", error)
+        log.error("Error al obtener cajas por fecha:", { error: String(error) })
         throw error
       }
 
-      console.log("Cajas obtenidas por fecha:", data.length)
+      log.info("Cajas obtenidas por fecha:", { count: data.length })
 
       // Convertir el formato de la base de datos al formato del store
       return data.map((register) => ({
@@ -306,7 +307,7 @@ export const cashRegisterService = {
         updated_at: register.updated_at ? new Date(register.updated_at) : undefined,
       }))
     } catch (error) {
-      console.error("Error en getRegistersByDate:", error)
+      log.error("Error en getRegistersByDate:", { error: String(error) })
       throw error
     }
   },
@@ -317,7 +318,7 @@ export const cashRegisterService = {
     cashTransactions: CashTransaction[]
   }> {
     try {
-      console.log("Cargando transacciones para cajas:", registerIds)
+      log.info("Cargando transacciones para cajas:", { registerIds })
 
       // Obtener todas las transacciones para los IDs de caja proporcionados
       const { data: transactions, error: transactionsError } = await supabase
@@ -327,7 +328,7 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (transactionsError) {
-        console.error("Error al obtener transacciones:", transactionsError)
+        log.error("Error al obtener transacciones:", { transactionsError: String(transactionsError) })
         throw transactionsError
       }
 
@@ -339,7 +340,7 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (cashTransactionsError) {
-        console.error("Error al obtener transacciones de efectivo:", cashTransactionsError)
+        log.error("Error al obtener transacciones de efectivo:", { cashTransactionsError: String(cashTransactionsError) })
         throw cashTransactionsError
       }
 
@@ -372,7 +373,7 @@ export const cashRegisterService = {
           : [],
       }
     } catch (error) {
-      console.error("Error en loadTransactionsForRegisters:", error)
+      log.error("Error en loadTransactionsForRegisters:", { error: String(error) })
       throw error
     }
   },
@@ -395,7 +396,7 @@ export const cashRegisterService = {
       const transactionsToInsert: any[] = [];
 
       if (method === "multiple" && paymentsMethod && paymentsAmount) {
-        console.log("Múltiples pagos:", paymentsMethod, paymentsAmount);
+        log.info("Múltiples pagos:", { paymentsMethod, paymentsAmount });
         // Lógica para múltiples métodos de pago
         const countMethodsTrue = Object.values(paymentsMethod).filter((isTrue) => isTrue).length;
         const tipAmountDist = countMethodsTrue > 1 && tipAmount ? Math.round(Number(tipAmount) / countMethodsTrue) : undefined; // Si hay más de un método de pago, el tipo no se puede distribuir
@@ -443,16 +444,16 @@ export const cashRegisterService = {
         throw new Error("No hay transacciones válidas para insertar.");
       }
 
-      console.log("Transacciones a insertar:", transactionsToInsert);
+      log.info("Transacciones a insertar:", { transactionsToInsert });
 
       const {data, error} = await supabase.from("payment_transactions").insert(transactionsToInsert).select();
 
       if (error) {
-        console.error("Error al agregar transacción(es):", error);
+        log.error("Error al agregar transacción(es):", { error: String(error) });
         throw error;
       }
 
-      console.log("Transacción(es) agregada(s) con éxito:", data);
+      log.info("Transacción(es) agregada(s) con éxito:", { data });
 
       // Convertir el formato de la base de datos al formato del store para cada transacción
       return data.map((d: any) => ({
@@ -469,7 +470,7 @@ export const cashRegisterService = {
         cash_register_id: d.cash_register_id,
       }));
     } catch (error) {
-      console.error("Error en addTransaction:", error);
+      log.error("Error en addTransaction:", { error: String(error) });
       throw error;
     }
   },
@@ -482,7 +483,7 @@ export const cashRegisterService = {
     description: string,
   ): Promise<CashTransaction> {
     try {
-      console.log("Agregando transacción de efectivo a caja:", registerId, {
+      log.info("Agregando transacción de efectivo a caja:", { registerId,
         amount,
         type,
         description,
@@ -499,11 +500,11 @@ export const cashRegisterService = {
       const { data, error } = await supabase.from("cash_transactions").insert(transaction).select().single()
 
       if (error) {
-        console.error("Error al agregar transacción de efectivo:", error)
+        log.error("Error al agregar transacción de efectivo:", { error: String(error) })
         throw error
       }
 
-      console.log("Transacción de efectivo agregada con éxito:", data)
+      log.info("Transacción de efectivo agregada con éxito:", { data })
 
       // Convertir el formato de la base de datos al formato del store
       return {
@@ -515,7 +516,7 @@ export const cashRegisterService = {
         cash_register_id: data.cash_register_id,
       }
     } catch (error) {
-      console.error("Error en addCashTransaction:", error)
+      log.error("Error en addCashTransaction:", { error: String(error) })
       throw error
     }
   },
@@ -523,7 +524,7 @@ export const cashRegisterService = {
   // Actualizar la función getTransactionsByRegisterId para incluir waiterId y tipAmount
   async getTransactionsByRegisterId(registerId: string): Promise<PaymentTransaction[]> {
     try {
-      console.log("Obteniendo transacciones para caja:", registerId)
+      log.info("Obteniendo transacciones para caja:", { registerId })
 
       const { data, error } = await supabase
         .from("payment_transactions")
@@ -532,11 +533,11 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (error) {
-        console.error("Error al obtener transacciones:", error)
+        log.error("Error al obtener transacciones:", { error: String(error) })
         throw error
       }
 
-      console.log("Transacciones obtenidas:", data.length)
+      log.info("Transacciones obtenidas:", { count: data.length })
 
       // Convertir el formato de la base de datos al formato del store
       return data.map((t) => ({
@@ -553,7 +554,7 @@ export const cashRegisterService = {
         cash_register_id: t.cash_register_id,
       }))
     } catch (error) {
-      console.error("Error en getTransactionsByRegisterId:", error)
+      log.error("Error en getTransactionsByRegisterId:", { error: String(error) })
       throw error
     }
   },
@@ -561,7 +562,7 @@ export const cashRegisterService = {
   // Nueva función para obtener transacciones de efectivo por ID de caja
   async getCashTransactionsByRegisterId(registerId: string): Promise<CashTransaction[]> {
     try {
-      console.log("Obteniendo transacciones de efectivo para caja:", registerId)
+      log.info("Obteniendo transacciones de efectivo para caja:", { registerId })
 
       const { data, error } = await supabase
         .from("cash_transactions")
@@ -570,11 +571,11 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (error) {
-        console.error("Error al obtener transacciones de efectivo:", error)
+        log.error("Error al obtener transacciones de efectivo:", { error: String(error) })
         throw error
       }
 
-      console.log("Transacciones de efectivo obtenidas:", data.length)
+      log.info("Transacciones de efectivo obtenidas:", { count: data.length })
 
       // Convertir el formato de la base de datos al formato del store
       return data.map((t) => ({
@@ -586,7 +587,7 @@ export const cashRegisterService = {
         cash_register_id: t.cash_register_id,
       }))
     } catch (error) {
-      console.error("Error en getCashTransactionsByRegisterId:", error)
+      log.error("Error en getCashTransactionsByRegisterId:", { error: String(error) })
       throw error
     }
   },
@@ -600,7 +601,7 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: true })
 
       if (error) {
-        console.error("Error al obtener transacciones por orden:", error)
+        log.error("Error al obtener transacciones por orden:", { error: String(error) })
         throw error
       }
 
@@ -618,7 +619,7 @@ export const cashRegisterService = {
         cash_register_id: t.cash_register_id,
       }))
     } catch (error) {
-      console.error("Error en getTransactionsByOrderId:", error)
+      log.error("Error en getTransactionsByOrderId:", { error: String(error) })
       throw error
     }
   },
@@ -626,7 +627,7 @@ export const cashRegisterService = {
   // Actualizar la función getTransactionsByDateRange para incluir waiterId y tipAmount
   async getTransactionsByDateRange(startDate: Date, endDate: Date): Promise<PaymentTransaction[]> {
     try {
-      console.log("Obteniendo transacciones por rango de fechas:", startDate.toISOString(), "a", endDate.toISOString())
+      log.info("Obteniendo transacciones por rango de fechas:", { startDate: startDate.toISOString(), endDate: endDate.toISOString() })
 
       const { data, error } = await supabase
         .from("payment_transactions")
@@ -636,11 +637,11 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (error) {
-        console.error("Error al obtener transacciones por rango de fechas:", error)
+        log.error("Error al obtener transacciones por rango de fechas:", { error: String(error) })
         throw error
       }
 
-      console.log("Transacciones obtenidas:", data.length)
+      log.info("Transacciones obtenidas:", { count: data.length })
 
       // Convertir el formato de la base de datos al formato del store
       return data.map((t) => ({
@@ -657,18 +658,16 @@ export const cashRegisterService = {
         cash_register_id: t.cash_register_id,
       }))
     } catch (error) {
-      console.error("Error en getTransactionsByDateRange:", error)
+      log.error("Error en getTransactionsByDateRange:", { error: String(error) })
       throw error
     }
   },
 
   async getCashTransactionsByDateRange(startDate: Date, endDate: Date): Promise<CashTransaction[]> {
     try {
-      console.log(
+      log.info(
         "Obteniendo transacciones de efectivo por rango de fechas:",
-        startDate.toISOString(),
-        "a",
-        endDate.toISOString(),
+        { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
       )
 
       const { data, error } = await supabase
@@ -679,11 +678,11 @@ export const cashRegisterService = {
         .order("timestamp", { ascending: false })
 
       if (error) {
-        console.error("Error al obtener transacciones de efectivo por rango de fechas:", error)
+        log.error("Error al obtener transacciones de efectivo por rango de fechas:", { error: String(error) })
         throw error
       }
 
-      console.log("Transacciones de efectivo obtenidas:", data.length)
+      log.info("Transacciones de efectivo obtenidas:", { count: data.length })
 
       // Convertir el formato de la base de datos al formato del store
       return data.map((t) => ({
@@ -695,7 +694,7 @@ export const cashRegisterService = {
         cash_register_id: t.cash_register_id,
       }))
     } catch (error) {
-      console.error("Error en getCashTransactionsByDateRange:", error)
+      log.error("Error en getCashTransactionsByDateRange:", { error: String(error) })
       throw error
     }
   },
@@ -725,7 +724,7 @@ export const cashRegisterService = {
         cash_register_id: t.cash_register_id,
       }))
     } catch (error) {
-      console.error("Error en getTransactionsByRegisters:", error)
+      log.error("Error en getTransactionsByRegisters:", { error: String(error) })
       throw error
     }
   },
@@ -750,7 +749,7 @@ export const cashRegisterService = {
         cash_register_id: t.cash_register_id,
       }))
     } catch (error) {
-      console.error("Error en getCashTransactionsByRegisters:", error)
+      log.error("Error en getCashTransactionsByRegisters:", { error: String(error) })
       throw error
     }
   },

@@ -5,12 +5,15 @@ import { Table as TableUI, TableBody, TableCell, TableHead, TableHeader, TableRo
 import { Button } from "@/components/ui/button"
 import { Printer, RefreshCw } from "lucide-react"
 import {formatCurrency, formatDate, formatDateTime} from "@/utils/helpers"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
+import { useTableStore } from "@/store/useTableStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { Order, Table, Profile, PrintableInvoice } from "@/types"
 import { useConfigStore } from "@/store/use-config-store"
 import { format } from "date-fns"
 import { getOrdersByDate } from "@/lib/supabase/service"
+import { log } from "@/lib/log"
 import { useToast } from "@/components/ui/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Pagination } from "@/components/ui/pagination"
@@ -22,7 +25,9 @@ interface CompletedOrdersTableProps {
 }
 
 export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps) {
-  const { orders, tables, profiles } = usePOSStore()
+  const orders = useOrderStore((s) => s.orders)
+  const tables = useTableStore((s) => s.tables)
+  const profiles = useProfileStore((s) => s.profiles)
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast } = useToast()
 
@@ -41,7 +46,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       const fetchedOrders = await getOrdersByDate(selectedDate)
       setDbOrders(fetchedOrders)
     } catch (error) {
-      console.error("Error al cargar órdenes:", error)
+      log.error("Error al cargar órdenes:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudieron cargar las órdenes de la base de datos",
@@ -130,7 +135,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     const waiter = profiles.find((p) => p.id === order.waiter)
 
     if (!table || !waiter) {
-      console.error("Mesa o mesero no encontrado para la orden:", order.id)
+      log.error("Mesa o mesero no encontrado para la orden:", { orderId: order.id })
       toast({
         title: "Advertencia",
         description: "No se encontró información completa de la mesa o mesero para esta orden",
@@ -146,7 +151,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     const tipPercentage = order.tipPercentage || order.bill?.tipPercentage || 0
     const total = order.total || order.bill?.total || 0
 
-    console.log("Datos de la orden para factura:", {
+    log.info("Datos de la orden para factura:", {
       id: order.id,
       subtotal,
       tax,

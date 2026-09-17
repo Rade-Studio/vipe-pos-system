@@ -111,6 +111,7 @@ export type Dish = {
   price: number
   categoryId: string
   image: string
+  available?: boolean
   discountPercentage: number | null
   discountAmount: number | null
   originalPrice: number

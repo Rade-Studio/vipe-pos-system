@@ -42,7 +42,7 @@ export function CategoryList() {
 
       setCategories(data || [])
     } catch (error: any) {
-      console.error("Error fetching categories:", error)
+      log.error("Error fetching categories:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -99,7 +99,7 @@ export function CategoryList() {
 
       fetchCategories()
     } catch (error: any) {
-      console.error("Error deleting category:", error)
+      log.error("Error deleting category:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

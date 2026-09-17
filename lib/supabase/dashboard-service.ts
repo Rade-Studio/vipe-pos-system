@@ -1,5 +1,6 @@
 import { supabase } from "./client"
 import type { DailySales, PopularDish, CategorySales } from "@/types"
+import { log } from "@/lib/log"
 
 export const dashboardService = {
   /**
@@ -38,7 +39,7 @@ export const dashboardService = {
         amount: amount,
       }))
     } catch (error) {
-      console.error("Error al obtener ventas diarias:", error)
+      log.error("Error al obtener ventas diarias:", { error: String(error) })
       return []
     }
   },
@@ -79,7 +80,7 @@ export const dashboardService = {
         .sort((a, b) => b.count - a.count)
         .slice(0, limit)
     } catch (error) {
-      console.error("Error al obtener platos populares:", error)
+      log.error("Error al obtener platos populares:", { error: String(error) })
       return []
     }
   },
@@ -137,7 +138,7 @@ export const dashboardService = {
         activeWaiters: waiters.length,
       }
     } catch (error) {
-      console.error("Error al obtener estadísticas del dashboard:", error)
+      log.error("Error al obtener estadísticas del dashboard:", { error: String(error) })
       return {
         monthSales: 0,
         kitchenOrdersCount: 0,

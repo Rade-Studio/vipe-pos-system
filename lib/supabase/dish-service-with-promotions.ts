@@ -1,5 +1,6 @@
 import { supabase } from "./client"
 import type { Promotion } from "./promotion-service"
+import { log } from "@/lib/log"
 
 // Función para calcular el descuento
 export function calculateDiscount(price: number, promotion: Promotion): number {
@@ -25,7 +26,7 @@ export const dishServiceWithPromotions = {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error("Error getting active promotions:", error)
+      log.error("Error getting active promotions:", { error: String(error) })
       return []
     }
   },
@@ -87,7 +88,7 @@ export const dishServiceWithPromotions = {
 
       return dishesWithPromotions
     } catch (error) {
-      console.error("Error getting dishes with promotions:", error)
+      log.error("Error getting dishes with promotions:", { error: String(error) })
       throw error
     }
   },

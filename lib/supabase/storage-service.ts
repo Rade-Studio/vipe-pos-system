@@ -1,18 +1,19 @@
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/log"
 
 export const storageService = {
   /**
    * Sube una imagen a Supabase Storage
    */
   async uploadImage(file: File, bucketName = "dishes"): Promise<string> {
-    console.log(`StorageService: Iniciando carga de imagen en bucket ${bucketName}`)
+    log.info(`StorageService: Iniciando carga de imagen en bucket ${bucketName}`)
 
     try {
       // Generar nombre de archivo único
       const fileExt = file.name.split(".").pop()
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${fileExt}`
 
-      console.log(`StorageService: Subiendo archivo ${fileName} al bucket ${bucketName}...`)
+      log.info(`StorageService: Subiendo archivo ${fileName} al bucket ${bucketName}...`)
 
       // Subir archivo
       const { error: uploadError, data: uploadData } = await supabase.storage.from(bucketName).upload(fileName, file, {
@@ -24,13 +25,13 @@ export const storageService = {
       if (uploadError) {
         // Si el error es porque el bucket no existe, proporcionar un mensaje claro
         if (uploadError.message.includes("bucket") && uploadError.message.includes("not found")) {
-          console.error(`StorageService: El bucket ${bucketName} no existe.`)
+          log.error(`StorageService: El bucket ${bucketName} no existe.`)
           throw new Error(
             `El bucket "${bucketName}" no existe. Por favor, créalo manualmente en el panel de Supabase Storage.`,
           )
         }
 
-        console.error(`StorageService: Error al subir archivo:`, uploadError)
+        log.error(`StorageService: Error al subir archivo:`, { uploadError: String(uploadError) })
         throw new Error(`Error al subir archivo: ${uploadError.message}`)
       }
 
@@ -45,25 +46,25 @@ export const storageService = {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabase.supabaseUrl
       const manualUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${fileName}`
 
-      console.log(`StorageService: URL generada por Supabase:`, urlData.publicUrl)
-      console.log(`StorageService: URL construida manualmente:`, manualUrl)
+      log.info(`StorageService: URL generada por Supabase:`, { publicUrl: urlData.publicUrl })
+      log.info(`StorageService: URL construida manualmente:`, { manualUrl })
 
       // Verificar si la URL es accesible
       try {
         const response = await fetch(urlData.publicUrl, { method: "HEAD" })
         if (response.ok) {
-          console.log(`StorageService: La URL es accesible`)
+          log.info(`StorageService: La URL es accesible`)
           return urlData.publicUrl
         } else {
-          console.warn(`StorageService: La URL no es accesible, usando URL manual`)
+          log.warn(`StorageService: La URL no es accesible, usando URL manual`)
           return manualUrl
         }
       } catch (error) {
-        console.warn(`StorageService: Error al verificar URL, usando URL manual:`, error)
+        log.warn(`StorageService: Error al verificar URL, usando URL manual:`, { error: String(error) })
         return manualUrl
       }
     } catch (error: any) {
-      console.error("StorageService: Error completo:", error)
+      log.error("StorageService: Error completo:", { error: String(error) })
       throw error
     }
   },
@@ -87,18 +88,18 @@ export const storageService = {
       const bucket = pathParts[bucketIndex]
       const filePath = pathParts.slice(bucketIndex + 1).join("/")
 
-      console.log(`StorageService: Eliminando archivo ${filePath} del bucket ${bucket}...`)
+      log.info(`StorageService: Eliminando archivo ${filePath} del bucket ${bucket}...`)
 
       const { error } = await supabase.storage.from(bucket).remove([filePath])
 
       if (error) {
-        console.error("StorageService: Error al eliminar archivo:", error)
+        log.error("StorageService: Error al eliminar archivo:", { error: String(error) })
         throw new Error(`Error al eliminar archivo: ${error.message}`)
       }
 
-      console.log("StorageService: Archivo eliminado exitosamente")
+      log.info("StorageService: Archivo eliminado exitosamente")
     } catch (error: any) {
-      console.error("StorageService: Error al eliminar imagen:", error)
+      log.error("StorageService: Error al eliminar imagen:", { error: String(error) })
       throw error
     }
   },
@@ -111,7 +112,7 @@ export const storageService = {
       const response = await fetch(url, { method: "HEAD" })
       return response.ok
     } catch (error) {
-      console.error("Error al verificar accesibilidad de imagen:", error)
+      log.error("Error al verificar accesibilidad de imagen:", { error: String(error) })
       return false
     }
   },

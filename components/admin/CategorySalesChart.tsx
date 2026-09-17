@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { CategorySales } from "@/types"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, LabelList, ResponsiveContainer } from "recharts"
 import React, { useEffect } from "react"
+import { log } from "@/lib/log"
 
 interface CategorySalesChartProps {
   data: CategorySales[]
@@ -15,8 +16,8 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"]
 export function CategorySalesChart({ data, categories }: CategorySalesChartProps) {
   // Añadir logging para depuración
   useEffect(() => {
-    console.log("CategorySalesChart - Datos recibidos:", data)
-    console.log("CategorySalesChart - Categorías:", categories)
+    log.info("CategorySalesChart - Datos recibidos:", { data })
+    log.info("CategorySalesChart - Categorías:", { categories })
   }, [data, categories])
 
   // Verificar si hay datos

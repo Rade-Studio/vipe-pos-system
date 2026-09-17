@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
@@ -185,7 +186,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
       form.reset()
       if (onSuccess) onSuccess()
     } catch (error: any) {
-      console.error("Error saving category:", error)
+      log.error("Error saving category:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

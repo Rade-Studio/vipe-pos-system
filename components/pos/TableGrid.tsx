@@ -8,6 +8,7 @@ import { getStatusColor, getStatusLabel } from "@/utils/helpers"
 import { LockIcon, UnlockIcon, Users2, Coffee, UtensilsCrossed, CheckCircle2, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { tableService } from "@/lib/supabase/service"
+import { log } from "@/lib/log"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 
 // Importar el componente Skeleton
@@ -147,7 +148,7 @@ export function TableGrid({
         setTables(formattedTables)
         setInitialLoadDone(true)
       } catch (error) {
-        console.error("Error al cargar mesas:", error)
+        log.error("Error al cargar mesas:", { error: String(error) })
       } finally {
         setLoading(false)
       }
@@ -158,7 +159,7 @@ export function TableGrid({
 
     // Suscribirse a cambios en tiempo real — merge on payload, no full reload.
     const unsubscribe = realtimeService.subscribeToTables((payload) => {
-      console.log("Cambio en mesa recibido:", payload)
+      log.info("Cambio en mesa recibido:", { payload })
       // Merge into existing array without a re-query — no setLoading(true) here,
       // so the grid stays visible during the update.
       setTables((prev) => mergeTable(prev, payload))

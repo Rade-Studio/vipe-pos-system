@@ -11,6 +11,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { StockTransactionForm } from "./StockTransactionForm"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/log"
 import { Search, Plus, FileDown, FileText, RefreshCw, Filter, X, Calendar, CheckCircle, Clock } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
@@ -83,12 +84,12 @@ export function StockTransactionsList() {
 
         query = query.gte("created_at", sevenDaysAgo.toISOString())
       }
-      console.log(categoryFilter, "categoryFilter")
+      log.info("categoryFilter", { categoryFilter })
       // Solo aplicar el filtro de categoría si no es "all" y no es null
       if (categoryFilter && categoryFilter !== "all") {
         query = query.eq("ingredients.category_id", categoryFilter)
       }
-      console.log(query)
+      log.info("query", { query })
       // Solo aplicar el filtro de estado si no es "all" y no es null
       if (statusFilter && statusFilter !== "all") {
         query = query.eq("payment_status", statusFilter)
@@ -133,13 +134,13 @@ export function StockTransactionsList() {
       }
 
       const { data, error } = await query
-      console.log(data, "data")
+      log.info("data", { data })
       if (error) throw error
       const dataFiltered = data.filter(item => item.ingredients)
 
       setTransactions(dataFiltered || [])
     } catch (error: any) {
-      console.error("Error fetching transactions:", error)
+      log.error("Error fetching transactions:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -158,7 +159,7 @@ export function StockTransactionsList() {
 
       setIngredients(data || [])
     } catch (error: any) {
-      console.error("Error fetching ingredients:", error)
+      log.error("Error fetching ingredients:", { error: String(error) })
     }
   }
 
@@ -170,7 +171,7 @@ export function StockTransactionsList() {
 
       setCategories(data || [])
     } catch (error: any) {
-      console.error("Error fetching categories:", error)
+      log.error("Error fetching categories:", { error: String(error) })
     }
   }
 
@@ -260,7 +261,7 @@ export function StockTransactionsList() {
         description: `La transacción ahora está ${newStatus === "pagado" ? "pagada" : "pendiente de pago"}.`,
       })
     } catch (error: any) {
-      console.error("Error updating payment status:", error)
+      log.error("Error updating payment status:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -366,7 +367,7 @@ export function StockTransactionsList() {
         description: `Se han exportado ${filteredTransactions.length} transacciones a CSV correctamente.`,
       })
     } catch (error: any) {
-      console.error("Error exporting to CSV:", error)
+      log.error("Error exporting to CSV:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

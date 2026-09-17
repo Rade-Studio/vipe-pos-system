@@ -11,8 +11,9 @@ import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
 import { CreditCard, Banknote, Smartphone, Printer, ArrowLeft, Check, AlertTriangle, PlusCircle } from "lucide-react"
 import type { PaymentMethod } from "@/types/cash-register"
-import { usePOSStore } from "@/store/use-pos-store"
 import { useConfigStore } from "@/store/use-config-store"
+import { useOrderStore } from "@/store/useOrderStore"
+import { useCartStore } from "@/store/useCartStore"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { PrintableInvoice, CartItem } from "@/types"
 import { useToast } from "@/hooks/use-toast"
@@ -21,6 +22,7 @@ import { toast } from "@/utils/toast"
 import { Switch } from "@/components/ui/switch"
 import { AddCashDialog } from "@/components/cashier/AddCashDialog"
 import { orderService, tableService } from "@/lib/supabase/service"
+import { log } from "@/lib/log"
 import { supabase } from "@/lib/supabase/client"
 import {cn} from "@/lib/utils";
 
@@ -78,7 +80,8 @@ export function PaymentMethodDialog({
   const [paying, setPaying] = useState(false)
 
   const { isRegisterOpen, hasEnoughCashForChange, getCurrentRegisterSummary } = useCashRegisterStore()
-  const { completePayment, completePartialPayment, undoPartialPayment, calculateOrderBill } = usePOSStore()
+  const { completePayment, completePartialPayment, undoPartialPayment } = useOrderStore()
+  const { calculateOrderBill } = useCartStore()
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast: toastHook } = useToast()
 
@@ -237,7 +240,7 @@ export function PaymentMethodDialog({
         return sum
       }, 0)
 
-      console.log("Total de descuentos calculado:", totalDiscounts)
+      log.info("Total de descuentos calculado:", { totalDiscounts })
 
       // Calcular el total para los items seleccionados
       const bill = {
@@ -269,7 +272,7 @@ export function PaymentMethodDialog({
         cashChange: paymentMethod === "cash" ? change : undefined,
       }
 
-      console.log("Datos de factura generados:", {
+      log.info("Datos de factura generados:", {
         items: invoiceItems.length,
         totalDiscounts,
         bill,
@@ -279,7 +282,7 @@ export function PaymentMethodDialog({
       setInvoiceData(invoice)
       setShowInvoice(true)
     } catch (error) {
-      console.error("Error al generar la vista previa de la factura:", error)
+      log.error("Error al generar la vista previa de la factura:", { error: String(error) })
       toast.error("Ocurrió un error al generar la vista previa de la factura")
     }
   }
@@ -472,7 +475,7 @@ export function PaymentMethodDialog({
               : `INV-${orderId.substring(0, 8)}`
           }
         } catch (error) {
-          console.error("Error al completar pago en el store:", error)
+          log.error("Error al completar pago en el store:", { error: String(error) })
           invoiceNumber = orderId.substring(0, 8)
         }
 
@@ -507,7 +510,7 @@ export function PaymentMethodDialog({
         toast.error("Error al procesar el pago. Verifique que la caja esté abierta.")
       }
     } catch (error) {
-      console.error("Error al procesar el pago:", error)
+      log.error("Error al procesar el pago:", { error: String(error) })
       toast.error("Ocurrió un error al procesar el pago")
     } finally {
       setProcessingPayment(false)
@@ -522,7 +525,7 @@ export function PaymentMethodDialog({
       onOpenChange(false)
       toast.success("Se ha deshecho el pago parcial")
     } catch (error) {
-      console.error("Error al deshacer pago parcial:", error)
+      log.error("Error al deshacer pago parcial:", { error: String(error) })
       toast.error("No se pudo deshacer el pago parcial")
     }
   }

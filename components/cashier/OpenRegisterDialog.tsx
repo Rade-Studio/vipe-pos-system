@@ -5,6 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { log } from "@/lib/log"
 import { Label } from "@/components/ui/label"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
@@ -55,7 +56,7 @@ export function OpenRegisterDialog({ open, onOpenChange, onSuccess }: OpenRegist
         toast.error("No se pudo abrir la caja")
       }
     } catch (error) {
-      console.error("Error al abrir la caja:", error)
+      log.error("Error al abrir la caja:", { error: String(error) })
       toast.error("Ocurrió un error al abrir la caja")
     } finally {
       setIsSubmitting(false)
