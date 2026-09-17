@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, DailySales, PopularDish, CategorySales, OrderStatus } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
@@ -23,6 +24,7 @@ import { CashRegisterSummary } from "@/components/admin/CashRegisterSummary"
 import { TransactionsByRegisterId } from "@/components/admin/TransactionsByRegisterId"
 import { orderService } from "@/lib/supabase/service"
 import { dashboardService } from "@/lib/supabase/dashboard-service"
+import { queryClient } from "@/lib/queryClient"
 import { AlertCircle, RefreshCw } from "lucide-react"
 import { formatCurrency } from "@/utils/helpers"
 import { LowStockIngredients } from "@/components/admin/inventory/LowStockIngredients"
@@ -36,7 +38,7 @@ import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
-import {tableService} from "@/lib/supabase-service";
+import { tableService } from "@/lib/supabase/service"
 
 interface AdminViewProps {
   profile: Profile
@@ -61,6 +63,55 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   // Estado para controlar la carga de datos
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const { toast } = useToast()
+  const queryClient = useQueryClient()
+
+  // Fetch admin orders via React Query
+  const fetchAdminOrders = async () => {
+    const { data: dbOrders } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        order_items(*),
+        tables(number),
+        profiles(full_name)
+      `)
+      .in("status", ["active", "kitchen", "delivered"])
+      .order("created_at", { ascending: false })
+
+    return (dbOrders || []).map((order) => ({
+      id: order.id,
+      tableId: order.table_id,
+      waiter: order.waiter_id,
+      status: order.status,
+      items:
+        (order.order_items || []).map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          categoryId: item.category_id || "",
+          image: "",
+          comments: item.comments || "",
+          status: item.status || "kitchen",
+        })) || [],
+      bill: {
+        subtotal: order.subtotal || 0,
+        tax: order.tax || 0,
+        taxPercentage: order.tax_percentage || 0,
+        tip: order.tip || 0,
+        tipPercentage: order.tip_percentage || 0,
+        total: order.total || 0,
+      },
+      createdAt: new Date(order.created_at),
+      tableName: order.tables?.number || "N/A",
+      waiterName: order.profiles?.full_name || "Desconocido",
+    }))
+  }
+
+  const { data: adminOrdersData = [] } = useQuery({
+    queryKey: ['orders', 'admin'],
+    queryFn: fetchAdminOrders,
+  })
 
   // Añadir estados para el manejo de realtime
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false)
@@ -118,6 +169,13 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
     loadDashboardData()
   }, [])
 
+  // Sync admin orders from React Query to local state
+  useEffect(() => {
+    if (adminOrdersData.length > 0) {
+      setActiveOrdersFromDB(adminOrdersData)
+    }
+  }, [adminOrdersData])
+
   // Suscribirse a cambios en tiempo real
   useEffect(() => {
     let unsubscribe: (() => void) | null = null
@@ -152,8 +210,8 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
             })
           }
 
-          // Actualizar la lista de órdenes
-          await loadActiveOrdersFromDB(false) // Pasar false para no mostrar toast
+          // Actualizar la lista de órdenes via React Query invalidation
+          queryClient.invalidateQueries({ queryKey: ['orders', 'admin'] })
         }
 
         // Suscribirse a cambios en órdenes
