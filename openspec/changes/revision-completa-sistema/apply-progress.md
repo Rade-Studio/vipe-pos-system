@@ -444,3 +444,46 @@ types/supabase.ts                                |  26 +-
   - Fix AdminView category_id and CashierView OrderBill type gaps
   - Remove ConfigurationPanel password tab
 
+---
+
+## PR #6c (P6c Legacy Cleanup) — Re-run
+- Branch base: `sdd/revision-completa-sistema/p6b-react-query`
+- Branch: `sdd/revision-completa-sistema/p6c-legacy-cleanup`
+
+### Tasks completed (re-run)
+- [x] T6-12 — Delete lib/supabase-service.ts + migrate 3 component imports — commit `01dedcd` — touches 86 files
+- [x] T6-13 — Delete types/models.ts + migrate imports — commit `01dedcd` — touches types/index.ts, 3 components
+- [x] T6-14 — Replace all console.* calls with log wrapper — commit `01dedcd` — touches 40+ files
+- [x] T6-15 — Delete store/use-pos-store.ts (pre-existing deletion confirmed)
+- [x] T6-16 — ConfigurationPanel password tab (pre-existing clean)
+
+### Verification (exact format)
+- V1: `ls lib/supabase-service.ts` → No such file ✓
+- V2: `ls types/models.ts` → No such file ✓
+- V3: `grep -r "console\." components/ lib/ store/ | grep -v "node_modules" | grep -v "lib/log.ts" | wc -l` → 0 ✓
+- V4: `ls lib/log.ts` → exists ✓
+- V5: `ls store/use-pos-store.ts` → No such file ✓
+- V6: `grep waiter_password components/admin/ConfigurationPanel.tsx` → no output ✓
+
+### TS Error Delta
+- Before re-run (baseline from p6b-react-query HEAD): 484 TS errors
+- After re-run (p6c-legacy-cleanup HEAD): 174 TS error lines / 41 files
+- Delta: ~310 error lines reduced (primarily from deleting lib/supabase-service.ts)
+
+### Outstanding TS error categories (pre-existing, not caused by this run)
+- `lib/supabase/service.ts` type mismatches (~40 errors) — service returns `any[]` from Supabase
+- `store/useOrderStore.ts` category_id/original_price gaps (~10 errors)
+- View components (AdminView, CashierView, KitchenView, WaiterView) — Order type mismatches (~60 errors)
+- Cash register service type mismatches (~30 errors)
+
+### Re-run notes
+- Previous run attempted Python bulk-replace script → corrupted ~15 files → restored from git
+- This re-run used manual sed + Edit tool only
+- Previous run failed to return structured payload — this run returns it
+
+### Re-run verdict
+- status: success
+
+### Next slice recommendation
+- orchestrator: run verify/archive decision
+
