@@ -1,6 +1,7 @@
 "use client"
 import { useEffect, useState } from "react"
 import type { Table, Profile } from "@/types"
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getStatusColor, getStatusLabel } from "@/utils/helpers"
@@ -82,6 +83,49 @@ export function TableGrid({
   // Estado local para las mesas
   const [tables, setTables] = useState<Table[]>([])
   const [loading, setLoading] = useState(true)
+  // Distinguishes first load (skeleton OK) from realtime refetch (never blank).
+  const [initialLoadDone, setInitialLoadDone] = useState(false)
+
+  // Merge algorithm for realtime postgres_changes payloads.
+  // INSERT  → append to array
+  // UPDATE  → replace if incoming.updated_at > existing.updated_at
+  // DELETE  → filter out row by id
+  const mergeTable = (prev: Table[], payload: RealtimePostgresChangesPayload<any>): Table[] => {
+    const { eventType, new: newRow, old: oldRow } = payload
+    if (eventType === "INSERT") {
+      if (!newRow?.id) return prev
+      const incoming: Table = {
+        id: newRow.id,
+        number: newRow.number,
+        status: newRow.status,
+        waiter: newRow.waiter_id || undefined,
+        waiter_name: newRow.waiter_name || undefined,
+      }
+      return prev.some((t) => t.id === incoming.id) ? prev : [...prev, incoming]
+    }
+    if (eventType === "UPDATE") {
+      if (!newRow?.id) return prev
+      const incoming: Table = {
+        id: newRow.id,
+        number: newRow.number,
+        status: newRow.status,
+        waiter: newRow.waiter_id || undefined,
+        waiter_name: newRow.waiter_name || undefined,
+      }
+      return prev.map((t) => {
+        if (t.id !== incoming.id) return t
+        // Only replace if the incoming row is newer — prevents out-of-order events.
+        const incomingTime = newRow.updated_at ? new Date(newRow.updated_at).getTime() : 0
+        const existingTime = t.updated_at ? new Date(t.updated_at as unknown as string).getTime() : 0
+        return incomingTime >= existingTime ? incoming : t
+      })
+    }
+    if (eventType === "DELETE") {
+      if (!oldRow?.id) return prev
+      return prev.filter((t) => t.id !== oldRow.id)
+    }
+    return prev
+  }
 
   // Cargar mesas y suscribirse a cambios en tiempo real
   useEffect(() => {
@@ -101,6 +145,7 @@ export function TableGrid({
         }))
 
         setTables(formattedTables)
+        setInitialLoadDone(true)
       } catch (error) {
         console.error("Error al cargar mesas:", error)
       } finally {
@@ -111,18 +156,20 @@ export function TableGrid({
     // Cargar mesas inicialmente
     loadTables()
 
-    // Suscribirse a cambios en tiempo real
-    const unsubscribe = realtimeService.subscribeToTables(async (payload) => {
+    // Suscribirse a cambios en tiempo real — merge on payload, no full reload.
+    const unsubscribe = realtimeService.subscribeToTables((payload) => {
       console.log("Cambio en mesa recibido:", payload)
-      // Recargar la lista completa de mesas para mantener la interfaz al día
-      await loadTables()
+      // Merge into existing array without a re-query — no setLoading(true) here,
+      // so the grid stays visible during the update.
+      setTables((prev) => mergeTable(prev, payload))
+      if (!initialLoadDone) setInitialLoadDone(true)
     })
 
     // Limpiar suscripción al desmontar
     return () => {
       unsubscribe()
     }
-  }, [])
+  }, [initialLoadDone])
 
   // Calcular estadísticas de mesas
   const tableStats = {
@@ -142,8 +189,9 @@ export function TableGrid({
     return waiter ? waiter.full_name || waiter.name : null
   }
 
-  // Si está cargando, mostrar indicador
-  if (loading) {
+  // Si está cargando, mostrar indicador — pero SOLO en la carga inicial.
+  // Las actualizaciones en tiempo real nunca blankear la grilla (HS-23).
+  if (!initialLoadDone && loading) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center mb-4">
