@@ -33,6 +33,8 @@ export type Table = {
   number: number
   status: TableStatus
   waiter?: string
+  waiter_name?: string
+  updated_at?: Date
   restaurantId?: string
 }
 
