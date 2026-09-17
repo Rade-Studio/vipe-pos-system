@@ -576,38 +576,56 @@ export type Database = {
       profiles: {
         Row: {
           active: boolean
+          auth_user_id: string | null
           created_at: string | null
           email: string | null
           full_name: string
           id: string
-          password: string | null
+          restaurant_id: string
           role: string
           updated_at: string | null
           username: string | null
         }
         Insert: {
           active?: boolean
+          auth_user_id?: string | null
           created_at?: string | null
           email?: string | null
           full_name: string
           id?: string
-          password?: string | null
+          restaurant_id?: string
           role: string
           updated_at?: string | null
           username?: string | null
         }
         Update: {
           active?: boolean
+          auth_user_id?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string
           id?: string
-          password?: string | null
+          restaurant_id?: string
           role?: string
           updated_at?: string | null
           username?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_auth_user_id_fkey"
+            columns: ["auth_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       promotion_dishes: {
         Row: {

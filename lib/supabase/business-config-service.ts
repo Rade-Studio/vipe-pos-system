@@ -10,11 +10,6 @@ export type BusinessConfigValues = {
   business_phone: string
   business_nit: string
   inventory_control_enabled: boolean
-  // Añadimos las contraseñas de los perfiles
-  kitchen_password: string
-  cashier_password: string
-  admin_password: string
-  waiter_password: string
   [key: string]: string | number | boolean
 }
 
@@ -44,16 +39,12 @@ export const businessConfigService = {
       const config: BusinessConfigValues = {
         tax_percentage: 10,
         tip_percentage: 10,
+        price_suggestion: 300,
         business_name: "Mi Restaurante",
         business_address: "Dirección del Restaurante",
         business_phone: "123-456-7890",
         business_nit: "123456789",
         inventory_control_enabled: false,
-        // Valores por defecto para las contraseñas
-        kitchen_password: "1234",
-        cashier_password: "5678",
-        admin_password: "9999",
-        waiter_password: "0000",
       }
 
       // Llenar el objeto con los valores de la base de datos
@@ -167,11 +158,6 @@ export const businessConfigService = {
         business_phone: "123-456-7890",
         business_nit: "123456789",
         inventory_control_enabled: false,
-        // Valores por defecto para las contraseñas
-        kitchen_password: "1234",
-        cashier_password: "5678",
-        admin_password: "9999",
-        waiter_password: "0000",
       }
 
       // Para cada valor por defecto, verificar si existe y crearlo si no
@@ -183,25 +169,6 @@ export const businessConfigService = {
       }
     } catch (error) {
       console.error("Error al inicializar configuración por defecto:", error)
-      throw error
-    }
-  },
-
-  /**
-   * Obtiene las contraseñas de los perfiles
-   */
-  async getProfilePasswords(): Promise<Record<string, string>> {
-    try {
-      const config = await this.getAllConfig()
-
-      return {
-        "kitchen-1": config.kitchen_password,
-        "cashier-1": config.cashier_password,
-        "admin-1": config.admin_password,
-        "waiter-1": config.waiter_password,
-      }
-    } catch (error) {
-      console.error("Error al obtener contraseñas de perfiles:", error)
       throw error
     }
   },

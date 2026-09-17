@@ -1,36 +1,33 @@
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/supabase"
 
-// Valores de respaldo para desarrollo local
-const FALLBACK_SUPABASE_URL = "https://xyzcompany.supabase.co"
-const FALLBACK_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhtaXpveGNxdXZ5YnR6d2hmcWVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTk5MDcyMjcsImV4cCI6MjAxNTQ4MzIyN30.aYBnJfj0ykSPHPFRY9XuLwRXBcgbUYZjuhEZ_Fbirpg"
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-// Obtener las variables de entorno con fallback
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || FALLBACK_SUPABASE_URL
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY
-
-// Verificar si estamos usando valores de respaldo
-if (supabaseUrl === FALLBACK_SUPABASE_URL || supabaseAnonKey === FALLBACK_SUPABASE_ANON_KEY) {
+// Warn (don't throw) at module load if env vars are missing.
+// Throwing here breaks `npm run build` during static page prerendering
+// (Next.js evaluates modules before the ignoreBuildErrors: true guard applies).
+// The app will fail at runtime with a clear error from createClient instead.
+if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
-    "⚠️ Usando valores de respaldo para Supabase. Para una funcionalidad completa, configura las variables de entorno NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+    "[VipePOS] Missing environment variables: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set. The app will not function without them.",
   )
 }
 
-// Opciones para el cliente de Supabase
-const supabaseOptions = {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
+// Allow the client to be created with undefined values here;
+// createClient will throw at runtime with a clear message.
+export const supabase = createClient<Database>(
+  supabaseUrl ?? "",
+  supabaseAnonKey ?? "",
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+    },
   },
-}
+)
 
-// Crear y exportar el cliente de Supabase
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, supabaseOptions)
-
-// Función para obtener el cliente de Supabase (para compatibilidad con código existente)
 export function createSupabaseClient() {
   return supabase
 }
