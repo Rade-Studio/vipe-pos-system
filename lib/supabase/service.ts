@@ -1054,172 +1054,77 @@ export const orderService = {
     return data?.[0]
   },
 
-  async completePayment(orderId: string, paymentMethod: string, cashReceived?: number, cashChange?: number) {
-    // Primero obtenemos la orden actual para verificar sus datos
-    const { data: currentOrder, error: getOrderError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", orderId)
-      .single()
-
-    if (getOrderError) {
-      console.error("Error al obtener la orden actual:", getOrderError)
-      throw getOrderError
-    }
-
-    // Actualizar el estado de la orden a "paid"
-    // Eliminamos los campos que no existen en el esquema (payment_method, cash_received, cash_change)
-    const { data, error } = await supabase
-      .from("orders")
-      .update({
-        status: "paid",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orderId)
-      .select()
+  // RPC wrapper for complete_payment (P3 atomic payment)
+  async completePaymentRpc(orderId: string, paymentMethods: string[], cashRegisterId: string) {
+    const { data, error } = await supabase.rpc("complete_payment", {
+      p_order_id: orderId,
+      p_payment_methods: paymentMethods,
+      p_cash_register_id: cashRegisterId,
+    })
 
     if (error) {
-      console.error("Error al completar pago de orden:", error)
+      console.error("Error in complete_payment RPC:", error)
       throw error
     }
 
-    // Generar número de factura
-    const invoiceNumber = `INV-${Date.now()}`
+    return data
+  },
 
-    // Ya no intentamos actualizar el número de factura en la base de datos
-    // porque la columna 'invoice_number' no existe en el esquema
+  // Deprecated: use completePaymentRpc instead.
+  // This method is kept for backward compatibility during the migration window.
+  async completePayment(orderId: string, paymentMethod: string, _cashReceived?: number, _cashChange?: number) {
+    console.warn(
+      "[deprecation] completePayment(orderId, paymentMethod) is deprecated. " +
+      "Migrate to completePaymentRpc(orderId, paymentMethods[], cashRegisterId). " +
+      "See docs/payment-atomicity-test.md for the RPC interface."
+    )
 
-    // Si la orden se marca como pagada, actualizar el estado de la mesa
-    try {
-      const order = data[0]
-      if (order && order.table_id) {
-        // Verificar si hay otras órdenes activas para esta mesa
-        const { data: activeOrders, error: activeOrdersError } = await supabase
-          .from("orders")
-          .select("id")
-          .eq("table_id", order.table_id)
-          .neq("id", orderId)
-          .neq("status", "paid")
+    // Get the current register ID from the cash register store
+    // (imported dynamically to avoid circular dependency)
+    const { useCashRegisterStore } = await import("@/store/use-cash-register-store")
+    const currentRegister = useCashRegisterStore.getState().currentRegister
+    const registerId = currentRegister?.id ?? ""
 
-        if (activeOrdersError) {
-          console.error("Error al verificar órdenes activas:", activeOrdersError)
-        } else if (!activeOrders || activeOrders.length === 0) {
-          // Si no hay otras órdenes activas, liberar la mesa
-          await tableService.releaseTable(order.table_id)
-        }
-      }
-    } catch (error) {
-      console.error("Error al actualizar estado de la mesa:", error)
+    // Convert single paymentMethod to array format: 'method:amount'
+    // The amount is derived from the order's bill_total_cents (server-side via RPC)
+    const paymentMethods = [`${paymentMethod}:0`]
+
+    const result = await this.completePaymentRpc(orderId, paymentMethods, registerId)
+
+    if (result?.status === "already_paid") {
+      return `INV-${orderId.substring(0, 8)}-repaid`
     }
 
-    return invoiceNumber
+    return `INV-${orderId.substring(0, 8)}`
   },
 
   async completePartialPayment(orderId: string, selectedItems: string[]) {
     return this.completePayment(orderId, "cash")
   },
 
-  async deleteOrder(orderId: string) {
-    try {
-      // Primero obtenemos la orden para verificar su estado
-      const { data: order, error: getOrderError } = await supabase.from("orders").select("*").eq("id", orderId).single()
+  // RPC wrapper for delete_order_with_items (P3 atomic delete)
+  async deleteOrderRpc(orderId: string) {
+    const { error } = await supabase.rpc("delete_order_with_items", {
+      p_order_id: orderId,
+    })
 
-      if (getOrderError) {
-        console.error("Error al obtener la orden:", getOrderError)
-        throw getOrderError
-      }
-
-      if (!order) {
-        throw new Error("No se encontró la orden")
-      }
-
-      // Verificar que la orden esté en estado "kitchen"
-      if (order.status !== "kitchen") {
-        throw new Error("Solo se pueden eliminar órdenes que estén en cocina")
-      }
-
-      // Eliminar los items de la orden
-      const { error: itemsError } = await supabase.from("order_items").delete().eq("order_id", orderId)
-
-      if (itemsError) {
-        console.error("Error al eliminar items de la orden:", itemsError)
-        throw itemsError
-      }
-
-      // Eliminar las transacciones de ingredientes
-      // Tomar las transacciones de ingredientes de la orden
-      const { data: transactions, error: transactionsError } = await supabase
-          .from("ingredient_transactions_orders")
-          .select("*")
-          .eq("order_id", orderId)
-
-      if (transactionsError) {
-        console.error("Error al eliminar transacciones de ingredientes de la orden:", transactionsError)
-        throw transactionsError
-      }
-
-      // Obtener las transacciones de ingredientes de la orden
-      const { data: transactionsIngredients, error: transactionsIngredientsError } = await supabase
-          .from("ingredient_transactions")
-          .select("*")
-          .in("id", transactions.map(t => t.ingredient_transaction_id))
-
-      // Recalcular el stock de ingredientes y sumar lo gastado
-      const updatedIngredients = transactionsIngredients?.map(transaction => async () => {
-        const { data: ingredient, error: ingredientError } = await supabase
-            .from("ingredients")
-            .select("*")
-            .eq("id", transaction.ingredient_id ?? "")
-            .single()
-
-        if (ingredientError) {
-          console.error("Error al actualizar stock de ingredientes:", ingredientError)
-          throw ingredientError
-        }
-
-        const { data: updatedIngredient, error: updatedIngredientError } = await supabase
-            .from("ingredients")
-            .update({
-              stock: ingredient.stock + transaction.quantity
-            })
-            .eq("id", transaction.ingredient_id ?? "")
-
-        if (updatedIngredientError) {
-          console.error("Error al actualizar stock de ingredientes:", updatedIngredientError)
-          throw updatedIngredientError
-        }
-
-        console.log("------ Ingrediente actualizado ------", updatedIngredient)
-
-      })
-
-      if (updatedIngredients)
-        await Promise.all(updatedIngredients.map(update => update()))
-
-      // Eliminar las transacciones de ingredientes
-      const {  error: transactionsDeleteError } = await supabase
-          .from("ingredient_transactions")
-          .delete()
-          .in("id", transactions.map(t => t.ingredient_transaction_id))
-
-      if (transactionsDeleteError) {
-        console.error("Error al eliminar transacciones de ingredientes de la orden:", transactionsDeleteError)
-        throw transactionsDeleteError
-      }
-
-      // Eliminar la orden
-      const { error: orderError } = await supabase.from("orders").delete().eq("id", orderId)
-
-      if (orderError) {
-        console.error("Error al eliminar la orden:", orderError)
-        throw orderError
-      }
-
-      return true
-    } catch (error) {
-      console.error("Error en deleteOrder:", error)
+    if (error) {
+      console.error("Error in delete_order_with_items RPC:", error)
       throw error
     }
+
+    return true
+  },
+
+  // Deprecated: use deleteOrderRpc instead.
+  // This method is kept for backward compatibility during the migration window.
+  async deleteOrder(orderId: string) {
+    console.warn(
+      "[deprecation] deleteOrder(orderId) is deprecated. " +
+      "Migrate to deleteOrderRpc(orderId). " +
+      "See docs/payment-atomicity-test.md for the RPC interface."
+    )
+    return this.deleteOrderRpc(orderId)
   },
 
   async getById(orderId: string) {
