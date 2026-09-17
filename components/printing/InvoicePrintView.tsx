@@ -8,6 +8,7 @@ import { format } from "date-fns"
 import { toast } from "@/utils/toast"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { Printer, Check, X, ArrowLeft, Receipt, Tag } from "lucide-react"
+import { renderInvoice } from "@/lib/print/renderKitchenOrder"
 import type { PrintableInvoice } from "@/types"
 
 interface InvoicePrintViewProps {
@@ -382,139 +383,30 @@ export function InvoicePrintView({
 
           {/* Contenido oculto para impresión */}
           <div className="hidden" ref={printRef}>
-            {/* Ticket de factura para impresora térmica */}
+            {/* Ticket de factura — driven by shared renderInvoice data structure */}
             <div className="ticket font-mono text-sm">
-              {/* Encabezado */}
-              <div className="center mb-2">
-                <div className="text-base font-bold">{businessInfo?.name || "RESTAURANTE"}</div>
-                <div>NIT: {businessInfo?.nit || "N/A"}</div>
-                <div>{businessInfo?.address || "N/A"}</div>
-                <div>Tel: {businessInfo?.phone || "N/A"}</div>
-              </div>
-
-              <div className="divider"></div>
-
-              {/* Información de la factura */}
-              <div className="mb-2">
-                <div className="info-row">
-                  <span>FACTURA:</span>
-                  <span>{invoiceNumber || `INV-${Date.now()}`}</span>
+              {/* Rendered via renderInvoice (mirrors pos/print_renderer.build_invoice_bytes) */}
+              {(invoice ? renderInvoice({
+                invoiceNumber: invoiceNumber || `INV-${Date.now()}`,
+                invoice: {
+                  businessInfo: businessInfo || { name: 'RESTAURANTE', nit: 'N/A', address: 'N/A', phone: 'N/A' },
+                  bill: bill || { subtotal: 0, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 0, totalDiscounts: 0 },
+                  date: (date || new Date()).toISOString(),
+                  table: displayTable,
+                  waiter: displayWaiter,
+                  paymentMethod: paymentMethod || 'cash',
+                  cashReceived: invoice.cashReceived,
+                  cashChange: invoice.cashChange,
+                },
+                displayItems,
+              }) : { lines: [] }).lines.map((line, i) => (
+                <div
+                  key={i}
+                  style={{ textAlign: line.align || 'left', fontWeight: line.bold ? 'bold' : 'normal' }}
+                >
+                  {line.text}
                 </div>
-                <div className="info-row">
-                  <span>FECHA:</span>
-                  <span>{format(date || new Date(), "dd/MM/yyyy")}</span>
-                </div>
-                <div className="info-row">
-                  <span>HORA:</span>
-                  <span>{format(date || new Date(), "HH:mm:ss")}</span>
-                </div>
-                <div className="info-row">
-                  <span>MESA:</span>
-                  <span>{displayTable}</span>
-                </div>
-                <div className="info-row">
-                  <span>MESERO:</span>
-                  <span>{displayWaiter}</span>
-                </div>
-              </div>
-
-              <div className="divider"></div>
-
-              {/* Encabezado de items */}
-              <div className="flex justify-between font-bold mb-1">
-                <div style={{ width: "10%" }}>CANT</div>
-                <div style={{ width: "60%" }}>DESCRIPCIÓN</div>
-                <div style={{ width: "30%" }} className="text-right">
-                  IMPORTE
-                </div>
-              </div>
-
-              {/* Items */}
-              <div className="mb-2">
-                {displayItems &&
-                  displayItems.map((item, index) => (
-                    <div key={index} className="flex justify-between mb-1">
-                      <div style={{ width: "10%" }}>{item.quantity}</div>
-                      <div style={{ width: "60%" }}>
-                        {item.name}
-                        {item.comments && <div className="text-xs">({item.comments})</div>}
-                      </div>
-                      <div style={{ width: "30%" }} className="text-right">
-                        {item.originalPrice && item.originalPrice > item.price ? (
-                          <>
-                            <div className="strikethrough">{formatCurrency(item.originalPrice * item.quantity)}</div>
-                            <div>{formatCurrency(item.price * item.quantity)}</div>
-                          </>
-                        ) : (
-                          formatCurrency(item.price * item.quantity)
-                        )}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-
-              <div className="divider"></div>
-
-              {/* Totales */}
-              <div className="totals mb-2">
-                <div className="info-row">
-                  <span>SUBTOTAL:</span>
-                  <span>{formatCurrency(bill?.subtotal || 0)}</span>
-                </div>
-                <div className="info-row">
-                  <span>IVA ({bill?.taxPercentage || 0}%):</span>
-                  <span>{formatCurrency(bill?.tax || 0)}</span>
-                </div>
-                {bill?.totalDiscounts > 0 && (
-                  <div className="info-row discount">
-                    <span>DESCUENTOS:</span>
-                    <span>-{formatCurrency(bill?.totalDiscounts || 0)}</span>
-                  </div>
-                )}
-                <div className="info-row font-bold">
-                  <span>TOTAL SIN PROPINA:</span>
-                  <span>{formatCurrency(totalSinPropina)}</span>
-                </div>
-                <div className="info-row">
-                  <span>PROPINA ({bill?.tipPercentage || 0}%):</span>
-                  <span>{formatCurrency(bill?.tip || 0)}</span>
-                </div>
-                <div className="info-row font-bold text-base">
-                  <span>TOTAL A PAGAR:</span>
-                  <span>{formatCurrency(bill?.total || 0)}</span>
-                </div>
-              </div>
-
-              <div className="divider"></div>
-
-              {/* Forma de pago */}
-              <div className="mb-2">
-                <div className="font-bold">FORMA DE PAGO: {getPaymentMethodName(paymentMethod || "cash")}</div>
-                {invoice.cashReceived && invoice.cashReceived > 0 && (
-                  <>
-                    <div className="info-row">
-                      <span>EFECTIVO RECIBIDO:</span>
-                      <span>{formatCurrency(invoice.cashReceived)}</span>
-                    </div>
-                    <div className="info-row">
-                      <span>CAMBIO:</span>
-                      <span>{formatCurrency(invoice.cashChange || 0)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="divider"></div>
-
-              {/* Pie de página */}
-              <div className="center mb-4">
-                <div>RÉGIMEN SIMPLIFICADO</div>
-                <div>RESOLUCIÓN DIAN No. 18764000001</div>
-                <div>DEL 01/01/2023 AL 31/12/2023</div>
-                <div>NUMERACIÓN: 1 AL 1000</div>
-                <div className="mt-2">¡GRACIAS POR SU COMPRA!</div>
-                <div>VUELVA PRONTO</div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
