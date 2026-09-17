@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, OrderStatus } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
@@ -12,6 +13,7 @@ import { TablesSection } from "@/components/pos/TablesSection"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { orderService, tableService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
+import { queryClient } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
 import { Bell, RefreshCw, Wifi, WifiOff, Filter } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -58,6 +60,21 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   const [filterWaiter, setFilterWaiter] = useState<string | null>(null)
   const [filterTable, setFilterTable] = useState<number | null>(null)
   const { toast } = useToast()
+  const queryClient = useQueryClient()
+
+  // Fetch kitchen orders via React Query
+  const fetchKitchenOrders = async () => {
+    const activeOrders = await orderService.getByStatus("kitchen")
+    const ordersWithKitchenItems = activeOrders.filter((order) =>
+      order.order_items?.some((item) => item.status === "kitchen"),
+    )
+    return ordersWithKitchenItems.map(convertDbOrderToStoreOrder).filter(Boolean)
+  }
+
+  const { data: kitchenOrdersData = [] } = useQuery({
+    queryKey: ['orders', 'kitchen'],
+    queryFn: fetchKitchenOrders,
+  })
 
   const tables = useTableStore((s) => s.tables)
   const setTables = useTableStore((s) => s.setTables)
@@ -86,9 +103,24 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     ordersRef.current = orders
   }, [orders])
 
-  // Cargar órdenes y mesas al iniciar y configurar suscripción en tiempo real
+  // Sync React Query kitchen orders data to Zustand store
   useEffect(() => {
-    loadInitialData()
+    if (kitchenOrdersData.length > 0) {
+      setOrders([])
+      setNewItems({})
+      kitchenOrdersData.forEach((order) => {
+        if (order) {
+          addOrder(order)
+          if (order.items && order.items.length > 0) {
+            realtimeService.registerItems(order.id, order.items.map((item) => item.id))
+          }
+        }
+      })
+    }
+  }, [kitchenOrdersData])
+
+  // Configurar suscripción en tiempo real al montar
+  useEffect(() => {
     setupRealtimeSubscription()
 
     // Limpiar la suscripción al desmontar
@@ -186,6 +218,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     try {
       console.log("Actualización de orden recibida:", payload)
 
+      // Invalidate React Query cache so it refetches in background
+      queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
+
       // Si es una eliminación de orden
       if (payload.eventType === "DELETE") {
         if (payload.old && payload.old.id) {
@@ -260,6 +295,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   // Manejar actualizaciones de items de órdenes
   const handleOrderItemUpdate = async (payload, isNewItem = false) => {
     try {
+      // Invalidate React Query cache so it refetches in background
+      queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
       console.log("Actualización de item recibido:", payload, "Es nuevo item:", isNewItem)
 
       // Si no hay datos de la orden o del item, salir
@@ -387,7 +424,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     }
   }
 
-  // Cargar datos iniciales
+  // Cargar datos iniciales (mesas only; orders handled by useQuery)
   const loadInitialData = async () => {
     setLoading(true)
     try {
@@ -400,9 +437,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         waiter: table.waiter_id || undefined,
       }))
       setTables(formattedTables)
-
-      // Cargar órdenes en cocina
-      await loadKitchenOrders()
     } catch (error) {
       console.error("Error al cargar datos iniciales:", error)
       toast({
@@ -471,7 +505,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   const handleRefreshOrders = async () => {
     setRefreshing(true)
     try {
-      await loadKitchenOrders()
+      await queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
 
       // Desactivar la alerta de nuevas órdenes al refrescar manualmente
       setNewOrderAlert(false)
