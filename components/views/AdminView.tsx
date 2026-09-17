@@ -1,9 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import type { Profile, DailySales, PopularDish, CategorySales } from "@/types"
+import type { Profile, DailySales, PopularDish, CategorySales, OrderStatus } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
+import { useTableStore } from "@/store/useTableStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import { SalesChart } from "@/components/admin/SalesChart"
 import { PopularDishesChart } from "@/components/admin/PopularDishesChart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -68,18 +70,18 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
     setSelectedDate(registerDate)
   }
 
-  const {
-    tables,
-    profiles,
-    orders,
-    getOrdersByStatus,
-    isTableAccessibleByWaiter,
-    reserveTable,
-    releaseTable,
-    getOrderById,
-    removeOrder,
-    loadOrders,
-  } = usePOSStore()
+  const tables = useTableStore((s) => s.tables)
+  const isTableAccessibleByWaiter = useTableStore((s) => s.isTableAccessibleByWaiter)
+  const reserveTable = useTableStore((s) => s.reserveTable)
+  const releaseTable = useTableStore((s) => s.releaseTable)
+
+  const orders = useOrderStore((s) => s.orders)
+  const getOrderById = useOrderStore((s) => s.getOrderById)
+  const removeOrder = useOrderStore((s) => s.removeOrder)
+  const loadOrders = useOrderStore((s) => s.loadOrders)
+  const getOrdersByStatus = (statuses: OrderStatus[]) => useOrderStore.getState().getOrdersByStatus(statuses)
+
+  const profiles = usePOSStore((s) => s.profiles)
 
   // Cargar datos del dashboard
   useEffect(() => {
