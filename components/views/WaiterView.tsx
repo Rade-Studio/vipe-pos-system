@@ -1,7 +1,9 @@
 "use client"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useTableStore } from "@/store/useTableStore"
+import { useCartStore } from "@/store/useCartStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import type { Profile, Dish, Table, Order, CommandPayload } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
@@ -96,22 +98,15 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const { tipPercentage, taxPercentage, inventoryControlEnabled } = useConfigStore()
   const isMobile = useIsMobile()
 
-  // Zustand store
-  const {
-    addToCart,
-    updateQuantity,
-    updateItemComments,
-    clearCart,
-    getCartByTable,
-    getCartTotal,
-    calculateOrderBill,
-    addOrder,
-    setTables: setZustandTables,
-    updateTableStatus: updateZustandTableStatus,
-    reserveTable: reserveZustandTable,
-    releaseTable: releaseZustandTable,
-    assignWaiterToTable: assignZustandWaiterToTable,
-  } = usePOSStore()
+  // Individual store selectors
+  const addToCart = useCartStore((s) => s.addToCart)
+  const updateQuantity = useCartStore((s) => s.updateQuantity)
+  const updateItemComments = useCartStore((s) => s.updateItemComments)
+  const clearCart = useCartStore((s) => s.clearCart)
+  const getCartByTable = useCartStore((s) => s.getCartByTable)
+  const getCartTotal = useCartStore((s) => s.getCartTotal)
+  const calculateOrderBill = useCartStore((s) => s.calculateOrderBill)
+  const addOrder = useOrderStore((s) => s.addOrder)
 
   // Obtener items del carrito para la mesa activa
   const cartItems = activeTable ? getCartByTable(activeTable) : []
@@ -163,7 +158,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
       // Actualizar ambos estados de forma independiente para evitar ciclos
       setTables(formattedTables)
-      setZustandTables(formattedTables)
+      useTableStore.getState().setTables(formattedTables)
 
       // Forzar re-renderizado
       setForceRender((prev) => prev + 1)
@@ -179,7 +174,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     } finally {
       isLoadingTablesRef.current = false
     }
-  }, [toast, setZustandTables])
+  }, [toast])
 
   // Cargar órdenes - función memoizada
   const loadOrders = useCallback(async () => {
@@ -256,7 +251,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
         // Actualizar estado local y store
         setTables((prevTables) => [...prevTables, newTable])
-        setZustandTables((prevTables) => [...prevTables, newTable])
+        useTableStore.getState().setTables([...useTableStore.getState().tables, newTable])
       } else if (payload.eventType === "UPDATE") {
         // Mesa actualizada
         const updatedTable = {
@@ -269,8 +264,8 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
         // Actualizar estado local y store
         setTables((prevTables) => prevTables.map((table) => (table.id === updatedTable.id ? updatedTable : table)))
-        setZustandTables((prevTables) =>
-          prevTables.map((table) => (table.id === updatedTable.id ? updatedTable : table)),
+        useTableStore.getState().setTables(
+          useTableStore.getState().tables.map((t) => (t.id === updatedTable.id ? updatedTable : t)),
         )
 
         // Si es la mesa activa, actualizar también el estado de mesa activa
@@ -286,7 +281,9 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
         // Actualizar estado local y store
         setTables((prevTables) => prevTables.filter((table) => table.id !== deletedTableId))
-        setZustandTables((prevTables) => prevTables.filter((table) => table.id !== deletedTableId))
+        useTableStore.getState().setTables(
+          useTableStore.getState().tables.filter((t) => t.id !== deletedTableId),
+        )
 
         // Si es la mesa activa, limpiar la selección
         if (activeTable === deletedTableId) {
@@ -409,7 +406,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       }
       setRealtimeConnected(false)
     }
-  }, [setZustandTables, activeTable])
+  }, [activeTable])
 
   // Efecto para animar el carrito
   useEffect(() => {
@@ -532,7 +529,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
             await tableService.releaseTable(tableId)
 
             // Actualizar directamente en el store y estado local
-            releaseZustandTable(tableId)
+            useTableStore.getState().releaseTable(tableId)
             setTables((prevTables) =>
               prevTables.map((table) =>
                 table.id === tableId
@@ -550,7 +547,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         }
       }
     },
-    [getCartByTable, tables, releaseZustandTable],
+    [getCartByTable, tables],
   )
 
   // Manejar selección de mesa
@@ -580,7 +577,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
             .updateTableStatus(tableId, "occupied")
             .then(() => {
               // Actualizar directamente en el store y estado local
-              updateZustandTableStatus(tableId, "occupied")
+              useTableStore.getState().updateTableStatus(tableId, "occupied")
               setTables((prevTables) =>
                 prevTables.map((table) => (table.id === tableId ? { ...table, status: "occupied" } : table)),
               )
@@ -603,7 +600,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         setShowMobileCart(true)
       }
     },
-    [activeTable, checkEmptyCartAndReleaseTable, tables, updateZustandTableStatus, isMobile],
+    [activeTable, checkEmptyCartAndReleaseTable, tables, isMobile],
   )
 
   // Manejar selección de mesero
@@ -624,7 +621,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           const waiterName = profiles.find((p) => p.id === waiterId)?.name
 
           // Actualizar directamente en el store y estado local
-          assignZustandWaiterToTable(selectedTableForWaiter, waiterId)
+          useTableStore.getState().assignWaiterToTable(selectedTableForWaiter, waiterId)
           setTables((prevTables) =>
             prevTables.map((table) =>
               table.id === selectedTableForWaiter
@@ -655,7 +652,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         }
       }
     },
-    [selectedTableForWaiter, toast, assignZustandWaiterToTable, profiles, isMobile],
+    [selectedTableForWaiter, toast, profiles, isMobile],
   )
 
   // Completar reserva después de seleccionar mesero
@@ -676,7 +673,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           const waiterName = profiles.find((p) => p.id === waiterId)?.name
 
           // Actualizar directamente en el store y estado local
-          assignZustandWaiterToTable(selectedTableForWaiter, waiterId)
+          useTableStore.getState().assignWaiterToTable(selectedTableForWaiter, waiterId)
           setTables((prevTables) =>
             prevTables.map((table) =>
               table.id === selectedTableForWaiter
@@ -707,7 +704,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         }
       }
     },
-    [selectedTableForWaiter, toast, assignZustandWaiterToTable, profiles, isMobile],
+    [selectedTableForWaiter, toast, profiles, isMobile],
   )
 
   // Manejar reserva de mesa
@@ -744,7 +741,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         await tableService.releaseTable(tableId)
 
         // Actualizar directamente en el store y estado local
-        releaseZustandTable(tableId)
+        useTableStore.getState().releaseTable(tableId)
         setTables((prevTables) =>
           prevTables.map((table) =>
             table.id === tableId ? { ...table, status: "available", waiter: undefined, waiter_name: undefined } : table,
@@ -773,7 +770,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         })
       }
     },
-    [tables, activeTable, toast, releaseZustandTable, isMobile],
+    [tables, activeTable, toast, isMobile],
   )
 
   // Agregar plato al carrito
@@ -958,7 +955,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           await tableService.updateTableStatus(activeTable, "kitchen")
 
           // Actualizar directamente en el store y estado local
-          updateZustandTableStatus(activeTable, "kitchen")
+          useTableStore.getState().updateTableStatus(activeTable, "kitchen")
           setTables((prevTables) => prevTables.map((t) => (t.id === activeTable ? { ...t, status: "kitchen" } : t)))
         }
 
@@ -997,7 +994,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           await tableService.assignWaiter(activeTable, profile.id, "occupied")
 
           // Actualizar directamente en el store y estado local
-          assignZustandWaiterToTable(activeTable, profile.id)
+          useTableStore.getState().assignWaiterToTable(activeTable, profile.id)
           setTables((prevTables) =>
             prevTables.map((t) =>
               t.id === activeTable
@@ -1041,7 +1038,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         await tableService.updateTableStatus(activeTable, "kitchen")
 
         // Actualizar directamente en el store y estado local
-        updateZustandTableStatus(activeTable, "kitchen")
+        useTableStore.getState().updateTableStatus(activeTable, "kitchen")
         setTables((prevTables) => prevTables.map((t) => (t.id === activeTable ? { ...t, status: "kitchen" } : t)))
 
         // Agregar la orden al store
@@ -1115,8 +1112,6 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     taxPercentage,
     addOrder,
     toast,
-    updateZustandTableStatus,
-    assignZustandWaiterToTable,
     isMobile,
   ])
 
