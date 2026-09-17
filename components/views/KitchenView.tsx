@@ -1,9 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import type { Profile } from "@/types"
+import type { Profile, OrderStatus } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
+import { useTableStore } from "@/store/useTableStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import { OrderCard } from "@/components/pos/OrderCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TablesSection } from "@/components/pos/TablesSection"
@@ -57,21 +59,21 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   const [filterTable, setFilterTable] = useState<number | null>(null)
   const { toast } = useToast()
 
-  const {
-    tables,
-    getOrdersByStatus,
-    updateOrderStatus,
-    profiles,
-    assignWaiterToTable,
-    setActiveTable,
-    setOrders,
-    addOrder,
-    orders,
-    updateTableStatus,
-    setTables,
-    updateOrder,
-    removeOrder,
-  } = usePOSStore()
+  const tables = useTableStore((s) => s.tables)
+  const setTables = useTableStore((s) => s.setTables)
+  const updateTableStatus = useTableStore((s) => s.updateTableStatus)
+  const assignWaiterToTable = useTableStore((s) => s.assignWaiterToTable)
+  const setActiveTable = useTableStore((s) => s.setActiveTable)
+
+  const orders = useOrderStore((s) => s.orders)
+  const setOrders = useOrderStore((s) => s.setOrders)
+  const addOrder = useOrderStore((s) => s.addOrder)
+  const updateOrder = useOrderStore((s) => s.updateOrder)
+  const removeOrder = useOrderStore((s) => s.removeOrder)
+  const updateOrderStatus = useOrderStore((s) => s.updateOrderStatus)
+  const getOrdersByStatus = (statuses: OrderStatus[]) => useOrderStore.getState().getOrdersByStatus(statuses)
+
+  const profiles = usePOSStore((s) => s.profiles)
 
   // Referencia para la función de cancelación de suscripción
   const unsubscribeRef = useRef<(() => void) | null>(null)
