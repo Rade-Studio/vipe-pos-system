@@ -1,5 +1,19 @@
 import type { JSX } from "react"
 
+// ============================================
+// Restaurant (tenant root entity)
+// ============================================
+export interface Restaurant {
+  id: string
+  slug: string
+  name: string
+  timezone: string
+  currency: string
+  created_at: Date
+  updated_at: Date
+}
+
+// ============================================
 // Profile types
 export type ProfileRole = "waiter" | "kitchen" | "cashier" | "admin"
 
@@ -8,6 +22,7 @@ export type Profile = {
   name: string
   role: ProfileRole
   hasPassword: boolean
+  restaurantId?: string
 }
 
 // Table types
@@ -18,6 +33,7 @@ export type Table = {
   number: number
   status: TableStatus
   waiter?: string
+  restaurantId?: string
 }
 
 // Order types
@@ -58,6 +74,7 @@ export type Order = {
   isPartialOrder?: boolean
   parentOrderId?: string
   paymentMethod?: PaymentMethod | "multiple"
+  restaurantId?: string
 }
 
 // Cart types
@@ -125,6 +142,7 @@ export type PaymentTransaction = {
   cashReceived?: number
   cashChange?: number
   timestamp: Date
+  restaurantId?: string
 }
 
 export type CashRegisterStatus = "closed" | "open"
@@ -136,6 +154,7 @@ export type CashRegister = {
   initialCash: number
   status: CashRegisterStatus
   transactions: PaymentTransaction[]
+  restaurantId?: string
 }
 
 // Summary types for cash register
