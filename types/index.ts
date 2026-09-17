@@ -20,6 +20,8 @@ export type ProfileRole = "waiter" | "kitchen" | "cashier" | "admin"
 export type Profile = {
   id: string
   name: string
+  full_name?: string
+  username?: string | null
   role: ProfileRole
   hasPassword: boolean
   restaurantId?: string
