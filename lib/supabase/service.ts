@@ -1055,8 +1055,8 @@ export const orderService = {
   },
 
   // RPC wrapper for complete_payment (P3 atomic payment)
-  async completePaymentRpc(orderId: string, paymentMethods: string[], cashRegisterId: string) {
-    const { data, error } = await supabase.rpc("complete_payment", {
+  async completePaymentRpc(orderId: string, paymentMethods: string[], cashRegisterId: string): Promise<any> {
+    const { data, error } = await (supabase.rpc as any)("complete_payment", {
       p_order_id: orderId,
       p_payment_methods: paymentMethods,
       p_cash_register_id: cashRegisterId,
@@ -1104,7 +1104,7 @@ export const orderService = {
 
   // RPC wrapper for delete_order_with_items (P3 atomic delete)
   async deleteOrderRpc(orderId: string) {
-    const { error } = await supabase.rpc("delete_order_with_items", {
+    const { error } = await (supabase.rpc as any)("delete_order_with_items", {
       p_order_id: orderId,
     })
 
