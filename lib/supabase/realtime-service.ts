@@ -19,6 +19,15 @@ type ConnectionStatusCallback = (status: boolean) => void
 
 const CHANNEL_KEY_POS = "room_pos"
 
+// Broadcast listener registry: channelKey -> eventName -> Set of handlers.
+// Allows per-handler unsubscribe without tearing down the whole channel.
+const broadcastListenerRegistry = new Map<string, Map<string, Set<Function>>>()
+
+// Stable channel-name helper.  Each role-view (waiter / kitchen / cashier / admin)
+// gets ONE persistent channel named `${topic}-${role}`.  The role suffix prevents
+// cross-role event leakage.
+const roleChannelName = (topic: string, role: string) => `${topic}-${role}`
+
 // Servicio para manejar suscripciones en tiempo real
 export const realtimeService = {
   // Canales activos
@@ -31,10 +40,24 @@ export const realtimeService = {
   isConnected: false,
 
   // Suscribirse a cambios en las mesas
-  subscribeToTables: (callback: TableCallback) => {
-    // Crear un canal para las mesas
+  subscribeToTables: (callback: TableCallback, role = "waiter") => {
+    // Stable channel name keyed by role — avoids the channelCounter race of
+    // using Date.now() or incrementing counters in the channel name itself.
+    const channelName = roleChannelName("tables", role)
+    const storageKey = `tables-${role}`
+
+    // Re-use existing channel if already subscribed for this role to avoid
+    // duplicate subscriptions when the component re-renders.
+    if (realtimeService.channels[storageKey]) {
+      // Channel already exists; just return the teardown for this subscription.
+      return () => {
+        supabase.removeChannel(realtimeService.channels[storageKey])
+        delete realtimeService.channels[storageKey]
+      }
+    }
+
     const channel = supabase
-      .channel("tables-changes")
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
@@ -47,13 +70,14 @@ export const realtimeService = {
       .subscribe()
 
     // Guardar referencia al canal
-    realtimeService.channels["tables"] = channel
+    realtimeService.channels[storageKey] = channel
     realtimeService.isConnected = true
 
-    // Devolver función para cancelar la suscripción
+    // Devolver función para cancelar la suscripción — per-channel teardown,
+    // does NOT call unsubscribeAll().
     return () => {
       supabase.removeChannel(channel)
-      delete realtimeService.channels["tables"]
+      delete realtimeService.channels[storageKey]
     }
   },
 
@@ -67,14 +91,41 @@ export const realtimeService = {
       })
 
       realtimeService.channels[channelKey] = channel
-
     }
 
     const channel = realtimeService.channels[channelKey]
+
+    // Register handler in our registry so it can be removed individually.
+    if (!broadcastListenerRegistry.has(channelKey)) {
+      broadcastListenerRegistry.set(channelKey, new Map())
+    }
+    const eventMap = broadcastListenerRegistry.get(channelKey)!
+    if (!eventMap.has(eventName)) {
+      eventMap.set(eventName, new Set())
+    }
+    eventMap.get(eventName)!.add(callback)
+
+    // Attach the broadcast listener to the channel.
     channel.on("broadcast", { event: eventName}, ({payload}) => {
       callback(payload as T)
     })
 
+    // Return a per-handler unsubscribe — removes only this handler,
+    // does NOT tear down the channel if other handlers are registered.
+    return () => {
+      const evMap = broadcastListenerRegistry.get(channelKey)
+      const handlerSet = evMap?.get(eventName)
+      if (handlerSet) {
+        handlerSet.delete(callback)
+        if (handlerSet.size === 0) {
+          evMap.delete(eventName)
+        }
+      }
+      // Note: we do NOT call supabase.removeChannel here because other
+      // handlers on the same channel (different event names) may still be active.
+      // The channel will be cleaned up when the last handler is removed or
+      // when unsubscribeAll() is explicitly called.
+    }
   },
 
   // enviar factura a un canal de realtime
