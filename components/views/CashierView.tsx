@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from "react"
 import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { usePOSStore } from "@/store/use-pos-store"
+import { useTableStore } from "@/store/useTableStore"
+import { useCartStore } from "@/store/useCartStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -51,7 +54,11 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
 
   const { toast: toastHook } = useToast()
 
-  const { tables, profiles, cartItems, calculateOrderBill } = usePOSStore()
+  const tables = useTableStore((s) => s.tables)
+  const profiles = usePOSStore((s) => s.profiles)
+  const cartItems = useCartStore((s) => s.cartItems)
+  const calculateOrderBill = (items: CartItem[], tipPercentage?: number, taxPercentage?: number) =>
+    useCartStore.getState().calculateOrderBill(items, tipPercentage, taxPercentage)
 
   const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
   const { businessName, businessAddress, businessPhone, businessNIT, tipPercentage, taxPercentage } = useConfigStore()
