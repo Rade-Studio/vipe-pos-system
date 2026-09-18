@@ -13,7 +13,10 @@ services:
   # SUPABASE LOCAL
   # -------------------------------
   db:
-    image: supabase/postgres:15.8.1.085
+    build:
+      context: ./supabase
+      dockerfile: Dockerfile.db
+    image: vipe-supabase-db:latest
     container_name: supabase-db
     restart: unless-stopped
     environment:
@@ -23,10 +26,6 @@ services:
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - supabase-db-data:/var/lib/postgresql/data
-      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
-      - ./supabase/00_supabase_init.sql:/docker-entrypoint-initdb.d/00_supabase_init.sql:ro
-      - ./supabase/01_realtime_bootstrap.sql:/docker-entrypoint-initdb.d/01_realtime_bootstrap.sql:ro
-      - ./supabase/postgresql.conf:/etc/postgresql/postgresql.conf:ro
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     ports:
       - "5432:5432"
@@ -76,7 +75,8 @@ services:
       DB_PASSWORD: postgres
       DB_NAME: postgres
       DB_SSL: "false"
-      DB_AFTER_CONNECT: "SET TimeZone TO 'UTC'; SET datestyle TO 'ISO, MDY'"
+      DB_AFTER_CONNECT: "SET search_path TO realtime, public"
+      RLIMIT_NOFILE: "1024"
       # Activar seed automático (crea tenant + extension postgres_cdc_rls)
       SEED_SELF_HOST: "true"
       # external_id del tenant — debe coincidir con lo que Kong pasa como Host
