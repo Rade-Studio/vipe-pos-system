@@ -219,6 +219,42 @@ services:
       db:
         condition: service_healthy
 
+  post-auth-init:
+    image: postgres:16-alpine
+    container_name: supabase-post-auth-init
+    restart: "no"
+    depends_on:
+      auth:
+        condition: service_started
+    environment:
+      PGPASSWORD: postgres
+    volumes:
+      - ./supabase/post-auth-migrations:/migrations:ro
+      - ./supabase/seed.sql:/seed.sql:ro
+    networks:
+      - default
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "[post-auth-init] Waiting for GoTrue to be reachable..."
+        for i in $$(seq 1 60); do
+          if (echo > /dev/tcp/supabase-auth/9999) 2>/dev/null; then
+            echo "[post-auth-init] GoTrue reachable after $${i}s"
+            break
+          fi
+          sleep 1
+        done
+        echo "[post-auth-init] Waiting 5s for auth schema to settle..."
+        sleep 5
+        echo "[post-auth-init] Applying user migrations..."
+        for MIGRATION in /migrations/*.sql; do
+          echo "[post-auth-init] Applying $$(basename "$$MIGRATION")"
+          psql -h db -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$$MIGRATION"
+        done
+        echo "[post-auth-init] Applying seed..."
+        psql -h db -U postgres -d postgres -v ON_ERROR_STOP=1 -f /seed.sql || echo "[post-auth-init] seed had warnings (continuing)"
+        echo "[post-auth-init] Done."
+
   # -------------------------------
   # APP NEXT.JS
   # -------------------------------
