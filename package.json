@@ -2,6 +2,9 @@
   "name": "vipe-pos-system",
   "version": "0.1.0",
   "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": ["sharp", "@parcel/watcher", "esbuild", "unrs-resolver"]
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
