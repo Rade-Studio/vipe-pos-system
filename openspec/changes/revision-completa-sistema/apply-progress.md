@@ -487,3 +487,32 @@ types/supabase.ts                                |  26 +-
 ### Next slice recommendation
 - orchestrator: run verify/archive decision
 
+---
+
+## investigar-mesa-sync-realtime — Single Literal PR (consolidating PR #1 through PR #6c)
+
+### Context
+This single literal PR (`sdd/revision-completa-sistema/p6c-legacy-cleanup` → `main`) lands all 40 commits of `revision-completa-sistema` work onto `main` in one PR. `size:exception` granted by maintainer.
+
+### Root cause fixed
+`postgis/postgis:16-3.4` does not bundle `supabase_realtime` extension. Without the extension, `CREATE PUBLICATION supabase_realtime` silently fails; without the publication, no `postgres_changes` events fire. The 7 `2025091709*` migrations were written assuming the publication existed, so none applied on the existing volume.
+
+### New commits added (this apply session)
+- Commit `c2e8d35`: infra: swap postgres to supabase/postgres:15.8.1.085 + gotrue Dockerfile + init.sql
+  - `infra/gotrue/Dockerfile` — rebuilds gotrue:v2.158.1 with PG-16-compatible backfill migration patch
+  - `infra/gotrue/migrations/20221208132122_backfill_email_last_sign_in_at.up.sql` — `id::text = user_id::text` cast fix
+  - `supabase/00_supabase_init.sql` — creates `supabase_realtime` extension + Supabase roles + base grants on fresh volume
+  - `docker-compose.yml` — db image → `supabase/postgres:15.8.1.085`, auth → `build: ./infra/gotrue`, init.sql mount added
+- Commit `3106519`: feat(auth): seed users with bcrypt hashes for all 4 roles + tester
+  - `supabase/seed.sql` — `auth.users` INSERT uses `crypt('pass', gen_salt('bf'))` for all 5 users
+- Commit `3804562`: fix(realtime): subscribeToTables multi-callback registry (R1-06)
+  - `lib/supabase/realtime-service.ts` — `subscribeToTables` rewritten with `tablesChannels` Map-of-Sets pattern; multiple subscribers (WaiterView + TableGrid) each receive events independently
+- Commit `<TBD>`: docs: single-PR consolidation note + db reset quick-start
+- Commit `<TBD>`: docs(plan): investigation, proposal, specs, design, tasks for mesa-sync fix
+
+### Apply path
+- `docker compose down -v` — db reset; data loss accepted
+- `docker compose build` — rebuilds gotrue patch + next app
+- `docker compose up -d` — init.sql + 7 migrations apply on fresh volume
+- `docker exec -i supabase-db psql -U postgres -d postgres < supabase/seed.sql`
+

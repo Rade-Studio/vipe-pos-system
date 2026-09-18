@@ -76,6 +76,19 @@ supabase db reset && pnpm docker:dev:seed
 
 Esto aplica todas las migraciones en `supabase/migrations/` y luego carga los datos de ejemplo desde `supabase/seed.sql`.
 
+### Fresh stack
+
+The Supabase volume contains application data. To wipe and re-initialize from migrations:
+
+```bash
+docker compose down -v
+docker compose up -d
+# wait ~30s for init.sql + migrations to apply
+docker exec -i supabase-db psql -U postgres -d postgres < supabase/seed.sql
+```
+
+**Warning:** `docker compose down -v` destroys the database volume — all profiles, tables, and orders are lost.
+
 ### 5. Iniciar el servidor de desarrollo
 
 ```bash
