@@ -24,6 +24,15 @@ const CHANNEL_KEY_POS = "room_pos"
 // Allows per-handler unsubscribe without tearing down the whole channel.
 const broadcastListenerRegistry = new Map<string, Map<string, Set<Function>>>()
 
+// Tables channel registry: storageKey -> { channel, callbacks Set }
+// Allows multiple subscribers (WaiterView + TableGrid) to share one channel
+// while each receiving events independently via their own callback.
+type TablesChannelEntry = {
+  channel: RealtimeChannel
+  callbacks: Set<TableCallback>
+}
+const tablesChannels = new Map<string, TablesChannelEntry>()
+
 // Stable channel-name helper.  Each role-view (waiter / kitchen / cashier / admin)
 // gets ONE persistent channel named `${topic}-${role}`.  The role suffix prevents
 // cross-role event leakage.
@@ -42,43 +51,32 @@ export const realtimeService = {
 
   // Suscribirse a cambios en las mesas
   subscribeToTables: (callback: TableCallback, role = "waiter") => {
-    // Stable channel name keyed by role — avoids the channelCounter race of
-    // using Date.now() or incrementing counters in the channel name itself.
-    const channelName = roleChannelName("tables", role)
     const storageKey = `tables-${role}`
-
-    // Re-use existing channel if already subscribed for this role to avoid
-    // duplicate subscriptions when the component re-renders.
-    if (realtimeService.channels[storageKey]) {
-      // Channel already exists; just return the teardown for this subscription.
-      return () => {
-        supabase.removeChannel(realtimeService.channels[storageKey])
-        delete realtimeService.channels[storageKey]
-      }
+    let entry = tablesChannels.get(storageKey)
+    if (!entry) {
+      const channel = supabase
+        .channel(roleChannelName("tables", role))
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "tables" },
+          (payload) => {
+            entry?.callbacks.forEach((cb) => cb(payload))
+          },
+        )
+        .subscribe()
+      entry = { channel, callbacks: new Set() }
+      tablesChannels.set(storageKey, entry)
+      realtimeService.isConnected = true
     }
-
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        "postgres_changes",
-        {
-          event: "*", // Escuchar todos los eventos (INSERT, UPDATE, DELETE)
-          schema: "public",
-          table: "tables",
-        },
-        callback,
-      )
-      .subscribe()
-
-    // Guardar referencia al canal
-    realtimeService.channels[storageKey] = channel
-    realtimeService.isConnected = true
-
-    // Devolver función para cancelar la suscripción — per-channel teardown,
-    // does NOT call unsubscribeAll().
+    entry.callbacks.add(callback)
     return () => {
-      supabase.removeChannel(channel)
-      delete realtimeService.channels[storageKey]
+      const e = tablesChannels.get(storageKey)
+      if (!e) return
+      e.callbacks.delete(callback)
+      if (e.callbacks.size === 0) {
+        e.channel.unsubscribe()
+        tablesChannels.delete(storageKey)
+      }
     }
   },
 
