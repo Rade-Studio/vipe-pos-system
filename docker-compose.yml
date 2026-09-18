@@ -13,7 +13,7 @@ services:
   # SUPABASE LOCAL
   # -------------------------------
   db:
-    image: postgis/postgis:16-3.4
+    image: supabase/postgres:15.8.1.085
     container_name: supabase-db
     restart: unless-stopped
     environment:
@@ -24,6 +24,7 @@ services:
     volumes:
       - supabase-db-data:/var/lib/postgresql/data
       - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
+      - ./supabase/00_supabase_init.sql:/docker-entrypoint-initdb.d/00_supabase_init.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -185,7 +186,10 @@ services:
         condition: service_healthy
 
   auth:
-    image: supabase/gotrue:v2.158.1
+    build:
+      context: ./infra/gotrue
+      dockerfile: Dockerfile
+    image: vipe-gotrue-patched:v2.158.1
     container_name: supabase-auth
     restart: unless-stopped
     environment:
@@ -193,6 +197,7 @@ services:
       GOTRUE_API_PORT: 9999
       API_EXTERNAL_URL: http://localhost:54321
       GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_NAMESPACE: auth
       GOTRUE_DB_DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
       GOTRUE_SITE_URL: http://localhost:3000
       GOTRUE_URI_ALLOW_LIST: '*'
