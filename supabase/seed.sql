@@ -16,35 +16,72 @@
 -- handle_new_user() trigger (fires AFTER INSERT on auth.users).
 -- The trigger sets role from raw_user_meta_data.role (defaults to 'waiter').
 -- ============================================
-INSERT INTO auth.users (id, email, encrypted_password, raw_user_meta_data)
+INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 VALUES
   (
     'a0eebc99-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
     'carlos@restaurant.com',
-    -- This is a placeholder; GoTrue handles password hashing.
-    -- The password field is not used for authentication here.
-    -- For seed purposes the password hash is from GoTrue's internal format.
-    -- Run: docker compose exec db psql -c "SELECT * FROM auth.users" to verify.
-    'placeholder_hash_carlos',
-    '{"full_name": "Carlos López", "role": "cashier"}'::jsonb
+    crypt('carlos123', gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Carlos López","role":"cashier"}'::jsonb,
+    now(),
+    now()
   ),
   (
     'a0eebc99-0000-0000-0000-000000000002',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
     'maria@restaurant.com',
-    'placeholder_hash_maria',
-    '{"full_name": "María", "role": "waiter"}'::jsonb
+    crypt('maria123', gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"María","role":"waiter"}'::jsonb,
+    now(),
+    now()
   ),
   (
     'a0eebc99-0000-0000-0000-000000000003',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
     'admin@restaurant.com',
-    'placeholder_hash_admin',
-    '{"full_name": "Admin Principal", "role": "admin"}'::jsonb
+    crypt('admin123', gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Admin Principal","role":"admin"}'::jsonb,
+    now(),
+    now()
   ),
   (
     'a0eebc99-0000-0000-0000-000000000004',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
     'deiby@restaurant.com',
-    'placeholder_hash_deiby',
-    '{"full_name": "Deiby", "role": "waiter"}'::jsonb
+    crypt('deiby123', gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Deiby","role":"waiter"}'::jsonb,
+    now(),
+    now()
+  ),
+  (
+    'a0eebc99-0000-0000-0000-000000000005',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'tester@restaurant.com',
+    crypt('tester123', gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Test User","role":"waiter"}'::jsonb,
+    now(),
+    now()
   );
 
 -- ============================================
@@ -59,7 +96,8 @@ VALUES
   ('218baaee-4827-4f72-b5bb-387258f7c7cc', 'a0eebc99-0000-0000-0000-000000000001', 'a0eebc99-0000-0000-0000-000000000000', 'Carlos López', 'carlosl', 'carlos@restaurant.com', 'cashier', 'true', '2025-04-13 02:25:16.815455+00', '2025-04-13 02:25:16.815455+00'),
   ('3799b5a1-a7f7-4425-a5ca-abf6a195bace', 'a0eebc99-0000-0000-0000-000000000002', 'a0eebc99-0000-0000-0000-000000000000', 'María', 'none', 'maria@restaurant.com', 'waiter', 'true', '2025-04-13 02:25:16.815455+00', '2025-05-09 13:55:15.842+00'),
   ('51fcd8ac-0a4d-42fe-9b6f-1d031a3cd555', 'a0eebc99-0000-0000-0000-000000000003', 'a0eebc99-0000-0000-0000-000000000000', 'Admin Principal', 'admin', 'admin@restaurant.com', 'admin', 'true', '2025-04-13 02:25:16.815455+00', '2025-04-13 02:25:16.815455+00'),
-  ('c3094acf-f56a-4cde-924a-8922b71ccaa2', 'a0eebc99-0000-0000-0000-000000000004', 'a0eebc99-0000-0000-0000-000000000000', 'Deiby', 'picon', 'deiby@restaurant.com', 'waiter', 'true', '2025-04-13 02:25:16.815455+00', '2025-05-03 23:27:29.838+00');
+  ('c3094acf-f56a-4cde-924a-8922b71ccaa2', 'a0eebc99-0000-0000-0000-000000000004', 'a0eebc99-0000-0000-0000-000000000000', 'Deiby', 'picon', 'deiby@restaurant.com', 'waiter', 'true', '2025-04-13 02:25:16.815455+00', '2025-05-03 23:27:29.838+00'),
+  ('f82c6a1c-1234-5678-9abc-000000000005', 'a0eebc99-0000-0000-0000-000000000005', 'a0eebc99-0000-0000-0000-000000000000', 'Test User', 'tester', 'tester@restaurant.com', 'waiter', 'true', '2025-09-18 00:00:00.000000+00', '2025-09-18 00:00:00.000000+00');
 
 -- ============================================
 -- business_config seed
