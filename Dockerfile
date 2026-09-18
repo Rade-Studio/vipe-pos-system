@@ -11,13 +11,13 @@ RUN apk add --no-cache libc6-compat curl
 WORKDIR /app
 
 # Install pnpm globally via corepack
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* .npmrc pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 
 # Stage 2: Build
 FROM node:20-alpine AS builder
 
-RUN apk add --no-cache libc6-compat curl
+RUN apk add --no-cache libc6-compat curl && corepack enable
 
 WORKDIR /app
 
@@ -29,7 +29,7 @@ ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-RUN pnpm build
+RUN corepack enable && pnpm build
 
 # Stage 3: Runtime
 FROM node:20-alpine AS runner
