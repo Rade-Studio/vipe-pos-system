@@ -10,7 +10,7 @@ interface AnalyticsState {
   getCategorySales: (orders: Order[]) => { category: string; amount: number }[]
 }
 
-export const useAnalyticsStore = create<AnalyticsState>(() => ({
+export const useAnalyticsStore: { (): AnalyticsState } = (create<AnalyticsState>(() => ({
   getTotalSales: (orders) => {
     return orders
       .filter((order) => order.status === "paid")
@@ -24,7 +24,7 @@ export const useAnalyticsStore = create<AnalyticsState>(() => ({
   getAverageOrderValue: (orders) => {
     const completedOrders = orders.filter((order) => order.status === "paid")
     if (completedOrders.length === 0) return 0
-    return useAnalyticsStore.getState().getTotalSales(completedOrders) / completedOrders.length
+    return (useAnalyticsStore as any).getState().getTotalSales(completedOrders) / completedOrders.length
   },
 
   getDailySales: (orders, days) => {
@@ -85,4 +85,4 @@ export const useAnalyticsStore = create<AnalyticsState>(() => ({
 
     return Object.entries(categorySales).map(([category, amount]) => ({ category, amount }))
   },
-}))
+})) as any)

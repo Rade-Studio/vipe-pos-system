@@ -30,9 +30,21 @@ export function BusinessConfigForm({ initialData }: BusinessConfigFormProps) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  const mutation = useMutation(updateBusinessConfig, {
+  const mutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      await businessConfigService.saveMultipleConfig({
+        business_name: data.business_name,
+        business_address: data.address,
+        business_phone: data.phone,
+        tax_percentage: data.tax_rate,
+        currency: data.currency,
+        currency_symbol: data.currency_symbol,
+        receipt_footer: data.receipt_footer,
+        receipt_header: data.receipt_header,
+      })
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries(["businessConfig"])
+      queryClient.invalidateQueries({ queryKey: ["businessConfig"] })
       toast({
         title: "Éxito",
         description: "Configuración del negocio actualizada correctamente.",

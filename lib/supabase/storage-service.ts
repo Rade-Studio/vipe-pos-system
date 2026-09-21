@@ -43,7 +43,10 @@ export const storageService = {
       }
 
       // Construir URL manualmente para asegurar el formato correcto
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabase.supabaseUrl
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      if (!supabaseUrl) {
+        throw new Error("NEXT_PUBLIC_SUPABASE_URL no está configurado")
+      }
       const manualUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${fileName}`
 
       log.info(`StorageService: URL generada por Supabase:`, { publicUrl: urlData.publicUrl })

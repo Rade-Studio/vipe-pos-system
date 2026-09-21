@@ -1,5 +1,9 @@
 import { supabase } from "./client"
-import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js"
+import {
+  type RealtimeChannel,
+  type RealtimePostgresChangesPayload,
+  REALTIME_SUBSCRIBE_STATES,
+} from "@supabase/supabase-js"
 import { orderService } from "./service"
 import {toast} from "@/components/ui/use-toast";
 import {CartItem, CommandPayload, PrintableInvoice} from "@/types";
@@ -113,7 +117,8 @@ export const realtimeService = {
     // does NOT tear down the channel if other handlers are registered.
     return () => {
       const evMap = broadcastListenerRegistry.get(channelKey)
-      const handlerSet = evMap?.get(eventName)
+      if (!evMap) return
+      const handlerSet = evMap.get(eventName)
       if (handlerSet) {
         handlerSet.delete(callback)
         if (handlerSet.size === 0) {
@@ -239,14 +244,15 @@ export const realtimeService = {
 
     // Activar el canal de tiempo real para verificar la conexión
     const statusChannel = supabase.channel("public:kitchen-status").subscribe((status) => {
-      if (status === "SUBSCRIBED") {
+      if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
         log.info("Suscripción a cocina activada")
         connectionStatusCallback(true)
         realtimeService.isConnected = true
       } else {
         log.info("Estado de suscripción:", { status })
-        connectionStatusCallback(status === "SUBSCRIBED")
-        realtimeService.isConnected = status === "SUBSCRIBED"
+        // En el branch else ya sabemos que NO está SUBSCRIBED.
+        connectionStatusCallback(false)
+        realtimeService.isConnected = false
       }
     })
 
@@ -346,7 +352,7 @@ export const realtimeService = {
                   order: orderDetails,
                   isNewItem: isNewItem,
                   newItemId: itemId, // Añadir el ID del nuevo item explícitamente
-                },
+                } as any,
                 isNewItem,
               )
             }
@@ -394,7 +400,7 @@ export const realtimeService = {
                   remainingItems: remainingKitchenItems.length,
                   itemDelivered: true, // Indicar que un item fue entregado
                   deliveredItemId: itemId, // ID del item entregado
-                })
+                } as any)
 
                 // Si no quedan items en cocina, limpiar el registro de esta orden
                 if (remainingKitchenItems.length === 0 && realtimeService.knownItems[orderId]) {
@@ -434,7 +440,7 @@ export const realtimeService = {
                     order: orderDetails,
                     isNewItem: isNewItem,
                     newItemId: itemId, // Añadir el ID del nuevo item explícitamente
-                  },
+                  } as any,
                   isNewItem,
                 )
               }

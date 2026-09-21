@@ -289,7 +289,7 @@ export function TableManagementPanel() {
                           <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary mr-2">
                             {table.profiles?.full_name
                               ?.split(" ")
-                              .map((name) => name[0])
+                              .map((name: string) => name[0])
                               .join("")
                               .toUpperCase() || "??"}
                           </div>

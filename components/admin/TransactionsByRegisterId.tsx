@@ -233,7 +233,7 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         {!propSelectedDate && (
           <div className="flex items-center w-full sm:w-auto">
-            <DatePicker date={selectedDate} setDate={setSelectedDate} />
+            <DatePicker date={selectedDate} setDate={setSelectedDate as any} />
           </div>
         )}
 

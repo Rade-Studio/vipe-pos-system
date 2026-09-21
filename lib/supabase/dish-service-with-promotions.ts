@@ -4,10 +4,11 @@ import { log } from "@/lib/log"
 
 // Función para calcular el descuento
 export function calculateDiscount(price: number, promotion: Promotion): number {
+  const value = promotion.discount_value ?? 0
   if (promotion.discount_type === "percentage") {
-    return Math.round((price * promotion.discount_value) / 100)
+    return Math.round((price * value) / 100)
   } else {
-    return Math.min(price, promotion.discount_value) // El descuento no puede ser mayor que el precio
+    return Math.min(price, value) // El descuento no puede ser mayor que el precio
   }
 }
 
@@ -24,7 +25,7 @@ export const dishServiceWithPromotions = {
         .gte("end_date", new Date().toISOString())
 
       if (error) throw error
-      return data || []
+      return (data || []) as unknown as Promotion[]
     } catch (error) {
       log.error("Error getting active promotions:", { error: String(error) })
       return []

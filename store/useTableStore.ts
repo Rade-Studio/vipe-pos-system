@@ -60,10 +60,10 @@ export const useTableStore = create<TableState>((set, get) => ({
       if (table && table.status === "available" && !table.waiter) {
         return state
       }
-      const tables = state.tables.map((table) =>
+      const tables: Table[] = state.tables.map((table) =>
         table.id === tableId ? { ...table, status: "available", waiter: undefined } : table,
       )
-      return { tables }
+      return { tables } as Partial<TableState>
     })
   },
 

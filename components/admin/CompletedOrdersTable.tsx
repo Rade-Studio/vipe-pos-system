@@ -139,17 +139,16 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       toast({
         title: "Advertencia",
         description: "No se encontró información completa de la mesa o mesero para esta orden",
-        variant: "warning",
       })
     }
 
     // Asegurarnos de que tenemos todos los valores necesarios para la factura
-    const subtotal = order.subtotal || order.bill?.subtotal || 0
-    const tax = order.tax || order.bill?.tax || 0
-    const taxPercentage = order.taxPercentage || order.bill?.taxPercentage || 0
-    const tip = order.tip || order.bill?.tip || 0
-    const tipPercentage = order.tipPercentage || order.bill?.tipPercentage || 0
-    const total = order.total || order.bill?.total || 0
+    const subtotal = order.bill?.subtotal ?? 0
+    const tax = order.bill?.tax ?? 0
+    const taxPercentage = order.bill?.taxPercentage ?? 0
+    const tip = order.bill?.tip ?? 0
+    const tipPercentage = order.bill?.tipPercentage ?? 0
+    const total = order.bill?.total ?? 0
 
     log.info("Datos de la orden para factura:", {
       id: order.id,

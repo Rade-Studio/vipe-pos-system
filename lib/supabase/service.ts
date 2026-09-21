@@ -1278,7 +1278,7 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
       })
     )
 
-    return orders
+    return orders as unknown as Order[]
   } catch (error) {
     throw error
   }

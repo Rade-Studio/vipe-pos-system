@@ -44,9 +44,10 @@ import { tableService } from "@/lib/supabase/service"
 interface AdminViewProps {
   profile: Profile
   onChangeProfile: () => void
+  authRole?: string
 }
 
-export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
+export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [monthSales, setMonthSales] = useState<number>(0)
   const [kitchenOrdersCount, setKitchenOrdersCount] = useState<number>(0)
@@ -81,8 +82,8 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
 
     return (dbOrders || []).map((order) => ({
       id: order.id,
-      tableId: order.table_id,
-      waiter: order.waiter_id,
+      tableId: order.table_id ?? "",
+      waiter: order.waiter_id ?? "",
       status: order.status,
       items:
         (order.order_items || []).map((item) => ({
@@ -90,7 +91,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
           name: item.name,
           price: item.price,
           quantity: item.quantity,
-          categoryId: item.category_id || "",
+          categoryId: "",
           image: "",
           comments: item.comments || "",
           status: item.status || "kitchen",
@@ -102,8 +103,9 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         tip: order.tip || 0,
         tipPercentage: order.tip_percentage || 0,
         total: order.total || 0,
+        totalDiscounts: order.total_discounts ?? 0,
       },
-      createdAt: new Date(order.created_at),
+      createdAt: order.created_at ? new Date(order.created_at) : new Date(),
       tableName: order.tables?.number || "N/A",
       waiterName: order.profiles?.full_name || "Desconocido",
     }))
@@ -276,7 +278,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         dbOrders?.map((order) => ({
           id: order.id,
           tableId: order.table_id,
-          waiter: order.waiter_id,
+          waiter: order.waiter_id ?? "",
           status: order.status, // Mantener el estado original de la orden
           items:
             order.order_items?.map((item) => ({
@@ -284,7 +286,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
               name: item.name,
               price: item.price,
               quantity: item.quantity,
-              categoryId: item.category_id || "",
+              categoryId: "",
               image: "",
               comments: item.comments || "",
               status: item.status || "kitchen", // Estado del item
@@ -296,8 +298,9 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
             tip: order.tip || 0,
             tipPercentage: order.tip_percentage || 0,
             total: order.total || 0,
+            totalDiscounts: order.total_discounts ?? 0,
           },
-          createdAt: new Date(order.created_at),
+          createdAt: order.created_at ? new Date(order.created_at) : new Date(),
           // Información adicional para mostrar
           tableName: order.tables?.number || "N/A",
           waiterName: order.profiles?.full_name || "Desconocido",
@@ -380,7 +383,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
       await tableService.update(order.tableId, {
         status: "available",
         waiter_id: null,
-      })
+      } as any)
 
       // Mantener este toast ya que es una acción importante iniciada por el usuario
       toast({
@@ -393,7 +396,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
       // Mantener este toast ya que es un error importante
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "Error desconocido",
         variant: "destructive",
       })
     } finally {
@@ -403,7 +406,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
 
   return (
     <div className="flex flex-col h-screen p-4">
-      <Header profile={profile} onChangeProfile={onChangeProfile} title="Panel de Administración" />
+      <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Panel de Administración" />
 
       <Tabs defaultValue="dashboard">
         <TabsList className="mb-4">

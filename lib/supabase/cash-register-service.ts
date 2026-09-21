@@ -124,13 +124,13 @@ export const cashRegisterService = {
           ? transactions.map((t) => ({
               id: t.id,
               orderId: t.order_id,
-              tableId: t.table_id,
-              waiterId: t.waiter_id,
+              tableId: t.table_id ?? "",
+              waiterId: t.waiter_id ?? undefined,
               amount: t.amount,
-              tipAmount: t.tip_amount,
-              method: t.method,
-              cashReceived: t.cash_received,
-              cashChange: t.cash_change,
+              tipAmount: t.tip_amount ?? undefined,
+              method: t.method as PaymentMethod,
+              cashReceived: t.cash_received ?? undefined,
+              cashChange: t.cash_change ?? undefined,
               timestamp: new Date(t.timestamp),
               cash_register_id: t.cash_register_id,
             }))
@@ -139,8 +139,8 @@ export const cashRegisterService = {
           ? cashTransactions.map((t) => ({
               id: t.id,
               amount: t.amount,
-              type: t.type,
-              description: t.description,
+              type: t.type as "deposit" | "withdrawal",
+              description: t.description ?? "",
               timestamp: new Date(t.timestamp),
               cash_register_id: t.cash_register_id,
             }))
@@ -238,13 +238,13 @@ export const cashRegisterService = {
           ? transactions.map((t) => ({
               id: t.id,
               orderId: t.order_id,
-              tableId: t.table_id,
-              waiterId: t.waiter_id,
+              tableId: t.table_id ?? "",
+              waiterId: t.waiter_id ?? undefined,
               amount: t.amount,
-              tipAmount: t.tip_amount,
-              method: t.method,
-              cashReceived: t.cash_received,
-              cashChange: t.cash_change,
+              tipAmount: t.tip_amount ?? undefined,
+              method: t.method as PaymentMethod,
+              cashReceived: t.cash_received ?? undefined,
+              cashChange: t.cash_change ?? undefined,
               timestamp: new Date(t.timestamp),
               cash_register_id: t.cash_register_id,
             }))
@@ -253,8 +253,8 @@ export const cashRegisterService = {
           ? cashTransactions.map((t) => ({
               id: t.id,
               amount: t.amount,
-              type: t.type,
-              description: t.description,
+              type: t.type as "deposit" | "withdrawal",
+              description: t.description ?? "",
               timestamp: new Date(t.timestamp),
               cash_register_id: t.cash_register_id,
             }))
@@ -350,13 +350,13 @@ export const cashRegisterService = {
           ? transactions.map((t) => ({
               id: t.id,
               orderId: t.order_id,
-              tableId: t.table_id,
-              waiterId: t.waiter_id,
+              tableId: t.table_id ?? "",
+              waiterId: t.waiter_id ?? undefined,
               amount: t.amount,
-              tipAmount: t.tip_amount,
-              method: t.method,
-              cashReceived: t.cash_received,
-              cashChange: t.cash_change,
+              tipAmount: t.tip_amount ?? undefined,
+              method: t.method as PaymentMethod,
+              cashReceived: t.cash_received ?? undefined,
+              cashChange: t.cash_change ?? undefined,
               timestamp: new Date(t.timestamp),
               cash_register_id: t.cash_register_id,
             }))
@@ -365,8 +365,8 @@ export const cashRegisterService = {
           ? cashTransactions.map((t) => ({
               id: t.id,
               amount: t.amount,
-              type: t.type,
-              description: t.description,
+              type: t.type as "deposit" | "withdrawal",
+              description: t.description ?? "",
               timestamp: new Date(t.timestamp),
               cash_register_id: t.cash_register_id,
             }))
@@ -510,8 +510,8 @@ export const cashRegisterService = {
       return {
         id: data.id,
         amount: data.amount,
-        type: data.type,
-        description: data.description,
+        type: data.type as "deposit" | "withdrawal",
+        description: data.description ?? "",
         timestamp: new Date(data.timestamp),
         cash_register_id: data.cash_register_id,
       }
@@ -543,13 +543,13 @@ export const cashRegisterService = {
       return data.map((t) => ({
         id: t.id,
         orderId: t.order_id,
-        tableId: t.table_id,
-        waiterId: t.waiter_id,
+        tableId: t.table_id ?? "",
+        waiterId: t.waiter_id ?? undefined,
         amount: t.amount,
-        tipAmount: t.tip_amount,
-        method: t.method,
-        cashReceived: t.cash_received,
-        cashChange: t.cash_change,
+        tipAmount: t.tip_amount ?? undefined,
+        method: t.method as PaymentMethod,
+        cashReceived: t.cash_received ?? undefined,
+        cashChange: t.cash_change ?? undefined,
         timestamp: new Date(t.timestamp),
         cash_register_id: t.cash_register_id,
       }))
@@ -581,8 +581,8 @@ export const cashRegisterService = {
       return data.map((t) => ({
         id: t.id,
         amount: t.amount,
-        type: t.type,
-        description: t.description,
+        type: t.type as "deposit" | "withdrawal",
+        description: t.description ?? "",
         timestamp: new Date(t.timestamp),
         cash_register_id: t.cash_register_id,
       }))
@@ -608,13 +608,13 @@ export const cashRegisterService = {
       return data.map((t) => ({
         id: t.id,
         orderId: t.order_id,
-        tableId: t.table_id,
-        waiterId: t.waiter_id,
+        tableId: t.table_id ?? "",
+        waiterId: t.waiter_id ?? undefined,
         amount: t.amount,
-        tipAmount: t.tip_amount,
-        method: t.method,
-        cashReceived: t.cash_received,
-        cashChange: t.cash_change,
+        tipAmount: t.tip_amount ?? undefined,
+        method: t.method as PaymentMethod,
+        cashReceived: t.cash_received ?? undefined,
+        cashChange: t.cash_change ?? undefined,
         timestamp: new Date(t.timestamp),
         cash_register_id: t.cash_register_id,
       }))
@@ -647,13 +647,13 @@ export const cashRegisterService = {
       return data.map((t) => ({
         id: t.id,
         orderId: t.order_id,
-        tableId: t.table_id,
-        waiterId: t.waiter_id,
+        tableId: t.table_id ?? "",
+        waiterId: t.waiter_id ?? undefined,
         amount: t.amount,
-        tipAmount: t.tip_amount,
-        method: t.method,
-        cashReceived: t.cash_received,
-        cashChange: t.cash_change,
+        tipAmount: t.tip_amount ?? undefined,
+        method: t.method as PaymentMethod,
+        cashReceived: t.cash_received ?? undefined,
+        cashChange: t.cash_change ?? undefined,
         timestamp: new Date(t.timestamp),
         cash_register_id: t.cash_register_id,
       }))
@@ -688,8 +688,8 @@ export const cashRegisterService = {
       return data.map((t) => ({
         id: t.id,
         amount: t.amount,
-        type: t.type,
-        description: t.description,
+        type: t.type as "deposit" | "withdrawal",
+        description: t.description ?? "",
         timestamp: new Date(t.timestamp),
         cash_register_id: t.cash_register_id,
       }))
@@ -713,13 +713,13 @@ export const cashRegisterService = {
       return data.map((t) => ({
         id: t.id,
         orderId: t.order_id,
-        tableId: t.table_id,
-        waiterId: t.waiter_id,
+        tableId: t.table_id ?? "",
+        waiterId: t.waiter_id ?? undefined,
         amount: t.amount,
-        tipAmount: t.tip_amount,
-        method: t.method,
-        cashReceived: t.cash_received,
-        cashChange: t.cash_change,
+        tipAmount: t.tip_amount ?? undefined,
+        method: t.method as PaymentMethod,
+        cashReceived: t.cash_received ?? undefined,
+        cashChange: t.cash_change ?? undefined,
         timestamp: new Date(t.timestamp),
         cash_register_id: t.cash_register_id,
       }))
@@ -743,8 +743,8 @@ export const cashRegisterService = {
       return data.map((t) => ({
         id: t.id,
         amount: t.amount,
-        type: t.type,
-        description: t.description,
+        type: t.type as "deposit" | "withdrawal",
+        description: t.description ?? "",
         timestamp: new Date(t.timestamp),
         cash_register_id: t.cash_register_id,
       }))
@@ -834,7 +834,6 @@ export const cashRegisterService = {
       totalCashDeposits: 0,
       totalCashWithdrawals: 0,
       finalCash: 0,
-      cashTransactions: [],
     }
 
     // Sumar los valores de todas las cajas
@@ -851,11 +850,7 @@ export const cashRegisterService = {
       summary.totalChange += registerSummary.totalChange || 0
       summary.totalCashDeposits += registerSummary.totalCashDeposits || 0
       summary.totalCashWithdrawals += registerSummary.totalCashWithdrawals || 0
-
-      // Agregar todas las transacciones de efectivo
-      if (register.cashTransactions) {
-        summary.cashTransactions = [...(summary.cashTransactions || []), ...register.cashTransactions]
-      }
+      // TODO(writer): agregar agregación de summary.cashTransactions si CashRegisterSummary lo requiere
     })
 
     // Calcular efectivo final

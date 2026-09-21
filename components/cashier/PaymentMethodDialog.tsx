@@ -113,14 +113,16 @@ export function PaymentMethodDialog({
         }
 
         // Obtener información de la mesa
-        const tableInfo = await tableService.getById(order.table_id)
+        const tableInfo = order.table_id ? await tableService.getById(order.table_id) : null
 
         // Obtener información del mesero
-        const { data: waiterInfo } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .eq("id", order.waiter_id)
-          .single()
+        const { data: waiterInfo } = order.waiter_id
+          ? await supabase
+              .from("profiles")
+              .select("id, full_name")
+              .eq("id", order.waiter_id)
+              .single()
+          : { data: null }
 
         setOrderData({
           ...order,
@@ -187,12 +189,13 @@ export function PaymentMethodDialog({
         price: item.price,
         quantity: item.quantity,
         comments: item.comments || undefined,
-        categoryId: item.category_id || "",
-        originalPrice: item.original_price,
-        discountAmount: item.discount_amount,
-        discountPercentage: item.discount_percentage,
-        promotionId: item.promotion_id,
-        promotionName: item.promotion_name,
+        categoryId: "",
+        image: "",
+        originalPrice: undefined,
+        discountAmount: undefined,
+        discountPercentage: undefined,
+        promotionId: undefined,
+        promotionName: undefined,
       }),
     )
   }, [orderData])
@@ -229,11 +232,11 @@ export function PaymentMethodDialog({
       // Determinar los items a incluir en la factura
       const invoiceItems =
         isPartialPayment && selectedItems.length > 0
-          ? orderItems.filter((item) => selectedItems.includes(item.id))
+          ? orderItems.filter((item: CartItem) => selectedItems.includes(item.id))
           : orderItems
 
       // Calcular el total de descuentos
-      const totalDiscounts = invoiceItems.reduce((sum, item) => {
+      const totalDiscounts = invoiceItems.reduce((sum: number, item: CartItem) => {
         if (item.originalPrice && item.originalPrice > item.price) {
           return sum + (item.originalPrice - item.price) * item.quantity
         }

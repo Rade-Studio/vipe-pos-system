@@ -22,7 +22,7 @@ interface CashRegisterSummaryProps {
 }
 
 export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) {
-  const { getCurrentRegisterSummary, isRegisterOpen, loadTransactionsByDate, getCurrentRegister } =
+  const { getCurrentRegisterSummary, isRegisterOpen, loadTransactionsByDate, loadCurrentRegister } =
     useCashRegisterStore()
   const [summary, setSummary] = useState<CashRegisterSummaryType | null>(null)
   const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([])
@@ -56,9 +56,10 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
         }
       } else {
         // Si no hay fecha seleccionada, usar el registro actual
-        const loadCurrentRegister = async () => {
+        const loadCurrent = async () => {
           try {
-            const currentRegister = await getCurrentRegister()
+            await loadCurrentRegister()
+            const currentRegister = useCashRegisterStore.getState().currentRegister
             if (currentRegister) {
               setRegisters([currentRegister])
               setSelectedRegisters([currentRegister.id])
@@ -73,12 +74,12 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
           }
         }
 
-        loadCurrentRegister()
+        loadCurrent()
       }
     }
 
     loadRegisters()
-  }, [selectedDate, getCurrentRegister])
+  }, [selectedDate, loadCurrentRegister])
 
   // Cargar datos cuando cambian los registros seleccionados
   useEffect(() => {

@@ -50,7 +50,7 @@ export const businessConfigService = {
 
       // Llenar el objeto con los valores de la base de datos
       if (data && data.length > 0) {
-        data.forEach((item: BusinessConfigRecord) => {
+        data.forEach((item: any) => {
           // Convertir valores según su tipo
           if (item.key === "tax_percentage" || item.key === "tip_percentage") {
             config[item.key] = Number.parseFloat(item.value)
@@ -136,7 +136,9 @@ export const businessConfigService = {
   async saveMultipleConfig(config: Partial<BusinessConfigValues>): Promise<void> {
     try {
       // Guardar cada valor individualmente
-      const promises = Object.entries(config).map(([key, value]) => this.saveConfigValue(key, value))
+      const promises = Object.entries(config).map(([key, value]) =>
+        this.saveConfigValue(key, value as string | number | boolean),
+      )
 
       await Promise.all(promises)
     } catch (error) {

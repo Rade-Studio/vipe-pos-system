@@ -129,7 +129,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
 
   // Inicializar el formulario con los valores por defecto o los valores de la categoría existente
   const form = useForm<CategoryFormValues>({
-    resolver: zodResolver(categorySchema),
+    resolver: zodResolver(categorySchema) as any,
     defaultValues: {
       name: category?.name || "",
       description: category?.description || "",
@@ -162,7 +162,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
     try {
       if (category) {
         // Actualizar categoría existente
-        const { error } = await supabase.from("categories").update(data).eq("id", category.id)
+        const { error } = await supabase.from("categories").update(data as any).eq("id", category.id)
 
         if (error) throw error
 
@@ -172,7 +172,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
         })
       } else {
         // Crear nueva categoría
-        const { error } = await supabase.from("categories").insert([data])
+        const { error } = await supabase.from("categories").insert([data as any])
 
         if (error) throw error
 
@@ -199,7 +199,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit as any)} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Primera columna */}
           <div className="space-y-4">

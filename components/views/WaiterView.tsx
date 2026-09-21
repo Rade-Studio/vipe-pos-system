@@ -5,7 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
 import { useOrderStore } from "@/store/useOrderStore"
-import type { Profile, Dish, Table, Order, CommandPayload } from "@/types"
+import { useProfileStore } from "@/store/useProfileStore"
+import type { Profile, Dish, Table, Order, OrderItem, OrderStatus, OrderItemStatus, ProfileRole, CommandPayload } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { MenuSection } from "@/components/pos/MenuSection"
@@ -44,6 +45,7 @@ const CUSTOM_SIDEBAR_WIDTH = "22rem" // Ajustado para optimizar espacio
 interface WaiterViewProps {
   profile: Profile
   onChangeProfile: () => void
+  authRole?: string
 }
 
 // Función para normalizar IDs de platos
@@ -55,7 +57,7 @@ const normalizeDishId = (id: string): string => {
   return id
 }
 
-export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
+export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewProps) {
   // Estados principales
   const [activeView, setActiveView] = useState<"tables" | "orders">("tables")
   const [activeTable, setActiveTable] = useState<string | null>(null)
@@ -100,14 +102,20 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
   // Query functions for React Query
   const fetchTables = async () => {
-    const data = await tableService.getAll()
-    return data.map((table) => ({
-      id: table.id,
-      number: table.number,
-      status: table.status as any,
-      waiter: table.waiter_id || undefined,
-      waiter_name: table.waiter_name || undefined,
-    })) as Table[]
+    try {
+      const data = await tableService.getAll()
+      console.log("[WaiterView] tables fetched:", data.length, "rows")
+      return data.map((table) => ({
+        id: table.id,
+        number: table.number,
+        status: table.status as any,
+        waiter: table.waiter_id || undefined,
+        waiter_name: table.waiter_name || undefined,
+      })) as Table[]
+    } catch (err: any) {
+      console.error("[WaiterView] fetchTables ERROR:", err?.message ?? err)
+      throw err
+    }
   }
 
   const fetchOrders = async () => {
@@ -120,16 +128,16 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         price: item.price,
         quantity: item.quantity,
         comments: item.comments || undefined,
-        categoryId: item.category_id || "",
+        categoryId: "",
         image: "/placeholder.svg?height=50&width=50",
-        status: item.status,
+        status: (item.status ?? "kitchen") as OrderItemStatus,
       }))
 
       return {
         id: order.id,
-        tableId: order.table_id,
+        tableId: order.table_id ?? "",
         items,
-        status: order.status,
+        status: order.status as OrderStatus,
         bill: {
           subtotal: order.subtotal || 0,
           tax: order.tax || 0,
@@ -137,12 +145,13 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
           tip: order.tip || 0,
           tipPercentage: order.tip_percentage || 0,
           total: order.total || 0,
+          totalDiscounts: order.total_discounts ?? 0,
         },
-        waiter: order.waiter_id,
-        createdAt: new Date(order.created_at),
+        waiter: order.waiter_id ?? "",
+        createdAt: order.created_at ? new Date(order.created_at) : new Date(),
         isPartialOrder: order.is_partial_order || false,
-        parentOrderId: order.parent_order_id || null,
-      } as Order
+        parentOrderId: order.parent_order_id ?? undefined,
+      } as unknown as Order
     })
   }
 
@@ -166,21 +175,26 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
   const getCartTotal = useCartStore((s) => s.getCartTotal)
   const calculateOrderBill = useCartStore((s) => s.calculateOrderBill)
   const addOrder = useOrderStore((s) => s.addOrder)
+  // Subscribe directly to cartItems so this view re-renders on cart changes
+  const cartItemsMap = useCartStore((s) => s.cartItems)
+  // Perfil real (UUID de la DB) — distinto del profile impersonado.
+  const authProfile = useProfileStore((s) => s.authProfile)
 
   // Obtener items del carrito para la mesa activa
-  const cartItems = activeTable ? getCartByTable(activeTable) : []
+  const cartItems = activeTable ? (cartItemsMap[activeTable] || []) : []
 
   // Cargar meseros - función memoizada para evitar recreaciones innecesarias
   const loadWaiters = useCallback(async () => {
     try {
       const waitersData = await waiterService.getAll()
 
-      const waiters = waitersData.map((waiter) => ({
+      const waiters: Profile[] = waitersData.map((waiter) => ({
         id: waiter.id,
         name: waiter.full_name,
         full_name: waiter.full_name,
         username: waiter.username,
-        role: waiter.role,
+        role: waiter.role as ProfileRole,
+        hasPassword: false,
       }))
 
       setProfiles(waiters)
@@ -201,6 +215,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       setTables(tablesData)
       useTableStore.getState().setTables(tablesData)
     }
+    setLoading(false)  // data loaded → clear loading state regardless of count
   }, [tablesData])
 
   useEffect(() => {
@@ -215,7 +230,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     // Suscripción a cambios en mesas
     const unsubscribeTables = realtimeService.subscribeToTables((payload) => {
       // Verificar si este cambio fue originado por este cliente
-      const tableId = payload.new?.id || payload.old?.id
+      const tableId = (payload.new as any)?.id || (payload.old as any)?.id
       if (tableId && localChangesRef.current.has(tableId)) {
         localChangesRef.current.delete(tableId) // Limpiar el registro
         return
@@ -226,11 +241,11 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
 
       // Handle active table cleanup for UPDATE/DELETE on the active table
       if (payload.eventType === "UPDATE" && payload.new) {
-        if (activeTable === payload.new.id && payload.new.status === "available") {
+        if (activeTable === (payload.new as any).id && (payload.new as any).status === "available") {
           setActiveTable(null)
         }
       } else if (payload.eventType === "DELETE" && payload.old) {
-        if (activeTable === payload.old.id) {
+        if (activeTable === (payload.old as any).id) {
           setActiveTable(null)
         }
       }
@@ -239,7 +254,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
     // Suscripción a cambios en órdenes
     const unsubscribeOrders = realtimeService.subscribeToOrders((payload) => {
       // Verificar si este cambio fue originado por este cliente
-      const orderId = payload.new?.id || payload.old?.id
+      const orderId = (payload.new as any)?.id || (payload.old as any)?.id
       if (orderId && localChangesRef.current.has(orderId)) {
         localChangesRef.current.delete(orderId) // Limpiar el registro
         return
@@ -428,8 +443,36 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
             })
         }
       } else {
-        setSelectedTableForWaiter(tableId)
-        setShowWaiterModal(true)
+        // Mesa libre sin mesero: si soy mesero, me asigno a mí mismo;
+        // si soy admin/cashier, abro el modal para asignar manualmente.
+        if (profile.role === "waiter") {
+          // Usar authProfile.id (UUID real de la DB) en vez de profile.id
+          // (que es "waiter-1" mock cuando admin está impersonando).
+          const realWaiterId = authProfile?.id ?? profile.id
+          localChangesRef.current.add(tableId)
+          tableService.assignWaiter(tableId, realWaiterId, "occupied")
+            .then(() => {
+              useTableStore.getState().assignWaiterToTable(tableId, realWaiterId)
+              setTables((prevTables) =>
+                prevTables.map((t) =>
+                  t.id === tableId
+                    ? { ...t, waiter: realWaiterId, waiter_name: profile.name, status: "occupied" }
+                    : t,
+                ),
+              )
+              setActiveTable(tableId)
+            })
+            .catch((err: any) => {
+              toast({
+                title: "Error",
+                description: `No se pudo asignar la mesa. ${err?.message ?? "Intente nuevamente."}`,
+                variant: "destructive",
+              })
+            })
+        } else {
+          setSelectedTableForWaiter(tableId)
+          setShowWaiterModal(true)
+        }
       }
 
       // Si estamos en móvil y seleccionamos una mesa, mostrar el carrito
@@ -437,7 +480,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         setShowMobileCart(true)
       }
     },
-    [activeTable, checkEmptyCartAndReleaseTable, tables, isMobile],
+    [activeTable, checkEmptyCartAndReleaseTable, tables, isMobile, profile],
   )
 
   // Manejar selección de mesero
@@ -879,16 +922,27 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
         setTables((prevTables) => prevTables.map((t) => (t.id === activeTable ? { ...t, status: "kitchen" } : t)))
 
         // Agregar la orden al store
-        const storeOrder = {
+        const orderItems: OrderItem[] = cartItems.map((ci) => ({
+          id: ci.id,
+          name: ci.name,
+          price: ci.price,
+          quantity: ci.quantity,
+          categoryId: ci.categoryId,
+          image: ci.image,
+          comments: ci.comments,
+          status: "kitchen",
+          addedAt: new Date(),
+        }))
+        const storeOrder: Order = {
           id: newOrder.id,
           tableId: activeTable,
-          items: cartItems,
-          status: "kitchen" as any,
+          items: orderItems,
+          status: "kitchen",
           bill,
           waiter: waiterId,
           createdAt: new Date(),
           isPartialOrder: false,
-          parentOrderId: null,
+          parentOrderId: undefined,
         }
 
         addOrder(storeOrder)
@@ -1035,7 +1089,7 @@ export function WaiterView({ profile, onChangeProfile }: WaiterViewProps) {
       {/* Contenido principal */}
       <div className="flex-1 overflow-auto bg-muted/20 p-0">
         <div className="p-1 md:p-2">
-          <Header profile={profile} onChangeProfile={onChangeProfile} />
+          <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
 
           <div className="flex justify-between items-center mb-1">
             <Tabs

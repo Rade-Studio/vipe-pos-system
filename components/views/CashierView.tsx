@@ -34,9 +34,10 @@ import { log } from "@/lib/log"
 interface CashierViewProps {
   profile: Profile
   onChangeProfile: () => void
+  authRole?: string
 }
 
-export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
+export function CashierView({ profile, onChangeProfile, authRole }: CashierViewProps) {
   const [activeTab, setActiveTab] = useState<"orders" | "transactions">("orders")
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   const [partialPaymentDialogOpen, setPartialPaymentDialogOpen] = useState(false)
@@ -75,7 +76,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
         price: item.price,
         quantity: item.quantity,
         comments: item.comments || undefined,
-        categoryId: item.category_id || "",
+        categoryId: "",
       })),
       status: dbOrder.status,
       bill: {
@@ -85,9 +86,10 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
         tip: dbOrder.tip,
         tipPercentage: dbOrder.tip_percentage,
         total: dbOrder.total,
+        totalDiscounts: dbOrder.total_discounts ?? 0,
       },
-      waiter: dbOrder.waiter_id,
-      createdAt: new Date(dbOrder.created_at),
+      waiter: dbOrder.waiter_id ?? "",
+      createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
       isPartialOrder: dbOrder.is_partial_order || false,
       parentOrderId: dbOrder.parent_order_id || null,
     })
@@ -141,14 +143,14 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       // Convertir datos de la BD al formato de la aplicación
       const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
         id: dbOrder.id,
-        tableId: dbOrder.table_id,
+        tableId: dbOrder.table_id ?? "",
         items: dbOrder.order_items.map((item: any) => ({
           id: item.id,
           name: item.name,
           price: item.price,
           quantity: item.quantity,
           comments: item.comments || undefined,
-          categoryId: item.category_id || "",
+          categoryId: "",
         })),
         status: dbOrder.status,
         bill: {
@@ -158,12 +160,13 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
           tip: dbOrder.tip,
           tipPercentage: dbOrder.tip_percentage,
           total: dbOrder.total,
+          totalDiscounts: dbOrder.total_discounts ?? 0,
         },
-        waiter: dbOrder.waiter_id,
-        createdAt: new Date(dbOrder.created_at),
+        waiter: dbOrder.waiter_id ?? "",
+        createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
         isPartialOrder: dbOrder.is_partial_order || false,
         parentOrderId: dbOrder.parent_order_id || null,
-      })
+      } as unknown as Order)
 
       // Convertir todas las órdenes
       const activeOrdersConverted = activeOrdersData.map(convertDBOrderToAppOrder)
@@ -537,6 +540,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       <Header
         profile={profile}
         onChangeProfile={onChangeProfile}
+        authRole={authRole}
         title={activeTab === "orders" ? "Caja - Órdenes para Facturar" : "Historial de Transacciones"}
       />
       <div className="flex justify-end mb-2">

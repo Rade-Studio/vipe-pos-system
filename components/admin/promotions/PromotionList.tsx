@@ -40,7 +40,7 @@ export function PromotionList() {
       setLoading(true)
       // Usar el método getAllPromotions en lugar de acceder directamente a supabase
       const data = await promotionService.getAllPromotions()
-      setPromotions(data || [])
+      setPromotions((data || []) as unknown as Promotion[])
     } catch (error) {
       log.error("Error loading promotions:", { error: String(error) })
       toast({
@@ -161,7 +161,7 @@ export function PromotionList() {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={isPromotionActive(promotion) ? "success" : promotion.active ? "outline" : "secondary"}
+                      variant={isPromotionActive(promotion) ? "default" : promotion.active ? "outline" : "secondary"}
                     >
                       {isPromotionActive(promotion) ? "Activa" : promotion.active ? "Pendiente/Vencida" : "Inactiva"}
                     </Badge>

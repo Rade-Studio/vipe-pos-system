@@ -47,7 +47,7 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
         icon: category.icon || null, // Asumiendo que el icono se guarda como string
       }))
 
-      setCategories(formattedCategories)
+      setCategories(formattedCategories as unknown as Category[])
 
       // Seleccionar la primera categoría por defecto
       if (formattedCategories.length > 0 && !selectedCategory) {
@@ -73,21 +73,21 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
       const data = await dishServiceWithPromotions.getByCategoryWithPromotions(categoryId)
 
       // Convertir los datos de la base de datos al formato que espera el componente
-      const formattedDishes = data.map((dish) => ({
+      const formattedDishes = data.map((dish: any) => ({
         id: dish.id,
         name: dish.name,
         price: dish.price,
-        categoryId: dish.category_id,
+        categoryId: dish.category_id ?? "",
         image: dish.image_url || "/placeholder.svg?height=80&width=80",
         // Añadir campos de promoción si existen
-        originalPrice: dish.originalPrice,
-        discountAmount: dish.discountAmount,
-        discountPercentage: dish.discountPercentage,
-        promotionId: dish.promotionId,
-        promotionName: dish.promotionName,
+        originalPrice: dish.originalPrice ?? null,
+        discountAmount: dish.discountAmount ?? null,
+        discountPercentage: dish.discountPercentage ?? null,
+        promotionId: dish.promotionId ?? null,
+        promotionName: dish.promotionName ?? null,
       }))
 
-      setDishes(formattedDishes)
+      setDishes(formattedDishes as unknown as Dish[])
     } catch (err) {
       log.error("Error al cargar platos:", { err: String(err) })
       toast({

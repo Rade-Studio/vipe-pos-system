@@ -78,17 +78,12 @@ export const useOrderStore = create<OrderState>((set, get) => ({
             price: item.price,
             quantity: item.quantity,
             comments: item.comments || undefined,
-            categoryId: item.category_id || "",
-            originalPrice: item.original_price,
-            discountAmount: item.discount_amount,
-            discountPercentage: item.discount_percentage,
-            promotionId: item.promotion_id,
-            promotionName: item.promotion_name,
+            categoryId: "",
           }))
 
           return {
             id: dbOrder.id,
-            tableId: dbOrder.table_id,
+            tableId: dbOrder.table_id || "",
             items,
             status: dbOrder.status,
             bill: {
@@ -100,11 +95,11 @@ export const useOrderStore = create<OrderState>((set, get) => ({
               total: dbOrder.total,
               totalDiscounts: dbOrder.total_discounts || 0,
             },
-            waiter: dbOrder.waiter_id,
-            createdAt: new Date(dbOrder.created_at),
+            waiter: dbOrder.waiter_id || "",
+            createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
             isPartialOrder: dbOrder.is_partial_order || false,
-            parentOrderId: dbOrder.parent_order_id || null,
-          } as Order
+            parentOrderId: dbOrder.parent_order_id || undefined,
+          } as unknown as Order
         })
 
         set((state) => ({

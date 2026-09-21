@@ -479,7 +479,7 @@ const inventoryControlService = {
         }
 
         if (transactionsInserted.length > 0) {
-          await supabase.from("ingredient_transactions_orders").insert(transactionsInserted)
+          await supabase.from("ingredient_transactions_orders").insert(transactionsInserted as any)
         }
       }
 

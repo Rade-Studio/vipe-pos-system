@@ -47,7 +47,7 @@ export function WaiterList() {
 
       if (error) throw error
 
-      setWaiters(data || [])
+      setWaiters((data || []) as unknown as Waiter[])
     } catch (error: any) {
       log.error("Error fetching waiters:", { error: String(error) })
       toast({
@@ -190,7 +190,7 @@ export function WaiterList() {
                 <TableCell>{waiter.username}</TableCell>
                 <TableCell>{waiter.email || "-"}</TableCell>
                 <TableCell>
-                  <Badge variant={waiter.active ? "success" : "secondary"}>
+                  <Badge variant={waiter.active ? "default" : "secondary"}>
                     {waiter.active ? "Activo" : "Inactivo"}
                   </Badge>
                 </TableCell>

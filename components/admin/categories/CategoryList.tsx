@@ -40,7 +40,7 @@ export function CategoryList() {
     try {
       setLoading(true)
       const data = await categoryService.getAll()
-      setCategories(data)
+      setCategories(data as unknown as Category[])
     } catch (error) {
       log.error("Error loading categories:", { error: String(error) })
       toast({

@@ -121,7 +121,7 @@ export function OrderCard({
   const localDate = new Date(order.createdAt).toLocaleString()
 
   // Agrupar items idénticos (mismo nombre y comentarios)
-  const groupedItems = order.items.reduce((acc, item) => {
+  const groupedItems: Record<string, any> = order.items.reduce((acc: Record<string, any>, item) => {
     // Crear una clave única basada en nombre y comentarios
     const key = `${item.name}|${item.comments || ""}|${item.addedAt?.getTime()}`
 
@@ -217,7 +217,7 @@ export function OrderCard({
         {/* Items agrupados */}
         <div className="space-y-3 mt-2">
           {groupedItemsArray.map((item: any, index) => {
-            const isAnyItemNew = item.ids.some((id) => newItems.includes(id))
+            const isAnyItemNew = item.ids.some((id: string) => newItems.includes(id))
 
             return (
               <div

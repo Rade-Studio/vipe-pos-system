@@ -116,7 +116,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           // Si es el registro actual, actualizarlo también
           if (get().currentRegister?.id === registerId) {
-            set({ currentRegister: { ...get().currentRegister, transactions } })
+            set({ currentRegister: { ...get().currentRegister, transactions } as any })
           }
 
           return transactions
@@ -142,7 +142,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           // Si es el registro actual, actualizarlo también
           if (get().currentRegister?.id === registerId) {
-            set({ currentRegister: { ...get().currentRegister, cashTransactions } })
+            set({ currentRegister: { ...get().currentRegister, cashTransactions } as any })
           }
 
           return cashTransactions

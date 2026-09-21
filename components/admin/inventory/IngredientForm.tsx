@@ -97,13 +97,13 @@ export function IngredientForm({ onSuccess, ingredient }: IngredientFormProps) {
 
           // Actualizar el mapa de nombre a ID
           const newNameToIdMap: Record<string, string> = {}
-          newData.forEach((cat: any) => {
+          newData?.forEach((cat: any) => {
             newNameToIdMap[cat.name] = cat.id
           })
           setCategoryMap(newNameToIdMap)
 
           setCategories(
-            newData.map((cat: any) => ({
+            (newData ?? []).map((cat: any) => ({
               value: cat.id,
               label: cat.name,
             })),

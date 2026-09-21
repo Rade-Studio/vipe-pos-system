@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/log"
 import { Edit, Plus, Search, Trash, BookOpen } from "lucide-react"
 import {
   AlertDialog,
@@ -205,7 +206,7 @@ export function DishList() {
                       <TableCell>{getCategoryName(dish.category_id)}</TableCell>
                       <TableCell>{formatCurrency(dish.price)}</TableCell>
                       <TableCell>
-                        <Badge variant={dish.active ? "success" : "secondary"}>
+                        <Badge variant={dish.active ? "default" : "secondary"}>
                           {dish.active ? "Activo" : "Inactivo"}
                         </Badge>
                       </TableCell>

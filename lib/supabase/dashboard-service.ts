@@ -28,7 +28,7 @@ export const dashboardService = {
       const salesByDay = new Map<string, number>()
 
       data.forEach((order) => {
-        const date = new Date(order.created_at).toISOString().split("T")[0]
+        const date = order.created_at ? new Date(order.created_at).toISOString().split("T")[0] : ""
         const currentTotal = salesByDay.get(date) || 0
         salesByDay.set(date, currentTotal + (order.total || 0))
       })

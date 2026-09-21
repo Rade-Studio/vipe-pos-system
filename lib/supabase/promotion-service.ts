@@ -55,7 +55,7 @@ export const promotionService = {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
-        ])
+        ] as any)
         .select()
 
       if (error) throw error
@@ -73,7 +73,7 @@ export const promotionService = {
         .update({
           ...promotion,
           updated_at: new Date().toISOString(),
-        })
+        } as any)
         .eq("id", id)
         .select()
 

@@ -52,7 +52,7 @@ export function WaiterSelectionModal({ open, onOpenChange, onSelect, defaultWait
     setError(null)
     try {
       const data = await waiterService.getAll()
-      setWaiters(data)
+      setWaiters(data as unknown as Waiter[])
     } catch (err) {
       log.error("Error al cargar meseros:", { err: String(err) })
       setError("No se pudieron cargar los meseros. Intente nuevamente.")

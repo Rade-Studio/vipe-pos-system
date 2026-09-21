@@ -2,10 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme/theme-provider"
-import { Toaster } from "@/components/ui/toaster"
-import { QueryClientProvider } from "@tanstack/react-query"
-import { queryClient } from "@/lib/queryClient"
+import { ClientProviders } from "@/components/ClientProviders"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -26,13 +23,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" suppressHydrationWarning>
-    <body className={inter.className}>
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
-          <Toaster />
-        </ThemeProvider>
-      </QueryClientProvider>
+      <body className={inter.className}>
+        <ClientProviders>{children}</ClientProviders>
       </body>
     </html>
   )
