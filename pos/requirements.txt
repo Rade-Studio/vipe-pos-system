@@ -10,6 +10,9 @@
 #   html2text==2024.2.26   — converts HTML order payloads to plain text for printing.
 #   escpos-python==1.0.2  — ESC/POS command builder; 1.0.x is the latest published on PyPI.
 #   pywin32==306          — Windows API access (CryptProtectData, DPAPI credential store).
+#                           Marker restricts install to Windows; the pos-deps-check CI runs
+#                           on ubuntu-latest and would otherwise fail with "no matching
+#                           distribution".
 #   usb==1.0.2            — PyUSB; libusb1 backend for USB printer discovery.
 #   python-dotenv==1.0.1  — loads .env in dev mode; 1.x is stable.
 #   tenacity==8.2.3       — backoff decorator for reconnect loop (Q5-B improvement).
@@ -23,7 +26,7 @@ pystray==0.19.5
 Pillow==10.4.0
 html2text==2024.2.26
 escpos-python==1.0.2
-pywin32==306
+pywin32==306; sys_platform == "win32"
 usb==1.0.2
 python-dotenv==1.0.1
 tenacity==8.2.3
