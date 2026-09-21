@@ -4,6 +4,14 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { ClientProviders } from "@/components/ClientProviders"
 
+// The app is fully auth-aware and every page boots from the user's
+// authenticated session (loadProfileFromAuth, getSession, etc.). Forcing
+// dynamic rendering here keeps Next.js from trying to prerender routes at
+// build time, which would fail with "supabaseKey is required" when the
+// build environment is missing a valid NEXT_PUBLIC_SUPABASE_ANON_KEY
+// (e.g. when DEV_SUPABASE_ANON_KEY secret is not configured in CI).
+export const dynamic = "force-dynamic"
+
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
