@@ -7,31 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          operationName?: string
-          query?: string
-          variables?: Json
-          extensions?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       business_config: {
@@ -66,6 +41,7 @@ export type Database = {
           id: string
           initial_cash: number
           opening_timestamp: string
+          restaurant_id: string
           status: string
           updated_at: string | null
         }
@@ -76,6 +52,7 @@ export type Database = {
           id?: string
           initial_cash: number
           opening_timestamp: string
+          restaurant_id?: string
           status: string
           updated_at?: string | null
         }
@@ -86,10 +63,19 @@ export type Database = {
           id?: string
           initial_cash?: number
           opening_timestamp?: string
+          restaurant_id?: string
           status?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cash_registers_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cash_transactions: {
         Row: {
@@ -98,6 +84,7 @@ export type Database = {
           created_at: string | null
           description: string | null
           id: string
+          restaurant_id: string
           timestamp: string
           type: string
           updated_at: string | null
@@ -108,6 +95,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          restaurant_id?: string
           timestamp?: string
           type: string
           updated_at?: string | null
@@ -118,6 +106,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          restaurant_id?: string
           timestamp?: string
           type?: string
           updated_at?: string | null
@@ -130,6 +119,13 @@ export type Database = {
             referencedRelation: "cash_registers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cash_transactions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       categories: {
@@ -140,6 +136,7 @@ export type Database = {
           icon: string
           id: string
           name: string
+          restaurant_id: string
           updated_at: string | null
         }
         Insert: {
@@ -149,6 +146,7 @@ export type Database = {
           icon: string
           id?: string
           name: string
+          restaurant_id?: string
           updated_at?: string | null
         }
         Update: {
@@ -158,9 +156,18 @@ export type Database = {
           icon?: string
           id?: string
           name?: string
+          restaurant_id?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "categories_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dishes: {
         Row: {
@@ -173,6 +180,7 @@ export type Database = {
           image_url: string | null
           name: string
           price: number
+          restaurant_id: string
           updated_at: string | null
         }
         Insert: {
@@ -185,6 +193,7 @@ export type Database = {
           image_url?: string | null
           name: string
           price: number
+          restaurant_id?: string
           updated_at?: string | null
         }
         Update: {
@@ -197,6 +206,7 @@ export type Database = {
           image_url?: string | null
           name?: string
           price?: number
+          restaurant_id?: string
           updated_at?: string | null
         }
         Relationships: [
@@ -205,6 +215,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dishes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
@@ -241,6 +258,7 @@ export type Database = {
           notes: string | null
           payment_status: string
           quantity: number
+          restaurant_id: string
           total_cost: number
           transaction_type: string
           unit_cost: number
@@ -253,6 +271,7 @@ export type Database = {
           notes?: string | null
           payment_status?: string
           quantity: number
+          restaurant_id?: string
           total_cost: number
           transaction_type: string
           unit_cost: number
@@ -265,6 +284,7 @@ export type Database = {
           notes?: string | null
           payment_status?: string
           quantity?: number
+          restaurant_id?: string
           total_cost?: number
           transaction_type?: string
           unit_cost?: number
@@ -278,31 +298,47 @@ export type Database = {
             referencedRelation: "ingredients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ingredient_transactions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ingredient_transactions_orders: {
         Row: {
+          created_at: string
+          id: string
           ingredient_transaction_id: string
-          order_id: string | null
+          order_id: string
+          quantity_cents: number
         }
         Insert: {
+          created_at?: string
+          id?: string
           ingredient_transaction_id: string
-          order_id?: string | null
+          order_id: string
+          quantity_cents: number
         }
         Update: {
+          created_at?: string
+          id?: string
           ingredient_transaction_id?: string
-          order_id?: string | null
+          order_id?: string
+          quantity_cents?: number
         }
         Relationships: [
           {
-            foreignKeyName: "ingredient_transactions_orders_ingredient_transactions_id_fk"
+            foreignKeyName: "ingredient_transactions_orders_ingredient_transaction_id_fkey"
             columns: ["ingredient_transaction_id"]
             isOneToOne: false
             referencedRelation: "ingredient_transactions"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "ingredient_transactions_orders_orders_id_fk"
+            foreignKeyName: "ingredient_transactions_orders_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
@@ -319,6 +355,7 @@ export type Database = {
           id: string
           min_stock: number
           name: string
+          restaurant_id: string
           stock: number
           unit: string
           updated_at: string | null
@@ -331,6 +368,7 @@ export type Database = {
           id?: string
           min_stock?: number
           name: string
+          restaurant_id?: string
           stock?: number
           unit: string
           updated_at?: string | null
@@ -343,6 +381,7 @@ export type Database = {
           id?: string
           min_stock?: number
           name?: string
+          restaurant_id?: string
           stock?: number
           unit?: string
           updated_at?: string | null
@@ -353,6 +392,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "ingredient_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredients_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
@@ -368,6 +414,7 @@ export type Database = {
           order_id: string | null
           price: number
           quantity: number
+          restaurant_id: string
           status: string | null
           updated_at: string | null
         }
@@ -381,6 +428,7 @@ export type Database = {
           order_id?: string | null
           price: number
           quantity: number
+          restaurant_id?: string
           status?: string | null
           updated_at?: string | null
         }
@@ -394,6 +442,7 @@ export type Database = {
           order_id?: string | null
           price?: number
           quantity?: number
+          restaurant_id?: string
           status?: string | null
           updated_at?: string | null
         }
@@ -412,6 +461,13 @@ export type Database = {
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "order_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       orders: {
@@ -421,6 +477,7 @@ export type Database = {
           is_partial_order: boolean
           items_json: Json | null
           parent_order_id: string | null
+          restaurant_id: string
           status: string
           subtotal: number
           table_id: string | null
@@ -439,6 +496,7 @@ export type Database = {
           is_partial_order?: boolean
           items_json?: Json | null
           parent_order_id?: string | null
+          restaurant_id?: string
           status?: string
           subtotal: number
           table_id?: string | null
@@ -457,6 +515,7 @@ export type Database = {
           is_partial_order?: boolean
           items_json?: Json | null
           parent_order_id?: string | null
+          restaurant_id?: string
           status?: string
           subtotal?: number
           table_id?: string | null
@@ -475,6 +534,13 @@ export type Database = {
             columns: ["parent_order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
@@ -503,6 +569,7 @@ export type Database = {
           id: string
           method: string
           order_id: string
+          restaurant_id: string
           table_id: string | null
           timestamp: string
           tip_amount: number | null
@@ -519,6 +586,7 @@ export type Database = {
           id?: string
           method: string
           order_id: string
+          restaurant_id?: string
           table_id?: string | null
           timestamp: string
           tip_amount?: number | null
@@ -535,6 +603,7 @@ export type Database = {
           id?: string
           method?: string
           order_id?: string
+          restaurant_id?: string
           table_id?: string | null
           timestamp?: string
           tip_amount?: number | null
@@ -553,8 +622,15 @@ export type Database = {
           {
             foreignKeyName: "payment_transactions_order_id_fkey"
             columns: ["order_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_transactions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
@@ -576,38 +652,52 @@ export type Database = {
       profiles: {
         Row: {
           active: boolean
+          auth_user_id: string | null
           created_at: string | null
           email: string | null
           full_name: string
           id: string
           password: string | null
+          restaurant_id: string
           role: string
           updated_at: string | null
           username: string | null
         }
         Insert: {
           active?: boolean
+          auth_user_id?: string | null
           created_at?: string | null
           email?: string | null
           full_name: string
           id?: string
           password?: string | null
+          restaurant_id?: string
           role: string
           updated_at?: string | null
           username?: string | null
         }
         Update: {
           active?: boolean
+          auth_user_id?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string
           id?: string
           password?: string | null
+          restaurant_id?: string
           role?: string
           updated_at?: string | null
           username?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       promotion_dishes: {
         Row: {
@@ -615,18 +705,21 @@ export type Database = {
           dish_id: string
           id: string
           promotion_id: string
+          restaurant_id: string
         }
         Insert: {
           created_at?: string | null
           dish_id: string
           id?: string
           promotion_id: string
+          restaurant_id?: string
         }
         Update: {
           created_at?: string | null
           dish_id?: string
           id?: string
           promotion_id?: string
+          restaurant_id?: string
         }
         Relationships: [
           {
@@ -643,6 +736,13 @@ export type Database = {
             referencedRelation: "promotions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "promotion_dishes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       promotions: {
@@ -655,6 +755,7 @@ export type Database = {
           end_date: string
           id: string
           name: string
+          restaurant_id: string
           start_date: string
           updated_at: string | null
         }
@@ -667,6 +768,7 @@ export type Database = {
           end_date: string
           id?: string
           name: string
+          restaurant_id?: string
           start_date: string
           updated_at?: string | null
         }
@@ -679,10 +781,19 @@ export type Database = {
           end_date?: string
           id?: string
           name?: string
+          restaurant_id?: string
           start_date?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "promotions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       recipe_ingredients: {
         Row: {
@@ -691,6 +802,7 @@ export type Database = {
           ingredient_id: string
           quantity: number
           recipe_id: string
+          restaurant_id: string
         }
         Insert: {
           created_at?: string | null
@@ -698,6 +810,7 @@ export type Database = {
           ingredient_id: string
           quantity: number
           recipe_id: string
+          restaurant_id?: string
         }
         Update: {
           created_at?: string | null
@@ -705,6 +818,7 @@ export type Database = {
           ingredient_id?: string
           quantity?: number
           recipe_id?: string
+          restaurant_id?: string
         }
         Relationships: [
           {
@@ -721,6 +835,13 @@ export type Database = {
             referencedRelation: "recipes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "recipe_ingredients_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       recipes: {
@@ -728,16 +849,19 @@ export type Database = {
           created_at: string | null
           dish_id: string
           id: string
+          restaurant_id: string
         }
         Insert: {
           created_at?: string | null
           dish_id: string
           id?: string
+          restaurant_id?: string
         }
         Update: {
           created_at?: string | null
           dish_id?: string
           id?: string
+          restaurant_id?: string
         }
         Relationships: [
           {
@@ -747,13 +871,63 @@ export type Database = {
             referencedRelation: "dishes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "recipes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      restaurants: {
+        Row: {
+          created_at: string
+          currency: string
+          id: string
+          name: string
+          slug: string
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          id?: string
+          name: string
+          slug: string
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          id?: string
+          name?: string
+          slug?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      schema_migrations: {
+        Row: {
+          version: string
+        }
+        Insert: {
+          version: string
+        }
+        Update: {
+          version?: string
+        }
+        Relationships: []
       }
       tables: {
         Row: {
           created_at: string | null
           id: string
           number: number
+          restaurant_id: string
           status: string
           updated_at: string | null
           waiter_id: string | null
@@ -762,6 +936,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           number: number
+          restaurant_id?: string
           status?: string
           updated_at?: string | null
           waiter_id?: string | null
@@ -770,11 +945,19 @@ export type Database = {
           created_at?: string | null
           id?: string
           number?: number
+          restaurant_id?: string
           status?: string
           updated_at?: string | null
           waiter_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tables_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tables_waiter_id_fkey"
             columns: ["waiter_id"]
@@ -789,10 +972,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      complete_payment: {
+        Args: {
+          p_cash_register_id: string
+          p_order_id: string
+          p_payment_methods: string[]
+        }
+        Returns: Json
+      }
+      delete_order_with_items: {
+        Args: { p_order_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
-      [_ in never]: never
+      aal_level: "aal1" | "aal2" | "aal3"
+      code_challenge_method: "s256" | "plain"
+      factor_status: "unverified" | "verified"
+      factor_type: "totp" | "webauthn"
+      one_time_token_type:
+        | "confirmation_token"
+        | "reauthentication_token"
+        | "recovery_token"
+        | "email_change_token_new"
+        | "email_change_token_current"
+        | "phone_change_token"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -800,21 +1004,25 @@ export type Database = {
   }
 }
 
-type DefaultSchema = Database[Extract<keyof Database, "public">]
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
@@ -832,14 +1040,16 @@ export type Tables<
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
@@ -855,14 +1065,16 @@ export type TablesInsert<
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
@@ -878,14 +1090,16 @@ export type TablesUpdate<
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
-    | { schema: keyof Database },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof Database
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
@@ -893,23 +1107,36 @@ export type Enums<
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof Database },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof Database
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
-    Enums: {},
+    Enums: {
+      aal_level: ["aal1", "aal2", "aal3"],
+      code_challenge_method: ["s256", "plain"],
+      factor_status: ["unverified", "verified"],
+      factor_type: ["totp", "webauthn"],
+      one_time_token_type: [
+        "confirmation_token",
+        "reauthentication_token",
+        "recovery_token",
+        "email_change_token_new",
+        "email_change_token_current",
+        "phone_change_token",
+      ],
+    },
   },
 } as const
+

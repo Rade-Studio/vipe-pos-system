@@ -1,4 +1,5 @@
-﻿import os
+﻿import logging
+import os
 import sys
 import threading
 import asyncio
@@ -17,6 +18,13 @@ from escpos.printer import Usb, Network
 from PIL import Image
 import pystray
 from realtime import AsyncRealtimeClient  # Asegúrate de que este import funcione
+
+from printer_auth import resolve_token, is_token_configured
+from dedupe import recently_printed
+from print_encoder import negotiate_encoding, encode_for_printer
+import print_renderer
+
+logger = logging.getLogger(__name__)
 
 # ------------------------
 # RUTAS Y CONSTANTES
@@ -151,18 +159,19 @@ def ask_supabase_key():
 
 # Detectar entorno y cargar credenciales
 ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
-if "--dev" in sys.argv: ENVIRONMENT = "dev"
+if "--dev" in sys.argv:
+    ENVIRONMENT = "dev"
 
 if ENVIRONMENT == "dev":
     from dotenv import load_dotenv
-    print("🛠️  Ambiente de Desarrollo Detectado (usando .env)")
+    print("Environment: development (loading .env)")
     load_dotenv(Path(__file__).parent / ".env")
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
     if not SUPABASE_URL or not SUPABASE_KEY:
-        raise RuntimeError("Faltan SUPABASE_URL o SUPABASE_KEY en .env")
+        raise RuntimeError("SUPABASE_URL or SUPABASE_KEY missing from .env")
 else:
-    print("🚀 Ambiente de Producción Detectado (AppData cifrado)")
+    print("Environment: production (AppData encrypted)")
     CONFIG_DIR  = Path(os.getenv("APPDATA", os.path.expanduser("~"))) / "VipePOS"
     CONFIG_FILE = CONFIG_DIR / "credentials.dat"
     SUPABASE_URL, SUPABASE_KEY = load_credentials()
@@ -170,8 +179,23 @@ else:
         SUPABASE_URL = ask_supabase_url()
         SUPABASE_KEY = ask_supabase_key()
         if not SUPABASE_URL or not SUPABASE_KEY:
-            raise RuntimeError("Credenciales Supabase requeridas")
+            raise RuntimeError("Supabase credentials required")
         save_credentials(SUPABASE_URL, SUPABASE_KEY)
+
+# Printer listener token — service-role JWT scoped to print topic (Q5-A).
+# In dev mode, falls back to SUPABASE_KEY so the listener can still connect
+# against a permissive local stack. In production, a valid VIPE_PRINTER_TOKEN
+# must be provided via the environment.
+if ENVIRONMENT == "dev":
+    # Dev: token is optional; silently use the anon key so local testing works.
+    _printer_token = os.getenv("VIPE_PRINTER_TOKEN", "").strip()
+    PRINTER_TOKEN = _printer_token if _printer_token else SUPABASE_KEY
+    if not _printer_token:
+        print("Warning: VIPE_PRINTER_TOKEN not set in .env; using SUPABASE_KEY for Realtime auth (dev only)")
+else:
+    # Production: token is required.
+    PRINTER_TOKEN = resolve_token()
+    print("Printer auth: service-role token resolved from environment")
 
 # ← Aquí definimos REALTIME_URL YA, tras cargar SUPABASE_URL
 REALTIME_URL = f"{SUPABASE_URL.replace('https','wss')}/realtime/v1"
@@ -439,15 +463,28 @@ def iniciar_icono_tray():
 async def iniciar_suscripciones():
     while True:
         try:
-            socket = AsyncRealtimeClient(REALTIME_URL, SUPABASE_KEY)
-            ch1 = socket.channel("room_commands"); ch1.on_broadcast("new_command", handle_comanda)
-            ch2 = socket.channel("room_bills"); ch2.on_broadcast("new_invoice", handle_factura)
-            await ch1.subscribe(lambda s,e: print("✅ Comandas ok") if s=="SUBSCRIBED" else None)
-            await ch2.subscribe(lambda s,e: print("✅ Facturas ok") if s=="SUBSCRIBED" else None)
+            # Auth: service-role token scoped to print topic (Q5-A).
+            # The anon key path (SUPABASE_KEY) is rejected when ANONYMOUS_USERS_ENABLED=false.
+            socket = AsyncRealtimeClient(
+                REALTIME_URL,
+                params={"apikey": PRINTER_TOKEN},
+                headers={"Authorization": f"Bearer {PRINTER_TOKEN}"},
+            )
+            ch1 = socket.channel("room_commands")
+            ch1.on_broadcast("new_command", handle_comanda)
+            ch2 = socket.channel("room_bills")
+            ch2.on_broadcast("new_invoice", handle_factura)
+
+            await ch1.subscribe(
+                lambda s, e: logger.info("Comandas subscribed") if s == "SUBSCRIBED" else logger.error("Comandas error: %s", e)
+            )
+            await ch2.subscribe(
+                lambda s, e: logger.info("Facturas subscribed") if s == "SUBSCRIBED" else logger.error("Facturas error: %s", e)
+            )
             while True:
                 await asyncio.sleep(1)
         except Exception as e:
-            print("❌ Supabase:", e)
+            logger.error("Realtime connection error: %s", e)
             await asyncio.sleep(5)
 
 # ------------------------
@@ -484,19 +521,67 @@ def imprimir_pos(printer_type, text, barcode=None, img_path=None):
 # waiter: string;
 def handle_comanda(payload):
     data = payload.get("payload", {})
-    print("✅ Comanda recibida:", data)
-    invoice_number, items, waiter, table = data.get("invoiceNumber"), data.get("items"), data.get("waiter"), data.get("table")
-    if items and waiter:
-        txt = generate_comanda_text(invoice_number, table, waiter, items)
-        imprimir_pos('comandas', txt)
+    invoice_number = data.get("invoiceNumber")
+    items = data.get("items")
+    waiter = data.get("waiter")
+    table = data.get("table")
+
+    if not invoice_number or not items or not waiter:
+        return
+
+    # Deduplication: skip if this invoice was printed within the TTL window.
+    if not recently_printed.should_print(invoice_number):
+        logger.info("Duplicate comanda skipped: %s", invoice_number)
+        return
+
+    pr = printer_manager.get_printer('comandas')
+    if not pr:
+        logger.warning("Comandas printer not configured")
+        return
+
+    try:
+        encoding = negotiate_encoding(pr)
+        order = {
+            "invoiceNumber": invoice_number,
+            "table": table,
+            "waiter": waiter,
+            "items": items,
+        }
+        raw_bytes = print_renderer.build_comanda_bytes(order, encoding=encoding)
+        pr._raw(raw_bytes)
+        logger.info("Comanda printed: %s", invoice_number)
+    except Exception as exc:
+        logger.error("Failed to print comanda %s: %s", invoice_number, exc)
 
 
 def handle_factura(payload):
-    data = payload.get("payload",{})
-    num, inv, items = data.get("invoiceNumber"), data.get("invoice"), data.get("displayItems")
-    if num:
-        txt = generate_invoice_pos(num, inv, items)
-        imprimir_pos('facturas', txt, barcode=123456789)
+    data = payload.get("payload", {})
+    invoice_number = data.get("invoiceNumber")
+    invoice = data.get("invoice", {})
+    display_items = data.get("displayItems", [])
+
+    if not invoice_number:
+        return
+
+    # Deduplication: skip if this invoice was printed within the TTL window.
+    if not recently_printed.should_print(invoice_number):
+        logger.info("Duplicate factura skipped: %s", invoice_number)
+        return
+
+    pr = printer_manager.get_printer('facturas')
+    if not pr:
+        logger.warning("Facturas printer not configured")
+        return
+
+    try:
+        encoding = negotiate_encoding(pr)
+        raw_bytes = print_renderer.build_invoice_bytes(
+            invoice_number, invoice, display_items, encoding=encoding
+        )
+        pr._raw(raw_bytes)
+        logger.info("Factura printed: %s", invoice_number)
+    except Exception as exc:
+        logger.error("Failed to print factura %s: %s", invoice_number, exc)
 
 
 def generate_comanda_text(order_number: str, table: str, waiter: str, items: list[dict], date = None) -> str:

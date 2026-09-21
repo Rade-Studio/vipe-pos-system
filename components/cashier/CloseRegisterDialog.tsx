@@ -2,6 +2,7 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { log } from "@/lib/log"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
 import { useState } from "react"
@@ -49,7 +50,7 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
         toast.error("No se pudo cerrar la caja")
       }
     } catch (error) {
-      console.error("Error al cerrar la caja:", error)
+      log.error("Error al cerrar la caja:", { error: String(error) })
       toast.error("Ocurrió un error al cerrar la caja")
     }
   }

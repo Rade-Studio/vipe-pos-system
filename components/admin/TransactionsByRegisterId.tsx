@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/utils/helpers"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
+import { log } from "@/lib/log"
 import { Search, Download, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { CashTransaction, PaymentTransaction } from "@/types/cash-register"
@@ -31,7 +32,7 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
   const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([])
   const { loadTransactionsByRegisters } = useCashRegisterStore()
   const { toast } = useToast()
-  const { profiles } = usePOSStore()
+  const { profiles } = useProfileStore()
 
   // Función para obtener el nombre del mesero por ID
   const getWaiterName = (waiterId: string) => {
@@ -81,7 +82,7 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
           setCashTransactions([])
         }
       } catch (error) {
-        console.error("Error al cargar transacciones:", error)
+        log.error("Error al cargar transacciones:", { error: String(error) })
         setTransactions([])
         setCashTransactions([])
       } finally {
@@ -232,7 +233,7 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         {!propSelectedDate && (
           <div className="flex items-center w-full sm:w-auto">
-            <DatePicker date={selectedDate} setDate={setSelectedDate} />
+            <DatePicker date={selectedDate} setDate={setSelectedDate as any} />
           </div>
         )}
 

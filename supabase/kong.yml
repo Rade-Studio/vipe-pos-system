@@ -1,0 +1,91 @@
+# Kong configuration for Supabase Local
+# This routes requests from port 54321 to the appropriate services
+
+_format_version: "3.0"
+_transform: true
+
+services:
+  # REST API (PostgREST)
+  - name: postgrest
+    url: http://rest:3000/
+    routes:
+      - name: rest-route
+        paths:
+          - /rest/v1/
+        strip_path: true
+    plugins:
+      - name: cors
+
+  # Storage API
+  - name: storage
+    url: http://storage:5000/
+    routes:
+      - name: storage-route
+        paths:
+          - /storage/v1/
+        strip_path: true
+    plugins:
+      - name: cors
+
+  # Auth (GoTrue)
+  - name: auth
+    url: http://auth:9999/
+    routes:
+      - name: auth-route
+        paths:
+          - /auth/v1/
+        strip_path: true
+    plugins:
+      - name: cors
+
+  # Auth Admin (direct, no anon key needed)
+  - name: auth-admin
+    url: http://auth:9999/
+    routes:
+      - name: auth-admin-route
+        paths:
+          - /auth/admin/
+        strip_path: true
+
+  # Realtime (WebSocket subscriptions)
+  # Phoenix monta el socket en /socket/websocket. Kong strip_path quita
+  # /realtime/v1/ y el "url" base /socket queda pegado, dando /socket/websocket.
+  # El protocol: ws fuerza WebSocket upgrade.
+  - name: realtime
+    url: http://realtime:4000/socket
+    protocol: ws
+    routes:
+      - name: realtime-route
+        paths:
+          - /realtime/v1/
+        strip_path: true
+    plugins:
+      - name: cors
+
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Accept
+        - Accept-Encoding
+        - Authorization
+        - Content-Type
+        - Origin
+        - X-Client-Info
+        - X-Requested-With
+        - apikey
+        - x-supabase-api
+        - x-supabase-auth
+      exposed_headers:
+        - X-Total-Count
+      credentials: true
+      max_age: 3600

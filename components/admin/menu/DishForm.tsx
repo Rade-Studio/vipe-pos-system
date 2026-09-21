@@ -15,6 +15,7 @@ import { ImageUpload } from "@/components/ui/image-upload"
 import { Loader2, Trash2, RefreshCw } from "lucide-react"
 import Image from "next/image"
 import { storageService } from "@/lib/supabase/storage-service"
+import { log } from "@/lib/log"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
@@ -49,7 +50,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
   useEffect(() => {
     // Caso 1: Crear nuevo plato (explícitamente indicado por isNewDish)
     if (isNewDish) {
-      console.log("Creando nuevo plato (isNewDish=true), limpiando formulario")
+      log.info("Creando nuevo plato (isNewDish=true), limpiando formulario")
       setFormData({ ...initialFormState })
       originalImageUrlRef.current = ""
       return
@@ -58,7 +59,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
     // Caso 2: Cambio de plato a editar a nuevo plato (dish cambia a undefined/null)
     const currentDishId = dish?.id || null
     if (previousDishIdRef.current && !currentDishId) {
-      console.log("Transición de editar a nuevo plato, limpiando formulario")
+      log.info("Transición de editar a nuevo plato, limpiando formulario")
       setFormData({ ...initialFormState })
       previousDishIdRef.current = null
       originalImageUrlRef.current = ""
@@ -67,7 +68,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
 
     // Caso 3: Editar un plato (dish tiene valor)
     if (dish) {
-      console.log("Cargando datos del plato para editar:", dish)
+      log.info("Cargando datos del plato para editar:", { dish })
       previousDishIdRef.current = dish.id
 
       // Guardar la URL original de la imagen para poder eliminarla después
@@ -81,7 +82,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
         categoryId = String(dish.category_id)
         const categoryExists = categories.some((cat) => String(cat.id) === categoryId)
         if (!categoryExists) {
-          console.warn(`La categoría con ID ${categoryId} no existe en las opciones disponibles`)
+          log.warn(`La categoría con ID ${categoryId} no existe en las opciones disponibles`)
         }
       }
 
@@ -91,7 +92,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
           .isImageAccessible(dish.image_url)
           .then((isAccessible) => {
             if (!isAccessible) {
-              console.warn("La imagen no es accesible:", dish.image_url)
+              log.warn("La imagen no es accesible:", { imageUrl: dish.image_url })
               setImageError(true)
               // Usar un placeholder en su lugar
               const placeholderUrl = storageService.getPlaceholderUrl(dish.name)
@@ -115,7 +116,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
       })
     } else {
       // Caso 4: Inicialización inicial sin plato (nuevo plato por defecto)
-      console.log("Inicialización sin plato, limpiando formulario")
+      log.info("Inicialización sin plato, limpiando formulario")
       setFormData({ ...initialFormState })
       originalImageUrlRef.current = ""
     }
@@ -135,7 +136,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
   }
 
   const handleImageUpload = (url: string) => {
-    console.log("URL de imagen recibida:", url)
+    log.info("URL de imagen recibida:", { url })
     setFormData((prev) => ({ ...prev, image_url: url }))
     setImageError(false)
   }
@@ -150,7 +151,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
 
     setDeletingImage(true)
     try {
-      console.log("Eliminando imagen:", formData.image_url)
+      log.info("Eliminando imagen:", { imageUrl: formData.image_url })
 
       // Intentar eliminar la imagen del bucket
       await storageService.deleteImage(formData.image_url)
@@ -164,7 +165,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
         description: "La imagen ha sido eliminada correctamente.",
       })
     } catch (error) {
-      console.error("Error al eliminar la imagen:", error)
+      log.error("Error al eliminar la imagen:", { error: String(error) })
 
       // Incluso si hay un error, limpiar la URL en el estado
       setFormData((prev) => ({ ...prev, image_url: "" }))
@@ -191,7 +192,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
   }
 
   const handleImageError = () => {
-    console.warn("Error al cargar la imagen:", formData.image_url)
+    log.warn("Error al cargar la imagen:", { imageUrl: formData.image_url })
     setImageError(true)
 
     // Si hay un error al cargar la imagen, usar un placeholder
@@ -226,9 +227,9 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
         if (originalImageUrlRef.current && originalImageUrlRef.current !== formData.image_url) {
           try {
             await storageService.deleteImage(originalImageUrlRef.current)
-            console.log("Imagen anterior eliminada:", originalImageUrlRef.current)
+            log.info("Imagen anterior eliminada:", { originalUrl: originalImageUrlRef.current })
           } catch (deleteError) {
-            console.error("Error al eliminar imagen anterior:", deleteError)
+            log.error("Error al eliminar imagen anterior:", { deleteError: String(deleteError) })
             // No interrumpir el flujo principal si falla la eliminación
           }
         }
@@ -259,7 +260,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
 
       onSuccess()
     } catch (error: any) {
-      console.error("Error saving dish:", error)
+      log.error("Error saving dish:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

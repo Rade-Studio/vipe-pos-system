@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase"
 import type {CartItem, IngredientTransactionsOrders} from "@/types"
+import { log } from "@/lib/log"
 
 // Validar si un string es un UUID válido
 function isValidUUID(str: string) {
@@ -46,7 +47,7 @@ const inventoryControlService = {
       // Normalizar el ID del plato
       const normalizedDishId = normalizeDishId(dishId)
       if (!normalizedDishId) {
-        console.warn(`ID de plato inválido: ${dishId}, se omitirá la verificación de stock`)
+        log.warn(`ID de plato inválido: ${dishId}, se omitirá la verificación de stock`)
         return {
           dishId,
           dishName,
@@ -56,7 +57,7 @@ const inventoryControlService = {
         }
       }
 
-      console.log(`Verificando stock para plato: ${normalizedDishId} (${dishName})`)
+      log.info(`Verificando stock para plato: ${normalizedDishId} (${dishName})`)
 
       // Primero, obtener la receta asociada al plato
       const { data: recipes, error: recipeError } = await supabase
@@ -65,7 +66,7 @@ const inventoryControlService = {
         .eq("dish_id", normalizedDishId)
 
       if (recipeError) {
-        console.error(`Error al obtener recetas para plato ${normalizedDishId}:`, recipeError)
+        log.error(`Error al obtener recetas para plato ${normalizedDishId}:`, { recipeError: String(recipeError) })
         return {
           dishId: normalizedDishId,
           dishName,
@@ -76,7 +77,7 @@ const inventoryControlService = {
       }
 
       if (!recipes || recipes.length === 0) {
-        console.log(`No se encontraron recetas para el plato ${normalizedDishId} (${dishName})`)
+        log.info(`No se encontraron recetas para el plato ${normalizedDishId} (${dishName})`)
         return {
           dishId: normalizedDishId,
           dishName,
@@ -88,7 +89,7 @@ const inventoryControlService = {
 
       // Usar la primera receta encontrada
       const recipe = recipes[0]
-      console.log(
+      log.info(
         `Receta encontrada para plato ${normalizedDishId} (${dishName}), ID de receta: ${recipe.id} (${recipes.length} recetas totales)`,
       )
 
@@ -99,7 +100,7 @@ const inventoryControlService = {
         .eq("recipe_id", recipe.id)
 
       if (ingredientsError) {
-        console.error(`Error al obtener ingredientes para receta ${recipe.id}:`, ingredientsError)
+        log.error(`Error al obtener ingredientes para receta ${recipe.id}:`, { ingredientsError: String(ingredientsError) })
         return {
           dishId: normalizedDishId,
           dishName,
@@ -111,7 +112,7 @@ const inventoryControlService = {
 
       // Si no hay ingredientes, retornar que tiene receta pero no ingredientes
       if (!recipeIngredients || recipeIngredients.length === 0) {
-        console.log(`La receta ${recipe.id} no tiene ingredientes`)
+        log.info(`La receta ${recipe.id} no tiene ingredientes`)
         return {
           dishId: normalizedDishId,
           dishName,
@@ -121,7 +122,7 @@ const inventoryControlService = {
         }
       }
 
-      console.log(`Ingredientes encontrados para receta ${recipe.id}: ${recipeIngredients.length}`)
+      log.info(`Ingredientes encontrados para receta ${recipe.id}: ${recipeIngredients.length}`)
 
       // Obtener los ingredientes necesarios
       const ingredientIds = recipeIngredients.map((item) => item.ingredient_id)
@@ -131,7 +132,7 @@ const inventoryControlService = {
         .in("id", ingredientIds)
 
       if (ingredientsDataError) {
-        console.error(`Error al obtener datos de ingredientes:`, ingredientsDataError)
+        log.error(`Error al obtener datos de ingredientes:`, { ingredientsDataError: String(ingredientsDataError) })
         return {
           dishId: normalizedDishId,
           dishName,
@@ -178,7 +179,7 @@ const inventoryControlService = {
         missingIngredients,
       }
     } catch (error) {
-      console.error(`Error al verificar stock del plato ${dishId} (${dishName}):`, error)
+      log.error(`Error al verificar stock del plato ${dishId} (${dishName}):`, { error: String(error) })
       return {
         dishId,
         dishName,
@@ -198,7 +199,7 @@ const inventoryControlService = {
       const status = await this.checkDishStock(dishId)
       return !status.hasRecipe || status.hasAllIngredients
     } catch (error) {
-      console.error(`Error al verificar stock para plato ${dishId}:`, error)
+      log.error(`Error al verificar stock para plato ${dishId}:`, { error: String(error) })
       return true // En caso de error, asumimos que hay stock
     }
   },
@@ -324,7 +325,7 @@ const inventoryControlService = {
         missingIngredients,
       }
     } catch (error) {
-      console.error("Error al verificar stock del pedido:", error)
+      log.error("Error al verificar stock del pedido:", { error: String(error) })
       throw error
     }
   },
@@ -334,8 +335,8 @@ const inventoryControlService = {
    */
   async reduceStock(items: CartItem[], orderId: string): Promise<void> {
     try {
-      console.log("Iniciando reducción de stock para la orden:", orderId)
-      console.log("Items a procesar:", items.length)
+      log.info("Iniciando reducción de stock para la orden:", { orderId })
+      log.info("Items a procesar:", { count: items.length })
 
       // Verificar primero si hay suficiente stock
       const stockCheck = await this.checkOrderStock(items)
@@ -354,7 +355,7 @@ const inventoryControlService = {
         const normalizedDishId = normalizeDishId(item.id)
         if (!normalizedDishId) continue
 
-        console.log(`Procesando item: ${item.name} (ID: ${normalizedDishId}), cantidad: ${item.quantity}`)
+        log.info(`Procesando item: ${item.name} (ID: ${normalizedDishId}), cantidad: ${item.quantity}`)
 
         // Obtener la receta del plato
         const { data: recipes, error: recipeError } = await supabase
@@ -363,19 +364,19 @@ const inventoryControlService = {
           .eq("dish_id", normalizedDishId)
 
         if (recipeError) {
-          console.error(`Error al obtener recetas para plato ${normalizedDishId}:`, recipeError)
+          log.error(`Error al obtener recetas para plato ${normalizedDishId}:`, { recipeError: String(recipeError) })
           continue
         }
 
         // Si no hay recetas, continuar con el siguiente item
         if (!recipes || recipes.length === 0) {
-          console.log(`No se encontraron recetas para el plato ${item.name} (ID: ${normalizedDishId})`)
+          log.info(`No se encontraron recetas para el plato ${item.name} (ID: ${normalizedDishId})`)
           continue
         }
 
         // Usar la primera receta encontrada (o podríamos procesar todas si es necesario)
         const recipe = recipes[0]
-        console.log(
+        log.info(
           `Receta encontrada para ${item.name}, ID de receta: ${recipe.id} (${recipes.length} recetas totales)`,
         )
 
@@ -386,17 +387,17 @@ const inventoryControlService = {
           .eq("recipe_id", recipe.id)
 
         if (ingredientsError) {
-          console.error(`Error al obtener ingredientes para receta ${recipe.id}:`, ingredientsError)
+          log.error(`Error al obtener ingredientes para receta ${recipe.id}:`, { ingredientsError: String(ingredientsError) })
           continue
         }
 
         // Si no hay ingredientes, continuar con el siguiente item
         if (!recipeIngredients || recipeIngredients.length === 0) {
-          console.log(`La receta para ${item.name} no tiene ingredientes`)
+          log.info(`La receta para ${item.name} no tiene ingredientes`)
           continue
         }
 
-        console.log(`Ingredientes encontrados para ${item.name}: ${recipeIngredients.length}`)
+        log.info(`Ingredientes encontrados para ${item.name}: ${recipeIngredients.length}`)
 
         // Obtener los ingredientes necesarios
         const ingredientIds = recipeIngredients.map((recipeItem) => recipeItem.ingredient_id)
@@ -406,7 +407,7 @@ const inventoryControlService = {
           .in("id", ingredientIds)
 
         if (ingredientsDataError) {
-          console.error(`Error al obtener datos de ingredientes:`, ingredientsDataError)
+          log.error(`Error al obtener datos de ingredientes:`, { ingredientsDataError: String(ingredientsDataError) })
           continue
         }
 
@@ -416,21 +417,21 @@ const inventoryControlService = {
         for (const recipeIngredient of recipeIngredients) {
           const ingredient = ingredients?.find((ing) => ing.id === recipeIngredient.ingredient_id)
           if (!ingredient) {
-            console.error(`Ingrediente no encontrado: ${recipeIngredient.ingredient_id}`)
+            log.error(`Ingrediente no encontrado: ${recipeIngredient.ingredient_id}`)
             continue
           }
 
           // Calcular la cantidad a reducir (cantidad del ingrediente * cantidad del item)
           const quantityToReduce = recipeIngredient.quantity * item.quantity
 
-          console.log(`Reduciendo ${quantityToReduce} unidades del ingrediente ${ingredient.name}`)
+          log.info(`Reduciendo ${quantityToReduce} unidades del ingrediente ${ingredient.name}`)
 
           try {
             // Calcular el nuevo stock
             const isLowerThanZero = (ingredient.stock - quantityToReduce) < 0
             const newStock = Math.max(0, ingredient.stock - quantityToReduce)
 
-            console.log(`Stock actual de ${ingredient.name}: ${ingredient.stock}, nuevo stock: ${newStock}`)
+            log.info(`Stock actual de ${ingredient.name}: ${ingredient.stock}, nuevo stock: ${newStock}`)
 
             // Actualizar el stock del ingrediente
             const { error: updateError } = await supabase
@@ -439,7 +440,7 @@ const inventoryControlService = {
               .eq("id", recipeIngredient.ingredient_id)
 
             if (updateError) {
-              console.error(`Error al actualizar stock del ingrediente ${recipeIngredient.ingredient_id}:`, updateError)
+              log.error(`Error al actualizar stock del ingrediente ${recipeIngredient.ingredient_id}:`, { updateError: String(updateError) })
               continue
             }
 
@@ -461,9 +462,9 @@ const inventoryControlService = {
             }).select().single()
 
             if (transactionError) {
-              console.error(
+              log.error(
                   `Error al crear transacción de ingrediente ${recipeIngredient.ingredient_id}:`,
-                  transactionError,
+                  { transactionError: String(transactionError) },
               )
             }
 
@@ -473,18 +474,18 @@ const inventoryControlService = {
 
             transactionsInserted.push( {ingredient_transaction_id: newTransaction.id, order_id: orderId})
           } catch (error) {
-            console.error(`Error al procesar ingrediente ${recipeIngredient.ingredient_id}:`, error)
+            log.error(`Error al procesar ingrediente ${recipeIngredient.ingredient_id}:`, { error: String(error) })
           }
         }
 
         if (transactionsInserted.length > 0) {
-          await supabase.from("ingredient_transactions_orders").insert(transactionsInserted)
+          await supabase.from("ingredient_transactions_orders").insert(transactionsInserted as any)
         }
       }
 
-      console.log("Reducción de stock completada para la orden:", orderId)
+      log.info("Reducción de stock completada para la orden:", { orderId })
     } catch (error) {
-      console.error("Error al reducir stock:", error)
+      log.error("Error al reducir stock:", { error: String(error) })
       throw error
     }
   },
@@ -499,7 +500,7 @@ const inventoryControlService = {
       const { data: dishes, error } = await supabase.from("dishes").select("id, name").eq("active", true)
 
       if (error) {
-        console.error("Error al obtener platos:", error)
+        log.error("Error al obtener platos:", { error: String(error) })
         throw error
       }
 
@@ -521,7 +522,7 @@ const inventoryControlService = {
 
       return stockStatusMap
     } catch (error) {
-      console.error("Error al actualizar estado de stock de platos:", error)
+      log.error("Error al actualizar estado de stock de platos:", { error: String(error) })
       throw error
     }
   },

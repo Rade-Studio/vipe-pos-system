@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/log"
 
 // Tipo para los valores de configuración
 export type BusinessConfigValues = {
@@ -10,11 +11,6 @@ export type BusinessConfigValues = {
   business_phone: string
   business_nit: string
   inventory_control_enabled: boolean
-  // Añadimos las contraseñas de los perfiles
-  kitchen_password: string
-  cashier_password: string
-  admin_password: string
-  waiter_password: string
   [key: string]: string | number | boolean
 }
 
@@ -36,7 +32,7 @@ export const businessConfigService = {
       const { data, error } = await supabase.from("business_config").select("key, value")
 
       if (error) {
-        console.error("Error al obtener configuraciones:", error)
+        log.error("Error al obtener configuraciones:", { error: String(error) })
         throw error
       }
 
@@ -44,21 +40,17 @@ export const businessConfigService = {
       const config: BusinessConfigValues = {
         tax_percentage: 10,
         tip_percentage: 10,
+        price_suggestion: 300,
         business_name: "Mi Restaurante",
         business_address: "Dirección del Restaurante",
         business_phone: "123-456-7890",
         business_nit: "123456789",
         inventory_control_enabled: false,
-        // Valores por defecto para las contraseñas
-        kitchen_password: "1234",
-        cashier_password: "5678",
-        admin_password: "9999",
-        waiter_password: "0000",
       }
 
       // Llenar el objeto con los valores de la base de datos
       if (data && data.length > 0) {
-        data.forEach((item: BusinessConfigRecord) => {
+        data.forEach((item: any) => {
           // Convertir valores según su tipo
           if (item.key === "tax_percentage" || item.key === "tip_percentage") {
             config[item.key] = Number.parseFloat(item.value)
@@ -72,7 +64,7 @@ export const businessConfigService = {
 
       return config
     } catch (error) {
-      console.error("Error en getAllConfig:", error)
+      log.error("Error en getAllConfig:", { error: String(error) })
       throw error
     }
   },
@@ -89,13 +81,13 @@ export const businessConfigService = {
           // No se encontró el registro
           return null
         }
-        console.error(`Error al obtener configuración para ${key}:`, error)
+        log.error(`Error al obtener configuración para ${key}:`, { error: String(error) })
         throw error
       }
 
       return data?.value || null
     } catch (error) {
-      console.error(`Error en getConfigValue para ${key}:`, error)
+      log.error(`Error en getConfigValue para ${key}:`, { error: String(error) })
       return null
     }
   },
@@ -120,7 +112,7 @@ export const businessConfigService = {
           .eq("key", key)
 
         if (error) {
-          console.error(`Error al actualizar configuración para ${key}:`, error)
+          log.error(`Error al actualizar configuración para ${key}:`, { error: String(error) })
           throw error
         }
       } else {
@@ -128,12 +120,12 @@ export const businessConfigService = {
         const { error } = await supabase.from("business_config").insert({ key, value: stringValue })
 
         if (error) {
-          console.error(`Error al insertar configuración para ${key}:`, error)
+          log.error(`Error al insertar configuración para ${key}:`, { error: String(error) })
           throw error
         }
       }
     } catch (error) {
-      console.error(`Error en saveConfigValue para ${key}:`, error)
+      log.error(`Error en saveConfigValue para ${key}:`, { error: String(error) })
       throw error
     }
   },
@@ -144,11 +136,13 @@ export const businessConfigService = {
   async saveMultipleConfig(config: Partial<BusinessConfigValues>): Promise<void> {
     try {
       // Guardar cada valor individualmente
-      const promises = Object.entries(config).map(([key, value]) => this.saveConfigValue(key, value))
+      const promises = Object.entries(config).map(([key, value]) =>
+        this.saveConfigValue(key, value as string | number | boolean),
+      )
 
       await Promise.all(promises)
     } catch (error) {
-      console.error("Error en saveMultipleConfig:", error)
+      log.error("Error en saveMultipleConfig:", { error: String(error) })
       throw error
     }
   },
@@ -167,11 +161,6 @@ export const businessConfigService = {
         business_phone: "123-456-7890",
         business_nit: "123456789",
         inventory_control_enabled: false,
-        // Valores por defecto para las contraseñas
-        kitchen_password: "1234",
-        cashier_password: "5678",
-        admin_password: "9999",
-        waiter_password: "0000",
       }
 
       // Para cada valor por defecto, verificar si existe y crearlo si no
@@ -182,26 +171,7 @@ export const businessConfigService = {
         }
       }
     } catch (error) {
-      console.error("Error al inicializar configuración por defecto:", error)
-      throw error
-    }
-  },
-
-  /**
-   * Obtiene las contraseñas de los perfiles
-   */
-  async getProfilePasswords(): Promise<Record<string, string>> {
-    try {
-      const config = await this.getAllConfig()
-
-      return {
-        "kitchen-1": config.kitchen_password,
-        "cashier-1": config.cashier_password,
-        "admin-1": config.admin_password,
-        "waiter-1": config.waiter_password,
-      }
-    } catch (error) {
-      console.error("Error al obtener contraseñas de perfiles:", error)
+      log.error("Error al inicializar configuración por defecto:", { error: String(error) })
       throw error
     }
   },

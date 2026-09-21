@@ -8,6 +8,7 @@ import type {
   CashTransaction,
 } from "@/types/cash-register"
 import { cashRegisterService } from "@/lib/supabase/cash-register-service"
+import { log } from "@/lib/log"
 
 type CashRegisterState = {
   currentRegister: CashRegister | null
@@ -81,7 +82,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
             })
           }
         } catch (error) {
-          console.error("Error al cargar la caja actual:", error)
+          log.error("Error al cargar la caja actual:", { error: String(error) })
         } finally {
           set({ isLoading: false })
         }
@@ -93,7 +94,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
           const registers = await cashRegisterService.getAllRegisters()
           set({ registers })
         } catch (error) {
-          console.error("Error al cargar todas las cajas:", error)
+          log.error("Error al cargar todas las cajas:", { error: String(error) })
         } finally {
           set({ isLoading: false })
         }
@@ -115,12 +116,12 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           // Si es el registro actual, actualizarlo también
           if (get().currentRegister?.id === registerId) {
-            set({ currentRegister: { ...get().currentRegister, transactions } })
+            set({ currentRegister: { ...get().currentRegister, transactions } as any })
           }
 
           return transactions
         } catch (error) {
-          console.error("Error al cargar transacciones:", error)
+          log.error("Error al cargar transacciones:", { error: String(error) })
           return []
         }
       },
@@ -141,12 +142,12 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           // Si es el registro actual, actualizarlo también
           if (get().currentRegister?.id === registerId) {
-            set({ currentRegister: { ...get().currentRegister, cashTransactions } })
+            set({ currentRegister: { ...get().currentRegister, cashTransactions } as any })
           }
 
           return cashTransactions
         } catch (error) {
-          console.error("Error al cargar transacciones de efectivo:", error)
+          log.error("Error al cargar transacciones de efectivo:", { error: String(error) })
           return []
         }
       },
@@ -192,7 +193,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
             cashTransactions: cashTransactions, // Incluimos las transacciones de efectivo en el resultado
           }
         } catch (error) {
-          console.error("Error al cargar transacciones por fecha:", error)
+          log.error("Error al cargar transacciones por fecha:", { error: String(error) })
           return null
         } finally {
           set({ isLoading: false })
@@ -233,7 +234,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
             cashTransactions: cashTransactions, // Incluimos las transacciones de efectivo en el resultado
           }
         } catch (error) {
-          console.error("Error al cargar transacciones por fecha:", error)
+          log.error("Error al cargar transacciones por fecha:", { error: String(error) })
           return null
         } finally {
           set({ isLoading: false })
@@ -256,7 +257,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           return true
         } catch (error) {
-          console.error("Error al abrir la caja:", error)
+          log.error("Error al abrir la caja:", { error: String(error) })
           return false
         }
       },
@@ -292,7 +293,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           return summary
         } catch (error) {
-          console.error("Error al cerrar la caja:", error)
+          log.error("Error al cerrar la caja:", { error: String(error) })
           return null
         }
       },
@@ -341,7 +342,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           return transactions[0]
         } catch (error) {
-          console.error("Error al agregar transacción:", error)
+          log.error("Error al agregar transacción:", { error: String(error) })
           throw error
         }
       },
@@ -376,7 +377,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           return true
         } catch (error) {
-          console.error("Error al agregar efectivo a la caja:", error)
+          log.error("Error al agregar efectivo a la caja:", { error: String(error) })
           return false
         }
       },
@@ -405,7 +406,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           return cashTransaction
         } catch (error) {
-          console.error("Error al agregar transacción de efectivo:", error)
+          log.error("Error al agregar transacción de efectivo:", { error: String(error) })
           return null
         }
       },

@@ -1,8 +1,13 @@
 import { supabase } from "./client"
-import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js"
+import {
+  type RealtimeChannel,
+  type RealtimePostgresChangesPayload,
+  REALTIME_SUBSCRIBE_STATES,
+} from "@supabase/supabase-js"
 import { orderService } from "./service"
 import {toast} from "@/components/ui/use-toast";
 import {CartItem, CommandPayload, PrintableInvoice} from "@/types";
+import { log } from "@/lib/log"
 
 // Tipos para las funciones de callback
 type BillPayload = {
@@ -19,6 +24,24 @@ type ConnectionStatusCallback = (status: boolean) => void
 
 const CHANNEL_KEY_POS = "room_pos"
 
+// Broadcast listener registry: channelKey -> eventName -> Set of handlers.
+// Allows per-handler unsubscribe without tearing down the whole channel.
+const broadcastListenerRegistry = new Map<string, Map<string, Set<Function>>>()
+
+// Tables channel registry: storageKey -> { channel, callbacks Set }
+// Allows multiple subscribers (WaiterView + TableGrid) to share one channel
+// while each receiving events independently via their own callback.
+type TablesChannelEntry = {
+  channel: RealtimeChannel
+  callbacks: Set<TableCallback>
+}
+const tablesChannels = new Map<string, TablesChannelEntry>()
+
+// Stable channel-name helper.  Each role-view (waiter / kitchen / cashier / admin)
+// gets ONE persistent channel named `${topic}-${role}`.  The role suffix prevents
+// cross-role event leakage.
+const roleChannelName = (topic: string, role: string) => `${topic}-${role}`
+
 // Servicio para manejar suscripciones en tiempo real
 export const realtimeService = {
   // Canales activos
@@ -31,29 +54,33 @@ export const realtimeService = {
   isConnected: false,
 
   // Suscribirse a cambios en las mesas
-  subscribeToTables: (callback: TableCallback) => {
-    // Crear un canal para las mesas
-    const channel = supabase
-      .channel("tables-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*", // Escuchar todos los eventos (INSERT, UPDATE, DELETE)
-          schema: "public",
-          table: "tables",
-        },
-        callback,
-      )
-      .subscribe()
-
-    // Guardar referencia al canal
-    realtimeService.channels["tables"] = channel
-    realtimeService.isConnected = true
-
-    // Devolver función para cancelar la suscripción
+  subscribeToTables: (callback: TableCallback, role = "waiter") => {
+    const storageKey = `tables-${role}`
+    let entry = tablesChannels.get(storageKey)
+    if (!entry) {
+      const channel = supabase
+        .channel(roleChannelName("tables", role))
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "tables" },
+          (payload) => {
+            entry?.callbacks.forEach((cb) => cb(payload))
+          },
+        )
+        .subscribe()
+      entry = { channel, callbacks: new Set() }
+      tablesChannels.set(storageKey, entry)
+      realtimeService.isConnected = true
+    }
+    entry.callbacks.add(callback)
     return () => {
-      supabase.removeChannel(channel)
-      delete realtimeService.channels["tables"]
+      const e = tablesChannels.get(storageKey)
+      if (!e) return
+      e.callbacks.delete(callback)
+      if (e.callbacks.size === 0) {
+        e.channel.unsubscribe()
+        tablesChannels.delete(storageKey)
+      }
     }
   },
 
@@ -67,14 +94,42 @@ export const realtimeService = {
       })
 
       realtimeService.channels[channelKey] = channel
-
     }
 
     const channel = realtimeService.channels[channelKey]
+
+    // Register handler in our registry so it can be removed individually.
+    if (!broadcastListenerRegistry.has(channelKey)) {
+      broadcastListenerRegistry.set(channelKey, new Map())
+    }
+    const eventMap = broadcastListenerRegistry.get(channelKey)!
+    if (!eventMap.has(eventName)) {
+      eventMap.set(eventName, new Set())
+    }
+    eventMap.get(eventName)!.add(callback)
+
+    // Attach the broadcast listener to the channel.
     channel.on("broadcast", { event: eventName}, ({payload}) => {
       callback(payload as T)
     })
 
+    // Return a per-handler unsubscribe — removes only this handler,
+    // does NOT tear down the channel if other handlers are registered.
+    return () => {
+      const evMap = broadcastListenerRegistry.get(channelKey)
+      if (!evMap) return
+      const handlerSet = evMap.get(eventName)
+      if (handlerSet) {
+        handlerSet.delete(callback)
+        if (handlerSet.size === 0) {
+          evMap.delete(eventName)
+        }
+      }
+      // Note: we do NOT call supabase.removeChannel here because other
+      // handlers on the same channel (different event names) may still be active.
+      // The channel will be cleaned up when the last handler is removed or
+      // when unsubscribeAll() is explicitly called.
+    }
   },
 
   // enviar factura a un canal de realtime
@@ -189,14 +244,15 @@ export const realtimeService = {
 
     // Activar el canal de tiempo real para verificar la conexión
     const statusChannel = supabase.channel("public:kitchen-status").subscribe((status) => {
-      if (status === "SUBSCRIBED") {
-        console.log("Suscripción a cocina activada")
+      if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
+        log.info("Suscripción a cocina activada")
         connectionStatusCallback(true)
         realtimeService.isConnected = true
       } else {
-        console.log("Estado de suscripción:", status)
-        connectionStatusCallback(status === "SUBSCRIBED")
-        realtimeService.isConnected = status === "SUBSCRIBED"
+        log.info("Estado de suscripción:", { status })
+        // En el branch else ya sabemos que NO está SUBSCRIBED.
+        connectionStatusCallback(false)
+        realtimeService.isConnected = false
       }
     })
 
@@ -296,7 +352,7 @@ export const realtimeService = {
                   order: orderDetails,
                   isNewItem: isNewItem,
                   newItemId: itemId, // Añadir el ID del nuevo item explícitamente
-                },
+                } as any,
                 isNewItem,
               )
             }
@@ -344,7 +400,7 @@ export const realtimeService = {
                   remainingItems: remainingKitchenItems.length,
                   itemDelivered: true, // Indicar que un item fue entregado
                   deliveredItemId: itemId, // ID del item entregado
-                })
+                } as any)
 
                 // Si no quedan items en cocina, limpiar el registro de esta orden
                 if (remainingKitchenItems.length === 0 && realtimeService.knownItems[orderId]) {
@@ -352,7 +408,7 @@ export const realtimeService = {
                 }
               }
             } catch (error) {
-              console.error("Error al actualizar orden tras cambio de estado de item:", error)
+              log.error("Error al actualizar orden tras cambio de estado de item:", { error: String(error) })
             }
           }
           // Si el estado cambió a "kitchen"
@@ -363,7 +419,7 @@ export const realtimeService = {
 
               // Verificar si este item ya es conocido
               const isNewItem = !realtimeService.knownItems[orderId]?.has(itemId)
-              console.log(`Item ${itemId} actualizado a estado kitchen, es nuevo: ${isNewItem}`)
+              log.info(`Item ${itemId} actualizado a estado kitchen, es nuevo: ${isNewItem}`)
 
               // Si es un nuevo item, registrarlo
               if (isNewItem) {
@@ -384,12 +440,12 @@ export const realtimeService = {
                     order: orderDetails,
                     isNewItem: isNewItem,
                     newItemId: itemId, // Añadir el ID del nuevo item explícitamente
-                  },
+                  } as any,
                   isNewItem,
                 )
               }
             } catch (error) {
-              console.error("Error al procesar item actualizado a estado kitchen:", error)
+              log.error("Error al procesar item actualizado a estado kitchen:", { error: String(error) })
             }
           }
         },
@@ -407,7 +463,7 @@ export const realtimeService = {
           table: "orders",
         },
         (payload) => {
-          console.log("Orden eliminada:", payload)
+          log.info("Orden eliminada:", { payload })
 
           // Eliminar la orden del registro de items conocidos
           if (payload.old && payload.old.id && realtimeService.knownItems[payload.old.id]) {
@@ -427,7 +483,7 @@ export const realtimeService = {
     realtimeService.channels["kitchen-item-updates"] = itemUpdatesChannel
     realtimeService.channels["kitchen-order-deletes"] = orderDeletesChannel
 
-    console.log("Suscripción a cocina configurada correctamente")
+    log.info("Suscripción a cocina configurada correctamente")
 
     // Devolver función para cancelar todas las suscripciones
     return () => {
@@ -471,7 +527,7 @@ export const realtimeService = {
       realtimeService.knownItems[orderId] = new Set()
     }
     realtimeService.knownItems[orderId].add(itemId)
-    console.log(`Registrando item ${itemId} para orden ${orderId}`)
+    log.info(`Registrando item ${itemId} para orden ${orderId}`)
   },
 
   // Registrar múltiples items como conocidos
@@ -480,14 +536,14 @@ export const realtimeService = {
       realtimeService.knownItems[orderId] = new Set()
     }
     itemIds.forEach((id) => realtimeService.knownItems[orderId].add(id))
-    console.log(`Registrando ${itemIds.length} items para orden ${orderId}`)
+    log.info(`Registrando ${itemIds.length} items para orden ${orderId}`)
   },
 
   // Eliminar un item del registro
   unregisterItem: (orderId: string, itemId: string): void => {
     if (realtimeService.knownItems[orderId]) {
       realtimeService.knownItems[orderId].delete(itemId)
-      console.log(`Eliminando registro de item ${itemId} para orden ${orderId}`)
+      log.info(`Eliminando registro de item ${itemId} para orden ${orderId}`)
     }
   },
 
@@ -495,7 +551,7 @@ export const realtimeService = {
   unregisterOrder: (orderId: string): void => {
     if (realtimeService.knownItems[orderId]) {
       delete realtimeService.knownItems[orderId]
-      console.log(`Eliminando registro completo para orden ${orderId}`)
+      log.info(`Eliminando registro completo para orden ${orderId}`)
     }
   },
 

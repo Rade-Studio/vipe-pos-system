@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
+import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -42,7 +43,7 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
         if (error) throw error
         setCategories(data || [])
       } catch (error: any) {
-        console.error("Error loading categories:", error)
+        log.error("Error loading categories:", { error: String(error) })
       }
     }
 
@@ -86,7 +87,7 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
           }
         }
       } catch (error: any) {
-        console.error("Error loading ingredients:", error)
+        log.error("Error loading ingredients:", { error: String(error) })
         toast({
           variant: "destructive",
           title: "Error",
@@ -198,7 +199,7 @@ export function StockTransactionForm({ ingredientId, onSuccess }: StockTransacti
         onSuccess()
       }
     } catch (error: any) {
-      console.error("Error registering transaction:", error)
+      log.error("Error registering transaction:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

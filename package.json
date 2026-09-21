@@ -1,12 +1,25 @@
 {
-  "name": "my-v0-project",
+  "name": "vipe-pos-system",
   "version": "0.1.0",
   "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": ["sharp", "@parcel/watcher", "esbuild", "unrs-resolver"]
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "typecheck": "tsc --noEmit",
+    "test:placeholder": "echo 'No test runner configured yet' && exit 0",
+    "docker:dev": "docker-compose up -d",
+    "docker:dev:build": "docker-compose up -d --build",
+    "docker:dev:down": "docker-compose down",
+    "docker:dev:seed": "docker exec -i supabase-db psql -U postgres -d postgres < supabase/seed.sql",
+    "docker:prod": "docker-compose -f docker-compose.prod.yml up -d --build",
+    "docker:prod:down": "docker-compose -f docker-compose.prod.yml down",
+    "docker:prod:logs": "docker-compose -f docker-compose.prod.yml logs -f"
   },
   "dependencies": {
     "@hookform/resolvers": "latest",
@@ -71,6 +84,11 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@next/eslint-plugin-next": "^16.3.5",
+    "@eslint/eslintrc": "^3",
+    "@typescript-eslint/eslint-plugin": "^8",
+    "@typescript-eslint/parser": "^8",
+    "eslint": "^9",
     "postcss": "^8",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"

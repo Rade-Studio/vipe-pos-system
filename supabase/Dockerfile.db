@@ -1,0 +1,13 @@
+# supabase/Dockerfile.db
+# Custom postgres image that bakes in Supabase init scripts.
+# This avoids WSL2 Docker bind-mount issues at runtime.
+FROM supabase/postgres:15.8.1.085
+
+# Copy init scripts in lexical order (docker-entrypoint runs them alphabetically)
+COPY migrations/*.sql /docker-entrypoint-initdb.d/
+COPY 00_supabase_init.sql /docker-entrypoint-initdb.d/00_supabase_init.sql
+COPY 01_realtime_bootstrap.sql /docker-entrypoint-initdb.d/01_realtime_bootstrap.sql
+
+# Override postgresql.conf and pg_hba.conf with our settings
+COPY postgresql.conf /etc/postgresql/postgresql.conf
+COPY pg_hba.conf /etc/postgresql/pg_hba.conf

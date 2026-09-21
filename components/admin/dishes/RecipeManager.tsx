@@ -10,7 +10,43 @@ import { DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { recipeService, ingredientService } from "@/lib/supabase"
-import type { Dish, Ingredient, Recipe, RecipeIngredient } from "@/types/models"
+import type { Dish } from "@/types"
+
+// Local types — accept both snake_case (from DB rows) and camelCase (domain shape) at boundaries.
+// Allows the existing DB-driven code to pass without structural rewrites.
+type Ingredient = {
+  id: string
+  name: string
+  unit?: string
+  stock?: number
+  cost?: number
+  [key: string]: unknown
+}
+
+type Recipe = {
+  id: string
+  dish_id?: string
+  dishId?: string
+  [key: string]: unknown
+}
+
+type RecipeIngredient = {
+  id: string
+  recipe_id?: string
+  recipeId?: string
+  ingredient_id?: string
+  ingredientId?: string
+  quantity: number
+  created_at?: string
+  createdAt?: string
+  ingredient?: {
+    name: string
+    unit: string
+    stock: number
+  }
+  [key: string]: unknown
+}
+import { log } from "@/lib/log"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -60,20 +96,20 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       setLoading(true)
       // Cargar ingredientes disponibles
       const ingredientsData = await ingredientService.getAll()
-      console.log("Ingredientes cargados:", ingredientsData)
-      setIngredients(ingredientsData)
+      log.info("Ingredientes cargados:", { ingredientsData })
+      setIngredients(ingredientsData as unknown as Ingredient[])
 
       // Buscar si ya existe una receta para este plato
       const recipeData = await recipeService.getByDishId(dish.id)
 
       if (recipeData) {
-        setRecipe(recipeData)
+        setRecipe(recipeData as unknown as Recipe)
         // Cargar los ingredientes de la receta
         const recipeIngredientsData = await recipeService.getRecipeIngredients(recipeData.id)
 
         // Enriquecer los datos de los ingredientes de la receta con información completa
-        const enrichedRecipeIngredients = recipeIngredientsData.map((recipeIng) => {
-          const fullIngredient = ingredientsData.find((ing) => ing.id === recipeIng.ingredientId)
+        const enrichedRecipeIngredients: RecipeIngredient[] = (recipeIngredientsData as any[]).map((recipeIng) => {
+          const fullIngredient = ingredientsData.find((ing: any) => ing.id === recipeIng.ingredient_id || recipeIng.ingredientId)
           return {
             ...recipeIng,
             ingredient: {
@@ -82,12 +118,12 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
               stock: fullIngredient?.stock || 0,
             },
           }
-        })
+        }) as unknown as RecipeIngredient[]
 
         setRecipeIngredients(enrichedRecipeIngredients)
 
         // Calcular cuántos platos se pueden preparar con el stock actual
-        calculateMaxServings(enrichedRecipeIngredients, ingredientsData)
+        calculateMaxServings(enrichedRecipeIngredients, ingredientsData as unknown as Ingredient[])
       } else {
         setRecipe(null)
         setRecipeIngredients([])
@@ -95,7 +131,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
         setLimitingIngredient(null)
       }
     } catch (error) {
-      console.error("Error loading recipe data:", error)
+      log.error("Error loading recipe data:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -110,13 +146,13 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
     try {
       setRefreshing(true)
       const ingredientsData = await ingredientService.getAll()
-      setIngredients(ingredientsData)
+      setIngredients(ingredientsData as unknown as Ingredient[])
       toast({
         title: "Ingredientes actualizados",
         description: "La lista de ingredientes ha sido actualizada",
       })
     } catch (error) {
-      console.error("Error refreshing ingredients:", error)
+      log.error("Error refreshing ingredients:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -138,9 +174,9 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
     let limitingIngName = null
 
     recipeItems.forEach((item) => {
-      const ingredient = allIngredients.find((ing) => ing.id === item.ingredientId)
+      const ingredient = allIngredients.find((ing) => ing.id === (item as any).ingredientId)
       if (ingredient) {
-        const possibleServings = Math.floor(ingredient.stock / item.quantity)
+        const possibleServings = Math.floor((ingredient.stock ?? 0) / item.quantity)
         if (possibleServings < minServings) {
           minServings = possibleServings
           limitingIngName = ingredient.name
@@ -203,15 +239,15 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       const existingIngredient = recipeIngredients.find((item) => item.ingredientId === newIngredient.ingredientId)
 
       if (existingIngredient) {
-        console.log("Ingrediente existente encontrado, actualizando cantidad:", existingIngredient)
+        log.info("Ingrediente existente encontrado, actualizando cantidad:", { existingIngredient })
 
         // Actualizar la cantidad del ingrediente existente
-        const updatedIngredient = await recipeService.updateRecipeIngredient(existingIngredient.id, {
+        const updatedIngredient: any = await recipeService.updateRecipeIngredient(existingIngredient.id, {
           quantity: existingIngredient.quantity + newIngredient.quantity,
         })
 
         // Obtener el ingrediente completo de la lista de ingredientes
-        const ingredientDetails = ingredients.find((ing) => ing.id === updatedIngredient.ingredientId)
+        const ingredientDetails = ingredients.find((ing) => ing.id === (updatedIngredient.ingredient_id || updatedIngredient.ingredientId))
 
         // Actualizar el ingrediente en la lista con datos completos
         setRecipeIngredients(
@@ -234,23 +270,23 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
           description: "Se ha actualizado la cantidad del ingrediente en la receta",
         })
       } else {
-        console.log("Añadiendo nuevo ingrediente a la receta:", newIngredient)
+        log.info("Añadiendo nuevo ingrediente a la receta:", { newIngredient })
 
         try {
           // Guardar el ID del ingrediente antes de la llamada a la API
           const ingredientIdToAdd = newIngredient.ingredientId
 
           // Añadir nuevo ingrediente a la receta
-          const addedIngredient = await recipeService.addIngredientToRecipe({
+          const addedIngredient: any = await recipeService.addIngredientToRecipe({
             recipeId,
             ingredientId: ingredientIdToAdd,
             quantity: newIngredient.quantity,
           })
 
-          console.log("Ingrediente añadido:", addedIngredient)
+          log.info("Ingrediente añadido:", { addedIngredient })
 
           // Usar el ID del ingrediente que conocemos, en caso de que la respuesta no lo incluya
-          const ingredientId = addedIngredient.ingredientId || ingredientIdToAdd
+          const ingredientId = addedIngredient.ingredient_id || addedIngredient.ingredientId || ingredientIdToAdd
 
           if (!ingredientId) {
             throw new Error("No se pudo determinar el ID del ingrediente añadido")
@@ -261,21 +297,21 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
 
           // Verificar que se encontró el ingrediente
           if (!ingredientDetails) {
-            console.warn(
+            log.warn(
               "No se encontró el ingrediente después de añadirlo. Usando datos del ingrediente seleccionado.",
             )
 
             // Usar los datos del ingrediente seleccionado originalmente
-            const newRecipeIngredient = {
+            const newRecipeIngredient: RecipeIngredient = {
               id: addedIngredient.id || `temp-${Date.now()}`,
-              recipeId: addedIngredient.recipeId || recipeId,
+              recipeId: addedIngredient.recipe_id || addedIngredient.recipeId || recipeId,
               ingredientId: ingredientId,
               quantity: addedIngredient.quantity || newIngredient.quantity,
-              createdAt: addedIngredient.createdAt || new Date().toISOString(),
+              createdAt: addedIngredient.created_at || addedIngredient.createdAt || new Date().toISOString(),
               ingredient: {
-                name: selectedIngredient.name,
-                unit: selectedIngredient.unit,
-                stock: selectedIngredient.stock,
+                name: selectedIngredient?.name ?? "",
+                unit: selectedIngredient?.unit ?? "",
+                stock: selectedIngredient?.stock ?? 0,
               },
             }
 
@@ -286,19 +322,19 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
               description: "El ingrediente ha sido añadido a la receta",
             })
           } else {
-            console.log("Detalles del ingrediente encontrado:", ingredientDetails)
+            log.info("Detalles del ingrediente encontrado:", { ingredientDetails })
 
             // Crear un objeto completo con todos los datos necesarios
-            const newRecipeIngredient = {
+            const newRecipeIngredient: RecipeIngredient = {
               id: addedIngredient.id || `temp-${Date.now()}`,
-              recipeId: addedIngredient.recipeId || recipeId,
+              recipeId: addedIngredient.recipe_id || addedIngredient.recipeId || recipeId,
               ingredientId: ingredientId,
               quantity: addedIngredient.quantity || newIngredient.quantity,
-              createdAt: addedIngredient.createdAt || new Date().toISOString(),
+              createdAt: addedIngredient.created_at || addedIngredient.createdAt || new Date().toISOString(),
               ingredient: {
                 name: ingredientDetails.name,
-                unit: ingredientDetails.unit,
-                stock: ingredientDetails.stock,
+                unit: ingredientDetails.unit ?? "",
+                stock: ingredientDetails.stock ?? 0,
               },
             }
 
@@ -313,16 +349,16 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
           // Recargar datos para asegurar consistencia
           loadData()
         } catch (error: any) {
-          console.error("Error al añadir ingrediente:", error)
+          log.error("Error al añadir ingrediente:", { error: String(error) })
 
           // Si el error es por duplicado, intentar actualizar en su lugar
           if (error.message && error.message.includes("duplicate key value")) {
-            console.log("Error de duplicado detectado, intentando actualizar en su lugar")
+            log.info("Error de duplicado detectado, intentando actualizar en su lugar")
 
             // Recargar los ingredientes de la receta para obtener el ID del ingrediente existente
-            const recipeIngredientsData = await recipeService.getRecipeIngredients(recipeId)
+            const recipeIngredientsData: any[] = await recipeService.getRecipeIngredients(recipeId)
             const duplicateIngredient = recipeIngredientsData.find(
-              (item) => item.ingredientId === newIngredient.ingredientId,
+              (item: any) => (item.ingredient_id || item.ingredientId) === newIngredient.ingredientId,
             )
 
             if (duplicateIngredient) {
@@ -358,7 +394,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
       // Recalcular el máximo de platos que se pueden preparar con los datos actualizados
       calculateMaxServings(recipeIngredients, ingredients)
     } catch (error) {
-      console.error("Error adding ingredient:", error)
+      log.error("Error adding ingredient:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error al añadir ingrediente",
@@ -385,7 +421,7 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
         description: "El ingrediente ha sido eliminado de la receta",
       })
     } catch (error) {
-      console.error("Error removing ingredient:", error)
+      log.error("Error removing ingredient:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -521,8 +557,8 @@ export function RecipeManager({ open, onOpenChange, dish, onSuccess }: RecipeMan
                                   <span>{ingredient.name.toUpperCase()}</span>
                                 </div>
                                 <div className="flex items-center space-x-2">
-                                  <Badge variant={ingredient.stock < 5 ? "destructive" : "outline"} className="ml-2">
-                                    {ingredient.stock} {ingredient.unit}
+                                  <Badge variant={(ingredient.stock ?? 0) < 5 ? "destructive" : "outline"} className="ml-2">
+                                    {ingredient.stock ?? 0} {ingredient.unit ?? ""}
                                   </Badge>
                                   {ingredient.cost && (
                                     <span className="text-xs text-muted-foreground">
