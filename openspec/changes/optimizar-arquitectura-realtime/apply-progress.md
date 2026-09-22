@@ -125,7 +125,85 @@ Task **S1.8**'s two-tab manual recipe was NOT run — there is no running app an
 
 `mem_save` was attempted once with `topic_key: "sdd/optimizar-arquitectura-realtime/apply-progress"`, `type: "architecture"`, `project: "vipe-pos-system"`. Result: **engram_write: pending** — per the known environment failure noted in the launch instructions (`multiple active runtime sessions match the current project and directory`), this was not retried. The orchestrator is expected to mirror this file via the `engram` CLI.
 
-## Next Steps
+## Next Steps (superseded by Slice S2 section below for S2 status)
 
 - Slice S1 is code-complete and committed. Remaining before archive/next-slice: the human two-tab manual recipe above (S1.8).
 - Next slice per `tasks.md`'s dependency order: S2 (channel lifecycle) — independent of S1, can proceed in parallel/next.
+
+---
+
+## Slice S2 — Channel lifecycle (A-3, A-5, B-10)
+
+**Status**: S2.1–S2.8 complete. S2.9's automated portion (lint/typecheck/build) complete; its two-tab manual recipe and the A-5 leak check are pending human verification and were NOT executed by this agent (no running app, no browser, no network panel in this environment).
+
+### Scope
+
+Files touched: `lib/supabase/realtime-service.ts` only, as required. All four public signatures (`subscribeToOrders`, `sendFactura`, `sendCommand`, `subscribeToPosEvents`) are unchanged; confirmed by inspection that `WaiterView.tsx:275`, `CashierView.tsx:234`, and `AdminView.tsx:221` (the three `subscribeToOrders` call sites) required no edit.
+
+### Completed Tasks
+
+- [x] S2.1 — Added `type OrdersChannelEntry = { channel: RealtimeChannel; callbacks: Set<OrderCallback> }` and `const ordersChannels = new Map<string, OrdersChannelEntry>()`, placed directly below `tablesChannels` and mirroring its shape exactly.
+- [x] S2.2 — Rewrote `subscribeToOrders` to the same Map/Set/create-once pattern already used by `subscribeToTables`: a caller's callback is added to the shared entry's `Set`; `supabase.channel("orders-changes")` and the `postgres_changes` listener are created only when no entry exists yet for the `"orders-changes"` topic key. Public signature `subscribeToOrders(callback: OrderCallback) => () => void` is unchanged. Confirmed via `git diff` that only `realtime-service.ts` changed, so no caller site needed an edit.
+- [x] S2.3 — Moved the `order_items` `SELECT` to run exactly once per event, inside the shared handler, before the `entry.callbacks.forEach` fan-out. **Behaviour change (D7, stated explicitly per phase instructions)**: on fetch error, the previous silent `return` (which dropped the event for the one caller that triggered the fetch) is replaced with `log.error(...)` via `lib/log`, and the handler still falls through to fan out to every subscribed callback with `payload.new.order_items` left `undefined` — never `[]`. A code comment above the `if (error)` branch and another directly above the `entry?.callbacks.forEach(...)` line state the read-only contract: the payload object is the same reference fanned out to every callback, so consumers must derive new local state rather than mutate `payload.new`/`payload.old`/`order_items`. The pre-existing outer `try/catch` (for thrown exceptions, not query errors) and its toast are left exactly as they were — out of this task's described scope, which names only the `if (error) return` line.
+- [x] S2.4 — Rewrote `subscribeToOrders`'s returned teardown to remove only the calling callback from the topic's `Set`, calling `supabase.removeChannel(e.channel)` (preserving the pre-existing mechanism) only when the `Set` becomes empty, at which point the `ordersChannels` entry for that topic is also deleted. Removed the single-slot `realtimeService.channels["orders"]` bookkeeping entirely (no more `realtimeService.channels["orders"] = channel` / `delete realtimeService.channels["orders"]`). Confirmed by grep — see Verification below — and by an additional codebase-wide grep for `channels["orders"]`/`channels['orders']` outside this file, which returned zero matches, corroborating design's claim that nothing else reads that slot.
+- [x] S2.5 — Extracted a module-private `getBroadcastChannel(channelKey: string): RealtimeChannel` helper that acquires or creates a channel via `realtimeService.channels[channelKey]` bookkeeping, calling `channel.subscribe()` on creation, WITHOUT touching `broadcastListenerRegistry` and WITHOUT registering any `.on()` listener. `subscribeToPosEvents` now calls this helper for its own channel acquisition, then performs its existing registry insert and `channel.on(...)` binding exactly as before — its own signature and behaviour are unchanged.
+- [x] S2.6 — `sendFactura` now calls `getBroadcastChannel("room_bills")` and sends on the returned channel directly, instead of `realtimeService.subscribeToPosEvents(channelKey, "new_invoice", () => {})`. The no-op listener registration that used to run on every invoice send is gone. `sendFactura`'s own signature and its `.send(...)` call are unchanged.
+- [x] S2.7 — `sendCommand` now calls `getBroadcastChannel("room_commands")` the same way, removing its own no-op `subscribeToPosEvents(channelKey, "new_command", () => {})` call.
+- [x] S2.8 — **[Confirm-at-apply finding, resolved]** Read `node_modules/.pnpm/@supabase+realtime-js@2.116.0/node_modules/@supabase/realtime-js/dist/main/RealtimeChannel.js` (confirmed via `node_modules/@supabase/supabase-js` symlink → `.pnpm/@supabase+supabase-js@2.116.0` and its `pnpm-lock.yaml` dependency pin, `@supabase/realtime-js: 2.116.0`, that this is the version actually resolved — a second, unused copy at `2.11.2` also exists in the pnpm store but is not what `@supabase/supabase-js` depends on). **Finding: `channel.on("broadcast", ...)` registered after `channel.subscribe()` DOES bind correctly.** Evidence: `RealtimeChannel.prototype.on()` (lines 416–424) contains an explicit guard — `if ((isJoined() || isJoining()) && (type === PRESENCE || type === POSTGRES_CHANGES)) throw ...` — that rejects late bindings ONLY for `presence` and `postgres_changes`; `broadcast` is not in that check and falls through to `_on()` unconditionally. `_on()` (lines 636–673) then calls `this.channelAdapter.on(type, callback)` to register the handler directly on the channel's live message dispatcher and pushes the binding into `this.bindings[typeLower]` for bookkeeping — it does not need to be included in the one-shot join/subscribe payload the way `postgres_changes` filters do (`subscribe()`, lines 135–184, builds its `postgres_changes` array from `this.bindings.postgres_changes` only, and has no equivalent requirement for broadcast). A one-line comment recording this is at `lib/supabase/realtime-service.ts` directly above the `channel.on("broadcast", ...)` call inside `subscribeToPosEvents`.
+- [~] S2.9 — Automated portion done (see Verification below). Manual two-tab recipe and the A-5 leak check were NOT executed — see "Pending Human Verification" below.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `lib/supabase/realtime-service.ts` | Modified | Added `OrdersChannelEntry`/`ordersChannels` Map; rewrote `subscribeToOrders` to a shared-channel/Set pattern mirroring `subscribeToTables`; moved the `order_items` fetch to run once per event before fan-out with the D7 error-path fan-out-with-`undefined` fix; removed `channels["orders"]` bookkeeping; extracted `getBroadcastChannel`; rewired `subscribeToPosEvents`, `sendFactura`, `sendCommand` to use it. 114 insertions / 62 deletions (`git diff --stat`). |
+| `openspec/changes/optimizar-arquitectura-realtime/tasks.md` | Modified | S2.1–S2.8 marked `[x]`. S2.9's checkbox left unticked (mixes automated-done with manual-pending, same convention S1.8 used). |
+| `openspec/changes/optimizar-arquitectura-realtime/apply-progress.md` | Modified | This S2 section merged in, preserving all S1 content above including "Orchestrator Review Fixes". |
+
+### Deviations from Design
+
+None — implementation matches design D7, D8 exactly, including both stated behaviour changes (D7's error-path fan-out, D8's `getBroadcastChannel` extraction). The S2.8 confirm-at-apply question is resolved with cited evidence rather than assumed either way, as the phase instructions required.
+
+### Out-of-scope findings (recorded, not fixed)
+
+Nothing new found beyond what design.md's Open Questions already record for this file (`subscribeToPosEvents`'s unsubscribe not removing its `.on()` binding; `subscribeToTables` tearing down with `channel.unsubscribe()` vs `subscribeToOrders`'s `supabase.removeChannel()`; `subscribeToKitchen`'s 5-channel topology). None of these were touched, per the explicit out-of-scope instruction for this slice.
+
+### Verification (all commands actually run, with observed results)
+
+1. **Baseline, measured on this branch's HEAD (`c263193`) before any S2 edit**, via `git stash push -- lib/supabase/realtime-service.ts` then restoring afterward:
+   - `npx tsc --noEmit 2>&1 | grep -c "error TS"` → **0**
+   - `npm run lint` → exit **0**; warning count → **104**
+2. **After the S2 edit:**
+   - `npm run lint` → exit **0**; warning count → **104** (unchanged). The five `realtime-service.ts` "'error' is defined but never used"/`BillPayload`/`CHANNEL_KEY_POS` warnings are the same pre-existing ones, only shifted to new line numbers by the added code — diffed line-by-line to confirm no new warning was introduced.
+   - `npx tsc --noEmit 2>&1 | grep -c "error TS"` → **0**. Delta = 0 − 0 = **0** (≤ 0 required) — PASS.
+   - `npm run build` → exit **0**; static generation completed (`✓ Generating static pages (2/2)`).
+   - `grep -n 'channels\["orders"\]' lib/supabase/realtime-service.ts` → no matches (exit 1) — PASS (S2.4).
+   - `git diff --name-only c263193 -- .` (working-tree diff against the S1 branch tip) → `lib/supabase/realtime-service.ts`, plus `openspec/changes/optimizar-arquitectura-realtime/tasks.md` and `apply-progress.md` once staged/committed. `.atl/.skill-registry.cache.json` and `.atl/skill-registry.md` also show as modified, but they were already modified at session start (before this agent began S2 work) and were not touched by this agent — left alone, not part of this commit.
+   - Callers grep: `subscribeToOrders` call sites at `WaiterView.tsx:275`, `CashierView.tsx:234`, `AdminView.tsx:221` — read, confirmed unchanged, no edit needed.
+   - Codebase-wide grep for `channels["orders"]` / `channels['orders']` outside `realtime-service.ts` → zero matches.
+
+### Pending Human Verification (cannot be executed by this agent)
+
+Task **S2.9**'s two-tab manual recipe and the A-5 leak check were NOT run — there is no running app, no browser, and no network panel in this environment. The user must run them manually:
+
+1. Start the dev server (`npm run dev`) and open **Cashier** and **Admin** views in two separate tabs/windows.
+2. **Single round trip check**: trigger one order change (status update, new order, etc.). Confirm both views' UI updates in response to the same event, and inspect the browser Network panel to confirm exactly **one** `order_items` request fires for that event (not two).
+3. **A-5 leak check**: in one session, print several invoices (from Cashier) and send several kitchen commands/tickets (from Waiter). Inspect `broadcastListenerRegistry` (e.g., via a debugger breakpoint or a temporary `console.log` in dev tools) for the `room_bills` and `room_commands` entries, and confirm their handler `Set`s do **not** grow with each send — each send should reuse the same channel reference without adding a new no-op listener.
+4. Report back whether both checks pass; if either fails, it is a genuine regression against this slice's intent (A-3/A-5/B-10) and should be raised before proceeding to slice ST.
+
+**Honest note on what static verification proves**: the shared-channel refactor's core benefit — one `order_items` request per event instead of one per mounted view — is a runtime/network-level property. `tsc`, `lint`, and `build` prove the code *shape* (one shared `Map` entry, one fetch site, one fan-out loop) is structurally correct, but only the browser Network panel in step 2 above can observe that the amplification is actually gone at runtime. The same applies to the A-5 leak check: static inspection confirms `sendFactura`/`sendCommand` no longer call `subscribeToPosEvents`, so nothing in the code path can grow the registry from a send, but only live inspection of `broadcastListenerRegistry` after repeated sends is direct evidence of the leak being closed at runtime.
+
+### Commits
+
+- `25ca62d` — `refactor(realtime): share one orders channel and stop leaking broadcast listeners` — branch `sdd/optimizar-arquitectura-realtime/s2-channel-lifecycle`, stacked on S1 at `c263193`.
+
+Not pushed, no PR opened (delivery is the user's decision per the phase instructions).
+
+### Engram Persistence
+
+`mem_save` attempted once with `topic_key: "sdd/optimizar-arquitectura-realtime/apply-progress"`, `type: "architecture"`, `project: "vipe-pos-system"`. See the top-level "Engram Persistence" result at the end of this report for the outcome.
+
+### Next Steps
+
+- Slice S2 is code-complete and committed. Remaining before archive/next-slice: the human two-tab manual recipe and A-5 leak check above (S2.9).
+- Next slice per `tasks.md`'s dependency order: **ST** (test runner) — must land before S3. S1 and S2 are both done; the orchestrator can now proceed to ST.
