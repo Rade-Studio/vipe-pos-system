@@ -102,6 +102,9 @@ export function TableGrid({
           status: table.status as any,
           waiter: table.waiter_id || undefined,
           waiter_name: table.waiter_name || undefined,
+          // D4: hydrated rows must carry updated_at too, or the out-of-order
+          // guard starts at 0 for every row until its first realtime UPDATE.
+          updated_at: table.updated_at ? new Date(table.updated_at) : undefined,
         }))
 
         setTables(formattedTables)

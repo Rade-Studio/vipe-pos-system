@@ -113,6 +113,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         status: table.status as any,
         waiter: table.waiter_id || undefined,
         waiter_name: table.waiter_name || undefined,
+        // D4: hydrated rows must carry updated_at too, or the out-of-order
+        // guard starts at 0 for every row until its first realtime UPDATE.
+        updated_at: table.updated_at ? new Date(table.updated_at) : undefined,
       })) as Table[]
     } catch (err: any) {
       log.error("[WaiterView] fetchTables ERROR:", { error: err?.message ?? err })
@@ -215,10 +218,22 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   useEffect(() => {
     if (tablesData.length > 0) {
       setTables(tablesData)
-      useTableStore.getState().setTables(tablesData)
     }
     setLoading(false)  // data loaded → clear loading state regardless of count
   }, [tablesData])
+
+  // Mirror the local `tables` copy into useTableStore whenever it changes.
+  // This is the ONLY place that writes `tables` into the store — it covers
+  // both hydration (via the effect above) and every realtime patch (via the
+  // updater above), so the store write always happens in an effect, never
+  // inside a setState updater. A write inside an updater can run during
+  // React's render phase and synchronously notify Zustand subscribers,
+  // which is exactly the impurity React 19 StrictMode double-invocation is
+  // designed to catch. S1 keeps this dual write; S3 removes it entirely by
+  // routing WaiterView through the store directly.
+  useEffect(() => {
+    useTableStore.getState().setTables(tables)
+  }, [tables])
 
   useEffect(() => {
     if (ordersData.length > 0) {
@@ -239,16 +254,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       }
 
       // Patch the local table list in place instead of refetching (A-2, D3/D10).
-      // Writes into the same dual-write locations the hydration effect uses
-      // (:213-219): the component-local `tables` copy and the store mirror.
-      // S1 does not change ownership — S3 removes this dual write.
-      setTables((prevTables) => {
-        const merged = mergeTableList(prevTables, payload as unknown as TableChange)
-        if (merged !== prevTables) {
-          useTableStore.getState().setTables(merged)
-        }
-        return merged
-      })
+      // The updater must stay pure — no side effects here. The store mirror
+      // lives in the dedicated `tables`-sync effect below, not in this
+      // callback, so this write plays correctly with React's render phase.
+      setTables((prevTables) => mergeTableList(prevTables, payload as unknown as TableChange))
 
       // Handle active table cleanup for UPDATE/DELETE on the active table
       if (payload.eventType === "UPDATE" && payload.new) {
