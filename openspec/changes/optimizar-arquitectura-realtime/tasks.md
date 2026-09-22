@@ -118,39 +118,39 @@ Files touched: `lib/supabase/realtime-service.ts` only. Public signatures (`subs
 
 Files touched: `package.json`, `vitest.config.ts` (new), `vitest.setup.ts` (new), `openspec/config.yaml`, `lib/realtime/table-merge.test.ts` (new), `components/pos/TableGrid.test.tsx` (new). `strict_tdd` stays `false` — this slice installs the runner alongside tests for surfaces S1 already created; it does not retroactively require RED-first proof for S1/S2.
 
-- [ ] ST.1 Add devDependencies to `package.json`: `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@vitejs/plugin-react`. Add `"test": "vitest run"` and `"test:watch": "vitest"` scripts. Delete the now-misleading `"test:placeholder": "echo 'No test runner configured yet' && exit 0"`.
+- [x] ST.1 Add devDependencies to `package.json`: `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@vitejs/plugin-react`. Add `"test": "vitest run"` and `"test:watch": "vitest"` scripts. Delete the now-misleading `"test:placeholder": "echo 'No test runner configured yet' && exit 0"`.
   - **Req**: proposal C-12; design D11 (revised).
-  - **Verify**: install succeeds; `cat package.json` shows the new scripts and no `test:placeholder`.
+  - **Verify**: install succeeds; `cat package.json` shows the new scripts and no `test:placeholder`. **DONE** — `@vitejs/plugin-react` pinned to `^4.7.0`, not latest; see ST.3/apply-progress for why.
 
-- [ ] ST.2 Create `vitest.config.ts` per design D11: `plugins: [react()]`, `resolve.alias["@"]` pointing at the repo root (mirrors `tsconfig.json` `paths: { "@/*": ["./*"] }`), `test.environment: "jsdom"`, `test.setupFiles: ["./vitest.setup.ts"]`, `test.include` covering `lib/**/*.test.ts`, `store/**/*.test.ts`, `components/**/*.test.tsx`.
+- [x] ST.2 Create `vitest.config.ts` per design D11: `plugins: [react()]`, `resolve.alias["@"]` pointing at the repo root (mirrors `tsconfig.json` `paths: { "@/*": ["./*"] }`), `test.environment: "jsdom"`, `test.setupFiles: ["./vitest.setup.ts"]`, `test.include` covering `lib/**/*.test.ts`, `store/**/*.test.ts`, `components/**/*.test.tsx`.
   - **Req**: design D11.
-  - **Verify**: `npx vitest run` boots without a config-load error.
+  - **Verify**: `npx vitest run` boots without a config-load error. **DONE** — matches design's sketch verbatim.
 
-- [ ] ST.3 [Confirm-at-apply task] Verify `__dirname` availability inside `vitest.config.ts` at the moment it actually loads. `package.json` declares no `"type"` field (expected CJS), but the actual Vite config loader's resolution must be observed by running `npx vitest run` once and checking for a `__dirname is not defined` error. If it fails, apply the design's named fallback: either `fileURLToPath(new URL(".", import.meta.url))`, or add `vite-tsconfig-paths` as a second devDependency and let it read `tsconfig.json` directly. Record which path was needed (or that no fallback was needed) in the PR description.
+- [x] ST.3 [Confirm-at-apply task] Verify `__dirname` availability inside `vitest.config.ts` at the moment it actually loads. `package.json` declares no `"type"` field (expected CJS), but the actual Vite config loader's resolution must be observed by running `npx vitest run` once and checking for a `__dirname is not defined` error. If it fails, apply the design's named fallback: either `fileURLToPath(new URL(".", import.meta.url))`, or add `vite-tsconfig-paths` as a second devDependency and let it read `tsconfig.json` directly. Record which path was needed (or that no fallback was needed) in the PR description.
   - **Req**: design D11 `[confirm at apply]` item.
-  - **Verify**: PR description states the outcome; `npx vitest run` succeeds either way.
+  - **Verify**: PR description states the outcome; `npx vitest run` succeeds either way. **DONE — no fallback needed.** `npx vitest run` on the plain config never produced `__dirname is not defined`; `__dirname` resolved correctly (CJS load, as expected). See apply-progress for the unrelated `@vitejs/plugin-react`/TypeScript version incompatibility found while verifying this.
 
-- [ ] ST.4 Create `vitest.setup.ts` importing `@testing-library/jest-dom`.
+- [x] ST.4 Create `vitest.setup.ts` importing `@testing-library/jest-dom`.
   - **Req**: design D11.
-  - **Verify**: referenced by `vitest.config.ts`'s `setupFiles`; `npx vitest run` loads it without error.
+  - **Verify**: referenced by `vitest.config.ts`'s `setupFiles`; `npx vitest run` loads it without error. **DONE with a deviation**: imports `@testing-library/jest-dom/vitest` (not the bare package) and adds `afterEach(cleanup)` — both required for `@testing-library/jest-dom@7`/`@testing-library/react@16` to work without `test.globals: true`. See apply-progress for the observed failures this fixes.
 
-- [ ] ST.5 Create `lib/realtime/table-merge.test.ts` with unit cases covering all 11 rows of the D10 behaviour table, asserting reference identity (`expect(result).toBe(prev)`) on every no-op row and a new-array result with the correct row replaced/appended/filtered on every changed row. Add `toTable` cases (carries and normalizes `updated_at` to `Date` per D4; an `id`-less row returns `null`) and `toTimestamp` cases (`null`, `undefined`, and unparseable input all yield `0`).
+- [x] ST.5 Create `lib/realtime/table-merge.test.ts` with unit cases covering all 11 rows of the D10 behaviour table, asserting reference identity (`expect(result).toBe(prev)`) on every no-op row and a new-array result with the correct row replaced/appended/filtered on every changed row. Add `toTable` cases (carries and normalizes `updated_at` to `Date` per D4; an `id`-less row returns `null`) and `toTimestamp` cases (`null`, `undefined`, and unparseable input all yield `0`).
   - **Req**: `realtime-client-sync` *Verification Notes* — "pure logic extracted by this change ... SHOULD have unit test coverage under the newly introduced Vitest runner"; design D10, D4.
-  - **Verify**: `npm test` passes; the test file contains one assertion group per D10 row (11 groups) plus the `toTable`/`toTimestamp` cases.
+  - **Verify**: `npm test` passes; the test file contains one assertion group per D10 row (11 groups) plus the `toTable`/`toTimestamp` cases. **DONE** — 19 tests, all pass; 11 `mergeTableList` groups (one per D10 row) + 3 `toTable` + 5 `toTimestamp`.
 
-- [ ] ST.6 Create `components/pos/TableGrid.test.tsx` asserting the F1 remount invariant: render `TableGrid` inside a parent whose selection prop changes, and assert a stable DOM node identity or a mount-counter ref across that change (i.e., no unmount/remount occurs).
+- [x] ST.6 Create `components/pos/TableGrid.test.tsx` asserting the F1 remount invariant: render `TableGrid` inside a parent whose selection prop changes, and assert a stable DOM node identity or a mount-counter ref across that change (i.e., no unmount/remount occurs).
   - **Req**: `realtime-client-sync` / "Selection State Must Not Force A Grid Remount" — first automated coverage of this invariant, replacing reliance on the manual recipe alone for this specific case.
-  - **Verify**: `npm test` passes.
+  - **Verify**: `npm test` passes. **DONE** — 2 tests, both pass: DOM node identity of the `.grid` container is stable across a selection-select and a selection-clear; no skeleton reappears. `tableService`/`realtimeService` stubbed via `vi.mock`, per instructions — `TableGrid.tsx` itself untouched.
 
-- [ ] ST.7 Update the `testing` snapshot in `openspec/config.yaml`: set `test_command`, `rules.apply.test_command`, and `rules.verify.test_command` to the new `npm test` command; leave `strict_tdd: false` unchanged.
+- [x] ST.7 Update the `testing` snapshot in `openspec/config.yaml`: set `test_command`, `rules.apply.test_command`, and `rules.verify.test_command` to the new `npm test` command; leave `strict_tdd: false` unchanged.
   - **Req**: proposal C-12 acceptance criterion.
-  - **Verify**: read back `openspec/config.yaml` and confirm the three fields point at `npm test`.
+  - **Verify**: read back `openspec/config.yaml` and confirm the three fields point at `npm test`. **DONE** — all three read back as `"npm test"`; `strict_tdd: false` unchanged; the Python subproject's own `test_command: ""` left untouched.
 
-- [ ] ST.8 Update the Engram `sdd/vipe-pos-system/testing-capabilities` record to reflect the new Vitest + jsdom + Testing Library runner (hybrid-store mirror of ST.7). Attempt via `mem_save`; if it fails, report `engram_write: pending` rather than claiming success.
+- [x] ST.8 Update the Engram `sdd/vipe-pos-system/testing-capabilities` record to reflect the new Vitest + jsdom + Testing Library runner (hybrid-store mirror of ST.7). Attempt via `mem_save`; if it fails, report `engram_write: pending` rather than claiming success.
   - **Req**: proposal C-12 acceptance criterion (hybrid persistence convention).
-  - **Verify**: `mem_search` for the updated record returns the new runner description, or the write is explicitly reported as pending.
+  - **Verify**: `mem_search` for the updated record returns the new runner description, or the write is explicitly reported as pending. **Attempted once — `engram_write: pending`** (`multiple active runtime sessions match the current project and directory`, the documented environment limitation; not retried). `openspec/config.yaml`'s mirror (ST.7) is the durable record of this outcome.
 
-- [ ] ST.9 Per-slice verification: `npm run lint`; `npx tsc --noEmit` delta; `npm run build`; `npm test` — first slice where this check applies, both new test files pass.
+- [x] ST.9 Per-slice verification: `npm run lint`; `npx tsc --noEmit` delta; `npm run build`; `npm test` — first slice where this check applies, both new test files pass. **DONE** — see apply-progress Verification section for exact commands/output.
   - **Req**: proposal *Verification*, updated per-slice gate ("From ST onward: `npm test`").
 
 ---

@@ -226,3 +226,97 @@ The user reported the fix as working. No finer-grained per-step result is record
 
 1. Two-tab recipe: open Cashier and Admin together and confirm one order event produces one update per view, with exactly one `order_items` request per event in the network panel. Static checks prove the code shape — one Map entry, one fetch site, one fan-out loop — not the runtime request count.
 2. A-5 leak check: print several invoices and kitchen tickets in one session and confirm the `broadcastListenerRegistry` handler sets for `room_bills` / `room_commands` do not grow per send.
+
+---
+
+## Slice ST — Test runner (C-12)
+
+**Status**: ST.1–ST.9 complete. Every task in this slice is fully automated (no manual-recipe half), so all nine are ticked `[x]`.
+
+### Scope
+
+Files touched: `package.json`, `pnpm-lock.yaml`, `vitest.config.ts` (new), `vitest.setup.ts` (new), `lib/realtime/table-merge.test.ts` (new), `components/pos/TableGrid.test.tsx` (new), `openspec/config.yaml`. **No production source file was touched** — confirmed by `git diff --name-only` before commit (see Verification below). `strict_tdd` stays `false`, unchanged, per explicit instruction: this slice installs the runner alongside tests for surfaces S1/S2 already created; it does not retroactively require RED-first proof for that prior work.
+
+### Completed Tasks
+
+- [x] ST.1 — Added devDependencies via `pnpm add -D`: `vitest@^5.0.1`, `jsdom@^30.1.0`, `@testing-library/react@^16.3.3`, `@testing-library/jest-dom@^7.0.1`, `@vitejs/plugin-react@^4.7.0` (**not** the latest `^6.1.1` — see "Finding" below). Added `"test": "vitest run"` / `"test:watch": "vitest"` scripts; removed `"test:placeholder"`.
+- [x] ST.2 — Created `vitest.config.ts` matching design D11's sketch exactly: `plugins: [react()]`, `resolve.alias["@"]` via `resolve(__dirname, ".")`, `test.environment: "jsdom"`, `test.setupFiles: ["./vitest.setup.ts"]`, `test.include` covering `lib/**/*.test.ts`, `store/**/*.test.ts`, `components/**/*.test.tsx`.
+- [x] ST.3 — **[Confirm-at-apply, resolved: no fallback needed.]** Ran `npx vitest run` against the plain config (before any test files existed) and observed no `__dirname is not defined` error — the config loads as CJS, exactly as design D11 predicted from the absent `"type"` field in `package.json`. Evidence: `npx vitest run` output was `No test files found, exiting with code 1` (an unrelated, expected failure since no `.test.ts` existed yet at that point) with **zero** parse/`ReferenceError` output regarding `__dirname`. Neither the `fileURLToPath` fallback nor `vite-tsconfig-paths` was needed.
+- [x] ST.4 — Created `vitest.setup.ts`. **Deviation from the design's literal text, same intent**: imports `@testing-library/jest-dom/vitest` (not the bare `@testing-library/jest-dom` design's snippet shows) and adds `afterEach(cleanup)` from `@testing-library/react`. Both are fixes for two runtime failures actually observed while running `npx vitest run`, documented under "Findings" below.
+- [x] ST.5 — Created `lib/realtime/table-merge.test.ts`: 19 tests total. 11 `describe` cases in `mergeTableList — D10 behaviour table`, one per D10 row (INSERT×3, UPDATE×4, DELETE×3, unknown-eventType×1), each asserting `toBe(prev)` reference identity on no-op rows and a new-array result with the correct row appended/replaced/filtered otherwise (including the D4 out-of-order rejection and D5 UPDATE-not-upserted rows). Plus 3 `toTable` cases (Date normalization, undefined-passthrough, null-id → `null`) and 5 `toTimestamp` cases (`null`, `undefined`, unparseable string, valid `Date`, valid string).
+- [x] ST.6 — Created `components/pos/TableGrid.test.tsx`: 2 tests for the F1 remount invariant. `tableService.getAll` and `realtimeService.subscribeToTables` are stubbed with `vi.mock` (per instructions — `TableGrid.tsx` itself is untouched, its self-fetch/subscribe `useEffect` is exercised, not bypassed). Renders `TableGrid` inside a `SelectionHarness` wrapper that toggles `activeTable` via a button; asserts the `.grid` container `container.querySelector(".grid")` is `toBe`-identical (same DOM node reference) across a select and a clear, and that "Mesa 1" (i.e., no skeleton) stays visible throughout.
+- [x] ST.7 — Updated `openspec/config.yaml`'s `testing` snapshot: `test_command`, `rules.apply.test_command`, `rules.verify.test_command` all set to `"npm test"`. `strict_tdd: false` left unchanged; `strict_tdd_rationale` updated to describe the new runner instead of "no runner installed" (now stale). The Python subproject's own `test_command: ""` under `testing.projects[1]` was left untouched, per instructions.
+- [x] ST.8 — `mem_save` attempted once for `sdd/vipe-pos-system/testing-capabilities`. Result: **`engram_write: pending`** — failed with the documented environment error (`multiple active runtime sessions match the current project and directory`), not retried per instructions. `openspec/config.yaml`'s `testing` block (ST.7) is the durable, already-persisted mirror of this same information.
+- [x] ST.9 — Per-slice verification run; see below. All commands pass.
+
+### Findings (the most valuable output of this slice)
+
+**Finding 1 — `@vitejs/plugin-react`'s latest major versions (5.x and 6.x) cannot be typechecked by this project's pinned TypeScript.** `pnpm add -D @vitejs/plugin-react` initially resolved `6.1.1` (latest). This broke `npx tsc --noEmit` with 3 new errors (`TS1003`, `TS1005`, `TS1128`, all "Identifier expected" / "; expected") — **not** in any source file, but in `@vitejs/plugin-react`'s own `dist/index.d.ts`, at the line `export { ..., viteReactForCjs as "module.exports" };`. This is TypeScript's "arbitrary module namespace identifier names as a re-export target for a value" syntax; the project's pinned `typescript@5.0.2` (resolved from `"typescript": "^5"` in `package.json`, unmodified by this slice) cannot parse it, confirmed with an isolated one-line repro file. `skipLibCheck: true` does not help — this is a parser/syntax error, not a semantic type-check finding, so `skipLibCheck` (which only skips checking, not parsing) is irrelevant here. Verified the same syntax is present in `@vitejs/plugin-react@5.2.0`'s (latest 5.x) declarations too, so downgrading only the minor/patch would not have helped. **Fix**: pinned `@vitejs/plugin-react@^4.7.0` instead — confirmed its `dist/index.d.ts` has no such syntax (no `module.exports` string re-export at all) and re-verified `npx tsc --noEmit` returns to the 0-error baseline. This changed the transitively-resolved `vite` from `8.3.0` down to `7.3.6` (satisfies both vitest 5's `vite: ^6.4.0 || ^7.0.0 || ^8.0.0` peer range and plugin-react 4.7.0's `vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0` range) — `pnpm peers check` shows no new unmet-peer entries introduced by this choice (the five unmet peers it reports — `@types/node`, `postcss`, `date-fns`, `react`, `react-dom` — are all pre-existing mismatches from dependencies this slice did not touch: `vaul`, `react-day-picker`, `autoprefixer`). `npx vitest run` and `npm test` both work correctly against `vite@7.3.6` + `@vitejs/plugin-react@4.7.0`. **This is a real gap in design D11's code sketch**: the sketch names `@vitejs/plugin-react` with no version constraint, and the "more robust… stays correct if `paths` changes" tradeoff discussion for `vite-tsconfig-paths` never anticipated that the plugin's own type declarations, at latest, would be unparseable by the project's own pinned TypeScript. A future `pnpm add -D @vitejs/plugin-react` (or an unconstrained `latest`) on this project would silently reintroduce this regression until `typescript` itself is upgraded past whatever version first supports this export syntax.
+
+**Finding 2 — `@testing-library/jest-dom@7`'s plain entrypoint requires `test.globals: true`, which D11's config does not set.** `import "@testing-library/jest-dom"` (design's literal snippet) throws `ReferenceError: expect is not defined` at setup time, because v7 assumes a Jest-style global `expect` that only exists in Vitest when `globals: true` is configured — and D11's sketch deliberately does not set that flag. **Fix**: `vitest.setup.ts` imports `@testing-library/jest-dom/vitest` instead, which extends Vitest's own `expect` export directly, with no global-injection requirement. Observed and fixed by running `npx vitest run` against the first test file and reading the actual `ReferenceError`.
+
+**Finding 3 — `@testing-library/react`'s auto-cleanup does not run without global test hooks.** Without `test.globals: true`, `@testing-library/react`'s internal `afterEach(cleanup)` registration (which only self-activates when it detects Jest-style globals on `globalThis`) never fires, so DOM nodes from one test leak into the next. This surfaced as a real, reproduced test failure: `TableGrid.test.tsx`'s second test failed with `getByText` matching two "toggle-selection" buttons (one from the leaked previous test's unmounted-but-still-attached DOM, one from the current render). **Fix**: `vitest.setup.ts` explicitly imports `cleanup` from `@testing-library/react` and calls it in a `vitest`-imported `afterEach`.
+
+None of these three findings required touching `TableGrid.tsx`, `table-merge.ts`, or any other production file — all three are fixed entirely within `package.json`'s devDependency pin and `vitest.setup.ts`, both explicitly in this slice's scope.
+
+### What the tests reveal about production behaviour (the second most valuable output)
+
+Both new suites pass against the **current, unmodified** production code:
+
+- `table-merge.test.ts` confirms `lib/realtime/table-merge.ts` (written in S1) implements the D10 contract exactly as documented — all 11 rows behave as specified, including the D4 out-of-order rejection and the D5 "UPDATE for an absent id is dropped, not upserted" rule.
+- `TableGrid.test.tsx` confirms the **F1 remount invariant already holds today**, against `TableGrid.tsx` as it stands after S1 (S3 has not run yet — the component still self-fetches and self-subscribes). The grid's DOM node identity is provably stable across an `activeTable` prop change. This is the first automated evidence for the user's originally reported bug's core fix; previously this was verifiable only by the manual two-tab recipe (S1.8, since closed by human verification).
+
+**Out-of-scope observation, recorded not fixed**: while writing `TableGrid.test.tsx`, inspection of `TableGrid.tsx`'s data-loading `useEffect` (`:91-135`) showed its dependency array is `[initialLoadDone]`, and the effect body itself calls `setInitialLoadDone(true)` at the end of a successful `loadTables()`. This means the effect body runs a second time immediately after the first successful load (mount → `loadTables()` → `setInitialLoadDone(true)` → dependency changes → effect re-runs → `loadTables()` again, unsubscribe+resubscribe once), so `tableService.getAll()` and `realtimeService.subscribeToTables()` are each called twice on a normal mount, not once. It self-stabilizes (no infinite loop, since the second `setInitialLoadDone(true)` is a no-op state value) and is unrelated to F1/D10, so it was not fixed here — S3 is expected to remove this `useEffect` entirely when it moves ownership into the store (S3.3 explicitly deletes this effect). Flagging it now so S3's reviewer has independent confirmation this exists today, before S3 makes it moot.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `package.json` | Modified | Added 5 devDependencies (`vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@vitejs/plugin-react@^4.7.0`); added `test`/`test:watch` scripts; removed `test:placeholder`. |
+| `pnpm-lock.yaml` | Modified | Regenerated by `pnpm add -D` / `pnpm remove` / `pnpm add -D @vitejs/plugin-react@^4.7.0`. |
+| `vitest.config.ts` | Created | Runner config per design D11: React plugin, jsdom environment, `@/*` alias, setup file, test includes. |
+| `vitest.setup.ts` | Created | Imports `@testing-library/jest-dom/vitest` (not the bare package — Finding 2) and registers `afterEach(cleanup)` (Finding 3). |
+| `lib/realtime/table-merge.test.ts` | Created | 19 tests: all 11 D10 rows + `toTable` + `toTimestamp`. |
+| `components/pos/TableGrid.test.tsx` | Created | 2 tests for the F1 remount invariant, with `tableService`/`realtimeService` stubbed via `vi.mock`. |
+| `openspec/changes/optimizar-arquitectura-realtime/tasks.md` | Modified | ST.1–ST.9 marked `[x]`, each with its actual observed outcome inline. |
+| `openspec/changes/optimizar-arquitectura-realtime/apply-progress.md` | Modified | This ST section merged in, preserving all S1 and S2 content above (including "Orchestrator Review Fixes" and the S1.8 human-verification closure). |
+| `openspec/config.yaml` | Modified | `testing` snapshot: `test_command`, `rules.apply.test_command`, `rules.verify.test_command` → `"npm test"`; `strict_tdd_rationale` updated to describe the installed runner; `strict_tdd: false` unchanged. |
+
+### Deviations from Design
+
+Two, both documented above under "Findings" and both confined to files this slice owns:
+
+1. `vitest.setup.ts` imports `@testing-library/jest-dom/vitest`, not the bare `@testing-library/jest-dom` design D11's code snippet shows, and adds an explicit `afterEach(cleanup)` the snippet does not mention. Same intent (jest-dom matchers + a clean DOM between tests), different (correct, observed-necessary) mechanism.
+2. `@vitejs/plugin-react` is pinned to `^4.7.0`, not left unconstrained/latest as design D11's snippet implies. Necessary because latest (`5.x`/`6.x`) breaks `npx tsc --noEmit` against this project's pinned TypeScript version — see Finding 1.
+
+`vitest.config.ts` itself matches design D11's sketch verbatim (no deviation there). No production source file was touched.
+
+### Verification (all commands actually run, with observed results)
+
+1. **Baseline, measured on this branch's HEAD (`736241a`) before any ST edit:**
+   - `npx tsc --noEmit 2>&1 | grep -c "error TS"` → **0**
+   - `npm run lint` → exit **0**; `grep -c "Warning:"` → **104**
+2. **After installing `@vitejs/plugin-react@6.1.1` (the version `pnpm add -D` resolved by default) — intermediate, not the final state:**
+   - `npx tsc --noEmit 2>&1 | grep -c "error TS"` → **3** (all three in `@vitejs/plugin-react`'s own `.d.ts`, not project source — see Finding 1). This intermediate state was **not** committed.
+3. **After pinning `@vitejs/plugin-react@^4.7.0` (the final, committed state):**
+   - `npx tsc --noEmit 2>&1 | grep -c "error TS"` → **0**. Delta = 0 − 0 = **0** (≤ 0 required) — PASS.
+   - `npm run lint` → exit **0**; `grep -c "Warning:"` → **104** (unchanged from baseline) — PASS.
+   - `npm run build` → exit **0**; static generation completed (`✓ Generating static pages (2/2)`) — PASS.
+   - `npm test` → **21/21 tests pass**, 2 test files (`lib/realtime/table-merge.test.ts`: 19 tests; `components/pos/TableGrid.test.tsx`: 2 tests). Exit 0.
+   - `grep -n "test:placeholder" package.json` → no matches (exit 1) — PASS.
+   - `git diff --name-only` against the working tree (before commit) showed only: `openspec/config.yaml`, `package.json`, `pnpm-lock.yaml` modified, plus the four new files (`vitest.config.ts`, `vitest.setup.ts`, `lib/realtime/table-merge.test.ts`, `components/pos/TableGrid.test.tsx`) untracked. `.atl/.skill-registry.cache.json` and `.atl/skill-registry.md` also show modified, but — like in S2 — they were already modified at session start, before this agent began ST work, and were not touched by this agent. `.codegraph/`, `.env.local`, `.runtime/`, `docs/PRESENTACION-COMERCIAL.md` are pre-existing untracked files from session start, also untouched by this agent. **No production source file appears in this diff.**
+   - `pnpm peers check` → 5 unmet peers reported, all pre-existing and unrelated to this slice's own devDependencies (`@types/node` vs. `vite`'s want; `postcss` vs. `autoprefixer`'s want; `date-fns`/`react`/`react-dom` vs. `react-day-picker`/`vaul`'s wants). None of these five packages were touched by this slice.
+
+### Commits
+
+Recorded after this section is persisted — see the commit list appended below once created.
+
+### Next Steps
+
+- Slice ST is complete: `strict_tdd` remains `false`, the runner is installed and proven working, and both new suites pass against the current, un-modified S1/S2 code.
+- Per `tasks.md`'s dependency order, **S3 (single owner)** is next — it explicitly depends on ST for its own tests (`store/useTableStore.test.ts`) and must re-run the F1 remount test (`TableGrid.test.tsx`, this slice) after moving `TableGrid`'s data ownership into the store, since S3.3 changes the component's data source.
+- The `useEffect([initialLoadDone])` double-fetch/double-subscribe behavior noted above under "Out-of-scope observation" is expected to become moot once S3.3 deletes that effect; flagged here for the S3 reviewer's awareness, not for action in this slice.
+
+### Engram Persistence
+
+`mem_save` was attempted once for `sdd/vipe-pos-system/testing-capabilities` (title, topic_key, type `architecture`, project `vipe-pos-system`, `capture_prompt: false`). Result: **`engram_write: pending`** — failed with `multiple active runtime sessions match the current project and directory`, the same documented environment limitation noted for S1/S2's `apply-progress` saves. Not retried, per instructions. The orchestrator is expected to mirror this via the `engram` CLI; `openspec/config.yaml`'s `testing` block (already updated and committed) is the durable hybrid-store half of this record in the meantime.

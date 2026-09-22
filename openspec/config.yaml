@@ -23,14 +23,17 @@ context: |
 testing:
   strict_tdd: false
   strict_tdd_rationale: |
-    No test runner installed in TS project (no jest/vitest/playwright config, no `test` script
-    in package.json, zero .test/.spec files anywhere). Python subproject has no pytest setup.
-    No CI workflow defines a workspace-level test command. Strict TDD fails closed to false.
+    Vitest + jsdom + Testing Library installed in slice ST (optimizar-arquitectura-realtime),
+    covering lib/**/*.test.ts, store/**/*.test.ts, and components/**/*.test.tsx. `strict_tdd`
+    stays false by explicit decision: ST installs the runner alongside tests for surfaces that
+    predate it (S1/S2), and does not retroactively require RED-first proof for that prior work.
+    Python subproject still has no pytest setup. No CI workflow defines a workspace-level test
+    command.
   projects:
     - path: .
       stack: nextjs-15.2.4 + react-19 + typescript-5 + tailwindcss-3.4 + shadcn/ui + supabase-js + zustand
       package_manager: pnpm
-      test_command: ""            # absent in package.json; would need runner install
+      test_command: "npm test"    # vitest run — installed in slice ST (vitest, jsdom, @testing-library/react, @testing-library/jest-dom, @vitejs/plugin-react)
       lint_command: "npm run lint"          # next lint (eslint.ignoreDuringBuilds: true)
       typecheck_command: "npx tsc --noEmit" # strict:true but next.config disables build-time check
       build_command: "npm run build"
@@ -62,9 +65,9 @@ rules:
       - Keep src files in English (identifiers, comments); UI copy may stay Spanish
       - Never edit generated files under .next/ or supabase/.temp/
     tdd: false
-    test_command: ""
+    test_command: "npm test"
   verify:
-    test_command: ""
+    test_command: "npm test"
     build_command: "npm run build"
     coverage_threshold: 0
     smoke_command: "npm run lint && npx tsc --noEmit"
