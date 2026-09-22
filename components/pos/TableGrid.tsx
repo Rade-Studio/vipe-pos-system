@@ -1,7 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
 import type { Table, Profile } from "@/types"
-import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getStatusColor, getStatusLabel } from "@/utils/helpers"
@@ -10,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { tableService } from "@/lib/supabase/service"
 import { log } from "@/lib/log"
 import { realtimeService } from "@/lib/supabase/realtime-service"
+import { mergeTableList, type TableChange } from "@/lib/realtime/table-merge"
 
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
@@ -87,47 +87,6 @@ export function TableGrid({
   // Distinguishes first load (skeleton OK) from realtime refetch (never blank).
   const [initialLoadDone, setInitialLoadDone] = useState(false)
 
-  // Merge algorithm for realtime postgres_changes payloads.
-  // INSERT  → append to array
-  // UPDATE  → replace if incoming.updated_at > existing.updated_at
-  // DELETE  → filter out row by id
-  const mergeTable = (prev: Table[], payload: RealtimePostgresChangesPayload<any>): Table[] => {
-    const { eventType, new: newRow, old: oldRow } = payload
-    if (eventType === "INSERT") {
-      if (!newRow?.id) return prev
-      const incoming: Table = {
-        id: newRow.id,
-        number: newRow.number,
-        status: newRow.status,
-        waiter: newRow.waiter_id || undefined,
-        waiter_name: newRow.waiter_name || undefined,
-      }
-      return prev.some((t) => t.id === incoming.id) ? prev : [...prev, incoming]
-    }
-    if (eventType === "UPDATE") {
-      if (!newRow?.id) return prev
-      const incoming: Table = {
-        id: newRow.id,
-        number: newRow.number,
-        status: newRow.status,
-        waiter: newRow.waiter_id || undefined,
-        waiter_name: newRow.waiter_name || undefined,
-      }
-      return prev.map((t) => {
-        if (t.id !== incoming.id) return t
-        // Only replace if the incoming row is newer — prevents out-of-order events.
-        const incomingTime = newRow.updated_at ? new Date(newRow.updated_at).getTime() : 0
-        const existingTime = t.updated_at ? new Date(t.updated_at as unknown as string).getTime() : 0
-        return incomingTime >= existingTime ? incoming : t
-      })
-    }
-    if (eventType === "DELETE") {
-      if (!oldRow?.id) return prev
-      return prev.filter((t) => t.id !== oldRow.id)
-    }
-    return prev
-  }
-
   // Cargar mesas y suscribirse a cambios en tiempo real
   useEffect(() => {
     // Función para cargar mesas
@@ -162,7 +121,7 @@ export function TableGrid({
       log.info("Cambio en mesa recibido:", { payload })
       // Merge into existing array without a re-query — no setLoading(true) here,
       // so the grid stays visible during the update.
-      setTables((prev) => mergeTable(prev, payload))
+      setTables((prev) => mergeTableList(prev, payload as unknown as TableChange))
       if (!initialLoadDone) setInitialLoadDone(true)
     })
 

@@ -19,6 +19,8 @@ import type { PrintableKitchenOrder } from "@/types"
 import { tableService, orderService, waiterService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { queryClient } from "@/lib/queryClient"
+import { mergeTableList, type TableChange } from "@/lib/realtime/table-merge"
+import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { useConfigStore } from "@/store/use-config-store"
 import inventoryControlService from "@/lib/supabase/inventory-control-service"
@@ -104,7 +106,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const fetchTables = async () => {
     try {
       const data = await tableService.getAll()
-      console.log("[WaiterView] tables fetched:", data.length, "rows")
+      log.info("[WaiterView] tables fetched:", { count: data.length })
       return data.map((table) => ({
         id: table.id,
         number: table.number,
@@ -113,7 +115,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         waiter_name: table.waiter_name || undefined,
       })) as Table[]
     } catch (err: any) {
-      console.error("[WaiterView] fetchTables ERROR:", err?.message ?? err)
+      log.error("[WaiterView] fetchTables ERROR:", { error: err?.message ?? err })
       throw err
     }
   }
@@ -236,8 +238,17 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         return
       }
 
-      // Invalidate queries so React Query refetches in background
-      queryClient.invalidateQueries({ queryKey: ['tables'] })
+      // Patch the local table list in place instead of refetching (A-2, D3/D10).
+      // Writes into the same dual-write locations the hydration effect uses
+      // (:213-219): the component-local `tables` copy and the store mirror.
+      // S1 does not change ownership — S3 removes this dual write.
+      setTables((prevTables) => {
+        const merged = mergeTableList(prevTables, payload as unknown as TableChange)
+        if (merged !== prevTables) {
+          useTableStore.getState().setTables(merged)
+        }
+        return merged
+      })
 
       // Handle active table cleanup for UPDATE/DELETE on the active table
       if (payload.eventType === "UPDATE" && payload.new) {
@@ -1113,7 +1124,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                   onReserveTable={handleReserveTable}
                   onReleaseTable={handleReleaseTable}
                   isTableAccessible={checkTableAccess}
-                  key={`tables-section-${activeTable ?? 'none'}`}
                 />
 
                 {activeTable && (
