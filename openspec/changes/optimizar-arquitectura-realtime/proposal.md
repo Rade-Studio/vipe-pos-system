@@ -130,7 +130,18 @@ A-3's shared-channel work also precedes B-9 deliberately: once one channel perfo
 
 - `400-line budget risk: High` (total), `Low` per slice as sliced above.
 - `Chained PRs recommended: Yes`
+- `Size exception: granted for slice ST only` (2026-09-22, user as maintainer — see the section below).
 - `Decision needed before apply: Yes` — `chain_strategy` (`stacked-to-main` vs `feature-branch-chain`) is **not yet collected**. This proposal does not assume one; the orchestrator collects it after `sdd-tasks` produces the Review Workload Forecast.
+
+### Size exception — slice ST (granted 2026-09-22)
+
+Slice ST landed at **479 authored changed lines** (351 code, 128 SDD evidence; the regenerated `pnpm-lock.yaml` is excluded as generated), against the 400-line review budget. The user, as maintainer, granted `size:exception` for this slice rather than splitting it.
+
+Rationale for accepting rather than splitting: ST is a runner installation plus the two test files the runner exists to run. Every split boundary leaves a broken intermediate state — a `vitest.config.ts` with no tests, or test files with no runner to execute them — or drops the evidence documentation the hybrid store requires. The slice is cohesive, not inflated.
+
+This exception applies to ST only. The remaining slices stay under the 400-line budget on the current forecast, and S3 is the closest at ~320.
+
+Note for a reviewer of ST: `@vitejs/plugin-react` is pinned to `^4.7.0` deliberately. Its 5.x and 6.x majors ship `.d.ts` files using export-as-string-literal syntax (`export { x as "module.exports" }`) that this project's TypeScript 5.0.2 cannot parse, which breaks `tsc --noEmit` from outside any project source. `skipLibCheck: true` does not suppress it, because it is a parse error rather than a semantic check. An unconstrained dependency update will silently reintroduce it until the project's TypeScript is upgraded.
 
 ## Affected Areas
 

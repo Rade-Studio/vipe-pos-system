@@ -96,3 +96,69 @@ export function mergeTableList(prev: readonly Table[], change: TableChange): Tab
   // Unknown eventType: no-op.
   return prev as Table[]
 }
+
+/**
+ * Structural shape of a postgres_changes payload over raw, untyped rows.
+ * Used by {@link mergeRowList}, whose consumers (currently
+ * `TableManagementPanel` only — see design.md D9) hold database rows
+ * directly rather than the mapped `Table` shape.
+ */
+export interface RowChange {
+  eventType: string
+  new?: Record<string, unknown> | null
+  old?: Record<string, unknown> | null
+}
+
+/**
+ * Raw-row variant of {@link mergeTableList} for consumers that hold database
+ * rows directly instead of the mapped `Table` type (design.md D9). Performs
+ * NO field mapping: a row is inserted/replaced/removed exactly as it arrives
+ * on the wire, under its own raw column names (e.g. `waiter_id`,
+ * `updated_at`) — never renamed the way `toTable` renames `waiter_id` to
+ * `waiter`. Shares the same D10 event-dispatch and reference-stability
+ * contract as `mergeTableList`, including the identical `prev` reference on
+ * every no-op row.
+ *
+ * Performs NO enrichment either: a postgres_changes payload carries only the
+ * raw table's own columns, never a joined relation. This function has no way
+ * to know a caller's initial fetch enriched its rows with a join, so it is
+ * the caller's responsibility to supply an already-enriched `new` row when
+ * one is needed — `TableManagementPanel` does this via a targeted
+ * `tableService.getById(id)` refetch of just the changed row before calling
+ * this function, rather than handing it the raw payload directly. See that
+ * component's realtime handler for the full rationale.
+ */
+export function mergeRowList<T extends { id: string }>(prev: readonly T[], change: RowChange): T[] {
+  const { eventType, new: newRow, old: oldRow } = change
+
+  if (eventType === "INSERT") {
+    const id = newRow?.id
+    if (typeof id !== "string" || !id) return prev as T[]
+    // Idempotent — protects against echo and StrictMode double-delivery.
+    return prev.some((row) => row.id === id) ? (prev as T[]) : [...prev, newRow as unknown as T]
+  }
+
+  if (eventType === "UPDATE") {
+    const id = newRow?.id
+    if (typeof id !== "string" || !id) return prev as T[]
+    const existing = prev.find((row) => row.id === id)
+    // D5: an UPDATE for an id not present in `prev` is dropped, not upserted.
+    if (!existing) return prev as T[]
+    const incomingTs = toTimestamp(newRow?.updated_at as string | Date | null | undefined)
+    const existingTs = toTimestamp(
+      (existing as Record<string, unknown>).updated_at as string | Date | null | undefined,
+    )
+    // Out-of-order rejection: incoming must not be strictly older than existing.
+    if (incomingTs < existingTs) return prev as T[]
+    return prev.map((row) => (row.id === id ? (newRow as unknown as T) : row))
+  }
+
+  if (eventType === "DELETE") {
+    const id = oldRow?.id
+    if (typeof id !== "string" || !id) return prev as T[]
+    return prev.some((row) => row.id === id) ? prev.filter((row) => row.id !== id) : (prev as T[])
+  }
+
+  // Unknown eventType: no-op.
+  return prev as T[]
+}

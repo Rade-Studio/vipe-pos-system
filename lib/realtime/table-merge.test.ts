@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { mergeTableList, toTable, toTimestamp, type TableChange, type TableRow } from "./table-merge"
+import { mergeRowList, mergeTableList, toTable, toTimestamp, type RowChange, type TableChange, type TableRow } from "./table-merge"
 import type { Table } from "@/types"
 
 function makeTable(overrides: Partial<Table> = {}): Table {
@@ -182,5 +182,107 @@ describe("toTimestamp", () => {
 
   it("returns epoch milliseconds for a valid date string", () => {
     expect(toTimestamp("2026-01-01T00:00:00.000Z")).toBe(new Date("2026-01-01T00:00:00.000Z").getTime())
+  })
+})
+
+describe("mergeRowList — raw-row merge (D9)", () => {
+  type RawTable = { id: string; number: number; status: string; waiter_id?: string | null; updated_at?: string | null }
+
+  function makeRow(overrides: Partial<RawTable> = {}): RawTable {
+    return { id: "t-1", number: 1, status: "available", ...overrides }
+  }
+
+  it("INSERT with a new id appends the row verbatim (no field mapping)", () => {
+    const prev = [makeRow({ id: "t-1" })]
+    const incoming = { id: "t-2", number: 2, status: "occupied", waiter_id: "w-1", updated_at: "2026-01-01T00:00:00.000Z" }
+    const change: RowChange = { eventType: "INSERT", new: incoming }
+
+    const result = mergeRowList(prev, change)
+
+    expect(result).not.toBe(prev)
+    expect(result).toHaveLength(2)
+    expect(result[0]).toBe(prev[0])
+    // Verbatim: raw column names survive untouched, unlike toTable's waiter_id -> waiter rename.
+    expect(result[1]).toEqual(incoming)
+  })
+
+  it("INSERT with an id already present is idempotent and returns prev", () => {
+    const prev = [makeRow({ id: "t-1" })]
+    const change: RowChange = { eventType: "INSERT", new: { id: "t-1", number: 1, status: "available" } }
+
+    const result = mergeRowList(prev, change)
+
+    expect(result).toBe(prev)
+  })
+
+  it("UPDATE preserves waiter_id/updated_at under their raw names on the replaced row", () => {
+    const untouched = makeRow({ id: "t-2" })
+    const prev = [makeRow({ id: "t-1", status: "available" }), untouched]
+    const incoming = {
+      id: "t-1",
+      number: 1,
+      status: "occupied",
+      waiter_id: "w-9",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    }
+    const change: RowChange = { eventType: "UPDATE", new: incoming }
+
+    const result = mergeRowList(prev, change)
+
+    expect(result).not.toBe(prev)
+    expect(result[0]).toEqual(incoming)
+    expect((result[0] as RawTable).waiter_id).toBe("w-9")
+    expect((result[0] as RawTable).updated_at).toBe("2026-01-01T00:00:00.000Z")
+    expect(result[1]).toBe(untouched)
+  })
+
+  it("UPDATE with a strictly older timestamp is rejected as out-of-order and returns prev", () => {
+    const prev = [makeRow({ id: "t-1", status: "occupied", updated_at: "2026-01-02T00:00:00.000Z" })]
+    const change: RowChange = {
+      eventType: "UPDATE",
+      new: { id: "t-1", number: 1, status: "available", updated_at: "2026-01-01T00:00:00.000Z" },
+    }
+
+    const result = mergeRowList(prev, change)
+
+    expect(result).toBe(prev)
+  })
+
+  it("UPDATE for an id not present in prev is dropped, not upserted", () => {
+    const prev = [makeRow({ id: "t-1" })]
+    const change: RowChange = { eventType: "UPDATE", new: { id: "t-9", number: 9, status: "occupied" } }
+
+    const result = mergeRowList(prev, change)
+
+    expect(result).toBe(prev)
+  })
+
+  it("DELETE with a matching old.id filters that row out and returns a new array", () => {
+    const kept = makeRow({ id: "t-2" })
+    const prev = [makeRow({ id: "t-1" }), kept]
+    const change: RowChange = { eventType: "DELETE", old: { id: "t-1" } }
+
+    const result = mergeRowList(prev, change)
+
+    expect(result).not.toBe(prev)
+    expect(result).toEqual([kept])
+  })
+
+  it("DELETE for an id not present in prev is a no-op", () => {
+    const prev = [makeRow({ id: "t-1" })]
+    const change: RowChange = { eventType: "DELETE", old: { id: "t-9" } }
+
+    const result = mergeRowList(prev, change)
+
+    expect(result).toBe(prev)
+  })
+
+  it("an unknown eventType is a no-op", () => {
+    const prev = [makeRow({ id: "t-1" })]
+    const change: RowChange = { eventType: "TRUNCATE" }
+
+    const result = mergeRowList(prev, change)
+
+    expect(result).toBe(prev)
   })
 })
