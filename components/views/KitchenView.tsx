@@ -1004,7 +1004,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
         <TabsContent value="tables">
           <TablesSection
-            tables={tables}
             activeTable={selectedTable}
             profile={profile}
             profiles={profiles}

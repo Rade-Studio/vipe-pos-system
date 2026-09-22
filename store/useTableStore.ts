@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import type { Table } from "@/types"
+import { mergeTableList, type TableChange } from "@/lib/realtime/table-merge"
 
 interface TableState {
   tables: Table[]
@@ -14,6 +15,14 @@ interface TableState {
   assignWaiterToTable: (tableId: string, waiterId: string) => void
   getTableWaiter: (tableId: string) => string | undefined
   getTableById: (tableId: string) => Table | undefined
+  /**
+   * Applies a postgres_changes payload for `public.tables` in place (D1, D10).
+   * Delegates all decision logic to the pure `mergeTableList`; this action's
+   * only job is translating "same array reference" into "same state object"
+   * so Zustand's `Object.is` check (vanilla.mjs) skips notifying subscribers
+   * on a no-op, producing zero re-renders.
+   */
+  applyTableChange: (change: TableChange) => void
 }
 
 export const useTableStore = create<TableState>((set, get) => ({
@@ -113,4 +122,12 @@ export const useTableStore = create<TableState>((set, get) => ({
   getTableById: (tableId) => {
     return get().tables.find((t) => t.id === tableId)
   },
+
+  applyTableChange: (change) =>
+    set((state) => {
+      const next = mergeTableList(state.tables, change)
+      // Identity preserved on no-op → Object.is short-circuits in vanilla.mjs
+      // → no listener notified → zero re-renders.
+      return next === state.tables ? state : { tables: next }
+    }),
 }))

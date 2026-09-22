@@ -1,18 +1,11 @@
 "use client"
-import { useEffect, useState } from "react"
-import type { Table, Profile } from "@/types"
+import type { Profile } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getStatusColor, getStatusLabel } from "@/utils/helpers"
 import { LockIcon, UnlockIcon, Users2, Coffee, UtensilsCrossed, CheckCircle2, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { tableService } from "@/lib/supabase/service"
-import { log } from "@/lib/log"
-import { realtimeService } from "@/lib/supabase/realtime-service"
-import { mergeTableList, type TableChange } from "@/lib/realtime/table-merge"
-
-// Importar el componente Skeleton
-import { Skeleton } from "@/components/ui/skeleton"
+import { useTableStore } from "@/store/useTableStore"
 
 interface TableGridProps {
   activeTable: string | null
@@ -81,58 +74,12 @@ export function TableGrid({
   profiles = [], // Valor por defecto como array vacío
   isAdminView = false,
 }: TableGridProps) {
-  // Estado local para las mesas
-  const [tables, setTables] = useState<Table[]>([])
-  const [loading, setLoading] = useState(true)
-  // Distinguishes first load (skeleton OK) from realtime refetch (never blank).
-  const [initialLoadDone, setInitialLoadDone] = useState(false)
-
-  // Cargar mesas y suscribirse a cambios en tiempo real
-  useEffect(() => {
-    // Función para cargar mesas
-    const loadTables = async () => {
-      try {
-        setLoading(true)
-        const data = await tableService.getAll()
-
-        // Convertir las mesas de la base de datos al formato que espera el componente
-        const formattedTables = data.map((table) => ({
-          id: table.id,
-          number: table.number,
-          status: table.status as any,
-          waiter: table.waiter_id || undefined,
-          waiter_name: table.waiter_name || undefined,
-          // D4: hydrated rows must carry updated_at too, or the out-of-order
-          // guard starts at 0 for every row until its first realtime UPDATE.
-          updated_at: table.updated_at ? new Date(table.updated_at) : undefined,
-        }))
-
-        setTables(formattedTables)
-        setInitialLoadDone(true)
-      } catch (error) {
-        log.error("Error al cargar mesas:", { error: String(error) })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    // Cargar mesas inicialmente
-    loadTables()
-
-    // Suscribirse a cambios en tiempo real — merge on payload, no full reload.
-    const unsubscribe = realtimeService.subscribeToTables((payload) => {
-      log.info("Cambio en mesa recibido:", { payload })
-      // Merge into existing array without a re-query — no setLoading(true) here,
-      // so the grid stays visible during the update.
-      setTables((prev) => mergeTableList(prev, payload as unknown as TableChange))
-      if (!initialLoadDone) setInitialLoadDone(true)
-    })
-
-    // Limpiar suscripción al desmontar
-    return () => {
-      unsubscribe()
-    }
-  }, [initialLoadDone])
+  // Single owner (D1, S3): read table state directly from useTableStore
+  // instead of self-fetching/self-subscribing. Hydration and realtime
+  // patching are the owning view's responsibility (WaiterView, KitchenView);
+  // TableGrid is a pure consumer, so there is no local loading/skeleton
+  // state left to own here — see apply-progress for the S3.3 write-up.
+  const tables = useTableStore((s) => s.tables)
 
   // Calcular estadísticas de mesas
   const tableStats = {
@@ -150,27 +97,6 @@ export function TableGrid({
 
     // Devolver el nombre completo o el nombre regular
     return waiter ? waiter.full_name || waiter.name : null
-  }
-
-  // Si está cargando, mostrar indicador — pero SOLO en la carga inicial.
-  // Las actualizaciones en tiempo real nunca blankear la grilla (HS-23).
-  if (!initialLoadDone && loading) {
-    return (
-      <div className="space-y-4">
-        <div className="flex justify-between items-center mb-4">
-          <Skeleton className="h-6 w-40" />
-          <div className="flex space-x-2">
-            <Skeleton className="h-8 w-24 rounded-md" />
-            <Skeleton className="h-8 w-24 rounded-md" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <Skeleton key={i} className="h-36 rounded-lg" />
-          ))}
-        </div>
-      </div>
-    )
   }
 
   // Asegurar que se muestre correctamente el mesero en el cuadro de mesas
@@ -191,7 +117,10 @@ export function TableGrid({
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-        {tables
+        {/* `tables` is now the store's own array reference (S3, D1) — copy
+            before sorting so this render pass never mutates shared state
+            in place (Array.prototype.sort mutates its receiver). */}
+        {[...tables]
           .sort((a, b) => a.number - b.number)
           .map((table) => {
             const isActive = activeTable === table.id

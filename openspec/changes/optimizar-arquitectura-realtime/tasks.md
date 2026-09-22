@@ -157,21 +157,28 @@ Files touched: `package.json`, `vitest.config.ts` (new), `vitest.setup.ts` (new)
 
 ## Slice S3 — Single owner (B-7, A-4, B-11)
 
+> **Split into two PRs (2026-09-22, maintainer decision).** The slice measured 702 authored code lines against the 400-line review budget. Unlike slice ST, it splits cleanly with zero coupling in either direction, so it was split rather than granted an exception:
+>
+> - **S3a — single owner** (this PR, ~388 lines): S3.1, S3.2, S3.3, S3.4, S3.7. Store, `TableGrid`, `WaiterView`, `TablesSection`, plus the one-line `KitchenView` collateral.
+> - **S3b — admin panel** (~314 lines): S3.5, S3.6. `mergeRowList` and `TableManagementPanel`, including the targeted-refetch fix for the join regression.
+>
+> The seam was verified, not assumed: S3a never references `mergeRowList`, and `TableManagementPanel`'s only mention of `useTableStore` is inside a comment. Design D9 deliberately kept the panel on raw rows outside the single-owner model, which is what makes the boundary clean.
+
 Files touched: `store/useTableStore.ts`, `store/useTableStore.test.ts` (new), `components/pos/TableGrid.tsx`, `components/pos/TablesSection.tsx`, `components/views/WaiterView.tsx`, `components/admin/tables/TableManagementPanel.tsx`, `lib/realtime/table-merge.ts` (extended). **Highest-risk slice** — depends on ST for its tests.
 
-- [ ] S3.1 Add `applyTableChange: (change: TableChange) => void` to the `TableState` interface and implementation in `store/useTableStore.ts`, per design D1: `set((state) => { const next = mergeTableList(state.tables, change); return next === state.tables ? state : { tables: next } })`. Import `mergeTableList`/`TableChange` from `lib/realtime/table-merge`. Every other member of `TableState` (all mutators, `activeTable`, helpers) stays unchanged — this is the entire point of choosing O1.
+- [x] S3.1 Add `applyTableChange: (change: TableChange) => void` to the `TableState` interface and implementation in `store/useTableStore.ts`, per design D1: `set((state) => { const next = mergeTableList(state.tables, change); return next === state.tables ? state : { tables: next } })`. Import `mergeTableList`/`TableChange` from `lib/realtime/table-merge`. Every other member of `TableState` (all mutators, `activeTable`, helpers) stays unchanged — this is the entire point of choosing O1.
   - **Req**: `realtime-client-sync` / "Single Owner For Table State" (establishes the owner's patch entry point); "Realtime Table Events Patch State In Place".
   - **Verify**: `npx tsc --noEmit` delta; S3.2's unit tests pass.
 
-- [ ] S3.2 Create `store/useTableStore.test.ts`: assert a no-op change leaves `useTableStore.getState().tables` reference-identical to its pre-call value, and an UPDATE replaces exactly one element while every other element reference is preserved (`toBe` on the untouched rows). Use a vanilla store instance — no React render required.
+- [x] S3.2 Create `store/useTableStore.test.ts`: assert a no-op change leaves `useTableStore.getState().tables` reference-identical to its pre-call value, and an UPDATE replaces exactly one element while every other element reference is preserved (`toBe` on the untouched rows). Use a vanilla store instance — no React render required.
   - **Req**: `realtime-client-sync` *Verification Notes*; design D1 rationale ("Purity and composition").
   - **Verify**: `npm test` passes.
 
-- [ ] S3.3 In `components/pos/TableGrid.tsx`, delete the local `useState` at `:85` and the self-fetch effect (`:132-173`); read `tables` from `useTableStore` instead. Confirm the F1 remount test (ST.6) still passes against this updated component — re-run it explicitly as part of this task, not deferred to S3.9, since the component's data source changed underneath the test.
+- [x] S3.3 In `components/pos/TableGrid.tsx`, delete the local `useState` at `:85` and the self-fetch effect (`:132-173`); read `tables` from `useTableStore` instead. Confirm the F1 remount test (ST.6) still passes against this updated component — re-run it explicitly as part of this task, not deferred to S3.9, since the component's data source changed underneath the test.
   - **Req**: `realtime-client-sync` / "Single Owner For Table State", scenario "Exactly one table-state container exists"; re-verification of "Selection State Must Not Force A Grid Remount".
   - **Verify**: `npm test` (including `TableGrid.test.tsx`) passes; `npx tsc --noEmit` delta.
 
-- [ ] S3.4 In `components/views/WaiterView.tsx`: route the realtime handler through `useTableStore.getState().applyTableChange(payload)` in place of the S1-era direct `mergeTableList` call at `:240`; delete the local `tables` `useState` at `:64` and the dual write at `:213-219` that S1 preserved; demote the `useQuery(['tables'])` at `:159-162` to a one-time hydration seed for the store (its result is handed to the store once and no longer feeds a component-local `tables` array).
+- [x] S3.4 In `components/views/WaiterView.tsx`: route the realtime handler through `useTableStore.getState().applyTableChange(payload)` in place of the S1-era direct `mergeTableList` call at `:240`; delete the local `tables` `useState` at `:64` and the dual write at `:213-219` that S1 preserved; demote the `useQuery(['tables'])` at `:159-162` to a one-time hydration seed for the store (its result is handed to the store once and no longer feeds a component-local `tables` array).
   - **Req**: `realtime-client-sync` / "Single Owner For Table State", scenario "Consumers read through the owner, not a private copy"; "Realtime Table Events Patch State In Place".
   - **Verify**: `grep -n "useState<Table\[\]>" components/views/WaiterView.tsx` (or equivalent typed pattern) returns zero matches; `npx tsc --noEmit` delta; `npm test`.
 
@@ -183,7 +190,7 @@ Files touched: `store/useTableStore.ts`, `store/useTableStore.test.ts` (new), `c
   - **Req**: `realtime-client-sync` / "Realtime Table Events Patch State In Place", scenario "TableManagementPanel merges instead of reloading".
   - **Verify**: `grep -n "await loadTables()" components/admin/tables/TableManagementPanel.tsx` inside the realtime handler returns zero matches; the panel's loading indicator is not toggled by a realtime event; `npx tsc --noEmit` delta.
 
-- [ ] S3.7 Delete the dead `tables` prop and the `filteredTables`/`searchTerm`/`filterStatus` computation in `components/pos/TablesSection.tsx:7-37` (B-11). Confirm `TableGridProps` at `components/pos/TableGrid.tsx:17-26` (read-only) has no `tables` field, so nothing needs a replacement forwarding path.
+- [x] S3.7 Delete the dead `tables` prop and the `filteredTables`/`searchTerm`/`filterStatus` computation in `components/pos/TablesSection.tsx:7-37` (B-11). Confirm `TableGridProps` at `components/pos/TableGrid.tsx:17-26` (read-only) has no `tables` field, so nothing needs a replacement forwarding path.
   - **Req**: `realtime-client-sync` / "Dead Table-Filter State Is Removed", scenario "No unused tables prop or filter state remains".
   - **Verify**: `grep -n "filteredTables\|searchTerm\|filterStatus" components/pos/TablesSection.tsx` returns zero matches; `npx tsc --noEmit` delta.
 
