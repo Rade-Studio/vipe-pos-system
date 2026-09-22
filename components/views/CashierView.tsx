@@ -6,6 +6,7 @@ import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
+import { useShallow } from "zustand/react/shallow"
 import { useCartStore } from "@/store/useCartStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -120,7 +121,15 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     queryFn: fetchAllOrders,
   })
 
-  const tables = useTableStore((s) => s.tables)
+  // D6 Rule B: render-path reads project to a primitive (table number) via a
+  // shallow-compared lookup map, never to the full `tables` array — see design.md D6.
+  const tableNumberById = useTableStore(
+    useShallow((s) => {
+      const map: Record<string, number> = {}
+      for (const t of s.tables) map[t.id] = t.number
+      return map
+    }),
+  )
   const profiles = useProfileStore((s) => s.profiles)
   const cartItems = useCartStore((s) => s.cartItems)
   const calculateOrderBill = (items: CartItem[], tipPercentage?: number, taxPercentage?: number) =>
@@ -408,7 +417,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     const order = getOrderById(orderId)
     if (!order) return
 
-    const table = tables.find((t) => t.id === order.tableId)
+    // D6 Rule A: handler-only read, no subscription needed at the point of use.
+    const table = useTableStore.getState().getTableById(order.tableId)
     const waiter = profiles.find((p) => p.id === order.waiter)
 
     if (!table || !waiter) return
@@ -673,7 +683,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                         ))
                       : // Contenido real de órdenes parciales
                         partialOrders.map((order) => {
-                          const table = tables.find((t) => t.id === order.tableId)
+                          // D6 Rule B: render path only needs the table's number.
+                          const tableNumber = tableNumberById[order.tableId]
                           const waiter = profiles?.find((p) => p.id === order.waiter)
 
                           // Agrupar items por nombre y comentarios
@@ -693,7 +704,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                               <CardContent className="p-0">
                                 <div className="p-4 border-b bg-primary/10">
                                   <div className="flex justify-between items-center">
-                                    <h3 className="font-bold">Mesa {table?.number} - Orden Parcial</h3>
+                                    <h3 className="font-bold">Mesa {tableNumber} - Orden Parcial</h3>
                                     <Badge variant="outline" className="bg-primary/20">
                                       {displayItems.reduce((total, item) => total + item.quantity, 0)} unidades
                                     </Badge>
@@ -812,7 +823,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                   </div>
                 ) : (
                   Object.entries(ordersByTable).map(([tableId, orders]) => {
-                    const table = tables.find((t) => t.id === tableId)
+                    // D6 Rule B: render path only needs the table's number.
+                    const tableNumber = tableNumberById[tableId]
                     const tableTotal = getTableTotalAmount(tableId)
 
                     // Get all items from all orders for this table and group them
@@ -829,7 +841,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                         <CardContent className="p-0">
                           <div className="p-4 border-b bg-muted/20">
                             <div className="flex justify-between items-center">
-                              <h3 className="font-bold">Mesa {table?.number}</h3>
+                              <h3 className="font-bold">Mesa {tableNumber}</h3>
                               <Badge variant="default">
                                 {allItems.reduce((total, item) => total + item.quantity, 0)} unidades
                               </Badge>

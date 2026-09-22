@@ -26,7 +26,6 @@ interface CompletedOrdersTableProps {
 
 export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps) {
   const orders = useOrderStore((s) => s.orders)
-  const tables = useTableStore((s) => s.tables)
   const profiles = useProfileStore((s) => s.profiles)
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast } = useToast()
@@ -120,7 +119,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     const allMatches = [...byId, ...byWaiter]
     const uniqueOrders = Array.from(new Map(allMatches.map((o: Order) => [o.id, o])).values())
     return uniqueOrders
-  }, [allOrders, searchTerm, tables, profiles])
+  }, [allOrders, searchTerm, profiles])
 
   // Usar el hook de paginación
   const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination({
@@ -129,8 +128,8 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
   })
 
   const handlePrintInvoice = (order: Order) => {
-    // Encontrar la mesa correspondiente
-    const table = tables.find((t) => t.id === order.tableId)
+    // Encontrar la mesa correspondiente (D6 Rule A: handler-only read, no subscription)
+    const table = useTableStore.getState().getTableById(order.tableId)
     // Encontrar el mesero correspondiente
     const waiter = profiles.find((p) => p.id === order.waiter)
 

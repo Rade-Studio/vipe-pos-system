@@ -27,7 +27,10 @@ export default function Home() {
   const showProfileSelection = useProfileStore((s) => s.showProfileSelection)
   const selectProfile = useProfileStore((s) => s.selectProfile)
   const changeProfile = useProfileStore((s) => s.changeProfile)
-  const { setTables } = useTableStore()
+  // D6, newly enumerated site: this selectorless destructure subscribed the
+  // root page component to every store write, including every unrelated table
+  // patch — the widest-blast-radius subscription in the codebase.
+  const setTables = useTableStore((s) => s.setTables)
   const { loadCurrentRegister, loadAllRegisters } = useCashRegisterStore()
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)

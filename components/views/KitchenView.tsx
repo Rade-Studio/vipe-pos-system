@@ -86,6 +86,16 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     queryFn: fetchKitchenOrders,
   })
 
+  // D6 Rule C: the table-filter dropdown below (~line 950) genuinely lists every
+  // non-available table, so it keeps the full-array subscription; that re-render
+  // is correct, not a defect (see design.md D6). Because this legitimate Rule C
+  // dependency already exists in this component, the render-path table lookups
+  // that also consume `tables` (order card table numbers, the table-number
+  // filter) are left on the same subscription rather than narrowed separately —
+  // narrowing them would add a shallow-compare projection with zero additional
+  // re-render reduction, since this component already re-renders on every table
+  // write regardless. The realtime-event handlers below are handler-only reads
+  // and use Rule A (`getState()`) instead, independent of this subscription.
   const tables = useTableStore((s) => s.tables)
   const setTables = useTableStore((s) => s.setTables)
   const updateTableStatus = useTableStore((s) => s.updateTableStatus)
@@ -285,7 +295,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
         // Si es una nueva orden, mostrar notificación
         if (isNewOrder) {
-          const table = tables.find((t) => t.id === storeOrder.tableId)
+          // D6 Rule A: handler-only read, no subscription needed at the point of use.
+          const table = useTableStore.getState().getTableById(storeOrder.tableId)
           toast({
             title: "¡Nueva orden!",
             description: `Nueva orden recibida para la mesa ${table?.number || storeOrder.tableId}.`,
@@ -391,7 +402,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
           }))
 
           // Notificar al usuario
-          const table = tables.find((t) => t.id === storeOrder.tableId)
+          // D6 Rule A: handler-only read, no subscription needed at the point of use.
+          const table = useTableStore.getState().getTableById(storeOrder.tableId)
           toast({
             title: "¡Nuevo producto en cocina!",
             description: `Se ha agregado un nuevo producto a la orden de la mesa ${table?.number || storeOrder.tableId}.`,
@@ -412,7 +424,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
           }))
 
           // Notificar al usuario
-          const table = tables.find((t) => t.id === storeOrder.tableId)
+          // D6 Rule A: handler-only read, no subscription needed at the point of use.
+          const table = useTableStore.getState().getTableById(storeOrder.tableId)
           toast({
             title: "¡Nueva orden en cocina!",
             description: `Se ha recibido una nueva orden para la mesa ${table?.number || storeOrder.tableId}.`,
