@@ -47,7 +47,7 @@ Files touched: `components/views/WaiterView.tsx`, `components/pos/TableGrid.tsx`
   - **Req**: `realtime-client-sync` (D4 correction to A-2); not a spec scenario on its own, but the mechanism the "Update event patches one row without a re-fetch" scenario depends on.
   - **Verify**: unit-testable once ST lands (ST.5 covers this); until then, manual code review confirms the comment and the `Date` normalization are present. `npx tsc --noEmit` delta.
 
-- [ ] S1.3 [Reviewer-notice task, no additional code] Add one sentence to the S1 PR/commit description stating explicitly: *"This extraction makes the `updated_at` out-of-order guard reject events for the first time (see design.md D4). `proposal.md`'s original framing of this slice as a pure move is superseded — treat this as a behaviour fix, not a refactor."* This satisfies the orchestrator's requirement that S1 not be described as a pure refactor.
+- [x] S1.3 [Reviewer-notice task, no additional code] Add one sentence to the S1 PR/commit description stating explicitly: *"This extraction makes the `updated_at` out-of-order guard reject events for the first time (see design.md D4). `proposal.md`'s original framing of this slice as a pure move is superseded — treat this as a behaviour fix, not a refactor."* This satisfies the orchestrator's requirement that S1 not be described as a pure refactor.
   - **Req**: process/documentation requirement carried from design D4.
   - **Verify**: commit message or PR description contains the sentence.
 
