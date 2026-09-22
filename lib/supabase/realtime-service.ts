@@ -37,10 +37,38 @@ type TablesChannelEntry = {
 }
 const tablesChannels = new Map<string, TablesChannelEntry>()
 
+// Orders channel registry: topic -> { channel, callbacks Set }.
+// Mirrors tablesChannels above so WaiterView + CashierView + AdminView share
+// one "orders-changes" channel instead of opening one each (D7).
+type OrdersChannelEntry = {
+  channel: RealtimeChannel
+  callbacks: Set<OrderCallback>
+}
+const ordersChannels = new Map<string, OrdersChannelEntry>()
+
 // Stable channel-name helper.  Each role-view (waiter / kitchen / cashier / admin)
 // gets ONE persistent channel named `${topic}-${role}`.  The role suffix prevents
 // cross-role event leakage.
 const roleChannelName = (topic: string, role: string) => `${topic}-${role}`
+
+// Module-private. Acquires (or creates) a broadcast channel WITHOUT registering
+// any listener and WITHOUT touching broadcastListenerRegistry (D8). Used by
+// sendFactura/sendCommand, which only need a reference to send on, and by
+// subscribeToPosEvents, which performs its own registry insert and `.on()`
+// binding on top of the channel this returns.
+const getBroadcastChannel = (channelKey: string): RealtimeChannel => {
+  if (!realtimeService.channels[channelKey]) {
+    const channel = supabase.channel(channelKey)
+
+    channel.subscribe(() => {
+      realtimeService.isConnected = true
+    })
+
+    realtimeService.channels[channelKey] = channel
+  }
+
+  return realtimeService.channels[channelKey]
+}
 
 // Servicio para manejar suscripciones en tiempo real
 export const realtimeService = {
@@ -86,17 +114,7 @@ export const realtimeService = {
 
   subscribeToPosEvents: <T extends GenericPayload>(channelKey: string, eventName: string, callback: PosEventCallback<T>) => {
 
-    if (!realtimeService.channels[channelKey]) {
-      const channel = supabase.channel(channelKey)
-
-      channel.subscribe(() => {
-        realtimeService.isConnected = true
-      })
-
-      realtimeService.channels[channelKey] = channel
-    }
-
-    const channel = realtimeService.channels[channelKey]
+    const channel = getBroadcastChannel(channelKey)
 
     // Register handler in our registry so it can be removed individually.
     if (!broadcastListenerRegistry.has(channelKey)) {
@@ -108,7 +126,16 @@ export const realtimeService = {
     }
     eventMap.get(eventName)!.add(callback)
 
-    // Attach the broadcast listener to the channel.
+    // Attach the broadcast listener to the channel. This can run after
+    // getBroadcastChannel() above has already called channel.subscribe() for a
+    // pre-existing channel (D8 confirm-at-apply). Verified against the
+    // installed @supabase/realtime-js@2.116.0 source
+    // (RealtimeChannel.js `on()`): the "cannot add callbacks after subscribe()"
+    // guard checks `type === PRESENCE || type === POSTGRES_CHANGES` only —
+    // "broadcast" is exempt, and `_on()` registers the handler directly on the
+    // channel's live message dispatcher, not into the one-shot join payload
+    // that postgres_changes bindings need. So binding here, after subscribe(),
+    // does bind correctly for broadcast events.
     channel.on("broadcast", { event: eventName}, ({payload}) => {
       callback(payload as T)
     })
@@ -136,14 +163,14 @@ export const realtimeService = {
   sendFactura: (invoiceNumber: string, invoice: PrintableInvoice, displayItems: CartItem[]) => {
     // enviar factura por broadcast
     const channelKey = "room_bills"
-    realtimeService.subscribeToPosEvents(channelKey, "new_invoice", () => {})
+    const channel = getBroadcastChannel(channelKey)
     const payload = {
       invoiceNumber,
       invoice,
       displayItems,
     }
 
-    realtimeService.channels[channelKey].send({
+    channel.send({
       type: "broadcast",
       event: "new_invoice",
       payload,
@@ -159,9 +186,9 @@ export const realtimeService = {
   sendCommand: (command: CommandPayload) => {
       // enviar factura por broadcast
       const channelKey = "room_commands"
-      realtimeService.subscribeToPosEvents(channelKey, "new_command", () => {})
+      const channel = getBroadcastChannel(channelKey)
 
-      realtimeService.channels[channelKey].send({
+      channel.send({
         type: "broadcast",
         event: "new_command",
         payload: {
@@ -178,58 +205,83 @@ export const realtimeService = {
 
   // Suscribirse a cambios en las órdenes
   subscribeToOrders: (callback: OrderCallback) => {
-    // Crear un canal para las órdenes
-    const channel = supabase
-      .channel("orders-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*", // Escuchar todos los eventos (INSERT, UPDATE, DELETE)
-          schema: "public",
-          table: "orders",
-        },
-        async (payload) => {
+    // One shared "orders-changes" channel for every caller (D7), mirroring
+    // subscribeToTables above: a Map keyed by topic, callbacks in a Set, the
+    // channel created only for the first caller and torn down only for the last.
+    const topicKey = "orders-changes"
+    let entry = ordersChannels.get(topicKey)
+    if (!entry) {
+      const channel = supabase
+        .channel(topicKey)
+        .on(
+          "postgres_changes",
+          {
+            event: "*", // Escuchar todos los eventos (INSERT, UPDATE, DELETE)
+            schema: "public",
+            table: "orders",
+          },
+          async (payload) => {
 
-          // Si es un evento INSERT o UPDATE, necesitamos obtener los items de la orden
-          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
-            try {
-              // Obtener los items de la orden
-              const { data: orderItems, error } = await supabase
-                .from("order_items")
-                .select("*")
-                .eq("order_id", payload.new.id)
+            // Si es un evento INSERT o UPDATE, necesitamos obtener los items de la orden
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              try {
+                // D7: fetch order_items exactly once per event, before fan-out,
+                // so N subscribed callbacks share one round trip instead of one
+                // SELECT per caller.
+                const { data: orderItems, error } = await supabase
+                  .from("order_items")
+                  .select("*")
+                  .eq("order_id", payload.new.id)
 
-              if (error) {
-                return
+                if (error) {
+                  // D7: this used to `return` here, silently dropping the event
+                  // for the single caller that requested it. Under a shared
+                  // channel that would drop it for every caller instead. Log
+                  // and still fan out below, leaving `order_items` undefined —
+                  // never `[]`, which would render a paid order as having no
+                  // items. Consumers MUST treat `order_items === undefined` as
+                  // "unknown, do not overwrite the current items", never as
+                  // "the order has no items".
+                  log.error("Error al obtener los items de la orden", {
+                    error: String(error),
+                    orderId: payload.new.id,
+                  })
+                } else {
+                  // Añadir los items a la orden
+                  payload.new.order_items = orderItems || []
+                }
+              } catch (error) {
+                toast({
+                  title: "Error",
+                  description: "No se pudo procesar el cambio de orden. Intente nuevamente.",
+                  variant: "destructive",
+                })
               }
-
-              // Añadir los items a la orden
-              payload.new.order_items = orderItems || []
-
-              // Asegurarse de que todos los campos necesarios estén presentes
-            } catch (error) {
-              toast({
-                title: "Error",
-                description: "No se pudo procesar el cambio de orden. Intente nuevamente.",
-                variant: "destructive",
-              })
             }
-          }
 
-          // Llamar al callback con los datos completos
-          callback(payload)
-        },
-      )
-      .subscribe()
-
-    // Guardar referencia al canal
-    realtimeService.channels["orders"] = channel
-    realtimeService.isConnected = true
+            // D7 read-only contract: `payload` is the SAME object reference
+            // fanned out to every callback in `entry.callbacks`. Consumers
+            // MUST NOT mutate `payload.new`/`payload.old`/`order_items` —
+            // derive new local state instead.
+            entry?.callbacks.forEach((cb) => cb(payload))
+          },
+        )
+        .subscribe()
+      entry = { channel, callbacks: new Set() }
+      ordersChannels.set(topicKey, entry)
+      realtimeService.isConnected = true
+    }
+    entry.callbacks.add(callback)
 
     // Devolver función para cancelar la suscripción
     return () => {
-      supabase.removeChannel(channel)
-      delete realtimeService.channels["orders"]
+      const e = ordersChannels.get(topicKey)
+      if (!e) return
+      e.callbacks.delete(callback)
+      if (e.callbacks.size === 0) {
+        supabase.removeChannel(e.channel)
+        ordersChannels.delete(topicKey)
+      }
     }
   },
 
