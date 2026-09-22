@@ -67,8 +67,9 @@ Files touched: `components/views/WaiterView.tsx`, `components/pos/TableGrid.tsx`
   - **Req**: `realtime-client-sync` / "Structured Logging In WaiterView", scenario "No bare console calls in WaiterView".
   - **Verify**: `grep -n "console\.\(log\|warn\|error\)" components/views/WaiterView.tsx` returns zero matches; `WaiterView.tsx` imports `log` from `lib/log.ts`.
 
-- [ ] S1.8 Per-slice verification (no `npm test` yet): `npm run lint` clean or unchanged from base; `npx tsc --noEmit` — report the delta against the ~484-error pre-existing baseline, never an absolute; `npm run build` exit 0; two-tab manual recipe — flip a table's status in tab A, confirm tab B updates without a skeleton repaint and without the grid blanking; additionally click a table in tab A and confirm the grid does not repaint on selection.
+- [x] S1.8 Per-slice verification (no `npm test` yet): `npm run lint` clean or unchanged from base; `npx tsc --noEmit` — report the delta against the ~484-error pre-existing baseline, never an absolute; `npm run build` exit 0; two-tab manual recipe — flip a table's status in tab A, confirm tab B updates without a skeleton repaint and without the grid blanking; additionally click a table in tab A and confirm the grid does not repaint on selection.
   - **Req**: proposal *Verification* §1–4 (S1 extension); no formal spec scenario, this is the slice gate.
+  - **Evidence**: automated checks orchestrator-verified — `npx tsc --noEmit` 0 errors (the ~484 figure in the planning docs was stale for this checkout), `npm run lint` exit 0 with 104 pre-existing warnings unchanged, `npm run build` exit 0, all four grep invariants zero matches. **Two-tab manual recipe CONFIRMED WORKING BY THE USER on 2026-09-22**, run against a worktree pinned to `c263193` (the S1 tip including both orchestrator review fixes) on `http://localhost:3003`. S1 is closed.
 
 ---
 

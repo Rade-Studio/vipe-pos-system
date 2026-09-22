@@ -207,3 +207,22 @@ Not pushed, no PR opened (delivery is the user's decision per the phase instruct
 
 - Slice S2 is code-complete and committed. Remaining before archive/next-slice: the human two-tab manual recipe and A-5 leak check above (S2.9).
 - Next slice per `tasks.md`'s dependency order: **ST** (test runner) — must land before S3. S1 and S2 are both done; the orchestrator can now proceed to ST.
+
+---
+
+## S1.8 — closed by human verification (2026-09-22)
+
+The two-tab manual recipe, the only outstanding evidence gap in slice S1, was **run and confirmed working by the user**. S1 is closed.
+
+Setup used: a git worktree at `/home/ahernand/projects/vipe-pos-system-worktrees/s1-verify`, pinned to commit `c263193` (the S1 branch tip, including both orchestrator review fixes), with `node_modules` symlinked from the main checkout and `.env.local` copied. Dev server on `http://localhost:3003`. The worktree was deliberate: the S2 agent was concurrently editing `lib/supabase/realtime-service.ts` on the S2 branch, and a hot reload mid-verification would have invalidated the result.
+
+Environment note for anyone reproducing this: `.env.local` points at a hosted Supabase project, not the local docker stack, so the absent local `realtime` and `kong` containers were irrelevant — only `supabase-db` and `supabase-auth` were running locally. Seed credentials in `supabase/seed.sql` target the local database and may not exist on the hosted project.
+
+The user reported the fix as working. No finer-grained per-step result is recorded here, because none was reported.
+
+## Still pending human verification
+
+**S2.9** — slice S2's manual half is still open. Neither check can be performed without a browser:
+
+1. Two-tab recipe: open Cashier and Admin together and confirm one order event produces one update per view, with exactly one `order_items` request per event in the network panel. Static checks prove the code shape — one Map entry, one fetch site, one fan-out loop — not the runtime request count.
+2. A-5 leak check: print several invoices and kitchen tickets in one session and confirm the `broadcastListenerRegistry` handler sets for `room_bills` / `room_commands` do not grow per send.
