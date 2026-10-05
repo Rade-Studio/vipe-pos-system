@@ -13,6 +13,7 @@
     "lint:fix": "next lint --fix",
     "typecheck": "tsc --noEmit",
     "test:placeholder": "echo 'No test runner configured yet' && exit 0",
+    "test:db": "bash scripts/db-test.sh",
     "docker:dev": "docker-compose up -d",
     "docker:dev:build": "docker-compose up -d --build",
     "docker:dev:down": "docker-compose down",

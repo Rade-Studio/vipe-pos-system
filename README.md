@@ -239,6 +239,16 @@ npm run test
 yarn test
 ```
 
+### Pruebas de base de datos
+
+El comportamiento de la base de datos (políticas RLS, permisos, RPCs) se cubre con
+pruebas SQL de pgTAP en `supabase/tests/`, que se ejecutan contra el contenedor
+`supabase-db` en ejecución. Ejecútalas con `pnpm test:db`, o un solo archivo con
+`bash scripts/db-test.sh <archivo>`. Cada archivo corre dentro de una transacción
+que se revierte, así que la base nunca se modifica. Consulta
+`supabase/tests/README.md` para escribir pruebas y suplantar los roles
+`anon` / `authenticated`.
+
 ---
 
 ## 🖨️ Sistema de Impresión y Suscripción en Python
