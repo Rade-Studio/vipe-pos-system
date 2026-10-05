@@ -33,7 +33,7 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
       `post-auth-migrations/` into `supabase/migrations/` in timestamp order, fix
       whatever blocks a clean `supabase db reset` (migrations + seed), port pgTAP
       tests to `supabase test db`, RED/GREEN bootstrap test.
-- [ ] 2b. Retire the legacy docker-compose Supabase stack (db/auth/rest/realtime/
+- [x] 2b. Retire the legacy docker-compose Supabase stack (db/auth/rest/realtime/
       kong/post-auth-init, init SQL, patched GoTrue) and update README/DOCKER.md.
 - [ ] 3. Tenant/role helpers + RLS rewrite (RED first): cross-tenant reads/writes denied,
       no `auth.uid() IS NULL` bypass, policies use `profiles`-based helpers.
@@ -49,6 +49,12 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
 
 ## Known follow-ups (out of scope)
 
+- `001_bootstrap.test.sql` hardcodes 29 migrations; update it with every new migration.
+- `docs/payment-atomicity-test.md` still uses `docker exec supabase-db psql`; rewrite it in the
+  payments redesign feature.
+- Worktree `.atl/` skill-registry churn is stashed (`git stash list`) because a dirty
+  tree makes RDD review the dirty files instead of the commit.
+
 - DB-level `search_path` is `realtime, public`; unqualified objects land in `realtime`.
   Investigate its origin in task 2 (runner pins pgtap to `public`).
 
@@ -63,3 +69,4 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
 | Task | Commit | Checks |
 |---|---|---|
 | 1 | `d7cd948` | `pnpm test:db` 1/1 PASS; deliberate failure and plan mismatch detected (exit 1); pgtap not left installed. RDD lineage `review-8e3ef50661bbebc4`: risk + resilience admitted, readability/reliability refused 4x for invalid reviewer JSON (tool defect); left open, abandon needs maintainer authorization. Harness superseded by `supabase test db` in 2a. |
+| 2a | `99163c5` | Verifier: `supabase start` on ports 4432x, `db reset` clean (29 migrations + seed), `pnpm test:db` Files=2 Tests=18 PASS, seeded user login 200 / wrong password 400. RED captured before fixes. Lockfile untouched (CLI via `npx supabase@2.119.0`). RDD lineage `review-96e6f3ec43551b31`: risk, resilience, readability admitted; reliability refused 2x for invalid reviewer JSON; refused claims read manually, none confirmed (brittle hardcoded migration count noted). |
