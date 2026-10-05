@@ -20,15 +20,21 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
   never from `user_metadata`.
 - Local DB volume holds no real data (0 users, 0 dishes, 1 restaurant, verified
   2026-10-05), so rebuilding it with `down -v` is safe.
+- 2026-10-05 (user): adopt the Supabase CLI for local development. One versioned
+  `supabase/migrations/` folder, `supabase start` / `supabase db reset` locally,
+  `supabase test db` for pgTAP, `supabase db push` to the Cloud test project later.
+  The custom docker-compose Supabase stack and its post-auth-init hack are retired.
 
 ## Tasks
 
 - [x] 1. pgTAP harness: `supabase/tests/*.test.sql` + runner script + `pnpm test:db`,
       with a schema smoke test proving the harness reports pass and fail.
-- [ ] 2. Reproducible bootstrap: move `20250918180000/1/2` after the post-auth
-      migrations, make post-auth-init fail fast with migration tracking (idempotent
-      re-runs), fix the GoTrue wait loop and the seed conflict; verify a clean
-      `down -v && up --build` applies every migration and the seed.
+- [x] 2a. Adopt Supabase CLI: `supabase` dev dependency + `config.toml`, consolidate
+      `post-auth-migrations/` into `supabase/migrations/` in timestamp order, fix
+      whatever blocks a clean `supabase db reset` (migrations + seed), port pgTAP
+      tests to `supabase test db`, RED/GREEN bootstrap test.
+- [ ] 2b. Retire the legacy docker-compose Supabase stack (db/auth/rest/realtime/
+      kong/post-auth-init, init SQL, patched GoTrue) and update README/DOCKER.md.
 - [ ] 3. Tenant/role helpers + RLS rewrite (RED first): cross-tenant reads/writes denied,
       no `auth.uid() IS NULL` bypass, policies use `profiles`-based helpers.
 - [ ] 4. Anon lockdown (RED first): revoke anon on all existing public tables and
@@ -56,3 +62,4 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
 
 | Task | Commit | Checks |
 |---|---|---|
+| 1 | `d7cd948` | `pnpm test:db` 1/1 PASS; deliberate failure and plan mismatch detected (exit 1); pgtap not left installed. RDD lineage `review-8e3ef50661bbebc4`: risk + resilience admitted, readability/reliability refused 4x for invalid reviewer JSON (tool defect); left open, abandon needs maintainer authorization. Harness superseded by `supabase test db` in 2a. |

@@ -15,8 +15,17 @@
 -- These users will have matching profiles created by the
 -- handle_new_user() trigger (fires AFTER INSERT on auth.users).
 -- The trigger sets role from raw_user_meta_data.role (defaults to 'waiter').
+--
+-- Las columnas de token se escriben explícitamente como '' y no NULL: GoTrue
+-- las espera con ese valor en sus consultas de confirmación/recuperación, y
+-- un NULL las deja indistinguibles de "sin token pendiente".
 -- ============================================
-INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+INSERT INTO auth.users (
+  id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+  confirmation_token, recovery_token, email_change, email_change_token_new,
+  email_change_token_current, phone_change, phone_change_token, reauthentication_token,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+)
 VALUES
   (
     'a0eebc99-0000-0000-0000-000000000001',
@@ -26,6 +35,7 @@ VALUES
     'carlos@restaurant.com',
     crypt('carlos123', gen_salt('bf')),
     now(),
+    '', '', '', '', '', '', '', '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{"full_name":"Carlos López","role":"cashier"}'::jsonb,
     now(),
@@ -39,6 +49,7 @@ VALUES
     'maria@restaurant.com',
     crypt('maria123', gen_salt('bf')),
     now(),
+    '', '', '', '', '', '', '', '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{"full_name":"María","role":"waiter"}'::jsonb,
     now(),
@@ -52,6 +63,7 @@ VALUES
     'admin@restaurant.com',
     crypt('admin123', gen_salt('bf')),
     now(),
+    '', '', '', '', '', '', '', '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{"full_name":"Admin Principal","role":"admin"}'::jsonb,
     now(),
@@ -65,6 +77,7 @@ VALUES
     'deiby@restaurant.com',
     crypt('deiby123', gen_salt('bf')),
     now(),
+    '', '', '', '', '', '', '', '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{"full_name":"Deiby","role":"waiter"}'::jsonb,
     now(),
@@ -78,26 +91,65 @@ VALUES
     'tester@restaurant.com',
     crypt('tester123', gen_salt('bf')),
     now(),
+    '', '', '', '', '', '', '', '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{"full_name":"Test User","role":"waiter"}'::jsonb,
     now(),
     now()
-  );
+  )
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================
+-- auth.identities seed entries
+-- GoTrue resuelve el password grant contra (provider, provider_id); sin esta
+-- fila el usuario existe en auth.users pero el login responde "Invalid login
+-- credentials". Para el provider 'email' el provider_id es el propio id del
+-- usuario.
+-- `email` no se inserta: es una columna GENERATED ALWAYS (identity_data->>'email').
+-- ============================================
+INSERT INTO auth.identities (
+  provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+)
+VALUES
+  ('a0eebc99-0000-0000-0000-000000000001', 'a0eebc99-0000-0000-0000-000000000001',
+   '{"email":"carlos@restaurant.com","email_verified":true,"phone_verified":false,"sub":"a0eebc99-0000-0000-0000-000000000001"}'::jsonb,
+   'email', now(), now(), now()),
+  ('a0eebc99-0000-0000-0000-000000000002', 'a0eebc99-0000-0000-0000-000000000002',
+   '{"email":"maria@restaurant.com","email_verified":true,"phone_verified":false,"sub":"a0eebc99-0000-0000-0000-000000000002"}'::jsonb,
+   'email', now(), now(), now()),
+  ('a0eebc99-0000-0000-0000-000000000003', 'a0eebc99-0000-0000-0000-000000000003',
+   '{"email":"admin@restaurant.com","email_verified":true,"phone_verified":false,"sub":"a0eebc99-0000-0000-0000-000000000003"}'::jsonb,
+   'email', now(), now(), now()),
+  ('a0eebc99-0000-0000-0000-000000000004', 'a0eebc99-0000-0000-0000-000000000004',
+   '{"email":"deiby@restaurant.com","email_verified":true,"phone_verified":false,"sub":"a0eebc99-0000-0000-0000-000000000004"}'::jsonb,
+   'email', now(), now(), now()),
+  ('a0eebc99-0000-0000-0000-000000000005', 'a0eebc99-0000-0000-0000-000000000005',
+   '{"email":"tester@restaurant.com","email_verified":true,"phone_verified":false,"sub":"a0eebc99-0000-0000-0000-000000000005"}'::jsonb,
+   'email', now(), now(), now())
+ON CONFLICT (provider_id, provider) DO NOTHING;
 
 -- ============================================
 -- profiles seed entries
--- These are kept because orders.waiter_id references profiles.id.
--- auth_user_id links each profile to its auth.users entry (created above).
--- The trigger will NOT create duplicate profiles for these users because
--- auth_user_id is already populated and the trigger uses ON CONFLICT (auth_user_id).
+-- El trigger handle_new_user() ya creó una fila por cada usuario de arriba, así
+-- que aquí se hace UPSERT sobre profiles_auth_user_id_unique: sin esto el seed
+-- revienta con duplicate key en profiles_email_key / profiles_auth_user_id_unique.
+-- El id lo conserva el trigger (es el que usará orders.waiter_id); esta sección
+-- solo alinea los datos de negocio declarados abajo.
 -- ============================================
-INSERT INTO "public"."profiles" ("id", "auth_user_id", "restaurant_id", "full_name", "username", "email", "role", "active", "created_at", "updated_at")
+INSERT INTO "public"."profiles" ("auth_user_id", "restaurant_id", "full_name", "username", "email", "role", "active", "created_at", "updated_at")
 VALUES
-  ('218baaee-4827-4f72-b5bb-387258f7c7cc', 'a0eebc99-0000-0000-0000-000000000001', 'a0eebc99-0000-0000-0000-000000000000', 'Carlos López', 'carlosl', 'carlos@restaurant.com', 'cashier', 'true', '2025-04-13 02:25:16.815455+00', '2025-04-13 02:25:16.815455+00'),
-  ('3799b5a1-a7f7-4425-a5ca-abf6a195bace', 'a0eebc99-0000-0000-0000-000000000002', 'a0eebc99-0000-0000-0000-000000000000', 'María', 'none', 'maria@restaurant.com', 'waiter', 'true', '2025-04-13 02:25:16.815455+00', '2025-05-09 13:55:15.842+00'),
-  ('51fcd8ac-0a4d-42fe-9b6f-1d031a3cd555', 'a0eebc99-0000-0000-0000-000000000003', 'a0eebc99-0000-0000-0000-000000000000', 'Admin Principal', 'admin', 'admin@restaurant.com', 'admin', 'true', '2025-04-13 02:25:16.815455+00', '2025-04-13 02:25:16.815455+00'),
-  ('c3094acf-f56a-4cde-924a-8922b71ccaa2', 'a0eebc99-0000-0000-0000-000000000004', 'a0eebc99-0000-0000-0000-000000000000', 'Deiby', 'picon', 'deiby@restaurant.com', 'waiter', 'true', '2025-04-13 02:25:16.815455+00', '2025-05-03 23:27:29.838+00'),
-  ('f82c6a1c-1234-5678-9abc-000000000005', 'a0eebc99-0000-0000-0000-000000000005', 'a0eebc99-0000-0000-0000-000000000000', 'Test User', 'tester', 'tester@restaurant.com', 'waiter', 'true', '2025-09-18 00:00:00.000000+00', '2025-09-18 00:00:00.000000+00');
+  ('a0eebc99-0000-0000-0000-000000000001', 'a0eebc99-0000-0000-0000-000000000000', 'Carlos López', 'carlosl', 'carlos@restaurant.com', 'cashier', 'true', '2025-04-13 02:25:16.815455+00', '2025-04-13 02:25:16.815455+00'),
+  ('a0eebc99-0000-0000-0000-000000000002', 'a0eebc99-0000-0000-0000-000000000000', 'María', 'none', 'maria@restaurant.com', 'waiter', 'true', '2025-04-13 02:25:16.815455+00', '2025-05-09 13:55:15.842+00'),
+  ('a0eebc99-0000-0000-0000-000000000003', 'a0eebc99-0000-0000-0000-000000000000', 'Admin Principal', 'admin', 'admin@restaurant.com', 'admin', 'true', '2025-04-13 02:25:16.815455+00', '2025-04-13 02:25:16.815455+00'),
+  ('a0eebc99-0000-0000-0000-000000000004', 'a0eebc99-0000-0000-0000-000000000000', 'Deiby', 'picon', 'deiby@restaurant.com', 'waiter', 'true', '2025-04-13 02:25:16.815455+00', '2025-05-03 23:27:29.838+00'),
+  ('a0eebc99-0000-0000-0000-000000000005', 'a0eebc99-0000-0000-0000-000000000000', 'Test User', 'tester', 'tester@restaurant.com', 'waiter', 'true', '2025-09-18 00:00:00.000000+00', '2025-09-18 00:00:00.000000+00')
+ON CONFLICT (auth_user_id) DO UPDATE
+  SET full_name  = EXCLUDED.full_name,
+      username   = EXCLUDED.username,
+      email      = EXCLUDED.email,
+      role       = EXCLUDED.role,
+      active     = EXCLUDED.active,
+      updated_at = EXCLUDED.updated_at;
 
 -- ============================================
 -- business_config seed

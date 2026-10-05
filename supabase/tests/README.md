@@ -1,23 +1,39 @@
 # Database tests (pgTAP)
 
-Database-level tests live in this directory as `*.test.sql` files and are run
-with [pgTAP](https://pgtap.org/) against the running `supabase-db` container:
+Database-level tests live in this directory as `*.test.sql` files and are run with
+[pgTAP](https://pgtap.org/) through the Supabase CLI (`supabase test db` runs
+[pg_prove](https://pgtap.org/) against the local database started by
+`pnpm supabase start`):
 
 ```bash
-pnpm test:db                                    # every test file, sorted
-bash scripts/db-test.sh supabase/tests/000_schema_smoke.test.sql
-DB_CONTAINER=other-db bash scripts/db-test.sh   # override the container
+pnpm test:db                                             # every test file
+pnpm supabase test db supabase/tests/001_bootstrap.test.sql
 ```
 
 ## Writing a test
 
 - One file per behaviour, named `NNN_something.test.sql` (`NNN` controls run order).
-- Every file declares its own plan as the first statement: `SELECT plan(3);`
-  and then emits exactly three assertions, otherwise pgTAP reports a mismatch.
+- Each file is **self-contained**: pg_prove does not wrap anything for you, so the
+  file opens and closes its own transaction:
+
+  ```sql
+  BEGIN;
+  CREATE EXTENSION IF NOT EXISTS pgtap;
+  SET LOCAL search_path = public, extensions;
+  SELECT plan(3);
+  -- assertions...
+  SELECT * FROM finish();
+  ROLLBACK;
+  ```
+
+  `SET LOCAL search_path` covers both cases: Supabase pre-installs pgtap in
+  `extensions`, while a bare `CREATE EXTENSION` lands in `public`.
+- Declare the plan as the first assertion statement (`SELECT plan(N);`) and emit
+  exactly N assertions, otherwise pgTAP reports a mismatch and the file fails.
 - Use pgTAP assertions (`has_table`, `has_column`, `has_function`, `ok`,
-  `is`, `throws_ok`, `results_eq`, `lives_ok`); never bare `SELECT`s.
+  `is`, `cmp_ok`, `throws_ok`, `results_eq`, `lives_ok`); never bare `SELECT`s.
 - Run a single file while iterating:
-  `bash scripts/db-test.sh supabase/tests/010_my_test.test.sql`.
+  `pnpm supabase test db supabase/tests/010_my_test.test.sql`.
 
 ## Impersonating roles for RLS tests
 
@@ -54,9 +70,10 @@ Each file runs as:
 
 ```sql
 BEGIN;
-CREATE EXTENSION IF NOT EXISTS pgtap SCHEMA public;
+CREATE EXTENSION IF NOT EXISTS pgtap;
+SET LOCAL search_path = public, extensions;
 -- test file contents --
-SELECT * FROM finish(true);  -- raises when a test failed
+SELECT * FROM finish();
 ROLLBACK;
 ```
 

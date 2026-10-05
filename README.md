@@ -67,27 +67,27 @@ SUPABASE_SERVICE_ROLE_KEY=tu_clave_de_servicio_de_supabase
 
 ### 4. Configurar la base de datos
 
-La base de datos se configura automaticamente mediante las migraciones de Supabase. Para inicializar el entorno local:
+La base de datos local se levanta con la [Supabase CLI](https://supabase.com/docs/guides/cli).
+Todo el esquema vive en un único directorio versionado, `supabase/migrations/`:
 
 ```bash
-docker compose up -d
-supabase db reset && pnpm docker:dev:seed
+pnpm supabase start        # levanta db, auth, storage, realtime y studio
+pnpm supabase db reset     # aplica las migraciones y carga supabase/seed.sql
 ```
 
-Esto aplica todas las migraciones en `supabase/migrations/` y luego carga los datos de ejemplo desde `supabase/seed.sql`.
+`pnpm supabase status` muestra la URL local y las claves (`API_URL`,
+`ANON_KEY`, `SERVICE_ROLE_KEY`) para pegarlas en el `.env` de la sección anterior.
 
 ### Fresh stack
 
-The Supabase volume contains application data. To wipe and re-initialize from migrations:
+Para borrar la base local y reconstruirla desde cero (migraciones + datos de ejemplo):
 
 ```bash
-docker compose down -v
-docker compose up -d
-# wait ~30s for init.sql + migrations to apply
-docker exec -i supabase-db psql -U postgres -d postgres < supabase/seed.sql
+pnpm supabase db reset
 ```
 
-**Warning:** `docker compose down -v` destroys the database volume — all profiles, tables, and orders are lost.
+**Warning:** `supabase db reset` destruye los datos locales (perfiles, mesas, comandas).
+Para detener los contenedores: `pnpm supabase stop` (agrega `--no-backup` para borrar también los datos locales).
 
 ### 5. Iniciar el servidor de desarrollo
 
@@ -242,12 +242,17 @@ yarn test
 ### Pruebas de base de datos
 
 El comportamiento de la base de datos (políticas RLS, permisos, RPCs) se cubre con
-pruebas SQL de pgTAP en `supabase/tests/`, que se ejecutan contra el contenedor
-`supabase-db` en ejecución. Ejecútalas con `pnpm test:db`, o un solo archivo con
-`bash scripts/db-test.sh <archivo>`. Cada archivo corre dentro de una transacción
-que se revierte, así que la base nunca se modifica. Consulta
-`supabase/tests/README.md` para escribir pruebas y suplantar los roles
-`anon` / `authenticated`.
+pruebas SQL de pgTAP en `supabase/tests/`, que se ejecutan con la Supabase CLI
+contra la base local (requiere `pnpm supabase start`):
+
+```bash
+pnpm test:db                                  # todos los archivos
+pnpm supabase test db supabase/tests/001_bootstrap.test.sql   # uno solo
+```
+
+Cada archivo es autónomo (`BEGIN; ... SELECT plan(n); ... finish(); ROLLBACK;`), así
+que la base nunca se modifica. Consulta `supabase/tests/README.md` para escribir
+pruebas y suplantar los roles `anon` / `authenticated`.
 
 ---
 
