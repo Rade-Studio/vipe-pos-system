@@ -43,10 +43,16 @@
 --     caller's tenant, NULL when the account has no profile, so a profile-less
 --     caller still cannot land a row anywhere - the row is rejected, not
 --     silently filed under somebody else's tenant.
---   * any trusted provisioning caller (postgres running the seed or a
---     migration, service_role, the dashboard SQL editor): the oldest restaurant,
---     ORDER BY created_at, id - the same deterministic fallback
+--   * current_user = 'postgres' (seed.sql and migrations only): the oldest
+--     restaurant, ORDER BY created_at, id - the same deterministic fallback
 --     handle_new_user() uses, and the same target as the backfill below.
+--   * every other role (service_role webhooks/jobs, the dashboard SQL editor):
+--     NULL, by design. These callers bypass RLS and serve several tenants, so
+--     a guessed tenant would silently file data under the wrong restaurant.
+--     They MUST name restaurant_id explicitly; omitting it fails NOT NULL
+--     (SQLSTATE 23502) instead of writing anywhere. Provisioning stays fully
+--     possible: 040_remaining_tables_tenancy.test.sql pins both the 23502
+--     rejection and a successful service_role insert that names the tenant.
 --
 -- Backfill target for the rows that predate the column: the oldest restaurant
 -- (ORDER BY created_at, id, LIMIT 1) - deterministic, and the only tenant that
@@ -285,7 +291,8 @@ CREATE POLICY ingredient_transactions_orders_delete_policy
 -- delete takes a tenant's data with it).
 --
 -- Read your own row, write nothing. Creating and editing restaurants is a
--- provisioning job (dashboard / SQL editor / service_role), which bypasses RLS;
+-- provisioning job (dashboard / SQL editor / service_role), which bypasses RLS
+-- and must name restaurant_id on tenant tables (see SECTION 1);
 -- 040_remaining_tables_tenancy.test.sql pins that service_role still writes.
 ALTER TABLE public.restaurants ENABLE ROW LEVEL SECURITY;
 

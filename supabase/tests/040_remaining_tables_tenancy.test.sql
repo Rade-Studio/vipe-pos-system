@@ -40,7 +40,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(58);
+SELECT plan(60);
 
 -- ============================================
 -- Helpers
@@ -602,7 +602,19 @@ SELECT throws_ok(
   '23502',
   NULL,
   'service_role cannot insert business_config without restaurant_id');
+
+-- ...and the provisioning path works once the tenant is named.
+SELECT is(
+  pg_temp.probe_exec(
+    $$ INSERT INTO public.business_config (restaurant_id, key, value)
+       VALUES ('bbbbbbbb-0000-4000-8000-000000000042', 'svc_probe', 'x') $$),
+  1,
+  'service_role inserts business_config when it names restaurant_id');
 RESET ROLE;
+SELECT is(
+  (SELECT restaurant_id FROM public.business_config WHERE key = 'svc_probe')::uuid,
+  'bbbbbbbb-0000-4000-8000-000000000042'::uuid,
+  'the service_role row lands in the tenant it named');
 
 -- ============================================
 -- 8. Fail closed: an authenticated account with no profile
