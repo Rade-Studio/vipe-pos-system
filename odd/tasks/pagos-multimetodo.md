@@ -52,9 +52,16 @@ split/undo of partial payments.
         orders method label (lib/supabase/service.ts), retire legacy payment_transactions writers.
 - [x] 9. Admin payment-methods screen (create, rename, disable, reorder).
 - [ ] 10. Invoices (web print, `lib/print`, `pos/` Python) list tenders, tip and change.
+  - [ ] 10a. Web + lib/print: invoice tenders from the server pay_order result and the ledger
+        (reprints), catalog names resolved before broadcast, fix 7a label bug (single non-cash
+        line printed as cash). Additive payload: keep paymentMethod/cashReceived/cashChange.
+  - [ ] 10b. pos/print_renderer.py prints tenders when present (stdlib unittest), README
+        note: installed listeners keep the old single-label ticket until rebuilt.
 - [ ] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
 
 ## Known follow-ups (out of scope)
+
+- pos/app.py:617-689 generate_invoice_pos/obtener_texto_pago are dead code.
 
 - Completed-orders invoice shows a non-default method by its code (e.g. datafono) until task 10 prints tenders with their names.
 
