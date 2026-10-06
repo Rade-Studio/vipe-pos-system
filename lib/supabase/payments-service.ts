@@ -146,6 +146,17 @@ function mapErrorCode(code: string | undefined): PaymentServiceError['kind'] {
   }
 }
 
+/** A successful RPC must return a row; treat an empty payload as a failure. */
+function requireData<T>(data: unknown, rpc: string): T {
+  if (data === null || data === undefined) {
+    throw new PaymentServiceError({
+      kind: 'unknown',
+      message: `${rpc} returned no data`,
+    })
+  }
+  return data as T
+}
+
 function wrapError(error: SupabaseLikeError | null | undefined): PaymentServiceError {
   const code = error?.code
   const message = error?.message ?? 'Supabase request failed'
@@ -213,7 +224,7 @@ export async function payOrder(input: PayOrderInput): Promise<PayOrderResult> {
 
   if (error) throw wrapError(error)
 
-  const row = data as PayOrderResponseRow
+  const row = requireData<PayOrderResponseRow>(data, 'pay_order')
   const tenders: PayOrderTenderEcho[] = (row.tenders ?? []).map((t) => ({
     lineNo: t.line_no,
     methodCode: t.method_code,
@@ -259,7 +270,7 @@ export async function splitOrder(input: SplitOrderInput): Promise<SplitOrderResu
 
   if (error) throw wrapError(error)
 
-  const row = data as SplitOrderResponseRow
+  const row = requireData<SplitOrderResponseRow>(data, 'split_order')
   return {
     childOrderId: row.child_order_id,
     parent: toBillSummary(row.parent),
@@ -281,7 +292,7 @@ export async function undoSplit(input: UndoSplitInput): Promise<UndoSplitResult>
 
   if (error) throw wrapError(error)
 
-  const row = data as UndoSplitResponseRow
+  const row = requireData<UndoSplitResponseRow>(data, 'undo_split')
   return { parent: toBillSummary(row.parent) }
 }
 

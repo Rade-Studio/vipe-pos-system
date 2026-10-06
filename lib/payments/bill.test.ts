@@ -77,4 +77,11 @@ describe('computeBill', () => {
     expect(bill.suggestedTip).toBe(0)
     expect(bill.amountDue).toBe(26190)
   })
+
+  it('rounds decimal prices like Postgres numeric, not binary floats', () => {
+    // 4.10 * 15 = 61.5 exactly, which Postgres rounds to 62; the float
+    // product is 61.4999... and Math.round alone would give 61.
+    expect(computeBill([{ price: 4.1, quantity: 15 }], 0, 0).subtotal).toBe(62)
+    expect(computeBill([{ price: 10.15, quantity: 10 }], 0, 0).subtotal).toBe(102)
+  })
 })

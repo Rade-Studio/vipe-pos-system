@@ -23,8 +23,12 @@ export function computeBill(
   taxPct: number,
   tipPct: number,
 ): Bill {
+  // Multiply in whole cents: price * quantity in binary floats can land just
+  // below a .5 (4.10 * 15 = 61.4999...) and round differently from Postgres
+  // numeric. cents * quantity is an exact integer, and k.5 is exact in binary.
   const subtotal = items.reduce(
-    (acc, item) => acc + Math.round(item.price * item.quantity),
+    (acc, item) =>
+      acc + Math.round((Math.round(item.price * 100) * item.quantity) / 100),
     0,
   )
   const tax = Math.round((subtotal * taxPct) / 100)

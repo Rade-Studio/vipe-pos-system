@@ -129,6 +129,21 @@ const TENDERS: PayOrderTenderLine[] = [
 ]
 
 describe('payOrder', () => {
+  it('throws a PaymentServiceError when the RPC returns no data and no error', async () => {
+    state.rpc.mockResolvedValueOnce({ data: null, error: null })
+
+    const call = payOrder({
+      orderId: 'o-1',
+      cashRegisterId: 'r-1',
+      tip: 0,
+      tenders: TENDERS,
+      idempotencyKey: 'k-1',
+    })
+
+    await expect(call).rejects.toBeInstanceOf(PaymentServiceError)
+    await expect(call).rejects.toMatchObject({ kind: 'unknown' })
+  })
+
   it('calls rpc("pay_order") with the exact snake_case arg names the server expects', async () => {
     state.rpc.mockResolvedValueOnce({
       data: {
