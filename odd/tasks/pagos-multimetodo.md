@@ -26,7 +26,7 @@ split/undo of partial payments.
 
 - [x] 1. Pin the 14 `latest` dependency specifiers to the locked versions, then add Vitest
       (+ config, `pnpm test`) without lockfile drift; CI runs `pnpm test`.
-- [ ] 2. `payment_methods` catalog (per tenant, RLS read same-tenant, admin-only write,
+- [x] 2. `payment_methods` catalog (per tenant, RLS read same-tenant, admin-only write,
       seeded with cash/transfer/nequi/bancolombia for every restaurant and new restaurants).
 - [ ] 3. `payments` + `payment_tenders` tables (integer pesos, RLS, tenant-scoped), legacy
       `payment_transactions` kept read-only for history.
@@ -52,4 +52,5 @@ split/undo of partial payments.
 
 | Task | Commit | Checks |
 |---|---|---|
-| 1 | (this commit) | 14 `latest` specifiers pinned to locked versions: lockfile `version:` diff shows only the new vitest entry. RED: `pnpm test` failed (module missing); GREEN: 2 files / 5 tests. `pnpm install --frozen-lockfile` ok, typecheck 0, lint 0. CI `unit-tests` job added. |
+| 1 | `14138b0` | 14 `latest` specifiers pinned to locked versions: lockfile `version:` diff shows only the new vitest entry. RED: `pnpm test` failed (module missing); GREEN: 2 files / 5 tests. `pnpm install --frozen-lockfile` ok, typecheck 0, lint 0. CI `unit-tests` job added. RDD lineage `review-39f41315605aae28`: 4 lenses (readability refused once for a misspelled path, retry ok) -> **approved**, acknowledged; 23 informational findings. |
+| 2 | (this commit) | RED: `050_payment_methods` 57/58 failed. GREEN: Files=7 Tests=217 PASS (incl. 020 anon lockdown); db reset clean. Orchestrator hardening: revoked default-ACL EXECUTE of authenticated on the three trigger functions (SECURITY DEFINER seeder reachable only via trigger); triggers still fire (050 green). |
