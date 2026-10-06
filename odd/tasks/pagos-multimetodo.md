@@ -52,7 +52,7 @@ split/undo of partial payments.
         orders method label (lib/supabase/service.ts), retire legacy payment_transactions writers.
 - [x] 9. Admin payment-methods screen (create, rename, disable, reorder).
 - [ ] 10. Invoices (web print, `lib/print`, `pos/` Python) list tenders, tip and change.
-  - [ ] 10a. Web + lib/print: invoice tenders from the server pay_order result and the ledger
+  - [x] 10a. Web + lib/print: invoice tenders from the server pay_order result and the ledger
         (reprints), catalog names resolved before broadcast, fix 7a label bug (single non-cash
         line printed as cash). Additive payload: keep paymentMethod/cashReceived/cashChange.
   - [ ] 10b. pos/print_renderer.py prints tenders when present (stdlib unittest), README
@@ -60,6 +60,8 @@ split/undo of partial payments.
 - [ ] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
 
 ## Known follow-ups (out of scope)
+
+- components/views/CashierView.tsx showInvoice is dead code (no callers).
 
 - pos/app.py:617-689 generate_invoice_pos/obtener_texto_pago are dead code.
 
@@ -105,3 +107,4 @@ split/undo of partial payments.
 | 9 RDD | review-91bb59d275b2b9df | risk admitted; resilience refused (invalid JSON) then admitted; readability admitted; reliability refused twice (location without line; uppercase evidence class) -> retry spent, lineage left in reviewing. Rejected payloads read: second has no BLOCKER/CRITICAL; first is mostly noise (self-contradicting claims), one real: a failed reorder never reloaded the server order -> fixed in the next commit. |
 | 9 fix | `ac71886` | Reload the catalog after a failed reorder (sequential updates may have partly landed). Component without jsdom: no meaningful RED; typecheck 0, lint clean, build OK. |
 | 9 fix RDD | review-ca7d8c83f53b0ea4 | Medium tier, reliability lens admitted -> APPROVED; acknowledgement burned authority. Advisory only: no component test for the failed-reorder reload (no jsdom). |
+| 10a | (this commit) | Invoice tenders from the server: lib/payments/invoice-tenders.ts (RED: module missing; GREEN 12 tests incl. single-Nequi regression for the 7a bug that printed it as cash) and renderInvoice tender path (RED: change double-counted 6.000 vs 3.000; GREEN 7 tests). Reprints use the ledger payment kept by getOrdersByDate. Additive payload: tenders[] {methodCode, methodName, methodKind, amount, cashReceived} + change; legacy fields still set. Parent check: legacy renderInvoice output byte-identical to the previous version for 4 inputs. Vitest 14 files / 241; typecheck 0; build OK. |

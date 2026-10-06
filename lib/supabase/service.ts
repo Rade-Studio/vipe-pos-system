@@ -962,8 +962,8 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
     const orders = await Promise.all(
       data.map(async (order: any) => {
         let paymentMethod: PaymentMethod | "multiple" | string | undefined
-
         const newPayment = newPaymentByOrderId.get(order.id)
+
         if (newPayment) {
           paymentMethod = invoicePaymentMethod(newPayment)
         } else {
@@ -1005,6 +1005,11 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
           createdAt: order.created_at,
           updatedAt: order.updated_at,
           paymentMethod,
+          // Attach the ledger row so the admin reprint can render the
+          // tender list without a second round-trip. Undefined for
+          // orders that pre-date the new pay_order flow (those fall
+          // back to the legacy `paymentMethod` label).
+          ledgerPayment: newPayment,
         }
       })
     )
