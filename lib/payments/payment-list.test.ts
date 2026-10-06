@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  invoicePaymentMethod,
   methodLabel,
   parsePaymentRows,
   toCsvRows,
@@ -259,6 +260,41 @@ describe('methodLabel', () => {
       },
     ])
     expect(methodLabel(payments[0])).toBe('Sin método')
+  })
+})
+
+describe('invoicePaymentMethod', () => {
+  it('returns "multiple" when more than one distinct method was used', () => {
+    const [first] = parsePaymentRows(SAMPLE_RAW)
+    expect(invoicePaymentMethod(first)).toBe('multiple')
+  })
+
+  it('passes a default catalog code straight through', () => {
+    const [, second] = parsePaymentRows(SAMPLE_RAW)
+    expect(invoicePaymentMethod(second)).toBe('cash')
+  })
+
+  it('keeps a non-default catalog code instead of relabelling it as cash', () => {
+    const payments = parsePaymentRows([
+      {
+        ...SAMPLE_RAW[1],
+        payment_tenders: [
+          {
+            ...SAMPLE_RAW[1].payment_tenders[0],
+            payment_method_id: 'm-card',
+            method_code: 'datafono',
+            method_kind: 'electronic',
+            cash_received: null,
+          },
+        ],
+      },
+    ])
+    expect(invoicePaymentMethod(payments[0])).toBe('datafono')
+  })
+
+  it('returns undefined when no tender lines are present', () => {
+    const payments = parsePaymentRows([{ ...SAMPLE_RAW[0], payment_tenders: [] }])
+    expect(invoicePaymentMethod(payments[0])).toBeUndefined()
   })
 })
 

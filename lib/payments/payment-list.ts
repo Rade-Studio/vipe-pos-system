@@ -355,6 +355,19 @@ export function methodLabel(payment: PaymentRow, catalog?: readonly MethodCatalo
   return payment.tenders[0].methodCode
 }
 
+/**
+ * Payment-method value for the printable invoice: "multiple" when more
+ * than one distinct method was used, otherwise the snapshot code. Codes
+ * outside the four defaults pass through unchanged; the invoice renders
+ * unknown codes as-is.
+ */
+export function invoicePaymentMethod(payment: PaymentRow): string | undefined {
+  if (payment.tenders.length === 0) return undefined
+  const distinct = new Set(payment.tenders.map((t) => t.paymentMethodId))
+  if (distinct.size > 1) return 'multiple'
+  return payment.tenders[0].methodCode
+}
+
 // -----------------------------------------------------------
 // CSV export
 // -----------------------------------------------------------
