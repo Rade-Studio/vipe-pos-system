@@ -353,6 +353,20 @@ class MalformedTenderFallbackTests(unittest.TestCase):
         self.assertIn("CAMBIO: 8.100", joined)
         self.assertNotIn("FORMAS DE PAGO:", joined)
 
+    def test_malformed_mixed_payment_keeps_the_sent_method_label(self):
+        invoice = {
+            "businessInfo": dict(_BASE_BUSINESS),
+            "bill": dict(_BASE_BILL),
+            "date": "2026-10-06T15:00:52",
+            "paymentMethod": "multiple",
+            "cashReceived": 20000,
+            "cashChange": 3000,
+            "tenders": [{"methodCode": "cash"}, {"methodCode": "nequi"}],
+        }
+        joined = "\n".join(_render_lines(invoice))
+        self.assertIn("FORMA DE PAGO: Multiple", joined)
+        self.assertNotIn("FORMA DE PAGO: Efectivo", joined)
+
     def test_tender_non_int_amount_falls_back_to_legacy_block(self):
         invoice = {
             "businessInfo": dict(_BASE_BUSINESS),

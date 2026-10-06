@@ -259,7 +259,7 @@ def render_invoice(invoice_number: str, invoice: dict, display_items: list[dict]
     # Payment method. The multi-tender path takes over when there is at
     # least one valid tender line; otherwise we fall back to the legacy
     # single-label block (so historical invoices reprint unchanged).
-    valid_tenders, all_malformed = _normalize_tenders(invoice.get("tenders"))
+    valid_tenders, _all_malformed = _normalize_tenders(invoice.get("tenders"))
     if valid_tenders:
         lines.append({"text": "FORMAS DE PAGO:", "bold": False, "align": "left"})
         # `invoice.change` is the authoritative total the new payload
@@ -300,14 +300,10 @@ def render_invoice(invoice_number: str, invoice: dict, display_items: list[dict]
                 }
             )
     else:
-        # Legacy path. When a tender list was present but every entry
-        # was malformed, prefer the legacy single-label block over
-        # silently dropping the payment info.
-        if all_malformed:
-            method_code = "cash" if invoice.get("cashReceived", 0) else invoice.get("paymentMethod", "N/A")
-        else:
-            method_code = invoice.get("paymentMethod", "N/A")
-        method_text = _payment_method_text(method_code)
+        # Legacy path, also used when every tender entry was malformed:
+        # the web always fills paymentMethod ("multiple" for mixed
+        # payments), so it stays the label source.
+        method_text = _payment_method_text(invoice.get("paymentMethod", "N/A"))
         lines.append({"text": f"FORMA DE PAGO: {method_text}", "bold": False, "align": "left"})
 
         if invoice.get("cashReceived", 0) > 0:
