@@ -37,7 +37,7 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
       kong/post-auth-init, init SQL, patched GoTrue) and update README/DOCKER.md.
 - [x] 3. Tenant/role helpers + RLS rewrite (RED first): cross-tenant reads/writes denied,
       no `auth.uid() IS NULL` bypass, policies use `profiles`-based helpers.
-- [ ] 4. Anon lockdown (RED first): revoke anon on all existing public tables and
+- [x] 4. Anon lockdown (RED first): revoke anon on all existing public tables and
       sequences, drop `GRANT anon/service_role TO authenticated`, explicit grants for
       `authenticated` and `service_role`.
 - [ ] 5. Privilege escalation (RED first): users cannot change their own `role` or
@@ -48,6 +48,12 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
 - [ ] 7. CI: run `pnpm test:db` in GitHub Actions.
 
 ## Known follow-ups (out of scope)
+
+- `supabase_admin` default ACLs still auto-grant anon on new public objects (not revocable from a
+  migration); `020_anon_lockdown` enumerates every public table/function, so any new object
+  exposed to anon fails the suite. Decide later on `auto_expose_new_tables = false`.
+- PUBLIC keeps default EXECUTE on new functions; revoke per function (pattern in 20261005130000).
+- `authenticated` still has TRUNCATE/REFERENCES/TRIGGER on public tables and CREATE on schema public.
 
 - `001_bootstrap.test.sql` hardcodes 29 migrations; update it with every new migration.
 - `docs/payment-atomicity-test.md` still uses `docker exec supabase-db psql`; rewrite it in the
@@ -71,3 +77,4 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
 | 1 | `d7cd948` | `pnpm test:db` 1/1 PASS; deliberate failure and plan mismatch detected (exit 1); pgtap not left installed. RDD lineage `review-8e3ef50661bbebc4`: risk + resilience admitted, readability/reliability refused 4x for invalid reviewer JSON (tool defect); left open, abandon needs maintainer authorization. Harness superseded by `supabase test db` in 2a. |
 | 2a | `99163c5` | Verifier: `supabase start` on ports 4432x, `db reset` clean (29 migrations + seed), `pnpm test:db` Files=2 Tests=18 PASS, seeded user login 200 / wrong password 400. RED captured before fixes. Lockfile untouched (CLI via `npx supabase@2.119.0`). RDD lineage `review-96e6f3ec43551b31`: risk, resilience, readability admitted; reliability refused 2x for invalid reviewer JSON; refused claims read manually, none confirmed (brittle hardcoded migration count noted). |
 | 2b | `9872534` | `docker compose config -q` exit 0 (dummy env), `pnpm test:db` 18/18 PASS, `pnpm typecheck` exit 0; only stale ref left in `docs/payment-atomicity-test.md`. RDD lineage `review-9bb0a1ea12ecc16f`: risk, resilience, reliability admitted; readability refused (finding without line) then native failure; terminal `escalated` (`unknown_causality`) on R3-001..003 and two R4 findings, all assessed false or intentional (healthcheck exists; fail-fast env is by design; compose no longer owns Supabase; CLI local anon key is deterministic). |
+| 3 | `fa39c07` | RED: `010_tenant_isolation` 15 failures (metadata-lying JWT reads tenant B, sub-less JWT reads 9 tables, cross-tenant UPDATE hits 2 rows). GREEN: `pnpm test:db` Files=3 Tests=37 PASS; `db reset` clean, seed loads (6 tables, 4 dishes, 7 categories, 5 profiles). RDD lineage `review-d0f0777767295c7e` (tier medium, reliability only): captured first try; refuter refuted the profiles recursion finding; escalated on `R3-bootstrap-default-mismatch` (seed may not load), refuted by the clean reset above. |
