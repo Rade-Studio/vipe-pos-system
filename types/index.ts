@@ -163,16 +163,8 @@ export type CashRegister = {
 }
 
 // Summary types for cash register
-export type CashRegisterSummary = {
-  initialCash: number
-  totalCash: number
-  totalTransfer: number
-  totalNequi: number
-  totalBancolombia: number
-  totalSales: number
-  totalChange: number
-  finalCash: number
-}
+// (CashRegisterSummary removed in task 8c: the only authority is the
+// server's `register_summary` RPC; see `lib/payments/register-summary.ts`.)
 
 // Tipos para impresión
 export interface PrintableInvoice {

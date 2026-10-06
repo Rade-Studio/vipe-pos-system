@@ -2,6 +2,7 @@ import type { CartItem, Order, Profile, PaymentMethod } from "@/types"
 import { supabase as clientSupabase } from "./client"
 import ingredientTransactionService from "./ingredient-transaction-service"
 import { log } from "@/lib/log"
+import { getPaymentsByOrderIds } from "./payments-service"
 
 // Reutilizar el cliente de Supabase ya inicializado
 export const supabase = clientSupabase
@@ -945,21 +946,62 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
       throw error
     }
 
+    // New ledger is the source of truth for payments taken since the
+    // pay_order migration shipped. One batched read covers every order on
+    // the day; orders without a new payment fall back to the legacy
+    // payment_transactions read so historical bills keep their method
+    // label.
+    const orderIds = data.map((o: any) => o.id)
+    const newPayments = await getPaymentsByOrderIds(orderIds).catch((err) => {
+      log.error("Error al leer payments para órdenes:", { error: String(err) })
+      return []
+    })
+    const newPaymentByOrderId = new Map(newPayments.map((p) => [p.orderId, p]))
+
+    // The printable invoice's `paymentMethod` field is still typed as the
+    // legacy union (cash | transfer | nequi | bancolombia | multiple). The
+    // default catalog uses the same codes, so for the four defaults the new
+    // ledger's `methodCode` maps straight through; for anything else the
+    // invoice keeps the snapshot code as the raw string. The admin table
+    // shows the rendered name via `methodLabel` separately.
+    const LEGACY_CODES = new Set<PaymentMethod>(["cash", "transfer", "nequi", "bancolombia"])
+
     const orders = await Promise.all(
       data.map(async (order: any) => {
-        const { data: payments, error: payError } = await supabase
-          .from("payment_transactions")
-          .select("method")
-          .eq("order_id", order.id)
+        let paymentMethod: PaymentMethod | "multiple" | string | undefined
 
-        if (payError) {
-          log.error("Error al obtener métodos de pago:", { payError: String(payError) })
-        }
+        const newPayment = newPaymentByOrderId.get(order.id)
+        if (newPayment) {
+          const distinct = new Set(newPayment.tenders.map((t) => t.paymentMethodId))
+          if (distinct.size > 1) {
+            paymentMethod = "multiple"
+          } else if (newPayment.tenders.length > 0) {
+            const code = newPayment.tenders[0].methodCode
+            // The printable invoice's union still lists the four legacy
+            // codes. The default catalog uses the same codes, so they map
+            // straight through; for anything new we keep the snapshot code
+            // as the raw string and rely on the printable invoice's
+            // unknown-method fallback until task 10 prints the tenders.
+            if (LEGACY_CODES.has(code as PaymentMethod)) {
+              paymentMethod = code as PaymentMethod
+            } else {
+              paymentMethod = "cash"
+            }
+          }
+        } else {
+          const { data: payments, error: payError } = await supabase
+            .from("payment_transactions")
+            .select("method")
+            .eq("order_id", order.id)
 
-        let paymentMethod: PaymentMethod | "multiple" | undefined
-        if (payments && payments.length > 0) {
-          const unique = Array.from(new Set(payments.map((p) => p.method)))
-          paymentMethod = unique.length > 1 ? "multiple" : (unique[0] as PaymentMethod)
+          if (payError) {
+            log.error("Error al obtener métodos de pago:", { payError: String(payError) })
+          }
+
+          if (payments && payments.length > 0) {
+            const unique = Array.from(new Set(payments.map((p) => p.method)))
+            paymentMethod = unique.length > 1 ? "multiple" : (unique[0] as PaymentMethod)
+          }
         }
 
         return {

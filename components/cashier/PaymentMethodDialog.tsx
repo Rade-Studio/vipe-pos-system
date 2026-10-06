@@ -47,6 +47,7 @@ import { TenderLinesList } from "./payment/TenderLinesList"
 import { TipControl } from "./payment/TipControl"
 import { useRegisterSummary } from "@/hooks/use-register-summary"
 import { canGiveChange, registerSummaryQueryKey } from "@/lib/payments/register-summary"
+import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
 import { queryClient } from "@/lib/queryClient"
 
 interface PaymentMethodDialogProps {
@@ -269,6 +270,7 @@ const drawerWarning =
       // la pantalla de estado, los diálogos de retiro y el close se
       // actualicen en el siguiente render.
       queryClient.invalidateQueries({ queryKey: registerSummaryQueryKey(summaryIds) })
+      queryClient.invalidateQueries({ queryKey: registerPaymentsQueryKey(summaryIds) })
 
       if (result.alreadyPaid) {
         toast.success("Esta orden ya estaba pagada. Mostrando factura.")

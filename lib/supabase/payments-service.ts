@@ -25,6 +25,10 @@ import { supabase } from '@/lib/supabase/client'
 import { PaymentServiceError } from '@/lib/payments/types'
 import { parseRegisterSummary } from '@/lib/payments/register-summary'
 import type { RegisterSummary } from '@/lib/payments/register-summary'
+import {
+  parsePaymentRows,
+} from '@/lib/payments/payment-list'
+import type { PaymentRow } from '@/lib/payments/payment-list'
 import type {
   OrderBillSummary,
   PayOrderResult,
@@ -430,6 +434,82 @@ export interface CloseRegisterResult {
   cashRegisterId: string
   finalCash: number
   summary: RegisterSummary
+}
+
+// -----------------------------------------------------------
+// listRegisterPayments / getPaymentsByOrderIds
+// -----------------------------------------------------------
+
+// The column list is the server's snake_case + a nested `payment_tenders(*)`
+// for the line breakdown. The leading columns are the ones
+// `parsePaymentRows` requires; payment_tenders is the nested shape the
+// UI renders (method label, amount, change).
+const PAYMENTS_SELECT =
+  'id, order_id, cash_register_id, cashier_profile_id, amount_due, tip_amount, total_charged, change_given, idempotency_key, created_at, payment_tenders(*)'
+
+/**
+ * Read every payment taken on one or more cash registers (joined to its
+ * tender lines), ordered newest first. Empty `ids` short-circuits so the
+ * hook stays safe when the UI has nothing selected yet (a network round
+ * trip with an empty filter is a 400 from PostgREST).
+ *
+ * Caller: `useRegisterPayments` (the cashier/admin transaction lists) -
+ * the only authoritative source of "what was sold on this register".
+ * Legacy `payment_transactions` is rendered as a separate read-only block.
+ */
+export async function listRegisterPayments(registerIds: string[]): Promise<PaymentRow[]> {
+  if (!Array.isArray(registerIds) || registerIds.length === 0) {
+    return []
+  }
+  const { data, error } = await (supabase as any)
+    .from('payments')
+    .select(PAYMENTS_SELECT)
+    .in('cash_register_id', registerIds)
+    .order('created_at', { ascending: false })
+
+  if (error) throw wrapError(error)
+
+  try {
+    return parsePaymentRows(data)
+  } catch (parseErr) {
+    throw new PaymentServiceError({
+      kind: 'unknown',
+      message: `listRegisterPayments returned a malformed payload: ${(parseErr as Error).message}`,
+      cause: parseErr,
+    })
+  }
+}
+
+/**
+ * Same read as `listRegisterPayments` but filtered by `order_id in(ids)`.
+ * Drives the per-order method label on `CompletedOrdersTable`: the
+ * cashier/admin report needs a stable method name even when a bill was
+ * paid across multiple tender lines.
+ *
+ * Empty `orderIds` short-circuits the same way; the caller's React state
+ * may be empty between a date change and the first render.
+ */
+export async function getPaymentsByOrderIds(orderIds: string[]): Promise<PaymentRow[]> {
+  if (!Array.isArray(orderIds) || orderIds.length === 0) {
+    return []
+  }
+  const { data, error } = await (supabase as any)
+    .from('payments')
+    .select(PAYMENTS_SELECT)
+    .in('order_id', orderIds)
+    .order('created_at', { ascending: false })
+
+  if (error) throw wrapError(error)
+
+  try {
+    return parsePaymentRows(data)
+  } catch (parseErr) {
+    throw new PaymentServiceError({
+      kind: 'unknown',
+      message: `getPaymentsByOrderIds returned a malformed payload: ${(parseErr as Error).message}`,
+      cause: parseErr,
+    })
+  }
 }
 
 // -----------------------------------------------------------

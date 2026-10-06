@@ -2,8 +2,6 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import type {
   CashRegister,
-  CashRegisterSummary,
-  PaymentMethod,
   PaymentTransaction,
   CashTransaction,
 } from "@/types/cash-register"
@@ -28,20 +26,6 @@ type CashRegisterState = {
    */
   closeRegister: () => Promise<RegisterSummary | null>
 
-  // Acciones de transacciones
-  addTransaction: (
-    orderId: string,
-    tableId: string,
-    amount: number,
-    method: PaymentMethod | "multiple",
-    paymentsMethod?: Record<PaymentMethod, boolean> | undefined,
-    paymentsAmount?: Record<PaymentMethod, string> | undefined,
-    cashReceived?: number,
-    cashChange?: number,
-    waiterId?: string,
-    tipAmount?: number,
-  ) => Promise<PaymentTransaction | null>
-
   // Acciones para transacciones de efectivo
   addCashToRegister: (amount: number) => Promise<boolean>
   addCashTransaction: (
@@ -61,14 +45,6 @@ type CashRegisterState = {
   loadAllRegisters: () => Promise<void>
   loadTransactionsByRegisterId: (registerId: string) => Promise<PaymentTransaction[]>
   loadCashTransactionsByRegisterId: (registerId: string) => Promise<CashTransaction[]>
-  loadTransactionsByDate: (
-    date: Date,
-  ) => Promise<
-    (CashRegisterSummary & { transactions: PaymentTransaction[]; cashTransactions: CashTransaction[] }) | null
-  >
-  loadTransactionsByRegisters: (registers: string[]) => Promise<
-    (CashRegisterSummary & { transactions: PaymentTransaction[]; cashTransactions: CashTransaction[] }) | null
-  >
 }
 
 export const useCashRegisterStore = create<CashRegisterState>()(
@@ -159,95 +135,6 @@ export const useCashRegisterStore = create<CashRegisterState>()(
         }
       },
 
-      loadTransactionsByDate: async (date: Date) => {
-        try {
-          set({ isLoading: true })
-
-          // Crear fechas para el inicio y fin del día
-          const startDate = new Date(date)
-          startDate.setHours(0, 0, 0, 0)
-
-          const endDate = new Date(date)
-          endDate.setHours(23, 59, 59, 999)
-
-          // Obtener transacciones para el rango de fechas
-          const transactions = await cashRegisterService.getTransactionsByDateRange(startDate, endDate)
-
-          // Obtener transacciones de efectivo para el rango de fechas
-          const cashTransactions = await cashRegisterService.getCashTransactionsByDateRange(startDate, endDate)
-
-          if ((!transactions || transactions.length === 0) && (!cashTransactions || cashTransactions.length === 0)) {
-            return null
-          }
-
-          // Crear un registro temporal con las transacciones del día
-          const tempRegister: CashRegister = {
-            id: "temp-" + date.toISOString(),
-            openingTimestamp: startDate,
-            status: "open",
-            initialCash: 0, // No tenemos este dato para días pasados
-            transactions: transactions,
-            cashTransactions: cashTransactions, // Ahora incluimos las transacciones de efectivo
-          }
-
-          // Calcular el resumen para este registro temporal
-          const summary = cashRegisterService.calculateRegisterSummary(tempRegister)
-
-          // Agregar las transacciones al resumen para poder exportarlas
-          return {
-            ...summary,
-            transactions: transactions,
-            cashTransactions: cashTransactions, // Incluimos las transacciones de efectivo en el resultado
-          }
-        } catch (error) {
-          log.error("Error al cargar transacciones por fecha:", { error: String(error) })
-          return null
-        } finally {
-          set({ isLoading: false })
-        }
-      },
-
-      loadTransactionsByRegisters: async (registers: string[]) => {
-        try {
-          set({ isLoading: true })
-
-          // Obtener transacciones para el rango de fechas
-          const transactions = await cashRegisterService.getTransactionsByRegisters(registers)
-
-          // Obtener transacciones de efectivo para el rango de fechas
-          const cashTransactions = await cashRegisterService.getCashTransactionsByRegisters(registers)
-
-          if ((!transactions || transactions.length === 0) && (!cashTransactions || cashTransactions.length === 0)) {
-            return null
-          }
-
-          // Crear un registro temporal con las transacciones del día
-          const tempRegister: CashRegister = {
-            id: "temp-" + new Date().toISOString(),
-            openingTimestamp: new Date(),
-            status: "open",
-            initialCash: 0, // No tenemos este dato para días pasados
-            transactions: transactions,
-            cashTransactions: cashTransactions, // Ahora incluimos las transacciones de efectivo
-          }
-
-          // Calcular el resumen para este registro temporal
-          const summary = cashRegisterService.calculateRegisterSummary(tempRegister)
-
-          // Agregar las transacciones al resumen para poder exportarlas
-          return {
-            ...summary,
-            transactions: transactions,
-            cashTransactions: cashTransactions, // Incluimos las transacciones de efectivo en el resultado
-          }
-        } catch (error) {
-          log.error("Error al cargar transacciones por fecha:", { error: String(error) })
-          return null
-        } finally {
-          set({ isLoading: false })
-        }
-      },
-
       openRegister: async (initialCash: number) => {
         try {
           // Verificar si ya hay una caja abierta
@@ -304,46 +191,11 @@ export const useCashRegisterStore = create<CashRegisterState>()(
         }
       },
 
-      addTransaction: async (orderId, tableId, amount, method, paymentsMethod, paymentsAmount, cashReceived, cashChange, waiterId, tipAmount) => {
-        const { currentRegister } = get()
-
-        if (!currentRegister || currentRegister.status === "closed") {
-          return null
-        }
-
-        try {
-          // Agregar transacción a Supabase
-          const transactions = await cashRegisterService.addTransaction(
-            currentRegister.id,
-            orderId,
-            tableId,
-            amount,
-            method,
-            paymentsMethod,
-            paymentsAmount,
-            cashReceived,
-            cashChange,
-            waiterId,
-            tipAmount,
-          )
-
-          // Actualizar el registro actual
-          const updatedRegister: CashRegister = {
-            ...currentRegister,
-            transactions: [...currentRegister.transactions, ...transactions],
-          }
-
-          set((state) => ({
-            currentRegister: updatedRegister,
-            registers: state.registers.map((reg) => (reg.id === updatedRegister.id ? updatedRegister : reg)),
-          }))
-
-          return transactions[0]
-        } catch (error) {
-          log.error("Error al agregar transacción:", { error: String(error) })
-          throw error
-        }
-      },
+      // Legacy `addTransaction` was removed in task 8c: the only writer of
+      // public.payments is the server-side `pay_order` RPC, so the browser
+      // never writes a transaction from any client action. The legacy
+      // `payment_transactions` rows remain readable as a separate history
+      // block on the cashier/admin screens.
 
       // Función para agregar efectivo a la caja
       addCashToRegister: async (amount: number) => {

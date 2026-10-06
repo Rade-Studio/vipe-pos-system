@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   PaymentServiceError,
   closeRegisterRpc,
+  getPaymentsByOrderIds,
   getRegisterSummary,
   listPaymentMethods,
+  listRegisterPayments,
   payOrder,
   splitOrder,
   undoSplit,
@@ -22,20 +24,35 @@ import type { PaymentMethodOption, PayOrderTenderLine } from '@/lib/payments/typ
 // `from`/`rpc` implementation without re-importing the module.
 
 const state = vi.hoisted(() => {
-  type FromChain = {
-    select: (cols: string) => {
-      order: (col: string, opts: { ascending: boolean }) => Promise<{ data: unknown; error: unknown }>
-    }
+  // A thenable chain that supports select / eq / in / order and resolves
+  // with the configured { data, error } pair. The promise is created up
+  // front and every method returns the same chain so the result is
+  // inspectable from inside a callback without re-importing the module.
+  type Chain = {
+    select: (cols: string) => Chain
+    eq: (col: string, val: unknown) => Chain
+    in: (col: string, vals: unknown[]) => Chain
+    order: (col: string, opts: { ascending: boolean }) => Chain
+    then: <TResult1 = unknown, TResult2 = never>(
+      onfulfilled?: ((value: { data: unknown; error: unknown }) => TResult1 | PromiseLike<TResult1>) | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    ) => PromiseLike<TResult1 | TResult2>
   }
-  const defaultFrom = (_table: string): FromChain => ({
-    select: () => ({
-      order: () => Promise.resolve({ data: [], error: null }),
-    }),
-  })
+  const makeChain = (result: { data: unknown; error: unknown } = { data: [], error: null }): Chain => {
+    const promise: any = Promise.resolve(result)
+    const chain: any = {}
+    chain.select = () => chain
+    chain.eq = () => chain
+    chain.in = () => chain
+    chain.order = () => chain
+    chain.then = promise.then.bind(promise)
+    return chain as Chain
+  }
+  const defaultFrom = (_table: string): Chain => makeChain()
   return {
     rpc: vi.fn(),
     from: vi.fn(),
-    fromImpl: defaultFrom as (table: string) => FromChain,
+    fromImpl: defaultFrom as (table: string) => Chain,
   }
 })
 
@@ -52,11 +69,16 @@ vi.mock('@/lib/supabase/client', () => ({
 beforeEach(() => {
   state.rpc.mockReset()
   state.from.mockReset()
-  state.fromImpl = (_table: string) => ({
-    select: () => ({
-      order: () => Promise.resolve({ data: [], error: null }),
-    }),
-  })
+  state.fromImpl = (_table: string) => {
+    const promise: any = Promise.resolve({ data: [], error: null })
+    const chain: any = {}
+    chain.select = () => chain
+    chain.eq = () => chain
+    chain.in = () => chain
+    chain.order = () => chain
+    chain.then = promise.then.bind(promise)
+    return chain
+  }
 })
 
 // -----------------------------------------------------------
@@ -67,38 +89,39 @@ describe('listPaymentMethods', () => {
   it('queries the payment_methods table, ordered by sort_order, and remaps to camelCase', async () => {
     state.fromImpl = (table: string) => {
       expect(table).toBe('payment_methods')
-      return {
-        select: (cols: string) => {
-          expect(cols).toBe('id, code, name, kind, is_active, sort_order')
-          return {
-            order: (col: string, opts: { ascending: boolean }) => {
-              expect(col).toBe('sort_order')
-              expect(opts).toEqual({ ascending: true })
-              return Promise.resolve({
-                data: [
-                  {
-                    id: 'm1',
-                    code: 'cash',
-                    name: 'Efectivo',
-                    kind: 'cash',
-                    is_active: true,
-                    sort_order: 10,
-                  },
-                  {
-                    id: 'm2',
-                    code: 'nequi',
-                    name: 'Nequi',
-                    kind: 'electronic',
-                    is_active: true,
-                    sort_order: 30,
-                  },
-                ],
-                error: null,
-              })
-            },
-          }
-        },
+      const promise: any = Promise.resolve({
+        data: [
+          {
+            id: 'm1',
+            code: 'cash',
+            name: 'Efectivo',
+            kind: 'cash',
+            is_active: true,
+            sort_order: 10,
+          },
+          {
+            id: 'm2',
+            code: 'nequi',
+            name: 'Nequi',
+            kind: 'electronic',
+            is_active: true,
+            sort_order: 30,
+          },
+        ],
+        error: null,
+      })
+      const chain: any = {}
+      chain.select = (cols: string) => {
+        expect(cols).toBe('id, code, name, kind, is_active, sort_order')
+        return chain
       }
+      chain.order = (col: string, opts: { ascending: boolean }) => {
+        expect(col).toBe('sort_order')
+        expect(opts).toEqual({ ascending: true })
+        return chain
+      }
+      chain.then = promise.then.bind(promise)
+      return chain
     }
 
     const methods = await listPaymentMethods()
@@ -109,12 +132,14 @@ describe('listPaymentMethods', () => {
   })
 
   it('throws a PaymentServiceError on read error', async () => {
-    state.fromImpl = () => ({
-      select: () => ({
-        order: () =>
-          Promise.resolve({ data: null, error: { code: 'XX000', message: 'boom' } }),
-      }),
-    })
+    state.fromImpl = () => {
+      const promise: any = Promise.resolve({ data: null, error: { code: 'XX000', message: 'boom' } })
+      const chain: any = {}
+      chain.select = () => chain
+      chain.order = () => chain
+      chain.then = promise.then.bind(promise)
+      return chain
+    }
     await expect(listPaymentMethods()).rejects.toBeInstanceOf(PaymentServiceError)
   })
 })
@@ -612,5 +637,228 @@ describe('closeRegisterRpc', () => {
     })
     const err = await closeRegisterRpc('r-1').catch((e) => e)
     expect((err as PaymentServiceError).kind).toBe('rejected')
+  })
+})
+
+// -----------------------------------------------------------
+// listRegisterPayments
+// -----------------------------------------------------------
+//
+// Reads public.payments joined to public.payment_tenders for one or more
+// cash registers, ordered by created_at desc. Empty ids short-circuit so
+// the hook never fires a network request for the registration when the
+// cashier/admin UI has nothing selected yet.
+
+describe('listRegisterPayments', () => {
+  it('short-circuits when ids is empty (no network call)', async () => {
+    state.from.mockClear()
+    const out = await listRegisterPayments([])
+    expect(out).toEqual([])
+    expect(state.from).not.toHaveBeenCalled()
+  })
+
+  it('selects the payments + nested tenders columns, filters by cash_register_id in(ids), orders created_at desc, and remaps to camelCase', async () => {
+    const wireRows = [
+      {
+        id: 'pay-1',
+        order_id: 'ord-1',
+        cash_register_id: 'r-1',
+        cashier_profile_id: 'prof-1',
+        amount_due: 40000,
+        tip_amount: 5000,
+        total_charged: 45000,
+        change_given: 5000,
+        idempotency_key: 'idem-1',
+        created_at: '2026-10-06T12:00:00.000Z',
+        payment_tenders: [
+          {
+            id: 't1',
+            payment_id: 'pay-1',
+            line_no: 1,
+            payment_method_id: 'm-cash',
+            method_code: 'cash',
+            method_kind: 'cash',
+            amount: 20000,
+            cash_received: 25000,
+          },
+          {
+            id: 't2',
+            payment_id: 'pay-1',
+            line_no: 2,
+            payment_method_id: 'm-nequi',
+            method_code: 'nequi',
+            method_kind: 'electronic',
+            amount: 25000,
+            cash_received: null,
+          },
+        ],
+      },
+    ]
+
+    state.fromImpl = (table: string) => {
+      expect(table).toBe('payments')
+      const calls: Array<{ method: string; args: unknown[] }> = []
+      const promise: any = Promise.resolve({ data: wireRows, error: null })
+      const chain: any = {}
+      chain.select = (cols: string) => {
+        calls.push({ method: 'select', args: [cols] })
+        expect(cols).toBe(
+          'id, order_id, cash_register_id, cashier_profile_id, amount_due, tip_amount, total_charged, change_given, idempotency_key, created_at, payment_tenders(*)',
+        )
+        return chain
+      }
+      chain.in = (col: string, vals: unknown[]) => {
+        calls.push({ method: 'in', args: [col, vals] })
+        expect(col).toBe('cash_register_id')
+        expect(vals).toEqual(['r-1', 'r-2'])
+        return chain
+      }
+      chain.order = (col: string, opts: { ascending: boolean }) => {
+        calls.push({ method: 'order', args: [col, opts] })
+        expect(col).toBe('created_at')
+        expect(opts).toEqual({ ascending: false })
+        return chain
+      }
+      chain.then = promise.then.bind(promise)
+      return chain
+    }
+
+    const out = await listRegisterPayments(['r-1', 'r-2'])
+    expect(out).toHaveLength(1)
+    expect(out[0].id).toBe('pay-1')
+    expect(out[0].tenders).toHaveLength(2)
+    expect(out[0].tenders[0]).toEqual({
+      id: 't1',
+      paymentId: 'pay-1',
+      lineNo: 1,
+      paymentMethodId: 'm-cash',
+      methodCode: 'cash',
+      methodKind: 'cash',
+      amount: 20000,
+      cashReceived: 25000,
+    })
+    expect(out[0].tenders[1].methodKind).toBe('electronic')
+    expect(out[0].tenders[1].cashReceived).toBeNull()
+  })
+
+  it('throws a PaymentServiceError on read error', async () => {
+    state.fromImpl = () => {
+      const promise: any = Promise.resolve({ data: null, error: { code: '42501', message: 'permission denied' } })
+      const chain: any = {}
+      chain.select = () => chain
+      chain.in = () => chain
+      chain.order = () => chain
+      chain.then = promise.then.bind(promise)
+      return chain
+    }
+    const err = await listRegisterPayments(['r-1']).catch((e) => e)
+    expect(err).toBeInstanceOf(PaymentServiceError)
+    expect((err as PaymentServiceError).kind).toBe('not-authorized')
+  })
+
+  it('throws a PaymentServiceError when the rows are malformed', async () => {
+    state.fromImpl = () => {
+      const promise: any = Promise.resolve({
+        data: [{ id: 'broken' }], // missing required fields
+        error: null,
+      })
+      const chain: any = {}
+      chain.select = () => chain
+      chain.in = () => chain
+      chain.order = () => chain
+      chain.then = promise.then.bind(promise)
+      return chain
+    }
+    const err = await listRegisterPayments(['r-1']).catch((e) => e)
+    expect(err).toBeInstanceOf(PaymentServiceError)
+    expect((err as PaymentServiceError).kind).toBe('unknown')
+  })
+})
+
+// -----------------------------------------------------------
+// getPaymentsByOrderIds
+// -----------------------------------------------------------
+//
+// Same read as listRegisterPayments but filtered by order_id in(ids) -
+// drives the per-order method label on CompletedOrdersTable.
+
+describe('getPaymentsByOrderIds', () => {
+  it('short-circuits when orderIds is empty (no network call)', async () => {
+    state.from.mockClear()
+    const out = await getPaymentsByOrderIds([])
+    expect(out).toEqual([])
+    expect(state.from).not.toHaveBeenCalled()
+  })
+
+  it('selects payments + tenders, filters by order_id in(ids), orders created_at desc', async () => {
+    const wireRows = [
+      {
+        id: 'pay-1',
+        order_id: 'ord-1',
+        cash_register_id: 'r-1',
+        cashier_profile_id: 'prof-1',
+        amount_due: 40000,
+        tip_amount: 5000,
+        total_charged: 45000,
+        change_given: 5000,
+        idempotency_key: 'idem-1',
+        created_at: '2026-10-06T12:00:00.000Z',
+        payment_tenders: [
+          {
+            id: 't1',
+            payment_id: 'pay-1',
+            line_no: 1,
+            payment_method_id: 'm-cash',
+            method_code: 'cash',
+            method_kind: 'cash',
+            amount: 45000,
+            cash_received: 50000,
+          },
+        ],
+      },
+    ]
+
+    state.fromImpl = (table: string) => {
+      expect(table).toBe('payments')
+      const promise: any = Promise.resolve({ data: wireRows, error: null })
+      const chain: any = {}
+      chain.select = (cols: string) => {
+        expect(cols).toBe(
+          'id, order_id, cash_register_id, cashier_profile_id, amount_due, tip_amount, total_charged, change_given, idempotency_key, created_at, payment_tenders(*)',
+        )
+        return chain
+      }
+      chain.in = (col: string, vals: unknown[]) => {
+        expect(col).toBe('order_id')
+        expect(vals).toEqual(['ord-1'])
+        return chain
+      }
+      chain.order = (col: string, opts: { ascending: boolean }) => {
+        expect(col).toBe('created_at')
+        expect(opts).toEqual({ ascending: false })
+        return chain
+      }
+      chain.then = promise.then.bind(promise)
+      return chain
+    }
+
+    const out = await getPaymentsByOrderIds(['ord-1'])
+    expect(out).toHaveLength(1)
+    expect(out[0].orderId).toBe('ord-1')
+    expect(out[0].tenders[0].methodCode).toBe('cash')
+  })
+
+  it('maps P0002 -> not-found', async () => {
+    state.fromImpl = () => {
+      const promise: any = Promise.resolve({ data: null, error: { code: 'P0002', message: 'orders not found' } })
+      const chain: any = {}
+      chain.select = () => chain
+      chain.in = () => chain
+      chain.order = () => chain
+      chain.then = promise.then.bind(promise)
+      return chain
+    }
+    const err = await getPaymentsByOrderIds(['ord-1']).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('not-found')
   })
 })

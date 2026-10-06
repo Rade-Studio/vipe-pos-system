@@ -16,7 +16,9 @@ import {
   tipsShortfall,
 } from "@/lib/payments/register-summary"
 import type { CashRegister } from "@/types/cash-register"
+import type { CashTransaction } from "@/types/cash-register"
 import { AlertTriangle } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 
 interface CashRegisterSummaryProps {
   selectedDate?: Date
@@ -91,39 +93,26 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
   const rows = useMemo(() => (summary ? summaryRows(summary) : []), [summary])
   const shortfall = summary ? tipsShortfall(summary) : 0
   const showLegacy = summary ? hasLegacy(summary) : false
-  const cashTransactionsForSelected = useMemo(() => {
-    // cash_transactions remain a separate read; the migration exposes
-    // totals on the summary but not the row list. We pull the rows
-    // through the legacy `getCashTransactionsByRegisters` call so the
-    // Movimientos tab keeps working until 8c rebuilds this view.
-    return selectedRegisters
-  }, [selectedRegisters])
 
-  const [cashTransactions, setCashTransactions] = useState<
-    Awaited<ReturnType<typeof cashRegisterService.getCashTransactionsByRegisters>>
-  >([])
-
+  // Movimientos tab: a query so we can refetch when the tab is opened (cash
+  // deposits and withdrawals are still driven by cashRegisterService and do
+  // not invalidate anything yet). The key includes the sorted ids so two
+  // callers passing the same set hit the same cache slot.
+  const sortedRegisters = useMemo(() => [...selectedRegisters].sort(), [selectedRegisters])
+  const {
+    data: cashTransactions = [],
+    refetch: refetchCashTransactions,
+  } = useQuery<CashTransaction[]>({
+    queryKey: ["cash-transactions-by-registers", sortedRegisters],
+    queryFn: () => cashRegisterService.getCashTransactionsByRegisters(sortedRegisters),
+    enabled: sortedRegisters.length > 0,
+  })
+  const [activeTab, setActiveTab] = useState<string>("summary")
   useEffect(() => {
-    if (cashTransactionsForSelected.length === 0) {
-      setCashTransactions([])
-      return
+    if (activeTab === "cash" && sortedRegisters.length > 0) {
+      refetchCashTransactions()
     }
-    let cancelled = false
-    ;(async () => {
-      try {
-        const list = await cashRegisterService.getCashTransactionsByRegisters(
-          cashTransactionsForSelected,
-        )
-        if (!cancelled) setCashTransactions(list)
-      } catch (error) {
-        log.error("Error al cargar movimientos de efectivo:", { error: String(error) })
-        if (!cancelled) setCashTransactions([])
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [cashTransactionsForSelected])
+  }, [activeTab, sortedRegisters, refetchCashTransactions])
 
   if (isLoadingRegisters || isLoadingSummary) {
     return (
@@ -172,7 +161,7 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
             )}
 
             {summary ? (
-              <Tabs defaultValue="summary">
+              <Tabs defaultValue="summary" onValueChange={setActiveTab}>
                 <TabsList className="mb-4">
                   <TabsTrigger value="summary">Resumen</TabsTrigger>
                   <TabsTrigger value="details">Detalles</TabsTrigger>

@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useRegisterSummary } from "@/hooks/use-register-summary"
 import { queryClient } from "@/lib/queryClient"
 import { registerSummaryQueryKey } from "@/lib/payments/register-summary"
+import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
 
 export function CashRegisterStatus() {
   const [openDialog, setOpenDialog] = useState(false)
@@ -36,6 +37,7 @@ export function CashRegisterStatus() {
   const refreshSummary = () => {
     if (summaryIds.length > 0) {
       queryClient.invalidateQueries({ queryKey: registerSummaryQueryKey(summaryIds) })
+      queryClient.invalidateQueries({ queryKey: registerPaymentsQueryKey(summaryIds) })
     }
   }
 

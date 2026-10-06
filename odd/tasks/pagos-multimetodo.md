@@ -42,19 +42,22 @@ split/undo of partial payments.
       with Vitest; services for catalog, pay, split/undo; single payment-method type.
 - [x] 7. New payment dialog + CashierView integration (tenders, remaining, tip, warning),
       partial-payment dialogs on the new RPCs.
-- [ ] 8. Register summary, transaction lists, close-register and admin reports grouped by
+- [x] 8. Register summary, transaction lists, close-register and admin reports grouped by
       catalog (server-side summary). Regression since 7a: the client summary reads only
       legacy `payment_transactions`, so `pay_order` sales are missing from closing totals.
   - [x] 8a. SQL: `register_summary(uuid[])` + `close_register(uuid)` RPCs, pgTAP 090.
   - [x] 8b. Client: service wrappers, store, close dialog, status/add/withdraw cash,
         payment-dialog drawer check, admin summary.
-  - [ ] 8c. Transaction lists (TransactionsList, TransactionsByRegisterId, CSV), completed
+  - [x] 8c. Transaction lists (TransactionsList, TransactionsByRegisterId, CSV), completed
         orders method label (lib/supabase/service.ts), retire legacy payment_transactions writers.
 - [ ] 9. Admin payment-methods screen (create, rename, disable, reorder).
 - [ ] 10. Invoices (web print, `lib/print`, `pos/` Python) list tenders, tip and change.
 - [ ] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
 
 ## Known follow-ups (out of scope)
+
+- CSV export columns changed (new ledger shape plus a legacy block); spreadsheet templates may need re-mapping.
+- Completed-orders invoice label maps non-default catalog codes to "cash" until task 10 prints tenders.
 
 - register-summary.ts cleanups from RDD 8b: dead `continue` after fail() in the legacy by_method loop; derive the method kind check from one constant; split the summaryRows active/zero test.
 
@@ -86,3 +89,4 @@ split/undo of partial payments.
 | 8a RDD | review-5d3d51ed16135316 + `3c526f4` | Medium tier, reliability lens admitted; refuter confirmed 5 findings -> correction_required. Verified: R3-001 wrong as written (duplicate check works, pinned by 090) but its block hid a real defect: the NULL-id check used count(*), which counts NULL rows, so it never fired (probe: count(*)=2, count(v)=1); fixed in 3c526f4 (2 diff lines), pgTAP 519 PASS after db reset. R3-002 (P0002 same for missing and foreign, correct), R3-003 (per-register rounding intended, matches pay_order), R3-004 (false: pay_order coalesces drawer_cash_before to initial_cash), R3-005 (hypothetical; tenant checked explicitly) are not defects. Targeted validator failed natively -> escalated targeted_validator_rejected (terminal). |
 | 8b | `37e429b` | Client on register_summary/close_register: pure lib/payments/register-summary.ts (RED: module missing; GREEN 25 tests), service wrappers (+12 tests), useRegisterSummary hook invalidated after pay, deposit, withdrawal and close. Close dialog renders catalog rows, tips payout, non-blocking shortfall warning, legacy block, server final cash; single-flight confirm. Drawer check uses expected_cash. Removed calculateMultipleRegistersSummary, store getCurrentRegisterSummary/hasEnoughCashForChange (grep: 0 callers). Vitest 10 files / 142; typecheck 0; build OK. |
 | 8b RDD | review-dc2284b94bbe10d7 | 4 lenses admitted; refuter corroborated R2-004, R3-002, R3-003, R4-tip-payout-mismatch and refuted R3-001, R3-007, then failed natively -> escalated (unknown_causality, 15 undecided). Verified: tip-payout warning is the user's warn-only decision; R2-004/R3-002/R3-003 are readability/maintainability (follow-ups); no-invalidation-on-deposit false (dialogs call onSuccess -> refreshSummary); no-rollback-on-failed-close false (store untouched on throw, retry gets already_closed); close-replay false (currentRegister null after close, server idempotent); stale cash_transactions tab is pre-existing (8c). |
+| 8c | (this commit) | Transaction lists, CSV and completed-orders label on payments/payment_tenders via pure lib/payments/payment-list.ts (RED: module missing; GREEN 23 tests) and listRegisterPayments/getPaymentsByOrderIds (+7 tests); legacy rows in a collapsed read-only section; Movimientos tab refetches on open; payments list invalidated with the summary after pay, deposit, withdrawal and close. Removed legacy writers (store addTransaction, cashRegisterService.addTransaction), calculateRegisterSummary and the CashRegisterSummary types; grep shows no writer to payment_transactions. Vitest 11 files / 172; typecheck 0; build OK. |
