@@ -45,7 +45,7 @@ split/undo of partial payments.
 - [ ] 8. Register summary, transaction lists, close-register and admin reports grouped by
       catalog (server-side summary). Regression since 7a: the client summary reads only
       legacy `payment_transactions`, so `pay_order` sales are missing from closing totals.
-  - [ ] 8a. SQL: `register_summary(uuid[])` + `close_register(uuid)` RPCs, pgTAP 090.
+  - [x] 8a. SQL: `register_summary(uuid[])` + `close_register(uuid)` RPCs, pgTAP 090.
   - [ ] 8b. Client: service wrappers, store, close dialog, status/add/withdraw cash,
         payment-dialog drawer check, admin summary, transaction lists.
 - [ ] 9. Admin payment-methods screen (create, rename, disable, reorder).
@@ -78,3 +78,4 @@ split/undo of partial payments.
 | 7b RDD | review-52bbf4c9fa90da59 | 4 lenses admitted; refuter refuted R3-rollback-on-close then failed natively; state escalated (unknown_causality) on R2-cashier-split-error-message-table, R2-partial-payment-dialog-silent-guard, R3-busy-not-applied, R3-fragmenting-no-parent, R3-reentrancy, R4-split-dialog-stays-open-on-success, R4-split-parent-not-freed. Manual check: dialog closes on success (setPartialPaymentDialogOpen(false)); pickSplitParent ignores partial children, so the parent stays selectable after a split; busy disables both dialog buttons. Reentrancy guard uses React state (safe under React 19 discrete-event flush) but a ref guard is cheap hardening, tracked as follow-up. |
 | 7c | `b1c215d` | RDD 7b follow-up: synchronous re-entrancy gate lib/payments/single-flight.ts (RED: module missing; GREEN 5 tests) wraps split and undo in CashierView; the partial order's Eliminar button is now disabled while undo runs (it never was: confirms R3-busy-not-applied). Vitest 9 files / 105 tests; typecheck 0; build OK. |
 | 7c RDD | review-f9da7c7659d312e5 | risk, resilience, readability admitted; reliability refused (missing proof ref) then failed natively. Its rejected CRITICAL single-flight claim was retracted by the reviewer itself. Escalated (unknown_causality) on R2-stale-gate-closure-trap: false, gates are created once via useState(createSingleFlight) and isRunning() reads mutable state, not a render snapshot. |
+| 8a | (this commit) | register_summary(uuid[]) (INVOKER, STABLE, cashier/admin) + close_register(uuid) (DEFINER, tenant check before summary, FOR UPDATE vs pay_order FOR SHARE), migration 20261006140000. RED: 090 58/58 failed (functions missing). GREEN pgTAP 11 files / 519 tests (parent re-run). Expected cash equals pay_order drawer_cash_before; legacy payment_transactions reported separately; tips paid out at close (expected_cash_after_tips, not clamped). |
