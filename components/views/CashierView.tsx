@@ -28,6 +28,7 @@ import { orderService } from "@/lib/supabase/service"
 import { queryClient } from "@/lib/queryClient"
 import { log } from "@/lib/log"
 import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
+import { createSingleFlight } from "@/lib/payments/single-flight"
 import { PaymentServiceError, splitOrder, undoSplit } from "@/lib/supabase/payments-service"
 
 interface CashierViewProps {
@@ -47,6 +48,9 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const [isLoading, setIsLoading] = useState(false)
   const [isSplitting, setIsSplitting] = useState(false)
   const [isUndoingSplit, setIsUndoingSplit] = useState(false)
+  // Synchronous gates: the state flags above only drive the UI.
+  const [splitGate] = useState(createSingleFlight)
+  const [undoGate] = useState(createSingleFlight)
   const [partialParentItems, setPartialParentItems] = useState<CartItem[]>([])
 
   // Estados para almacenar datos en tiempo real
@@ -385,7 +389,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
 
   // Manejar la creación de una orden parcial
   const handleCreatePartialOrder = async (items: { itemId: string; quantity: number }[]) => {
-    if (!selectedTableId || isSplitting) return
+    if (!selectedTableId || splitGate.isRunning()) return
 
     const tableOrders = getOrdersByTable(selectedTableId)
     const parentId = pickSplitParent(
@@ -427,52 +431,54 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       return
     }
 
-    try {
-      setIsSplitting(true)
+    await splitGate.run(async () => {
+      try {
+        setIsSplitting(true)
 
-      await splitOrder({
-        parentOrderId: parentId,
-        items: validation.items.map((i) => ({ orderItemId: i.order_item_id, quantity: i.quantity })),
-      })
+        await splitOrder({
+          parentOrderId: parentId,
+          items: validation.items.map((i) => ({ orderItemId: i.order_item_id, quantity: i.quantity })),
+        })
 
-      toast.success('Se ha creado una nueva orden parcial para el pago')
-      setPartialPaymentDialogOpen(false)
-      await loadOrdersFromDB()
-    } catch (error) {
-      if (error instanceof PaymentServiceError) {
-        log.error('Error al crear la orden parcial:', { kind: error.kind, message: error.message })
-        toast.error(splitErrorMessage(error.kind, error.message))
-      } else {
-        log.error('Error al crear la orden parcial:', { error: String(error) })
-        toast.error('No se pudo crear la orden parcial')
+        toast.success('Se ha creado una nueva orden parcial para el pago')
+        setPartialPaymentDialogOpen(false)
+        await loadOrdersFromDB()
+      } catch (error) {
+        if (error instanceof PaymentServiceError) {
+          log.error('Error al crear la orden parcial:', { kind: error.kind, message: error.message })
+          toast.error(splitErrorMessage(error.kind, error.message))
+        } else {
+          log.error('Error al crear la orden parcial:', { error: String(error) })
+          toast.error('No se pudo crear la orden parcial')
+        }
+      } finally {
+        setIsSplitting(false)
       }
-    } finally {
-      setIsSplitting(false)
-    }
+    })
   }
 
   // Manejar la eliminación (undo) de una orden parcial
   const handleDeletePartialOrder = async (partialOrderId: string) => {
-    if (isUndoingSplit) return
+    await undoGate.run(async () => {
+      try {
+        setIsUndoingSplit(true)
 
-    try {
-      setIsUndoingSplit(true)
+        await undoSplit({ childOrderId: partialOrderId })
 
-      await undoSplit({ childOrderId: partialOrderId })
-
-      toast.success('Los productos han sido devueltos a la orden original')
-      await loadOrdersFromDB()
-    } catch (error) {
-      if (error instanceof PaymentServiceError) {
-        log.error('Error al eliminar la orden parcial:', { kind: error.kind, message: error.message })
-        toast.error(splitErrorMessage(error.kind, error.message))
-      } else {
-        log.error('Error al eliminar la orden parcial:', { error: String(error) })
-        toast.error('No se pudo eliminar la orden parcial')
+        toast.success('Los productos han sido devueltos a la orden original')
+        await loadOrdersFromDB()
+      } catch (error) {
+        if (error instanceof PaymentServiceError) {
+          log.error('Error al eliminar la orden parcial:', { kind: error.kind, message: error.message })
+          toast.error(splitErrorMessage(error.kind, error.message))
+        } else {
+          log.error('Error al eliminar la orden parcial:', { error: String(error) })
+          toast.error('No se pudo eliminar la orden parcial')
+        }
+      } finally {
+        setIsUndoingSplit(false)
       }
-    } finally {
-      setIsUndoingSplit(false)
-    }
+    })
   }
 
   // Función para mostrar la factura completada
@@ -812,6 +818,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                                       variant="outline"
                                       className="flex-1"
                                       onClick={() => handleDeletePartialOrder(order.id)}
+                                      disabled={isUndoingSplit}
                                     >
                                       <Trash2 className="mr-2 h-4 w-4" />
                                       Eliminar
