@@ -28,7 +28,7 @@ split/undo of partial payments.
       (+ config, `pnpm test`) without lockfile drift; CI runs `pnpm test`.
 - [x] 2. `payment_methods` catalog (per tenant, RLS read same-tenant, admin-only write,
       seeded with cash/transfer/nequi/bancolombia for every restaurant and new restaurants).
-- [ ] 3. `payments` + `payment_tenders` tables (integer pesos, RLS, tenant-scoped), legacy
+- [x] 3. `payments` + `payment_tenders` tables (integer pesos, RLS, tenant-scoped), legacy
       `payment_transactions` kept read-only for history.
 - [ ] 4. `pay_order` RPC: atomic, idempotent, validates tenant/open register/order status,
       paid = due + tip, only cash yields change, drawer-shortage warning, table release only
@@ -53,4 +53,5 @@ split/undo of partial payments.
 | Task | Commit | Checks |
 |---|---|---|
 | 1 | `14138b0` | 14 `latest` specifiers pinned to locked versions: lockfile `version:` diff shows only the new vitest entry. RED: `pnpm test` failed (module missing); GREEN: 2 files / 5 tests. `pnpm install --frozen-lockfile` ok, typecheck 0, lint 0. CI `unit-tests` job added. RDD lineage `review-39f41315605aae28`: 4 lenses (readability refused once for a misspelled path, retry ok) -> **approved**, acknowledged; 23 informational findings. |
-| 2 | (this commit) | RED: `050_payment_methods` 57/58 failed. GREEN: Files=7 Tests=217 PASS (incl. 020 anon lockdown); db reset clean. Orchestrator hardening: revoked default-ACL EXECUTE of authenticated on the three trigger functions (SECURITY DEFINER seeder reachable only via trigger); triggers still fire (050 green). |
+| 2 | `6108ed5` | RED: `050_payment_methods` 57/58 failed. GREEN: Files=7 Tests=217 PASS (incl. 020 anon lockdown); db reset clean. Orchestrator hardening: revoked default-ACL EXECUTE of authenticated on the three trigger functions (SECURITY DEFINER seeder reachable only via trigger); triggers still fire (050 green). RDD lineage `review-8abc3f5bc3851ea0` (medium, reliability): **approved** first try, acknowledged; 1 informational suggestion. |
+| 3 | (this commit) | RED: `060_payments_tenders` 94/104 failed. GREEN: Files=8 Tests=323 PASS; real COMMIT of a 999/1000 payment rejected 23514 with 0 rows left. Deviation accepted: write grants kept for authenticated (020 contract) but no INSERT policy (42501) and UPDATE/DELETE hit a guard raising 42501, so tampering fails loudly instead of silently affecting 0 rows. pay_order must run as postgres-owned SECURITY DEFINER and snapshot method_code/kind from the catalog. |
