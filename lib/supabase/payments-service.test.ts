@@ -2,13 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   PaymentServiceError,
   closeRegisterRpc,
+  createPaymentMethod,
   getPaymentsByOrderIds,
   getRegisterSummary,
   listPaymentMethods,
   listRegisterPayments,
   payOrder,
+  reorderPaymentMethods,
   splitOrder,
   undoSplit,
+  updatePaymentMethod,
 } from './payments-service'
 import type { PaymentMethodOption, PayOrderTenderLine } from '@/lib/payments/types'
 
@@ -24,15 +27,19 @@ import type { PaymentMethodOption, PayOrderTenderLine } from '@/lib/payments/typ
 // `from`/`rpc` implementation without re-importing the module.
 
 const state = vi.hoisted(() => {
-  // A thenable chain that supports select / eq / in / order and resolves
-  // with the configured { data, error } pair. The promise is created up
-  // front and every method returns the same chain so the result is
-  // inspectable from inside a callback without re-importing the module.
+  // A thenable chain that supports select / eq / in / order / insert /
+  // update / single and resolves with the configured { data, error }
+  // pair. The promise is created up front and every method returns the
+  // same chain so the result is inspectable from inside a callback
+  // without re-importing the module.
   type Chain = {
     select: (cols: string) => Chain
     eq: (col: string, val: unknown) => Chain
     in: (col: string, vals: unknown[]) => Chain
     order: (col: string, opts: { ascending: boolean }) => Chain
+    insert: (rows: unknown) => Chain
+    update: (patch: unknown) => Chain
+    single: () => Chain
     then: <TResult1 = unknown, TResult2 = never>(
       onfulfilled?: ((value: { data: unknown; error: unknown }) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -45,6 +52,9 @@ const state = vi.hoisted(() => {
     chain.eq = () => chain
     chain.in = () => chain
     chain.order = () => chain
+    chain.insert = () => chain
+    chain.update = () => chain
+    chain.single = () => chain
     chain.then = promise.then.bind(promise)
     return chain as Chain
   }
@@ -76,6 +86,9 @@ beforeEach(() => {
     chain.eq = () => chain
     chain.in = () => chain
     chain.order = () => chain
+    chain.insert = () => chain
+    chain.update = () => chain
+    chain.single = () => chain
     chain.then = promise.then.bind(promise)
     return chain
   }
@@ -860,5 +873,313 @@ describe('getPaymentsByOrderIds', () => {
     }
     const err = await getPaymentsByOrderIds(['ord-1']).catch((e) => e)
     expect((err as PaymentServiceError).kind).toBe('not-found')
+  })
+})
+
+// -----------------------------------------------------------
+// createPaymentMethod
+// -----------------------------------------------------------
+//
+// Inserts a new payment-method row. The service first reads the
+// existing catalog (to compute the unique `code` and pick
+// max(sort_order) + 1), then inserts. The test installs a stateful
+// `from` mock that hands the read chain to the first call and the
+// insert chain to the second.
+
+function makeListChain(data: unknown[]): { chain: any; seen: { select: string[]; order: Array<[string, { ascending: boolean }]> } } {
+  const seen = { select: [] as string[], order: [] as Array<[string, { ascending: boolean }]> }
+  const promise: any = Promise.resolve({ data, error: null })
+  const chain: any = {}
+  chain.select = (cols: string) => {
+    seen.select.push(cols)
+    return chain
+  }
+  chain.order = (col: string, opts: { ascending: boolean }) => {
+    seen.order.push([col, opts])
+    return chain
+  }
+  chain.then = promise.then.bind(promise)
+  return { chain, seen }
+}
+
+function makeInsertChain(
+  returnedRow: unknown,
+  error: unknown = null,
+): { chain: any; seen: { inserted: unknown; select: string[] } } {
+  const seen = { inserted: undefined as unknown, select: [] as string[] }
+  const promise: any = Promise.resolve({ data: returnedRow, error })
+  const chain: any = {}
+  chain.insert = (rows: unknown) => {
+    seen.inserted = rows
+    return chain
+  }
+  chain.select = (cols: string) => {
+    seen.select.push(cols)
+    return chain
+  }
+  chain.single = () => chain
+  chain.then = promise.then.bind(promise)
+  return { chain, seen }
+}
+
+function makeUpdateChain(
+  returnedRow: unknown,
+  error: unknown = null,
+): { chain: any; seen: { updated: unknown; eq: Array<[string, unknown]>; select: string[] } } {
+  const seen = { updated: undefined as unknown, eq: [] as Array<[string, unknown]>, select: [] as string[] }
+  const promise: any = Promise.resolve({ data: returnedRow, error })
+  const chain: any = {}
+  chain.update = (patch: unknown) => {
+    seen.updated = patch
+    return chain
+  }
+  chain.eq = (col: string, val: unknown) => {
+    seen.eq.push([col, val])
+    return chain
+  }
+  chain.select = (cols: string) => {
+    seen.select.push(cols)
+    return chain
+  }
+  chain.single = () => chain
+  chain.then = promise.then.bind(promise)
+  return { chain, seen }
+}
+
+describe('createPaymentMethod', () => {
+  it('generates a unique code from the name, picks max(sort_order)+1, inserts, and remaps to camelCase', async () => {
+    const existing = [
+      { id: 'm1', code: 'cash', name: 'Efectivo', kind: 'cash', is_active: true, sort_order: 10 },
+      { id: 'm2', code: 'nequi', name: 'Nequi', kind: 'electronic', is_active: true, sort_order: 20 },
+    ]
+    const insertedRow = {
+      id: 'm3',
+      code: 'tarjeta',
+      name: 'Tarjeta',
+      kind: 'electronic',
+      is_active: true,
+      sort_order: 21,
+    }
+    const list = makeListChain(existing)
+    const ins = makeInsertChain(insertedRow)
+
+    const queues: any[] = [list.chain, ins.chain]
+    state.fromImpl = (table: string) => {
+      expect(table).toBe('payment_methods')
+      return queues.shift() ?? ins.chain
+    }
+
+    const result = await createPaymentMethod({ name: 'Tarjeta', kind: 'electronic' })
+    expect(list.seen.select).toEqual(['id, code, name, kind, is_active, sort_order'])
+    expect(list.seen.order).toEqual([['sort_order', { ascending: true }]])
+    expect(ins.seen.inserted).toEqual({
+      name: 'Tarjeta',
+      code: 'tarjeta',
+      kind: 'electronic',
+      sort_order: 21,
+    })
+    expect(ins.seen.select).toEqual(['id, code, name, kind, is_active, sort_order'])
+    expect(result).toEqual({
+      id: 'm3',
+      code: 'tarjeta',
+      name: 'Tarjeta',
+      kind: 'electronic',
+      isActive: true,
+      sortOrder: 21,
+    })
+  })
+
+  it('suffixes _2 on the generated code when the base collides', async () => {
+    const existing = [
+      { id: 'm1', code: 'tarjeta', name: 'Tarjeta', kind: 'electronic', is_active: true, sort_order: 30 },
+    ]
+    const list = makeListChain(existing)
+    const ins = makeInsertChain({
+      id: 'm2',
+      code: 'tarjeta_2',
+      name: 'Tarjeta',
+      kind: 'electronic',
+      is_active: true,
+      sort_order: 31,
+    })
+    const queues: any[] = [list.chain, ins.chain]
+    state.fromImpl = (table: string) => {
+      expect(table).toBe('payment_methods')
+      return queues.shift() ?? ins.chain
+    }
+
+    await createPaymentMethod({ name: 'Tarjeta', kind: 'electronic' })
+    expect((ins.seen.inserted as { code: string; sort_order: number }).code).toBe('tarjeta_2')
+    expect((ins.seen.inserted as { code: string; sort_order: number }).sort_order).toBe(31)
+  })
+
+  it('rejects an empty name with invalid-input without hitting the network', async () => {
+    const err = await createPaymentMethod({ name: '   ', kind: 'cash' }).catch((e) => e)
+    expect(err).toBeInstanceOf(PaymentServiceError)
+    expect((err as PaymentServiceError).kind).toBe('invalid-input')
+    expect(state.from).not.toHaveBeenCalled()
+  })
+
+  it('maps 23505 (unique violation on code) -> rejected', async () => {
+    const list = makeListChain([])
+    const ins = makeInsertChain(null, { code: '23505', message: 'duplicate key' })
+    const queues: any[] = [list.chain, ins.chain]
+    state.fromImpl = (_table: string) => queues.shift() ?? ins.chain
+    const err = await createPaymentMethod({ name: 'Efectivo', kind: 'cash' }).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('rejected')
+    expect((err as PaymentServiceError).message).toBe('duplicate key')
+  })
+
+  it('maps 23514 (check_violation) -> invalid-input', async () => {
+    const list = makeListChain([])
+    const ins = makeInsertChain(null, {
+      code: '23514',
+      message: 'new row for relation "payment_methods" violates check constraint',
+    })
+    const queues: any[] = [list.chain, ins.chain]
+    state.fromImpl = (_table: string) => queues.shift() ?? ins.chain
+    const err = await createPaymentMethod({ name: 'X', kind: 'cash' }).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('invalid-input')
+  })
+
+  it('maps 42501 -> not-authorized', async () => {
+    const list = makeListChain([])
+    const ins = makeInsertChain(null, { code: '42501', message: 'permission denied' })
+    const queues: any[] = [list.chain, ins.chain]
+    state.fromImpl = (_table: string) => queues.shift() ?? ins.chain
+    const err = await createPaymentMethod({ name: 'Efectivo', kind: 'cash' }).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('not-authorized')
+  })
+
+  it('throws a PaymentServiceError when the insert returns no row', async () => {
+    const list = makeListChain([])
+    const ins = makeInsertChain(null)
+    const queues: any[] = [list.chain, ins.chain]
+    state.fromImpl = (_table: string) => queues.shift() ?? ins.chain
+    const err = await createPaymentMethod({ name: 'Efectivo', kind: 'cash' }).catch((e) => e)
+    expect(err).toBeInstanceOf(PaymentServiceError)
+    expect((err as PaymentServiceError).kind).toBe('unknown')
+  })
+})
+
+// -----------------------------------------------------------
+// updatePaymentMethod
+// -----------------------------------------------------------
+
+describe('updatePaymentMethod', () => {
+  it('patches name (trimmed) without sending code (immutable)', async () => {
+    const upd = makeUpdateChain({
+      id: 'm1',
+      code: 'cash',
+      name: 'Efectivo Pesos',
+      kind: 'cash',
+      is_active: true,
+      sort_order: 10,
+    })
+    state.fromImpl = (table: string) => {
+      expect(table).toBe('payment_methods')
+      return upd.chain
+    }
+
+    const result = await updatePaymentMethod('m1', { name: '  Efectivo Pesos  ' })
+    expect(upd.seen.updated).toEqual({ name: 'Efectivo Pesos' })
+    expect(upd.seen.eq).toEqual([['id', 'm1']])
+    expect(upd.seen.select).toEqual(['id, code, name, kind, is_active, sort_order'])
+    expect(result).toEqual({
+      id: 'm1',
+      code: 'cash',
+      name: 'Efectivo Pesos',
+      kind: 'cash',
+      isActive: true,
+      sortOrder: 10,
+    })
+  })
+
+  it('patches is_active (camelCase) to is_active (snake_case) on the wire', async () => {
+    const upd = makeUpdateChain({
+      id: 'm1',
+      code: 'nequi',
+      name: 'Nequi',
+      kind: 'electronic',
+      is_active: false,
+      sort_order: 30,
+    })
+    state.fromImpl = () => upd.chain
+
+    const result = await updatePaymentMethod('m1', { isActive: false })
+    expect(upd.seen.updated).toEqual({ is_active: false })
+    expect(result.isActive).toBe(false)
+  })
+
+  it('rejects an empty patch with invalid-input without hitting the network', async () => {
+    const err = await updatePaymentMethod('m1', {}).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('invalid-input')
+    expect(state.from).not.toHaveBeenCalled()
+  })
+
+  it('rejects an empty name with invalid-input without hitting the network', async () => {
+    const err = await updatePaymentMethod('m1', { name: '   ' }).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('invalid-input')
+    expect(state.from).not.toHaveBeenCalled()
+  })
+
+  it('maps 23505 (unique_violation on code immutability) -> rejected', async () => {
+    const upd = makeUpdateChain(null, { code: '23505', message: 'duplicate key' })
+    state.fromImpl = () => upd.chain
+    const err = await updatePaymentMethod('m1', { name: 'X' }).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('rejected')
+  })
+
+  it('maps 23514 (check_violation) -> invalid-input', async () => {
+    const upd = makeUpdateChain(null, { code: '23514', message: 'name too long' })
+    state.fromImpl = () => upd.chain
+    const err = await updatePaymentMethod('m1', { name: 'X' }).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('invalid-input')
+  })
+
+  it('maps 42501 -> not-authorized (the BEFORE UPDATE trigger raising insufficient_privilege on code edits)', async () => {
+    const upd = makeUpdateChain(null, { code: '42501', message: 'payment_methods.code is immutable' })
+    state.fromImpl = () => upd.chain
+    const err = await updatePaymentMethod('m1', { name: 'X' }).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('not-authorized')
+  })
+})
+
+// -----------------------------------------------------------
+// reorderPaymentMethods
+// -----------------------------------------------------------
+
+describe('reorderPaymentMethods', () => {
+  it('runs a sequential UPDATE per change with snake_case sort_order', async () => {
+    const upd1 = makeUpdateChain(null)
+    const upd2 = makeUpdateChain(null)
+    const queues: any[] = [upd1.chain, upd2.chain]
+    state.fromImpl = (table: string) => {
+      expect(table).toBe('payment_methods')
+      return queues.shift() ?? upd2.chain
+    }
+
+    await reorderPaymentMethods([
+      { id: 'm1', sortOrder: 0 },
+      { id: 'm2', sortOrder: 1 },
+    ])
+
+    expect(upd1.seen.updated).toEqual({ sort_order: 0 })
+    expect(upd1.seen.eq).toEqual([['id', 'm1']])
+    expect(upd2.seen.updated).toEqual({ sort_order: 1 })
+    expect(upd2.seen.eq).toEqual([['id', 'm2']])
+  })
+
+  it('is a no-op for an empty changes list', async () => {
+    state.from.mockClear()
+    await reorderPaymentMethods([])
+    expect(state.from).not.toHaveBeenCalled()
+  })
+
+  it('maps 42501 -> not-authorized on the first failing update', async () => {
+    const upd1 = makeUpdateChain(null, { code: '42501', message: 'permission denied' })
+    state.fromImpl = () => upd1.chain
+    const err = await reorderPaymentMethods([{ id: 'm1', sortOrder: 5 }]).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('not-authorized')
   })
 })

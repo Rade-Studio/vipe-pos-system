@@ -29,11 +29,13 @@ import {
   parsePaymentRows,
 } from '@/lib/payments/payment-list'
 import type { PaymentRow } from '@/lib/payments/payment-list'
+import { slugifyMethodCode, type SortOrderChange } from '@/lib/payments/catalog-admin'
 import type {
   OrderBillSummary,
   PayOrderResult,
   PayOrderTenderEcho,
   PayOrderTenderLine,
+  PaymentMethodKind,
   PaymentMethodOption,
   SplitOrderItem,
   SplitOrderResult,
@@ -133,6 +135,10 @@ export interface UndoSplitInput {
  *                           method, register closed, etc.); the message
  *                           is the cashier's only diagnostic
  *   22023  invalid-input    bad shape (bad uuid, negative tip, > 20 lines)
+ *   23505  rejected         unique_violation: another row already owns
+ *                           the same (restaurant_id, code) on the catalog
+ *   23514  invalid-input    check_violation: the code/name/kind CHECK
+ *                           constraint rejected the row
  *
  * Anything else is `unknown`. We never swallow a raw supabase error: the
  * cause is preserved on `PaymentServiceError.cause` for log scraping.
@@ -146,6 +152,10 @@ function mapErrorCode(code: string | undefined): PaymentServiceError['kind'] {
     case 'P0001':
       return 'rejected'
     case '22023':
+      return 'invalid-input'
+    case '23505':
+      return 'rejected'
+    case '23514':
       return 'invalid-input'
     default:
       return 'unknown'
@@ -200,6 +210,167 @@ export async function listPaymentMethods(): Promise<PaymentMethodOption[]> {
     isActive: row.is_active,
     sortOrder: row.sort_order,
   }))
+}
+
+// -----------------------------------------------------------
+// Admin catalog mutations
+// -----------------------------------------------------------
+//
+// These three functions are the admin's write surface on
+// `payment_methods`. The code is generated client-side from the
+// human name (the server's CHECK constraint is `^[a-z0-9_]{2,32}$`
+// and `code` is immutable after insert), and the only writable
+// columns are `name`, `is_active` and `sort_order`.
+// `reorderPaymentMethods` is intentionally non-atomic: a partial
+// commit only ever lasts until the next render, and the read falls
+// back to insertion order for ties, so an admin who clicks "up"
+// twice in a row still sees a stable UI.
+
+export interface CreatePaymentMethodInput {
+  name: string
+  kind: PaymentMethodKind
+}
+
+/**
+ * Insert a new method. The `code` is derived from the name via
+ * `slugifyMethodCode`, deduped against the codes that already exist
+ * for the tenant, and the row is appended at `max(sort_order) + 1`
+ * so the picker shows the new method last.
+ *
+ * On a unique violation (another row already owns the new code -
+ * rare, only when an admin types the same name twice in the same
+ * session) the server returns 23505, which we surface as
+ * `rejected`. The CHECK constraints surface as 23514 / invalid-input
+ * with the server message verbatim (e.g. an empty name after trim).
+ */
+export async function createPaymentMethod(
+  input: CreatePaymentMethodInput,
+): Promise<PaymentMethodOption> {
+  const trimmedName = input.name.trim()
+  if (trimmedName.length === 0) {
+    throw new PaymentServiceError({
+      kind: 'invalid-input',
+      message: 'createPaymentMethod: name must not be empty',
+    })
+  }
+
+  const current = await listPaymentMethods()
+  const existingCodes = current.map((m) => m.code)
+  const code = slugifyMethodCode(trimmedName, existingCodes)
+  const maxSortOrder = current.reduce(
+    (acc, m) => (m.sortOrder > acc ? m.sortOrder : acc),
+    -1,
+  )
+
+  const { data, error } = await (supabase as any)
+    .from('payment_methods')
+    .insert({
+      name: trimmedName,
+      code,
+      kind: input.kind,
+      sort_order: maxSortOrder + 1,
+    })
+    .select('id, code, name, kind, is_active, sort_order')
+    .single()
+
+  if (error) throw wrapError(error)
+  const row = requireData<PaymentMethodRow>(data, 'createPaymentMethod', 'id')
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    kind: row.kind,
+    isActive: row.is_active,
+    sortOrder: row.sort_order,
+  }
+}
+
+export interface UpdatePaymentMethodInput {
+  name?: string
+  isActive?: boolean
+}
+
+/**
+ * Patch `name` and/or `is_active` on a single row. The service
+ * deliberately does NOT accept `code` or `sort_order` as input:
+ *   - `code` is immutable after insert (the BEFORE UPDATE trigger
+ *     raises 42501 even for the admin)
+ *   - `sort_order` changes go through `reorderPaymentMethods` so
+ *     the whole list is recomputed contiguously.
+ *
+ * Empty patches throw `invalid-input`: the caller's UI is meant to
+ * disable the save button when nothing changed, so reaching here
+ * with an empty patch is a programming error, not a network one.
+ */
+export async function updatePaymentMethod(
+  id: string,
+  input: UpdatePaymentMethodInput,
+): Promise<PaymentMethodOption> {
+  const patch: Record<string, unknown> = {}
+  if (input.name !== undefined) {
+    const trimmed = input.name.trim()
+    if (trimmed.length === 0) {
+      throw new PaymentServiceError({
+        kind: 'invalid-input',
+        message: 'updatePaymentMethod: name must not be empty',
+      })
+    }
+    patch.name = trimmed
+  }
+  if (input.isActive !== undefined) patch.is_active = input.isActive
+
+  if (Object.keys(patch).length === 0) {
+    throw new PaymentServiceError({
+      kind: 'invalid-input',
+      message: 'updatePaymentMethod: at least one of name or isActive must be provided',
+    })
+  }
+
+  const { data, error } = await (supabase as any)
+    .from('payment_methods')
+    .update(patch)
+    .eq('id', id)
+    .select('id, code, name, kind, is_active, sort_order')
+    .single()
+
+  if (error) throw wrapError(error)
+  const row = requireData<PaymentMethodRow>(data, 'updatePaymentMethod', 'id')
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    kind: row.kind,
+    isActive: row.is_active,
+    sortOrder: row.sort_order,
+  }
+}
+
+/**
+ * Apply a list of {id, sortOrder} changes sequentially.
+ *
+ * NON-ATOMIC: each change is its own UPDATE. If one of them fails
+ * the partial order is what's committed. This is harmless because
+ *   (a) a stale order only ever lasts until the next re-render or
+ *       refresh, and
+ *   (b) the read (`listPaymentMethods`) orders by `sort_order` only,
+ *       so two rows with the same sort_order render in undefined
+ *       order — acceptable for an admin-only tool and immediately
+ *       resolved by the next reorder.
+ *
+ * The caller (the admin screen) pre-validates with `canDeactivate`
+ * and `moveMethod` so the typical case is a small batch with no
+ * rejects.
+ */
+export async function reorderPaymentMethods(
+  changes: readonly SortOrderChange[],
+): Promise<void> {
+  for (const change of changes) {
+    const { error } = await (supabase as any)
+      .from('payment_methods')
+      .update({ sort_order: change.sortOrder })
+      .eq('id', change.id)
+    if (error) throw wrapError(error)
+  }
 }
 
 // -----------------------------------------------------------
