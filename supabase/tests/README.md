@@ -64,6 +64,38 @@ SET LOCAL ROLE authenticated;
 `request.jwt.claims`; profiles or rows you assert against must exist for that
 same `sub`, otherwise the RLS predicate under test evaluates to false.
 
+## Tenant isolation test pattern
+
+`010_tenant_isolation.test.sql` is the reference pattern for anything that
+touches tenancy. Every test that needs a real caller follows the same four
+beats, all inside the one rolled-back transaction:
+
+1. **Build a tenant as the test author.** Two `public.restaurants` rows, one
+   `auth.users` row per tenant, and a `profiles` row per user carrying the
+   right `restaurant_id`. `handle_new_user()` creates the profile when the
+   `auth.users` row lands, so re-point it with an `UPDATE` rather than
+   inserting a second one (`profiles.auth_user_id` is unique).
+2. **Forge the JWT.** Set `request.jwt.claims` with a `sub` and a
+   `user_metadata.restaurant_id` that **lies** (points at the other tenant).
+   Tenancy must be resolved from `profiles.auth_user_id`, so the lie must make
+   no difference. A claims blob with no `sub` at all covers the reverse case:
+   no `sub` means no rows, never a bypass.
+3. **Switch and stay switched.** `SET LOCAL ROLE authenticated;` once, run
+   every pgTAP assertion for that caller, then `RESET ROLE` before the next
+   `set_config`. pgTAP functions are callable under `authenticated`, so
+   assertions may observe the impersonated session directly. Wrap `INSERT`s
+   that must be rejected in `throws_ok(sql, '42501', <message>, <description>)`
+   — the four-argument form, because the three-argument one is
+   `(sql, errcode, errmsg)`.
+4. **Verify writes as the author.** RLS filters `UPDATE`/`DELETE` silently, so
+   `RESET ROLE` and count rows afterwards to prove nothing outside the caller's
+   tenant moved.
+
+Two fixture facts worth copying: `public.categories.icon` is `NOT NULL`, and a
+column `DEFAULT private.current_restaurant_id()` resolves to `NULL` outside an
+authenticated session, so fixtures inserted as `postgres` must pass
+`restaurant_id` explicitly or the `NOT NULL` constraint rejects the row.
+
 ## Everything is rolled back
 
 Each file runs as:

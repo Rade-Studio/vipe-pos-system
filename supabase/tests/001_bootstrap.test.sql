@@ -17,30 +17,36 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(9);
+SELECT plan(11);
 
 -- --- Migration history -----------------------------------------------------
--- 29 files live in supabase/migrations/. The CLI records each applied file in
+-- 30 files live in supabase/migrations/. The CLI records each applied file in
 -- supabase_migrations.schema_migrations; the count proves none was skipped and
 -- that nothing ran outside the folder.
 SELECT is(
   (SELECT count(*) FROM supabase_migrations.schema_migrations)::bigint,
-  29::bigint,
-  'all 29 migration files are recorded in supabase_migrations.schema_migrations'
+  30::bigint,
+  'all 30 migration files are recorded in supabase_migrations.schema_migrations'
 );
 
 -- --- orders.status ---------------------------------------------------------
 -- 20250918180000_fix_orders_status_check.sql widens the CHECK so the kitchen
 -- flow works. Asserted behaviourally: the rows are inserted for real and the
 -- enclosing ROLLBACK discards them.
+--
+-- restaurant_id is passed explicitly because 20261005120000 points the column
+-- DEFAULT at private.current_restaurant_id(): outside an authenticated
+-- session there is no profile, so the default resolves to NULL and the NOT NULL
+-- constraint rejects the row instead of silently landing in the seed
+-- restaurant. Fail-closed on purpose, asserted here on purpose.
 SELECT lives_ok(
-  $$ INSERT INTO public.orders (id, status, subtotal, tax, tax_percentage, total)
-     VALUES ('11111111-0000-0000-0000-000000000001', 'kitchen', 0, 0, 0, 0) $$,
+  $$ INSERT INTO public.orders (restaurant_id, status, subtotal, tax, tax_percentage, total)
+     VALUES ('a0eebc99-0000-0000-0000-000000000000', 'kitchen', 0, 0, 0, 0) $$,
   'orders accepts status = kitchen'
 );
 SELECT lives_ok(
-  $$ INSERT INTO public.orders (id, status, subtotal, tax, tax_percentage, total)
-     VALUES ('11111111-0000-0000-0000-000000000002', 'delivered', 0, 0, 0, 0) $$,
+  $$ INSERT INTO public.orders (restaurant_id, status, subtotal, tax, tax_percentage, total)
+     VALUES ('a0eebc99-0000-0000-0000-000000000000', 'delivered', 0, 0, 0, 0) $$,
   'orders accepts status = delivered'
 );
 
@@ -75,6 +81,31 @@ SELECT is(
 -- --- Functions -------------------------------------------------------------
 SELECT has_function('public', 'complete_payment', 'complete_payment() exists');
 SELECT has_function('public', 'delete_order_with_items', 'delete_order_with_items() exists');
+
+-- --- Tenant isolation in the policies --------------------------------------
+-- 20250918180001 trusted auth.jwt() -> 'user_metadata' (user-editable via
+-- auth.updateUser) and opened an `auth.uid() IS NULL` bypass. The tenant must
+-- come from profiles.auth_user_id through private.current_restaurant_id().
+SELECT is(
+  (
+    SELECT count(*)
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND (qual LIKE '%user_metadata%' OR with_check LIKE '%user_metadata%')
+  )::bigint,
+  0::bigint,
+  'no policy in schema public trusts user_metadata for tenancy'
+);
+SELECT is(
+  (
+    SELECT count(*)
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND (qual LIKE '%auth.uid() IS NULL%' OR with_check LIKE '%auth.uid() IS NULL%')
+  )::bigint,
+  0::bigint,
+  'no policy in schema public has an auth.uid() IS NULL bypass'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
