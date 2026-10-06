@@ -42,6 +42,18 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.DEV_SUPABASE_URL || 'http://localhost:54321' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
 
+  db-tests:
+    # pgTAP suite (RLS, grants, tenant isolation, profile guards) against a
+    # fresh database: `supabase db start` applies every migration and the seed,
+    # without the rest of the local stack.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.119.0 }
+      - run: supabase db start
+      - run: supabase test db
+
   pos-deps-check:
     runs-on: ubuntu-latest
     steps:
