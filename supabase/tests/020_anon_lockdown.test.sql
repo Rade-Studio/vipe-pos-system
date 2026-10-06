@@ -126,9 +126,9 @@ SELECT is(
 
 -- Guard against over-revoking: the payments RPCs are the app's PostgREST path.
 SELECT is(
-  has_function_privilege('authenticated', 'public.complete_payment(uuid,text[],uuid)', 'EXECUTE'),
+  has_function_privilege('authenticated', 'public.pay_order(uuid,uuid,bigint,jsonb,uuid)', 'EXECUTE'),
   true,
-  'authenticated keeps EXECUTE on complete_payment'
+  'authenticated keeps EXECUTE on pay_order'
 );
 SELECT is(
   has_function_privilege('authenticated', 'public.delete_order_with_items(uuid)', 'EXECUTE'),
@@ -291,11 +291,12 @@ SELECT throws_ok(
 );
 -- Before the lockdown this reached the function body and failed with P0001
 -- ("Unauthorized: no profile found"), proving anon could call a SECURITY
--- DEFINER RPC at all.
+-- DEFINER RPC at all. The legacy complete_payment RPC no longer exists, so
+-- pay_order is the canonical probe here.
 SELECT throws_ok(
-  $$ SELECT public.complete_payment('a0eebc99-0000-0000-0000-000000000000', ARRAY['cash']::text[], NULL) $$,
+  $$ SELECT public.pay_order('a0eebc99-0000-0000-0000-000000000000', NULL, 0, '[]'::jsonb, gen_random_uuid()) $$,
   '42501', NULL,
-  'anon cannot call complete_payment'
+  'anon cannot call pay_order'
 );
 
 RESET ROLE;
