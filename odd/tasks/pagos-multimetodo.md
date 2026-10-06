@@ -57,7 +57,7 @@ split/undo of partial payments.
         line printed as cash). Additive payload: keep paymentMethod/cashReceived/cashChange.
   - [x] 10b. pos/print_renderer.py prints tenders when present (stdlib unittest), README
         note: installed listeners keep the old single-label ticket until rebuilt.
-- [ ] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
+- [x] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
 
 ## Known follow-ups (out of scope)
 
@@ -116,3 +116,4 @@ split/undo of partial payments.
 | 10b RDD | review-2f3dac43e4fca091 | Medium tier, reliability refused (invalid JSON) then failed natively -> retry spent, lineage left in reviewing. Rejected payload read: bool/float/cashReceived=0 claims are guarded or unreachable from the web; one real: when every tender was malformed the fallback printed "Efectivo" whenever cashReceived was set, overriding paymentMethod "multiple" -> fixed in the next commit. |
 | 10b fix | `2f811a5` | Malformed-tender fallback keeps the sent paymentMethod label. RED: mixed payment printed FORMA DE PAGO: Efectivo; GREEN unittest 12/12. |
 | 10b fix RDD | review-ba72269fbd0c0eb7 | Medium tier, reliability admitted -> APPROVED; acknowledgement burned authority. |
+| 11 | (this commit) | docs/payment-atomicity-test.md rewritten for the ledger flow (guarantee -> pgTAP file table, commands, UI smoke checklist, psql recipes). Documentation only, no RED. Parent fixes before commit: legacy payment_transactions columns (method/amount/timestamp), payments query no longer filtered by current_restaurant_id() (NULL as postgres), default methods (no card), reprint location (Admin, Factura), installed vs rebuilt listener behavior. Every psql query run against the local DB. |
