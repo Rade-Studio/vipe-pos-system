@@ -146,9 +146,9 @@ function mapErrorCode(code: string | undefined): PaymentServiceError['kind'] {
   }
 }
 
-/** A successful RPC must return a row; treat an empty payload as a failure. */
-function requireData<T>(data: unknown, rpc: string): T {
-  if (data === null || data === undefined) {
+/** A successful RPC must return its row; a missing key field is a failure. */
+function requireData<T>(data: unknown, rpc: string, key: string): T {
+  if (data === null || typeof data !== 'object' || !(key in data)) {
     throw new PaymentServiceError({
       kind: 'unknown',
       message: `${rpc} returned no data`,
@@ -224,7 +224,7 @@ export async function payOrder(input: PayOrderInput): Promise<PayOrderResult> {
 
   if (error) throw wrapError(error)
 
-  const row = requireData<PayOrderResponseRow>(data, 'pay_order')
+  const row = requireData<PayOrderResponseRow>(data, 'pay_order', 'payment_id')
   const tenders: PayOrderTenderEcho[] = (row.tenders ?? []).map((t) => ({
     lineNo: t.line_no,
     methodCode: t.method_code,
@@ -270,7 +270,7 @@ export async function splitOrder(input: SplitOrderInput): Promise<SplitOrderResu
 
   if (error) throw wrapError(error)
 
-  const row = requireData<SplitOrderResponseRow>(data, 'split_order')
+  const row = requireData<SplitOrderResponseRow>(data, 'split_order', 'child_order_id')
   return {
     childOrderId: row.child_order_id,
     parent: toBillSummary(row.parent),
@@ -292,7 +292,7 @@ export async function undoSplit(input: UndoSplitInput): Promise<UndoSplitResult>
 
   if (error) throw wrapError(error)
 
-  const row = requireData<UndoSplitResponseRow>(data, 'undo_split')
+  const row = requireData<UndoSplitResponseRow>(data, 'undo_split', 'parent')
   return { parent: toBillSummary(row.parent) }
 }
 
