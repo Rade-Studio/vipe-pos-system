@@ -47,7 +47,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(106);
+SELECT plan(107);
 
 -- Explicit, because every INSERT below queues deferred events and a leftover
 -- IMMEDIATE mode would fire them at the end of the next statement, before the
@@ -792,7 +792,7 @@ SELECT is(
      WHERE m.restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000061' AND m.code = 'cash';
   $$),
   '23514'::text,
-  'a tender whose method_kind contradicts the catalog row is rejected at commit time');
+  'a tender whose method_kind contradicts the catalog row is rejected at insert time');
 
 SELECT is(
   pg_temp.pt_run_deferred($$
@@ -810,7 +810,7 @@ SELECT is(
      WHERE m.restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000061' AND m.code = 'cash';
   $$),
   '23514'::text,
-  'a tender whose method_code contradicts the catalog row is rejected at commit time');
+  'a tender whose method_code contradicts the catalog row is rejected at insert time');
 
 -- ============================================
 -- 5. A valid two-tender payment
@@ -1112,6 +1112,17 @@ SELECT is(
   'authenticated keeps the inert write grants on the legacy table (020 pins them)');
 SELECT is(pg_temp.pt_has_privilege('authenticated', 'public.payment_transactions', 'SELECT'), true,
   'authenticated keeps SELECT on the legacy payment history');
+
+-- 9. Regression: snapshot is frozen at insert time. Placed last: the catalog
+-- mutation leaks into the surrounding transaction.
+SELECT lives_ok(
+  $body$ DO $q$ BEGIN
+       UPDATE public.payment_methods SET kind = 'electronic', name = 'CASH_RENAMED'
+        WHERE restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000061' AND code = 'cash';
+       UPDATE public.payment_tenders SET line_no = line_no WHERE id = 'ab000000-0000-4000-8000-0000000000d1';
+       SET CONSTRAINTS ALL IMMEDIATE;
+     END; $q$ $body$,
+  'a re-evaluation of a payment after the catalog is reclassified does not raise 23514');
 
 SELECT * FROM finish();
 ROLLBACK;

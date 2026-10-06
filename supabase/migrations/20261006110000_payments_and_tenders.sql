@@ -57,8 +57,7 @@
 --     tenders only (the CHECK guarantees the electronic ones carry nothing);
 --   - every tender belongs to the payment's restaurant;
 --   - the payment's restaurant matches its order's and its cash register's;
---   - every tender's catalog row belongs to that same restaurant and its
---     method_code / method_kind still match the snapshot.
+--   - every tender's catalog row belongs to that same restaurant.
 -- It raises check_violation (23514), the same class a CHECK violation raises,
 -- so a client that already handles "amounts do not add up" keeps working.
 --
@@ -156,7 +155,7 @@ COMMENT ON COLUMN public.payments.cashier_profile_id IS
   'Staff member who took the payment. ON DELETE SET NULL: removing a profile must not delete money history.';
 
 COMMENT ON TABLE public.payment_tenders IS
-  'The tender lines of one payment (UNIQUE (payment_id, line_no)): how a single bill was split across methods. method_code and method_kind are snapshots of public.payment_methods at payment time, so a later rename or retype does not rewrite history. Written only by public.pay_order.';
+  'The tender lines of one payment (UNIQUE (payment_id, line_no)): how a single bill was split across methods. method_code and method_kind are validated against the public.payment_methods catalog row at insert time and then frozen as history, so a later rename or retype does not rewrite history. Written only by public.pay_order.';
 COMMENT ON COLUMN public.payment_tenders.cash_received IS
   'What the customer handed over for this line. Required for a cash tender and must be >= amount; forbidden (NULL) for an electronic one. This CHECK is the whole "only cash gives change" rule.';
 
@@ -364,23 +363,11 @@ BEGIN
       'payment % has a tender line whose payment method belongs to another restaurant',
       p_payment_id USING ERRCODE = 'check_violation';
   END IF;
-
-  -- The snapshots are the history; a line whose snapshot no longer matches its
-  -- catalog row was written from a stale or forged method.
-  IF EXISTS (
-    SELECT 1 FROM public.payment_tenders t
-      JOIN public.payment_methods m ON m.id = t.payment_method_id
-     WHERE t.payment_id = p_payment_id
-       AND (m.code <> t.method_code OR m.kind <> t.method_kind)) THEN
-    RAISE EXCEPTION
-      'payment % has a tender line whose method_code/method_kind do not match the catalog row',
-      p_payment_id USING ERRCODE = 'check_violation';
-  END IF;
 END;
 $$;
 
 COMMENT ON FUNCTION private.assert_payment_consistent(uuid) IS
-  'Re-computes the cross-row invariants of one payment (tender sum = total_charged, change_given = the cash overshoot, at least one line, one restaurant across payment/order/register/tender/catalog, snapshots matching the catalog row) and raises check_violation (23514) when one fails. Called at COMMIT by public.payments_assert_consistency.';
+  'Re-computes the cross-row invariants of one payment (tender sum = total_charged, change_given = the cash overshoot, at least one line, one restaurant across payment/order/register/tender/catalog) and raises check_violation (23514) when one fails. Called at COMMIT by public.payments_assert_consistency.';
 
 -- The trigger dispatch: it runs once per written row, and the checks are cheap
 -- enough to re-compute from the affected payment alone. A tender line moved
@@ -431,6 +418,32 @@ CREATE CONSTRAINT TRIGGER payment_tenders_consistency
   FOR EACH ROW
   EXECUTE FUNCTION public.payments_assert_consistency();
 
+-- The snapshot is validated at insert time: it is history, not a live mirror
+-- of the catalog. SECURITY INVOKER: the writer is always postgres (pay_order
+-- in production, the test session in tests) and already sees the catalog row.
+CREATE OR REPLACE FUNCTION public.guard_payment_tender_snapshot_at_insert()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.payment_methods m
+     WHERE m.id = NEW.payment_method_id AND m.code = NEW.method_code AND m.kind = NEW.method_kind) THEN
+    RAISE EXCEPTION 'payment_tender snapshot does not match the catalog row at insert time (tender %)', NEW.id USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.guard_payment_tender_snapshot_at_insert() IS
+  'BEFORE INSERT guard on public.payment_tenders: snapshot must match catalog at insert time, then is frozen.';
+
+DROP TRIGGER IF EXISTS payment_tenders_snapshot_at_insert ON public.payment_tenders;
+CREATE TRIGGER payment_tenders_snapshot_at_insert
+  BEFORE INSERT ON public.payment_tenders
+  FOR EACH ROW
+  EXECUTE FUNCTION public.guard_payment_tender_snapshot_at_insert();
 -- ============================================
 -- SECTION 5: the legacy ledger becomes read-only history
 -- ============================================
@@ -478,6 +491,9 @@ REVOKE ALL ON FUNCTION private.assert_payment_consistent(uuid) FROM anon;
 -- check directly: the same hardening 20261006100000 applies to the catalog.
 REVOKE ALL ON FUNCTION public.guard_payment_rows_immutable() FROM authenticated;
 REVOKE ALL ON FUNCTION public.payments_assert_consistency() FROM authenticated;
+REVOKE ALL ON FUNCTION public.guard_payment_tender_snapshot_at_insert() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.guard_payment_tender_snapshot_at_insert() FROM anon;
+REVOKE ALL ON FUNCTION public.guard_payment_tender_snapshot_at_insert() FROM authenticated;
 
 -- anon gets nothing (020_anon_lockdown enumerates every public table/function).
 REVOKE ALL ON TABLE public.payments FROM anon;
