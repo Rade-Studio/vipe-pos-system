@@ -69,7 +69,7 @@ export function invoiceTendersFromPayOrder(
     return {
       methodCode: t.methodCode,
       methodName: row?.name ?? t.methodCode,
-      methodKind: row?.kind ?? 'electronic',
+      methodKind: row?.kind ?? (t.cashReceived !== null ? 'cash' : 'electronic'),
       amount: t.amount,
       cashReceived: t.cashReceived,
     }

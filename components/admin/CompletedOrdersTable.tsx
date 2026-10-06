@@ -178,20 +178,25 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     let legacyCashReceived: number | undefined
     let legacyCashChange: number | undefined
     if (order.ledgerPayment) {
+      let catalog: Awaited<ReturnType<typeof listPaymentMethods>> | undefined
       try {
-        const catalog = await listPaymentMethods()
-        const resolved = invoiceTendersFromPayment(order.ledgerPayment, catalog)
-        const legacy = legacyInvoiceFields(resolved)
-        tenders = resolved
-        change = legacy.cashChange
-        legacyPaymentMethod = legacy.paymentMethod as PrintableInvoice["paymentMethod"]
-        legacyCashReceived = legacy.cashReceived ?? undefined
-        legacyCashChange = legacy.cashChange > 0 ? legacy.cashChange : undefined
+        catalog = await listPaymentMethods()
       } catch (err) {
         log.error("No se pudo cargar el catálogo para reimprimir:", {
           error: String(err),
         })
+        toast({
+          title: "Advertencia",
+          description: "No se pudieron cargar los nombres de los métodos de pago; la factura muestra sus códigos",
+        })
       }
+      const resolved = invoiceTendersFromPayment(order.ledgerPayment, catalog)
+      const legacy = legacyInvoiceFields(resolved)
+      tenders = resolved
+      change = legacy.cashChange
+      legacyPaymentMethod = legacy.paymentMethod as PrintableInvoice["paymentMethod"]
+      legacyCashReceived = legacy.cashReceived ?? undefined
+      legacyCashChange = legacy.cashChange > 0 ? legacy.cashChange : undefined
     }
 
     // Generar la factura

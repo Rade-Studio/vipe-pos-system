@@ -111,6 +111,23 @@ describe('invoiceTendersFromPayOrder', () => {
       },
     ])
   })
+
+  it('treats an uncatalogued line with cash received as cash', () => {
+    const result: PayOrderResult = {
+      paymentId: 'p-4',
+      status: 'paid',
+      amountDue: 1000,
+      tipAmount: 0,
+      totalCharged: 1000,
+      changeGiven: 500,
+      drawerWarning: false,
+      drawerCashBefore: 0,
+      alreadyPaid: false,
+      tenders: [{ lineNo: 1, methodCode: 'caja_menor', amount: 1000, cashReceived: 1500 }],
+    }
+    const [tender] = invoiceTendersFromPayOrder(result, CATALOG)
+    expect(tender.methodKind).toBe('cash')
+  })
 })
 
 // -----------------------------------------------------------
