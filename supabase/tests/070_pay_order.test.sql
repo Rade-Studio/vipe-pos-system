@@ -53,7 +53,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(57);
+SELECT plan(62);
 
 -- ============================================
 -- Helpers
@@ -329,6 +329,32 @@ INSERT INTO public.cash_transactions
   (id, restaurant_id, amount, type, cash_register_id)
 VALUES ('aaaaaaaa-0000-4000-8000-00000000d302', 'aaaaaaaa-0000-4000-8000-000000000071',
         2000, 'withdrawal', 'aaaaaaaa-0000-4000-8000-00000000c001');
+
+-- Bounded-review fixtures (75c007d): one prior paid order on c005 (3rd cash
+-- tender line for the drawer-formula regression); a tenant-B paid order;
+-- an INACTIVE payment method on tenant B; two active orders e030/e031 that
+-- stay active through sections 22-25.
+INSERT INTO public.orders (id, restaurant_id, table_id, status, subtotal, tax, tax_percentage, tip, tip_percentage, total, total_discounts) VALUES
+  ('aaaaaaaa-0000-4000-8000-00000000e023', 'aaaaaaaa-0000-4000-8000-000000000071', NULL, 'paid',   0, 0, 0, 0, 0, 0, 0),
+  ('bbbbbbbb-0000-4000-8000-00000000e102', 'bbbbbbbb-0000-4000-8000-000000000072', NULL, 'paid',   0, 0, 0, 0, 0, 0, 0),
+  ('aaaaaaaa-0000-4000-8000-00000000e030', 'aaaaaaaa-0000-4000-8000-000000000071', NULL, 'active', 0, 0, 0, 0, 0, 0, 0),
+  ('aaaaaaaa-0000-4000-8000-00000000e031', 'aaaaaaaa-0000-4000-8000-000000000071', NULL, 'active', 0, 0, 0, 0, 0, 0, 0);
+INSERT INTO public.order_items (order_id, dish_id, name, price, quantity, restaurant_id, status) VALUES
+  ('aaaaaaaa-0000-4000-8000-00000000e023', NULL, 'Drawer Extra', 7000, 1, 'aaaaaaaa-0000-4000-8000-000000000071', 'kitchen'),
+  ('bbbbbbbb-0000-4000-8000-00000000e102', NULL, 'Tenant B Paid', 10000, 1, 'bbbbbbbb-0000-4000-8000-000000000072', 'kitchen'),
+  ('aaaaaaaa-0000-4000-8000-00000000e030', NULL, 'Drawer Probe', 1000, 1, 'aaaaaaaa-0000-4000-8000-000000000071', 'kitchen'),
+  ('aaaaaaaa-0000-4000-8000-00000000e031', NULL, 'Regression Item', 1000, 1, 'aaaaaaaa-0000-4000-8000-000000000071', 'kitchen');
+INSERT INTO public.payments (id, restaurant_id, order_id, cash_register_id, cashier_profile_id, amount_due, tip_amount, total_charged, change_given, idempotency_key) VALUES
+  ('aaaaaaaa-0000-4000-8000-00000000f603', 'aaaaaaaa-0000-4000-8000-000000000071', 'aaaaaaaa-0000-4000-8000-00000000e023', 'aaaaaaaa-0000-4000-8000-00000000c001', (SELECT id FROM public.profiles WHERE auth_user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2'), 7000, 0, 7000, 0, 'aaaaaaaa-0000-4000-8000-000000000f08'),
+  ('bbbbbbbb-0000-4000-8000-00000000f102', 'bbbbbbbb-0000-4000-8000-000000000072', 'bbbbbbbb-0000-4000-8000-00000000e102', 'bbbbbbbb-0000-4000-8000-00000000c101', (SELECT id FROM public.profiles WHERE auth_user_id = 'bbbbbbbb-0000-4000-8000-0000000000b1'), 10000, 0, 10000, 0, 'bbbbbbbb-0000-4000-8000-000000000f10');
+INSERT INTO public.payment_tenders (id, restaurant_id, payment_id, line_no, payment_method_id, method_code, method_kind, amount, cash_received) SELECT
+  'aaaaaaaa-0000-4000-8000-00000000f614', 'aaaaaaaa-0000-4000-8000-000000000071', 'aaaaaaaa-0000-4000-8000-00000000f603', 1, m.id, 'cash', 'cash', 7000, 7000
+  FROM public.payment_methods m WHERE m.restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071' AND m.code = 'cash';
+INSERT INTO public.payment_tenders (id, restaurant_id, payment_id, line_no, payment_method_id, method_code, method_kind, amount, cash_received) SELECT
+  'bbbbbbbb-0000-4000-8000-00000000f112', 'bbbbbbbb-0000-4000-8000-000000000072', 'bbbbbbbb-0000-4000-8000-00000000f102', 1, m.id, 'cash', 'cash', 10000, 10000
+  FROM public.payment_methods m WHERE m.restaurant_id = 'bbbbbbbb-0000-4000-8000-000000000072' AND m.code = 'cash';
+INSERT INTO public.payment_methods (id, restaurant_id, code, name, kind, is_active, sort_order) VALUES
+  ('bbbbbbbb-0000-4000-8000-0000000cccc1', 'bbbbbbbb-0000-4000-8000-000000000072', 'inactive_x', 'Inactive X', 'cash', false, 99);
 
 -- ============================================
 -- 4. A cashier of tenant A: the happy path (cash with change)
@@ -1323,27 +1349,57 @@ SELECT is(
   'anon cannot call pay_order (42501)');
 RESET ROLE;
 
+-- 21. R3-already-paid-no-key: tenant-A cashier on a tenant-B paid order -> P0002 (tenant check fires before already-paid).
+SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-4000-8000-0000000000a2","role":"authenticated"}', true);
+SET LOCAL ROLE authenticated;
+SELECT is(pg_temp.po_run($q$ SELECT public.pay_order('bbbbbbbb-0000-4000-8000-00000000e102'::uuid, 'aaaaaaaa-0000-4000-8000-00000000c002'::uuid, 0::bigint, '[{"payment_method_id":"00000000-0000-4000-8000-000000000000","amount":1,"cash_received":1}]'::jsonb, 'aaaaaaaa-0000-4000-8000-000000000e2a'::uuid) $q$), 'P0002'::text, 'R3-already-paid-no-key: tenant-A cashier on tenant-B paid order sees P0002');
+RESET ROLE;
+
+-- 22. R3-drawer-formula: c001 drawer_cash_before = 10000 + (10000+53892+7000) + 5000 - 2000 = 73892. Two prior paid orders (e005, e001) + this fixture (e023) = 3 cash tender lines.
+SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-4000-8000-0000000000a2","role":"authenticated"}', true);
+SET LOCAL ROLE authenticated;
+SELECT is(pg_temp.po_text($q$ SELECT (public.pay_order('aaaaaaaa-0000-4000-8000-00000000e030'::uuid, 'aaaaaaaa-0000-4000-8000-00000000c001'::uuid, 0::bigint, jsonb_build_array(jsonb_build_object('payment_method_id', (SELECT id FROM public.payment_methods WHERE restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071' AND code = 'cash'), 'amount', 1000::bigint, 'cash_received', 1000::bigint)), 'aaaaaaaa-0000-4000-8000-000000000e30'::uuid))->>'drawer_cash_before' $q$), '83892'::text, 'R3-drawer-formula: initial 10000 + 3 cash tenders (10000+53892+7000) + deposit 5000 - withdrawal 2000 = 83892');
+RESET ROLE;
+
+-- 23. R3-amount-type-cast: negative amount on 2nd tender -> 22023 with 'tender[2]'.
+SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-4000-8000-0000000000a2","role":"authenticated"}', true);
+SET LOCAL ROLE authenticated;
+SELECT throws_ok($q$ SELECT public.pay_order('aaaaaaaa-0000-4000-8000-00000000e031'::uuid, 'aaaaaaaa-0000-4000-8000-00000000c002'::uuid, 0::bigint, jsonb_build_array(jsonb_build_object('payment_method_id', (SELECT id FROM public.payment_methods WHERE restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071' AND code = 'cash'), 'amount', 1000::bigint, 'cash_received', 1000::bigint), jsonb_build_object('payment_method_id', (SELECT id FROM public.payment_methods WHERE restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071' AND code = 'cash'), 'amount', -500::bigint, 'cash_received', -500::bigint)), 'aaaaaaaa-0000-4000-8000-000000000e2c'::uuid) $q$, '22023', 'pay_order: tender[2].amount must be a positive integer', 'R3-amount-type-cast: negative amount on 2nd tender raises 22023 with tender[2] in the message');
+RESET ROLE;
+
+-- 24. R3-tenant-cash-tender: INACTIVE method of another tenant -> not-caller-tenant message.
+SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-4000-8000-0000000000a2","role":"authenticated"}', true);
+SET LOCAL ROLE authenticated;
+SELECT throws_ok($q$ SELECT public.pay_order('aaaaaaaa-0000-4000-8000-00000000e031'::uuid, 'aaaaaaaa-0000-4000-8000-00000000c002'::uuid, 0::bigint, jsonb_build_array(jsonb_build_object('payment_method_id', 'bbbbbbbb-0000-4000-8000-0000000cccc1'::uuid, 'amount', 1000::bigint, 'cash_received', 1000::bigint)), 'aaaaaaaa-0000-4000-8000-000000000e2d'::uuid) $q$, 'P0001', 'pay_order: tender[1].payment_method_id does not resolve to a method of the caller tenant', 'R3-tenant-cash-tender: INACTIVE method of another tenant yields the not-caller-tenant message');
+RESET ROLE;
+
+-- 25. R3-tender-count-non-positive: 21 tender lines -> 22023 (DoS guard).
+SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-4000-8000-0000000000a2","role":"authenticated"}', true);
+SET LOCAL ROLE authenticated;
+SELECT throws_ok($q$ SELECT public.pay_order('aaaaaaaa-0000-4000-8000-00000000e031'::uuid, 'aaaaaaaa-0000-4000-8000-00000000c002'::uuid, 0::bigint, (SELECT jsonb_agg(jsonb_build_object('payment_method_id', (SELECT id FROM public.payment_methods WHERE restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071' AND code = 'cash'), 'amount', 1::bigint, 'cash_received', 1::bigint)) FROM generate_series(1, 21) g), 'aaaaaaaa-0000-4000-8000-000000000e2e'::uuid) $q$, '22023', 'pay_order: p_tenders accepts at most 20 lines', 'R3-tender-count-non-positive: 21 tender lines raise 22023 with the at-most-20 message');
+RESET ROLE;
+
 -- ============================================
 -- 21. Final invariants on the resulting ledger
 -- ============================================
 SELECT is(
   (SELECT count(*)::bigint FROM public.payments
     WHERE restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071'),
-  10::bigint,
-  'final: tenant A holds ten payment rows (2 fixture payments for e005 and e017 + 8 from pay_order: e001, e004, e003, e008, e014, e015, e016, e002)');
+  12::bigint,
+  'final: tenant A holds twelve payment rows (3 fixture payments for e005, e017, e023 + 9 from pay_order: e001, e004, e003, e008, e014, e015, e016, e002, e030)');
 
 SELECT is(
   (SELECT count(*)::bigint FROM public.orders
     WHERE restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071' AND status = 'paid'),
-  10::bigint,
-  'final: 10 orders of tenant A are paid');
+  12::bigint,
+  'final: 12 orders of tenant A are paid');
 
 SELECT is(
   (SELECT count(*)::bigint FROM public.payment_tenders t
      JOIN public.payments p ON p.id = t.payment_id
     WHERE p.restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071'),
-  11::bigint,
-  'final: tenant A holds eleven tender lines (2 fixture + 1+2+1+1+1+1+1+1 from pay_order, no extra line on e001 because of the idempotent replay)');
+  13::bigint,
+  'final: tenant A holds thirteen tender lines (3 fixture + 1+2+1+1+1+1+1+1+1 from pay_order, no extra line on e001 because of the idempotent replay)');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -192,6 +192,11 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
+  IF jsonb_array_length(p_tenders) > 20 THEN
+    RAISE EXCEPTION 'pay_order: p_tenders accepts at most 20 lines'
+      USING ERRCODE = '22023';
+  END IF;
+
   -- Each line must carry the right shape; capture them in parallel arrays
   -- for the per-method work below. jsonb_typeof first means a single bad element
   -- is caught with a clear message rather than a generic "cannot cast".
