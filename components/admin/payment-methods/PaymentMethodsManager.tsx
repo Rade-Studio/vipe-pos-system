@@ -256,6 +256,9 @@ export function PaymentMethodsManager() {
       } catch (err) {
         log.error("Error al reordenar métodos de pago:", { error: String(err) })
         toast.error(paymentErrorMessage(err))
+        // The updates run one by one, so some may have landed; reload the
+        // server order before the next move is computed from it.
+        await invalidate()
       }
     })
     if (run) await run
