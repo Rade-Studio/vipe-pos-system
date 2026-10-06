@@ -207,7 +207,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  IF (SELECT count(*) FROM (
+  IF (SELECT count(v) FROM (
          SELECT v FROM unnest(p_cash_register_ids) v
        ) s) <> v_array_len THEN
     -- array_length was non-null, so this is a NULL inside the array; rejected
