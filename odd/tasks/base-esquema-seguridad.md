@@ -42,12 +42,15 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
       `authenticated` and `service_role`.
 - [x] 5. Privilege escalation (RED first): users cannot change their own `role` or
       `restaurant_id`; `handle_new_user` ignores metadata role; signup disabled.
-- [ ] 6. Tenant-scope the remaining tables (RED first): `business_config`,
+- [x] 6. Tenant-scope the remaining tables (RED first): `business_config`,
       `ingredient_categories`, `ingredient_transactions_orders` get `restaurant_id`
       (where applicable) and RLS; app reads keep working.
 - [ ] 7. CI: run `pnpm test:db` in GitHub Actions.
 
 ## Known follow-ups (out of scope)
+
+- New-tenant provisioning must seed business_config: app `initializeDefaultConfig` runs for every
+  role post-login and non-admins now get 42501 when keys are missing (no-op for the seeded tenant).
 
 - Cloud test project: disable signups in the dashboard (Auth > Providers > Email > Allow new users
   to sign up = off); `enable_signup = false` in config.toml only affects local.
@@ -88,3 +91,4 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
 | 3 | `fa39c07` | RED: `010_tenant_isolation` 15 failures (metadata-lying JWT reads tenant B, sub-less JWT reads 9 tables, cross-tenant UPDATE hits 2 rows). GREEN: `pnpm test:db` Files=3 Tests=37 PASS; `db reset` clean, seed loads (6 tables, 4 dishes, 7 categories, 5 profiles). RDD lineage `review-d0f0777767295c7e` (tier medium, reliability only): captured first try; refuter refuted the profiles recursion finding; escalated on `R3-bootstrap-default-mismatch` (seed may not load), refuted by the clean reset above. |
 | 4 | `23e46b6` | Pre-login audit: no data access before auth (no exception kept). RED: `020_anon_lockdown` 15 failures (anon held 133 table privileges, could read/write business_config, execute payment RPCs; authenticated was member of anon and service_role). GREEN: Files=4 Tests=62 PASS. Live API: anon GET business_config/orders/restaurants and RPC complete_payment -> 401 42501; logged-in cashier GET tables -> 200 (6 rows). RDD lineage `review-40856ec21a602870`: **approved**, acknowledged (authority burned); 5 informational findings on the test file. |
 | 5 | `5a521a1` + correction `0ceb9c3` | RED: `030_profile_privileges` 16/26 failed (waiter self-promotion, cashier DELETE, waiter INSERT, signup metadata role honoured). GREEN: Files=5 Tests=99 PASS; seed roles intact. Live API: waiter PATCH role -> 403 42501, PATCH restaurant_id -> 403, PATCH name -> 200; signup -> 422 signup_disabled; admin insert/edit/delete staff -> 201/200/200. RDD lineage `review-fb3a173d36809968`: refuter corroborated 5 'deterministic' findings -> correction_required. Verified R3-001/003/004/006 false (waiter deletes/updates 0 unlinked rows; test is BEGIN/ROLLBACK), R3-007 real (unordered LIMIT 1 tenant fallback). Correction `0ceb9c3` (112 of 120 planned lines): deterministic oldest-restaurant fallback + proofs for the false findings. Targeted validator refused 2x (does not bind the correction request, tool defect): lineage left in correction_required without verdict. |
+| 6 | (this commit) | RED: `040_remaining_tables_tenancy` 40/56 failed (waiter saw tenant B config and 3 restaurants, waiter wrote config, junction unscoped); orchestrator added a RED for service_role inserting config without restaurant_id (silently landed in oldest tenant) and restricted the fallback to postgres. GREEN: Files=6 Tests=157 PASS; db reset clean, 8 seed config rows in 1 tenant. Live API: waiter GET config 200 (8 rows), waiter PATCH 0 rows, admin PATCH/POST/DELETE ok, waiter GET restaurants = 1 row, anon 401. |
