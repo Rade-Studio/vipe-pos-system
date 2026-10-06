@@ -51,15 +51,18 @@ split/undo of partial payments.
   - [x] 8c. Transaction lists (TransactionsList, TransactionsByRegisterId, CSV), completed
         orders method label (lib/supabase/service.ts), retire legacy payment_transactions writers.
 - [x] 9. Admin payment-methods screen (create, rename, disable, reorder).
-- [ ] 10. Invoices (web print, `lib/print`, `pos/` Python) list tenders, tip and change.
+- [x] 10. Invoices (web print, `lib/print`, `pos/` Python) list tenders, tip and change.
   - [x] 10a. Web + lib/print: invoice tenders from the server pay_order result and the ledger
         (reprints), catalog names resolved before broadcast, fix 7a label bug (single non-cash
         line printed as cash). Additive payload: keep paymentMethod/cashReceived/cashChange.
-  - [ ] 10b. pos/print_renderer.py prints tenders when present (stdlib unittest), README
+  - [x] 10b. pos/print_renderer.py prints tenders when present (stdlib unittest), README
         note: installed listeners keep the old single-label ticket until rebuilt.
 - [ ] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
 
 ## Known follow-ups (out of scope)
+
+- CI does not run pos/test_print_renderer.py yet (stdlib unittest, no deps).
+- Python legacy label prints "Multiple" while TS prints "MÚLTIPLES" (pre-existing).
 
 - components/views/CashierView.tsx showInvoice is dead code (no callers).
 
@@ -109,3 +112,4 @@ split/undo of partial payments.
 | 9 fix RDD | review-ca7d8c83f53b0ea4 | Medium tier, reliability lens admitted -> APPROVED; acknowledgement burned authority. Advisory only: no component test for the failed-reorder reload (no jsdom). |
 | 10a | `12276f5` | Invoice tenders from the server: lib/payments/invoice-tenders.ts (RED: module missing; GREEN 12 tests incl. single-Nequi regression for the 7a bug that printed it as cash) and renderInvoice tender path (RED: change double-counted 6.000 vs 3.000; GREEN 7 tests). Reprints use the ledger payment kept by getOrdersByDate. Additive payload: tenders[] {methodCode, methodName, methodKind, amount, cashReceived} + change; legacy fields still set. Parent check: legacy renderInvoice output byte-identical to the previous version for 4 inputs. Vitest 14 files / 241; typecheck 0; build OK. |
 | 10a RDD | review-9c33c7d0a295292d + `3df79bd` | risk, resilience admitted; readability refused (invalid JSON) then admitted; reliability refused (location without line) then admitted -> correction_required on 4 findings. Real: uncatalogued pay_order line with cash_received typed electronic (lost RECIBIDO/CAMBIO) and a failed catalog lookup on reprint silently dropped the breakdown; fixed in 3df79bd within the 40-line plan (RED: expected cash, got electronic; GREEN Vitest 242). Not defects: two cash lines are one method ("Efectivo" matches methodLabel); cashChange undefined at 0 mirrors the payment dialog. Targeted validator refused twice (result not bound to the correction request) -> retry spent, lineage left in correction_required. |
+| 10b | (this commit) | pos/print_renderer.py prints FORMAS DE PAGO with per-cash RECIBIDO/CAMBIO and total CAMBIO when tenders are present; malformed tenders are skipped or fall back to the legacy block (never raises). stdlib unittest pos/test_print_renderer.py: RED 6 failures + 1 error, GREEN 11/11. Parent check: the 3 legacy byte snapshots also pass against the previous renderer (HEAD), so the old output is unchanged. README: installed listeners need a rebuild to show the breakdown. |
