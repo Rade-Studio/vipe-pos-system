@@ -200,11 +200,12 @@ CREATE TRIGGER profiles_guard_privileged_columns
 -- narrowing it to the four known roles is a separate decision from this one.
 --
 -- Tenant: raw_app_meta_data ->> 'restaurant_id' when the provisioning code sets
--- it, else the pre-existing fallback of "the first row of public.restaurants".
--- The fallback is kept for compatibility but is arbitrary (no ORDER BY, one
--- tenant is picked by chance) and is only reachable with signup disabled and a
--- provisioning step that knows which restaurant the account belongs to; new
--- accounts must therefore carry restaurant_id in app metadata.
+-- it, else the oldest row of public.restaurants (ORDER BY created_at, id). The
+-- old fallback was `LIMIT 1` with no ORDER BY, so it returned whatever row the
+-- scan happened to reach - an arbitrary tenant. Provisioning must therefore set
+-- raw_app_meta_data.restaurant_id; failing closed when the id is missing and
+-- the install is multi-tenant is stricter and tracked as a follow-up, not done
+-- here because the seed and the test fixtures legitimately rely on a fallback.
 --
 -- ON CONFLICT (auth_user_id) DO NOTHING is preserved: re-signup and any
 -- provisioning that re-inserts an auth.users row must not duplicate or reset a
@@ -227,6 +228,7 @@ BEGIN
   IF v_restaurant_id IS NULL THEN
     SELECT r.id INTO v_restaurant_id
     FROM public.restaurants r
+    ORDER BY r.created_at, r.id
     LIMIT 1;
   END IF;
 
@@ -250,7 +252,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.handle_new_user() IS
-  'AFTER INSERT on auth.users (Supabase Auth). Creates the profile with the role from raw_app_meta_data (server-controlled, defaults to waiter) and the tenant from raw_app_meta_data->>restaurant_id, else the first row of public.restaurants.';
+  'AFTER INSERT on auth.users (Supabase Auth). Creates the profile with the role from raw_app_meta_data (server-controlled, defaults to waiter) and the tenant from raw_app_meta_data->>restaurant_id, else the oldest row of public.restaurants (ORDER BY created_at, id) - deterministic, but provisioning must set restaurant_id.';
 
 -- CREATE OR REPLACE keeps the existing ACL ({postgres, authenticated,
 -- service_role}, PUBLIC and anon already revoked by 20261005130000); restated so

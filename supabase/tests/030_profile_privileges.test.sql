@@ -35,7 +35,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(30);
+SELECT plan(37);
 
 -- ============================================
 -- Row-count probe
@@ -45,8 +45,8 @@ SELECT plan(30);
 -- probe_exec() runs the caller's statement with the caller's privileges
 -- (SECURITY INVOKER), so RLS and the privilege-guard trigger still apply
 -- exactly as they do for the API, and returns the affected row count.
--- Created as postgres here and discarded by the enclosing ROLLBACK.
-CREATE FUNCTION public.probe_exec(p_sql text)
+-- Created in pg_temp, so the test never leaves an object in schema public.
+CREATE FUNCTION pg_temp.probe_exec(p_sql text)
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -63,10 +63,12 @@ $$;
 -- ============================================
 -- Fixtures (as the test author / postgres)
 -- ============================================
-INSERT INTO public.restaurants (id, slug, name)
+-- Tenant B is deliberately the OLDEST: the handle_new_user() fallback must
+-- pick it, which no unordered "first row" can be relied on to do.
+INSERT INTO public.restaurants (id, slug, name, created_at)
 VALUES
-  ('aaaaaaaa-0000-4000-8000-000000000001', 'priv-tenant-a', 'Privilege Tenant A'),
-  ('bbbbbbbb-0000-4000-8000-000000000002', 'priv-tenant-b', 'Privilege Tenant B');
+  ('aaaaaaaa-0000-4000-8000-000000000001', 'priv-tenant-a', 'Privilege Tenant A', now() - interval '1 day'),
+  ('bbbbbbbb-0000-4000-8000-000000000002', 'priv-tenant-b', 'Privilege Tenant B', now() - interval '2 days');
 
 -- Tenant A: an admin, a waiter and a cashier. Tenant B: an admin.
 INSERT INTO auth.users (
@@ -98,6 +100,12 @@ VALUES
    '{"provider":"email","providers":["email"]}'::jsonb,
    '{"full_name":"Admin B","role":"admin"}'::jsonb, now(), now());
 
+-- An admin-UI staff row: no auth_user_id, so `auth_user_id = auth.uid()` is
+-- NULL for it rather than false.
+INSERT INTO public.profiles (id, restaurant_id, full_name, username, role)
+VALUES ('aaaaaaaa-0000-4000-8000-0000000000ff', 'aaaaaaaa-0000-4000-8000-000000000001',
+        'Unlinked A', 'unlinked-a', 'waiter');
+
 -- handle_new_user() created one profile per user above; pin the tenant and the
 -- role explicitly so this fixture does not depend on which metadata key the
 -- trigger reads (that is what the section 4 assertions below measure).
@@ -128,7 +136,7 @@ SELECT set_config(
 SET LOCAL ROLE authenticated;
 
 SELECT is(
-  public.probe_exec(
+  pg_temp.probe_exec(
     $$ UPDATE public.profiles
           SET full_name = 'Waiter A Renamed'
         WHERE auth_user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$),
@@ -166,7 +174,7 @@ SELECT throws_ok(
 );
 
 SELECT is(
-  public.probe_exec(
+  pg_temp.probe_exec(
     $$ UPDATE public.profiles
           SET full_name = 'Owned By Waiter'
         WHERE auth_user_id = 'aaaaaaaa-0000-4000-8000-0000000000a3' $$),
@@ -182,11 +190,25 @@ SELECT throws_ok(
 );
 
 SELECT is(
-  public.probe_exec(
+  pg_temp.probe_exec(
     $$ DELETE FROM public.profiles
       WHERE auth_user_id = 'aaaaaaaa-0000-4000-8000-0000000000a3' $$),
   0,
   'a waiter deleting a colleague''s row affects zero rows'
+);
+
+SELECT is(
+  pg_temp.probe_exec(
+    $$ UPDATE public.profiles SET full_name = 'By Waiter' WHERE auth_user_id IS NULL $$),
+  0,
+  'a waiter updating an unlinked same-tenant profile affects zero rows'
+);
+
+SELECT is(
+  pg_temp.probe_exec(
+    $$ DELETE FROM public.profiles WHERE auth_user_id IS NULL $$),
+  0,
+  'a waiter deleting an unlinked same-tenant profile affects zero rows'
 );
 
 RESET ROLE;
@@ -219,6 +241,9 @@ SELECT is(
   'the cashier row keeps its name'
 );
 SELECT is(
+  (SELECT full_name FROM public.profiles WHERE id = 'aaaaaaaa-0000-4000-8000-0000000000ff')::text,
+  'Unlinked A'::text, 'the unlinked same-tenant profile a waiter targeted still exists');
+SELECT is(
   (SELECT count(*) FROM public.profiles WHERE username = 'intruder-a1')::bigint,
   0::bigint,
   'the waiter inserted no profile at all'
@@ -235,7 +260,7 @@ SELECT set_config(
 SET LOCAL ROLE authenticated;
 
 SELECT is(
-  public.probe_exec(
+  pg_temp.probe_exec(
     $$ UPDATE public.profiles
           SET role = 'cashier',
               full_name = 'Waiter A Reassigned'
@@ -264,7 +289,7 @@ SELECT throws_ok(
 );
 
 SELECT is(
-  public.probe_exec(
+  pg_temp.probe_exec(
     $$ UPDATE public.profiles
           SET full_name = 'Admin A Cross Tenant'
         WHERE auth_user_id = 'bbbbbbbb-0000-4000-8000-0000000000b1' $$),
@@ -275,7 +300,7 @@ SELECT is(
 -- The admin UI (components/admin/staff/WaiterForm.tsx) creates staff rows with
 -- no auth_user_id; that path must keep working.
 SELECT is(
-  public.probe_exec(
+  pg_temp.probe_exec(
     $$ INSERT INTO public.profiles (id, restaurant_id, full_name, username, role)
        VALUES ('aaaaaaaa-0000-4000-8000-00000000ff01',
                'aaaaaaaa-0000-4000-8000-000000000001', 'Guest Waiter', 'guest-waiter', 'waiter') $$),
@@ -284,10 +309,38 @@ SELECT is(
 );
 
 SELECT is(
-  public.probe_exec(
+  pg_temp.probe_exec(
     $$ DELETE FROM public.profiles WHERE id = 'aaaaaaaa-0000-4000-8000-00000000ff01' $$),
   1,
   'an admin can delete that profile again'
+);
+
+-- private.current_app_role() is re-read from profiles on every statement, so a
+-- self-demotion lands at once: RLS stops treating the next statement as an
+-- admin's, and the guard rejects the one row the demoter can still see.
+SELECT is(
+  pg_temp.probe_exec(
+    $$ UPDATE public.profiles SET role = 'waiter'
+      WHERE auth_user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' $$),
+  1,
+  'an admin can demote itself'
+);
+
+SELECT is(
+  pg_temp.probe_exec(
+    $$ UPDATE public.profiles SET role = 'cashier'
+      WHERE auth_user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$),
+  0,
+  'right after demoting itself, the next statement is filtered as a waiter'
+);
+
+SELECT throws_ok(
+  $$ UPDATE public.profiles
+       SET role = 'admin'
+     WHERE auth_user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' $$,
+  '42501',
+  'only an admin of the same tenant may change profiles.role',
+  'a self-demoted admin cannot promote itself back on the next statement'
 );
 
 RESET ROLE;
@@ -368,6 +421,21 @@ SELECT is(
   'app_metadata restaurant_id places the new profile in tenant B'
 );
 
+-- User #3 carries no restaurant_id, so the fallback alone picks its tenant:
+-- the oldest restaurant, deterministically. (Failing closed instead of guessing
+-- is a stricter variant tracked as a follow-up, not done in this migration.)
+INSERT INTO auth.users (id, email, raw_app_meta_data, raw_user_meta_data)
+VALUES ('eeeeeeee-0000-4000-8000-0000000000e1', 'priv-notenant@example.com',
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        '{"full_name":"No Tenant"}'::jsonb);
+
+SELECT is(
+  (SELECT restaurant_id FROM public.profiles
+    WHERE auth_user_id = 'eeeeeeee-0000-4000-8000-0000000000e1')::uuid,
+  'bbbbbbbb-0000-4000-8000-000000000002'::uuid,
+  'a signup with no app_metadata restaurant_id lands in the OLDEST restaurant'
+);
+
 -- ============================================
 -- 5. Triangulation: the two edges the app depends on
 -- ============================================
@@ -383,7 +451,7 @@ SELECT set_config(
 SET LOCAL ROLE authenticated;
 
 SELECT is(
-  public.probe_exec(
+  pg_temp.probe_exec(
     $$ UPDATE public.profiles
           SET full_name = 'Waiter A Renamed Again',
               role = 'cashier'
@@ -411,7 +479,7 @@ RESET ROLE;
 SET LOCAL ROLE service_role;
 
 SELECT is(
-  public.probe_exec(
+  pg_temp.probe_exec(
     $$ UPDATE public.profiles
           SET role = 'admin',
               restaurant_id = 'bbbbbbbb-0000-4000-8000-000000000002'
