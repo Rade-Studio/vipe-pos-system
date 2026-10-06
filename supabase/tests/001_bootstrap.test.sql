@@ -20,13 +20,13 @@ SET LOCAL search_path = public, extensions;
 SELECT plan(11);
 
 -- --- Migration history -----------------------------------------------------
--- 36 files live in supabase/migrations/ (one more since the pay_order RPC).
+-- 37 files live in supabase/migrations/ (one more since the split_order RPC).
 -- The CLI records each applied file in supabase_migrations.schema_migrations;
 -- the count proves none was skipped and that nothing ran outside the folder.
 SELECT is(
   (SELECT count(*) FROM supabase_migrations.schema_migrations)::bigint,
-  36::bigint,
-  'all 36 migration files are recorded in supabase_migrations.schema_migrations'
+  37::bigint,
+  'all 37 migration files are recorded in supabase_migrations.schema_migrations'
 );
 
 -- --- orders.status ---------------------------------------------------------
