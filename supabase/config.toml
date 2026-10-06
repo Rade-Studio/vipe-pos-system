@@ -176,7 +176,13 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = true
+# New accounts are provisioned by an admin (Admin UI -> staff), never by the
+# public: signup is the only way to hand an unknown browser session a profiles
+# row, and handle_new_user() defaults every new account to 'waiter'. The same
+# toggle on Supabase Cloud lives in Authentication -> Providers -> Email ->
+# "Allow new users to sign up" (and in every other provider that can create
+# users).
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts

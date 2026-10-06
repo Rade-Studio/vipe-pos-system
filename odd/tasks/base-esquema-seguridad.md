@@ -40,7 +40,7 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
 - [x] 4. Anon lockdown (RED first): revoke anon on all existing public tables and
       sequences, drop `GRANT anon/service_role TO authenticated`, explicit grants for
       `authenticated` and `service_role`.
-- [ ] 5. Privilege escalation (RED first): users cannot change their own `role` or
+- [x] 5. Privilege escalation (RED first): users cannot change their own `role` or
       `restaurant_id`; `handle_new_user` ignores metadata role; signup disabled.
 - [ ] 6. Tenant-scope the remaining tables (RED first): `business_config`,
       `ingredient_categories`, `ingredient_transactions_orders` get `restaurant_id`
@@ -48,6 +48,12 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
 - [ ] 7. CI: run `pnpm test:db` in GitHub Actions.
 
 ## Known follow-ups (out of scope)
+
+- Cloud test project: disable signups in the dashboard (Auth > Providers > Email > Allow new users
+  to sign up = off); `enable_signup = false` in config.toml only affects local.
+- Any SECURITY DEFINER function owned by postgres bypasses the profiles guard; audit every new one.
+- Admin "create waiter" is broken today: WaiterForm/service.ts send the dropped `password` column
+  (PGRST204). Fix in its own task.
 
 - `supabase_admin` default ACLs still auto-grant anon on new public objects (not revocable from a
   migration); `020_anon_lockdown` enumerates every public table/function, so any new object
@@ -78,3 +84,4 @@ foundation for the payments redesign (next feature) and later delivery/WhatsApp.
 | 2a | `99163c5` | Verifier: `supabase start` on ports 4432x, `db reset` clean (29 migrations + seed), `pnpm test:db` Files=2 Tests=18 PASS, seeded user login 200 / wrong password 400. RED captured before fixes. Lockfile untouched (CLI via `npx supabase@2.119.0`). RDD lineage `review-96e6f3ec43551b31`: risk, resilience, readability admitted; reliability refused 2x for invalid reviewer JSON; refused claims read manually, none confirmed (brittle hardcoded migration count noted). |
 | 2b | `9872534` | `docker compose config -q` exit 0 (dummy env), `pnpm test:db` 18/18 PASS, `pnpm typecheck` exit 0; only stale ref left in `docs/payment-atomicity-test.md`. RDD lineage `review-9bb0a1ea12ecc16f`: risk, resilience, reliability admitted; readability refused (finding without line) then native failure; terminal `escalated` (`unknown_causality`) on R3-001..003 and two R4 findings, all assessed false or intentional (healthcheck exists; fail-fast env is by design; compose no longer owns Supabase; CLI local anon key is deterministic). |
 | 3 | `fa39c07` | RED: `010_tenant_isolation` 15 failures (metadata-lying JWT reads tenant B, sub-less JWT reads 9 tables, cross-tenant UPDATE hits 2 rows). GREEN: `pnpm test:db` Files=3 Tests=37 PASS; `db reset` clean, seed loads (6 tables, 4 dishes, 7 categories, 5 profiles). RDD lineage `review-d0f0777767295c7e` (tier medium, reliability only): captured first try; refuter refuted the profiles recursion finding; escalated on `R3-bootstrap-default-mismatch` (seed may not load), refuted by the clean reset above. |
+| 4 | `23e46b6` | Pre-login audit: no data access before auth (no exception kept). RED: `020_anon_lockdown` 15 failures (anon held 133 table privileges, could read/write business_config, execute payment RPCs; authenticated was member of anon and service_role). GREEN: Files=4 Tests=62 PASS. Live API: anon GET business_config/orders/restaurants and RPC complete_payment -> 401 42501; logged-in cashier GET tables -> 200 (6 rows). RDD lineage `review-40856ec21a602870`: **approved**, acknowledged (authority burned); 5 informational findings on the test file. |
