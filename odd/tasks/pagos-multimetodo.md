@@ -21,6 +21,10 @@ split/undo of partial payments.
   returns a warning the UI shows.
 - Money: whole COP pesos (integer) in new tables.
 - Tests: pgTAP for SQL (`pnpm test:db`), Vitest for pure payment logic in `lib/payments`.
+- Register summary (task 8): legacy `payment_transactions` shown as a separate read-only
+  section, never part of new expected cash; the server computes final cash at close
+  (`close_register`); tips are paid to waiters at close, so they are deducted from the
+  expected cash as a payout; multi-register (per-day) totals sum each register's initial cash.
 
 ## Tasks
 
@@ -39,7 +43,11 @@ split/undo of partial payments.
 - [x] 7. New payment dialog + CashierView integration (tenders, remaining, tip, warning),
       partial-payment dialogs on the new RPCs.
 - [ ] 8. Register summary, transaction lists, close-register and admin reports grouped by
-      catalog (server-side summary).
+      catalog (server-side summary). Regression since 7a: the client summary reads only
+      legacy `payment_transactions`, so `pay_order` sales are missing from closing totals.
+  - [ ] 8a. SQL: `register_summary(uuid[])` + `close_register(uuid)` RPCs, pgTAP 090.
+  - [ ] 8b. Client: service wrappers, store, close dialog, status/add/withdraw cash,
+        payment-dialog drawer check, admin summary, transaction lists.
 - [ ] 9. Admin payment-methods screen (create, rename, disable, reorder).
 - [ ] 10. Invoices (web print, `lib/print`, `pos/` Python) list tenders, tip and change.
 - [ ] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
