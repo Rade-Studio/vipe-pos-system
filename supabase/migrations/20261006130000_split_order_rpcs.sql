@@ -95,6 +95,16 @@
 --
 --   6. Response. jsonb {parent:{order_id, subtotal, tax, tip, total}}.
 --
+-- Lock order invariant (keep it when editing either function): every call
+-- takes the PARENT order row lock before any other order or order_items lock.
+-- split_order locks the parent, then only that parent's items; undo_split
+-- reads the child unlocked, locks the parent, then the child and items.
+-- Concurrent split/undo on one parent therefore queue on the parent row and
+-- cannot form a wait cycle. Verified with two live sessions: undo_split
+-- waited on an open split_order transaction and then succeeded (no 40P01).
+-- A second split still creates another child; the UI must disable the
+-- action while a split is in flight.
+--
 -- private.recompute_order_bill(p_order_id uuid) RETURNS TABLE(...) is the
 -- private bill recompute helper. SECURITY DEFINER (owner postgres) so it
 -- reads order_items regardless of RLS; SET search_path = ''; nothing
