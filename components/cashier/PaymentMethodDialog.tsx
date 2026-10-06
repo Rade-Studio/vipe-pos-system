@@ -45,6 +45,9 @@ import { log } from "@/lib/log"
 import { MethodPicker } from "./payment/MethodPicker"
 import { TenderLinesList } from "./payment/TenderLinesList"
 import { TipControl } from "./payment/TipControl"
+import { useRegisterSummary } from "@/hooks/use-register-summary"
+import { canGiveChange, registerSummaryQueryKey } from "@/lib/payments/register-summary"
+import { queryClient } from "@/lib/queryClient"
 
 interface PaymentMethodDialogProps {
   open: boolean
@@ -115,9 +118,19 @@ export function PaymentMethodDialog({
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const { isRegisterOpen, hasEnoughCashForChange, currentRegister, getCurrentRegisterSummary } =
-    useCashRegisterStore()
+  const { isRegisterOpen, currentRegister } = useCashRegisterStore()
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
+
+  // El chequeo de cambio y el aviso de "caja no alcanza" se hacen
+  // contra el resumen del servidor (`expected_cash`), no contra la suma
+  // local de transacciones. Misma fuente que la pantalla de estado de caja.
+  // `drawerWarning` y `drawerCurrent` se computan abajo, después de que
+  // `view` exista (de lo contrario sería un uso antes de declaración).
+  const summaryIds = useMemo(
+    () => (currentRegister ? [currentRegister.id] : []),
+    [currentRegister],
+  )
+  const { data: drawerSummary } = useRegisterSummary(summaryIds)
 
   // Active catalog (filtered + ordered). The full list still comes from
   // the service so `selectView` can flag inactive / unknown ids.
@@ -218,11 +231,12 @@ export function PaymentMethodDialog({
     orderData.tip_percentage,
   )
 
-  // Cash-drawer warning (advisory, not blocking). Only relevant when
-  // there is cash change to give and the drawer can't cover it.
-  const drawerWarning =
-    view.totalChange > 0 && !hasEnoughCashForChange(view.totalChange)
-  const drawerCurrent = getCurrentRegisterSummary()?.finalCash ?? 0
+  // (drawerWarning / drawerCurrent ya vienen del hook useRegisterSummary arriba)
+const drawerCurrent = drawerSummary?.expectedCash ?? 0
+const drawerWarning =
+  drawerSummary != null
+    ? view.totalChange > 0 && !canGiveChange(drawerSummary, view.totalChange)
+    : false
 
   // Confirm handler
   const handleConfirm = async () => {
@@ -249,6 +263,12 @@ export function PaymentMethodDialog({
         idempotencyKey: draft.idempotencyKey,
       })
       dispatch({ type: "submitSucceeded", result })
+
+      // El nuevo pago cambió las ventas, las propinas, el cambio y el
+      // efectivo esperado de la caja. Invalidamos el resumen para que
+      // la pantalla de estado, los diálogos de retiro y el close se
+      // actualicen en el siguiente render.
+      queryClient.invalidateQueries({ queryKey: registerSummaryQueryKey(summaryIds) })
 
       if (result.alreadyPaid) {
         toast.success("Esta orden ya estaba pagada. Mostrando factura.")

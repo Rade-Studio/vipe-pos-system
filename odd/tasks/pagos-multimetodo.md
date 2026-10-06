@@ -46,8 +46,10 @@ split/undo of partial payments.
       catalog (server-side summary). Regression since 7a: the client summary reads only
       legacy `payment_transactions`, so `pay_order` sales are missing from closing totals.
   - [x] 8a. SQL: `register_summary(uuid[])` + `close_register(uuid)` RPCs, pgTAP 090.
-  - [ ] 8b. Client: service wrappers, store, close dialog, status/add/withdraw cash,
-        payment-dialog drawer check, admin summary, transaction lists.
+  - [x] 8b. Client: service wrappers, store, close dialog, status/add/withdraw cash,
+        payment-dialog drawer check, admin summary.
+  - [ ] 8c. Transaction lists (TransactionsList, TransactionsByRegisterId, CSV), completed
+        orders method label (lib/supabase/service.ts), retire legacy payment_transactions writers.
 - [ ] 9. Admin payment-methods screen (create, rename, disable, reorder).
 - [ ] 10. Invoices (web print, `lib/print`, `pos/` Python) list tenders, tip and change.
 - [ ] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
@@ -80,3 +82,4 @@ split/undo of partial payments.
 | 7c RDD | review-f9da7c7659d312e5 | risk, resilience, readability admitted; reliability refused (missing proof ref) then failed natively. Its rejected CRITICAL single-flight claim was retracted by the reviewer itself. Escalated (unknown_causality) on R2-stale-gate-closure-trap: false, gates are created once via useState(createSingleFlight) and isRunning() reads mutable state, not a render snapshot. |
 | 8a | `5ffc0df` | register_summary(uuid[]) (INVOKER, STABLE, cashier/admin) + close_register(uuid) (DEFINER, tenant check before summary, FOR UPDATE vs pay_order FOR SHARE), migration 20261006140000. RED: 090 58/58 failed (functions missing). GREEN pgTAP 11 files / 519 tests (parent re-run). Expected cash equals pay_order drawer_cash_before; legacy payment_transactions reported separately; tips paid out at close (expected_cash_after_tips, not clamped). |
 | 8a RDD | review-5d3d51ed16135316 + `3c526f4` | Medium tier, reliability lens admitted; refuter confirmed 5 findings -> correction_required. Verified: R3-001 wrong as written (duplicate check works, pinned by 090) but its block hid a real defect: the NULL-id check used count(*), which counts NULL rows, so it never fired (probe: count(*)=2, count(v)=1); fixed in 3c526f4 (2 diff lines), pgTAP 519 PASS after db reset. R3-002 (P0002 same for missing and foreign, correct), R3-003 (per-register rounding intended, matches pay_order), R3-004 (false: pay_order coalesces drawer_cash_before to initial_cash), R3-005 (hypothetical; tenant checked explicitly) are not defects. Targeted validator failed natively -> escalated targeted_validator_rejected (terminal). |
+| 8b | (this commit) | Client on register_summary/close_register: pure lib/payments/register-summary.ts (RED: module missing; GREEN 25 tests), service wrappers (+12 tests), useRegisterSummary hook invalidated after pay, deposit, withdrawal and close. Close dialog renders catalog rows, tips payout, non-blocking shortfall warning, legacy block, server final cash; single-flight confirm. Drawer check uses expected_cash. Removed calculateMultipleRegistersSummary, store getCurrentRegisterSummary/hasEnoughCashForChange (grep: 0 callers). Vitest 10 files / 142; typecheck 0; build OK. |

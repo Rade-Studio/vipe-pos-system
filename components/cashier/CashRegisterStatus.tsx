@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { OpenRegisterDialog } from "@/components/cashier/OpenRegisterDialog"
@@ -10,18 +10,36 @@ import { WithdrawCashDialog } from "@/components/cashier/WithdrawCashDialog"
 import { formatCurrency } from "@/utils/helpers"
 import { AlertCircle, CheckCircle2, PlusCircle, MinusCircle } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { useToast } from "@/hooks/use-toast"
+import { useRegisterSummary } from "@/hooks/use-register-summary"
+import { queryClient } from "@/lib/queryClient"
+import { registerSummaryQueryKey } from "@/lib/payments/register-summary"
 
 export function CashRegisterStatus() {
   const [openDialog, setOpenDialog] = useState(false)
   const [closeDialog, setCloseDialog] = useState(false)
   const [addCashDialog, setAddCashDialog] = useState(false)
   const [withdrawCashDialog, setWithdrawCashDialog] = useState(false)
-  const { toast } = useToast()
 
-  const { isRegisterOpen, getCurrentRegisterSummary } = useCashRegisterStore()
+  const { isRegisterOpen, currentRegister } = useCashRegisterStore()
   const isOpen = isRegisterOpen()
-  const summary = getCurrentRegisterSummary()
+  // The drawer-cash value comes from the server's `register_summary`
+  // (its `expected_cash` is initial + cash-tender + deposits - withdrawals).
+  // The browser does NOT recompute it from local transactions any more.
+  const summaryIds = useMemo(
+    () => (currentRegister ? [currentRegister.id] : []),
+    [currentRegister],
+  )
+  const { data: summary } = useRegisterSummary(summaryIds)
+
+  // Stable refresh used by the children dialogs (deposit/withdraw) so the
+  // displayed "efectivo actual" re-renders right after they succeed.
+  const refreshSummary = () => {
+    if (summaryIds.length > 0) {
+      queryClient.invalidateQueries({ queryKey: registerSummaryQueryKey(summaryIds) })
+    }
+  }
+
+  const expectedCash = summary?.expectedCash ?? 0
 
   return (
     <>
@@ -34,7 +52,7 @@ export function CashRegisterStatus() {
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mt-2 gap-2">
                 <div className="flex items-center">
                   <span className="mr-1 font-semibold dark:text-white">Efectivo actual:</span>
-                  <span className="font-medium font-semibold text-green-900 dark:text-white">{formatCurrency(summary?.finalCash || 0)}</span>
+                  <span className="font-medium font-semibold text-green-900 dark:text-white">{formatCurrency(expectedCash)}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -88,9 +106,9 @@ export function CashRegisterStatus() {
       </div>
 
       <OpenRegisterDialog open={openDialog} onOpenChange={setOpenDialog} />
-      <CloseRegisterDialog open={closeDialog} onOpenChange={setCloseDialog} />
-      <AddCashDialog open={addCashDialog} onOpenChange={setAddCashDialog} />
-      <WithdrawCashDialog open={withdrawCashDialog} onOpenChange={setWithdrawCashDialog} />
+      <CloseRegisterDialog open={closeDialog} onOpenChange={setCloseDialog} onSuccess={refreshSummary} />
+      <AddCashDialog open={addCashDialog} onOpenChange={setAddCashDialog} onSuccess={refreshSummary} />
+      <WithdrawCashDialog open={withdrawCashDialog} onOpenChange={setWithdrawCashDialog} onSuccess={refreshSummary} />
     </>
   )
 }

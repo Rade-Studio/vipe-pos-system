@@ -23,6 +23,8 @@
 
 import { supabase } from '@/lib/supabase/client'
 import { PaymentServiceError } from '@/lib/payments/types'
+import { parseRegisterSummary } from '@/lib/payments/register-summary'
+import type { RegisterSummary } from '@/lib/payments/register-summary'
 import type {
   OrderBillSummary,
   PayOrderResult,
@@ -304,6 +306,130 @@ function toBillSummary(row: BillRow): OrderBillSummary {
     tip: row.tip,
     total: row.total,
   }
+}
+
+// -----------------------------------------------------------
+// register_summary / closeRegister
+// -----------------------------------------------------------
+
+interface RegisterSummaryRow {
+  registers_count: number
+  initial_cash: number
+  payments_count: number
+  total_billed: number
+  total_tips: number
+  total_sales: number
+  total_change: number
+  methods: unknown
+  cash_deposits: number
+  cash_withdrawals: number
+  expected_cash: number
+  tips_payout: number
+  expected_cash_after_tips: number
+  legacy: unknown
+}
+
+interface CloseRegisterRow {
+  status: 'closed' | 'already_closed'
+  cash_register_id: string
+  final_cash: number
+  summary: RegisterSummaryRow
+}
+
+/**
+ * Server-side aggregation for the close-register screen and the admin
+ * reports. Thin wrapper over `register_summary(p_cash_register_ids)`.
+ * The server computes every number (expected_cash, tips_payout, the
+ * methods array, the legacy block) and returns them as a single jsonb
+ * object; the client only validates the shape via
+ * `parseRegisterSummary` and maps it to camelCase.
+ *
+ * Caller: the cashier/admin UI after the open dialog, the close
+ * dialog before confirmation, the admin reports per date. The server
+ * itself rejects non-cashier/admin callers and any id the caller's RLS
+ * cannot see (42501 / P0002).
+ */
+export async function getRegisterSummary(ids: string[]): Promise<RegisterSummary> {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new PaymentServiceError({
+      kind: 'invalid-input',
+      message: 'getRegisterSummary: ids must be a non-empty array',
+    })
+  }
+
+  const { data, error } = await (supabase.rpc as any)('register_summary', {
+    p_cash_register_ids: ids,
+  })
+
+  if (error) throw wrapError(error)
+
+  const row = requireData<RegisterSummaryRow>(data, 'register_summary', 'registers_count')
+  try {
+    return parseRegisterSummary(row)
+  } catch (parseErr) {
+    throw new PaymentServiceError({
+      kind: 'unknown',
+      message: `register_summary returned a malformed payload: ${(parseErr as Error).message}`,
+      cause: parseErr,
+    })
+  }
+}
+
+/**
+ * Closes a single cash register. The server takes the run of the
+ * drawer (FOR UPDATE on cash_registers, same row pay_order takes FOR
+ * SHARE on) so a concurrent pay_order waits on the close, computes the
+ * summary at the lock instant, UPDATEs status='closed' +
+ * final_cash=expected_cash_after_tips, and returns the final_cash the
+ * UI should display. The browser does NOT recompute final cash: the
+ * server is the only authority.
+ *
+ * On a replay (status='closed' when the lock lands) the server returns
+ * the same shape with status='already_closed' and the stored final_cash;
+ * no writes happen. The UI treats that the same as a fresh close.
+ */
+export async function closeRegisterRpc(
+  cashRegisterId: string,
+): Promise<CloseRegisterResult> {
+  const { data, error } = await (supabase.rpc as any)('close_register', {
+    p_cash_register_id: cashRegisterId,
+  })
+
+  if (error) throw wrapError(error)
+
+  const row = requireData<CloseRegisterRow>(data, 'close_register', 'status')
+  if (row.status !== 'closed' && row.status !== 'already_closed') {
+    throw new PaymentServiceError({
+      kind: 'unknown',
+      message: `close_register returned an unknown status: ${row.status}`,
+    })
+  }
+
+  let summary: RegisterSummary
+  try {
+    summary = parseRegisterSummary(row.summary)
+  } catch (parseErr) {
+    throw new PaymentServiceError({
+      kind: 'unknown',
+      message: `close_register returned a malformed summary: ${(parseErr as Error).message}`,
+      cause: parseErr,
+    })
+  }
+
+  return {
+    status: row.status,
+    cashRegisterId: row.cash_register_id,
+    finalCash: row.final_cash,
+    summary,
+  }
+}
+
+/** Wire re-export of the camelCase close result. */
+export interface CloseRegisterResult {
+  status: 'closed' | 'already_closed'
+  cashRegisterId: string
+  finalCash: number
+  summary: RegisterSummary
 }
 
 // -----------------------------------------------------------

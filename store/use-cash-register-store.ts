@@ -9,6 +9,8 @@ import type {
 } from "@/types/cash-register"
 import { cashRegisterService } from "@/lib/supabase/cash-register-service"
 import { log } from "@/lib/log"
+import type { RegisterSummary } from "@/lib/payments/register-summary"
+import { closeRegisterRpc } from "@/lib/supabase/payments-service"
 
 type CashRegisterState = {
   currentRegister: CashRegister | null
@@ -17,7 +19,14 @@ type CashRegisterState = {
 
   // Acciones de apertura y cierre
   openRegister: (initialCash: number) => Promise<boolean>
-  closeRegister: () => Promise<CashRegisterSummary | null>
+  /**
+   * Server-driven close. Returns the `RegisterSummary` the
+   * `close_register` RPC computed at the FOR-UPDATE lock instant,
+   * or `null` if there is no open register / the RPC rejected.
+   * `finalCash` lives on the returned summary's `expectedCashAfterTips`
+   * (the value the server stored in `cash_registers.final_cash`).
+   */
+  closeRegister: () => Promise<RegisterSummary | null>
 
   // Acciones de transacciones
   addTransaction: (
@@ -44,10 +53,8 @@ type CashRegisterState = {
 
   // Consultas
   isRegisterOpen: () => boolean
-  getCurrentRegisterSummary: () => CashRegisterSummary | null
   getRegisterById: (id: string) => CashRegister | null
   getAllRegisters: () => CashRegister[]
-  hasEnoughCashForChange: (changeAmount: number) => boolean
 
   // Carga de datos
   loadCurrentRegister: () => Promise<void>
@@ -262,28 +269,27 @@ export const useCashRegisterStore = create<CashRegisterState>()(
         }
       },
 
+      /**
+       * Server-driven close. Calls the `close_register` RPC, which
+       * takes the row lock, computes the snapshot, UPDATEs the
+       * register, and returns the final_cash (= expected_cash_after_tips)
+       * the UI should display. The browser does NOT recompute anything
+       * from the local transactions.
+       */
       closeRegister: async () => {
         const { currentRegister } = get()
-
         if (!currentRegister || currentRegister.status === "closed") {
           return null
         }
 
         try {
-          // Calcular el resumen antes de cerrar la caja
-          const summary = cashRegisterService.calculateRegisterSummary(currentRegister)
+          const result = await closeRegisterRpc(currentRegister.id)
 
-          if (!summary) return null
-
-          // Cerrar la caja en Supabase
-          await cashRegisterService.closeRegister(currentRegister.id, summary.finalCash)
-
-          // Cerrar la caja localmente
           const closedRegister: CashRegister = {
             ...currentRegister,
             status: "closed",
             closingTimestamp: new Date(),
-            finalCash: summary.finalCash,
+            finalCash: result.finalCash,
           }
 
           set((state) => ({
@@ -291,7 +297,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
             registers: state.registers.map((reg) => (reg.id === closedRegister.id ? closedRegister : reg)),
           }))
 
-          return summary
+          return result.summary
         } catch (error) {
           log.error("Error al cerrar la caja:", { error: String(error) })
           return null
@@ -306,14 +312,6 @@ export const useCashRegisterStore = create<CashRegisterState>()(
         }
 
         try {
-          // Si es un pago en efectivo y hay cambio, verificar si hay suficiente efectivo
-          if (method === "cash" && cashChange && cashChange > 0) {
-            const hasEnough = get().hasEnoughCashForChange(cashChange)
-            if (!hasEnough) {
-              throw new Error("No hay suficiente efectivo en caja para dar el cambio")
-            }
-          }
-
           // Agregar transacción a Supabase
           const transactions = await cashRegisterService.addTransaction(
             currentRegister.id,
@@ -414,24 +412,6 @@ export const useCashRegisterStore = create<CashRegisterState>()(
       isRegisterOpen: () => {
         const { currentRegister } = get()
         return !!currentRegister && currentRegister.status === "open"
-      },
-
-      getCurrentRegisterSummary: () => {
-        const { currentRegister } = get()
-
-        if (!currentRegister) {
-          return null
-        }
-
-        return cashRegisterService.calculateRegisterSummary(currentRegister)
-      },
-
-      // Función para verificar si hay suficiente efectivo para dar cambio
-      hasEnoughCashForChange: (changeAmount: number) => {
-        const summary = get().getCurrentRegisterSummary()
-        if (!summary) return false
-
-        return summary.finalCash >= changeAmount
       },
 
       getRegisterById: (id: string) => {

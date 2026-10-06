@@ -754,6 +754,16 @@ export const cashRegisterService = {
     }
   },
 
+  // El agregado multi-registro ahora lo calcula el servidor (ver
+  // `register_summary` en `lib/supabase/payments-service.ts` y el hook
+  // `useRegisterSummary`). Esta función se conserva únicamente porque
+  // `loadTransactionsByDate` / `loadTransactionsByRegisters` en el store
+  // la siguen usando para construir el resumen del set `transactions`
+  // que los reportes administrativos consumen en task 8c. La
+  // implementación multi-registro equivalente (sumar los resúmenes
+  // individuales) se eliminó: nadie la llamaba tras el rework de
+  // `components/admin/CashRegisterSummary.tsx`.
+
   // Actualizar la función calculateRegisterSummary para incluir totalTips y cashTransactions
   calculateRegisterSummary(register: CashRegister): CashRegisterSummary {
     // Inicializar el resumen
@@ -806,51 +816,6 @@ export const cashRegisterService = {
       } else if (transaction.type === "withdrawal") {
         summary.totalCashWithdrawals += transaction.amount
       }
-    })
-
-    // Calcular efectivo final
-    summary.finalCash =
-      summary.initialCash +
-      summary.totalCash -
-      summary.totalChange +
-      summary.totalCashDeposits -
-      summary.totalCashWithdrawals
-
-    return summary
-  },
-
-  // Nuevo método para calcular el resumen de múltiples cajas
-  calculateMultipleRegistersSummary(registers: CashRegister[]): CashRegisterSummary {
-    // Inicializar el resumen
-    const summary: CashRegisterSummary = {
-      initialCash: 0,
-      totalCash: 0,
-      totalTransfer: 0,
-      totalNequi: 0,
-      totalBancolombia: 0,
-      totalSales: 0,
-      totalTips: 0,
-      totalChange: 0,
-      totalCashDeposits: 0,
-      totalCashWithdrawals: 0,
-      finalCash: 0,
-    }
-
-    // Sumar los valores de todas las cajas
-    registers.forEach((register) => {
-      const registerSummary = this.calculateRegisterSummary(register)
-
-      summary.initialCash += registerSummary.initialCash || 0
-      summary.totalCash += registerSummary.totalCash || 0
-      summary.totalTransfer += registerSummary.totalTransfer || 0
-      summary.totalNequi += registerSummary.totalNequi || 0
-      summary.totalBancolombia += registerSummary.totalBancolombia || 0
-      summary.totalSales += registerSummary.totalSales || 0
-      summary.totalTips += registerSummary.totalTips || 0
-      summary.totalChange += registerSummary.totalChange || 0
-      summary.totalCashDeposits += registerSummary.totalCashDeposits || 0
-      summary.totalCashWithdrawals += registerSummary.totalCashWithdrawals || 0
-      // TODO(writer): agregar agregación de summary.cashTransactions si CashRegisterSummary lo requiere
     })
 
     // Calcular efectivo final

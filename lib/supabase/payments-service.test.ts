@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   PaymentServiceError,
+  closeRegisterRpc,
+  getRegisterSummary,
   listPaymentMethods,
   payOrder,
   splitOrder,
@@ -416,3 +418,199 @@ describe('PaymentServiceError', () => {
 // surface it as a TS error rather than a silent unused-import.
 const _example: PaymentMethodOption[] = []
 void _example
+
+// -----------------------------------------------------------
+// getRegisterSummary
+// -----------------------------------------------------------
+
+const SAMPLE_SUMMARY = {
+  registers_count: 1,
+  initial_cash: 200000,
+  payments_count: 3,
+  total_billed: 141000,
+  total_tips: 10000,
+  total_sales: 137000,
+  total_change: 4000,
+  methods: [
+    {
+      payment_method_id: 'm-cash',
+      code: 'cash',
+      name: 'Efectivo',
+      kind: 'cash',
+      sort_order: 10,
+      is_active: true,
+      total: 100000,
+      tenders_count: 2,
+    },
+    {
+      payment_method_id: 'm-nequi',
+      code: 'nequi',
+      name: 'Nequi',
+      kind: 'electronic',
+      sort_order: 20,
+      is_active: true,
+      total: 37000,
+      tenders_count: 1,
+    },
+  ],
+  cash_deposits: 50000,
+  cash_withdrawals: 20000,
+  expected_cash: 330000,
+  tips_payout: 10000,
+  expected_cash_after_tips: 320000,
+  legacy: {
+    payments_count: 0,
+    total: 0,
+    tips: 0,
+    change: 0,
+    by_method: {},
+  },
+}
+
+describe('getRegisterSummary', () => {
+  it('rejects an empty ids array without hitting the network', async () => {
+    state.rpc.mockClear()
+    await expect(getRegisterSummary([])).rejects.toBeInstanceOf(PaymentServiceError)
+    await expect(getRegisterSummary([])).rejects.toMatchObject({ kind: 'invalid-input' })
+    expect(state.rpc).not.toHaveBeenCalled()
+  })
+
+  it('calls rpc("register_summary") with snake_case args and remaps to camelCase', async () => {
+    state.rpc.mockResolvedValueOnce({ data: SAMPLE_SUMMARY, error: null })
+
+    const summary = await getRegisterSummary(['r-1'])
+    expect(state.rpc).toHaveBeenCalledTimes(1)
+    const [fn, args] = state.rpc.mock.calls[0] as [string, Record<string, unknown>]
+    expect(fn).toBe('register_summary')
+    expect(Object.keys(args)).toEqual(['p_cash_register_ids'])
+    expect(args.p_cash_register_ids).toEqual(['r-1'])
+
+    expect(summary.registersCount).toBe(1)
+    expect(summary.initialCash).toBe(200000)
+    expect(summary.totalSales).toBe(137000)
+    expect(summary.expectedCash).toBe(330000)
+    expect(summary.expectedCashAfterTips).toBe(320000)
+    expect(summary.methods.map((m) => m.code)).toEqual(['cash', 'nequi'])
+    expect(summary.methods[0]).toMatchObject({
+      code: 'cash',
+      kind: 'cash',
+      isActive: true,
+      total: 100000,
+      tendersCount: 2,
+    })
+    expect(summary.legacy.paymentsCount).toBe(0)
+  })
+
+  it('throws a PaymentServiceError when the RPC returns no registers_count', async () => {
+    state.rpc.mockResolvedValueOnce({ data: {}, error: null })
+    const err = await getRegisterSummary(['r-1']).catch((e) => e)
+    expect(err).toBeInstanceOf(PaymentServiceError)
+    expect((err as PaymentServiceError).kind).toBe('unknown')
+  })
+
+  it('throws a PaymentServiceError when the RPC returns a malformed summary', async () => {
+    const broken = { ...SAMPLE_SUMMARY, methods: [{ payment_method_id: 'x' }] } // missing required fields
+    state.rpc.mockResolvedValueOnce({ data: broken, error: null })
+    const err = await getRegisterSummary(['r-1']).catch((e) => e)
+    expect(err).toBeInstanceOf(PaymentServiceError)
+    expect((err as PaymentServiceError).kind).toBe('unknown')
+  })
+
+  it('maps P0002 -> not-found (foreign-tenant or missing register id)', async () => {
+    state.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0002', message: 'cash register(s) not found' },
+    })
+    const err = await getRegisterSummary(['r-other']).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('not-found')
+    expect((err as PaymentServiceError).message).toMatch(/not found/i)
+  })
+
+  it('maps 42501 -> not-authorized', async () => {
+    state.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: '42501', message: 'permission denied' },
+    })
+    const err = await getRegisterSummary(['r-1']).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('not-authorized')
+  })
+
+  it('maps 22023 -> invalid-input (bad shape from the server)', async () => {
+    state.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: '22023', message: 'ids must not contain duplicates' },
+    })
+    const err = await getRegisterSummary(['r-1', 'r-1']).catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('invalid-input')
+  })
+})
+
+// -----------------------------------------------------------
+// closeRegisterRpc
+// -----------------------------------------------------------
+
+describe('closeRegisterRpc', () => {
+  it('calls rpc("close_register") with snake_case args and returns the server final_cash', async () => {
+    state.rpc.mockResolvedValueOnce({
+      data: {
+        status: 'closed',
+        cash_register_id: 'r-1',
+        final_cash: 320000,
+        summary: SAMPLE_SUMMARY,
+      },
+      error: null,
+    })
+
+    const result = await closeRegisterRpc('r-1')
+    expect(state.rpc).toHaveBeenCalledTimes(1)
+    const [fn, args] = state.rpc.mock.calls[0] as [string, Record<string, unknown>]
+    expect(fn).toBe('close_register')
+    expect(Object.keys(args)).toEqual(['p_cash_register_id'])
+    expect(args.p_cash_register_id).toBe('r-1')
+
+    expect(result.status).toBe('closed')
+    expect(result.cashRegisterId).toBe('r-1')
+    expect(result.finalCash).toBe(320000)
+    expect(result.summary.expectedCashAfterTips).toBe(320000)
+  })
+
+  it('returns status="already_closed" on the idempotent replay', async () => {
+    state.rpc.mockResolvedValueOnce({
+      data: {
+        status: 'already_closed',
+        cash_register_id: 'r-1',
+        final_cash: 300000,
+        summary: SAMPLE_SUMMARY,
+      },
+      error: null,
+    })
+    const result = await closeRegisterRpc('r-1')
+    expect(result.status).toBe('already_closed')
+    expect(result.finalCash).toBe(300000)
+  })
+
+  it('throws when the RPC returns no status (requireData guard)', async () => {
+    state.rpc.mockResolvedValueOnce({ data: {}, error: null })
+    const err = await closeRegisterRpc('r-1').catch((e) => e)
+    expect(err).toBeInstanceOf(PaymentServiceError)
+    expect((err as PaymentServiceError).kind).toBe('unknown')
+  })
+
+  it('maps P0002 -> not-found', async () => {
+    state.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0002', message: 'cash register r-1 not found' },
+    })
+    const err = await closeRegisterRpc('r-1').catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('not-found')
+  })
+
+  it('maps P0001 -> rejected (e.g. trying to close a closed one mid-flight)', async () => {
+    state.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'register r-1 already closed' },
+    })
+    const err = await closeRegisterRpc('r-1').catch((e) => e)
+    expect((err as PaymentServiceError).kind).toBe('rejected')
+  })
+})
