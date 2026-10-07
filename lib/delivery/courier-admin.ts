@@ -77,6 +77,15 @@ export function findActivePhoneDuplicate(
 /** business_config key the new-delivery dialog reads the suggested fee from. */
 export const DEFAULT_FEE_CONFIG_KEY = 'delivery_default_fee'
 
+/**
+ * TanStack-Query key for the suggested fee. The admin screen
+ * (`components/admin/couriers/DeliveryFeeSetting.tsx`) reads the same value
+ * under the SAME key and invalidates it after a save, so the new-delivery
+ * dialog shows an admin edit without reading the row again — and the dialog
+ * caches it between opens instead of re-reading on every one.
+ */
+export const DEFAULT_FEE_QUERY_KEY = ['businessConfig', DEFAULT_FEE_CONFIG_KEY] as const
+
 export type DefaultFeeParseResult =
   | { ok: true; value: number }
   | { ok: false; error: string }

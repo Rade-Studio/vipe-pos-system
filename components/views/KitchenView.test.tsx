@@ -175,8 +175,11 @@ vi.mock("@/lib/supabase/delivery-service", () => ({
     env.listActiveDeliveriesCalls += 1
     return env.deliveries
   },
+  // Like the real RPC, it returns the moved delivery row.
   setDeliveryStatus: async (args: { orderId: string; action: string }) => {
     env.setDeliveryStatusCalls.push(args)
+    const current = env.deliveries.find((d) => d.delivery.orderId === args.orderId)?.delivery
+    return { ...current, orderId: args.orderId, status: "ready" }
   },
 }))
 

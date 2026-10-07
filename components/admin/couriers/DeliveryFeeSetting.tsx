@@ -2,9 +2,10 @@
 
 /**
  * Suggested delivery fee, stored in business_config under
- * `delivery_default_fee` (whole pesos). The new-delivery dialog reads it
- * on every open, so nothing else needs invalidating. business_config
- * writes are admin-only (RLS).
+ * `delivery_default_fee` (whole pesos). The new-delivery dialog caches it
+ * under the same query key (`DEFAULT_FEE_QUERY_KEY`), so invalidating that
+ * key after a save is what refreshes the dialog. business_config writes are
+ * admin-only (RLS).
  *
  * `getConfigValue` returns null both for a missing key and for a failed
  * read, so the field starts empty instead of showing a value that might
@@ -19,12 +20,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { businessConfigService } from "@/lib/supabase/business-config-service"
-import { DEFAULT_FEE_CONFIG_KEY, parseDefaultFeeInput } from "@/lib/delivery/courier-admin"
+import {
+  DEFAULT_FEE_CONFIG_KEY,
+  DEFAULT_FEE_QUERY_KEY as FEE_QUERY_KEY,
+  parseDefaultFeeInput,
+} from "@/lib/delivery/courier-admin"
 import { createSingleFlight, type SingleFlight } from "@/lib/payments/single-flight"
 import { toast } from "@/utils/toast"
 import { log } from "@/lib/log"
 
-const FEE_QUERY_KEY = ["businessConfig", DEFAULT_FEE_CONFIG_KEY] as const
 
 export function DeliveryFeeSetting() {
   const queryClient = useQueryClient()

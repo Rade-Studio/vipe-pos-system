@@ -41,6 +41,20 @@ type CashRegisterState = {
 
   // Carga de datos
   loadCurrentRegister: () => Promise<void>
+  /**
+   * T10 (S1): the lightweight open/closed check — ONE request instead of the
+   * three `loadCurrentRegister` issues. Use it when the screen only needs to
+   * know whether a register is open (delivery board, cashier delivery panel).
+   *
+   * Two rules keep it safe next to the full load:
+   *   - a row already in the store for the same register is left untouched,
+   *     so the cashier screen's full load (which carries the transaction
+   *     histories the "Transacciones" tab renders) is never overwritten by this
+   *     transaction-less row;
+   *   - when nothing is open the store is left exactly as `loadCurrentRegister`
+   *     leaves it (untouched), so `isRegisterOpen()` keeps its meaning.
+   */
+  loadOpenRegister: () => Promise<void>
   loadAllRegisters: () => Promise<void>
   loadTransactionsByRegisterId: (registerId: string) => Promise<PaymentTransaction[]>
   loadCashTransactionsByRegisterId: (registerId: string) => Promise<CashTransaction[]>
@@ -71,6 +85,23 @@ export const useCashRegisterStore = create<CashRegisterState>()(
           }
         } catch (error) {
           log.error("Error al cargar la caja actual:", { error: String(error) })
+        }
+      },
+
+      loadOpenRegister: async () => {
+        try {
+          const register = await cashRegisterService.getOpenRegister()
+          // Sin caja abierta: `loadCurrentRegister` tampoco escribe nada, así
+          // que el store queda igual y `isRegisterOpen()` sigue siendo la
+          // fuente de verdad.
+          if (!register) return
+          if (get().currentRegister?.id === register.id) return
+          set({
+            currentRegister: register,
+            registers: [...get().registers.filter((r) => r.id !== register.id), register],
+          })
+        } catch (error) {
+          log.error("Error al verificar la caja abierta:", { error: String(error) })
         }
       },
 

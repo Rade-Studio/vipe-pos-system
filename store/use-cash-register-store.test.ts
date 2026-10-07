@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
  */
 const service = vi.hoisted(() => ({
   getCurrentRegister: vi.fn(),
+  getOpenRegister: vi.fn(),
   getAllRegisters: vi.fn(),
   getTransactionsByRegisterId: vi.fn(),
   getCashTransactionsByRegisterId: vi.fn(),
@@ -42,6 +43,7 @@ const register = {
 
 beforeEach(() => {
   service.getCurrentRegister.mockReset()
+  service.getOpenRegister.mockReset()
   service.getAllRegisters.mockReset()
   useCashRegisterStore.setState({ currentRegister: null, registers: [] })
 })
@@ -75,6 +77,59 @@ describe("loadCurrentRegister", () => {
 
     expect(useCashRegisterStore.getState().currentRegister).toBeNull()
     expect(useCashRegisterStore.getState().registers).toEqual([])
+  })
+})
+
+describe("loadOpenRegister (T10: only open/closed matters)", () => {
+  it("asks the service ONCE for the open register and never for the full load", async () => {
+    service.getOpenRegister.mockResolvedValue(register)
+    service.getCurrentRegister.mockResolvedValue(register)
+
+    await useCashRegisterStore.getState().loadOpenRegister()
+
+    expect(service.getOpenRegister).toHaveBeenCalledTimes(1)
+    expect(service.getCurrentRegister).not.toHaveBeenCalled()
+    expect(useCashRegisterStore.getState().currentRegister?.id).toBe("r-1")
+    expect(useCashRegisterStore.getState().isRegisterOpen()).toBe(true)
+    // The lightweight row carries no transaction history: that is the whole
+    // point of the check (the full load reads payment_transactions +
+    // cash_transactions on top of the register row).
+    expect(useCashRegisterStore.getState().currentRegister?.transactions).toEqual([])
+  })
+
+  it("keeps a register row already in the store, transactions included (PRESERVE)", async () => {
+    const full = { ...register, transactions: [{ id: "t-1" }] as never }
+    useCashRegisterStore.setState({ currentRegister: full, registers: [full] })
+    service.getOpenRegister.mockResolvedValue(register)
+
+    const snapshots: Record<string, unknown>[] = []
+    const unsubscribe = useCashRegisterStore.subscribe((state) => snapshots.push({ ...state }))
+    await useCashRegisterStore.getState().loadOpenRegister()
+    unsubscribe()
+
+    // The cashier screen loads the FULL register in parallel; the delivery
+    // screens must not overwrite it with the transaction-less row.
+    expect(snapshots).toHaveLength(0)
+    expect(useCashRegisterStore.getState().currentRegister?.transactions).toHaveLength(1)
+  })
+
+  it("leaves the store untouched when nothing is open (PRESERVE)", async () => {
+    const closed = { ...register, status: "closed" as const }
+    useCashRegisterStore.setState({ currentRegister: closed, registers: [closed] })
+    service.getOpenRegister.mockResolvedValue(null)
+
+    await useCashRegisterStore.getState().loadOpenRegister()
+
+    expect(useCashRegisterStore.getState().currentRegister?.status).toBe("closed")
+    expect(useCashRegisterStore.getState().isRegisterOpen()).toBe(false)
+  })
+
+  it("leaves the store untouched when the service throws (PRESERVE)", async () => {
+    service.getOpenRegister.mockRejectedValue(new Error("network"))
+
+    await expect(useCashRegisterStore.getState().loadOpenRegister()).resolves.toBeUndefined()
+
+    expect(useCashRegisterStore.getState().currentRegister).toBeNull()
   })
 })
 

@@ -17,7 +17,13 @@ import {
   type DeliveryServiceErrorKind,
   type DeliveryOrderWithBill,
 } from '@/lib/supabase/delivery-service'
-import { useActiveDeliveries, activeDeliveriesQueryKey } from '@/hooks/use-active-deliveries'
+import type { DeliveryOrder } from '@/lib/delivery/types'
+import { applyDeliveryStatusPatch } from '@/lib/delivery/realtime'
+import {
+  useActiveDeliveries,
+  activeDeliveriesQueryKey,
+  refreshActiveDeliveries,
+} from '@/hooks/use-active-deliveries'
 import type { DeliveryStatus, DeliveryAction } from '@/lib/delivery/types'
 import { toast } from '@/hooks/use-toast'
 import { needsPrepaidWarning, rejectionMessage } from '@/lib/delivery/card-actions'
@@ -82,12 +88,14 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
   const [dialog, setDialog] = useState<{ kind: CardDialogKind; orderId: string } | null>(null)
   const inFlight = useRef(new Set<string>())
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(() => new Set())
-  const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
+  const { isRegisterOpen, loadOpenRegister } = useCashRegisterStore()
 
-  // The register may have been opened after the app loaded.
+  // The register may have been opened after the app loaded. The board only
+  // needs open/closed, so this is the ONE-request check, not the full register
+  // load (which also reads both transaction histories) — T10/S1.
   useEffect(() => {
-    void loadCurrentRegister()
-  }, [loadCurrentRegister])
+    void loadOpenRegister()
+  }, [loadOpenRegister])
 
   const grouped = useMemo(() => groupByStatus(deliveries), [deliveries])
   // Dialogs read the latest row so realtime updates (e.g. a payment) show up.
@@ -95,9 +103,27 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
     ? deliveries.find((r) => r.delivery.orderId === dialog.orderId) ?? null
     : null
 
-  const invalidateBoard = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: activeDeliveriesQueryKey }),
+  const refreshBoard = useCallback(
+    () => refreshActiveDeliveries(queryClient),
     [queryClient],
+  )
+
+  /**
+   * Apply the row the RPC returned so the card moves without re-reading the
+   * board. `unchanged` means the cache already shows it (no write at all);
+   * `needs-refresh` (order no longer on the board) falls back to a read.
+   */
+  const applyMove = useCallback(
+    (moved: DeliveryOrder) => {
+      const cached = queryClient.getQueryData<DeliveryOrderWithBill[]>(activeDeliveriesQueryKey) ?? []
+      const outcome = applyDeliveryStatusPatch(cached, moved)
+      if (outcome.kind === 'patched') {
+        queryClient.setQueryData(activeDeliveriesQueryKey, outcome.rows)
+        return
+      }
+      if (outcome.kind === 'needs-refresh') refreshBoard()
+    },
+    [queryClient, refreshBoard],
   )
 
   /** Runs `task` unless another one is in flight for the same card. */
@@ -124,16 +150,21 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
     reason?: string
   }): Promise<boolean> => {
     const ok = await runForCard(input.orderId, async () => {
+      let moved: DeliveryOrder | null = null
       try {
-        await setDeliveryStatus(input)
+        moved = await setDeliveryStatus(input)
         toast.success(ACTION_SUCCESS_TOAST[input.action])
         return true
       } catch (err) {
         toast.error(deliveryErrorMessage(err))
         return false
       } finally {
-        // On a rejection the row may have moved under us: refresh either way.
-        invalidateBoard()
+        // T10: ONE reload per action. A successful write is applied from the
+        // RPC's own row (the realtime echo of it then changes nothing), so the
+        // board is not re-read. A rejection may mean the row moved under us,
+        // so that path still re-reads — once, debounced.
+        if (moved) applyMove(moved)
+        else refreshBoard()
       }
     })
     return ok === true
@@ -157,7 +188,7 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
 
   const onRegisterPayment = (orderId: string) => {
     void runForCard(orderId, async () => {
-      await loadCurrentRegister()
+      await loadOpenRegister()
       if (!isRegisterOpen()) {
         toast.error('No hay caja abierta. Pide al cajero que abra la caja para registrar el pago.')
         return
@@ -310,7 +341,7 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
           delivery={dialogRow.delivery}
           onSuccess={() => {
             setDialog(null)
-            void invalidateBoard()
+            refreshBoard()
           }}
         />
       )}

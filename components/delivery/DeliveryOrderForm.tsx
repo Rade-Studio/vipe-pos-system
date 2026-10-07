@@ -63,6 +63,12 @@ function deliveryErrorMessage(err: unknown): string {
 interface DeliveryOrderFormProps {
   /** Whole COP pesos; preloaded from business_config.delivery_default_fee when present, else 0. */
   suggestedFee: number
+  /**
+   * False while the suggestion is still being read. The form renders anyway
+   * (T10/S2: no blank panel while a request is in flight) and seeds the
+   * suggestion as soon as it resolves.
+   */
+  suggestedFeeResolved?: boolean
   /** Whole COP percent (0..100). Comes from useConfigStore.taxPercentage. */
   taxPct: number
   onSubmitted: () => void
@@ -81,8 +87,16 @@ interface DeliveryOrderFormProps {
  * Does not own: the parent dialog open/close state, the board data
  * invalidation (the dialog handles it via `onSubmitted`).
  */
-export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: DeliveryOrderFormProps) {
+export function DeliveryOrderForm({
+  suggestedFee,
+  suggestedFeeResolved = true,
+  taxPct,
+  onSubmitted,
+}: DeliveryOrderFormProps) {
   const [draft, dispatch] = useReducer(draftRef, initialOrderDraft({ suggestedFee }))
+  // Once the operator types a fee, a suggestion that arrives later (or a
+  // re-suggested value) must not overwrite what they typed.
+  const feeTouched = useRef(false)
   // Shown on the kitchen ticket as the waiter (WaiterView does the same with its profile).
   const operatorName = useProfileStore((s) => s.authProfile?.name) ?? ''
   const [phoneLookupError, setPhoneLookupError] = useState<string | null>(null)
@@ -133,6 +147,16 @@ export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: Deliver
     if (needle.length === 0) return dishes as DishLike[]
     return (dishes as DishLike[]).filter((d) => d.name.toLowerCase().includes(needle))
   }, [dishes, search])
+
+  // Seed the suggested fee once it is known. The dialog used to hold the form
+  // back until the read resolved; now the form is already on screen and this
+  // is what fills the field (T10/S2).
+  useEffect(() => {
+    if (!suggestedFeeResolved) return
+    if (feeTouched.current) return
+    if (draft.fee === suggestedFee) return
+    dispatch({ type: 'setFee', value: suggestedFee })
+  }, [draft.fee, suggestedFee, suggestedFeeResolved])
 
   const onAddDish = (dish: DishLike) => {
     const action: OrderDraftAction = {
@@ -332,6 +356,7 @@ export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: Deliver
               value={String(draft.fee)}
               onChange={(e) => {
                 const n = Number.parseInt(e.target.value.replace(/\D/g, ''), 10)
+                feeTouched.current = true
                 dispatch({ type: 'setFee', value: Number.isFinite(n) ? n : 0 })
               }}
             />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changeForHint, deliveryTotal, parseFeeInput } from './fee'
+import { changeForHint, deliveryTotal, parseFeeInput, suggestedFeeFromConfig } from './fee'
 
 // -----------------------------------------------------------
 // parseFeeInput
@@ -81,5 +81,21 @@ describe('changeForHint', () => {
 
   it('throws when total is negative', () => {
     expect(() => changeForHint(-1, 10000)).toThrow(/negative/i)
+  })
+})
+describe('suggestedFeeFromConfig', () => {
+  it('reads a whole-peso suggestion from business_config', () => {
+    expect(suggestedFeeFromConfig('5000')).toBe(5000)
+    expect(suggestedFeeFromConfig(' 0 ')).toBe(0)
+  })
+
+  it('falls back to no suggestion for a missing, unreadable or malformed value', () => {
+    expect(suggestedFeeFromConfig(null)).toBe(0)
+    expect(suggestedFeeFromConfig('')).toBe(0)
+    expect(suggestedFeeFromConfig('abc')).toBe(0)
+    expect(suggestedFeeFromConfig('3000.5')).toBe(0)
+    expect(suggestedFeeFromConfig('-1')).toBe(0)
+    // Any whole-peso value is accepted; a suggestion is never a crash.
+    expect(suggestedFeeFromConfig('1e3')).toBe(1000)
   })
 })

@@ -19,9 +19,14 @@ import { realtimeService } from "@/lib/supabase/realtime-service"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { Bell, RefreshCw, Wifi, WifiOff, Filter } from "lucide-react"
-import { useActiveDeliveries, activeDeliveriesQueryKey } from "@/hooks/use-active-deliveries"
+import {
+  useActiveDeliveries,
+  activeDeliveriesQueryKey,
+  refreshActiveDeliveries,
+} from "@/hooks/use-active-deliveries"
 import { listActiveDeliveries, setDeliveryStatus } from "@/lib/supabase/delivery-service"
 import type { DeliveryOrderWithBill } from "@/lib/supabase/delivery-service"
+import { applyDeliveryStatusPatch } from "@/lib/delivery/realtime"
 import {
   hasTable,
   isDeliveryOrder,
@@ -358,33 +363,65 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   // Moves a delivery to "ready" once the kitchen served everything. Never
   // throws: a failure only surfaces a toast. Resolves true only when the
   // server accepted the transition.
+  //
+  // T10 (S1): this used to force a full `active-deliveries` read on EVERY
+  // completed order and then invalidate the board again on the way out, so
+  // serving one table cost three board reloads (read + RPC + refetch + the
+  // realtime push). The shared subscription keeps that cache current — it
+  // merges `order_deliveries` pushes and re-reads on a burst — so the guard
+  // reads the cache, the RPC result is merged back into it, and nothing is
+  // refetched. The forced read survives as the fallback for a cache that does
+  // not know the order yet (the query is still loading), so the "unknown
+  // status is left alone" rule keeps its meaning.
   const markDeliveryReady = async (orderId: string): Promise<boolean> => {
+    let cached = queryClient.getQueryData<DeliveryOrderWithBill[]>(activeDeliveriesQueryKey) ?? []
+    let row = cached.find((r) => r.delivery.orderId === orderId)
+    if (row === undefined) {
+      try {
+        cached = await queryClient.fetchQuery({
+          queryKey: activeDeliveriesQueryKey,
+          queryFn: () => listActiveDeliveries(),
+          staleTime: 0,
+        })
+      } catch (error) {
+        // A failed read is the same failure the forced read used to raise:
+        // the kitchen cannot know whether the operator moved the delivery, so
+        // the order stays as it is and the operator is told.
+        log.error("Error al leer el estado del domicilio:", { error: String(error) })
+        refreshActiveDeliveries(queryClient)
+        toast({
+          title: "Domicilio sin actualizar",
+          description:
+            "Los productos quedaron entregados, pero no se pudo marcar el domicilio como listo. Avise al operador de domicilios.",
+          variant: "destructive",
+        })
+        return false
+      }
+      row = cached.find((r) => r.delivery.orderId === orderId)
+    }
+    if (!shouldMarkDeliveryReady(row?.delivery.status)) return false
+
     try {
-      // Fresh read: the operator may have moved the delivery meanwhile.
-      const rows = await queryClient.fetchQuery({
-        queryKey: activeDeliveriesQueryKey,
-        queryFn: () => listActiveDeliveries(),
-        staleTime: 0,
-      })
-      const row = rows.find((r) => r.delivery.orderId === orderId)
-      if (!shouldMarkDeliveryReady(row?.delivery.status)) return false
-      await setDeliveryStatus({ orderId, action: "mark_ready" })
-      // The transition is confirmed, so the cached row is patched in place:
-      // the `invalidateQueries` that used to run in the `finally` re-read the
-      // same rows the `fetchQuery` above had just read (a second read for the
-      // same decision). Realtime still invalidates on the `order_deliveries`
-      // UPDATE, and this keeps the board truthful even without it.
-      queryClient.setQueryData<DeliveryOrderWithBill[]>([...activeDeliveriesQueryKey], (previous: DeliveryOrderWithBill[] | undefined) =>
-        previous?.map((row: DeliveryOrderWithBill) =>
-          row.delivery.orderId === orderId ? { ...row, delivery: { ...row.delivery, status: "ready" } } : row,
-        ),
-      )
+      const moved = await setDeliveryStatus({ orderId, action: "mark_ready" })
+      // Read the cache AGAIN: the merge must be applied on top of whatever the
+      // cache holds NOW, not on the snapshot taken before the RPC. A push for
+      // another delivery that landed during the await would otherwise be
+      // reverted by this write (T10 review B1).
+      const current = queryClient.getQueryData<DeliveryOrderWithBill[]>(activeDeliveriesQueryKey) ?? []
+      const outcome = applyDeliveryStatusPatch(current, moved)
+      if (outcome.kind === "patched") {
+        queryClient.setQueryData(activeDeliveriesQueryKey, outcome.rows)
+      } else if (outcome.kind === "needs-refresh") {
+        refreshActiveDeliveries(queryClient)
+      }
       return true
     } catch (error) {
       log.error("Error al marcar el domicilio como listo:", { error: String(error) })
+      refreshActiveDeliveries(queryClient)
       toast({
         title: "Domicilio sin actualizar",
-        description: "Los productos quedaron entregados, pero no se pudo marcar el domicilio como listo. Avise al operador de domicilios.",
+        description:
+          "Los productos quedaron entregados, pero no se pudo marcar el domicilio como listo. Avise al operador de domicilios.",
         variant: "destructive",
       })
       return false
