@@ -75,7 +75,7 @@ interface CustomerWithAddresses {
   addresses: CustomerAddress[]
 }
 
-interface DeliveryOrderWithBill {
+export interface DeliveryOrderWithBill {
   delivery: DeliveryOrder
   amountDue: number
   subtotal: number

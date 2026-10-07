@@ -15,6 +15,8 @@
  */
 
 import type { DeliveryAction, DeliveryRole, DeliveryStatus } from './types'
+
+export type { DeliveryAction }
 import { DELIVERY_ACTIONS, DELIVERY_ROLES, DELIVERY_STATUSES } from './types'
 
 // Re-exported so tests can iterate the canonical status list without
