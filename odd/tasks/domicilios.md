@@ -34,7 +34,7 @@ through the existing `pay_order` ledger.
 - [x] 1. Role `delivery_operator` app side: app type, routing to a placeholder
       DeliveryView, profile labels/PIN prefix, staff form option. (`pay_order` and
       `register_summary` accept the role in task 3, with the fee change.)
-- [ ] 2. Schema: `couriers`, `customers`, `customer_addresses`, `orders.order_type` +
+- [x] 2. Schema: `couriers`, `customers`, `customer_addresses`, `orders.order_type` +
       `order_deliveries` (1:1), RLS per role, realtime publication, default fee config.
 - [ ] 3. RPCs: atomic `create_delivery_order`, delivery state machine RPC (ready,
       dispatch with courier, delivered, failed, re-dispatch, cancel), `pay_order` amount
@@ -66,3 +66,4 @@ through the existing `pay_order` ledger.
 |------|--------|----------|
 | 1 | `fdec08a` | lib/auth/roles.ts single source of roles (APP_ROLES, roleLabel, isAppRole, viewForRole); RED: module missing; GREEN 7 tests. Router switch on viewForRole, DeliveryView placeholder, profile tile/PIN prefix, staff form role select (waiter / delivery_operator), Header label from roleLabel. Vitest 15 files / 249; typecheck 0; build OK. |
 | 1 RDD | review-8ced532e9a3b247f | risk admitted; resilience refused (unknown field) then admitted with readability; reliability failed natively -> escalated (unknown_causality) on 6 findings. Verified: empty/unloaded PINs and the invalid-role screen are pre-existing for every role; WaiterForm role union and PIN prefix are maintainability notes (staff screen revisited in task 7). No defect introduced. |
+| 2 | (this commit) | Migration 20261007100000: couriers (admin writes), customers (phone ^[0-9]{7,15}$ unique per tenant) and customer_addresses (one default) for admin/cashier/delivery_operator, orders.order_type + delivery-without-table CHECK, order_deliveries 1:1 (snapshot, fee, payment mode, cash_change_for only COD, courier, status, failure_reason required when failed) readable by admin/cashier/delivery_operator/kitchen and write-guarded (42501) like payments; deferred tenant-consistency triggers; realtime publication. RED: 102/109 failed; GREEN pgTAP 12 files / 670 (parent re-run). |
