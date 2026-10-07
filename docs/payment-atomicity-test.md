@@ -1,298 +1,133 @@
-# Payment Atomicity Test Recipes
+# Payment Flow Atomicity Tests
 
-> Manual test recipes for P3 Payment & Order Atomicity.
-> Run against a live Supabase instance (`docker compose up -d`).
-> These are smoke tests, not automated unit tests (`strict_tdd: false`).
+> The atomic checkout lives in `public.pay_order` (migration 20261006120000) plus the `payments` /
+> `payment_tenders` ledger (20261006110000) and the `split_order` /
+> `register_summary` / `close_register` siblings. This document maps every
+> guarantee to its pgTAP file and gives a UI checklist + psql recipes for what
+> pgTAP cannot pin (renderer, double-click, UI warnings).
 
-## Prerequisites
+## Quick path
 
 ```bash
-# Reset DB and seed
-docker compose down -v && docker compose up -d
-supabase db reset
-docker exec -i supabase-db psql -U postgres -d postgres < supabase/seed.sql
-
-# Get a valid order ID for testing
-ORDER_ID=$(docker exec -i supabase-db psql -U postgres -d postgres -t \
-  -c "SELECT id FROM orders WHERE status IN ('active','kitchen') LIMIT 1;" | tr -d ' ')
-echo "Testing with order: $ORDER_ID"
+pnpm supabase start          # API 44321, DB 44322, Studio 44323
+pnpm supabase db reset       # migrations + supabase/seed.sql
+pnpm test:db                 # pgTAP, 11 files / 519 tests
+pnpm test                    # Vitest (lib/payments, store)
 ```
 
-## Recipe 1: Happy Path — Single Payment
+The Supabase CLI container is `supabase_db_vipe-pos-system` (project_id in
+`supabase/config.toml`); reach the DB with `docker exec -it
+supabase_db_vipe-pos-system psql -U postgres -d postgres`.
 
-**Scenario**: S3-01 — Payment completes and frees table.
+## Automated guarantees
+
+| Guarantee | pgTAP file | Migration | Pins |
+|-----------|------------|-----------|------|
+| `payment_methods` catalog, admin-only writes, `code` immutable | `050_payment_methods.test.sql` | 20261006100000 | RLS, INSERT/UPDATE/DELETE policies, `guard_payment_methods_code_immutable` trigger, defaults per restaurant |
+| `payments` + `payment_tenders` schema, CHECKs, deferred cross-row invariants, RLS (42501 on write), `payment_transactions` legacy read-only | `060_payments_tenders.test.sql` | 20261006110000 | UNIQUE (order_id), bigint money, cash vs electronic CHECK, restaurant consistency trigger, anon holds nothing |
+| `pay_order` RPC: caller role, `tip_amount`, ≤20 tenders, sum = `amount_due + tip`, idempotency, drawer warning, table release, drop of `complete_payment` | `070_pay_order.test.sql` | 20261006120000 | SECURITY DEFINER, FOR UPDATE / FOR SHARE lock shape, 42501 / P0002 / P0001 / 22023, replay returns `status='already_paid'` |
+| `split_order` / `undo_split` RPCs: parent lock, item move, full-move guard, partial-child prohibition | `080_split_order.test.sql` | 20261006130000 | SECURITY DEFINER, caller role, tenant isolation via P0002, bad-shape 22023 |
+| `register_summary` (STABLE INVOKER) + `close_register` (FOR UPDATE vs pay_order FOR SHARE): tips payout, expected cash = initial + cash tender sums + deposits − withdrawals, legacy section under `legacy` | `090_register_summary.test.sql` | 20261006140000 | caller role 42501, P0002 visibility, bigint rounding, expected_cash_after_tips may be negative |
+
+### Reading the headers
+
+Each test file opens with a comment block that lists every guarantee it pins.
+That block is the authoritative description; the table above is the index.
+
+## Run the automated tests
+
+```bash
+# everything
+pnpm test:db
+
+# a single file while iterating
+pnpm supabase test db supabase/tests/070_pay_order.test.sql
+```
+
+Each file is self-contained (`BEGIN; ... SELECT plan(N); ... finish();
+ROLLBACK;`); the database is never mutated. See `supabase/tests/README.md`
+for the pgTAP conventions and the JWT-impersonation pattern used by tenancy
+tests.
+
+## Manual UI smoke checklist
+
+pgTAP cannot see the renderer. Walk these once per release branch.
+
+- [ ] **Mixed-tender payment dialog.** Open `PaymentMethodDialog`, add two
+      tenders (e.g. Nequi 30 000 + cash 25 000), set a non-zero tip, confirm
+      the remaining amount reaches 0 at `amount_due + tip`, and submit. The
+      order leaves the table and the payment appears in the register lists.
+- [ ] **Tip options.** Cycle through `TipControl` presets and a custom value;
+      the dialog must always recompute `total` before submit, and submit with
+      tip=0 must be allowed.
+- [ ] **Warn-only drawer.** With the drawer empty, pay a cash-only order that
+      forces `change_given > drawer_cash_before`. The payment must still
+      succeed; a warning toast ("La caja no tenía efectivo suficiente para
+      el cambio…") appears, but the payment is never aborted.
+- [ ] **Double-click on pay / split / undo.** Spam-click the action button;
+      exactly one `payments` row (or one split / undo) is written. The second
+      call must either be a no-op or the idempotent replay of `pay_order`
+      with the same `idempotency_key`.
+- [ ] **Close register with tips payout.** After several payments with mixed
+      tip amounts, run `CloseRegisterDialog`. `tips_payout` equals `total_tips`
+      and `expected_cash_after_tips` is rendered as-is (negative is legal).
+- [ ] **Reprint with tender breakdown.** In Admin → Órdenes Completadas,
+      press **Factura** on a paid order. The invoice lists every tender with
+      its method name and amount, the cash received and change for cash
+      lines, and the tip. Orders paid before the ledger keep a single
+      payment label.
+- [ ] **Print listener (installed vs rebuilt).** With the Python listener
+      running, pay a mixed order. An installed listener built before this
+      change prints the single `FORMA DE PAGO:` line (now with the correct
+      method); a listener rebuilt from `pos/` prints `FORMAS DE PAGO:` with
+      one line per tender. Both must print; see `pos/README.md`.
+
+## psql inspection (debugging)
+
+```bash
+# enter the local DB container
+docker exec -it supabase_db_vipe-pos-system psql -U postgres -d postgres
+```
 
 ```sql
--- 1. Verify order is in 'kitchen' or 'active' status
-SELECT id, status, bill_total_cents, table_id
-FROM orders
-WHERE id = '<ORDER_ID>';
+-- one payment row per order (UNIQUE enforced)
+SELECT p.id, p.order_id, p.amount_due, p.tip_amount, p.change_given,
+       p.idempotency_key
+  FROM public.payments p
+ ORDER BY p.created_at DESC LIMIT 10;
 
--- 2. Call complete_payment RPC (single method)
-DO $$
-DECLARE
-  result jsonb;
-BEGIN
-  result := public.complete_payment(
-    p_order_id        => '<ORDER_ID>'::uuid,
-    p_payment_methods => ARRAY['cash:50000'],
-    p_cash_register_id => (
-      SELECT cr.id FROM cash_registers cr
-      JOIN profiles p ON p.restaurant_id = cr.restaurant_id
-      WHERE p.auth_user_id = auth.uid()
-      LIMIT 1
-    )::uuid
-  );
-  RAISE NOTICE 'Result: %', result;
-END;
-$$;
+-- tender lines of one payment, ordered by line_no
+SELECT t.method_code, t.method_kind, t.amount, t.cash_received
+  FROM public.payment_tenders t
+ WHERE t.payment_id = '00000000-0000-0000-0000-000000000000'
+ ORDER BY t.line_no;
 
--- 3. Verify exactly one payment_transactions row was created
-SELECT id, order_id, payment_method, amount_cents
-FROM payment_transactions
-WHERE order_id = '<ORDER_ID>';
+-- register snapshot (same numbers as the close-register screen);
+-- run it as an impersonated cashier or admin, see the note below
+SELECT * FROM public.register_summary(ARRAY[
+  '00000000-0000-0000-0000-000000000000'::uuid
+]);
 
--- Expected: 1 row, payment_method='cash', amount_cents=50000
-
--- 4. Verify order status is 'paid'
-SELECT id, status FROM orders WHERE id = '<ORDER_ID>';
--- Expected: status = 'paid'
-
--- 5. Verify table is 'free'
-SELECT id, status FROM tables
-WHERE id = (SELECT table_id FROM orders WHERE id = '<ORDER_ID>');
--- Expected: status = 'free'
+-- legacy read-only history (must not be written anymore)
+SELECT pt.order_id, pt.method, pt.amount, pt."timestamp"
+  FROM public.payment_transactions pt
+ ORDER BY pt."timestamp" DESC LIMIT 5;
 ```
 
-## Recipe 2: Idempotency — Second Call Returns `already_paid`
+As `postgres` these queries bypass RLS and see every tenant, and
+`register_summary` rejects the call because the role has no profile. To
+see a cashier's view, impersonate one inside a transaction with
+`SET LOCAL ROLE authenticated` and `SET LOCAL request.jwt.claims`, as the
+pgTAP files do.
 
-**Scenario**: S3-03 — Idempotent re-call is safe.
+## Out of scope
 
-```sql
--- Given the order from Recipe 1 is now 'paid'
-DO $$
-DECLARE
-  result jsonb;
-BEGIN
-  -- Call complete_payment again on the same order
-  result := public.complete_payment(
-    p_order_id        => '<ORDER_ID>'::uuid,
-    p_payment_methods => ARRAY['cash:50000'],
-    p_cash_register_id => (
-      SELECT cr.id FROM cash_registers cr
-      JOIN profiles p ON p.restaurant_id = cr.restaurant_id
-      WHERE p.auth_user_id = auth.uid()
-      LIMIT 1
-    )::uuid
-  );
-  RAISE NOTICE 'Second call result: %', result;
-  -- Expected: result.status = 'already_paid', no new payment_transactions row
-END;
-$$;
-
--- 6. Verify exactly ONE payment_transactions row still exists (no duplicate)
-SELECT count(*) AS payment_count
-FROM payment_transactions
-WHERE order_id = '<ORDER_ID>';
--- Expected: 1 (not 2)
-```
-
-## Recipe 3: Double-Tap — Concurrent Calls Produce One Row
-
-**Scenario**: S3-02 — Two concurrent calls within the same 100ms window.
-
-Requires two terminal sessions.
-
-**Terminal A**:
-```sql
-BEGIN;
-SELECT public.complete_payment(
-  p_order_id        => '<ORDER_ID>'::uuid,
-  p_payment_methods => ARRAY['cash:50000'],
-  p_cash_register_id => '<CASH_REGISTER_ID>'::uuid
-);
--- Do NOT commit yet
-```
-
-**Terminal B** (run immediately after Terminal A, before Terminal A commits):
-```sql
--- This call will block on the FOR UPDATE row lock from Terminal A
-SELECT public.complete_payment(
-  p_order_id        => '<ORDER_ID>'::uuid,
-  p_payment_methods => ARRAY['cash:50000'],
-  p_cash_register_id => '<CASH_REGISTER_ID>'::uuid
-);
--- Will return after Terminal A commits (serialized)
-```
-
-**Expected outcome**: Terminal B's call succeeds with `status: 'already_paid'`; exactly 1 `payment_transactions` row exists for the order.
-
-**Cleanup**:
-```sql
--- Terminal A: commit or rollback
-COMMIT;  -- or ROLLBACK;
-```
-
-**Verification** (in a third terminal):
-```sql
-SELECT count(*) AS payment_count
-FROM payment_transactions
-WHERE order_id = '<ORDER_ID>';
--- Expected: 1
-```
-
-## Recipe 4: Multi-Method Payment — Two Payment Rows
-
-**Scenario**: S3-06 — Cash + card payment is atomic.
-
-```sql
--- Requires a new 'active' or 'kitchen' order
-ORDER_ID_2=$(docker exec -i supabase-db psql -U postgres -d postgres -t \
-  -c "SELECT id FROM orders WHERE status IN ('active','kitchen') LIMIT 1;" | tr -d ' ')
-echo "Testing multi-method with order: $ORDER_ID_2"
-
-DO $$
-DECLARE
-  result jsonb;
-BEGIN
-  result := public.complete_payment(
-    p_order_id        => '<ORDER_ID_2>'::uuid,
-    p_payment_methods => ARRAY['cash:30000', 'card:25000'],
-    p_cash_register_id => '<CASH_REGISTER_ID>'::uuid
-  );
-  RAISE NOTICE 'Multi-method result: %', result;
-END;
-$$;
-
--- Verify exactly 2 payment_transactions rows
-SELECT id, order_id, payment_method, amount_cents
-FROM payment_transactions
-WHERE order_id = '<ORDER_ID_2>'
-ORDER BY created_at;
-
--- Expected: 2 rows — one for 'cash:30000', one for 'card:25000'
-```
-
-## Recipe 5: Atomic Delete — Cascade Removes All Children
-
-**Scenario**: S3-04 — Order delete removes all children atomically.
-
-```sql
--- 1. Create a test order with items for deletion
--- (Use an existing 'kitchen' order that can be safely deleted)
-DELETE_ORDER_ID=$(docker exec -i supabase-db psql -U postgres -d postgres -t \
-  -c "SELECT id FROM orders WHERE status = 'kitchen' LIMIT 1;" | tr -d ' ')
-echo "Testing delete with order: $DELETE_ORDER_ID"
-
--- 2. Count items before delete
-SELECT count(*) AS order_items_count
-FROM order_items
-WHERE order_id = '<DELETE_ORDER_ID>';
-
-SELECT count(*) AS junction_rows_count
-FROM ingredient_transactions_orders
-WHERE order_id = '<DELETE_ORDER_ID>';
-
--- 3. Call delete_order_with_items
-DO $$
-BEGIN
-  PERFORM public.delete_order_with_items('<DELETE_ORDER_ID>'::uuid);
-  RAISE NOTICE 'Delete succeeded';
-END;
-$$;
-
--- 4. Verify all children are gone
-SELECT count(*) AS remaining_order_items
-FROM order_items
-WHERE order_id = '<DELETE_ORDER_ID>';
--- Expected: 0
-
-SELECT count(*) AS remaining_junction_rows
-FROM ingredient_transactions_orders
-WHERE order_id = '<DELETE_ORDER_ID>';
--- Expected: 0
-
-SELECT count(*) AS order_still_exists
-FROM orders
-WHERE id = '<DELETE_ORDER_ID>';
--- Expected: 0 (order itself was deleted)
-```
-
-## Recipe 6: Cross-Tenant Rejection
-
-**Scenario**: RLS enforcement — Tenant B cannot pay Tenant A's order.
-
-```sql
--- Requires setting a different tenant's JWT claims
--- This simulates a user from restaurant B trying to pay an order from restaurant A
-
--- First, get tenant B's user and a tenant A order
-SET request.jwt.claims = '{"sub":"<TENANT_B_USER_ID>","app_metadata":{"role":"cashier","restaurant_id":"<TENANT_B_RESTAURANT_ID>"}}';
-
--- Attempt to call complete_payment on tenant A's order
-DO $$
-DECLARE
-  result jsonb;
-BEGIN
-  -- This should raise an exception: 'Forbidden: order belongs to another tenant'
-  result := public.complete_payment(
-    p_order_id        => '<TENANT_A_ORDER_ID>'::uuid,
-    p_payment_methods => ARRAY['cash:50000'],
-    p_cash_register_id => '<CASH_REGISTER_ID>'::uuid
-  );
-  -- If we get here without exception, the test failed
-  RAISE EXCEPTION 'UNEXPECTED: cross-tenant payment succeeded when it should have been rejected';
-EXCEPTION
-  WHEN raise_exception THEN
-    RAISE NOTICE 'Expected exception caught: %', SQLERRM;
-  WHEN OTHERS THEN
-    RAISE NOTICE 'Cross-tenant rejection confirmed: %', SQLERRM;
-END;
-$$;
-
-RESET request.jwt.claims;
--- Expected: function raises 'Forbidden: order belongs to another tenant'
-```
-
-## Recipe 7: Order in Non-Payable Status Rejection
-
-```sql
--- Attempt to pay an order that is already 'paid'
-DO $$
-DECLARE
-  result jsonb;
-BEGIN
-  result := public.complete_payment(
-    p_order_id        => '<ORDER_ID>'::uuid,  -- already 'paid' from Recipe 1
-    p_payment_methods => ARRAY['cash:50000'],
-    p_cash_register_id => '<CASH_REGISTER_ID>'::uuid
-  );
-  -- Should return 'already_paid' without error (idempotent)
-  RAISE NOTICE 'Result on already-paid order: %', result;
-END;
-$$;
--- Expected: result.status = 'already_paid' (not an exception)
-```
-
-## RPC Interface Reference
-
-### `complete_payment(p_order_id uuid, p_payment_methods text[], p_cash_register_id uuid) RETURNS jsonb`
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `p_order_id` | uuid | The order to complete payment for |
-| `p_payment_methods` | text[] | Array of `'method:amount'` strings, e.g. `['cash:50000','card:25000']` |
-| `p_cash_register_id` | uuid | Cash register ID for the transaction |
-
-**Returns**:
-- `status: 'paid'` — payment succeeded
-- `status: 'already_paid'` — order already paid (idempotent)
-- Raises exception on error (order not found, tenant mismatch, invalid status)
-
-### `delete_order_with_items(p_order_id uuid) RETURNS void`
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `p_order_id` | uuid | The order to delete with all its items |
-
-**Behavior**: Deletes `order_items`, `ingredient_transactions_orders` links, and the `orders` row atomically. Raises exception if order not found or access denied.
+- `000_schema_smoke` / `001_bootstrap` (extension and migration sanity) and
+  `010_tenant_isolation` /
+  `020_anon_lockdown` / `030_profile_privileges` /
+  `040_remaining_tables_tenancy` cover the cross-cutting tenancy surface and
+  the EXECUTE grants on every RPC; they are part of `pnpm test:db`, not
+  duplicated here.
+- Vitest covers the pure-TS adapters in `lib/supabase/payments-service.ts`
+  and `lib/payments/register-summary.ts` (`pnpm test`); see those files for
+  per-case assertions.

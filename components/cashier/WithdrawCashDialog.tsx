@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { log } from "@/lib/log"
@@ -13,6 +13,7 @@ import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
 import { toast } from "@/utils/toast"
 import { NumericKeypad } from "@/components/ui/numeric-keypad"
+import { useRegisterSummary } from "@/hooks/use-register-summary"
 
 interface WithdrawCashDialogProps {
   open: boolean
@@ -26,7 +27,17 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
   const [description, setDescription] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
 
-  const { addCashTransaction, getCurrentRegisterSummary, currentRegister } = useCashRegisterStore()
+  const { addCashTransaction, currentRegister } = useCashRegisterStore()
+
+  // El efectivo que la UI muestra y contra el que valida el retiro viene
+  // del resumen del servidor (`expected_cash`). Mismo límite y misma
+  // semántica que la pantalla principal de estado de caja.
+  const summaryIds = useMemo(
+    () => (currentRegister ? [currentRegister.id] : []),
+    [currentRegister],
+  )
+  const { data: summary } = useRegisterSummary(summaryIds)
+  const currentCash = summary?.expectedCash ?? 0
 
   // Resetear el estado cuando se abre el diálogo
   useEffect(() => {
@@ -72,8 +83,10 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
       return
     }
 
-    // Verificar si hay suficiente efectivo en caja
-    const currentCash = getCurrentRegisterSummary()?.finalCash || 0
+    // Verificar si hay suficiente efectivo en caja (advisory; el RPC
+    // del nuevo flujo rechazaría un retiro mayor al efectivo disponible
+    // solo en el cierre, no aquí — la advertencia del cliente es la
+    // primera línea de defensa).
     if (numericAmount > currentCash) {
       setError(`No hay suficiente efectivo en caja. Disponible: ${formatCurrency(currentCash)}`)
       return
@@ -115,7 +128,7 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
             <div className="p-3 bg-muted rounded-md">
               <div className="flex justify-between">
                 <span>Efectivo actual en caja:</span>
-                <span className="font-medium">{formatCurrency(getCurrentRegisterSummary()?.finalCash || 0)}</span>
+                <span className="font-medium">{formatCurrency(currentCash)}</span>
               </div>
             </div>
 
