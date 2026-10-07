@@ -111,6 +111,23 @@ export function renderInvoice(params: {
     paymentMethod?: string
     cashReceived?: number
     cashChange?: number
+    /**
+     * Tender lines for the multi-method print path. When present and
+     * non-empty, the ticket renders `FORMAS DE PAGO:` + one
+     * `NAME  $amount` line per tender (plus `RECIBIDO` / `CAMBIO`
+     * per cash line and a total `CAMBIO` line) instead of the
+     * legacy single-label block. The legacy fields are still used
+     * as a fallback so old invoices keep printing unchanged.
+     */
+    tenders?: Array<{
+      methodCode: string
+      methodName: string
+      methodKind: 'cash' | 'electronic'
+      amount: number
+      cashReceived: number | null
+    }>
+    /** Total change across every cash line. New payload field. */
+    change?: number
   }
   displayItems: Array<{
     name: string
@@ -199,16 +216,48 @@ export function renderInvoice(params: {
 
   lines.push({ text: '--------------------------------', align: 'center' })
 
-  // Payment method
-  const methodText = paymentMethodText(invoice.paymentMethod || 'N/A')
-  lines.push({ text: `FORMA DE PAGO: ${methodText}`, align: 'left' })
+  // Payment method. The multi-tender path takes over when there is at
+  // least one tender line; otherwise we fall back to the legacy
+  // single-label block (so historical invoices reprint unchanged).
+  const tenders = invoice.tenders ?? []
+  if (tenders.length > 0) {
+    lines.push({ text: 'FORMAS DE PAGO:', align: 'left' })
+    // `invoice.change` is the authoritative total the new payload
+    // carries (server-derived via `legacyInvoiceFields`). When it is
+    // missing (e.g. a hand-built test fixture) we fall back to the
+    // per-line change so the total stays correct.
+    let totalChange = invoice.change ?? 0
+    for (const t of tenders) {
+      lines.push({
+        text: `${(t.methodName || t.methodCode).toUpperCase()}  ${formatCurrency(t.amount).padStart(10)}`,
+        align: 'left',
+      })
+      if (t.methodKind === 'cash' && t.cashReceived != null && t.cashReceived > t.amount) {
+        const lineChange = t.cashReceived - t.amount
+        lines.push({
+          text: `  RECIBIDO ${formatCurrency(t.cashReceived).padStart(8)} / CAMBIO ${formatCurrency(lineChange).padStart(8)}`,
+          align: 'left',
+        })
+        if (invoice.change == null) totalChange += lineChange
+      }
+    }
+    if (totalChange > 0) {
+      lines.push({
+        text: `CAMBIO: ${formatCurrency(totalChange)}`,
+        align: 'left',
+      })
+    }
+  } else {
+    const methodText = paymentMethodText(invoice.paymentMethod || 'N/A')
+    lines.push({ text: `FORMA DE PAGO: ${methodText}`, align: 'left' })
 
-  if (invoice.cashReceived && invoice.cashReceived > 0) {
-    lines.push({
-      text: `RECIBIDO: ${formatCurrency(invoice.cashReceived)}`,
-      align: 'left',
-    })
-    lines.push({ text: `CAMBIO: ${formatCurrency(invoice.cashChange || 0)}`, align: 'left' })
+    if (invoice.cashReceived && invoice.cashReceived > 0) {
+      lines.push({
+        text: `RECIBIDO: ${formatCurrency(invoice.cashReceived)}`,
+        align: 'left',
+      })
+      lines.push({ text: `CAMBIO: ${formatCurrency(invoice.cashChange || 0)}`, align: 'left' })
+    }
   }
 
   lines.push({ text: '--------------------------------', align: 'center' })
@@ -227,6 +276,7 @@ function paymentMethodText(method: string): string {
     transfer: 'Transferencia',
     nequi: 'Nequi',
     bancolombia: 'Bancolombia App',
+    multiple: 'MÚLTIPLES',
   }
   return map[method.toLowerCase()] ?? method
 }

@@ -2,6 +2,8 @@ import type { CartItem, Order, Profile, PaymentMethod } from "@/types"
 import { supabase as clientSupabase } from "./client"
 import ingredientTransactionService from "./ingredient-transaction-service"
 import { log } from "@/lib/log"
+import { getPaymentsByOrderIds } from "./payments-service"
+import { invoicePaymentMethod } from "@/lib/payments/payment-list"
 
 // Reutilizar el cliente de Supabase ya inicializado
 export const supabase = clientSupabase
@@ -685,247 +687,6 @@ export const orderService = {
     }
   },
 
-  async createPartialOrder(parentOrderId: string, items: CartItem[], bill: any) {
-    try {
-      // Primero obtenemos la orden padre
-      const { data: parentOrder, error: parentError } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", parentOrderId)
-        .single()
-
-      if (parentError) {
-        log.error("Error al obtener orden padre:", { parentError: String(parentError) })
-        throw parentError
-      }
-
-      if (!parentOrder) {
-        throw new Error("No se encontró la orden padre")
-      }
-
-      // Creamos la orden parcial
-      const { data: partialOrder, error } = await supabase
-        .from("orders")
-        .insert({
-          table_id: parentOrder.table_id,
-          waiter_id: parentOrder.waiter_id,
-          subtotal: bill.subtotal,
-          tax: bill.tax,
-          tax_percentage: bill.taxPercentage,
-          tip: bill.tip,
-          tip_percentage: bill.tipPercentage,
-          total: bill.total,
-          status: "active",
-          is_partial_order: true,
-          parent_order_id: parentOrderId,
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-      if (!partialOrder) throw new Error("No se pudo crear la orden parcial")
-
-      // Insertar los items de la orden parcial
-      const orderItems = items.map((item) => ({
-        order_id: partialOrder.id,
-        dish_id: item.id.includes("-") ? null : item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        comments: item.comments || null,
-      }))
-
-      const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
-      if (itemsError) throw itemsError
-
-      // Actualizar los items de la orden original
-      // Obtener los items actuales de la orden original
-      const { data: originalItems, error: originalItemsError } = await supabase
-        .from("order_items")
-        .select("*")
-        .eq("order_id", parentOrderId)
-
-      if (originalItemsError) throw originalItemsError
-      if (!originalItems) throw new Error("No se encontraron los items de la orden original")
-
-      // Para cada item en la orden parcial, reducir la cantidad en la orden original
-      for (const partialItem of items) {
-        // Buscar el item original que coincide con el nombre y comentarios
-        const originalItem = originalItems.find(
-          (item) =>
-            item.name === partialItem.name &&
-            ((item.comments === null && partialItem.comments === undefined) || item.comments === partialItem.comments),
-        )
-
-        if (originalItem) {
-          // Si la cantidad es igual, eliminar el item
-          if (originalItem.quantity === partialItem.quantity) {
-            const { error: deleteError } = await supabase.from("order_items").delete().eq("id", originalItem.id)
-            if (deleteError) throw deleteError
-          } else {
-            // Si la cantidad es menor, actualizar el item
-            const { error: updateError } = await supabase
-              .from("order_items")
-              .update({ quantity: originalItem.quantity - partialItem.quantity })
-              .eq("id", originalItem.id)
-
-            if (updateError) throw updateError
-          }
-        }
-      }
-
-      // Recalcular el total de la orden original
-      const { data: remainingItems, error: remainingError } = await supabase
-        .from("order_items")
-        .select("*")
-        .eq("order_id", parentOrderId)
-
-      if (remainingError) throw remainingError
-
-      // Si no hay items restantes, establecer un array vacío
-      const itemsArray = remainingItems || []
-
-      // Calcular nuevo subtotal
-      const newSubtotal = itemsArray.reduce((sum, item) => sum + item.price * item.quantity, 0)
-      const newTax = Math.round(newSubtotal * (parentOrder.tax_percentage / 100))
-      const newTip = Math.round(newSubtotal * (parentOrder.tip_percentage / 100))
-      const newTotal = newSubtotal + newTax + newTip
-
-      // Actualizar la orden original
-      const { error: updateOrderError } = await supabase
-        .from("orders")
-        .update({
-          subtotal: newSubtotal,
-          tax: newTax,
-          tip: newTip,
-          total: newTotal,
-        })
-        .eq("id", parentOrderId)
-
-      if (updateOrderError) throw updateOrderError
-
-      return partialOrder
-    } catch (error) {
-      log.error("Error al crear orden parcial:", { error: String(error) })
-      throw error
-    }
-  },
-
-  async deletePartialOrder(orderId: string) {
-    // Primero verificamos que sea una orden parcial
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", orderId)
-      .eq("is_partial_order", true)
-      .single()
-
-    if (orderError) {
-      log.error("Error al verificar orden parcial:", { orderError: String(orderError) })
-      throw orderError
-    }
-
-    if (!order) {
-      throw new Error("La orden no es una orden parcial o no existe")
-    }
-
-    // Obtener la orden parcial con sus items
-    const { data: partialOrder, error: partialError } = await supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      .eq("id", orderId)
-      .single()
-
-    if (partialError || !partialOrder) throw new Error("No se encontró la orden parcial")
-    if (!partialOrder.is_partial_order) throw new Error("La orden no es parcial")
-    if (!partialOrder.parent_order_id) throw new Error("La orden parcial no tiene orden padre")
-
-    // Obtener la orden padre
-    const { data: parentOrder, error: parentError } = await supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      .eq("id", partialOrder.parent_order_id)
-      .single()
-
-    if (parentError || !parentOrder) throw new Error("No se encontró la orden padre")
-
-    // Devolver los items a la orden original
-    for (const partialItem of partialOrder.order_items) {
-      // Buscar si el item ya existe en la orden original
-      const parentItem = parentOrder.order_items.find(
-        (item) => item.name === partialItem.name && (item.comments || "") === (partialItem.comments || ""),
-      )
-
-      if (parentItem) {
-        // Si existe, actualizar la cantidad
-        const { error: updateError } = await supabase
-          .from("order_items")
-          .update({ quantity: parentItem.quantity + partialItem.quantity })
-          .eq("id", parentItem.id)
-
-        if (updateError) throw updateError
-      } else {
-        // Si no existe, crear un nuevo item
-        const { error: insertError } = await supabase.from("order_items").insert({
-          order_id: parentOrder.id,
-          dish_id: partialItem.dish_id,
-          name: partialItem.name,
-          price: partialItem.price,
-          quantity: partialItem.quantity,
-          comments: partialItem.comments,
-        })
-
-        if (insertError) throw insertError
-      }
-    }
-
-    // Recalcular el total de la orden original
-    const { data: updatedItems, error: updatedError } = await supabase
-      .from("order_items")
-      .select("*")
-      .eq("order_id", parentOrder.id)
-
-    if (updatedError) throw updatedError
-    if (!updatedItems) throw new Error("No se encontraron los items actualizados")
-
-    // Calcular nuevo subtotal
-    const newSubtotal = updatedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-    const newTax = Math.round(newSubtotal * (parentOrder.tax_percentage / 100))
-    const newTip = Math.round(newSubtotal * (parentOrder.tip_percentage / 100))
-    const newTotal = newSubtotal + newTax + newTip
-
-    // Actualizar la orden original
-    const { error: updateOrderError } = await supabase
-      .from("orders")
-      .update({
-        subtotal: newSubtotal,
-        tax: newTax,
-        tip: newTip,
-        total: newTotal,
-      })
-      .eq("id", parentOrder.id)
-
-    if (updateOrderError) throw updateOrderError
-
-    // Eliminamos los items de la orden
-    const { error: itemsError } = await supabase.from("order_items").delete().eq("order_id", orderId)
-
-    if (itemsError) {
-      log.error("Error al eliminar items de la orden parcial:", { itemsError: String(itemsError) })
-      throw itemsError
-    }
-
-    // Eliminamos la orden
-    const { error: orderDeleteError } = await supabase.from("orders").delete().eq("id", orderId)
-
-    if (orderDeleteError) {
-      log.error("Error al eliminar orden parcial:", { orderDeleteError: String(orderDeleteError) })
-      throw orderDeleteError
-    }
-
-    return true
-  },
-
   async getAll() {
     const { data, error } = await supabase
       .from("orders")
@@ -1052,54 +813,6 @@ export const orderService = {
     }
 
     return data?.[0]
-  },
-
-  // RPC wrapper for complete_payment (P3 atomic payment)
-  async completePaymentRpc(orderId: string, paymentMethods: string[], cashRegisterId: string): Promise<any> {
-    const { data, error } = await (supabase.rpc as any)("complete_payment", {
-      p_order_id: orderId,
-      p_payment_methods: paymentMethods,
-      p_cash_register_id: cashRegisterId,
-    })
-
-    if (error) {
-      log.error("Error in complete_payment RPC:", { error: String(error) })
-      throw error
-    }
-
-    return data
-  },
-
-  // Deprecated: use completePaymentRpc instead.
-  // This method is kept for backward compatibility during the migration window.
-  async completePayment(orderId: string, paymentMethod: string, _cashReceived?: number, _cashChange?: number) {
-    log.warn(
-      "[deprecation] completePayment(orderId, paymentMethod) is deprecated. " +
-      "Migrate to completePaymentRpc(orderId, paymentMethods[], cashRegisterId). " +
-      "See docs/payment-atomicity-test.md for the RPC interface."
-    )
-
-    // Get the current register ID from the cash register store
-    // (imported dynamically to avoid circular dependency)
-    const { useCashRegisterStore } = await import("@/store/use-cash-register-store")
-    const currentRegister = useCashRegisterStore.getState().currentRegister
-    const registerId = currentRegister?.id ?? ""
-
-    // Convert single paymentMethod to array format: 'method:amount'
-    // The amount is derived from the order's bill_total_cents (server-side via RPC)
-    const paymentMethods = [`${paymentMethod}:0`]
-
-    const result = await this.completePaymentRpc(orderId, paymentMethods, registerId)
-
-    if (result?.status === "already_paid") {
-      return `INV-${orderId.substring(0, 8)}-repaid`
-    }
-
-    return `INV-${orderId.substring(0, 8)}`
-  },
-
-  async completePartialPayment(orderId: string, selectedItems: string[]) {
-    return this.completePayment(orderId, "cash")
   },
 
   // RPC wrapper for delete_order_with_items (P3 atomic delete)
@@ -1234,21 +947,39 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
       throw error
     }
 
+    // New ledger is the source of truth for payments taken since the
+    // pay_order migration shipped. One batched read covers every order on
+    // the day; orders without a new payment fall back to the legacy
+    // payment_transactions read so historical bills keep their method
+    // label.
+    const orderIds = data.map((o: any) => o.id)
+    const newPayments = await getPaymentsByOrderIds(orderIds).catch((err) => {
+      log.error("Error al leer payments para órdenes:", { error: String(err) })
+      return []
+    })
+    const newPaymentByOrderId = new Map(newPayments.map((p) => [p.orderId, p]))
+
     const orders = await Promise.all(
       data.map(async (order: any) => {
-        const { data: payments, error: payError } = await supabase
-          .from("payment_transactions")
-          .select("method")
-          .eq("order_id", order.id)
+        let paymentMethod: PaymentMethod | "multiple" | string | undefined
+        const newPayment = newPaymentByOrderId.get(order.id)
 
-        if (payError) {
-          log.error("Error al obtener métodos de pago:", { payError: String(payError) })
-        }
+        if (newPayment) {
+          paymentMethod = invoicePaymentMethod(newPayment)
+        } else {
+          const { data: payments, error: payError } = await supabase
+            .from("payment_transactions")
+            .select("method")
+            .eq("order_id", order.id)
 
-        let paymentMethod: PaymentMethod | "multiple" | undefined
-        if (payments && payments.length > 0) {
-          const unique = Array.from(new Set(payments.map((p) => p.method)))
-          paymentMethod = unique.length > 1 ? "multiple" : (unique[0] as PaymentMethod)
+          if (payError) {
+            log.error("Error al obtener métodos de pago:", { payError: String(payError) })
+          }
+
+          if (payments && payments.length > 0) {
+            const unique = Array.from(new Set(payments.map((p) => p.method)))
+            paymentMethod = unique.length > 1 ? "multiple" : (unique[0] as PaymentMethod)
+          }
         }
 
         return {
@@ -1274,6 +1005,11 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
           createdAt: order.created_at,
           updatedAt: order.updated_at,
           paymentMethod,
+          // Attach the ledger row so the admin reprint can render the
+          // tender list without a second round-trip. Undefined for
+          // orders that pre-date the new pay_order flow (those fall
+          // back to the legacy `paymentMethod` label).
+          ledgerPayment: newPayment,
         }
       })
     )

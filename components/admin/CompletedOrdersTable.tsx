@@ -13,6 +13,11 @@ import type { Order, Table, Profile, PrintableInvoice } from "@/types"
 import { useConfigStore } from "@/store/use-config-store"
 import { format } from "date-fns"
 import { getOrdersByDate } from "@/lib/supabase/service"
+import { listPaymentMethods } from "@/lib/supabase/payments-service"
+import {
+  invoiceTendersFromPayment,
+  legacyInvoiceFields,
+} from "@/lib/payments/invoice-tenders"
 import { log } from "@/lib/log"
 import { useToast } from "@/components/ui/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -128,7 +133,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     initialItemsPerPage: 10,
   })
 
-  const handlePrintInvoice = (order: Order) => {
+  const handlePrintInvoice = async (order: Order) => {
     // Encontrar la mesa correspondiente
     const table = tables.find((t) => t.id === order.tableId)
     // Encontrar el mesero correspondiente
@@ -161,6 +166,39 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       items: order.items?.length || 0,
     })
 
+    // Multi-tender reprint: when the order has a ledger payment, build
+    // the tender list from it (resolved through the active catalog)
+    // and use the legacy helper so the single-label block is still
+    // correct for the old Python listener. Orders without a ledger
+    // payment (pre-pay-order flow) keep the original `paymentMethod`
+    // label as-is.
+    let tenders: PrintableInvoice["tenders"]
+    let change: number | undefined
+    let legacyPaymentMethod: PrintableInvoice["paymentMethod"] | undefined
+    let legacyCashReceived: number | undefined
+    let legacyCashChange: number | undefined
+    if (order.ledgerPayment) {
+      let catalog: Awaited<ReturnType<typeof listPaymentMethods>> | undefined
+      try {
+        catalog = await listPaymentMethods()
+      } catch (err) {
+        log.error("No se pudo cargar el catálogo para reimprimir:", {
+          error: String(err),
+        })
+        toast({
+          title: "Advertencia",
+          description: "No se pudieron cargar los nombres de los métodos de pago; la factura muestra sus códigos",
+        })
+      }
+      const resolved = invoiceTendersFromPayment(order.ledgerPayment, catalog)
+      const legacy = legacyInvoiceFields(resolved)
+      tenders = resolved
+      change = legacy.cashChange
+      legacyPaymentMethod = legacy.paymentMethod as PrintableInvoice["paymentMethod"]
+      legacyCashReceived = legacy.cashReceived ?? undefined
+      legacyCashChange = legacy.cashChange > 0 ? legacy.cashChange : undefined
+    }
+
     // Generar la factura
     const invoice: PrintableInvoice = {
       invoiceNumber: order.id.substring(0, 8),
@@ -183,7 +221,11 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       },
       waiter: waiter?.name || "Desconocido",
       table: table?.number.toString() || "N/A",
-      paymentMethod: order.paymentMethod || "cash"
+      paymentMethod: legacyPaymentMethod ?? (order.paymentMethod || "cash"),
+      cashReceived: legacyCashReceived,
+      cashChange: legacyCashChange,
+      tenders,
+      change,
     }
 
     setSelectedInvoice(invoice)
