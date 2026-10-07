@@ -13,10 +13,11 @@
     "lint:fix": "next lint --fix",
     "typecheck": "tsc --noEmit",
     "test:placeholder": "echo 'No test runner configured yet' && exit 0",
+    "supabase": "npx --yes supabase@2.119.0",
+    "test:db": "npx --yes supabase@2.119.0 test db",
     "docker:dev": "docker-compose up -d",
     "docker:dev:build": "docker-compose up -d --build",
     "docker:dev:down": "docker-compose down",
-    "docker:dev:seed": "docker exec -i supabase-db psql -U postgres -d postgres < supabase/seed.sql",
     "docker:prod": "docker-compose -f docker-compose.prod.yml up -d --build",
     "docker:prod:down": "docker-compose -f docker-compose.prod.yml down",
     "docker:prod:logs": "docker-compose -f docker-compose.prod.yml logs -f"

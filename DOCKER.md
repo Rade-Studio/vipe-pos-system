@@ -4,63 +4,62 @@
 
 ### Requisitos
 - Docker y Docker Compose instalados
+- [Supabase CLI](https://supabase.com/docs/guides/cli) (se ejecuta vía `pnpm supabase`)
 - pnpm (se instala en el Dockerfile)
 
-### Iniciar todo (Supabase + App)
+### La base de datos la levanta la Supabase CLI
+
+El stack de Supabase local (db, kong, auth, storage, realtime, studio) **ya no se
+levanta con Docker Compose**: lo administra la Supabase CLI y expone sus servicios en
+los puertos `4432x` del host.
 
 ```bash
-# 1. Copiar archivo de variables de entorno
-cp env.docker.template .env.docker
+# 1. Levantar Supabase (db, auth, storage, realtime, studio)
+pnpm supabase start
 
-# 2. Iniciar contenedores
-docker-compose up -d
+# 2. Ver URL y claves para pegarlas en el .env de la raíz
+pnpm supabase status
+#    NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:44321
+#    NEXT_PUBLIC_SUPABASE_ANON_KEY=<ANON_KEY que imprime `supabase status`>
 
-# 3. Esperar ~30 segundos y ejecutar seed
-pnpm docker:dev:seed
-# O manualmente:
-# docker exec -i supabase-db psql -U postgres -d postgres < supabase/seed.sql
+# 3. (Opcional) Rebuild de la base: aplica supabase/migrations/ + supabase/seed.sql
+pnpm supabase db reset
 
-# 4. Ver logs
-pnpm docker:dev:logs
-
-# 5. Abrir en navegador
-open http://localhost:3000
+# 4. Pruebas SQL de pgTAP contra la base local
+pnpm test:db
 ```
 
-### Servicios disponibles en desarrollo
+> `supabase db reset` destruye los datos locales (perfiles, mesas, comandas).
+> Para detener los contenedores: `pnpm supabase stop` (agrega `--no-backup` para
+> borrar también los datos locales).
+
+### App Next.js en Docker
+
+`docker-compose.yml` solo levanta la app. Toma `NEXT_PUBLIC_SUPABASE_URL` y
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` del entorno o del `.env` de la raíz (localmente los
+de `pnpm supabase status`), y se pasan como build args porque Next.js las inlinea
+en build time.
+
+```bash
+# App en http://localhost:3003 (puerto del host 3003 -> 3000 del contenedor)
+docker compose up -d --build
+docker compose logs -f app
+docker compose down
+
+# Atajos equivalentes
+pnpm docker:dev:build
+pnpm docker:dev:down
+```
+
+Los servicios de Supabase local siguen accesibles en el host:
 
 | Servicio | URL |
 |----------|-----|
-| App Next.js | http://localhost:3000 |
-| PostgreSQL | localhost:5432 |
-| REST API | http://localhost:3000 |
-| Auth | http://localhost:9999 |
-| Storage | http://localhost:5000 |
-| Studio (Prisma) | http://localhost:5555 |
+| App Next.js (contenedor) | http://localhost:3003 |
+| Supabase API (URL local) | http://127.0.0.1:44321 |
+| Supabase Studio | http://127.0.0.1:54323 |
 
-### Comandos útiles
-
-```bash
-# Reconstruir y reiniciar
-pnpm docker:dev:build
-
-# Detener todo
-pnpm docker:dev:down
-
-# Ver logs de un servicio específico
-docker-compose logs -f db
-docker-compose logs -f app
-
-# Acceder a PostgreSQL
-docker exec -it supabase-db psql -U postgres -d postgres
-
-# Ver migraciones aplicadas
-docker exec -it supabase-db psql -U postgres -d postgres -c "\\dt"
-
-# Resetear base de datos
-docker-compose down -v
-docker-compose up -d
-```
+Usa `pnpm supabase status` para ver las URLs y claves vigentes.
 
 ---
 
@@ -122,19 +121,21 @@ server {
 ## Estructura de archivos
 
 ```
-├── docker-compose.yml        # Desarrollo (Supabase + App)
+├── docker-compose.yml        # Desarrollo (solo App; la DB usa la Supabase CLI)
 ├── docker-compose.prod.yml   # Producción (solo App)
 ├── Dockerfile                # Multi-stage build
-├── env.docker.template       # Template variables desarrollo
 ├── env.production.template   # Template variables producción
 └── supabase/
-    ├── migrations/           # Migraciones SQL
-    └── seed.sql             # Datos iniciales
+    ├── migrations/           # Migraciones SQL (fuente de verdad del esquema)
+    ├── tests/                # Pruebas pgTAP (pnpm test:db)
+    ├── config.toml           # Configuración local de la Supabase CLI
+    └── seed.sql              # Datos iniciales
 ```
 
 ## Notas importantes
 
-1. **Primera ejecución**: Las migraciones se aplican automáticamente al iniciar PostgreSQL por primera vez
-2. **Seed de datos**: Debe ejecutarse manualmente después del primer inicio
-3. **Persistencia**: Los datos de PostgreSQL persisten en el volumen `supabase-db-data`
-4. **Producción**: No incluye Supabase local; depende completamente de tu instancia de Supabase externa
+1. **Esquema**: todo el esquema vive en `supabase/migrations/` y lo aplica la Supabase CLI
+2. **Seed de datos**: lo carga automáticamente `pnpm supabase db reset`
+3. **Build args**: `NEXT_PUBLIC_SUPABASE_*` se inlinean en build time; si faltan, el contenedor
+   no arranca y Docker Compose indica cuáles definir
+4. **Producción**: no incluye Supabase local; depende completamente de tu instancia de Supabase externa
