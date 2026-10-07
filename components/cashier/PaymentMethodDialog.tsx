@@ -29,6 +29,10 @@ import type {
 } from "@/lib/payments/types"
 import { computeBill } from "@/lib/payments/bill"
 import { buildPayOrderTenders } from "@/lib/payments/tenders"
+import {
+  invoiceTendersFromPayOrder,
+  legacyInvoiceFields,
+} from "@/lib/payments/invoice-tenders"
 import { newIdempotencyKey } from "@/lib/payments/idempotency"
 import {
   computeSurplusAsTip,
@@ -45,6 +49,10 @@ import { log } from "@/lib/log"
 import { MethodPicker } from "./payment/MethodPicker"
 import { TenderLinesList } from "./payment/TenderLinesList"
 import { TipControl } from "./payment/TipControl"
+import { useRegisterSummary } from "@/hooks/use-register-summary"
+import { canGiveChange, registerSummaryQueryKey } from "@/lib/payments/register-summary"
+import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
+import { queryClient } from "@/lib/queryClient"
 
 interface PaymentMethodDialogProps {
   open: boolean
@@ -115,9 +123,19 @@ export function PaymentMethodDialog({
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const { isRegisterOpen, hasEnoughCashForChange, currentRegister, getCurrentRegisterSummary } =
-    useCashRegisterStore()
+  const { isRegisterOpen, currentRegister } = useCashRegisterStore()
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
+
+  // El chequeo de cambio y el aviso de "caja no alcanza" se hacen
+  // contra el resumen del servidor (`expected_cash`), no contra la suma
+  // local de transacciones. Misma fuente que la pantalla de estado de caja.
+  // `drawerWarning` y `drawerCurrent` se computan abajo, después de que
+  // `view` exista (de lo contrario sería un uso antes de declaración).
+  const summaryIds = useMemo(
+    () => (currentRegister ? [currentRegister.id] : []),
+    [currentRegister],
+  )
+  const { data: drawerSummary } = useRegisterSummary(summaryIds)
 
   // Active catalog (filtered + ordered). The full list still comes from
   // the service so `selectView` can flag inactive / unknown ids.
@@ -218,11 +236,12 @@ export function PaymentMethodDialog({
     orderData.tip_percentage,
   )
 
-  // Cash-drawer warning (advisory, not blocking). Only relevant when
-  // there is cash change to give and the drawer can't cover it.
-  const drawerWarning =
-    view.totalChange > 0 && !hasEnoughCashForChange(view.totalChange)
-  const drawerCurrent = getCurrentRegisterSummary()?.finalCash ?? 0
+  // (drawerWarning / drawerCurrent ya vienen del hook useRegisterSummary arriba)
+const drawerCurrent = drawerSummary?.expectedCash ?? 0
+const drawerWarning =
+  drawerSummary != null
+    ? view.totalChange > 0 && !canGiveChange(drawerSummary, view.totalChange)
+    : false
 
   // Confirm handler
   const handleConfirm = async () => {
@@ -250,6 +269,13 @@ export function PaymentMethodDialog({
       })
       dispatch({ type: "submitSucceeded", result })
 
+      // El nuevo pago cambió las ventas, las propinas, el cambio y el
+      // efectivo esperado de la caja. Invalidamos el resumen para que
+      // la pantalla de estado, los diálogos de retiro y el close se
+      // actualicen en el siguiente render.
+      queryClient.invalidateQueries({ queryKey: registerSummaryQueryKey(summaryIds) })
+      queryClient.invalidateQueries({ queryKey: registerPaymentsQueryKey(summaryIds) })
+
       if (result.alreadyPaid) {
         toast.success("Esta orden ya estaba pagada. Mostrando factura.")
       } else {
@@ -262,10 +288,13 @@ export function PaymentMethodDialog({
         )
       }
 
-      // Build the invoice for the print view. Detailed tender printing
-      // is task 10; the label collapses to a single method name when
-      // there is exactly one tender line, or "multiple" when there are
-      // several.
+      // Build the invoice for the print view. The tender list comes
+      // from the server's `payOrder` echo (resolved through the
+      // catalog by `code` — the echo does not carry the method id),
+      // not from the client view, so the line kinds / cash received
+      // values match what was actually written to the ledger. The
+      // legacy single-label fields are still populated so the old
+      // Python listener keeps printing a correct single-line ticket.
       const invoiceNumber = `INV-${orderId.substring(0, 8)}`
       const items: CartItem[] = orderData.order_items.map((it) => ({
         id: it.id,
@@ -276,15 +305,8 @@ export function PaymentMethodDialog({
         categoryId: "",
         image: "",
       }))
-      const cashLines = view.lines.filter((l) => l.kind === "cash")
-      const cashReceived =
-        cashLines.length > 0
-          ? cashLines.reduce((sum, l) => sum + l.tendered, 0)
-          : undefined
-      const cashChange = view.totalChange > 0 ? view.totalChange : undefined
-      // PrintableInvoice still uses the legacy "cash" | "multiple" enum;
-      // for a single line we mark it cash, for several "multiple".
-      const paymentMethod = view.lines.length > 1 ? "multiple" : "cash"
+      const invoiceTenders = invoiceTendersFromPayOrder(result, allMethods)
+      const legacy = legacyInvoiceFields(invoiceTenders)
 
       const invoice: PrintableInvoice = {
         invoiceNumber,
@@ -307,13 +329,15 @@ export function PaymentMethodDialog({
         },
         waiter: orderData.waiter_id ?? "—",
         table: orderData.table_id ?? "—",
-        paymentMethod,
-        multiplePayments: undefined, // detailed tenders come in task 10
-        cashReceived,
-        cashChange,
+        paymentMethod: legacy.paymentMethod as PrintableInvoice["paymentMethod"],
+        multiplePayments: undefined,
+        cashReceived: legacy.cashReceived ?? undefined,
+        cashChange: legacy.cashChange > 0 ? legacy.cashChange : undefined,
+        tenders: invoiceTenders,
+        change: legacy.cashChange,
       }
-      if (view.lines.length === 1) {
-        log.info("Pago con método único:", { method: methodName(view.lines[0].methodId) })
+      if (invoiceTenders.length === 1) {
+        log.info("Pago con método único:", { method: invoiceTenders[0]!.methodName })
       }
       setInvoiceData(invoice)
       setShowInvoice(true)

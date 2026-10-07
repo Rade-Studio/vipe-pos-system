@@ -1,136 +1,120 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
 import { log } from "@/lib/log"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type {
-  CashRegisterSummary as CashRegisterSummaryType,
-  CashTransaction,
-  CashRegister,
-} from "@/types/cash-register"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { RegisterSelector } from "./RegisterSelector"
 import { cashRegisterService } from "@/lib/supabase/cash-register-service"
 import { Skeleton } from "@/components/ui/skeleton"
+import { RegisterSelector } from "./RegisterSelector"
+import { useRegisterSummary } from "@/hooks/use-register-summary"
+import {
+  hasLegacy,
+  summaryRows,
+  tipsShortfall,
+} from "@/lib/payments/register-summary"
+import type { CashRegister } from "@/types/cash-register"
+import type { CashTransaction } from "@/types/cash-register"
+import { AlertTriangle } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 
 interface CashRegisterSummaryProps {
   selectedDate?: Date
 }
 
+/**
+ * Admin summary card. Server-driven: the totals, methods array and
+ * legacy block come from `register_summary` via `useRegisterSummary`,
+ * not from the legacy `payment_transactions` aggregation. This view
+ * and the close-register dialog render the same shape (see
+ * `CloseRegisterDialog.tsx`), so the preview and the locked numbers are
+ * built by the same code path.
+ *
+ * Per-day totals are the sum of the selected registers' `initial_cash`
+ * (the per-day "efectivo inicial" the user wants); the rest of the
+ * numbers are the aggregated snapshot for the selected set.
+ */
 export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) {
-  const { getCurrentRegisterSummary, isRegisterOpen, loadTransactionsByDate, loadCurrentRegister } =
-    useCashRegisterStore()
-  const [summary, setSummary] = useState<CashRegisterSummaryType | null>(null)
-  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
   const [registers, setRegisters] = useState<CashRegister[]>([])
   const [selectedRegisters, setSelectedRegisters] = useState<string[]>([])
+  const [isLoadingRegisters, setIsLoadingRegisters] = useState(false)
   const isOpen = isRegisterOpen()
 
-  // Cargar cajas registradoras para la fecha seleccionada
+  // Load the registers that belong to the selected date (or fall back
+  // to the currently open register when no date is supplied).
   useEffect(() => {
     const loadRegisters = async () => {
       if (selectedDate) {
-        setIsLoading(true)
+        setIsLoadingRegisters(true)
         try {
-          // Obtener cajas para la fecha seleccionada
           const registersForDate = await cashRegisterService.getRegistersByDate(selectedDate)
           setRegisters(registersForDate)
-
-          // Si hay cajas, seleccionar todas por defecto
-          if (registersForDate.length > 0) {
-            setSelectedRegisters(registersForDate.map((r) => r.id))
-          } else {
-            setSelectedRegisters([])
-          }
+          setSelectedRegisters(
+            registersForDate.length > 0 ? registersForDate.map((r) => r.id) : [],
+          )
         } catch (error) {
           log.error("Error al cargar cajas por fecha:", { error: String(error) })
           setRegisters([])
           setSelectedRegisters([])
         } finally {
-          setIsLoading(false)
+          setIsLoadingRegisters(false)
         }
       } else {
-        // Si no hay fecha seleccionada, usar el registro actual
-        const loadCurrent = async () => {
-          try {
-            await loadCurrentRegister()
-            const currentRegister = useCashRegisterStore.getState().currentRegister
-            if (currentRegister) {
-              setRegisters([currentRegister])
-              setSelectedRegisters([currentRegister.id])
-            } else {
-              setRegisters([])
-              setSelectedRegisters([])
-            }
-          } catch (error) {
-            log.error("Error al cargar registro actual:", { error: String(error) })
+        try {
+          await loadCurrentRegister()
+          const currentRegister = useCashRegisterStore.getState().currentRegister
+          if (currentRegister) {
+            setRegisters([currentRegister])
+            setSelectedRegisters([currentRegister.id])
+          } else {
             setRegisters([])
             setSelectedRegisters([])
           }
+        } catch (error) {
+          log.error("Error al cargar registro actual:", { error: String(error) })
+          setRegisters([])
+          setSelectedRegisters([])
         }
-
-        loadCurrent()
       }
     }
-
     loadRegisters()
   }, [selectedDate, loadCurrentRegister])
 
-  // Cargar datos cuando cambian los registros seleccionados
+  // Server snapshot for the selected set. Disabled when nothing is
+  // selected so the hook never calls the RPC with an empty list.
+  const { data: summary, isLoading: isLoadingSummary } = useRegisterSummary(selectedRegisters)
+
+  // Initial cash per day: sum each register's `initial_cash` (the
+  // server-aggregated `initial_cash` already does this for the
+  // selected set, so we just read it from the snapshot).
+  const rows = useMemo(() => (summary ? summaryRows(summary) : []), [summary])
+  const shortfall = summary ? tipsShortfall(summary) : 0
+  const showLegacy = summary ? hasLegacy(summary) : false
+
+  // Movimientos tab: a query so we can refetch when the tab is opened (cash
+  // deposits and withdrawals are still driven by cashRegisterService and do
+  // not invalidate anything yet). The key includes the sorted ids so two
+  // callers passing the same set hit the same cache slot.
+  const sortedRegisters = useMemo(() => [...selectedRegisters].sort(), [selectedRegisters])
+  const {
+    data: cashTransactions = [],
+    refetch: refetchCashTransactions,
+  } = useQuery<CashTransaction[]>({
+    queryKey: ["cash-transactions-by-registers", sortedRegisters],
+    queryFn: () => cashRegisterService.getCashTransactionsByRegisters(sortedRegisters),
+    enabled: sortedRegisters.length > 0,
+  })
+  const [activeTab, setActiveTab] = useState<string>("summary")
   useEffect(() => {
-    const loadData = async () => {
-      if (selectedRegisters.length === 0) {
-        setSummary(null)
-        setCashTransactions([])
-        return
-      }
-
-      setIsLoading(true)
-      try {
-        // Cargar transacciones para los registros seleccionados
-        const { transactions, cashTransactions: cashTxs } =
-          await cashRegisterService.loadTransactionsForRegisters(selectedRegisters)
-
-        // Cargar los registros completos con sus transacciones
-        const selectedRegistersFull = await Promise.all(
-          selectedRegisters.map(async (id) => {
-            const register = registers.find((r) => r.id === id)
-            if (!register) return null
-
-            // Filtrar las transacciones para este registro
-            const registerTransactions = transactions.filter((t) => t.cash_register_id === id)
-            const registerCashTransactions = cashTxs.filter((t) => t.cash_register_id === id)
-
-            return {
-              ...register,
-              transactions: registerTransactions,
-              cashTransactions: registerCashTransactions,
-            }
-          }),
-        ).then((results) => results.filter(Boolean) as CashRegister[])
-
-        // Calcular el resumen combinado
-        const combinedSummary = cashRegisterService.calculateMultipleRegistersSummary(selectedRegistersFull)
-        setSummary(combinedSummary)
-        setCashTransactions(cashTxs)
-      } catch (error) {
-        log.error("Error al cargar datos:", { error: String(error) })
-        setSummary(null)
-        setCashTransactions([])
-      } finally {
-        setIsLoading(false)
-      }
+    if (activeTab === "cash" && sortedRegisters.length > 0) {
+      refetchCashTransactions()
     }
+  }, [activeTab, sortedRegisters, refetchCashTransactions])
 
-    loadData()
-  }, [selectedRegisters, registers])
-
-  if (isLoading) {
+  if (isLoadingRegisters || isLoadingSummary) {
     return (
       <Card>
         <CardHeader>
@@ -146,52 +130,6 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
                   <Skeleton className="h-3 w-40" />
                 </div>
               ))}
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-muted p-4 rounded-lg">
-                <Skeleton className="h-5 w-48 mb-3" />
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-20" />
-                  </div>
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-28" />
-                    <Skeleton className="h-4 w-20" />
-                  </div>
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 w-20" />
-                  </div>
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-20" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-muted p-4 rounded-lg">
-                <Skeleton className="h-5 w-40 mb-3" />
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-20" />
-                  </div>
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-36" />
-                    <Skeleton className="h-4 w-20" />
-                  </div>
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-20" />
-                  </div>
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-40" />
-                    <Skeleton className="h-4 w-20" />
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </CardContent>
@@ -223,7 +161,7 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
             )}
 
             {summary ? (
-              <Tabs defaultValue="summary">
+              <Tabs defaultValue="summary" onValueChange={setActiveTab}>
                 <TabsList className="mb-4">
                   <TabsTrigger value="summary">Resumen</TabsTrigger>
                   <TabsTrigger value="details">Detalles</TabsTrigger>
@@ -233,116 +171,158 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
                 <TabsContent value="summary">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-muted p-4 rounded-lg">
-                      <h3 className="font-medium text-sm text-muted-foreground mb-2">Efectivo Inicial</h3>
-                      <p className="text-2xl font-bold">
-                        {summary && typeof summary.initialCash !== "undefined"
-                          ? formatCurrency(summary.initialCash)
-                          : formatCurrency(0)}
-                      </p>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-2">
+                        Efectivo Inicial
+                      </h3>
+                      <p className="text-2xl font-bold">{formatCurrency(summary.initialCash)}</p>
                       <p className="text-xs text-muted-foreground mt-1">
                         {selectedRegisters.length > 1 && `${selectedRegisters.length} cajas seleccionadas`}
                       </p>
                     </div>
                     <div className="bg-muted p-4 rounded-lg">
                       <h3 className="font-medium text-sm text-muted-foreground mb-2">Ventas Totales</h3>
-                      <p className="text-2xl font-bold">{formatCurrency(summary.totalSales || 0)}</p>
+                      <p className="text-2xl font-bold">{formatCurrency(summary.totalSales)}</p>
                     </div>
                     <div className="bg-muted p-4 rounded-lg">
-                      <h3 className="font-medium text-sm text-muted-foreground mb-2">Efectivo Final</h3>
-                      <p className="text-2xl font-bold">{formatCurrency(summary.finalCash || 0)}</p>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-2">
+                        Efectivo esperado al cierre
+                      </h3>
+                      <p className="text-2xl font-bold">{formatCurrency(summary.expectedCashAfterTips)}</p>
                     </div>
                   </div>
                 </TabsContent>
 
                 <TabsContent value="details">
                   <div className="space-y-4">
-                    <div className="bg-muted p-4 rounded-lg">
-                      <h3 className="font-medium mb-2">Desglose por Método de Pago</h3>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span>Efectivo:</span>
-                          <span className="font-medium">{formatCurrency(summary.totalCash || 0)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Transferencia:</span>
-                          <span className="font-medium">{formatCurrency(summary.totalTransfer || 0)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Nequi:</span>
-                          <span className="font-medium">{formatCurrency(summary.totalNequi || 0)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Bancolombia:</span>
-                          <span className="font-medium">{formatCurrency(summary.totalBancolombia || 0)}</span>
-                        </div>
-                        <div className="flex justify-between border-t pt-2 mt-2">
-                          <span>Propinas:</span>
-                          <span className="font-medium">{formatCurrency(summary.totalTips || 0)}</span>
+                    {rows.length > 0 && (
+                      <div className="bg-muted p-4 rounded-lg">
+                        <h3 className="font-medium mb-2">Ventas por método</h3>
+                        <div className="space-y-2">
+                          {rows.map((row) => (
+                            <div key={row.paymentMethodId} className="flex justify-between">
+                              <span>{row.name}</span>
+                              <span className="font-medium">{formatCurrency(row.total)}</span>
+                            </div>
+                          ))}
+                          <div className="flex justify-between border-t pt-2 mt-2 font-medium">
+                            <span>Total ventas</span>
+                            <span>{formatCurrency(summary.totalSales)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="bg-muted p-4 rounded-lg">
                       <h3 className="font-medium mb-2">Detalles de Efectivo</h3>
                       <div className="space-y-2">
                         <div className="flex justify-between">
                           <span>Efectivo Inicial:</span>
-                          <span className="font-medium">{formatCurrency(summary.initialCash || 0)}</span>
+                          <span className="font-medium">{formatCurrency(summary.initialCash)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Ventas en Efectivo:</span>
-                          <span className="font-medium">{formatCurrency(summary.totalCash || 0)}</span>
+                          <span className="font-medium">
+                            {formatCurrency(
+                              rows.filter((r) => r.kind === "cash").reduce((s, r) => s + r.total, 0),
+                            )}
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span>Cambio Entregado:</span>
-                          <span className="font-medium">-{formatCurrency(summary.totalChange || 0)}</span>
+                          <span className="font-medium">-{formatCurrency(summary.totalChange)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Ingresos de Efectivo:</span>
-                          <span className="font-medium">{formatCurrency(summary.totalCashDeposits || 0)}</span>
+                          <span className="font-medium">{formatCurrency(summary.cashDeposits)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Retiros de Efectivo:</span>
-                          <span className="font-medium">-{formatCurrency(summary.totalCashWithdrawals || 0)}</span>
+                          <span className="font-medium">-{formatCurrency(summary.cashWithdrawals)}</span>
                         </div>
                         <div className="flex justify-between font-bold">
-                          <span>Efectivo Final:</span>
-                          <span>{formatCurrency(summary.finalCash || 0)}</span>
+                          <span>Efectivo esperado:</span>
+                          <span>{formatCurrency(summary.expectedCash)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Propinas a entregar a meseros:</span>
+                          <span className="font-medium">-{formatCurrency(summary.tipsPayout)}</span>
+                        </div>
+                        <div className="flex justify-between border-t pt-1 font-bold">
+                          <span>Efectivo esperado después de propinas:</span>
+                          <span>{formatCurrency(summary.expectedCashAfterTips)}</span>
                         </div>
                       </div>
                     </div>
+
+                    {shortfall > 0 && (
+                      <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                        <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                        <p>
+                          El efectivo en caja no alcanza para pagar las propinas del turno.
+                          Faltante: {formatCurrency(shortfall)}.
+                        </p>
+                      </div>
+                    )}
+
+                    {showLegacy && (
+                      <div className="bg-muted p-4 rounded-lg">
+                        <h3 className="font-medium mb-2">Pagos del sistema anterior</h3>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span>Pagos legacy</span>
+                            <span className="font-medium">{summary.legacy.paymentsCount}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Total legacy</span>
+                            <span className="font-medium">{formatCurrency(summary.legacy.total)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Propinas legacy</span>
+                            <span className="font-medium">{formatCurrency(summary.legacy.tips)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Cambio legacy</span>
+                            <span className="font-medium">{formatCurrency(summary.legacy.change)}</span>
+                          </div>
+                          {Object.entries(summary.legacy.byMethod).map(([m, total]) => (
+                            <div key={m} className="flex justify-between text-sm">
+                              <span>{m}</span>
+                              <span>{formatCurrency(total)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
 
                 <TabsContent value="cash">
                   {cashTransactions.length > 0 ? (
                     <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Fecha</TableHead>
-                            <TableHead>Tipo</TableHead>
-                            <TableHead>Descripción</TableHead>
-                            <TableHead className="text-right">Monto</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2">Fecha</th>
+                            <th className="text-left py-2">Tipo</th>
+                            <th className="text-left py-2">Descripción</th>
+                            <th className="text-right py-2">Monto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
                           {cashTransactions.map((transaction) => (
-                            <TableRow key={transaction.id}>
-                              <TableCell className="font-medium">
+                            <tr key={transaction.id} className="border-b">
+                              <td className="py-2 font-medium">
                                 {new Date(transaction.timestamp).toLocaleString()}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={transaction.type === "deposit" ? "default" : "destructive"}>
-                                  {transaction.type === "deposit" ? "Ingreso" : "Retiro"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>{transaction.description}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(transaction.amount)}</TableCell>
-                            </TableRow>
+                              </td>
+                              <td className="py-2">
+                                {transaction.type === "deposit" ? "Ingreso" : "Retiro"}
+                              </td>
+                              <td className="py-2">{transaction.description}</td>
+                              <td className="py-2 text-right">{formatCurrency(transaction.amount)}</td>
+                            </tr>
                           ))}
-                        </TableBody>
-                      </Table>
+                        </tbody>
+                      </table>
                     </div>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">

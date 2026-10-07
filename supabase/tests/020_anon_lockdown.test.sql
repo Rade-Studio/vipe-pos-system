@@ -30,7 +30,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(25);
+SELECT plan(29);
 
 -- ============================================
 -- 1. Tables: anon holds nothing
@@ -129,6 +129,16 @@ SELECT is(
   has_function_privilege('authenticated', 'public.pay_order(uuid,uuid,bigint,jsonb,uuid)', 'EXECUTE'),
   true,
   'authenticated keeps EXECUTE on pay_order'
+);
+SELECT is(
+  has_function_privilege('authenticated', 'public.register_summary(uuid[])', 'EXECUTE'),
+  true,
+  'authenticated keeps EXECUTE on register_summary'
+);
+SELECT is(
+  has_function_privilege('authenticated', 'public.close_register(uuid)', 'EXECUTE'),
+  true,
+  'authenticated keeps EXECUTE on close_register'
 );
 SELECT is(
   has_function_privilege('authenticated', 'public.delete_order_with_items(uuid)', 'EXECUTE'),
@@ -297,6 +307,16 @@ SELECT throws_ok(
   $$ SELECT public.pay_order('a0eebc99-0000-0000-0000-000000000000', NULL, 0, '[]'::jsonb, gen_random_uuid()) $$,
   '42501', NULL,
   'anon cannot call pay_order'
+);
+SELECT throws_ok(
+  $$ SELECT public.register_summary('{}'::uuid[]) $$,
+  '42501', NULL,
+  'anon cannot call register_summary'
+);
+SELECT throws_ok(
+  $$ SELECT public.close_register('a0eebc99-0000-0000-0000-000000000000') $$,
+  '42501', NULL,
+  'anon cannot call close_register'
 );
 
 RESET ROLE;

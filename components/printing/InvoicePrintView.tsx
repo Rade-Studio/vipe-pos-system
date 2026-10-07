@@ -71,7 +71,7 @@ export function InvoicePrintView({
     return null
   }
 
-  const { invoiceNumber, date, businessInfo, items, bill, waiter, table, paymentMethod } = invoice
+  const { invoiceNumber, date, businessInfo, items, bill, waiter, table, paymentMethod, tenders, change } = invoice
 
   log.info("Renderizando factura con datos:", {
     waiter,
@@ -92,6 +92,8 @@ export function InvoicePrintView({
         return "Nequi"
       case "bancolombia":
         return "Bancolombia App"
+      case "multiple":
+        return "Múltiples"
       default:
         return method
     }
@@ -255,20 +257,65 @@ export function InvoicePrintView({
 
                 {/* Forma de pago */}
                 <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg mb-4 dark:text-gray-300">
-                  <div className="font-medium">
-                    Forma de pago:{" "}
-                    <span className="font-bold dark:text-white">{getPaymentMethodName(paymentMethod || "cash")}</span>
-                  </div>
-                  {invoice.cashReceived && invoice.cashReceived > 0 && (
+                  {tenders && tenders.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="font-medium">
+                        Formas de pago:{" "}
+                        <span className="font-bold dark:text-white">
+                          {tenders.length > 1
+                            ? "Múltiples"
+                            : getPaymentMethodName(tenders[0]!.methodCode)}
+                        </span>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        {tenders.map((t, i) => (
+                          <div key={i} className="flex justify-between">
+                            <span>{t.methodName}</span>
+                            <span>{formatCurrency(t.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {tenders.some((t) => t.methodKind === "cash") && (
+                        <div className="space-y-1 text-sm pt-1 border-t dark:border-gray-600">
+                          {tenders
+                            .filter((t) => t.methodKind === "cash")
+                            .map((t, i) =>
+                              t.cashReceived != null && t.cashReceived > t.amount ? (
+                                <div key={`rec-${i}`} className="flex justify-between">
+                                  <span>Recibido ({t.methodName})</span>
+                                  <span>{formatCurrency(t.cashReceived)}</span>
+                                </div>
+                              ) : null,
+                            )}
+                          {(change ?? 0) > 0 && (
+                            <div className="flex justify-between">
+                              <span>Cambio:</span>
+                              <span>{formatCurrency(change ?? 0)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
                     <>
-                      <div className="flex justify-between mt-1 text-sm">
-                        <span>Efectivo recibido:</span>
-                        <span>{formatCurrency(invoice.cashReceived)}</span>
+                      <div className="font-medium">
+                        Forma de pago:{" "}
+                        <span className="font-bold dark:text-white">
+                          {getPaymentMethodName(paymentMethod || "cash")}
+                        </span>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span>Cambio:</span>
-                        <span>{formatCurrency(invoice.cashChange || 0)}</span>
-                      </div>
+                      {invoice.cashReceived && invoice.cashReceived > 0 && (
+                        <>
+                          <div className="flex justify-between mt-1 text-sm">
+                            <span>Efectivo recibido:</span>
+                            <span>{formatCurrency(invoice.cashReceived)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span>Cambio:</span>
+                            <span>{formatCurrency(invoice.cashChange || 0)}</span>
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
@@ -337,7 +384,13 @@ export function InvoicePrintView({
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span>Método de pago:</span>
-                          <span className="font-medium">{getPaymentMethodName(paymentMethod || "cash")}</span>
+                          <span className="font-medium">
+                            {tenders && tenders.length > 0
+                              ? tenders.length > 1
+                                ? "Múltiples"
+                                : tenders[0]!.methodName
+                              : getPaymentMethodName(paymentMethod || "cash")}
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span>Total:</span>
@@ -398,6 +451,8 @@ export function InvoicePrintView({
                   paymentMethod: paymentMethod || 'cash',
                   cashReceived: invoice.cashReceived,
                   cashChange: invoice.cashChange,
+                  tenders,
+                  change,
                 },
                 displayItems,
               }) : { lines: [] }).lines.map((line, i) => (
