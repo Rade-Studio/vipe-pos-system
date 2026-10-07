@@ -30,6 +30,8 @@ import { log } from "@/lib/log"
 import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
 import { createSingleFlight } from "@/lib/payments/single-flight"
 import { PaymentServiceError, splitOrder, undoSplit } from "@/lib/supabase/payments-service"
+import { groupDineInOrdersByTable, orderTypeFromRow } from "@/lib/delivery/kitchen"
+import { DeliveryPaymentsPanel } from "@/components/cashier/DeliveryPaymentsPanel"
 
 interface CashierViewProps {
   profile: Profile
@@ -73,7 +75,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
 
     const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
       id: dbOrder.id,
-      tableId: dbOrder.table_id,
+      tableId: dbOrder.table_id ?? "",
+      orderType: orderTypeFromRow(dbOrder),
       items: dbOrder.order_items.map((item: any) => ({
         id: item.id,
         name: item.name,
@@ -103,18 +106,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     const deliveredOrdersConverted = deliveredData.map(convertDBOrderToAppOrder)
     const allOrders = [...activeOrdersConverted, ...kitchenOrdersConverted, ...deliveredOrdersConverted]
     const partialOrdersFiltered = allOrders.filter((order) => order.isPartialOrder)
-    const ordersByTableGrouped = allOrders
-      .filter((order) => !order.isPartialOrder)
-      .reduce(
-        (acc, order) => {
-          if (!acc[order.tableId]) {
-            acc[order.tableId] = []
-          }
-          acc[order.tableId].push(order)
-          return acc
-        },
-        {} as Record<string, Order[]>,
-      )
+    // Delivery orders have no table: DeliveryPaymentsPanel lists them.
+    const ordersByTableGrouped = groupDineInOrdersByTable(allOrders)
 
     return { activeOrdersConverted, kitchenOrdersConverted, deliveredOrdersConverted, partialOrdersFiltered, ordersByTableGrouped }
   }
@@ -145,6 +138,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
         id: dbOrder.id,
         tableId: dbOrder.table_id ?? "",
+        orderType: orderTypeFromRow(dbOrder),
         items: dbOrder.order_items.map((item: any) => ({
           id: item.id,
           name: item.name,
@@ -180,19 +174,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       // Filtrar órdenes parciales
       const partialOrdersFiltered = allOrders.filter((order) => order.isPartialOrder)
 
-      // Agrupar órdenes por mesa (excluyendo órdenes parciales)
-      const ordersByTableGrouped = allOrders
-        .filter((order) => !order.isPartialOrder)
-        .reduce(
-          (acc, order) => {
-            if (!acc[order.tableId]) {
-              acc[order.tableId] = []
-            }
-            acc[order.tableId].push(order)
-            return acc
-          },
-          {} as Record<string, Order[]>,
-        )
+      // Agrupar órdenes por mesa (excluyendo parciales y domicilios)
+      const ordersByTableGrouped = groupDineInOrdersByTable(allOrders)
 
       // Actualizar estados
       setActiveOrders(activeOrdersConverted)
@@ -700,6 +683,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
             </div>
           ) : (
             <>
+              <DeliveryPaymentsPanel onPaid={() => void loadOrdersFromDB()} />
+
               {partialOrders.length > 0 && (
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold mb-3">

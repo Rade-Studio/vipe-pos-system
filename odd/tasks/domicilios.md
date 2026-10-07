@@ -46,7 +46,7 @@ through the existing `pay_order` ledger.
 - [x] 6. Operator dispatch and close: courier assignment, out for delivery, delivered,
       failed with reason, re-dispatch, cancel; prepaid and cash-on-delivery payments.
 - [x] 7. Admin: couriers screen, default delivery fee, role assignable to staff.
-- [ ] 8. Kitchen, cashier and admin views stop assuming a table; DOMICILIO label; kitchen
+- [x] 8. Kitchen, cashier and admin views stop assuming a table; DOMICILIO label; kitchen
       marks delivery orders ready.
 - [ ] 9. Printing: kitchen ticket and invoice carry delivery data (TS + Python parity,
       additive payload).
@@ -95,3 +95,4 @@ through the existing `pay_order` ledger.
 | 6 RDD | review-c516da256c29514d | High tier, 4 lenses admitted on the first run -> APPROVED; acknowledgement burned authority. Advisory: register load failure shows "No hay caja abierta" (loadCurrentRegister catches internally, so nothing is unhandled); duplicated reason limit; board orchestration has no component test. |
 | 7 | `5092794` | Admin Repartidores sub-tab: CouriersManager (create/edit/activate, no delete, single-flight, query key ['couriers'] covers the dispatch picker) on lib/delivery/courier-admin.ts (16 tests) and createCourier/updateCourier (+10 tests); suggested fee card persisting business_config.delivery_default_fee (no seed row; first save inserts). Staff screen renamed Personal, lists waiters and delivery operators with a role badge; WaiterForm stops writing the dropped profiles.password column (dropped in 20250917090007, so every create failed) and keeps the current role on edit (it reset operators to waiter). RED: missing module / createCourier not a function / parseDefaultFeeInput not a function; GREEN Vitest 24 files / 445; typecheck 0; build OK. |
 | 7 RDD | review-a623788466fddbca | Medium tier, reliability admitted -> APPROVED; acknowledgement burned authority. Advisory: couriers load failure renders the empty state, fee save trusts the service result, RLS on update maps to not-found, WaiterForm fix has no component test. |
+| 8 | (this commit) | lib/delivery/kitchen.ts (17 tests: headings, place text, mark-ready rule, place filter, dine-in grouping, pending delivery payments; RED: module missing). Kitchen: DOMICILIO banner + card heading with the customer, Domicilios filter, no table update for delivery orders, marks the delivery ready when the last item is served (failure toast, never blocks). Cashier: delivery orders out of the table grid, Domicilios por cobrar panel (unpaid, not cancelled, any day) paying through PaymentMethodDialog with the fee. Admin: no table update and a Domicilio toast for delivery orders. Parent: OrderCard heading prop (no Mesa ? on delivery cards). Vitest 25 files / 462; typecheck 0; build OK. |

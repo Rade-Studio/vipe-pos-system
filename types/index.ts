@@ -47,6 +47,8 @@ export type Table = {
 // Order types
 export type OrderStatus = "active" | "cancelled" | "paid" | "delivered" | "kitchen"
 export type OrderItemStatus = "kitchen" | "served"
+/** orders.order_type: delivery orders have no table (table_id NULL). */
+export type OrderType = "dine_in" | "delivery"
 
 export type OrderBill = {
   subtotal: number
@@ -74,6 +76,8 @@ export type OrderItem = {
 export type Order = {
   id: string
   tableId: string
+  /** Absent on readers that do not map orders.order_type; treat as dine-in. */
+  orderType?: OrderType
   items: OrderItem[]
   status: OrderStatus
   bill: OrderBill

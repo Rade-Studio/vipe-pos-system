@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
+import { hasTable, isDeliveryOrder, orderTypeFromRow } from "@/lib/delivery/kitchen"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
 import { tableService } from "@/lib/supabase/service"
 import { PaymentMethodsManager } from "@/components/admin/payment-methods/PaymentMethodsManager"
@@ -86,6 +87,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
     return (dbOrders || []).map((order) => ({
       id: order.id,
       tableId: order.table_id ?? "",
+      orderType: orderTypeFromRow(order),
       waiter: order.waiter_id ?? "",
       status: order.status,
       items:
@@ -199,9 +201,12 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
             setNewOrdersCount((prev) => prev + 1)
 
             // Solo mostrar toast para nuevas órdenes (información realmente necesaria)
+            const place = isDeliveryOrder({ orderType: orderTypeFromRow(payload.new) })
+              ? "Domicilio"
+              : `Mesa ${payload.new.table_id}`
             toast({
               title: "Nueva orden recibida",
-              description: `Mesa ${payload.new.table_id}, ${payload.new.order_items?.length || 0} productos`,
+              description: `${place}, ${payload.new.order_items?.length || 0} productos`,
             })
           }
 
@@ -280,7 +285,8 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
       const formattedOrders =
         dbOrders?.map((order) => ({
           id: order.id,
-          tableId: order.table_id,
+          tableId: order.table_id ?? "",
+          orderType: orderTypeFromRow(order),
           waiter: order.waiter_id ?? "",
           status: order.status, // Mantener el estado original de la orden
           items:
@@ -383,10 +389,13 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
 
       // Actualizar la lista de órdenes activas
       setActiveOrdersFromDB((prev) => prev.filter((order) => order.id !== orderId))
-      await tableService.update(order.tableId, {
-        status: "available",
-        waiter_id: null,
-      } as any)
+      // Delivery orders have no table to release.
+      if (hasTable(order)) {
+        await tableService.update(order.tableId, {
+          status: "available",
+          waiter_id: null,
+        } as any)
+      }
 
       // Mantener este toast ya que es una acción importante iniciada por el usuario
       toast({

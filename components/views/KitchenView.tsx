@@ -23,6 +23,20 @@ import { queryClient } from "@/lib/queryClient"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { Bell, RefreshCw, Wifi, WifiOff, Filter } from "lucide-react"
+import { useActiveDeliveries, activeDeliveriesQueryKey } from "@/hooks/use-active-deliveries"
+import { listActiveDeliveries, setDeliveryStatus } from "@/lib/supabase/delivery-service"
+import type { DeliveryOrderWithBill } from "@/lib/supabase/delivery-service"
+import {
+  hasTable,
+  isDeliveryOrder,
+  matchesPlaceFilter,
+  orderHeading,
+  orderPlaceText,
+  orderTypeFromRow,
+  shouldMarkDeliveryReady,
+  type PlaceFilter,
+} from "@/lib/delivery/kitchen"
+import { DeliveryOrderBanner } from "@/components/kitchen/DeliveryOrderBanner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase/client"
@@ -66,7 +80,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const [showCompleteDialog, setShowCompleteDialog] = useState(false)
   const [orderToDeliver, setOrderToDeliver] = useState<string | null>(null)
   const [filterWaiter, setFilterWaiter] = useState<string | null>(null)
-  const [filterTable, setFilterTable] = useState<number | null>(null)
+  const [filterTable, setFilterTable] = useState<PlaceFilter>(null)
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
@@ -86,7 +100,15 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     queryFn: fetchKitchenOrders,
   })
 
+  // Customer names and delivery status for the delivery orders in the queue.
+  const { data: deliveries = [] } = useActiveDeliveries()
+  const deliveriesRef = useRef(new Map<string, DeliveryOrderWithBill>())
+  deliveriesRef.current = new Map(deliveries.map((row) => [row.delivery.orderId, row]))
+
   const tables = useTableStore((s) => s.tables)
+  // Realtime handlers are bound once at mount: read tables through a ref.
+  const tablesRef = useRef(tables)
+  tablesRef.current = tables
   const setTables = useTableStore((s) => s.setTables)
   const updateTableStatus = useTableStore((s) => s.updateTableStatus)
   const assignWaiterToTable = useTableStore((s) => s.assignWaiterToTable)
@@ -179,6 +201,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     const order: Order = {
       id: dbOrder.id,
       tableId: dbOrder.table_id ?? "",
+      orderType: orderTypeFromRow(dbOrder),
       items,
       status: dbOrder.status as OrderStatus,
       bill: {
@@ -197,6 +220,14 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     }
     return order
   }
+
+  // Table number (dine-in) or customer (delivery) for headings and toasts
+  const placeOf = (order: Order) => ({
+    orderType: order.orderType,
+    tableNumber: tablesRef.current.find((t) => t.id === order.tableId)?.number ?? null,
+  })
+  const placeText = (order: Order) =>
+    orderPlaceText(placeOf(order), deliveriesRef.current.get(order.id)?.delivery)
 
   // Configurar suscripción en tiempo real
   const setupRealtimeSubscription = () => {
@@ -285,10 +316,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
         // Si es una nueva orden, mostrar notificación
         if (isNewOrder) {
-          const table = tables.find((t) => t.id === storeOrder.tableId)
           toast({
             title: "¡Nueva orden!",
-            description: `Nueva orden recibida para la mesa ${table?.number || storeOrder.tableId}.`,
+            description: `Nueva orden recibida para ${placeText(storeOrder)}.`,
           })
 
           // Marcar todos los items como nuevos
@@ -391,10 +421,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
           }))
 
           // Notificar al usuario
-          const table = tables.find((t) => t.id === storeOrder.tableId)
           toast({
             title: "¡Nuevo producto en cocina!",
-            description: `Se ha agregado un nuevo producto a la orden de la mesa ${table?.number || storeOrder.tableId}.`,
+            description: `Se ha agregado un nuevo producto a la orden de ${placeText(storeOrder)}.`,
           })
 
           // Actualizar el contador de nuevas órdenes
@@ -412,10 +441,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
           }))
 
           // Notificar al usuario
-          const table = tables.find((t) => t.id === storeOrder.tableId)
           toast({
             title: "¡Nueva orden en cocina!",
-            description: `Se ha recibido una nueva orden para la mesa ${table?.number || storeOrder.tableId}.`,
+            description: `Se ha recibido una nueva orden para ${placeText(storeOrder)}.`,
           })
 
           // Actualizar el contador de nuevas órdenes
@@ -583,15 +611,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       return false
     }
 
-    // Filtrar por mesa si hay un filtro activo
-    if (filterTable) {
-      const table = tables.find((t) => t.id === order.tableId)
-      if (!table || table.number !== filterTable) {
-        return false
-      }
-    }
-
-    return true
+    // Filtrar por mesa o domicilios si hay un filtro activo
+    return matchesPlaceFilter(placeOf(order), filterTable)
   })
 
   const waiters = profiles.filter((p) => p.role === "waiter" && p.id !== "waiter-1")
@@ -600,6 +621,40 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const clearFilters = () => {
     setFilterWaiter(null)
     setFilterTable(null)
+  }
+
+  // Moves a delivery to "ready" once the kitchen served everything. Never
+  // blocks the kitchen flow: a failure only surfaces a toast.
+  const markDeliveryReady = async (orderId: string) => {
+    try {
+      // Fresh read: the operator may have moved the delivery meanwhile.
+      const rows = await queryClient.fetchQuery({
+        queryKey: activeDeliveriesQueryKey,
+        queryFn: () => listActiveDeliveries(),
+        staleTime: 0,
+      })
+      const row = rows.find((r) => r.delivery.orderId === orderId)
+      if (!shouldMarkDeliveryReady(row?.delivery.status)) return
+      await setDeliveryStatus({ orderId, action: "mark_ready" })
+    } catch (error) {
+      log.error("Error al marcar el domicilio como listo:", { error: String(error) })
+      toast({
+        title: "Domicilio sin actualizar",
+        description: "Los productos quedaron entregados, pero no se pudo marcar el domicilio como listo. Avise al operador de domicilios.",
+        variant: "destructive",
+      })
+    } finally {
+      queryClient.invalidateQueries({ queryKey: activeDeliveriesQueryKey })
+    }
+  }
+
+  // Closes an order whose items are all served: dine-in frees its table
+  // for service, delivery moves to ready.
+  const completeOrder = async (order: Order) => {
+    await orderService.updateStatus(order.id, "delivered")
+    updateOrderStatus(order.id, "delivered")
+    if (hasTable(order)) updateTableStatus(order.tableId, "served")
+    if (isDeliveryOrder(order)) void markDeliveryReady(order.id)
   }
 
   // Handle marking an item as delivered (served)
@@ -671,19 +726,15 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       if (order) {
         const remainingItems = order.items.filter((item) => item.id !== itemId)
 
-        // Si no quedan más items, actualizar el estado de la mesa a "served"
+        // Si no quedan más items, cerrar la orden (mesa servida o domicilio listo)
         if (remainingItems.length === 0) {
-          const tableId = order.tableId
-          await orderService.updateStatus(orderId, "delivered")
+          await completeOrder(order)
 
-          // Actualizar también en el store local
-          updateTableStatus(tableId, "served")
-          updateOrderStatus(orderId, "delivered")
-
-          toast({
-            title: "Mesa actualizada",
-            description: "La mesa ha sido marcada como servida.",
-          })
+          toast(
+            isDeliveryOrder(order)
+              ? { title: "Domicilio listo", description: "El domicilio quedó listo para despachar." }
+              : { title: "Mesa actualizada", description: "La mesa ha sido marcada como servida." },
+          )
         }
       }
     } catch (error) {
@@ -735,17 +786,14 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
         throw error
       }
 
-      // Actualizar el estado de la mesa a "served"
-      const tableId = order.tableId
-      await orderService.updateStatus(order.id, "delivered")
-
-      // Actualizar también en el store local
-      updateTableStatus(tableId, "served")
-      updateOrderStatus(order.id, "delivered")
+      // Cerrar la orden (mesa servida o domicilio listo)
+      await completeOrder(order)
 
       toast({
         title: "Orden entregada",
-        description: "Todos los productos han sido marcados como entregados y la mesa como servida.",
+        description: isDeliveryOrder(order)
+          ? "Todos los productos han sido marcados como entregados y el domicilio quedó listo."
+          : "Todos los productos han sido marcados como entregados y la mesa como servida.",
       })
 
       // Eliminar la orden del store ya que todos sus items han sido entregados
@@ -896,6 +944,12 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Mesa</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    className={filterTable === "delivery" ? "bg-accent" : ""}
+                    onClick={() => setFilterTable(filterTable === "delivery" ? null : "delivery")}
+                  >
+                    Domicilios
+                  </DropdownMenuItem>
                   {tables
                     .filter((table) => table.status !== "available")
                     .sort((a, b) => a.number - b.number)
@@ -961,7 +1015,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
               )}
               {filterTable && (
                 <Badge variant="outline" className="flex items-center gap-1">
-                  Mesa: {filterTable}
+                  {filterTable === "delivery" ? "Domicilios" : `Mesa: ${filterTable}`}
                   <button className="ml-1 hover:bg-gray-200 rounded-full p-0.5" onClick={() => setFilterTable(null)}>
                     ×
                   </button>
@@ -982,20 +1036,30 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
               </div>
             ) : (
               filteredOrders.map((order) => {
-                const table = tables.find((t) => t.id === order.tableId)
+                const table = hasTable(order) ? tables.find((t) => t.id === order.tableId) : undefined
                 const waiter = profiles?.find((p) => p.id === order.waiter)
-
-                return (
+                const card = (
                   <OrderCard
                     key={order.id}
                     order={order}
                     table={table}
+                    heading={orderHeading(placeOf(order), deliveriesRef.current.get(order.id)?.delivery)}
                     waiter={waiter}
                     onMarkAsDelivered={(itemId) => handleMarkAsDelivered(order.id, itemId)}
                     onMarkAllAsDelivered={() => handleMarkAllAsDelivered(order.id)}
                     isKitchenView={true}
                     newItems={newItems[order.id] || []}
                   />
+                )
+
+                if (!isDeliveryOrder(order)) return card
+                return (
+                  <div key={order.id}>
+                    <DeliveryOrderBanner
+                      customerName={deliveriesRef.current.get(order.id)?.delivery.customerName ?? null}
+                    />
+                    {card}
+                  </div>
                 )
               })
             )}
