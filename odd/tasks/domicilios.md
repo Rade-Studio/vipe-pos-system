@@ -50,7 +50,16 @@ through the existing `pay_order` ledger.
       marks delivery orders ready.
 - [ ] 9. Printing: kitchen ticket and invoice carry delivery data (TS + Python parity,
       additive payload).
-- [ ] 10. Docs and full verification.
+- [ ] 10. Staff accounts from the app: Supabase Edge Function `create-staff-account` (service
+      role) callable only by an admin; tenant taken from the caller's profile; roles waiter,
+      kitchen, cashier, delivery_operator (never admin); the auth user carries role and
+      restaurant in app metadata so handle_new_user creates the profile; staff form uses it;
+      seed a local delivery operator account.
+- [ ] 11. Docs and full verification.
+
+## Decisions (user, 2026-10-07)
+
+- Staff accounts are created from the app through a server-side function (Edge Function).
 
 ## Known follow-ups (out of scope)
 
