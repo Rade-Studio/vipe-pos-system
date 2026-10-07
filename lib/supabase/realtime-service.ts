@@ -5,6 +5,12 @@ import {
   REALTIME_SUBSCRIBE_STATES,
 } from "@supabase/supabase-js"
 import { orderService } from "./service"
+import {
+  createKitchenEventCoalescer,
+  createLocalChangeRegistry,
+  type KitchenItemBatch,
+} from "@/lib/kitchen/realtime"
+import type { DbOrderRow } from "@/lib/kitchen/order"
 import {toast} from "@/components/ui/use-toast";
 import {CartItem, CommandPayload, PrintableInvoice} from "@/types";
 import { log } from "@/lib/log"
@@ -19,8 +25,19 @@ type GenericPayload = Record<string, any>;
 type PosEventCallback<T extends GenericPayload> = (payload: T) => void;
 type TableCallback = (payload: RealtimePostgresChangesPayload<any>) => void
 type OrderCallback = (payload: RealtimePostgresChangesPayload<any>, isNewOrder?: boolean) => void
-type OrderItemCallback = (payload: RealtimePostgresChangesPayload<any>, isNewItem?: boolean) => void
 type ConnectionStatusCallback = (status: boolean) => void
+
+// --- Kitchen-only contracts (T7). `subscribeToOrders` / `subscribeToTables` /
+// the broadcast helpers keep the shared contract the other views rely on.
+// A DELETE of an `orders` row needs no read at all, and every item change of
+// one burst arrives as ONE batch built from ONE order read.
+/** `orders` DELETE event: the row is gone, the payload carries the id. */
+type KitchenOrderDeleteCallback = (payload: RealtimePostgresChangesPayload<any>) => void
+/** One read of one order plus everything that happened to it since the last batch. */
+type KitchenItemBatchCallback = (batch: KitchenItemBatch<DbOrderRow>) => void
+
+/** Item ids whose next realtime event is this kitchen's own write. */
+const kitchenLocalChanges = createLocalChangeRegistry()
 
 const CHANNEL_KEY_POS = "room_pos"
 
@@ -285,14 +302,73 @@ export const realtimeService = {
     }
   },
 
-  // Suscribirse a cambios en la cocina (órdenes y productos)
+  // Suscribirse a cambios en la cocina (órdenes y productos).
+  //
+  // T7 (odd/tasks/cargas-por-perfil.md S1): this subscription is now the ONLY
+  // place an order read happens per kitchen event, and a burst of events costs
+  // one read. What it used to do per event:
+  //   - read the order here (`orderService.getById`), then
+  //   - hand a payload the view re-read the same order from anyway, so a new
+  //     5-item order cost 6 reads here plus 5 more in `KitchenView`, and
+  //     serving an item cost 2 more reads for a change the kitchen itself
+  //     made (the optimistic local patch already covers it).
+  // What it does now: every order/item event is enqueued per `orderId`, the
+  // coalescer reads each order ONCE per burst and hands the view a
+  // `KitchenItemBatch` built from that single read. Echoes of the kitchen's own
+  // writes are consumed by `kitchenLocalChanges` before they can cost a read.
+  //
+  // Only the kitchen channels changed: `subscribeToOrders`, `subscribeToTables`
+  // and the broadcast helpers above keep the contract the other views rely on.
   subscribeToKitchen: (
-    orderCallback: OrderCallback,
-    orderItemCallback: OrderItemCallback,
+    orderDeleteCallback: KitchenOrderDeleteCallback,
+    itemBatchCallback: KitchenItemBatchCallback,
     connectionStatusCallback: ConnectionStatusCallback,
   ) => {
     // Inicializar el registro de items conocidos
     realtimeService.knownItems = {}
+    kitchenLocalChanges.dispose()
+
+    const markKnownItem = (orderId: string, itemId: string): boolean => {
+      // The item is (back) in the kitchen, so any pending "own write" mark for
+      // it describes a change that is no longer pending: forget it, otherwise a
+      // real change to this item would be read as an echo of ours.
+      kitchenLocalChanges.unmark([itemId])
+      const known = realtimeService.knownItems[orderId]
+      if (known?.has(itemId)) return false
+      if (!realtimeService.knownItems[orderId]) {
+        realtimeService.knownItems[orderId] = new Set()
+      }
+      realtimeService.knownItems[orderId].add(itemId)
+      return true
+    }
+
+    const forgetOrderItems = (orderId: string) => {
+      delete realtimeService.knownItems[orderId]
+    }
+
+    // One order read per burst. A failing read reports once per burst (it used
+    // to toast once per event) and never rejects inside the event handler.
+    const coalescer = createKitchenEventCoalescer<DbOrderRow>({
+      loadOrder: async (orderId) => {
+        try {
+          return ((await orderService.getById(orderId)) as DbOrderRow | null) ?? null
+        } catch (error) {
+          log.error("Error al leer la orden de cocina:", { orderId, error: String(error) })
+          toast({
+            title: "Error",
+            description: "No se pudo cargar los detalles de la nueva orden. Intente nuevamente.",
+            variant: "destructive",
+          })
+          return null
+        }
+      },
+      onBatch: (batch) => {
+        const kitchenItems = batch.order.order_items?.filter((item) => item.status === "kitchen") ?? []
+        kitchenItems.forEach((item) => markKnownItem(batch.orderId, item.id))
+        if (kitchenItems.length === 0) forgetOrderItems(batch.orderId)
+        itemBatchCallback(batch)
+      },
+    })
 
     // Activar el canal de tiempo real para verificar la conexión
     const statusChannel = supabase.channel("public:kitchen-status").subscribe((status) => {
@@ -308,7 +384,7 @@ export const realtimeService = {
       }
     })
 
-    // Suscribirse a inserciones en la tabla orders con filtro para estado "active"
+    // Suscribirse a inserciones en la tabla orders con filtro para estado "kitchen"
     const ordersChannel = supabase
       .channel("kitchen-orders-channel")
       .on(
@@ -319,48 +395,12 @@ export const realtimeService = {
           table: "orders",
           filter: "status=eq.kitchen",
         },
-        async (payload) => {
-          // Cargar la orden completa con sus items
-          try {
-            const orderId = payload.new.id
-            const orderDetails = await orderService.getById(orderId)
-
-            if (orderDetails) {
-
-              // Verificar si hay items en estado "kitchen"
-              const kitchenItems = orderDetails.order_items?.filter((item) => item.status === "kitchen") || []
-
-              if (kitchenItems.length > 0) {
-                // Inicializar el conjunto de items conocidos para esta orden
-                if (!realtimeService.knownItems[orderId]) {
-                  realtimeService.knownItems[orderId] = new Set()
-                }
-
-                // Registrar los items de esta orden
-                kitchenItems.forEach((item) => {
-                  realtimeService.knownItems[orderId].add(item.id)
-                })
-
-                // Llamar al callback con los datos completos y marcar como nueva orden
-                orderCallback(
-                  {
-                    ...payload,
-                    new: {
-                      ...orderDetails,
-                      isNewOrder: true,
-                    },
-                  },
-                  true,
-                )
-              }
-            }
-          } catch (error) {
-            toast({
-              title: "Error",
-              description: "No se pudo cargar los detalles de la nueva orden. Intente nuevamente.",
-              variant: "destructive",
-            })
-          }
+        (payload) => {
+          const orderId = payload.new?.id
+          if (!orderId) return
+          // The items of this order arrive as their own events; both land in
+          // the same burst, so the pair costs one read.
+          coalescer.enqueue({ type: "order", orderId })
         },
       )
       .subscribe()
@@ -376,45 +416,15 @@ export const realtimeService = {
           table: "order_items",
           filter: "status=eq.kitchen",
         },
-        async (payload) => {
-          try {
-            // Obtener el ID de la orden y del item
-            const orderId = payload.new.order_id
-            const itemId = payload.new.id
-
-            // Verificar si este item ya es conocido
-            const isNewItem = !realtimeService.knownItems[orderId]?.has(itemId)
-
-            // Si es un nuevo item, registrarlo
-            if (isNewItem) {
-              if (!realtimeService.knownItems[orderId]) {
-                realtimeService.knownItems[orderId] = new Set()
-              }
-              realtimeService.knownItems[orderId].add(itemId)
-            }
-
-            // Cargar la orden completa con sus items
-            const orderDetails = await orderService.getById(orderId)
-
-            if (orderDetails) {
-              // Llamar al callback con los datos completos
-              orderItemCallback(
-                {
-                  ...payload,
-                  order: orderDetails,
-                  isNewItem: isNewItem,
-                  newItemId: itemId, // Añadir el ID del nuevo item explícitamente
-                } as any,
-                isNewItem,
-              )
-            }
-          } catch (error) {
-            toast({
-              title: "Error",
-              description: "No se pudo procesar el nuevo item de orden. Intente nuevamente.",
-              variant: "destructive",
-            })
-          }
+        (payload) => {
+          const orderId = payload.new?.order_id
+          const itemId = payload.new?.id
+          if (!orderId || !itemId) return
+          coalescer.enqueue({
+            type: markKnownItem(orderId, itemId) ? "itemNew" : "itemKnown",
+            orderId,
+            itemId,
+          })
         },
       )
       .subscribe()
@@ -429,76 +439,25 @@ export const realtimeService = {
           schema: "public",
           table: "order_items",
         },
-        async (payload) => {
+        (payload) => {
+          const orderId = payload.new?.order_id
+          const itemId = payload.new?.id
+          if (!orderId || !itemId) return
 
           // Si el estado cambió de "kitchen" a otro estado
-          if (payload.old.status === "kitchen" && payload.new.status !== "kitchen") {
-            try {
-              const orderId = payload.new.order_id
-              const itemId = payload.new.id
-
-              // Cargar la orden para verificar si todavía tiene items en cocina
-              const orderDetails = await orderService.getById(orderId)
-
-              if (orderDetails) {
-                // Verificar si hay más items en estado "kitchen"
-                const remainingKitchenItems =
-                  orderDetails.order_items?.filter((item) => item.status === "kitchen") || []
-
-                // Llamar al callback con los datos completos
-                orderItemCallback({
-                  ...payload,
-                  order: orderDetails,
-                  remainingItems: remainingKitchenItems.length,
-                  itemDelivered: true, // Indicar que un item fue entregado
-                  deliveredItemId: itemId, // ID del item entregado
-                } as any)
-
-                // Si no quedan items en cocina, limpiar el registro de esta orden
-                if (remainingKitchenItems.length === 0 && realtimeService.knownItems[orderId]) {
-                  delete realtimeService.knownItems[orderId]
-                }
-              }
-            } catch (error) {
-              log.error("Error al actualizar orden tras cambio de estado de item:", { error: String(error) })
-            }
+          if (payload.old?.status === "kitchen" && payload.new.status !== "kitchen") {
+            // Un item que esta misma cocina acaba de servir vuelve por el
+            // mismo canal: el parche local ya lo aplicó, así que ni una
+            // lectura ni un callback (WaiterView `localChangesRef` pattern).
+            if (kitchenLocalChanges.consume(itemId)) return
+            realtimeService.unregisterItem(orderId, itemId)
+            coalescer.enqueue({ type: "itemServed", orderId, itemId })
           }
           // Si el estado cambió a "kitchen"
           else if (payload.new.status === "kitchen") {
-            try {
-              const orderId = payload.new.order_id
-              const itemId = payload.new.id
-
-              // Verificar si este item ya es conocido
-              const isNewItem = !realtimeService.knownItems[orderId]?.has(itemId)
-              log.info(`Item ${itemId} actualizado a estado kitchen, es nuevo: ${isNewItem}`)
-
-              // Si es un nuevo item, registrarlo
-              if (isNewItem) {
-                if (!realtimeService.knownItems[orderId]) {
-                  realtimeService.knownItems[orderId] = new Set()
-                }
-                realtimeService.knownItems[orderId].add(itemId)
-              }
-
-              // Cargar la orden completa
-              const orderDetails = await orderService.getById(orderId)
-
-              if (orderDetails) {
-                // Llamar al callback con los datos completos
-                orderItemCallback(
-                  {
-                    ...payload,
-                    order: orderDetails,
-                    isNewItem: isNewItem,
-                    newItemId: itemId, // Añadir el ID del nuevo item explícitamente
-                  } as any,
-                  isNewItem,
-                )
-              }
-            } catch (error) {
-              log.error("Error al procesar item actualizado a estado kitchen:", { error: String(error) })
-            }
+            const isNewItem = markKnownItem(orderId, itemId)
+            log.info(`Item ${itemId} actualizado a estado kitchen, es nuevo: ${isNewItem}`)
+            coalescer.enqueue({ type: isNewItem ? "itemNew" : "itemKnown", orderId, itemId })
           }
         },
       )
@@ -518,12 +477,10 @@ export const realtimeService = {
           log.info("Orden eliminada:", { payload })
 
           // Eliminar la orden del registro de items conocidos
-          if (payload.old && payload.old.id && realtimeService.knownItems[payload.old.id]) {
-            delete realtimeService.knownItems[payload.old.id]
-          }
+          if (payload.old && payload.old.id) forgetOrderItems(payload.old.id)
 
           // Llamar al callback con los datos de la orden eliminada
-          orderCallback(payload)
+          orderDeleteCallback(payload)
         },
       )
       .subscribe()
@@ -539,6 +496,10 @@ export const realtimeService = {
 
     // Devolver función para cancelar todas las suscripciones
     return () => {
+      // Los lotes pendientes se descartan: quien reabre la suscripción
+      // invalida la query de cocina, que vuelve a leer la cola entera.
+      coalescer.dispose()
+
       supabase.removeChannel(statusChannel)
       supabase.removeChannel(ordersChannel)
       supabase.removeChannel(newItemsChannel)
@@ -553,6 +514,7 @@ export const realtimeService = {
 
       // Limpiar el registro de items conocidos
       realtimeService.knownItems = {}
+      kitchenLocalChanges.dispose()
       realtimeService.isConnected = false
     }
   },
@@ -571,6 +533,19 @@ export const realtimeService = {
   // Verificar si un item es nuevo para una orden
   isNewItem: (orderId: string, itemId: string): boolean => {
     return !realtimeService.knownItems[orderId]?.has(itemId)
+  },
+
+  // Marcar items cuyo próximo evento realtime es una escritura de ESTA cocina
+  // (marcar un producto como servido). Debe llamarse ANTES de la escritura:
+  // el eco puede llegar antes de que la promesa resuelva.
+  markLocalItemChanges: (itemIds: readonly string[]): void => {
+    kitchenLocalChanges.mark(itemIds)
+  },
+
+  // Desmarcar cuando la escritura falló y ningún eco llegará, para no tragarse
+  // un cambio real posterior del mismo item.
+  unmarkLocalItemChanges: (itemIds: readonly string[]): void => {
+    kitchenLocalChanges.unmark(itemIds)
   },
 
   // Registrar un item como conocido
