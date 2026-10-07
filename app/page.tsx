@@ -24,7 +24,7 @@ export default function Home() {
   const setSelectedProfile = useProfileStore((s) => s.setSelectedProfile)
   const setAuthProfile = useProfileStore((s) => s.setAuthProfile)
   const authProfile = useProfileStore((s) => s.authProfile)
-  const profiles = useProfileStore((s) => s.profiles)
+  const roleProfiles = useProfileStore((s) => s.roleProfiles)
   const setProfiles = useProfileStore((s) => s.setProfiles)
   const showProfileSelection = useProfileStore((s) => s.showProfileSelection)
   const selectProfile = useProfileStore((s) => s.selectProfile)
@@ -219,7 +219,7 @@ export default function Home() {
   // Debe ir ANTES del check de selectedProfile porque changeProfile() deja
   // selectedProfile en null mientras el picker está abierto.
   if (showProfileSelection) {
-    return <ProfileSelection profiles={profiles} onSelectProfile={selectProfile} />
+    return <ProfileSelection profiles={roleProfiles} onSelectProfile={selectProfile} />
   }
 
   // Cargando perfil del usuario autenticado
