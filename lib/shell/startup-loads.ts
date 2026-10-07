@@ -67,7 +67,7 @@ const LOADS_BY_ROLE: Record<string, readonly ShellLoad[]> = {
   // No tables, no waiter directory: no delivery component reads
   // `useTableStore` or `useProfileStore.profiles` (DeliveryOrderForm:87 reads
   // `authProfile` only). The board loads the open register itself
-  // (DeliveryBoard:89).
+  // (DeliveryBoard `loadOpenRegister`, one request).
   delivery_operator: ["config"],
 
   // config: CompletedOrdersTable:36, ConfigurationPanel, RecipeManager:80.

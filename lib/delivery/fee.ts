@@ -53,6 +53,25 @@ export function parseFeeInput(text: string): number {
 }
 
 /**
+ * The suggested fee the new-order form starts from, read from
+ * `business_config.delivery_default_fee` (a text column, so it arrives as a
+ * string; a missing key arrives as `null`).
+ *
+ * This is a SUGGESTION, so anything unusable is "no suggestion" (0) instead
+ * of an exception: the operator can always type a fee, and the form must never
+ * fail to open because a config row is malformed. The result is always a
+ * non-negative whole peso count, which is what `initialOrderDraft` requires.
+ */
+export function suggestedFeeFromConfig(raw: string | null | undefined): number {
+  if (typeof raw !== 'string') return 0
+  const trimmed = raw.trim()
+  if (trimmed.length === 0) return 0
+  const value = Number(trimmed)
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) return 0
+  return value
+}
+
+/**
  * Total amount the customer owes for a delivery order (the same
  * shape `pay_order` uses for `amount_due`): subtotal + tax +
  * delivery_fee. The fee is added without tax and without tip

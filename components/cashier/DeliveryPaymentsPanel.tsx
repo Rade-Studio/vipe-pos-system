@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { PaymentMethodDialog } from "@/components/cashier/PaymentMethodDialog"
-import { useActiveDeliveries, activeDeliveriesQueryKey } from "@/hooks/use-active-deliveries"
+import { useActiveDeliveries, refreshActiveDeliveries } from "@/hooks/use-active-deliveries"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { pendingDeliveryPayments } from "@/lib/delivery/kitchen"
 import { statusLabel } from "@/lib/delivery/state-machine"
@@ -29,14 +29,16 @@ interface DeliveryPaymentsPanelProps {
 export function DeliveryPaymentsPanel({ onPaid }: DeliveryPaymentsPanelProps) {
   const queryClient = useQueryClient()
   const { data: deliveries = [], error } = useActiveDeliveries()
-  const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
+  const { isRegisterOpen, loadOpenRegister } = useCashRegisterStore()
   const [payingId, setPayingId] = useState<string | null>(null)
   const checking = useRef(false)
 
-  // The register may have been opened after the app loaded.
+  // The register may have been opened after the app loaded. This panel only
+  // asks whether one is open, so it runs the ONE-request check (T10/S1)
+  // instead of the full register load the board used to run here as well.
   useEffect(() => {
-    void loadCurrentRegister()
-  }, [loadCurrentRegister])
+    void loadOpenRegister()
+  }, [loadOpenRegister])
 
   const pending = useMemo(() => pendingDeliveryPayments(deliveries), [deliveries])
   // The dialog reads the latest row so a realtime payment closes it.
@@ -46,7 +48,7 @@ export function DeliveryPaymentsPanel({ onPaid }: DeliveryPaymentsPanelProps) {
     if (checking.current) return
     checking.current = true
     try {
-      await loadCurrentRegister()
+      await loadOpenRegister()
       if (!isRegisterOpen()) {
         toast.error("Debe abrir la caja antes de procesar pagos")
         return
@@ -116,7 +118,7 @@ export function DeliveryPaymentsPanel({ onPaid }: DeliveryPaymentsPanelProps) {
           delivery={payingRow.delivery}
           onSuccess={() => {
             setPayingId(null)
-            void queryClient.invalidateQueries({ queryKey: activeDeliveriesQueryKey })
+            refreshActiveDeliveries(queryClient)
             onPaid?.()
           }}
         />
