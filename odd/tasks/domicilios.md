@@ -56,6 +56,18 @@ through the existing `pay_order` ledger.
       restaurant in app metadata so handle_new_user creates the profile; staff form uses it;
       seed a local delivery operator account.
 - [x] 11. Docs and full verification.
+- [x] 12. Staging fix: board filter PostgREST can parse (S12). Route: inline. Commit `99195bf`.
+- [x] 13. Staging fix: delivery orders are not shown as tables (S13-S14). Route: inline writer (written before the
+      user asked for delegation), `gentle-ai-verify`, reprint fix by `gentle-ai-worker`. Commit `7f7c253`.
+
+## Specs (staging round, 2026-10-07)
+
+- S12. "Cuando entro a domicilio me sale este error, pero no menciona nada mas No se pudieron cargar los domicilios."
+  The operator board (and the cashier "Domicilios por cobrar" panel) load without that error.
+- S13. "cuando creo un domicilio, a los meseros y a la caja y en todos lados aparece como si fuera una mesa ?, no
+  deberia ni aparecerle a los meseros en pedidos" -> a delivery order never appears in the waiter order lists.
+- S14. "a caja y admin deberia salirle que son domicilios" -> wherever cashier and admin list a delivery order, it is
+  labelled as a delivery (DOMICILIO), never "Mesa ?" / "Mesa undefined" / "N/A".
 
 ## Decisions (user, 2026-10-07)
 
@@ -106,4 +118,11 @@ through the existing `pay_order` ledger.
 | 10 RDD | review-c5af62d631afd22f | Medium tier, reliability -> APPROVED (first relay failed on a WSL I/O error reading managed settings; one retry), burned. Checked and not applicable: rollback leaves profile (FK ON DELETE CASCADE), edit role desync (effective role is profiles.role; the client never reads app_metadata). Follow-ups: caller-profile DB error answers 403 instead of 500 (fails closed); deleteUser swallows its error (user stays banned); partial-save path untested; one vacuous leak assertion. |
 | 11 docs | `dc31c37` | README (delivery view, seeded accounts, couriers/staff tabs, delivery printing incl. what an outdated listener prints), DOCKER.md (serve/deploy create-staff-account), docs/delivery-module.md. Parent verified unproven claims (old listener prints `COMANDA — Mesa None` and omits the fee line; cashier can also write customers; dispatch lists active couriers only). RDD review-296d763818387fa2: low tier, non-executable only -> APPROVED, burned. |
 | 11 verify | (verifier) | Vitest 29 files / 524; typecheck 0; lint 0 errors (87 pre-existing warnings); build OK; Python 22 OK; supabase db reset clean; pgTAP 13 files / 746 PASS; domicilios@restaurant.com profile delivery_operator linked by auth_user_id, sign-in HTTP 200. |
+| L-staging-1 | (user) | "Cuando entro a domicilio me sale este error, pero no menciona nada mas No se pudieron cargar los domicilios." |
+| 12 | `99195bf` | Reproduced on staging with an admin JWT: `or=(not(and(...)))` -> 400 PGRST100. De Morgan form `delivery_status.not.in.(delivered,cancelled),updated_at.gte.<local midnight>` -> 200. RED: exact-filter test received the not(and(...)) form. Vitest 30 files / 527; typecheck 0; lint 0. Deployed to staging (dev `1305fef`). |
+| L-staging-2 | (user) | "Ahora necesito hacer unos arreglos de domicilios, cuando creo un domicilio, a los meseros y a la caja y en todos lados aparece como si fuera una mesa ?, no deberia ni aparecerle a los meseros en pedidos y a caja y admin deberia salirle que son domicilios" |
+| L-staging-3 | (user) | "estas haciendo todo con el orquestador, necesito que trabajes con odd y delegaciones" |
+| 13 | `7f7c253` | Staging row: order_type=delivery, table_id NULL, status kitchen. Root cause: four Order mappers dropped order_type (WaiterView.fetchOrders, useOrderStore.loadOrders, app/page.tsx store load, getOrdersByDate), so OrderCard/CompactOrderCard fell back to "Mesa ?". Fix: mappers carry orderTypeFromRow; WaiterView filters with new ordersForWaiter; CompactOrderCard labels DOMICILIO. RED: ordersForWaiter not a function; loadOrders orderType undefined. GREEN Vitest 31 files / 529; typecheck 0; lint 0; build OK. |
+| 13 verify | (gentle-ai-verify muygwnhu-1-f59n) | S13 pass; S14 partial: admin reprint of a delivery printed N/A and warned about a missing table (pre-existing). Advisories: AdminView tableName unused; CashierView:759/:896 unreachable for delivery. |
+| 13 worker | (gentle-ai-worker muyh1n8c-2-6iso) | invoicePlaceLabel (4 tests; RED: not a function) used by the CompletedOrdersTable reprint; missing-table warning skipped for deliveries. Vitest 31 files / 533; typecheck 0; lint 0 errors. Follow-up: the on-screen reprint row reads "Mesa: DOMICILIO" (Order has no customer/address data for the CLIENTE block). |
 | UI test fix | commit `fix(profiles): keep the role picker apart from the waiter directory` | Found in the user's manual test: as admin, Cambiar Perfil listed the database waiters instead of the role tiles. Regression from 89c7391 (PR #73 chain): app/page.tsx loaded the waiters into useProfileStore.profiles, the same list the picker renders. The picker now uses a separate roleProfiles list; profiles stays the waiter directory (initially empty). store/useProfileStore.test.ts (2 tests; RED: roleProfiles undefined). Vitest 30/526; typecheck 0. |
