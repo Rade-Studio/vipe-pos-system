@@ -29,6 +29,17 @@ pnpm supabase db reset
 pnpm test:db
 ```
 
+### Edge Function `create-staff-account`
+
+La creación de cuentas de personal desde la app usa la Edge Function `supabase/functions/create-staff-account`. Para probarla en local:
+
+```bash
+pnpm supabase start
+pnpm supabase functions serve    # sirve las funciones con la configuración de supabase/config.toml
+```
+
+`supabase/config.toml` define `[functions.create-staff-account] verify_jwt = true`, por lo que cada petición debe llevar el JWT de un administrador.
+
 > `supabase db reset` destruye los datos locales (perfiles, mesas, comandas).
 > Para detener los contenedores: `pnpm supabase stop` (agrega `--no-backup` para
 > borrar también los datos locales).
@@ -117,6 +128,18 @@ server {
 ```
 
 ---
+
+### Edge Function y migraciones en producción
+
+```bash
+# Aplicar migraciones pendientes (incluye el esquema de domicilios)
+pnpm supabase db push
+
+# Desplegar la función de alta de personal
+pnpm supabase functions deploy create-staff-account --project-ref <ref>
+```
+
+`SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta la plataforma en la función; no hay que configurarlos como secretos. `verify_jwt` se toma de `supabase/config.toml`.
 
 ## Estructura de archivos
 

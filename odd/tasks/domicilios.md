@@ -69,7 +69,9 @@ through the existing `pay_order` ledger.
 - create_delivery_order prices items from the menu without promotions (promotions live at order level today).
 
 - Profile PINs default empty and are never loaded from the database (pre-existing for every role).
-- Staff accounts: the staff form only inserts public.profiles (auth_user_id NULL), so a waiter or delivery operator created there cannot sign in; an auth account must be provisioned separately (pre-existing gap, needs a decision).
+- Staff accounts created before task 10 have no auth user (shown as "Sin acceso"); recreate them from Personal.
+- create-staff-account: a database error reading the caller's profile answers 403 instead of 500; the rollback delete does not report its error (the user stays banned).
+- Kitchen command is a fire-and-forget broadcast: if the print listener is offline it is lost (pre-existing); the success toast does not prove delivery to the printer.
 - The suggested delivery fee card lives in Configuracion > Repartidores (BusinessConfigForm is not mounted anywhere; the live settings screen is ConfigurationPanel).
 
 - WhatsApp integration (separate feature, builds on the customer registry).
