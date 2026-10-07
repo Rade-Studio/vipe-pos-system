@@ -24,6 +24,8 @@ interface OrderCardProps {
   order: Order
   waiter?: Profile
   table?: Table
+  /** Overrides the place label (e.g. "DOMICILIO · Ana"); defaults to the table or DOMICILIO. */
+  heading?: string
   onEdit?: (orderId: string) => void
   onDelete?: (orderId: string) => void
   onMarkAsDelivered?: (itemId: string) => void
@@ -42,6 +44,7 @@ export function OrderCard({
   order,
   waiter,
   table,
+  heading,
   onEdit,
   onDelete,
   onMarkAsDelivered,
@@ -59,6 +62,8 @@ export function OrderCard({
   const [showCompleteDialog, setShowCompleteDialog] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null)
+  const placeLabel =
+    heading ?? (order.orderType === "delivery" ? "DOMICILIO" : `Mesa ${table?.number || "?"}`)
 
   // Estado de la orden (traducido)
   const orderStatus = {
@@ -158,7 +163,7 @@ export function OrderCard({
                 <>
                   <div className="flex items-center bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-lg mr-2">
                     <MapPin className="h-4 w-4 mr-1 text-red-500" />
-                    <span className="font-bold">Mesa {table?.number || "?"}</span>
+                    <span className="font-bold">{placeLabel}</span>
                   </div>
                   <Badge variant="outline" className="ml-2">
                     {order.items.length} item(s)
@@ -357,7 +362,7 @@ export function OrderCard({
           <AlertDialogHeader>
             <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción eliminará permanentemente la orden {order.id.substring(0, 8)} de la mesa {table?.number}.
+              Esta acción eliminará permanentemente la orden {order.id.substring(0, 8)} ({placeLabel}).
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

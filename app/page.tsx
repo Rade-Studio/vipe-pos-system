@@ -6,6 +6,7 @@ import { WaiterView } from "@/components/views/WaiterView"
 import { KitchenView } from "@/components/views/KitchenView"
 import { CashierView } from "@/components/views/CashierView"
 import { AdminView } from "@/components/views/AdminView"
+import { DeliveryView } from "@/components/views/DeliveryView"
 import { LoginView } from "@/components/auth/LoginView"
 import { Loader2 } from "lucide-react"
 import { useConfigStore } from "@/store/use-config-store"
@@ -15,6 +16,7 @@ import { useProfileStore } from "@/store/useProfileStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { tableService, orderService } from "@/lib/supabase/service"
 import { supabase } from "@/lib/supabase/client"
+import { viewForRole } from "@/lib/auth/roles"
 import type { Profile, ProfileRole } from "@/types"
 
 export default function Home() {
@@ -22,7 +24,7 @@ export default function Home() {
   const setSelectedProfile = useProfileStore((s) => s.setSelectedProfile)
   const setAuthProfile = useProfileStore((s) => s.setAuthProfile)
   const authProfile = useProfileStore((s) => s.authProfile)
-  const profiles = useProfileStore((s) => s.profiles)
+  const roleProfiles = useProfileStore((s) => s.roleProfiles)
   const setProfiles = useProfileStore((s) => s.setProfiles)
   const showProfileSelection = useProfileStore((s) => s.showProfileSelection)
   const selectProfile = useProfileStore((s) => s.selectProfile)
@@ -217,7 +219,7 @@ export default function Home() {
   // Debe ir ANTES del check de selectedProfile porque changeProfile() deja
   // selectedProfile en null mientras el picker está abierto.
   if (showProfileSelection) {
-    return <ProfileSelection profiles={profiles} onSelectProfile={selectProfile} />
+    return <ProfileSelection profiles={roleProfiles} onSelectProfile={selectProfile} />
   }
 
   // Cargando perfil del usuario autenticado
@@ -234,22 +236,18 @@ export default function Home() {
   }
 
   // Render the appropriate view based on the selected profile role
-  if (selectedProfile.role === "waiter") {
-    return <WaiterView profile={selectedProfile} onChangeProfile={changeProfile} authRole={authProfile?.role} />
+  switch (viewForRole(selectedProfile.role)) {
+    case "waiter":
+      return <WaiterView profile={selectedProfile} onChangeProfile={changeProfile} authRole={authProfile?.role} />
+    case "kitchen":
+      return <KitchenView profile={selectedProfile} onChangeProfile={changeProfile} authRole={authProfile?.role} />
+    case "cashier":
+      return <CashierView profile={selectedProfile} onChangeProfile={changeProfile} authRole={authProfile?.role} />
+    case "admin":
+      return <AdminView profile={selectedProfile} onChangeProfile={changeProfile} authRole={authProfile?.role} />
+    case "delivery":
+      return <DeliveryView profile={selectedProfile} onChangeProfile={changeProfile} authRole={authProfile?.role} />
+    default:
+      return <div>Error: Perfil no válido</div>
   }
-
-  if (selectedProfile.role === "kitchen") {
-    return <KitchenView profile={selectedProfile} onChangeProfile={changeProfile} authRole={authProfile?.role} />
-  }
-
-  if (selectedProfile.role === "cashier") {
-    return <CashierView profile={selectedProfile} onChangeProfile={changeProfile} authRole={authProfile?.role} />
-  }
-
-  if (selectedProfile.role === "admin") {
-    return <AdminView profile={selectedProfile} onChangeProfile={changeProfile} authRole={authProfile?.role} />
-  }
-
-  // Fallback (should never happen)
-  return <div>Error: Perfil no válido</div>
 }

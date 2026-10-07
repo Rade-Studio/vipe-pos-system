@@ -11,7 +11,7 @@ export default defineConfig({
   test: {
     // Pure logic only for now: no jsdom / React Testing Library yet.
     environment: 'node',
-    include: ['lib/**/*.test.ts', 'store/**/*.test.ts'],
+    include: ['lib/**/*.test.ts', 'store/**/*.test.ts', 'supabase/functions/**/*.test.ts'],
     globals: false,
   },
 });

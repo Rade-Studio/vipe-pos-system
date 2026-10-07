@@ -17,6 +17,7 @@ Un sistema completo de punto de venta (POS) para restaurantes, diseñado para op
 - **Caja registradora**: Apertura, cierre, adiciones y retiros de efectivo
 - **Inventario**: Control de ingredientes, recetas y alertas de stock bajo
 - **Reportes**: Ventas, productos populares, transacciones y más
+- **Domicilios**: Pedidos a domicilio con registro de clientes por teléfono, repartidores, tablero de estados y cobro anticipado o contra entrega (ver [docs/delivery-module.md](docs/delivery-module.md))
 - **Impresión**: Tickets de cocina y facturas para clientes
 - **Promociones**: Configuración y aplicación de descuentos y ofertas
 - **Configuración de negocio**: Personalización de impuestos, propinas y datos del negocio
@@ -108,9 +109,23 @@ Al iniciar la aplicación, se mostrará una pantalla de selección de perfil:
 - **Mesero**: Para tomar órdenes y gestionar mesas
 - **Cocina**: Para ver y procesar órdenes
 - **Cajero**: Para gestionar pagos y la caja registradora
+- **Operador de domicilios**: Para tomar pedidos a domicilio, despacharlos y cerrarlos
 - **Administrador**: Para configuración y reportes
 
 Cada perfil está protegido por una contraseña que puede configurarse en el panel de administración.
+
+#### Cuentas locales de desarrollo
+
+`supabase/seed.sql` (cargado por `pnpm supabase db reset`) crea estas cuentas. Son **solo para desarrollo local**; no las uses en producción.
+
+| Correo | Contraseña | Rol |
+|--------|------------|-----|
+| `admin@restaurant.com` | `admin123` | Administrador |
+| `carlos@restaurant.com` | `carlos123` | Cajero |
+| `maria@restaurant.com` | `maria123` | Mesero |
+| `deiby@restaurant.com` | `deiby123` | Mesero |
+| `tester@restaurant.com` | `tester123` | Mesero |
+| `domicilios@restaurant.com` | `domicilios123` | Operador de domicilios |
 
 ### Vista de Mesero
 
@@ -139,6 +154,26 @@ En dispositivos móviles, el carrito se muestra como un botón flotante que abre
 6. Registra entradas y salidas de efectivo
 7. Cierra la caja al final del turno
 
+### Vista de Domicilios
+
+El operador de domicilios trabaja desde un tablero de pedidos agrupados por estado.
+
+**Nuevo domicilio** (botón "Nuevo domicilio"):
+
+1. Busca al cliente por teléfono; si existe, se muestran sus direcciones guardadas (también puede registrar un cliente o una dirección nueva y guardarla)
+2. Selecciona los productos del menú (el servidor toma los precios del menú)
+3. Revisa el valor del domicilio: se sugiere el configurado por el administrador y es editable por pedido (no lleva impuesto ni propina)
+4. Elige el modo de pago: **prepago** (Nequi/transferencia) o **contra entrega**; para contra entrega puede indicar "cambio para"
+5. Agrega notas (máximo 300 caracteres) y crea el pedido; se envía la comanda a cocina
+
+**Estados**: `recibido → preparando → listo → en camino → entregado`, o `fallido` (con motivo). Un pedido fallido puede reenviarse o cancelarse. Las transiciones se validan en el servidor. No se puede cancelar un pedido que ya tiene un pago.
+
+**Despacho**: al enviar el pedido se elige un repartidor activo; en un reenvío se puede elegir otro. El tablero muestra si el pedido está pagado o pendiente.
+
+**Cobro**: el pago se registra con "Registrar pago" en el tablero o desde el panel **Domicilios por cobrar** de la vista de Cajero. Ambos requieren una caja abierta (el operador no abre ni cierra cajas) y suman el valor del domicilio al total.
+
+**Cocina**: los pedidos a domicilio comparten la cola con la etiqueta **DOMICILIO** y muestran al cliente en lugar de la mesa. Al servir el último producto, el pedido pasa automáticamente a "listo".
+
 ### Vista de Administrador
 
 1. Gestiona el menú (categorías y platos)
@@ -148,6 +183,11 @@ En dispositivos móviles, el carrito se muestra como un botón flotante que abre
 5. Configura promociones
 6. Visualiza reportes y estadísticas
 7. Configura parámetros del negocio (impuestos, propinas, etc.)
+
+En Configuración también hay dos pestañas relacionadas con domicilios:
+
+- **Repartidores**: crea, edita y activa/desactiva repartidores (nombre y teléfono; no inician sesión) y define el valor sugerido del domicilio
+- **Personal**: crea cuentas de acceso (correo, contraseña y rol: mesero, cocina, cajero u operador de domicilios) mediante la Edge Function `create-staff-account`. Solo la puede invocar un administrador, el restaurante se toma del administrador que la invoca y no permite crear cuentas de rol administrador. Ver [docs/delivery-module.md](docs/delivery-module.md#alta-de-cuentas-de-personal) y [DOCKER.md](DOCKER.md) para servirla o desplegarla
 
 ## 📁 Estructura del Proyecto
 
@@ -247,6 +287,14 @@ pnpm test                                      # una pasada
 pnpm test:watch                                # modo interactivo
 ```
 
+Pruebas de la capa de impresión en Python (desde la raíz del repositorio):
+
+```bash
+python3 -m unittest pos/test_print_renderer.py
+```
+
+Otras verificaciones: `pnpm typecheck` y `pnpm build`.
+
 ### Pruebas de base de datos
 
 El comportamiento de la base de datos (políticas RLS, permisos, RPCs) se cubre con
@@ -271,6 +319,10 @@ Complementario a la aplicación web, este sistema se encarga de:
 * Escuchar en tiempo real los eventos de Supabase (comandas y facturas).
 * Imprimir automáticamente en impresoras térmicas USB o de red.
 * Ejecutarse al iniciar Windows gracias al instalador.
+
+### 🛵 Impresión de domicilios
+
+Los payloads de comanda y factura incluyen un bloque opcional `delivery` (aditivo). Con él, la comanda se imprime como `COMANDA — DOMICILIO` con el cliente y las notas, y la factura muestra CLIENTE / TEL / DIRECCION en lugar de MESA / MESERO, la línea `DOMICILIO` dentro del total y `CAMBIO PARA` en pedidos contra entrega. Los payloads sin `delivery` se imprimen igual que antes. Un listener antiguo ignora ese bloque: la comanda de un domicilio sale como `COMANDA — Mesa None` y la factura no trae la línea `DOMICILIO`, de modo que su `TOTAL SIN PROPINA` no incluye la tarifa aunque `TOTAL A PAGAR` sí. Actualiza el ejecutable de impresión antes de usar domicilios.
 
 ### 🚩 Características
 

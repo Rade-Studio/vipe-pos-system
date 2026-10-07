@@ -18,6 +18,8 @@ import { AlertTriangle, Check, X } from "lucide-react"
 import { useConfigStore } from "@/store/use-config-store"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { PrintableInvoice, CartItem } from "@/types"
+import type { DeliveryOrder } from "@/lib/delivery/types"
+import { buildDeliveryPrintInfo } from "@/lib/delivery/print"
 import { toast } from "@/utils/toast"
 import { NumericKeypad } from "@/components/ui/numeric-keypad"
 import { listPaymentMethods, payOrder } from "@/lib/supabase/payments-service"
@@ -58,10 +60,19 @@ interface PaymentMethodDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   orderId: string
-  tableId: string
+  /** Null / omitted for delivery orders (no table). Unused by the dialog. */
+  tableId?: string | null
   /** Bill total (subtotal + tax + tip) from the caller's cache. Kept for API compat. */
-  amount: number
-  tableTotal: number
+  amount?: number
+  tableTotal?: number
+  /**
+   * Delivery fee (whole pesos) of a delivery order, default 0. pay_order
+   * charges subtotal + tax + delivery_fee, so the dialog adds it to the
+   * amount due; the tip stays on the food subtotal.
+   */
+  deliveryFee?: number
+  /** The order's delivery snapshot; when set, the invoice prints the delivery block. */
+  delivery?: DeliveryOrder | null
   onSuccess: () => void
   isPartialPayment?: boolean
   selectedItems?: string[]
@@ -110,6 +121,8 @@ export function PaymentMethodDialog({
   tableId: _tableId,
   amount: _amount,
   tableTotal: _tableTotal,
+  deliveryFee = 0,
+  delivery = null,
   onSuccess,
   isPartialPayment: _isPartialPayment = false,
   selectedItems: _selectedItems = [],
@@ -194,13 +207,14 @@ export function PaymentMethodDialog({
       initialPaymentDraft({
         amountDue: bill.amountDue,
         suggestedTip: bill.suggestedTip,
+        deliveryFee,
         idempotencyKey: uuid(),
       }),
     )
     setShowInvoice(false)
     setInvoiceData(null)
     setSubmitError(null)
-  }, [open, orderData, orderId])
+  }, [open, orderData, orderId, deliveryFee])
 
   // dispatch wrapper. `useReducer` would be more conventional here but
   // the draft is reset wholesale on each open, so `useState` + a
@@ -324,7 +338,8 @@ const drawerWarning =
           taxPercentage: orderData.tax_percentage,
           tip: draft.tip,
           tipPercentage: orderData.tip_percentage,
-          total: bill.amountDue + draft.tip,
+          // draft.amountDue already includes the delivery fee (0 for table orders).
+          total: draft.amountDue + draft.tip,
           totalDiscounts: 0,
         },
         waiter: orderData.waiter_id ?? "—",
@@ -335,6 +350,7 @@ const drawerWarning =
         cashChange: legacy.cashChange > 0 ? legacy.cashChange : undefined,
         tenders: invoiceTenders,
         change: legacy.cashChange,
+        ...(delivery ? { delivery: buildDeliveryPrintInfo(delivery) } : {}),
       }
       if (invoiceTenders.length === 1) {
         log.info("Pago con método único:", { method: invoiceTenders[0]!.methodName })
@@ -396,6 +412,12 @@ const drawerWarning =
             <span>Impuestos</span>
             <span>{formatCurrency(bill.tax)}</span>
           </div>
+          {deliveryFee > 0 && (
+            <div className="flex justify-between">
+              <span>Domicilio</span>
+              <span>{formatCurrency(deliveryFee)}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span>Propina</span>
             <span>{formatCurrency(draft.tip)}</span>
