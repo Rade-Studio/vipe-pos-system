@@ -966,6 +966,28 @@ describe('listActiveDeliveries', () => {
     expect(out).toEqual([])
   })
 
+  it('sends a same-day filter PostgREST can parse (no function-style not(...))', async () => {
+    // PostgREST rejects `not(and(...))` with PGRST100, so the board must
+    // send the De Morgan form: not terminal OR updated since local midnight.
+    const now = new Date()
+    const todayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+    let sent: string | undefined
+    state.fromImpl = () => {
+      const promise: any = Promise.resolve({ data: [], error: null })
+      const chain: any = {}
+      chain.select = () => chain
+      chain.or = (filter: string) => {
+        sent = filter
+        return chain
+      }
+      chain.order = () => chain
+      chain.then = promise.then.bind(promise)
+      return chain
+    }
+    await listActiveDeliveries()
+    expect(sent).toBe(`delivery_status.not.in.(delivered,cancelled),updated_at.gte.${todayIso}`)
+  })
+
   it('reads order_deliveries joined with orders and applies the same-day filter', async () => {
     const seen: { select?: string[]; or?: string[] } = {}
     state.fromImpl = (table: string) => {

@@ -564,10 +564,11 @@ export async function listActiveDeliveries(): Promise<DeliveryOrderWithBill[]> {
       'order_id, restaurant_id, customer_id, customer_name, customer_phone, address_line, neighborhood, address_reference, delivery_fee, payment_mode, cash_change_for, courier_id, delivery_status, failure_reason, notes, dispatched_at, delivered_at, failed_at, cancelled_at, created_at, updated_at, orders!inner(id, subtotal, tax, tip, total, status)',
     )
     .or(
-      // Half-open filter: terminal states whose updated_at >= today OR
-      // every non-terminal state. The `NOT (status IN (...) AND updated_at < today)`
-      // form keeps terminal-yesterday out without an extra round-trip.
-      `not(and(delivery_status.in.(delivered,cancelled),updated_at.lt.${todayIso}))`,
+      // Every non-terminal state OR anything updated since local midnight,
+      // which keeps terminal-yesterday out without an extra round-trip.
+      // PostgREST rejects function-style `not(and(...))` (PGRST100), so this
+      // is the De Morgan form of `NOT (terminal AND updated_at < today)`.
+      `delivery_status.not.in.(delivered,cancelled),updated_at.gte.${todayIso}`,
     )
     .order('updated_at', { ascending: false })
 
