@@ -50,11 +50,23 @@ split/undo of partial payments.
         payment-dialog drawer check, admin summary.
   - [x] 8c. Transaction lists (TransactionsList, TransactionsByRegisterId, CSV), completed
         orders method label (lib/supabase/service.ts), retire legacy payment_transactions writers.
-- [ ] 9. Admin payment-methods screen (create, rename, disable, reorder).
-- [ ] 10. Invoices (web print, `lib/print`, `pos/` Python) list tenders, tip and change.
-- [ ] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
+- [x] 9. Admin payment-methods screen (create, rename, disable, reorder).
+- [x] 10. Invoices (web print, `lib/print`, `pos/` Python) list tenders, tip and change.
+  - [x] 10a. Web + lib/print: invoice tenders from the server pay_order result and the ledger
+        (reprints), catalog names resolved before broadcast, fix 7a label bug (single non-cash
+        line printed as cash). Additive payload: keep paymentMethod/cashReceived/cashChange.
+  - [x] 10b. pos/print_renderer.py prints tenders when present (stdlib unittest), README
+        note: installed listeners keep the old single-label ticket until rebuilt.
+- [x] 11. Rewrite `docs/payment-atomicity-test.md` for the new flow.
 
 ## Known follow-ups (out of scope)
+
+- CI does not run pos/test_print_renderer.py yet (stdlib unittest, no deps).
+- Python legacy label prints "Multiple" while TS prints "MÚLTIPLES" (pre-existing).
+
+- components/views/CashierView.tsx showInvoice is dead code (no callers).
+
+- pos/app.py:617-689 generate_invoice_pos/obtener_texto_pago are dead code.
 
 - Completed-orders invoice shows a non-default method by its code (e.g. datafono) until task 10 prints tenders with their names.
 
@@ -94,3 +106,17 @@ split/undo of partial payments.
 | 8c RDD | review-c4b83ae31d212552 | risk, resilience admitted; readability refused (invalid JSON) then admitted on retry; reliability refused twice at admission (location without line, evidence path out of scope) -> retry budget spent, lineage left open in reviewing. Read both rejected payloads: R3-vitest-disabled is a note (no skip/only); CSV collapse claim false (sums per payment_method_id); fallback-mask false (failed read -> [] -> legacy label); invoice label coercion to "cash" for non-default codes is real -> fixed in the next commit. |
 | 8c fix | `cf0db1d` | invoicePaymentMethod in lib/payments/payment-list.ts (RED: not a function; GREEN 4 tests) replaces the getOrdersByDate branch that relabelled non-default catalog codes as cash; the invoice already renders unknown codes as-is. Vitest 11 files / 176; typecheck 0. |
 | 8c fix RDD | review-c728d1be18067a6b | risk, resilience, readability admitted; reliability refused (CRITICAL without evidence_class; the claim itself confirms the fix is correct) then failed natively -> escalated (unknown_causality) on R3-getOrdersByDate-relabel-regression: not a regression, a non-default method now shows its own code instead of a false "cash". |
+| 9 | `1baf541` | Admin "Métodos de pago" tab: pure lib/payments/catalog-admin.ts (slugifyMethodCode, validateMethodName, moveMethod, canDeactivate; RED: module missing; GREEN 35 tests) and create/update/reorder service mutations (+11 tests). No delete (history); last active method and last cash method cannot be deactivated. Cashier still offers active methods only (dialog filter + pay_order rejects inactive). Vitest 12 files / 222; typecheck 0; build OK. |
+| 9 RDD | review-91bb59d275b2b9df | risk admitted; resilience refused (invalid JSON) then admitted; readability admitted; reliability refused twice (location without line; uppercase evidence class) -> retry spent, lineage left in reviewing. Rejected payloads read: second has no BLOCKER/CRITICAL; first is mostly noise (self-contradicting claims), one real: a failed reorder never reloaded the server order -> fixed in the next commit. |
+| 9 fix | `ac71886` | Reload the catalog after a failed reorder (sequential updates may have partly landed). Component without jsdom: no meaningful RED; typecheck 0, lint clean, build OK. |
+| 9 fix RDD | review-ca7d8c83f53b0ea4 | Medium tier, reliability lens admitted -> APPROVED; acknowledgement burned authority. Advisory only: no component test for the failed-reorder reload (no jsdom). |
+| 10a | `12276f5` | Invoice tenders from the server: lib/payments/invoice-tenders.ts (RED: module missing; GREEN 12 tests incl. single-Nequi regression for the 7a bug that printed it as cash) and renderInvoice tender path (RED: change double-counted 6.000 vs 3.000; GREEN 7 tests). Reprints use the ledger payment kept by getOrdersByDate. Additive payload: tenders[] {methodCode, methodName, methodKind, amount, cashReceived} + change; legacy fields still set. Parent check: legacy renderInvoice output byte-identical to the previous version for 4 inputs. Vitest 14 files / 241; typecheck 0; build OK. |
+| 10a RDD | review-9c33c7d0a295292d + `3df79bd` | risk, resilience admitted; readability refused (invalid JSON) then admitted; reliability refused (location without line) then admitted -> correction_required on 4 findings. Real: uncatalogued pay_order line with cash_received typed electronic (lost RECIBIDO/CAMBIO) and a failed catalog lookup on reprint silently dropped the breakdown; fixed in 3df79bd within the 40-line plan (RED: expected cash, got electronic; GREEN Vitest 242). Not defects: two cash lines are one method ("Efectivo" matches methodLabel); cashChange undefined at 0 mirrors the payment dialog. Targeted validator refused twice (result not bound to the correction request) -> retry spent, lineage left in correction_required. |
+| 10b | `eed9df7` | pos/print_renderer.py prints FORMAS DE PAGO with per-cash RECIBIDO/CAMBIO and total CAMBIO when tenders are present; malformed tenders are skipped or fall back to the legacy block (never raises). stdlib unittest pos/test_print_renderer.py: RED 6 failures + 1 error, GREEN 11/11. Parent check: the 3 legacy byte snapshots also pass against the previous renderer (HEAD), so the old output is unchanged. README: installed listeners need a rebuild to show the breakdown. |
+| 10b RDD | review-2f3dac43e4fca091 | Medium tier, reliability refused (invalid JSON) then failed natively -> retry spent, lineage left in reviewing. Rejected payload read: bool/float/cashReceived=0 claims are guarded or unreachable from the web; one real: when every tender was malformed the fallback printed "Efectivo" whenever cashReceived was set, overriding paymentMethod "multiple" -> fixed in the next commit. |
+| 10b fix | `2f811a5` | Malformed-tender fallback keeps the sent paymentMethod label. RED: mixed payment printed FORMA DE PAGO: Efectivo; GREEN unittest 12/12. |
+| 10b fix RDD | review-ba72269fbd0c0eb7 | Medium tier, reliability admitted -> APPROVED; acknowledgement burned authority. |
+| 11 | `c6be878` | docs/payment-atomicity-test.md rewritten for the ledger flow (guarantee -> pgTAP file table, commands, UI smoke checklist, psql recipes). Documentation only, no RED. Parent fixes before commit: legacy payment_transactions columns (method/amount/timestamp), payments query no longer filtered by current_restaurant_id() (NULL as postgres), default methods (no card), reprint location (Admin, Factura), installed vs rebuilt listener behavior. Every psql query run against the local DB. |
+| 11 RDD | review-2dce5dafe8183de2 | Low tier (non-executable only), approved without lenses; acknowledgement burned authority. |
+| verify | `87bc66c` | Full branch verification (gentle-ai-verify): Vitest 14 files / 242, typecheck 0, lint 0 errors / 87 warnings, build OK, db reset + pgTAP 11 files / 519 PASS, Python unittest 12 OK. Found CI risk: workflow pinned Node 20 but vitest 5.0.3 (task 1) requires ^22.12 \|\| ^24; bumped the 4 Node jobs to Node 24, the version used for every local check. Not verifiable locally: pnpm 9 in CI vs pnpm 11 locally. |
+| verify RDD | review-b6849aaeb7b08462 | High tier (CI shell), 4 lenses admitted -> APPROVED; acknowledgement burned authority. Advisory: pnpm 9 in CI vs pnpm 11 locally is untested. |
