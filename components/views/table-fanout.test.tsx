@@ -2,6 +2,7 @@ import { Profiler, type ProfilerOnRenderCallback } from "react"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { useShallow } from "zustand/react/shallow"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 // `CompletedOrdersTable` reaches the real Supabase client transitively
 // (`getOrdersByDate` from `lib/supabase/service`, and `InvoicePrintView`'s
@@ -77,10 +78,13 @@ describe("D6 fan-out containment — Store Writes Must Not Fan Out To Unaffected
       })
 
       const probe = renderCounter()
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
       render(
-        <Profiler id="completed-orders" onRender={probe.onRender}>
-          <CompletedOrdersTable />
-        </Profiler>,
+        <QueryClientProvider client={queryClient}>
+          <Profiler id="completed-orders" onRender={probe.onRender}>
+            <CompletedOrdersTable />
+          </Profiler>
+        </QueryClientProvider>,
       )
 
       const countAfterMount = probe.count

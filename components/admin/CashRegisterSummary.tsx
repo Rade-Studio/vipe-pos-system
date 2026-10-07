@@ -19,6 +19,7 @@ import type { CashRegister } from "@/types/cash-register"
 import type { CashTransaction } from "@/types/cash-register"
 import { AlertTriangle } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
+import { cashTransactionsQueryKey, registersByDateQueryKey, sortedRegisterIds } from "@/lib/admin/cash"
 
 interface CashRegisterSummaryProps {
   selectedDate?: Date
@@ -38,50 +39,75 @@ interface CashRegisterSummaryProps {
  */
 export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) {
   const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
-  const [registers, setRegisters] = useState<CashRegister[]>([])
   const [selectedRegisters, setSelectedRegisters] = useState<string[]>([])
-  const [isLoadingRegisters, setIsLoadingRegisters] = useState(false)
+  const [fallbackRegisters, setFallbackRegisters] = useState<CashRegister[]>([])
+  const [isLoadingFallback, setIsLoadingFallback] = useState(false)
   const isOpen = isRegisterOpen()
 
-  // Load the registers that belong to the selected date (or fall back
-  // to the currently open register when no date is supplied).
+  // T9 (S1): "the registers that ran on the selected day" is a QUERY keyed on
+  // that day. It used to be local state behind a `useEffect`, so it re-read the
+  // day on every mount (Radix unmounts the whole Caja tab on every tab switch),
+  // and `TransactionsByRegisterId` read the SAME day again for the SAME panel.
+  const {
+    data: registersForDate,
+    isLoading: isLoadingDateRegisters,
+    isError: isDateRegistersError,
+  } = useQuery<CashRegister[]>({
+    queryKey: registersByDateQueryKey(selectedDate),
+    queryFn: () => cashRegisterService.getRegistersByDate(selectedDate as Date),
+    enabled: Boolean(selectedDate),
+    staleTime: 30_000,
+  })
+
   useEffect(() => {
-    const loadRegisters = async () => {
-      if (selectedDate) {
-        setIsLoadingRegisters(true)
-        try {
-          const registersForDate = await cashRegisterService.getRegistersByDate(selectedDate)
-          setRegisters(registersForDate)
-          setSelectedRegisters(
-            registersForDate.length > 0 ? registersForDate.map((r) => r.id) : [],
-          )
-        } catch (error) {
-          log.error("Error al cargar cajas por fecha:", { error: String(error) })
-          setRegisters([])
-          setSelectedRegisters([])
-        } finally {
-          setIsLoadingRegisters(false)
-        }
-      } else {
-        try {
-          await loadCurrentRegister()
-          const currentRegister = useCashRegisterStore.getState().currentRegister
-          if (currentRegister) {
-            setRegisters([currentRegister])
-            setSelectedRegisters([currentRegister.id])
-          } else {
-            setRegisters([])
-            setSelectedRegisters([])
-          }
-        } catch (error) {
-          log.error("Error al cargar registro actual:", { error: String(error) })
-          setRegisters([])
+    if (isDateRegistersError) {
+      log.error("Error al cargar cajas por fecha:", { error: "getRegistersByDate failed" })
+    }
+  }, [isDateRegistersError])
+
+  // Without a date the card falls back to the currently open register (the
+  // cashier's path). Only that fallback still needs a hand-rolled load.
+  useEffect(() => {
+    if (selectedDate) return
+
+    let cancelled = false
+    const loadFallback = async () => {
+      setIsLoadingFallback(true)
+      try {
+        await loadCurrentRegister()
+        const currentRegister = useCashRegisterStore.getState().currentRegister
+        if (cancelled) return
+        if (currentRegister) {
+          setFallbackRegisters([currentRegister])
+          setSelectedRegisters([currentRegister.id])
+        } else {
+          setFallbackRegisters([])
           setSelectedRegisters([])
         }
+      } catch (error) {
+        log.error("Error al cargar registro actual:", { error: String(error) })
+        setFallbackRegisters([])
+        setSelectedRegisters([])
+      } finally {
+        if (!cancelled) setIsLoadingFallback(false)
       }
     }
-    loadRegisters()
+    loadFallback()
+
+    return () => {
+      cancelled = true
+    }
   }, [selectedDate, loadCurrentRegister])
+
+  const registers = selectedDate ? (registersForDate ?? []) : fallbackRegisters
+
+  // Same rule as before: a day with registers preselects all of them.
+  useEffect(() => {
+    if (!selectedDate) return
+    setSelectedRegisters(
+      registersForDate && registersForDate.length > 0 ? registersForDate.map((r) => r.id) : [],
+    )
+  }, [selectedDate, registersForDate])
 
   // Server snapshot for the selected set. Disabled when nothing is
   // selected so the hook never calls the RPC with an empty list.
@@ -94,25 +120,19 @@ export function CashRegisterSummary({ selectedDate }: CashRegisterSummaryProps) 
   const shortfall = summary ? tipsShortfall(summary) : 0
   const showLegacy = summary ? hasLegacy(summary) : false
 
-  // Movimientos tab: a query so we can refetch when the tab is opened (cash
-  // deposits and withdrawals are still driven by cashRegisterService and do
-  // not invalidate anything yet). The key includes the sorted ids so two
-  // callers passing the same set hit the same cache slot.
-  const sortedRegisters = useMemo(() => [...selectedRegisters].sort(), [selectedRegisters])
-  const {
-    data: cashTransactions = [],
-    refetch: refetchCashTransactions,
-  } = useQuery<CashTransaction[]>({
-    queryKey: ["cash-transactions-by-registers", sortedRegisters],
-    queryFn: () => cashRegisterService.getCashTransactionsByRegisters(sortedRegisters),
-    enabled: sortedRegisters.length > 0,
-  })
+  // Movimientos tab: read ONLY while that tab is on screen. It used to fetch on
+  // mount AND refetch every time the tab became active, for a key
+  // `TransactionsByRegisterId` reads too — one click, two reads of one slot.
+  const sortedRegisters = useMemo(() => sortedRegisterIds(selectedRegisters), [selectedRegisters])
   const [activeTab, setActiveTab] = useState<string>("summary")
-  useEffect(() => {
-    if (activeTab === "cash" && sortedRegisters.length > 0) {
-      refetchCashTransactions()
-    }
-  }, [activeTab, sortedRegisters, refetchCashTransactions])
+  const { data: cashTransactions = [] } = useQuery<CashTransaction[]>({
+    queryKey: cashTransactionsQueryKey(sortedRegisters),
+    queryFn: () => cashRegisterService.getCashTransactionsByRegisters(sortedRegisters),
+    enabled: sortedRegisters.length > 0 && activeTab === "cash",
+    staleTime: 30_000,
+  })
+
+  const isLoadingRegisters = selectedDate ? isLoadingDateRegisters : isLoadingFallback
 
   if (isLoadingRegisters || isLoadingSummary) {
     return (
