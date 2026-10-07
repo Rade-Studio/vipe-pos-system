@@ -1101,12 +1101,12 @@ SELECT is(
   'an order_deliveries row whose customer belongs to another tenant is rejected at commit time');
 
 -- Consistency trigger: the courier must belong to the same tenant as the
--- order.
+-- order. The tenant B courier is seeded outside the checked block, so the
+-- delivery insert is the only statement that can fail.
+INSERT INTO public.couriers (restaurant_id, name, phone)
+VALUES ('bbbbbbbb-0000-4000-8000-0000000000d2', 'Tenant B courier', '003000000099');
 SELECT is(
   pg_temp.dv_run_deferred($$
-    -- Seed a courier in tenant B so we can target it.
-    INSERT INTO public.couriers (restaurant_id, name, phone)
-    VALUES ('bbbbbbbb-0000-4000-8000-0000000000d2', 'Tenant B courier', '003000000099');
     INSERT INTO public.order_deliveries
       (order_id, restaurant_id, customer_id, customer_name, customer_phone,
        address_line, delivery_fee, payment_mode, courier_id)
