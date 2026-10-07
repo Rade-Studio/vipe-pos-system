@@ -234,19 +234,16 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       return
     }
 
-    // Solo se parchea la orden del lote; las demás órdenes del panel
-    // conservan su identidad. Un lote que solo trae bajas para una orden que
-    // esta cocina nunca tuvo no tiene nada que pintar.
-    const bringsOrder = newItemIds.length > 0 || batch.isNewOrder
+    // Solo se parchea la orden del lote; las demás conservan su identidad. Una
+    // orden con items en cocina entra aunque no traiga novedades (R3).
     if (known) {
       updateOrder(orderId, storeOrder)
-    } else if (bringsOrder) {
-      addOrder(storeOrder)
     } else {
-      return
+      addOrder(storeOrder)
     }
 
-    if (newItemIds.length === 0) return
+    const isNew = batch.isNewOrder || !known
+    if (!isNew && newItemIds.length === 0) return
 
     setNewItems((previous) => addNewItems(previous, orderId, newItemIds))
     setNewOrderCount((previous) => previous + 1)
@@ -256,14 +253,14 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     // `placeText(storeOrder)` → `placeOf`, que lee el espejo `tablesRef`
     // (seguro en handlers), así que este toast no necesita otra suscripción.
     toast(
-      known
+      isNew
         ? {
-            title: "¡Nuevo producto en cocina!",
-            description: `Se ha agregado un nuevo producto a la orden de ${placeText(storeOrder)}.`,
-          }
-        : {
             title: "¡Nueva orden!",
             description: `Nueva orden recibida para ${placeText(storeOrder)}.`,
+          }
+        : {
+            title: "¡Nuevo producto en cocina!",
+            description: `Se ha agregado un nuevo producto a la orden de ${placeText(storeOrder)}.`,
           },
     )
   }

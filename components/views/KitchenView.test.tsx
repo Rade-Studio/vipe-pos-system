@@ -394,6 +394,28 @@ describe("kitchen board realtime batches", () => {
     expect(env.statusReads).toEqual(["kitchen"])
   })
 
+  it("R3: shows an order the batch reports even when it carries no new items", async () => {
+    env.kitchenRows = [row("o-1")]
+    renderKitchen()
+    expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
+
+    // A batch that lost the metadata of the superseded burst: the order is real
+    // and has kitchen items, so it must reach the board, not wait for a refresh.
+    act(() => {
+      env.onBatch?.({
+        orderId: "o-9",
+        order: row("o-9", { items: [{ ...item("o-9-i-1"), name: "Combo" }] }),
+        newItemIds: [],
+        servedItemIds: [],
+        isNewOrder: false,
+      })
+    })
+
+    expect(storeOrder("o-9")?.items).toHaveLength(1)
+    expect(screen.getByText("Combo")).toBeInTheDocument()
+    expect(env.toasts.filter((t) => t.title === "¡Nueva orden!")).toHaveLength(1)
+  })
+
   it("adds a new item to an order already on the queue without re-reading it", async () => {
     env.kitchenRows = [row("o-1")]
     renderKitchen()

@@ -91,10 +91,22 @@ export function createKitchenEventCoalescer<TOrder>(
   // reads in flight at once; if the older one resolves last, delivering it would
   // overwrite the newer state with older data.
   const latestSequence = new Map<string, number>()
+  // Events of a burst whose read lost that race, kept for the next delivery.
+  const carried = new Map<string, PendingBurst>()
   let nextSequence = 0
   // After `dispose` the owner is gone: a stray event must not start a read that
   // nobody will consume.
   let disposed = false
+
+  /** Fold a superseded burst's events into the burst that supersedes it. */
+  const carry = (orderId: string, burst: PendingBurst): void => {
+    const target = pending.get(orderId) ?? carried.get(orderId)
+    if (!target) return void carried.set(orderId, burst)
+    target.isNewOrder = target.isNewOrder || burst.isNewOrder
+    const known = (itemId: string) => target.newItemIds.includes(itemId) || target.servedItemIds.includes(itemId)
+    target.newItemIds.push(...burst.newItemIds.filter((itemId) => !known(itemId)))
+    target.servedItemIds.push(...burst.servedItemIds.filter((itemId) => !known(itemId)))
+  }
 
   const deliver = async (orderId: string, burst: PendingBurst): Promise<void> => {
     let order: TOrder | null = null
@@ -106,8 +118,12 @@ export function createKitchenEventCoalescer<TOrder>(
       return
     }
     if (disposed) return
-    // A newer burst of this order already owns the state: this read is stale.
-    if (latestSequence.get(orderId) !== burst.sequence) return
+    // A newer burst of this order already owns the state: this read is stale,
+    // but its events are kept for the next delivery of that order.
+    if (latestSequence.get(orderId) !== burst.sequence) {
+      carry(orderId, burst)
+      return
+    }
     latestSequence.delete(orderId)
     if (order == null) return
     options.onBatch({
@@ -121,13 +137,16 @@ export function createKitchenEventCoalescer<TOrder>(
 
   const enqueue = (event: KitchenEvent): void => {
     if (disposed) return
-    const burst = pending.get(event.orderId) ?? {
+    // A carried burst is reused as the new bucket: same order, one lineage.
+    const burst = pending.get(event.orderId) ?? carried.get(event.orderId) ?? {
       newItemIds: [],
       servedItemIds: [],
       isNewOrder: false,
-      sequence: (nextSequence += 1),
+      sequence: 0,
       timer: null,
     }
+    carried.delete(event.orderId)
+    burst.sequence = (nextSequence += 1)
     pending.set(event.orderId, burst)
     latestSequence.set(event.orderId, burst.sequence)
 
@@ -166,6 +185,7 @@ export function createKitchenEventCoalescer<TOrder>(
     }
     pending.clear()
     latestSequence.clear()
+    carried.clear()
   }
 
   return { enqueue, flush, dispose }

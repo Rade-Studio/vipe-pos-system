@@ -298,34 +298,40 @@ describe("A2 — a late read must not overwrite a newer state", () => {
     return { promise, resolve }
   }
 
-  it("drops the result of a burst superseded by a newer burst of the same order", async () => {
-    const first = deferred<{ id: string; version: number }>()
-    const second = deferred<{ id: string; version: number }>()
+  it("keeps the A2 guarantee and does not lose the superseded burst's events", async () => {
+    type Read = { id: string; version: number }
+    const read = (v: number): Read => ({ id: "o-1", version: v })
+    const first = deferred<Read>(), second = deferred<Read>()
     const loadOrder = vi
-      .fn()
+      .fn<() => Promise<Read>>()
       .mockImplementationOnce(() => first.promise)
       .mockImplementationOnce(() => second.promise)
+      .mockImplementationOnce(async () => read(3))
     const onBatch = vi.fn()
     const coalescer = createKitchenEventCoalescer({ loadOrder, onBatch, delayMs: 120 })
 
+    // Burst A: a new order (order INSERT + its first item). Burst B starts
+    // before A's read is back, and B's read resolves first.
+    coalescer.enqueue({ type: "order", orderId: "o-1" })
     coalescer.enqueue({ type: "itemNew", orderId: "o-1", itemId: "i-1" })
     await vi.advanceTimersByTimeAsync(120)
-    coalescer.enqueue({ type: "itemNew", orderId: "o-1", itemId: "i-2" })
+    coalescer.enqueue({ type: "itemKnown", orderId: "o-1", itemId: "i-9" })
     await vi.advanceTimersByTimeAsync(120)
-    expect(loadOrder).toHaveBeenCalledTimes(2)
-
-    // The newer read lands first, the older one comes back late.
-    second.resolve({ id: "o-1", version: 2 })
+    second.resolve(read(2))
     await vi.advanceTimersByTimeAsync(1)
-    expect(onBatch).toHaveBeenCalledTimes(1)
-    expect(onBatch.mock.calls[0][0].order).toEqual({ id: "o-1", version: 2 })
+    expect(onBatch.mock.calls[0][0].order).toEqual(read(2))
 
-    first.resolve({ id: "o-1", version: 1 })
+    // A's read lands late: it must not overwrite B (still one batch delivered).
+    first.resolve(read(1))
     await vi.advanceTimersByTimeAsync(1)
 
-    // The stale read is dropped: the board keeps the newer state.
-    expect(onBatch).toHaveBeenCalledTimes(1)
-    expect(onBatch.mock.calls[0][0].newItemIds).toEqual(["i-2"])
+    // R3: A's events were not dropped with its read. The next burst of this
+    // order still carries "this is a new order" and the item that arrived.
+    coalescer.enqueue({ type: "itemServed", orderId: "o-1", itemId: "i-8" })
+    await vi.advanceTimersByTimeAsync(120)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(onBatch).toHaveBeenCalledTimes(2)
+    expect(onBatch.mock.calls[1][0]).toMatchObject({ order: read(3), isNewOrder: true, newItemIds: ["i-1"], servedItemIds: ["i-8"] })
     coalescer.dispose()
   })
 
