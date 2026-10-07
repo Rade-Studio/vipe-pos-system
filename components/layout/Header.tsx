@@ -5,6 +5,7 @@ import { LogOut, UserCog } from "lucide-react"
 import type { Profile } from "@/types"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
 import { supabase } from "@/lib/supabase/client"
+import { roleLabel } from "@/lib/auth/roles"
 
 interface HeaderProps {
   profile: Profile
@@ -17,20 +18,7 @@ interface HeaderProps {
 }
 
 export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }: HeaderProps) {
-  const getRoleLabel = (role: string) => {
-    switch (role) {
-      case "waiter":
-        return "Mesero"
-      case "kitchen":
-        return "Cocina"
-      case "cashier":
-        return "Caja"
-      case "admin":
-        return "Administrador"
-      default:
-        return role
-    }
-  }
+  const getRoleLabel = (role: string) => roleLabel(role) ?? role
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

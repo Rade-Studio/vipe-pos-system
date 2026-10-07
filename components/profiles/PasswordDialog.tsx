@@ -19,7 +19,7 @@ export function PasswordDialog({ open, onOpenChange, profile, onSuccess }: Passw
   const [password, setPassword] = useState("")
   const [error, setError] = useState(false)
   const [maskedPassword, setMaskedPassword] = useState("")
-  const { kitchenPassword, cashierPassword, adminPassword, waiterPassword, loadConfigFromDB } = useConfigStore()
+  const { kitchenPassword, cashierPassword, adminPassword, waiterPassword, deliveryPassword, loadConfigFromDB } = useConfigStore()
 
   // Cargar configuración al montar el componente
   useEffect(() => {
@@ -41,6 +41,7 @@ export function PasswordDialog({ open, onOpenChange, profile, onSuccess }: Passw
     if (profileId.startsWith("cashier")) return cashierPassword
     if (profileId.startsWith("admin")) return adminPassword
     if (profileId.startsWith("waiter")) return waiterPassword
+    if (profileId.startsWith("delivery")) return deliveryPassword
     return ""
   }
 

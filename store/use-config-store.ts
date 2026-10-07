@@ -33,6 +33,7 @@ type ConfigState = {
   cashierPassword: string
   adminPassword: string
   waiterPassword: string
+  deliveryPassword: string
 
   // Acciones para información del negocio
   setBusinessInfo: (info: {
@@ -71,6 +72,7 @@ export const useConfigStore = create<ConfigState>()(
       cashierPassword: "",
       adminPassword: "",
       waiterPassword: "",
+      deliveryPassword: "",
 
       // Acciones
       setTipPercentage: (percentage: number) => set({ tipPercentage: percentage }),
@@ -84,12 +86,13 @@ export const useConfigStore = create<ConfigState>()(
           businessPhone: info.phone ?? state.businessPhone,
           businessNIT: info.nit ?? state.businessNIT,
         })),
-      setProfilePasswords: (passwords: { kitchen?: string; cashier?: string; admin?: string; waiter?: string }) =>
+      setProfilePasswords: (passwords: { kitchen?: string; cashier?: string; admin?: string; waiter?: string; delivery?: string }) =>
         set((state) => ({
           kitchenPassword: passwords.kitchen ?? state.kitchenPassword,
           cashierPassword: passwords.cashier ?? state.cashierPassword,
           adminPassword: passwords.admin ?? state.adminPassword,
           waiterPassword: passwords.waiter ?? state.waiterPassword,
+          deliveryPassword: passwords.delivery ?? state.deliveryPassword,
         })),
       // Cargar configuración desde la base de datos
       loadConfigFromDB: async () => {

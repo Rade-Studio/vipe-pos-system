@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 
@@ -31,6 +32,10 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
     email: waiter?.email || "",
     password: "",
     active: waiter?.active ?? true,
+    // Por defecto 'waiter' para preservar el comportamiento previo del form.
+    // El admin puede cambiar a 'delivery_operator' para crear un operador
+    // de domicilios. Otros roles se siguen gestionando fuera de este form.
+    role: "waiter" as "waiter" | "delivery_operator",
   })
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -63,6 +68,12 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
     setFormData((prev) => ({ ...prev, active: checked }))
   }
 
+  const handleRoleChange = (value: string) => {
+    if (value === "waiter" || value === "delivery_operator") {
+      setFormData((prev) => ({ ...prev, role: value }))
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -78,6 +89,7 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
           username: formData.username,
           email: formData.email || null,
           active: formData.active,
+          role: formData.role,
           updated_at: new Date().toISOString(),
         }
 
@@ -101,7 +113,7 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
           username: formData.username,
           email: formData.email || null,
           password: formData.password,
-          role: "waiter",
+          role: formData.role,
           active: formData.active,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -185,19 +197,32 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="role">Rol</Label>
+          <Select value={formData.role} onValueChange={handleRoleChange}>
+            <SelectTrigger id="role">
+              <SelectValue placeholder="Selecciona un rol" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="waiter">Mesero</SelectItem>
+              <SelectItem value="delivery_operator">Operador de domicilios</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex items-center space-x-2">
           <Switch id="active" checked={formData.active} onCheckedChange={handleSwitchChange} />
           <Label htmlFor="active">Activo</Label>
         </div>
+      </div>
 
-        <div className="flex justify-end space-x-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={loading}>
-            {loading ? "Guardando..." : waiter ? "Actualizar" : "Crear"}
-          </Button>
-        </div>
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
+          Cancelar
+        </Button>
+        <Button type="submit" disabled={loading}>
+          {loading ? "Guardando..." : waiter ? "Actualizar" : "Crear"}
+        </Button>
       </div>
     </form>
   )

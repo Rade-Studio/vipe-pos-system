@@ -8,6 +8,7 @@ const mockProfiles: Profile[] = [
   { id: 'kitchen-1', name: 'Cocina', full_name: 'Cocina', role: 'kitchen', hasPassword: true },
   { id: 'cashier-1', name: 'Caja', full_name: 'Caja', role: 'cashier', hasPassword: true },
   { id: 'admin-1', name: 'Admin', full_name: 'Admin', role: 'admin', hasPassword: true },
+  { id: 'delivery-1', name: 'Domicilios', full_name: 'Domicilios', role: 'delivery_operator', hasPassword: true },
 ]
 
 interface ProfileState {

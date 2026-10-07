@@ -31,9 +31,9 @@ through the existing `pay_order` ledger.
 
 ## Tasks
 
-- [ ] 1. Role `delivery_operator` end to end: app type, routing to a placeholder
-      DeliveryView, profile labels/PIN prefix, staff form option; `pay_order` and
-      `register_summary` accept the role (no open/close).
+- [x] 1. Role `delivery_operator` app side: app type, routing to a placeholder
+      DeliveryView, profile labels/PIN prefix, staff form option. (`pay_order` and
+      `register_summary` accept the role in task 3, with the fee change.)
 - [ ] 2. Schema: `couriers`, `customers`, `customer_addresses`, `orders.order_type` +
       `order_deliveries` (1:1), RLS per role, realtime publication, default fee config.
 - [ ] 3. RPCs: atomic `create_delivery_order`, delivery state machine RPC (ready,
@@ -54,6 +54,8 @@ through the existing `pay_order` ledger.
 
 ## Known follow-ups (out of scope)
 
+- Staff list (WaiterList) filters role = waiter, so operators created there are not listed; WaiterForm still writes the dropped `password` column (pre-existing). Task 7 revisits the staff screen.
+
 - WhatsApp integration (separate feature, builds on the customer registry).
 - Delivery zones and per-zone fees.
 
@@ -61,3 +63,4 @@ through the existing `pay_order` ledger.
 
 | Task | Commit | Evidence |
 |------|--------|----------|
+| 1 | (this commit) | lib/auth/roles.ts single source of roles (APP_ROLES, roleLabel, isAppRole, viewForRole); RED: module missing; GREEN 7 tests. Router switch on viewForRole, DeliveryView placeholder, profile tile/PIN prefix, staff form role select (waiter / delivery_operator), Header label from roleLabel. Vitest 15 files / 249; typecheck 0; build OK. |

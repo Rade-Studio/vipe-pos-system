@@ -1,4 +1,5 @@
 import type { JSX } from "react"
+import { APP_ROLES } from "@/lib/auth/roles"
 
 // ============================================
 // Restaurant (tenant root entity)
@@ -15,7 +16,10 @@ export interface Restaurant {
 
 // ============================================
 // Profile types
-export type ProfileRole = "waiter" | "kitchen" | "cashier" | "admin"
+// `profiles.role` is a varchar in the DB; the canonical list lives in
+// `lib/auth/roles.ts` and we derive this type from it so adding a role
+// there is enough to make it available everywhere.
+export type ProfileRole = (typeof APP_ROLES)[number]
 
 export type Profile = {
   id: string
