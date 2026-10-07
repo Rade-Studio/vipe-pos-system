@@ -1,18 +1,23 @@
 import { supabase } from "./client"
-import type { Promotion } from "./promotion-service"
 import { log } from "@/lib/log"
+import { applyPromotionsToDishes, calculateDiscount, type DishWithPromotion, type PromotionDishRow } from "@/lib/menu/promotions"
+import type { Promotion } from "./promotion-service"
 
-// Función para calcular el descuento
-export function calculateDiscount(price: number, promotion: Promotion): number {
-  const value = promotion.discount_value ?? 0
-  if (promotion.discount_type === "percentage") {
-    return Math.round((price * value) / 100)
-  } else {
-    return Math.min(price, value) // El descuento no puede ser mayor que el precio
-  }
-}
+// Re-exported: the discount rule now lives in lib/menu/promotions.ts, but the
+// service stays the public entry point for existing callers.
+export { calculateDiscount }
+
+type DishRow = { id: string; price: number } & Record<string, unknown>
+type PromotionAppliedDish = DishRow & Partial<DishWithPromotion>
+
+/** Rows of `promotion_dishes` needed for the dishes already loaded. */
+const promotionDishSelect = "dish_id, promotion_id"
 
 // Extender el servicio de platos para incluir promociones
+//
+// Los dos lectores devuelven `any[]` como antes (los llamantes de la app —
+// p.ej. el formulario de domicilio — convierten el resultado por su cuenta);
+// la precisión de tipos vive en `applyPromotionsToDishes`.
 export const dishServiceWithPromotions = {
   // Obtener todas las promociones activas
   getActivePromotions: async () => {
@@ -33,7 +38,7 @@ export const dishServiceWithPromotions = {
   },
 
   // Obtener todos los platos con sus promociones aplicadas
-  getAllWithPromotions: async () => {
+  getAllWithPromotions: async (): Promise<any[]> => {
     try {
       // Obtener todos los platos
       const { data: dishes, error } = await supabase.from("dishes").select("*").order("name")
@@ -43,51 +48,15 @@ export const dishServiceWithPromotions = {
       // Obtener todas las promociones activas
       const activePromotions = await dishServiceWithPromotions.getActivePromotions()
 
-      // Obtener la relación entre promociones y platos
-      const { data: promotionDishes, error: relError } = await supabase.from("promotion_dishes").select("*")
+      // La relación se lee una sola vez para todo el menú (T6/S1): antes cada
+      // vista repetía el mismo bucle de coincidencia sobre la tabla completa.
+      const { data: promotionDishes, error: relError } = await supabase
+        .from("promotion_dishes")
+        .select(promotionDishSelect)
 
       if (relError) throw relError
 
-      // Aplicar promociones a los platos
-      const dishesWithPromotions = dishes.map((dish) => {
-        // Buscar promociones aplicables a este plato
-        const applicablePromotionIds = promotionDishes
-          .filter((pd) => pd.dish_id === dish.id)
-          .map((pd) => pd.promotion_id)
-
-        // Encontrar la mejor promoción (la que ofrece mayor descuento)
-        let bestPromotion = null
-        let maxDiscount = 0
-
-        for (const promotionId of applicablePromotionIds) {
-          const promotion = activePromotions.find((p) => p.id === promotionId)
-          if (promotion) {
-            const discount = calculateDiscount(dish.price, promotion)
-            if (discount > maxDiscount) {
-              maxDiscount = discount
-              bestPromotion = promotion
-            }
-          }
-        }
-
-        // Aplicar la mejor promoción si existe
-        if (bestPromotion) {
-          const discountAmount = calculateDiscount(dish.price, bestPromotion)
-          return {
-            ...dish,
-            originalPrice: dish.price,
-            price: dish.price - discountAmount,
-            discountAmount,
-            discountPercentage: bestPromotion.discount_type === "percentage" ? bestPromotion.discount_value : null,
-            promotionId: bestPromotion.id,
-            promotionName: bestPromotion.name,
-          }
-        }
-
-        return dish
-      })
-
-      return dishesWithPromotions
+      return applyPromotionsToDishes(dishes as DishRow[], (promotionDishes || []) as PromotionDishRow[], activePromotions) as PromotionAppliedDish[]
     } catch (error) {
       log.error("Error getting dishes with promotions:", { error: String(error) })
       throw error
@@ -95,7 +64,7 @@ export const dishServiceWithPromotions = {
   },
 
   // Obtener platos por categoría con promociones aplicadas
-  getByCategoryWithPromotions: async (categoryId: string) => {
+  getByCategoryWithPromotions: async (categoryId: string): Promise<any[]> => {
     try {
       // Obtener platos de la categoría
       const { data: dishes, error } = await supabase
@@ -107,54 +76,29 @@ export const dishServiceWithPromotions = {
 
       if (error) throw error
 
+      const dishRows = (dishes || []) as DishRow[]
+      if (dishRows.length === 0) {
+        return dishRows
+      }
+
       // Obtener todas las promociones activas
       const activePromotions = await dishServiceWithPromotions.getActivePromotions()
 
-      // Obtener la relación entre promociones y platos
-      const { data: promotionDishes, error: relError } = await supabase.from("promotion_dishes").select("*")
+      // T6/S1: solo las relaciones de los platos cargados. Leer la tabla
+      // entera para decidir el precio de una categoría pequeña era una
+      // descarga redundante en cada cambio de categoría y en cada remount
+      // del menú.
+      const { data: promotionDishes, error: relError } = await supabase
+        .from("promotion_dishes")
+        .select(promotionDishSelect)
+        .in(
+          "dish_id",
+          dishRows.map((dish) => dish.id),
+        )
 
       if (relError) throw relError
 
-      // Aplicar promociones a los platos
-      const dishesWithPromotions = dishes.map((dish) => {
-        // Buscar promociones aplicables a este plato
-        const applicablePromotionIds = promotionDishes
-          .filter((pd) => pd.dish_id === dish.id)
-          .map((pd) => pd.promotion_id)
-
-        // Encontrar la mejor promoción (la que ofrece mayor descuento)
-        let bestPromotion = null
-        let maxDiscount = 0
-
-        for (const promotionId of applicablePromotionIds) {
-          const promotion = activePromotions.find((p) => p.id === promotionId)
-          if (promotion) {
-            const discount = calculateDiscount(dish.price, promotion)
-            if (discount > maxDiscount) {
-              maxDiscount = discount
-              bestPromotion = promotion
-            }
-          }
-        }
-
-        // Aplicar la mejor promoción si existe
-        if (bestPromotion) {
-          const discountAmount = calculateDiscount(dish.price, bestPromotion)
-          return {
-            ...dish,
-            originalPrice: dish.price,
-            price: dish.price - discountAmount,
-            discountAmount,
-            discountPercentage: bestPromotion.discount_type === "percentage" ? bestPromotion.discount_value : null,
-            promotionId: bestPromotion.id,
-            promotionName: bestPromotion.name,
-          }
-        }
-
-        return dish
-      })
-
-      return dishesWithPromotions
+      return applyPromotionsToDishes(dishRows, (promotionDishes || []) as PromotionDishRow[], activePromotions) as PromotionAppliedDish[]
     } catch (error) {
       throw error
     }

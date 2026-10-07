@@ -6,7 +6,7 @@ import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { useProfileStore } from "@/store/useProfileStore"
-import type { Profile, Dish, Table, Order, OrderItem, OrderStatus, OrderItemStatus, ProfileRole, CommandPayload } from "@/types"
+import type { Profile, Dish, Table, Order, OrderItem, OrderStatus, OrderItemStatus, CommandPayload } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { MenuSection } from "@/components/pos/MenuSection"
@@ -16,13 +16,14 @@ import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintView"
 import type { PrintableKitchenOrder } from "@/types"
-import { tableService, orderService, waiterService } from "@/lib/supabase/service"
+import { tableService, orderService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { queryClient } from "@/lib/queryClient"
 import type { TableChange } from "@/lib/realtime/table-merge"
 import { mergeOrdersForWaiter, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
+import { useWaiters } from "@/hooks/use-waiters"
 import { useConfigStore } from "@/store/use-config-store"
 import inventoryControlService from "@/lib/supabase/inventory-control-service"
 import {
@@ -72,7 +73,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // Estados principales
   const [activeView, setActiveView] = useState<"tables" | "orders">("tables")
   const [activeTable, setActiveTable] = useState<string | null>(null)
-  const [profiles, setProfiles] = useState<Profile[]>([])
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
 
   // Estados para modales y diálogos
@@ -103,12 +103,21 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const tablesSubscriptionRef = useRef<(() => void) | null>(null)
   const ordersSubscriptionRef = useRef<(() => void) | null>(null)
   const localChangesRef = useRef<Set<string>>(new Set()) // Para rastrear cambios locales
+  // T6/S2: the realtime handlers need to know which table is selected, but they
+  // must NOT be re-created when the selection changes — that used to tear down
+  // and rebuild both channels on every table click. The ref is the read path;
+  // `activeTable` stays the render path.
+  const activeTableRef = useRef<string | null>(null)
 
   // Hooks
   const { toast } = useToast()
   const { tipPercentage, taxPercentage, inventoryControlEnabled } = useConfigStore()
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
+  // T6/S1: the waiter directory is one shared query (also read by
+  // WaiterSelectionModal, from here and from the kitchen screen), so selecting
+  // a table or opening the picker never reads it again.
+  const { data: waiters = [], isError: waitersError } = useWaiters()
 
   // Query functions for React Query
   const fetchTables = async () => {
@@ -202,31 +211,21 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // Obtener items del carrito para la mesa activa
   const cartItems = activeTable ? (cartItemsMap[activeTable] || []) : []
 
-  // Cargar meseros - función memoizada para evitar recreaciones innecesarias
-  const loadWaiters = useCallback(async () => {
-    try {
-      const waitersData = await waiterService.getAll()
-
-      const waiters: Profile[] = waitersData.map((waiter) => ({
-        id: waiter.id,
-        name: waiter.full_name,
-        full_name: waiter.full_name,
-        username: waiter.username,
-        role: waiter.role as ProfileRole,
-        hasPassword: false,
-      }))
-
-      setProfiles(waiters)
-      return waiters
-    } catch (err) {
+  useEffect(() => {
+    if (waitersError) {
       toast({
         title: "Error",
         description: "No se pudieron cargar los meseros. Intente nuevamente.",
         variant: "destructive",
       })
-      return []
     }
-  }, [toast])
+  }, [waitersError, toast])
+
+  // Keep the realtime handlers' view of the selection up to date without
+  // touching the subscription identities.
+  useEffect(() => {
+    activeTableRef.current = activeTable
+  }, [activeTable])
 
   // Hydrate the single owner from the query result once it resolves (D1,
   // D2). React Query is demoted to a hydration/refresh source — WaiterView
@@ -245,7 +244,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     }
   }, [ordersData])
 
-  // Configurar suscripciones en tiempo real
+  // Configurar suscripciones en tiempo real.
+  // T6/S2: sin dependencia de `activeTable`. Antes el `useCallback` que la lista
+  // recreaba las suscripciones al cambiar de mesa (2 canales desuscritos +
+  // 2 resuscripciones por clic), la causa principal del parpadeo de S2.
   const setupRealtimeSubscriptions = useCallback(() => {
 
     // Suscripción a cambios en mesas
@@ -262,13 +264,14 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       // only place a `tables` postgres_changes event is applied.
       useTableStore.getState().applyTableChange(payload as unknown as TableChange)
 
-      // Handle active table cleanup for UPDATE/DELETE on the active table
+      // Handle active table cleanup for UPDATE/DELETE on the active table.
+      // Read through the ref so this handler can stay stable across selections.
       if (payload.eventType === "UPDATE" && payload.new) {
-        if (activeTable === (payload.new as any).id && (payload.new as any).status === "available") {
+        if (activeTableRef.current === (payload.new as any).id && (payload.new as any).status === "available") {
           setActiveTable(null)
         }
       } else if (payload.eventType === "DELETE" && payload.old) {
-        if (activeTable === (payload.old as any).id) {
+        if (activeTableRef.current === (payload.old as any).id) {
           setActiveTable(null)
         }
       }
@@ -319,7 +322,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       }
       setRealtimeConnected(false)
     }
-  }, [activeTable])
+    // T6/S2: identidad estable. Todo lo que el handler necesita (refs, setters
+    // estables, el cliente de queries) no cambia al seleccionar otra mesa.
+  }, [])
 
   // Efecto para animar el carrito
   useEffect(() => {
@@ -335,19 +340,16 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     }
   }, [cartApi])
 
-  // Efecto para inicializar datos y suscripciones
+  // Efecto para inicializar suscripciones
   useEffect(() => {
-    // Cargar waiters (not yet migrated to useQuery)
-    loadWaiters()
-
-    // Configurar suscripciones en tiempo real
+    // Configurar suscripciones en tiempo real (una sola vez por montaje)
     const cleanupSubscriptions = setupRealtimeSubscriptions()
 
     // Limpiar suscripciones al desmontar
     return () => {
       cleanupSubscriptions()
     }
-  }, [loadWaiters, setupRealtimeSubscriptions])
+  }, [setupRealtimeSubscriptions])
 
   // Efecto para registrar tiempo de selección de mesa
   useEffect(() => {
@@ -523,7 +525,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           // Actualizar directamente en el store (single owner, S3). No local
           // `tables` copy is echoed — `waiter_name` was write-only on that
           // copy (TableGrid resolves the waiter's display name from
-          // `profiles` by id, not from `table.waiter_name`; see
+          // `waiters` by id, not from `table.waiter_name`; see
           // apply-progress for the grep confirming no reader exists).
           useTableStore.getState().assignWaiterToTable(selectedTableForWaiter, waiterId)
 
@@ -544,7 +546,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         }
       }
     },
-    [selectedTableForWaiter, toast, profiles, isMobile],
+    [selectedTableForWaiter, toast, isMobile],
   )
 
   // Completar reserva después de seleccionar mesero
@@ -581,7 +583,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         }
       }
     },
-    [selectedTableForWaiter, toast, profiles, isMobile],
+    [selectedTableForWaiter, toast, isMobile],
   )
 
   // Manejar reserva de mesa
@@ -736,6 +738,15 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         }))
 
         await inventoryControlService.reduceStock(normalizedCartItems, orderId)
+
+        // T6 advisory: la lectura de stock del grid está cacheada (staleTime
+        // 30 s), así que un plato que esta orden acaba de agotarse seguiría
+        // mostrando "Agregar". Invalidate el prefijo para que el siguiente
+        // render del menú vea el stock real. No se espera: es una lectura y no
+        // debe retrasar el "Orden enviada".
+        void queryClient
+          .invalidateQueries({ queryKey: ["menu", "stock"] })
+          .catch(() => undefined)
       } catch (error) {
         toast({
           title: "Advertencia",
@@ -744,7 +755,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         })
       }
     },
-    [inventoryControlEnabled, cartItems, toast],
+    [inventoryControlEnabled, cartItems, toast, queryClient],
   )
 
   // Verificar si ya existe una orden activa para la mesa
@@ -835,7 +846,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         const kitchenOrder: CommandPayload = {
           invoiceNumber: orderNumber,
           table: table.number,
-          waiter: profiles.find((p) => p.id === waiterId)?.name || "Mesero",
+          waiter: waiters.find((p) => p.id === waiterId)?.name || "Mesero",
           items: cartItems,
         }
 
@@ -933,7 +944,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         const kitchenOrder: CommandPayload = {
           invoiceNumber: orderNumber,
           table: table.number,
-          waiter: profiles.find((p) => p.id === waiterId)?.name || "Mesero",
+          waiter: waiters.find((p) => p.id === waiterId)?.name || "Mesero",
           items: cartItems,
         }
 
@@ -974,7 +985,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     addItemsToExistingOrder,
     reduceStockAfterSending,
     tableService,
-    profiles,
+    waiters,
     clearCart,
     calculateOrderBill,
     tipPercentage,
@@ -1085,7 +1096,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                 <TablesSection
                   activeTable={activeTable}
                   profile={profile}
-                  profiles={profiles}
+                  profiles={waiters}
                   onSelectTable={handleTableSelect}
                   onReserveTable={handleReserveTable}
                   onReleaseTable={handleReleaseTable}
@@ -1106,7 +1117,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mt-2">
                     {activeOrders.map((order) => {
                       const table = tables.find((t) => t.id === order.tableId)
-                      const waiter = profiles.find((p) => p.id === order.waiter)
+                      const waiter = waiters.find((p) => p.id === order.waiter)
 
                       return <CompactOrderCard key={order.id} order={order} table={table} waiter={waiter} />
                     })}
