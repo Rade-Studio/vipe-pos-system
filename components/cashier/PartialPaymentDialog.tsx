@@ -9,13 +9,17 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatCurrency } from "@/utils/helpers"
 import { Plus, Minus } from "lucide-react"
 import type { CartItem } from "@/types"
-import { useToast } from "@/hooks/use-toast"
 
 interface PartialPaymentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   tableItems?: CartItem[]
   onCreatePartialOrder: (selectedItems: { itemId: string; quantity: number }[]) => void
+  /**
+   * Disables the confirm button while the RPC is in flight so the
+   * cashier cannot trigger a second split before the first one lands.
+   */
+  busy?: boolean
 }
 
 export function PartialPaymentDialog({
@@ -23,10 +27,10 @@ export function PartialPaymentDialog({
   onOpenChange,
   tableItems = [],
   onCreatePartialOrder,
+  busy = false,
 }: PartialPaymentDialogProps) {
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({})
   const [quantities, setQuantities] = useState<Record<string, number>>({})
-  const { toast } = useToast()
 
   // Inicializar las cantidades con los valores de los items
   useEffect(() => {
@@ -101,31 +105,12 @@ export function PartialPaymentDialog({
   }
 
   const handleCreatePartialOrder = () => {
-    // Verificar que hay items seleccionados
-    if (Object.keys(selectedItems).length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Debe seleccionar al menos un producto para el pago parcial",
-      })
-      return
-    }
-
-    // Verificar si solo hay un producto con cantidad 1
-    if (Object.keys(selectedItems).length === 1) {
-      const itemId = Object.keys(selectedItems)[0]
-      const quantity = selectedItems[itemId]
-
-      // Si solo hay un producto seleccionado con cantidad 1, no permitir el pago parcial
-      if (quantity === 1 && tableItems.length === 1 && tableItems[0].quantity === 1) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se puede hacer pago parcial con un solo producto",
-        })
-        return
-      }
-    }
+    // Selection-shape checks (empty / over-quantity / unknown-item /
+    // moves-everything / too-many-lines) live in the parent via
+    // buildSplitItems; here we only guarantee the dialog has at least
+    // one row selected so the button's disabled state stays honest.
+    if (Object.keys(selectedItems).length === 0) return
+    if (busy) return
 
     // Crear array de items seleccionados con sus cantidades
     const selectedItemsArray = Object.entries(selectedItems).map(([itemId, quantity]) => ({
@@ -135,7 +120,6 @@ export function PartialPaymentDialog({
 
     // Llamar a la función para crear la orden parcial
     onCreatePartialOrder(selectedItemsArray)
-    onOpenChange(false)
   }
 
   // Calcular el total de los items seleccionados
@@ -238,11 +222,14 @@ export function PartialPaymentDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             Cancelar
           </Button>
-          <Button onClick={handleCreatePartialOrder} disabled={Object.keys(selectedItems).length === 0}>
-            Crear Orden Parcial
+          <Button
+            onClick={handleCreatePartialOrder}
+            disabled={busy || Object.keys(selectedItems).length === 0}
+          >
+            {busy ? "Creando..." : "Crear Orden Parcial"}
           </Button>
         </DialogFooter>
       </DialogContent>

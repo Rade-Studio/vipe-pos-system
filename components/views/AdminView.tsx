@@ -40,6 +40,7 @@ import { useToast } from "@/hooks/use-toast"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
 import { tableService } from "@/lib/supabase/service"
+import { PaymentMethodsManager } from "@/components/admin/payment-methods/PaymentMethodsManager"
 
 interface AdminViewProps {
   profile: Profile
@@ -788,6 +789,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
             <TabsList className="mb-4">
               <TabsTrigger value="menu">Menú</TabsTrigger>
               <TabsTrigger value="inventory">Inventario</TabsTrigger>
+              <TabsTrigger value="payment-methods">Métodos de pago</TabsTrigger>
               <TabsTrigger value="waiters">Meseros</TabsTrigger>
               <TabsTrigger value="settings">Ajustes</TabsTrigger>
             </TabsList>
@@ -803,6 +805,12 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
             <TabsContent value="inventory">
               <div className="space-y-6">
                 <IngredientList />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="payment-methods">
+              <div className="space-y-6">
+                <PaymentMethodsManager />
               </div>
             </TabsContent>
 
