@@ -76,6 +76,51 @@ describe('initialPaymentDraft', () => {
     const s = newDraft(1000, 0, 'caller-uuid-abc')
     expect(s.idempotencyKey).toBe('caller-uuid-abc')
   })
+
+  it('adds the delivery fee to amountDue (pay_order charges subtotal + tax + fee)', () => {
+    const s = initialPaymentDraft({
+      amountDue: 11900,
+      suggestedTip: 0,
+      deliveryFee: 5000,
+      idempotencyKey: 'k',
+    })
+    expect(s.amountDue).toBe(16900)
+  })
+
+  it('leaves the tip on the food bill: the fee never changes the suggested tip', () => {
+    const s = initialPaymentDraft({
+      amountDue: 47000,
+      suggestedTip: 4000,
+      deliveryFee: 5000,
+      idempotencyKey: 'k',
+    })
+    expect(s.suggestedTip).toBe(4000)
+    expect(s.tip).toBe(4000)
+    // Exact cover is amountDue (food + fee) + tip.
+    const view = selectView(
+      paymentDraftReducer(
+        paymentDraftReducer(
+          paymentDraftReducer(s, { type: 'selectMethod', methodId: NEQUI.id }),
+          { type: 'setAmountInput', value: '56000' },
+        ),
+        { type: 'addLine' },
+      ),
+      [CASH, NEQUI, TRANSFER],
+    )
+    expect(view.remaining).toBe(0)
+    expect(view.canConfirm).toBe(true)
+  })
+
+  it('keeps amountDue unchanged when the fee is 0 or omitted', () => {
+    expect(newDraft(47000, 4700).amountDue).toBe(47000)
+    const s = initialPaymentDraft({
+      amountDue: 47000,
+      suggestedTip: 4700,
+      deliveryFee: 0,
+      idempotencyKey: 'k',
+    })
+    expect(s.amountDue).toBe(47000)
+  })
 })
 
 // -----------------------------------------------------------

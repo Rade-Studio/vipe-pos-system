@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Tabs,
@@ -20,13 +20,19 @@ import {
 import { useActiveDeliveries, activeDeliveriesQueryKey } from '@/hooks/use-active-deliveries'
 import type { DeliveryStatus, DeliveryAction } from '@/lib/delivery/types'
 import { toast } from '@/hooks/use-toast'
+import { needsPrepaidWarning, rejectionMessage } from '@/lib/delivery/card-actions'
+import { useCashRegisterStore } from '@/store/use-cash-register-store'
+import { PaymentMethodDialog } from '@/components/cashier/PaymentMethodDialog'
 import { DeliveryCard } from './DeliveryCard'
 import { NewDeliveryDialog } from './NewDeliveryDialog'
+import { DispatchDialog } from './DispatchDialog'
+import { FailDialog } from './FailDialog'
+import { CancelDeliveryDialog } from './CancelDeliveryDialog'
 
 const DELIVERY_SERVICE_ERROR_TOAST: Record<DeliveryServiceErrorKind, string> = {
   'not-authorized': 'No tienes permiso para cambiar el estado',
   'not-found': 'El domicilio ya no existe o cambió de restaurante',
-  rejected: '', // server message is shown directly
+  rejected: '', // mapped by rejectionMessage
   'invalid-input': '', // server message is shown directly
   unknown: 'Ocurrió un error al cambiar el estado. Intenta de nuevo.',
 }
@@ -35,6 +41,7 @@ function deliveryErrorMessage(err: unknown): string {
   if (err instanceof DeliveryServiceError) {
     const base = DELIVERY_SERVICE_ERROR_TOAST[err.kind]
     if (base) return base
+    if (err.kind === 'rejected') return rejectionMessage(err.message)
     return err.message || 'La operación fue rechazada por el servidor'
   }
   return 'Ocurrió un error inesperado. Intenta de nuevo.'
@@ -45,32 +52,123 @@ interface DeliveryBoardProps {
   role: 'admin' | 'delivery_operator' | 'kitchen' | 'cashier'
 }
 
+const ACTION_SUCCESS_TOAST: Record<DeliveryAction, string> = {
+  start_preparing: 'Domicilio en preparación',
+  mark_ready: 'Domicilio listo',
+  dispatch: 'Domicilio despachado',
+  deliver: 'Domicilio entregado',
+  fail: 'Domicilio marcado como fallido',
+  cancel: 'Domicilio cancelado',
+}
+
+type CardDialogKind = 'dispatch' | 'fail' | 'cancel' | 'pay'
+
 /**
  * Operator board. Five active tabs (Recibido / En preparación / Listo
  * / En camino / Fallido) plus a sixth "Cerrados hoy" tab that shows
  * delivered/cancelled deliveries that landed today — already filtered
  * client-side by `listActiveDeliveries`.
  *
- * Card actions this task: Marcar listo, start_preparing. Other
- * transitions (dispatch/deliver/fail/cancel) land in task 6 — the
- * card intentionally does not render disabled buttons for those, so
- * a future reader sees no dead affordances.
+ * start_preparing, mark_ready and deliver run directly; dispatch (and
+ * re-dispatch), fail and cancel go through a dialog; "Registrar pago"
+ * opens the cashier payment dialog on the open register. Every
+ * mutation is single-flight per card: a synchronous ref gate plus a
+ * state set that disables the card's buttons.
  */
 export function DeliveryBoard({ role }: DeliveryBoardProps) {
   const queryClient = useQueryClient()
   const { data: deliveries = [], isLoading, error } = useActiveDeliveries()
   const [newOpen, setNewOpen] = useState(false)
+  const [dialog, setDialog] = useState<{ kind: CardDialogKind; orderId: string } | null>(null)
+  const inFlight = useRef(new Set<string>())
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(() => new Set())
+  const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
+
+  // The register may have been opened after the app loaded.
+  useEffect(() => {
+    void loadCurrentRegister()
+  }, [loadCurrentRegister])
 
   const grouped = useMemo(() => groupByStatus(deliveries), [deliveries])
+  // Dialogs read the latest row so realtime updates (e.g. a payment) show up.
+  const dialogRow = dialog
+    ? deliveries.find((r) => r.delivery.orderId === dialog.orderId) ?? null
+    : null
 
-  const onAction = async (orderId: string, action: DeliveryAction) => {
+  const invalidateBoard = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: activeDeliveriesQueryKey }),
+    [queryClient],
+  )
+
+  /** Runs `task` unless another one is in flight for the same card. */
+  const runForCard = async <T,>(orderId: string, task: () => Promise<T>): Promise<T | undefined> => {
+    if (inFlight.current.has(orderId)) return undefined
+    inFlight.current.add(orderId)
+    setPendingIds((prev) => new Set(prev).add(orderId))
     try {
-      await setDeliveryStatus({ orderId, action })
-      queryClient.invalidateQueries({ queryKey: activeDeliveriesQueryKey })
-      toast.success('Estado actualizado')
-    } catch (err) {
-      toast.error(deliveryErrorMessage(err))
+      return await task()
+    } finally {
+      inFlight.current.delete(orderId)
+      setPendingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(orderId)
+        return next
+      })
     }
+  }
+
+  const transition = async (input: {
+    orderId: string
+    action: DeliveryAction
+    courierId?: string
+    reason?: string
+  }): Promise<boolean> => {
+    const ok = await runForCard(input.orderId, async () => {
+      try {
+        await setDeliveryStatus(input)
+        toast.success(ACTION_SUCCESS_TOAST[input.action])
+        return true
+      } catch (err) {
+        toast.error(deliveryErrorMessage(err))
+        return false
+      } finally {
+        // On a rejection the row may have moved under us: refresh either way.
+        invalidateBoard()
+      }
+    })
+    return ok === true
+  }
+
+  const closeDialogOnSuccess = async (run: Promise<boolean>) => {
+    if (await run) setDialog(null)
+  }
+
+  const onAction = (orderId: string, action: DeliveryAction) => {
+    switch (action) {
+      case 'dispatch':
+      case 'fail':
+      case 'cancel':
+        setDialog({ kind: action, orderId })
+        return
+      default:
+        void transition({ orderId, action })
+    }
+  }
+
+  const onRegisterPayment = (orderId: string) => {
+    void runForCard(orderId, async () => {
+      await loadCurrentRegister()
+      if (!isRegisterOpen()) {
+        toast.error('No hay caja abierta. Pide al cajero que abra la caja para registrar el pago.')
+        return
+      }
+      setDialog({ kind: 'pay', orderId })
+    })
+  }
+
+  const dialogPending = dialog !== null && pendingIds.has(dialog.orderId)
+  const closeDialog = (open: boolean) => {
+    if (!open) setDialog(null)
   }
 
   return (
@@ -102,6 +200,8 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
           error={error}
           role={role}
           onAction={onAction}
+          onRegisterPayment={onRegisterPayment}
+          pendingIds={pendingIds}
         />
         <ColumnContent
           value="preparing"
@@ -110,6 +210,8 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
           error={error}
           role={role}
           onAction={onAction}
+          onRegisterPayment={onRegisterPayment}
+          pendingIds={pendingIds}
         />
         <ColumnContent
           value="ready"
@@ -118,6 +220,8 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
           error={error}
           role={role}
           onAction={onAction}
+          onRegisterPayment={onRegisterPayment}
+          pendingIds={pendingIds}
         />
         <ColumnContent
           value="out_for_delivery"
@@ -126,6 +230,8 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
           error={error}
           role={role}
           onAction={onAction}
+          onRegisterPayment={onRegisterPayment}
+          pendingIds={pendingIds}
         />
         <ColumnContent
           value="failed"
@@ -134,6 +240,8 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
           error={error}
           role={role}
           onAction={onAction}
+          onRegisterPayment={onRegisterPayment}
+          pendingIds={pendingIds}
         />
         <ColumnContent
           value="closed"
@@ -142,11 +250,69 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
           error={error}
           role={role}
           onAction={onAction}
+          onRegisterPayment={onRegisterPayment}
+          pendingIds={pendingIds}
           closedMode
         />
       </Tabs>
 
       <NewDeliveryDialog open={newOpen} onOpenChange={setNewOpen} />
+
+      {dialogRow && dialog?.kind === 'dispatch' && (
+        <DispatchDialog
+          open
+          onOpenChange={closeDialog}
+          isRedispatch={dialogRow.delivery.status === 'failed'}
+          showPrepaidWarning={needsPrepaidWarning({
+            paymentMode: dialogRow.delivery.paymentMode,
+            isPaid: dialogRow.isPaid,
+          })}
+          isPending={dialogPending}
+          onConfirm={(courierId) =>
+            void closeDialogOnSuccess(
+              transition({ orderId: dialogRow.delivery.orderId, action: 'dispatch', courierId }),
+            )
+          }
+        />
+      )}
+      {dialogRow && dialog?.kind === 'fail' && (
+        <FailDialog
+          open
+          onOpenChange={closeDialog}
+          isPending={dialogPending}
+          onConfirm={(reason) =>
+            void closeDialogOnSuccess(
+              transition({ orderId: dialogRow.delivery.orderId, action: 'fail', reason }),
+            )
+          }
+        />
+      )}
+      {dialogRow && dialog?.kind === 'cancel' && (
+        <CancelDeliveryDialog
+          open
+          onOpenChange={closeDialog}
+          customerName={dialogRow.delivery.customerName}
+          isPending={dialogPending}
+          onConfirm={() =>
+            void closeDialogOnSuccess(
+              transition({ orderId: dialogRow.delivery.orderId, action: 'cancel' }),
+            )
+          }
+        />
+      )}
+      {dialogRow && dialog?.kind === 'pay' && (
+        <PaymentMethodDialog
+          open
+          onOpenChange={closeDialog}
+          orderId={dialogRow.delivery.orderId}
+          tableId={null}
+          deliveryFee={dialogRow.delivery.deliveryFee}
+          onSuccess={() => {
+            setDialog(null)
+            void invalidateBoard()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -158,6 +324,8 @@ function ColumnContent({
   error,
   role,
   onAction,
+  onRegisterPayment,
+  pendingIds,
   closedMode = false,
 }: {
   value: string
@@ -166,6 +334,8 @@ function ColumnContent({
   error: unknown
   role: DeliveryBoardProps['role']
   onAction: (orderId: string, action: DeliveryAction) => void
+  onRegisterPayment: (orderId: string) => void
+  pendingIds: ReadonlySet<string>
   closedMode?: boolean
 }) {
   if (error !== null && error !== undefined) {
@@ -204,6 +374,8 @@ function ColumnContent({
             row={row}
             role={role}
             onAction={(action) => onAction(row.delivery.orderId, action)}
+            onRegisterPayment={() => onRegisterPayment(row.delivery.orderId)}
+            isPending={pendingIds.has(row.delivery.orderId)}
           />
         ))}
       </div>

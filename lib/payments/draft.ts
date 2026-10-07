@@ -81,8 +81,16 @@ export type PaymentDraftAction =
 // -----------------------------------------------------------
 
 export interface InitialPaymentDraftInput {
+  /** Food bill: subtotal + tax. */
   amountDue: number
   suggestedTip: number
+  /**
+   * Delivery fee (whole pesos), default 0. `pay_order` charges
+   * subtotal + tax + delivery_fee for a delivery order, so the fee is
+   * part of amountDue. It never changes the tip: the suggested tip is
+   * computed by the caller on the food subtotal only.
+   */
+  deliveryFee?: number
   /**
    * Caller-supplied UUID. The view generates one with `crypto.randomUUID`
    * when the dialog opens; the reducer never invents one. The same key
@@ -98,7 +106,7 @@ export interface InitialPaymentDraftInput {
  */
 export function initialPaymentDraft(input: InitialPaymentDraftInput): PaymentDraftState {
   return {
-    amountDue: input.amountDue,
+    amountDue: input.amountDue + (input.deliveryFee ?? 0),
     suggestedTip: input.suggestedTip,
     tip: input.suggestedTip,
     tenders: [],

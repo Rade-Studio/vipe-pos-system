@@ -3,11 +3,12 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Phone, MapPin, AlertTriangle } from 'lucide-react'
+import { Phone, MapPin, AlertTriangle, Wallet } from 'lucide-react'
 import type { DeliveryOrderWithBill } from '@/lib/supabase/delivery-service'
 import { statusLabel, allowedActions, type DeliveryAction } from '@/lib/delivery/state-machine'
 import type { DeliveryRole } from '@/lib/delivery/types'
 import { formatAddress } from '@/lib/delivery/address'
+import { canRegisterPayment } from '@/lib/delivery/card-actions'
 import { formatPhone } from '@/lib/delivery/phone'
 import { formatElapsedMinutes } from './elapsed'
 
@@ -16,31 +17,51 @@ interface DeliveryCardProps {
   /** Auth role driving which action buttons render. */
   role: DeliveryRole
   /**
-   * Wired for task 6 too: this task only renders `mark_ready` and
-   * `start_preparing` (other actions stay hidden to keep the button
-   * set aligned with what the server accepts). Task 6 fills in the rest.
+   * The board decides how each action runs: direct (start_preparing,
+   * mark_ready, deliver) or through a dialog (dispatch, fail, cancel).
    */
   onAction: (action: DeliveryAction) => void
-  /** While a state transition is in flight (post-task-6 wiring). */
+  /** Opens the payment dialog (the board checks for an open register). */
+  onRegisterPayment: () => void
+  /** While a mutation for this card is in flight: every button is disabled. */
   isPending?: boolean
+}
+
+const ACTION_LABELS: Record<DeliveryAction, string> = {
+  start_preparing: 'En preparación',
+  mark_ready: 'Marcar listo',
+  dispatch: 'Despachar',
+  deliver: 'Entregado',
+  fail: 'Fallido',
+  cancel: 'Cancelar',
+}
+
+const ACTION_VARIANTS: Record<DeliveryAction, 'default' | 'outline' | 'destructive' | 'ghost'> = {
+  start_preparing: 'outline',
+  mark_ready: 'default',
+  dispatch: 'default',
+  deliver: 'default',
+  fail: 'outline',
+  cancel: 'ghost',
 }
 
 /**
  * One delivery on the operator board. Renders the customer, phone,
- * one-line address (server-side a house draft), the items/total
- * preview from the join with `orders`, and a payment-mode badge.
- *
- * Status transitions this task supports: `start_preparing` and
- * `mark_ready` only (the operator pulls the order into the kitchen
- * queue from the board). Other transitions land in task 6 — the
- * component intentionally does NOT show a "disabled" dispatch/deliver/
- * fail/cancel button so a future reader sees no dead affordances.
+ * one-line address (server-side a house draft), the bill preview from
+ * the join with `orders` plus the delivery fee, payment mode and
+ * payment state badges, and the actions `allowedActions` permits for
+ * the role (a failed delivery shows dispatch as "Reenviar").
  */
-export function DeliveryCard({ row, role, onAction, isPending = false }: DeliveryCardProps) {
-  const { delivery, amountDue, subtotal, tax } = row
+export function DeliveryCard({
+  row,
+  role,
+  onAction,
+  onRegisterPayment,
+  isPending = false,
+}: DeliveryCardProps) {
+  const { delivery, amountDue, subtotal, tax, isPaid } = row
   const actions = allowedActions(delivery.status, role)
-  const canPrepare = actions.includes('start_preparing')
-  const canReady = actions.includes('mark_ready')
+  const showPayment = canRegisterPayment({ status: delivery.status, isPaid, role })
 
   const paymentBadge =
     delivery.paymentMode === 'prepaid' ? (
@@ -65,7 +86,17 @@ export function DeliveryCard({ row, role, onAction, isPending = false }: Deliver
               {formatPhone(delivery.customerPhone, { withCountryCode: true })}
             </p>
           </div>
-          {paymentBadge}
+          <div className="flex flex-col items-end gap-1">
+            {paymentBadge}
+            {delivery.status !== 'cancelled' &&
+              (isPaid ? (
+                <Badge className="bg-green-600 text-[10px] hover:bg-green-600">Pagado</Badge>
+              ) : (
+                <Badge variant="outline" className="border-amber-400 text-[10px] text-amber-700">
+                  Pendiente de pago
+                </Badge>
+              ))}
+          </div>
         </div>
 
         <p className="flex items-start gap-1 text-xs text-muted-foreground">
@@ -77,9 +108,11 @@ export function DeliveryCard({ row, role, onAction, isPending = false }: Deliver
 
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">
-            Subtotal {formatMoney(subtotal)} · Impuestos {formatMoney(tax)}
+            Subtotal {formatMoney(subtotal)} · Impuestos {formatMoney(tax)} · Domicilio{' '}
+            {formatMoney(delivery.deliveryFee)}
           </span>
-          <span className="font-semibold">{formatMoney(amountDue)}</span>
+          {/* pay_order charges subtotal + tax + delivery fee. */}
+          <span className="font-semibold">{formatMoney(amountDue + delivery.deliveryFee)}</span>
         </div>
 
         {delivery.failureReason && (
@@ -99,27 +132,32 @@ export function DeliveryCard({ row, role, onAction, isPending = false }: Deliver
           {statusLabel(delivery.status)} · {formatElapsedMinutes(delivery.updatedAt)}
         </p>
 
-        {(canPrepare || canReady) && (
-          <div className="flex gap-2">
-            {canPrepare && (
+        {(actions.length > 0 || showPayment) && (
+          <div className="flex flex-wrap gap-2">
+            {actions.map((action) => (
               <Button
+                key={action}
                 size="sm"
-                variant="outline"
+                variant={ACTION_VARIANTS[action]}
                 className="flex-1"
-                onClick={() => onAction('start_preparing')}
+                onClick={() => onAction(action)}
                 disabled={isPending}
               >
-                En preparación
+                {action === 'dispatch' && delivery.status === 'failed'
+                  ? 'Reenviar'
+                  : ACTION_LABELS[action]}
               </Button>
-            )}
-            {canReady && (
+            ))}
+            {showPayment && (
               <Button
                 size="sm"
+                variant="secondary"
                 className="flex-1"
-                onClick={() => onAction('mark_ready')}
+                onClick={onRegisterPayment}
                 disabled={isPending}
               >
-                Marcar listo
+                <Wallet className="mr-1 h-3 w-3" />
+                Registrar pago
               </Button>
             )}
           </div>

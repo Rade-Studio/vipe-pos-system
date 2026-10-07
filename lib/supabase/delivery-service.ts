@@ -80,6 +80,8 @@ export interface DeliveryOrderWithBill {
   amountDue: number
   subtotal: number
   tax: number
+  /** orders.status = 'paid': pay_order already settled the order. */
+  isPaid: boolean
 }
 
 // -----------------------------------------------------------
@@ -469,7 +471,7 @@ export async function listActiveDeliveries(): Promise<DeliveryOrderWithBill[]> {
   const { data, error } = await (supabase as any)
     .from('order_deliveries')
     .select(
-      'order_id, restaurant_id, customer_id, customer_name, customer_phone, address_line, neighborhood, address_reference, delivery_fee, payment_mode, cash_change_for, courier_id, delivery_status, failure_reason, notes, dispatched_at, delivered_at, failed_at, cancelled_at, created_at, updated_at, orders!inner(id, subtotal, tax, tip, total)',
+      'order_id, restaurant_id, customer_id, customer_name, customer_phone, address_line, neighborhood, address_reference, delivery_fee, payment_mode, cash_change_for, courier_id, delivery_status, failure_reason, notes, dispatched_at, delivered_at, failed_at, cancelled_at, created_at, updated_at, orders!inner(id, subtotal, tax, tip, total, status)',
     )
     .or(
       // Half-open filter: terminal states whose updated_at >= today OR
@@ -526,7 +528,11 @@ function parseActiveDeliveryRow(raw: unknown): DeliveryOrderWithBill {
   // added to amount_due inside pay_order; this read is the bill
   // preview, not the checkout total.
   const amountDue = subtotal + tax
-  return { delivery, amountDue, subtotal, tax }
+  if (typeof orders.status !== 'string') {
+    throw new Error(`listActiveDeliveries: orders.status must be a string; got ${JSON.stringify(orders.status)}`)
+  }
+  const isPaid = orders.status === 'paid'
+  return { delivery, amountDue, subtotal, tax, isPaid }
 }
 
 // -----------------------------------------------------------

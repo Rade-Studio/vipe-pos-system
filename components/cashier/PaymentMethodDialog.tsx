@@ -58,10 +58,17 @@ interface PaymentMethodDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   orderId: string
-  tableId: string
+  /** Null / omitted for delivery orders (no table). Unused by the dialog. */
+  tableId?: string | null
   /** Bill total (subtotal + tax + tip) from the caller's cache. Kept for API compat. */
-  amount: number
-  tableTotal: number
+  amount?: number
+  tableTotal?: number
+  /**
+   * Delivery fee (whole pesos) of a delivery order, default 0. pay_order
+   * charges subtotal + tax + delivery_fee, so the dialog adds it to the
+   * amount due; the tip stays on the food subtotal.
+   */
+  deliveryFee?: number
   onSuccess: () => void
   isPartialPayment?: boolean
   selectedItems?: string[]
@@ -110,6 +117,7 @@ export function PaymentMethodDialog({
   tableId: _tableId,
   amount: _amount,
   tableTotal: _tableTotal,
+  deliveryFee = 0,
   onSuccess,
   isPartialPayment: _isPartialPayment = false,
   selectedItems: _selectedItems = [],
@@ -194,13 +202,14 @@ export function PaymentMethodDialog({
       initialPaymentDraft({
         amountDue: bill.amountDue,
         suggestedTip: bill.suggestedTip,
+        deliveryFee,
         idempotencyKey: uuid(),
       }),
     )
     setShowInvoice(false)
     setInvoiceData(null)
     setSubmitError(null)
-  }, [open, orderData, orderId])
+  }, [open, orderData, orderId, deliveryFee])
 
   // dispatch wrapper. `useReducer` would be more conventional here but
   // the draft is reset wholesale on each open, so `useState` + a
@@ -324,7 +333,8 @@ const drawerWarning =
           taxPercentage: orderData.tax_percentage,
           tip: draft.tip,
           tipPercentage: orderData.tip_percentage,
-          total: bill.amountDue + draft.tip,
+          // draft.amountDue already includes the delivery fee (0 for table orders).
+          total: draft.amountDue + draft.tip,
           totalDiscounts: 0,
         },
         waiter: orderData.waiter_id ?? "—",
@@ -396,6 +406,12 @@ const drawerWarning =
             <span>Impuestos</span>
             <span>{formatCurrency(bill.tax)}</span>
           </div>
+          {deliveryFee > 0 && (
+            <div className="flex justify-between">
+              <span>Domicilio</span>
+              <span>{formatCurrency(deliveryFee)}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span>Propina</span>
             <span>{formatCurrency(draft.tip)}</span>

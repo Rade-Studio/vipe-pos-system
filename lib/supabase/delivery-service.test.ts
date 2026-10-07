@@ -857,6 +857,7 @@ describe('listActiveDeliveries', () => {
               tax: 1900,
               tip: 0,
               total: 11900,
+              status: 'kitchen',
             },
           },
         ],
@@ -885,6 +886,45 @@ describe('listActiveDeliveries', () => {
     expect(out[0].amountDue).toBe(11900)
     expect(out[0].subtotal).toBe(10000)
     expect(out[0].tax).toBe(1900)
+    expect(out[0].isPaid).toBe(false)
+    // The join must read orders.status so the board can tell paid orders apart.
+    expect(seen.select?.[0]).toMatch(/orders!inner\([^)]*\bstatus\b/)
+  })
+
+  it('flags isPaid only when orders.status is paid', async () => {
+    const rows = [
+      { ...makeWireDelivery('received'), order_id: 'o-paid', orders: { id: 'o-paid', subtotal: 1000, tax: 0, tip: 0, total: 1000, status: 'paid' } },
+      { ...makeWireDelivery('received'), order_id: 'o-kitchen', orders: { id: 'o-kitchen', subtotal: 1000, tax: 0, tip: 0, total: 1000, status: 'kitchen' } },
+    ]
+    state.fromImpl = () => {
+      const promise: any = Promise.resolve({ data: rows, error: null })
+      const chain: any = {}
+      chain.select = () => chain
+      chain.or = () => chain
+      chain.order = () => chain
+      chain.then = promise.then.bind(promise)
+      return chain
+    }
+    const out = await listActiveDeliveries()
+    expect(out.map((r) => r.isPaid)).toEqual([true, false])
+  })
+
+  it('rejects a row whose orders.status is not a string', async () => {
+    state.fromImpl = () => {
+      const promise: any = Promise.resolve({
+        data: [{ ...makeWireDelivery('received'), orders: { id: 'o', subtotal: 1000, tax: 0, tip: 0, total: 1000, status: null } }],
+        error: null,
+      })
+      const chain: any = {}
+      chain.select = () => chain
+      chain.or = () => chain
+      chain.order = () => chain
+      chain.then = promise.then.bind(promise)
+      return chain
+    }
+    const err = await listActiveDeliveries().catch((e) => e)
+    expect(err).toBeInstanceOf(DeliveryServiceError)
+    expect((err as DeliveryServiceError).kind).toBe('unknown')
   })
 
   it('maps 42501 -> not-authorized', async () => {

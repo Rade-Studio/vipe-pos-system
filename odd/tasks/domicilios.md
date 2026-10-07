@@ -43,7 +43,7 @@ through the existing `pay_order` ledger.
       address formatting) + typed service.
 - [x] 5. Operator view: delivery board by state + new order flow (phone lookup, customer
       and address create/pick, items, fee, payment mode, cash change).
-- [ ] 6. Operator dispatch and close: courier assignment, out for delivery, delivered,
+- [x] 6. Operator dispatch and close: courier assignment, out for delivery, delivered,
       failed with reason, re-dispatch, cancel; prepaid and cash-on-delivery payments.
 - [ ] 7. Admin: couriers screen, default delivery fee, role assignable to staff.
 - [ ] 8. Kitchen, cashier and admin views stop assuming a table; DOMICILIO label; kitchen
@@ -53,6 +53,9 @@ through the existing `pay_order` ledger.
 - [ ] 10. Docs and full verification.
 
 ## Known follow-ups (out of scope)
+
+- Delivery board: "Entregado" has no confirmation and cannot be undone; two server refusals (already paid, not payable) are shown untranslated.
+- The register store keeps a register closed after login; pay_order then refuses with its own message.
 
 - create_delivery_order prices items from the menu without promotions (promotions live at order level today).
 
@@ -78,3 +81,4 @@ through the existing `pay_order` ledger.
 | 4 RDD | review-f0a003ad61a7726b | Medium tier, reliability admitted -> APPROVED; acknowledgement burned authority. Advisory only: same-state replays intentionally unmapped (server raises P0001). |
 | 5 | `c4e66b7` | Operator board (columns by status, realtime via a per-hook channel on order_deliveries and orders, cards with customer/address/payment mode/notes/elapsed; start_preparing and mark_ready only) and Nuevo domicilio dialog (phone lookup with saved addresses, new customer/address with save flag, menu picker, cart, suggested fee from business_config.delivery_default_fee, payment mode, cash change for, notes, totals estimate) on a pure lib/delivery/order-draft.ts reducer (37 tests). Worker crashed before reporting: RED for order-draft was NOT observed. Parent fixes: per-form single-flight gate instead of a module-level one, submit state drives the button (isRunning() never re-rendered), rejected submits no longer leave an unhandled promise, the form mounts only after the suggested fee loads (it seeded the draft with 0), config read failure falls back to 0, unused import removed. Vitest 22 files / 399; typecheck 0; build OK. |
 | 5 RDD | review-d6de6e3575ebf9cf + `43574ec` | First capture failed with 429 (Token Plan limit); after the reset the reliability lens was admitted -> correction_required on 2 real defects: a phone edit after a lookup kept the previous customer/address (plus stale responses and submit during lookup), and an existing customer with no saved address could not place an order. Fixed in 43574ec within the 170-line plan (119 lines): reducer drops the lookup when the number changes, clears saved-address choices on a new lookup, validates the typed phone and address ownership (RED 4/6 new tests failed; GREEN Vitest 22 files / 405); form ignores stale lookups, clears on error, disables submit during lookup, offers Otra direccion. Targeted validator: invalid JSON, then relay timeout (898 s) -> retry spent, lineage left in correction_required. |
+| 6 | (this commit) | Board actions from allowedActions: Despachar/Reenviar (active courier picker, warn-only for unpaid prepaid), Entregado, Fallido (reason 1..200), Cancelar (server refusal shown); per-card gate; Pagado/Pendiente badges from orders.status; Registrar pago opens PaymentMethodDialog with the delivery fee in the amount due (pay_order charges it) on the open register, or explains there is none. lib/delivery/card-actions.ts (9 tests), draft amount due + fee (3 tests), isPaid parsing. RED: expected 11900 to be 16900, missing module, isPaid undefined; GREEN Vitest 23 files / 419; typecheck 0; build OK. |
