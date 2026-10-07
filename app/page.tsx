@@ -18,6 +18,7 @@ import { tableService, orderService } from "@/lib/supabase/service"
 import { supabase } from "@/lib/supabase/client"
 import { viewForRole } from "@/lib/auth/roles"
 import type { Profile, ProfileRole } from "@/types"
+import { orderTypeFromRow } from "@/lib/delivery/kitchen"
 
 export default function Home() {
   const selectedProfile = useProfileStore((s) => s.selectedProfile)
@@ -165,6 +166,7 @@ export default function Home() {
           return {
             id: dbOrder.id,
             tableId: dbOrder.table_id ?? "",
+            orderType: orderTypeFromRow(dbOrder),
             items,
             status: dbOrder.status as "active" | "kitchen" | "delivered" | "paid" | "cancelled",
             bill: {

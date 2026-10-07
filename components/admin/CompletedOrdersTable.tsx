@@ -18,6 +18,7 @@ import {
   invoiceTendersFromPayment,
   legacyInvoiceFields,
 } from "@/lib/payments/invoice-tenders"
+import { invoicePlaceLabel, isDeliveryOrder } from "@/lib/delivery/kitchen"
 import { log } from "@/lib/log"
 import { useToast } from "@/components/ui/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -138,8 +139,11 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     const table = tables.find((t) => t.id === order.tableId)
     // Encontrar el mesero correspondiente
     const waiter = profiles.find((p) => p.id === order.waiter)
+    // Un domicilio no tiene mesa: se factura como DOMICILIO y no avisa
+    // que falte la mesa. El mesero faltante sigue avisando como siempre.
+    const missingTable = !table && !isDeliveryOrder(order)
 
-    if (!table || !waiter) {
+    if (missingTable || !waiter) {
       log.error("Mesa o mesero no encontrado para la orden:", { orderId: order.id })
       toast({
         title: "Advertencia",
@@ -220,7 +224,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
         totalDiscounts: order.bill?.totalDiscounts || 0,
       },
       waiter: waiter?.name || "Desconocido",
-      table: table?.number.toString() || "N/A",
+      table: invoicePlaceLabel(order, table ?? null),
       paymentMethod: legacyPaymentMethod ?? (order.paymentMethod || "cash"),
       cashReceived: legacyCashReceived,
       cashChange: legacyCashChange,
