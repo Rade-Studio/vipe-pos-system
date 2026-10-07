@@ -24,15 +24,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { roleLabel } from "@/lib/auth/roles"
 
-// Roles managed from this screen. Admin, cashier and kitchen accounts are
-// provisioned outside of it.
-const STAFF_ROLES = ["waiter", "delivery_operator"] as const
+// Roles managed from this screen. Admin accounts are provisioned outside of it.
+const STAFF_ROLES = ["waiter", "kitchen", "cashier", "delivery_operator"] as const
 
 interface Waiter {
   id: string
   full_name: string
   username: string
   email: string | null
+  auth_user_id: string | null
   active: boolean
   role: (typeof STAFF_ROLES)[number]
 }
@@ -204,6 +204,11 @@ export function WaiterList() {
                 <TableCell>{waiter.email || "-"}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{roleLabel(waiter.role) ?? waiter.role}</Badge>
+                  {waiter.auth_user_id === null && (
+                    <Badge variant="secondary" className="ml-2">
+                      Sin acceso
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Badge variant={waiter.active ? "default" : "secondary"}>

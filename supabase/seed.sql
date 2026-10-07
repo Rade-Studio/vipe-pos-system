@@ -96,6 +96,20 @@ VALUES
     '{"full_name":"Test User","role":"waiter"}'::jsonb,
     now(),
     now()
+  ),
+  (
+    'a0eebc99-0000-0000-0000-000000000006',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'domicilios@restaurant.com',
+    crypt('domicilios123', gen_salt('bf')),
+    now(),
+    '', '', '', '', '', '', '', '',
+    '{"provider":"email","providers":["email"],"role":"delivery_operator","restaurant_id":"a0eebc99-0000-0000-0000-000000000000"}'::jsonb,
+    '{"full_name":"Operador Domicilios","role":"delivery_operator"}'::jsonb,
+    now(),
+    now()
   )
 ON CONFLICT (id) DO NOTHING;
 
@@ -125,6 +139,9 @@ VALUES
    'email', now(), now(), now()),
   ('a0eebc99-0000-0000-0000-000000000005', 'a0eebc99-0000-0000-0000-000000000005',
    '{"email":"tester@restaurant.com","email_verified":true,"phone_verified":false,"sub":"a0eebc99-0000-0000-0000-000000000005"}'::jsonb,
+   'email', now(), now(), now()),
+  ('a0eebc99-0000-0000-0000-000000000006', 'a0eebc99-0000-0000-0000-000000000006',
+   '{"email":"domicilios@restaurant.com","email_verified":true,"phone_verified":false,"sub":"a0eebc99-0000-0000-0000-000000000006"}'::jsonb,
    'email', now(), now(), now())
 ON CONFLICT (provider_id, provider) DO NOTHING;
 
@@ -142,7 +159,8 @@ VALUES
   ('a0eebc99-0000-0000-0000-000000000002', 'a0eebc99-0000-0000-0000-000000000000', 'María', 'none', 'maria@restaurant.com', 'waiter', 'true', '2025-04-13 02:25:16.815455+00', '2025-05-09 13:55:15.842+00'),
   ('a0eebc99-0000-0000-0000-000000000003', 'a0eebc99-0000-0000-0000-000000000000', 'Admin Principal', 'admin', 'admin@restaurant.com', 'admin', 'true', '2025-04-13 02:25:16.815455+00', '2025-04-13 02:25:16.815455+00'),
   ('a0eebc99-0000-0000-0000-000000000004', 'a0eebc99-0000-0000-0000-000000000000', 'Deiby', 'picon', 'deiby@restaurant.com', 'waiter', 'true', '2025-04-13 02:25:16.815455+00', '2025-05-03 23:27:29.838+00'),
-  ('a0eebc99-0000-0000-0000-000000000005', 'a0eebc99-0000-0000-0000-000000000000', 'Test User', 'tester', 'tester@restaurant.com', 'waiter', 'true', '2025-09-18 00:00:00.000000+00', '2025-09-18 00:00:00.000000+00')
+  ('a0eebc99-0000-0000-0000-000000000005', 'a0eebc99-0000-0000-0000-000000000000', 'Test User', 'tester', 'tester@restaurant.com', 'waiter', 'true', '2025-09-18 00:00:00.000000+00', '2025-09-18 00:00:00.000000+00'),
+  ('a0eebc99-0000-0000-0000-000000000006', 'a0eebc99-0000-0000-0000-000000000000', 'Operador Domicilios', 'domicilios', 'domicilios@restaurant.com', 'delivery_operator', 'true', '2026-10-06 00:00:00.000000+00', '2026-10-06 00:00:00.000000+00')
 ON CONFLICT (auth_user_id) DO UPDATE
   SET full_name  = EXCLUDED.full_name,
       username   = EXCLUDED.username,
