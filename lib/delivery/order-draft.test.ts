@@ -628,3 +628,55 @@ describe('toCreateInput', () => {
     expect(Object.prototype.hasOwnProperty.call(input.items[0], 'comments')).toBe(false)
   })
 })
+describe('lookup replacement', () => {
+  const anaLookup = {
+    kind: 'existing' as const,
+    customer: makeCustomer({ id: 'cust-A', phone: '3101234567' }),
+    addresses: [makeAddress({ id: 'addr-A' })],
+    defaultAddressId: 'addr-A',
+  }
+  function withAna() {
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, { type: 'setPhoneInput', value: '3101234567' })
+    d = orderDraftReducer(d, { type: 'setLookup', lookup: anaLookup })
+    return orderDraftReducer(d, { type: 'setAddressExisting', addressId: 'addr-A' })
+  }
+
+  it('editing the phone to another number drops the found customer and address', () => {
+    const d = orderDraftReducer(withAna(), { type: 'setPhoneInput', value: '3209998877' })
+    expect(d.lookup.kind).toBe('none')
+    expect(d.addressChoice).toEqual({ kind: 'none' })
+  })
+
+  it('reformatting the same number keeps the found customer', () => {
+    const d = orderDraftReducer(withAna(), { type: 'setPhoneInput', value: '+57 310 123 4567' })
+    expect(d.lookup.kind).toBe('existing')
+    expect(d.addressChoice).toEqual({ kind: 'existing', addressId: 'addr-A' })
+  })
+
+  it('a "new" lookup clears a saved address picked for the previous customer', () => {
+    const d = orderDraftReducer(withAna(), { type: 'setLookup', lookup: { kind: 'new', phone: '3101234567' } })
+    expect(d.addressChoice).toEqual({ kind: 'none' })
+  })
+
+  it('validates the typed phone, not the found customer phone', () => {
+    const d = { ...withAna(), phoneInput: '12' }
+    expect(validateDraft(d).some((e) => e.field === 'phone')).toBe(true)
+  })
+
+  it('rejects a saved address that does not belong to the found customer', () => {
+    const d = orderDraftReducer(withAna(), { type: 'setAddressExisting', addressId: 'addr-other' })
+    expect(validateDraft(d).some((e) => e.field === 'address')).toBe(true)
+  })
+
+  it('an existing customer can use a new address', () => {
+    let d = orderDraftReducer(withAna(), {
+      type: 'setAddressNew', addressLine: 'Carrera 9 # 1-2', neighborhood: null, reference: null, label: null,
+    })
+    d = orderDraftReducer(d, { type: 'addItem', line: { dishId: 'd1', name: 'X', unitPrice: 1000, quantity: 1, comments: null } })
+    expect(validateDraft(d)).toEqual([])
+    const input = toCreateInput(d)
+    expect(input.customer).toEqual({ id: 'cust-A' })
+    expect(input.address).toMatchObject({ addressLine: 'Carrera 9 # 1-2' })
+  })
+})

@@ -21,6 +21,7 @@
  * with the rest of `lib/delivery`.
  */
 
+import { normalizePhone } from './phone'
 import type {
   CreateDeliveryAddressInput,
   CreateDeliveryCustomerInput,
@@ -200,11 +201,21 @@ function wholeNonNegativeOrZero(value: number | undefined | null): number {
 
 export function orderDraftReducer(state: OrderDraft, action: OrderDraftAction): OrderDraft {
   switch (action.type) {
-    case 'setPhoneInput':
-      return { ...state, phoneInput: action.value }
+    case 'setPhoneInput': {
+      // A lookup only describes the number it was made for: typing another
+      // number drops the found customer and any address picked for them.
+      const found = state.lookup.kind === 'existing' ? state.lookup.customer.phone : state.lookup.phone
+      if (state.lookup.kind === 'none' || normalizePhone(action.value) === normalizePhone(found)) {
+        return { ...state, phoneInput: action.value }
+      }
+      return { ...state, phoneInput: action.value, lookup: { kind: 'none', phone: '' }, addressChoice: { kind: 'none' } }
+    }
 
-    case 'setLookup':
-      return { ...state, lookup: action.lookup }
+    case 'setLookup': {
+      // A saved address belongs to the previous lookup; only a new one survives.
+      const keepAddress = state.addressChoice.kind === 'new'
+      return { ...state, lookup: action.lookup, addressChoice: keepAddress ? state.addressChoice : { kind: 'none' } }
+    }
 
     case 'setCustomerName':
       return { ...state, customerName: action.value }
@@ -352,6 +363,10 @@ export function validateDraft(draft: OrderDraft, taxPct = 8): DraftValidationIss
     draft.addressChoice.addressLine.trim().length === 0
   ) {
     issues.push({ field: 'address', message: 'La dirección es obligatoria' })
+  } else if (draft.addressChoice.kind === 'existing') {
+    const { addressId } = draft.addressChoice
+    const owned = draft.lookup.kind === 'existing' && draft.lookup.addresses.some((a) => a.id === addressId)
+    if (!owned) issues.push({ field: 'address', message: 'Selecciona una dirección del cliente' })
   }
 
   // >=1 line
@@ -385,10 +400,7 @@ export function validateDraft(draft: OrderDraft, taxPct = 8): DraftValidationIss
  */
 function normalizeDraftPhone(draft: OrderDraft): string | null {
   // If the registry has an existing phone, validate it directly.
-  const source =
-    draft.lookup.kind === 'existing'
-      ? draft.lookup.customer.phone
-      : draft.phoneInput
+  const source = draft.phoneInput
   const trimmed = (source ?? '').trim()
   if (trimmed.length === 0) return null
   const digits = trimmed.replace(/\D/g, '')

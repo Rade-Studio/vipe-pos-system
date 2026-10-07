@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useReducer, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -84,6 +84,9 @@ export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: Deliver
   // One gate per form instance; the state flag only drives the button.
   const [submitGate] = useState(createSingleFlight)
   const [submitting, setSubmitting] = useState(false)
+  // Only the latest lookup may write its result, and submit waits for it.
+  const lookupSeq = useRef(0)
+  const [lookupPending, setLookupPending] = useState(false)
   const [search, setSearch] = useState('')
 
   const issues = useMemo(() => validateDraft(draft, taxPct), [draft, taxPct])
@@ -152,8 +155,11 @@ export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: Deliver
       setPhoneLookupError('Ingresa un teléfono válido (7 a 15 dígitos)')
       return
     }
+    const seq = ++lookupSeq.current
+    setLookupPending(true)
     try {
       const result = await findCustomerByPhone(phone)
+      if (seq !== lookupSeq.current) return
       if (result === null) {
         dispatch({ type: 'setLookup', lookup: { kind: 'new', phone: normalized } })
         return
@@ -178,7 +184,11 @@ export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: Deliver
       // Network / RLS errors keep the form usable (operator can still
       // type a name and a new address). We surface the message in the
       // phone field rather than as a blocking dialog.
+      if (seq !== lookupSeq.current) return
+      dispatch({ type: 'setLookup', lookup: { kind: 'none', phone: '' } })
       setPhoneLookupError((err as Error).message ?? 'No se pudo consultar el cliente')
+    } finally {
+      if (seq === lookupSeq.current) setLookupPending(false)
     }
   }
 
@@ -259,16 +269,33 @@ export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: Deliver
           </div>
         )}
 
-        {draft.lookup.kind === 'existing' ? (
+        {draft.lookup.kind === 'existing' && draft.lookup.addresses.length > 0 && (
           <AddressPicker
             addresses={draft.lookup.addresses}
             selectedId={
               draft.addressChoice.kind === 'existing' ? draft.addressChoice.addressId : null
             }
             onSelect={(id) => dispatch({ type: 'setAddressExisting', addressId: id })}
-            error={issuesByField.get('address')}
+            error={draft.addressChoice.kind === 'new' ? undefined : issuesByField.get('address')}
           />
-        ) : (
+        )}
+        {draft.lookup.kind === 'existing' &&
+          draft.lookup.addresses.length > 0 &&
+          draft.addressChoice.kind !== 'new' && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                dispatch({ type: 'setAddressNew', addressLine: '', neighborhood: null, reference: null, label: null })
+              }
+            >
+              Otra dirección
+            </Button>
+          )}
+        {(draft.lookup.kind !== 'existing' ||
+          draft.lookup.addresses.length === 0 ||
+          draft.addressChoice.kind === 'new') && (
           <NewAddressFields
             choice={draft.addressChoice}
             onChange={(next) => dispatch({ type: 'setAddressNew', ...next })}
@@ -426,7 +453,7 @@ export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: Deliver
           type="button"
           className="w-full"
           onClick={() => void onSubmit()}
-          disabled={issues.length > 0 || submitting}
+          disabled={issues.length > 0 || submitting || lookupPending}
         >
           {submitting ? (
             <>
