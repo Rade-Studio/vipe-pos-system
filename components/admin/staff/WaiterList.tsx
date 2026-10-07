@@ -22,6 +22,11 @@ import {
 } from "@/components/ui/alert-dialog"
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
+import { roleLabel } from "@/lib/auth/roles"
+
+// Roles managed from this screen. Admin, cashier and kitchen accounts are
+// provisioned outside of it.
+const STAFF_ROLES = ["waiter", "delivery_operator"] as const
 
 interface Waiter {
   id: string
@@ -29,6 +34,7 @@ interface Waiter {
   username: string
   email: string | null
   active: boolean
+  role: (typeof STAFF_ROLES)[number]
 }
 
 export function WaiterList() {
@@ -43,16 +49,16 @@ export function WaiterList() {
   const fetchWaiters = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase.from("profiles").select("*").eq("role", "waiter").order("full_name")
+      const { data, error } = await supabase.from("profiles").select("*").in("role", STAFF_ROLES).order("full_name")
 
       if (error) throw error
 
       setWaiters((data || []) as unknown as Waiter[])
     } catch (error: any) {
-      log.error("Error fetching waiters:", { error: String(error) })
+      log.error("Error fetching staff:", { error: String(error) })
       toast({
         title: "Error",
-        description: "No se pudieron cargar los meseros",
+        description: "No se pudo cargar el personal",
         variant: "destructive",
       })
     } finally {
@@ -89,14 +95,14 @@ export function WaiterList() {
 
       setWaiters(waiters.filter((w) => w.id !== waiterToDelete.id))
       toast({
-        title: "Mesero eliminado",
-        description: "El mesero ha sido eliminado correctamente",
+        title: "Integrante eliminado",
+        description: "El integrante del personal ha sido eliminado correctamente",
       })
     } catch (error: any) {
-      log.error("Error deleting waiter:", { error: String(error) })
+      log.error("Error deleting staff member:", { error: String(error) })
       toast({
         title: "Error",
-        description: "No se pudo eliminar el mesero",
+        description: "No se pudo eliminar el integrante del personal",
         variant: "destructive",
       })
     } finally {
@@ -113,10 +119,10 @@ export function WaiterList() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Meseros</h2>
+        <h2 className="text-2xl font-bold">Personal</h2>
         <Button onClick={handleAddWaiter} size="sm">
           <Plus className="h-4 w-4 mr-2" />
-          Agregar Mesero
+          Agregar personal
         </Button>
       </div>
 
@@ -134,6 +140,9 @@ export function WaiterList() {
                   </th>
                   <th className="h-12 px-4 text-left align-middle font-medium">
                     <Skeleton className="h-4 w-20" />
+                  </th>
+                  <th className="h-12 px-4 text-left align-middle font-medium">
+                    <Skeleton className="h-4 w-16" />
                   </th>
                   <th className="h-12 px-4 text-left align-middle font-medium">
                     <Skeleton className="h-4 w-16" />
@@ -158,6 +167,9 @@ export function WaiterList() {
                     <td className="p-4 align-middle">
                       <Skeleton className="h-6 w-16 rounded-full" />
                     </td>
+                    <td className="p-4 align-middle">
+                      <Skeleton className="h-6 w-16 rounded-full" />
+                    </td>
                     <td className="p-4 align-middle text-right">
                       <div className="flex justify-end gap-2">
                         <Skeleton className="h-8 w-8 rounded-full" />
@@ -171,7 +183,7 @@ export function WaiterList() {
           </div>
         </div>
       ) : waiters.length === 0 ? (
-        <div className="text-center py-4">No hay meseros registrados</div>
+        <div className="text-center py-4">No hay personal registrado</div>
       ) : (
         <Table>
           <TableHeader>
@@ -179,6 +191,7 @@ export function WaiterList() {
               <TableHead>Nombre</TableHead>
               <TableHead>Usuario</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead>Rol</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -189,6 +202,9 @@ export function WaiterList() {
                 <TableCell className="font-medium">{waiter.full_name}</TableCell>
                 <TableCell>{waiter.username}</TableCell>
                 <TableCell>{waiter.email || "-"}</TableCell>
+                <TableCell>
+                  <Badge variant="outline">{roleLabel(waiter.role) ?? waiter.role}</Badge>
+                </TableCell>
                 <TableCell>
                   <Badge variant={waiter.active ? "default" : "secondary"}>
                     {waiter.active ? "Activo" : "Inactivo"}
@@ -213,7 +229,7 @@ export function WaiterList() {
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>{selectedWaiter ? "Editar Mesero" : "Agregar Mesero"}</DialogTitle>
+            <DialogTitle>{selectedWaiter ? "Editar personal" : "Agregar personal"}</DialogTitle>
           </DialogHeader>
           <WaiterForm waiter={selectedWaiter} onSuccess={handleFormSuccess} onCancel={() => setIsFormOpen(false)} />
         </DialogContent>
@@ -224,7 +240,7 @@ export function WaiterList() {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción eliminará permanentemente al mesero {waiterToDelete?.full_name}.
+              Esta acción eliminará permanentemente a {waiterToDelete?.full_name}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

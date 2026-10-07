@@ -28,6 +28,8 @@ import {
 } from '@/lib/delivery/types'
 import type { DeliveryServiceErrorKind } from '@/lib/delivery/types'
 import { normalizePhone } from '@/lib/delivery/phone'
+import { toCourierPayload, validateCourierInput } from '@/lib/delivery/courier-admin'
+import type { CourierInput } from '@/lib/delivery/courier-admin'
 import {
   parseCourierRow,
   parseCreateDeliveryOrderResult,
@@ -242,6 +244,94 @@ export async function listCouriers(options: { activeOnly: boolean }): Promise<Co
   } catch (parseErr) {
     throw wrapParseError('listCouriers', parseErr)
   }
+}
+
+// -----------------------------------------------------------
+// createCourier / updateCourier
+// -----------------------------------------------------------
+
+const COURIER_COLUMNS = 'id, name, phone, is_active, created_at, updated_at'
+
+function courierInputError(rpc: string, errors: string[]): DeliveryServiceError {
+  return new DeliveryServiceError({
+    kind: 'invalid-input',
+    message: `${rpc}: ${errors.join('; ')}`,
+  })
+}
+
+function parseCourierWrite(data: unknown, rpc: string): Courier {
+  try {
+    return parseCourierRow(data)
+  } catch (parseErr) {
+    throw wrapParseError(rpc, parseErr)
+  }
+}
+
+/**
+ * Insert a courier (admin only; RLS raises 42501 for any other role).
+ * `restaurant_id` is defaulted server-side to the caller's tenant.
+ */
+export async function createCourier(input: CourierInput): Promise<Courier> {
+  const errors = validateCourierInput(input)
+  if (errors.length > 0) throw courierInputError('createCourier', errors)
+
+  const { data, error } = await (supabase as any)
+    .from('couriers')
+    .insert(toCourierPayload(input))
+    .select(COURIER_COLUMNS)
+    .single()
+
+  if (error) throw wrapError(error)
+  return parseCourierWrite(data, 'createCourier')
+}
+
+export interface UpdateCourierInput {
+  name?: string
+  phone?: string
+  isActive?: boolean
+}
+
+/**
+ * Patch name, phone and/or is_active on one courier (admin only).
+ * There is no delete: deactivating keeps historical deliveries
+ * resolving the courier. A blank phone clears it. An UPDATE that
+ * matches no visible row comes back as PGRST116 from `.single()`
+ * and is reported as `not-found`.
+ */
+export async function updateCourier(id: string, input: UpdateCourierInput): Promise<Courier> {
+  const patch: Record<string, unknown> = {}
+  if (input.name !== undefined || input.phone !== undefined) {
+    // Absent fields get a valid stand-in so only the supplied ones can fail.
+    const candidate = { name: input.name ?? 'x', phone: input.phone ?? '' }
+    const errors = validateCourierInput(candidate)
+    if (errors.length > 0) throw courierInputError('updateCourier', errors)
+    const payload = toCourierPayload(candidate)
+    if (input.name !== undefined) patch.name = payload.name
+    if (input.phone !== undefined) patch.phone = payload.phone
+  }
+  if (input.isActive !== undefined) patch.is_active = input.isActive
+  if (Object.keys(patch).length === 0) {
+    throw courierInputError('updateCourier', ['patch must not be empty'])
+  }
+
+  const { data, error } = await (supabase as any)
+    .from('couriers')
+    .update(patch)
+    .eq('id', id)
+    .select(COURIER_COLUMNS)
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new DeliveryServiceError({
+        kind: 'not-found',
+        message: 'updateCourier: courier not found',
+        cause: error,
+      })
+    }
+    throw wrapError(error)
+  }
+  return parseCourierWrite(data, 'updateCourier')
 }
 
 // -----------------------------------------------------------

@@ -45,7 +45,7 @@ through the existing `pay_order` ledger.
       and address create/pick, items, fee, payment mode, cash change).
 - [x] 6. Operator dispatch and close: courier assignment, out for delivery, delivered,
       failed with reason, re-dispatch, cancel; prepaid and cash-on-delivery payments.
-- [ ] 7. Admin: couriers screen, default delivery fee, role assignable to staff.
+- [x] 7. Admin: couriers screen, default delivery fee, role assignable to staff.
 - [ ] 8. Kitchen, cashier and admin views stop assuming a table; DOMICILIO label; kitchen
       marks delivery orders ready.
 - [ ] 9. Printing: kitchen ticket and invoice carry delivery data (TS + Python parity,
@@ -60,7 +60,8 @@ through the existing `pay_order` ledger.
 - create_delivery_order prices items from the menu without promotions (promotions live at order level today).
 
 - Profile PINs default empty and are never loaded from the database (pre-existing for every role).
-- Staff list (WaiterList) filters role = waiter, so operators created there are not listed; WaiterForm still writes the dropped `password` column (pre-existing). Task 7 revisits the staff screen.
+- Staff accounts: the staff form only inserts public.profiles (auth_user_id NULL), so a waiter or delivery operator created there cannot sign in; an auth account must be provisioned separately (pre-existing gap, needs a decision).
+- The suggested delivery fee card lives in Configuracion > Repartidores (BusinessConfigForm is not mounted anywhere; the live settings screen is ConfigurationPanel).
 
 - WhatsApp integration (separate feature, builds on the customer registry).
 - Delivery zones and per-zone fees.
@@ -83,3 +84,4 @@ through the existing `pay_order` ledger.
 | 5 RDD | review-d6de6e3575ebf9cf + `43574ec` | First capture failed with 429 (Token Plan limit); after the reset the reliability lens was admitted -> correction_required on 2 real defects: a phone edit after a lookup kept the previous customer/address (plus stale responses and submit during lookup), and an existing customer with no saved address could not place an order. Fixed in 43574ec within the 170-line plan (119 lines): reducer drops the lookup when the number changes, clears saved-address choices on a new lookup, validates the typed phone and address ownership (RED 4/6 new tests failed; GREEN Vitest 22 files / 405); form ignores stale lookups, clears on error, disables submit during lookup, offers Otra direccion. Targeted validator: invalid JSON, then relay timeout (898 s) -> retry spent, lineage left in correction_required. |
 | 6 | `e392734` | Board actions from allowedActions: Despachar/Reenviar (active courier picker, warn-only for unpaid prepaid), Entregado, Fallido (reason 1..200), Cancelar (server refusal shown); per-card gate; Pagado/Pendiente badges from orders.status; Registrar pago opens PaymentMethodDialog with the delivery fee in the amount due (pay_order charges it) on the open register, or explains there is none. lib/delivery/card-actions.ts (9 tests), draft amount due + fee (3 tests), isPaid parsing. RED: expected 11900 to be 16900, missing module, isPaid undefined; GREEN Vitest 23 files / 419; typecheck 0; build OK. |
 | 6 RDD | review-c516da256c29514d | High tier, 4 lenses admitted on the first run -> APPROVED; acknowledgement burned authority. Advisory: register load failure shows "No hay caja abierta" (loadCurrentRegister catches internally, so nothing is unhandled); duplicated reason limit; board orchestration has no component test. |
+| 7 | (this commit) | Admin Repartidores sub-tab: CouriersManager (create/edit/activate, no delete, single-flight, query key ['couriers'] covers the dispatch picker) on lib/delivery/courier-admin.ts (16 tests) and createCourier/updateCourier (+10 tests); suggested fee card persisting business_config.delivery_default_fee (no seed row; first save inserts). Staff screen renamed Personal, lists waiters and delivery operators with a role badge; WaiterForm stops writing the dropped profiles.password column (dropped in 20250917090007, so every create failed) and keeps the current role on edit (it reset operators to waiter). RED: missing module / createCourier not a function / parseDefaultFeeInput not a function; GREEN Vitest 24 files / 445; typecheck 0; build OK. |

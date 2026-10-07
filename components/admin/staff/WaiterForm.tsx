@@ -19,6 +19,7 @@ interface WaiterFormProps {
     username: string
     email: string | null
     active: boolean
+    role: "waiter" | "delivery_operator"
   }
   onSuccess: () => void
   onCancel: () => void
@@ -30,12 +31,10 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
     full_name: waiter?.full_name || "",
     username: waiter?.username || "",
     email: waiter?.email || "",
-    password: "",
     active: waiter?.active ?? true,
-    // Por defecto 'waiter' para preservar el comportamiento previo del form.
-    // El admin puede cambiar a 'delivery_operator' para crear un operador
-    // de domicilios. Otros roles se siguen gestionando fuera de este form.
-    role: "waiter" as "waiter" | "delivery_operator",
+    // Editing keeps the current role; a new member defaults to 'waiter'.
+    // Other roles are still managed outside of this form.
+    role: (waiter?.role ?? "waiter") as "waiter" | "delivery_operator",
   })
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -49,10 +48,6 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
 
     if (!formData.username.trim()) {
       newErrors.username = "El nombre de usuario es obligatorio"
-    }
-
-    if (!waiter && !formData.password.trim()) {
-      newErrors.password = "La contraseña es obligatoria para nuevos meseros"
     }
 
     setErrors(newErrors)
@@ -83,8 +78,8 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
 
     try {
       if (waiter) {
-        // Actualizar mesero existente
-        const updateData: any = {
+        // Actualizar integrante existente
+        const updateData = {
           full_name: formData.full_name,
           username: formData.username,
           email: formData.email || null,
@@ -93,26 +88,21 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
           updated_at: new Date().toISOString(),
         }
 
-        // Solo incluir password si se ha proporcionado uno nuevo
-        if (formData.password.trim()) {
-          updateData.password = formData.password
-        }
-
         const { error } = await supabase.from("profiles").update(updateData).eq("id", waiter.id)
 
         if (error) throw error
 
         toast({
-          title: "Mesero actualizado",
-          description: "El mesero ha sido actualizado correctamente",
+          title: "Personal actualizado",
+          description: "El integrante del personal ha sido actualizado correctamente",
         })
       } else {
-        // Crear nuevo mesero
+        // profiles.password was dropped (migration 20250917090007). Email and
+        // password sign-in is a Supabase Auth account this form does not create.
         const { error } = await supabase.from("profiles").insert({
           full_name: formData.full_name,
           username: formData.username,
           email: formData.email || null,
-          password: formData.password,
           role: formData.role,
           active: formData.active,
           created_at: new Date().toISOString(),
@@ -122,8 +112,8 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
         if (error) throw error
 
         toast({
-          title: "Mesero creado",
-          description: "El mesero ha sido creado correctamente",
+          title: "Personal creado",
+          description: "El integrante del personal ha sido creado correctamente",
         })
       }
 
@@ -182,18 +172,9 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
           {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="password">{waiter ? "Nueva contraseña (opcional)" : "Contraseña"}</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            value={formData.password}
-            onChange={handleChange}
-            placeholder={waiter ? "Dejar en blanco para mantener la actual" : "Contraseña"}
-          />
-          {errors.password && <p className="text-sm text-red-500">{errors.password}</p>}
-        </div>
+        <p className="text-sm text-muted-foreground md:self-end">
+          El acceso con correo y contraseña se crea aparte, como usuario de autenticación.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

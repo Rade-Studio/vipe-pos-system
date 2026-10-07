@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DeliveryServiceError,
+  createCourier,
   createDeliveryOrder,
   findCustomerByPhone,
   listActiveDeliveries,
   listCouriers,
   setDeliveryStatus,
+  updateCourier,
 } from './delivery-service'
 
 // -----------------------------------------------------------
@@ -398,6 +400,127 @@ describe('listCouriers', () => {
     const err = await listCouriers({ activeOnly: false }).catch((e) => e)
     expect(err).toBeInstanceOf(DeliveryServiceError)
     expect((err as DeliveryServiceError).kind).toBe('unknown')
+  })
+})
+
+// -----------------------------------------------------------
+// createCourier / updateCourier
+// -----------------------------------------------------------
+//
+// Admin-only writes on public.couriers (RLS raises 42501 for every
+// other role). The service trims the name and normalizes the phone
+// before the INSERT/UPDATE, and parses the returned row.
+
+const COURIER_ROW = {
+  id: '00000000-0000-4000-8000-000000000001',
+  name: 'Pedro',
+  phone: '3101234567',
+  is_active: true,
+  created_at: '2026-10-01T00:00:00.000Z',
+  updated_at: '2026-10-01T00:00:00.000Z',
+}
+
+function writeChain(
+  result: { data: unknown; error: unknown },
+  seen: { insert?: unknown; update?: unknown; eq?: [string, unknown]; select?: string },
+) {
+  const promise: any = Promise.resolve(result)
+  const chain: any = {}
+  chain.insert = (rows: unknown) => { seen.insert = rows; return chain }
+  chain.update = (patch: unknown) => { seen.update = patch; return chain }
+  chain.eq = (col: string, val: unknown) => { seen.eq = [col, val]; return chain }
+  chain.select = (cols: string) => { seen.select = cols; return chain }
+  chain.single = () => chain
+  chain.then = promise.then.bind(promise)
+  return chain
+}
+
+describe('createCourier', () => {
+  it('inserts the trimmed name and normalized phone into couriers', async () => {
+    const seen: Parameters<typeof writeChain>[1] = {}
+    state.fromImpl = (table: string) => {
+      expect(table).toBe('couriers')
+      return writeChain({ data: COURIER_ROW, error: null }, seen)
+    }
+    const created = await createCourier({ name: '  Pedro ', phone: '+57 310 123 4567' })
+    expect(seen.insert).toEqual({ name: 'Pedro', phone: '3101234567' })
+    expect(seen.select).toBe('id, name, phone, is_active, created_at, updated_at')
+    expect(created.id).toBe(COURIER_ROW.id)
+    expect(created.isActive).toBe(true)
+  })
+
+  it('sends phone: null when the phone is blank', async () => {
+    const seen: Parameters<typeof writeChain>[1] = {}
+    state.fromImpl = () => writeChain({ data: { ...COURIER_ROW, phone: null }, error: null }, seen)
+    await createCourier({ name: 'Pedro', phone: '' })
+    expect(seen.insert).toEqual({ name: 'Pedro', phone: null })
+  })
+
+  it('rejects an invalid name or phone without hitting the network', async () => {
+    const empty = await createCourier({ name: ' ', phone: '' }).catch((e) => e)
+    expect((empty as DeliveryServiceError).kind).toBe('invalid-input')
+    const badPhone = await createCourier({ name: 'Pedro', phone: '123' }).catch((e) => e)
+    expect((badPhone as DeliveryServiceError).kind).toBe('invalid-input')
+    expect(state.from).not.toHaveBeenCalled()
+  })
+
+  it('maps 42501 -> not-authorized (non-admin caller)', async () => {
+    state.fromImpl = () => writeChain({ data: null, error: { code: '42501', message: 'denied' } }, {})
+    const err = await createCourier({ name: 'Pedro', phone: '' }).catch((e) => e)
+    expect(err).toBeInstanceOf(DeliveryServiceError)
+    expect((err as DeliveryServiceError).kind).toBe('not-authorized')
+  })
+
+  it('maps 23514 -> invalid-input (server CHECK)', async () => {
+    state.fromImpl = () => writeChain({ data: null, error: { code: '23514', message: 'check' } }, {})
+    const err = await createCourier({ name: 'Pedro', phone: '' }).catch((e) => e)
+    expect((err as DeliveryServiceError).kind).toBe('invalid-input')
+  })
+
+  it('throws when the inserted row is malformed', async () => {
+    state.fromImpl = () => writeChain({ data: { id: 'broken' }, error: null }, {})
+    const err = await createCourier({ name: 'Pedro', phone: '' }).catch((e) => e)
+    expect((err as DeliveryServiceError).kind).toBe('unknown')
+  })
+})
+
+describe('updateCourier', () => {
+  it('patches only the supplied fields, by id', async () => {
+    const seen: Parameters<typeof writeChain>[1] = {}
+    state.fromImpl = (table: string) => {
+      expect(table).toBe('couriers')
+      return writeChain({ data: { ...COURIER_ROW, is_active: false }, error: null }, seen)
+    }
+    const updated = await updateCourier(COURIER_ROW.id, { isActive: false })
+    expect(seen.update).toEqual({ is_active: false })
+    expect(seen.eq).toEqual(['id', COURIER_ROW.id])
+    expect(updated.isActive).toBe(false)
+  })
+
+  it('trims the name, normalizes the phone and clears a blank phone', async () => {
+    const seen: Parameters<typeof writeChain>[1] = {}
+    state.fromImpl = () => writeChain({ data: COURIER_ROW, error: null }, seen)
+    await updateCourier(COURIER_ROW.id, { name: ' Pedro ', phone: '310 123 4567' })
+    expect(seen.update).toEqual({ name: 'Pedro', phone: '3101234567' })
+    await updateCourier(COURIER_ROW.id, { phone: '  ' })
+    expect(seen.update).toEqual({ phone: null })
+  })
+
+  it('rejects an empty patch, a blank name or a bad phone without hitting the network', async () => {
+    for (const patch of [{}, { name: '  ' }, { phone: '12' }]) {
+      const err = await updateCourier(COURIER_ROW.id, patch).catch((e) => e)
+      expect((err as DeliveryServiceError).kind).toBe('invalid-input')
+    }
+    expect(state.from).not.toHaveBeenCalled()
+  })
+
+  it('maps P0002/no row -> not-found and 42501 -> not-authorized', async () => {
+    state.fromImpl = () => writeChain({ data: null, error: { code: 'PGRST116', message: 'no rows' } }, {})
+    const missing = await updateCourier(COURIER_ROW.id, { isActive: true }).catch((e) => e)
+    expect((missing as DeliveryServiceError).kind).toBe('not-found')
+    state.fromImpl = () => writeChain({ data: null, error: { code: '42501', message: 'denied' } }, {})
+    const denied = await updateCourier(COURIER_ROW.id, { isActive: true }).catch((e) => e)
+    expect((denied as DeliveryServiceError).kind).toBe('not-authorized')
   })
 })
 

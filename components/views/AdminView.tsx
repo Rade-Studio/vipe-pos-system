@@ -41,6 +41,8 @@ import { realtimeService } from "@/lib/supabase/realtime-service"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
 import { tableService } from "@/lib/supabase/service"
 import { PaymentMethodsManager } from "@/components/admin/payment-methods/PaymentMethodsManager"
+import { CouriersManager } from "@/components/admin/couriers/CouriersManager"
+import { DeliveryFeeSetting } from "@/components/admin/couriers/DeliveryFeeSetting"
 
 interface AdminViewProps {
   profile: Profile
@@ -790,7 +792,8 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
               <TabsTrigger value="menu">Menú</TabsTrigger>
               <TabsTrigger value="inventory">Inventario</TabsTrigger>
               <TabsTrigger value="payment-methods">Métodos de pago</TabsTrigger>
-              <TabsTrigger value="waiters">Meseros</TabsTrigger>
+              <TabsTrigger value="couriers">Repartidores</TabsTrigger>
+              <TabsTrigger value="waiters">Personal</TabsTrigger>
               <TabsTrigger value="settings">Ajustes</TabsTrigger>
             </TabsList>
 
@@ -811,6 +814,13 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
             <TabsContent value="payment-methods">
               <div className="space-y-6">
                 <PaymentMethodsManager />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="couriers">
+              <div className="space-y-6">
+                <CouriersManager />
+                <DeliveryFeeSetting />
               </div>
             </TabsContent>
 
