@@ -119,6 +119,45 @@ describe('applyDeliveryRowPatch (order_deliveries realtime push)', () => {
     applyDeliveryRowPatch(prev, wireRow({ delivery_status: 'ready' }))
     expect(JSON.stringify(prev)).toBe(snapshot)
   })
+
+  // T10 review A1: a push is not necessarily newer than the cache. Realtime
+  // delivery can reorder two pushes, and a card the operator already moved
+  // must never walk backwards because a stale row arrived late.
+  it('ignores a push older than the cached row', () => {
+    const cur = [
+      boardRow({
+        delivery_status: 'out_for_delivery',
+        updated_at: '2026-10-07T10:05:00.000Z',
+        dispatched_at: '2026-10-07T10:05:00.000Z',
+      }),
+    ]
+    const outcome = applyDeliveryRowPatch(
+      cur,
+      wireRow({ delivery_status: 'preparing', updated_at: '2026-10-07T10:01:00.000Z' }),
+    )
+    expect(outcome.kind).toBe('unchanged')
+  })
+
+  it('still applies an equally-timed or undated push (the row itself decides)', () => {
+    const cur = [boardRow({ updated_at: '2026-10-07T10:05:00.000Z' })]
+    expect(
+      applyDeliveryRowPatch(cur, wireRow({ delivery_status: 'ready', updated_at: '2026-10-07T10:05:00.000Z' }))
+        .kind,
+    ).toBe('patched')
+    // No usable timestamp on either side: compare the rest of the row.
+    expect(applyDeliveryRowPatch([boardRow()], wireRow({ delivery_status: 'ready' })).kind).toBe(
+      'patched',
+    )
+  })
+
+  it('falls back to a refresh for an empty or partial payload (DELETE, partial UPDATE)', () => {
+    const prev = [boardRow()]
+    expect(applyDeliveryRowPatch(prev, {}).kind).toBe('needs-refresh')
+    expect(applyDeliveryRowPatch(prev, { order_id: 'd-1', delivery_status: 'ready' }).kind).toBe(
+      'needs-refresh',
+    )
+    expect(applyDeliveryRowPatch(prev, null).kind).toBe('needs-refresh')
+  })
 })
 
 describe('applyDeliveryStatusPatch (setDeliveryStatus RPC echo)', () => {
@@ -147,6 +186,19 @@ describe('applyDeliveryStatusPatch (setDeliveryStatus RPC echo)', () => {
     const prev = [boardRow()]
     const other = { ...parseOrderDeliveryRow(wireRow()), orderId: 'd-9' }
     expect(applyDeliveryStatusPatch(prev, other)).toEqual({ kind: 'needs-refresh' })
+  })
+
+  // Same rule as the realtime path: the RPC echo must not be able to move a
+  // card backwards when the cached row is already newer.
+  it('ignores an RPC row older than the cached row', () => {
+    const cur = [
+      boardRow({ delivery_status: 'out_for_delivery', updated_at: '2026-10-07T10:05:00.000Z' }),
+    ]
+    const stale = {
+      ...parseOrderDeliveryRow(wireRow({ delivery_status: 'preparing' })),
+      status: 'preparing' as const,
+    }
+    expect(applyDeliveryStatusPatch(cur, stale).kind).toBe('unchanged')
   })
 })
 

@@ -111,6 +111,8 @@ vi.mock("@/hooks/use-toast", () => ({
 
 import { DeliveryBoard } from "@/components/delivery/DeliveryBoard"
 import { DeliveryServiceError } from "@/lib/supabase/delivery-service"
+import type { DeliveryOrderWithBill } from "@/lib/supabase/delivery-service"
+import { activeDeliveriesQueryKey } from "@/hooks/use-active-deliveries"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { parseOrderDeliveryRow } from "@/lib/delivery/parse"
 import type { CashRegister } from "@/types/cash-register"
@@ -164,6 +166,10 @@ function makeClient() {
   return new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 30_000 } },
   })
+}
+
+function statusOf(cache: DeliveryOrderWithBill[], orderId: string): string | undefined {
+  return cache.find((r) => r.delivery.orderId === orderId)?.delivery.status
 }
 
 function renderBoard(client: QueryClient) {
@@ -255,6 +261,48 @@ describe("DeliveryBoard — one reload per card action", () => {
     })
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(listActiveDeliveries).toHaveBeenCalledTimes(1)
+  })
+
+  // Same guard as the kitchen: `applyMove` must merge the RPC row on top of the
+  // cache as it is AFTER the call, never on a snapshot taken before it.
+  it("keeps a push that landed on another card while the action was in flight", async () => {
+    const client = makeClient()
+    listActiveDeliveries.mockResolvedValue([boardRow(), boardRow({ order_id: "d-2", customer_name: "Luis Pérez" })])
+    setDeliveryStatus.mockImplementation(async (input: { orderId: string }) => {
+      const cache = client.getQueryData<DeliveryOrderWithBill[]>(activeDeliveriesQueryKey) ?? []
+      client.setQueryData(
+        activeDeliveriesQueryKey,
+        cache.map((row) =>
+          row.delivery.orderId === "d-2"
+            ? {
+                ...row,
+                delivery: parseOrderDeliveryRow(
+                  wireRow({
+                    order_id: "d-2",
+                    customer_name: "Luis Pérez",
+                    delivery_status: "ready",
+                    updated_at: "2026-10-07T10:06:00.000Z",
+                  }),
+                ),
+              }
+            : row,
+        ),
+      )
+      return parseOrderDeliveryRow(
+        wireRow({ order_id: input.orderId, delivery_status: "preparing", updated_at: "2026-10-07T10:06:00.000Z" }),
+      )
+    })
+
+    renderBoard(client)
+    await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
+    fireEvent.click(screen.getAllByRole("button", { name: "En preparación" })[0]!)
+
+    await waitFor(() => expect(setDeliveryStatus).toHaveBeenCalledTimes(1))
+    await waitFor(() => {
+      const cache = client.getQueryData<DeliveryOrderWithBill[]>(activeDeliveriesQueryKey) ?? []
+      expect(statusOf(cache, "d-1")).toBe("preparing")
+      expect(statusOf(cache, "d-2")).toBe("ready")
+    })
   })
 
   it("refreshes the board once when the server rejects the action", async () => {

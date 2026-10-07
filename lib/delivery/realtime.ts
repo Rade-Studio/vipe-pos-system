@@ -101,6 +101,24 @@ function sameDelivery(a: DeliveryOrder, b: DeliveryOrder): boolean {
 }
 
 /**
+ * Is the incoming row OLDER than the cached one?
+ *
+ * `order_deliveries.updated_at` is maintained by the `set_updated_at()` trigger
+ * (migration 20261007100000), so it is the row's own version. Realtime pushes
+ * can arrive out of order (two channels, a reconnect burst, a push overtaken by
+ * an RPC echo), and a card that walked backwards would stay wrong until the
+ * next unrelated event. Only a STRICTLY older row is dropped: an equal or
+ * unparsable timestamp keeps the previous behaviour, where the rest of the row
+ * decides.
+ */
+function isStale(cached: DeliveryOrder, incoming: DeliveryOrder): boolean {
+  const cachedAt = Date.parse(cached.updatedAt)
+  const incomingAt = Date.parse(incoming.updatedAt)
+  if (Number.isNaN(cachedAt) || Number.isNaN(incomingAt)) return false
+  return incomingAt < cachedAt
+}
+
+/**
  * Merge a parsed `order_deliveries` row into the board rows.
  *
  * Only the `delivery` half changes: `amountDue` / `subtotal` / `tax` /
@@ -114,6 +132,8 @@ function mergeDelivery<T extends DeliveryBoardRow>(
   const index = prev.findIndex((row) => row.delivery.orderId === delivery.orderId)
   if (index === -1) return { kind: 'needs-refresh' }
   const current = prev[index]!
+  // An older row (late push, stale RPC echo) must never move the card back.
+  if (isStale(current.delivery, delivery)) return { kind: 'unchanged' }
   if (sameDelivery(current.delivery, delivery)) return { kind: 'unchanged' }
   const rows = [...prev]
   rows[index] = { ...current, delivery }

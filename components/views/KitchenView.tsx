@@ -688,7 +688,12 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
     try {
       const moved = await setDeliveryStatus({ orderId, action: "mark_ready" })
-      const outcome = applyDeliveryStatusPatch(cached, moved)
+      // Read the cache AGAIN: the merge must be applied on top of whatever the
+      // cache holds NOW, not on the snapshot taken before the RPC. A push for
+      // another delivery that landed during the await would otherwise be
+      // reverted by this write (T10 review B1).
+      const current = queryClient.getQueryData<DeliveryOrderWithBill[]>(activeDeliveriesQueryKey) ?? []
+      const outcome = applyDeliveryStatusPatch(current, moved)
       if (outcome.kind === "patched") {
         queryClient.setQueryData(activeDeliveriesQueryKey, outcome.rows)
       } else if (outcome.kind === "needs-refresh") {
