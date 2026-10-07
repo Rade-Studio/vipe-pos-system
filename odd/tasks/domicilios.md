@@ -36,7 +36,7 @@ through the existing `pay_order` ledger.
       `register_summary` accept the role in task 3, with the fee change.)
 - [x] 2. Schema: `couriers`, `customers`, `customer_addresses`, `orders.order_type` +
       `order_deliveries` (1:1), RLS per role, realtime publication, default fee config.
-- [ ] 3. RPCs: atomic `create_delivery_order`, delivery state machine RPC (ready,
+- [x] 3. RPCs: atomic `create_delivery_order`, delivery state machine RPC (ready,
       dispatch with courier, delivered, failed, re-dispatch, cancel), `pay_order` amount
       due includes the delivery fee, `split_order` rejects delivery orders.
 - [ ] 4. `lib/delivery` pure logic (state machine mirror, fee, phone normalization,
@@ -54,6 +54,8 @@ through the existing `pay_order` ledger.
 
 ## Known follow-ups (out of scope)
 
+- create_delivery_order prices items from the menu without promotions (promotions live at order level today).
+
 - Profile PINs default empty and are never loaded from the database (pre-existing for every role).
 - Staff list (WaiterList) filters role = waiter, so operators created there are not listed; WaiterForm still writes the dropped `password` column (pre-existing). Task 7 revisits the staff screen.
 
@@ -68,3 +70,4 @@ through the existing `pay_order` ledger.
 | 1 RDD | review-8ced532e9a3b247f | risk admitted; resilience refused (unknown field) then admitted with readability; reliability failed natively -> escalated (unknown_causality) on 6 findings. Verified: empty/unloaded PINs and the invalid-role screen are pre-existing for every role; WaiterForm role union and PIN prefix are maintainability notes (staff screen revisited in task 7). No defect introduced. |
 | 2 | `0f39265` | Migration 20261007100000: couriers (admin writes), customers (phone ^[0-9]{7,15}$ unique per tenant) and customer_addresses (one default) for admin/cashier/delivery_operator, orders.order_type + delivery-without-table CHECK, order_deliveries 1:1 (snapshot, fee, payment mode, cash_change_for only COD, courier, status, failure_reason required when failed) readable by admin/cashier/delivery_operator/kitchen and write-guarded (42501) like payments; deferred tenant-consistency triggers; realtime publication. RED: 102/109 failed; GREEN pgTAP 12 files / 670 (parent re-run). |
 | 2 RDD | review-585e424223b279c8 + `ae29db9` | Medium tier, reliability admitted; refuter corroborated one BLOCKER (cross-tenant courier test probes RLS, not the trigger). Verified false: the block runs as postgres (role reset at the previous RESET ROLE) and RLS would raise 42501, while the test asserts and gets 23514 from the trigger. Still clarified in ae29db9 (8-line plan): the foreign courier is seeded outside the checked block. pgTAP 670 PASS. Targeted validator refused twice (unbound result, invalid JSON) -> retry spent, lineage left in correction_required. |
+| 3 | (this commit) | Migration 20261007110000: create_delivery_order (atomic customer/address/order/items/delivery, menu prices server-side, admin/delivery_operator), set_delivery_status state machine (same-state replays raise P0001; cancel rejected once a payment exists), pay_order adds the delivery fee and admits delivery_operator, register_summary readable by the operator, split_order rejects delivery orders. Parent check: pay_order/split_order/register_summary bodies differ from the originals only in those lines (plus trimmed comments). Parent fix: p_notes was accepted and discarded -> new order_deliveries.notes (<=300) stored (RED: test 12 failed; GREEN). RED: 98 planned / 2 ran; GREEN pgTAP 13 files / 746. |
