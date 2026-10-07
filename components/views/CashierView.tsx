@@ -1,11 +1,13 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
+import { useShallow } from "zustand/react/shallow"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +33,7 @@ import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
 import { createSingleFlight } from "@/lib/payments/single-flight"
 import { PaymentServiceError, splitOrder, undoSplit } from "@/lib/supabase/payments-service"
 import { groupDineInOrdersByTable, orderTypeFromRow } from "@/lib/delivery/kitchen"
+import { wireRowToPartialOrder } from "@/lib/realtime/order-merge"
 import { DeliveryPaymentsPanel } from "@/components/cashier/DeliveryPaymentsPanel"
 
 interface CashierViewProps {
@@ -117,7 +120,15 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     queryFn: fetchAllOrders,
   })
 
-  const tables = useTableStore((s) => s.tables)
+  // D6 Rule B: render-path reads project to a primitive (table number) via a
+  // shallow-compared lookup map, never to the full `tables` array — see design.md D6.
+  const tableNumberById = useTableStore(
+    useShallow((s) => {
+      const map: Record<string, number> = {}
+      for (const t of s.tables) map[t.id] = t.number
+      return map
+    }),
+  )
   const profiles = useProfileStore((s) => s.profiles)
 
   const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
@@ -218,8 +229,60 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     const unsubscribe = realtimeService.subscribeToOrders((payload) => {
       log.info("Cambio en orden recibido:", { payload })
 
-      // Invalidate queries so React Query refetches in background
-      queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })
+      // S5: replace the per-event invalidateQueries with direct local-state
+      // mutation. The cashier cache is a 5-derive object under ['orders','cashier'],
+      // so patching the React Query cache alone would not reach any of the
+      // local-state arrays this view renders from (activeOrders / kitchenOrders
+      // / deliveredOrders / partialOrders / ordersByTable) until the next refetch.
+      // D7 consequence 2: only carry fields the broadcast actually sent — do
+      // not fabricate items/bill on INSERT; on UPDATE the { ...x, ...patch }
+      // shape preserves untouched Order fields (items/bill/etc.) by reference.
+      // Delivery invariant (odd/tasks/domicilios.md S13/S14): the shared
+      // `wireRowToPartialOrder` maps the wire row with
+      // `orderType: orderTypeFromRow(row)` — the same mapping the initial-load
+      // converter uses — so a domicilio arriving over realtime keeps its
+      // delivery flag instead of being labelled "Mesa ?".
+      const id = (payload.new as any)?.id ?? (payload.old as any)?.id
+      if (id) {
+        if (payload.eventType === "INSERT") {
+          const patch = wireRowToPartialOrder(payload.new)
+          if (patch?.id && patch.status) {
+            const o: Order = {
+              id: patch.id,
+              tableId: patch.tableId ?? "",
+              orderType: patch.orderType,
+              items: [],
+              status: patch.status,
+              bill: { subtotal: 0, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 0, totalDiscounts: 0 },
+              waiter: patch.waiter ?? "",
+              createdAt: new Date(),
+            }
+            if (o.status === "active") setActiveOrders((prev) => [...prev, o])
+            else if (o.status === "kitchen") setKitchenOrders((prev) => [...prev, o])
+            else if (o.status === "delivered") setDeliveredOrders((prev) => [...prev, o])
+          }
+        } else if (payload.eventType === "UPDATE") {
+          const patch = wireRowToPartialOrder(payload.new) ?? {}
+          const apply = (setter: React.Dispatch<React.SetStateAction<Order[]>>) =>
+            setter((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+          apply(setActiveOrders)
+          apply(setKitchenOrders)
+          apply(setDeliveredOrders)
+        } else if (payload.eventType === "DELETE") {
+          setActiveOrders((prev) => prev.filter((x) => x.id !== id))
+          setKitchenOrders((prev) => prev.filter((x) => x.id !== id))
+          setDeliveredOrders((prev) => prev.filter((x) => x.id !== id))
+          setPartialOrders((prev) => prev.filter((x) => x.id !== id))
+          setOrdersByTable((prev) => {
+            const out: Record<string, Order[]> = {}
+            for (const [k, v] of Object.entries(prev)) {
+              const filtered = (v || []).filter((x) => x.id !== id)
+              if (filtered.length) out[k] = filtered
+            }
+            return out
+          })
+        }
+      }
     })
 
     // Limpiar suscripción al desmontar
@@ -469,7 +532,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     const order = getOrderById(orderId)
     if (!order) return
 
-    const table = tables.find((t) => t.id === order.tableId)
+    // D6 Rule A: handler-only read, no subscription needed at the point of use.
+    const table = useTableStore.getState().getTableById(order.tableId)
     const waiter = profiles.find((p) => p.id === order.waiter)
 
     if (!table || !waiter) return
@@ -736,7 +800,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                         ))
                       : // Contenido real de órdenes parciales
                         partialOrders.map((order) => {
-                          const table = tables.find((t) => t.id === order.tableId)
+                          // D6 Rule B: render path only needs the table's number.
+                          const tableNumber = tableNumberById[order.tableId]
                           const waiter = profiles?.find((p) => p.id === order.waiter)
 
                           // Agrupar items por nombre y comentarios
@@ -756,7 +821,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                               <CardContent className="p-0">
                                 <div className="p-4 border-b bg-primary/10">
                                   <div className="flex justify-between items-center">
-                                    <h3 className="font-bold">Mesa {table?.number} - Orden Parcial</h3>
+                                    <h3 className="font-bold">Mesa {tableNumber} - Orden Parcial</h3>
                                     <Badge variant="outline" className="bg-primary/20">
                                       {displayItems.reduce((total, item) => total + item.quantity, 0)} unidades
                                     </Badge>
@@ -876,7 +941,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                   </div>
                 ) : (
                   Object.entries(ordersByTable).map(([tableId, orders]) => {
-                    const table = tables.find((t) => t.id === tableId)
+                    // D6 Rule B: render path only needs the table's number.
+                    const tableNumber = tableNumberById[tableId]
                     const tableTotal = getTableTotalAmount(tableId)
 
                     // Get all items from all orders for this table and group them
@@ -893,7 +959,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                         <CardContent className="p-0">
                           <div className="p-4 border-b bg-muted/20">
                             <div className="flex justify-between items-center">
-                              <h3 className="font-bold">Mesa {table?.number}</h3>
+                              <h3 className="font-bold">Mesa {tableNumber}</h3>
                               <Badge variant="default">
                                 {allItems.reduce((total, item) => total + item.quantity, 0)} unidades
                               </Badge>

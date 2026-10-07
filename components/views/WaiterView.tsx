@@ -19,6 +19,9 @@ import type { PrintableKitchenOrder } from "@/types"
 import { tableService, orderService, waiterService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { queryClient } from "@/lib/queryClient"
+import type { TableChange } from "@/lib/realtime/table-merge"
+import { mergeOrdersForWaiter, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
+import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { useConfigStore } from "@/store/use-config-store"
 import inventoryControlService from "@/lib/supabase/inventory-control-service"
@@ -58,11 +61,17 @@ const normalizeDishId = (id: string): string => {
   return id
 }
 
+// S5: the shared wire→app mapping (`wireRowToPartialOrder`) turns the
+// snake_case `postgres_changes` row into a camelCase `Partial<Order>`; it only
+// carries the fields the broadcast actually sent (undefined subtrees such as
+// items/bill/waiter in the React Query cache are preserved by the merge's
+// reference-stable contract) and returns null when the row lacks the minimum
+// id+status shape the merge needs. See its call site in the orders handler.
+
 export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewProps) {
   // Estados principales
   const [activeView, setActiveView] = useState<"tables" | "orders">("tables")
   const [activeTable, setActiveTable] = useState<string | null>(null)
-  const [tables, setTables] = useState<Table[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
 
@@ -105,16 +114,19 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const fetchTables = async () => {
     try {
       const data = await tableService.getAll()
-      console.log("[WaiterView] tables fetched:", data.length, "rows")
+      log.info("[WaiterView] tables fetched:", { count: data.length })
       return data.map((table) => ({
         id: table.id,
         number: table.number,
         status: table.status as any,
         waiter: table.waiter_id || undefined,
         waiter_name: table.waiter_name || undefined,
+        // D4: hydrated rows must carry updated_at too, or the out-of-order
+        // guard starts at 0 for every row until its first realtime UPDATE.
+        updated_at: table.updated_at ? new Date(table.updated_at) : undefined,
       })) as Table[]
     } catch (err: any) {
-      console.error("[WaiterView] fetchTables ERROR:", err?.message ?? err)
+      log.error("[WaiterView] fetchTables ERROR:", { error: err?.message ?? err })
       throw err
     }
   }
@@ -171,6 +183,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   })
 
   // Individual store selectors
+  // Single owner (S3, D1): tables are read directly from useTableStore —
+  // WaiterView no longer keeps its own `tables` copy.
+  const tables = useTableStore((s) => s.tables)
   const addToCart = useCartStore((s) => s.addToCart)
   const updateQuantity = useCartStore((s) => s.updateQuantity)
   const updateItemComments = useCartStore((s) => s.updateItemComments)
@@ -213,10 +228,12 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     }
   }, [toast])
 
-  // Sync React Query data to local state for rendering
+  // Hydrate the single owner from the query result once it resolves (D1,
+  // D2). React Query is demoted to a hydration/refresh source — WaiterView
+  // no longer keeps a component-local `tables` copy or a separate mirror
+  // effect (S1 kept both; S3 removes them, per design.md).
   useEffect(() => {
     if (tablesData.length > 0) {
-      setTables(tablesData)
       useTableStore.getState().setTables(tablesData)
     }
     setLoading(false)  // data loaded → clear loading state regardless of count
@@ -240,8 +257,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         return
       }
 
-      // Invalidate queries so React Query refetches in background
-      queryClient.invalidateQueries({ queryKey: ['tables'] })
+      // Route through the single owner's patch action instead of a local
+      // useState updater (S3, D1). No dual write remains — the store is the
+      // only place a `tables` postgres_changes event is applied.
+      useTableStore.getState().applyTableChange(payload as unknown as TableChange)
 
       // Handle active table cleanup for UPDATE/DELETE on the active table
       if (payload.eventType === "UPDATE" && payload.new) {
@@ -264,8 +283,24 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         return
       }
 
-      // Invalidate queries so React Query refetches in background
-      queryClient.invalidateQueries({ queryKey: ['orders'] })
+      // S5: payload-application replaces the per-event invalidateQueries.
+      // D7 consequence 2: only carry fields the broadcast actually sent —
+      // undefined subtrees (items/bill/waiter in the cache) are preserved by
+      // mergeOrdersList's no-op-on-id-miss contract.
+      const conv: OrderChange = {
+        eventType: payload.eventType,
+        new: payload.new ? wireRowToPartialOrder(payload.new) : null,
+        old: (payload.old as any)?.id ? { id: (payload.old as any).id } : null,
+      }
+      // S13 through the realtime path: a domicilio never reaches the waiter's
+      // order lists. `fetchOrders` applies `ordersForWaiter` on hydration, so
+      // `mergeOrdersForWaiter` applies the same rule to the in-place cache
+      // patch — an INSERT of a delivery row would otherwise paint itself in the
+      // waiter's list. It keeps mergeOrdersList's reference stability, so a
+      // no-op patch still notifies nobody (zero re-renders).
+      queryClient.setQueryData<Order[]>(['orders'], (prev: Order[] | undefined) =>
+        prev ? mergeOrdersForWaiter(prev, conv) : prev,
+      )
     })
 
     // Guardar referencias para limpieza
@@ -384,15 +419,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
             // Actualizar en base de datos
             await tableService.releaseTable(tableId)
 
-            // Actualizar directamente en el store y estado local
+            // Actualizar directamente en el store (single owner, S3 — no
+            // local `tables` copy left to echo the write into).
             useTableStore.getState().releaseTable(tableId)
-            setTables((prevTables) =>
-              prevTables.map((table) =>
-                table.id === tableId
-                  ? { ...table, status: "available", waiter: undefined, waiter_name: undefined }
-                  : table,
-              ),
-            )
           }
         } catch (err) {
           toast({
@@ -432,11 +461,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           tableService
             .updateTableStatus(tableId, "occupied")
             .then(() => {
-              // Actualizar directamente en el store y estado local
+              // Actualizar directamente en el store (single owner, S3).
               useTableStore.getState().updateTableStatus(tableId, "occupied")
-              setTables((prevTables) =>
-                prevTables.map((table) => (table.id === tableId ? { ...table, status: "occupied" } : table)),
-              )
             })
             .catch((err) => {
               toast({
@@ -457,13 +483,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           tableService.assignWaiter(tableId, realWaiterId, "occupied")
             .then(() => {
               useTableStore.getState().assignWaiterToTable(tableId, realWaiterId)
-              setTables((prevTables) =>
-                prevTables.map((t) =>
-                  t.id === tableId
-                    ? { ...t, waiter: realWaiterId, waiter_name: profile.name, status: "occupied" }
-                    : t,
-                ),
-              )
               setActiveTable(tableId)
             })
             .catch((err: any) => {
@@ -501,23 +520,12 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           // Actualizar en base de datos
           await tableService.assignWaiter(selectedTableForWaiter, waiterId, "occupied")
 
-          // Buscar el nombre del mesero
-          const waiterName = profiles.find((p) => p.id === waiterId)?.name
-
-          // Actualizar directamente en el store y estado local
+          // Actualizar directamente en el store (single owner, S3). No local
+          // `tables` copy is echoed — `waiter_name` was write-only on that
+          // copy (TableGrid resolves the waiter's display name from
+          // `profiles` by id, not from `table.waiter_name`; see
+          // apply-progress for the grep confirming no reader exists).
           useTableStore.getState().assignWaiterToTable(selectedTableForWaiter, waiterId)
-          setTables((prevTables) =>
-            prevTables.map((table) =>
-              table.id === selectedTableForWaiter
-                ? {
-                    ...table,
-                    status: "occupied",
-                    waiter: waiterId,
-                    waiter_name: waiterName,
-                  }
-                : table,
-            ),
-          )
 
           setActiveTable(selectedTableForWaiter)
           setSelectedTableForWaiter(null)
@@ -553,23 +561,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           // Actualizar en base de datos
           await tableService.assignWaiter(selectedTableForWaiter, waiterId, "occupied")
 
-          // Buscar el nombre del mesero
-          const waiterName = profiles.find((p) => p.id === waiterId)?.name
-
-          // Actualizar directamente en el store y estado local
+          // Actualizar directamente en el store (single owner, S3).
           useTableStore.getState().assignWaiterToTable(selectedTableForWaiter, waiterId)
-          setTables((prevTables) =>
-            prevTables.map((table) =>
-              table.id === selectedTableForWaiter
-                ? {
-                    ...table,
-                    status: "occupied",
-                    waiter: waiterId,
-                    waiter_name: waiterName,
-                  }
-                : table,
-            ),
-          )
 
           setActiveTable(selectedTableForWaiter)
           setSelectedTableForWaiter(null)
@@ -624,13 +617,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         // Actualizar en base de datos
         await tableService.releaseTable(tableId)
 
-        // Actualizar directamente en el store y estado local
+        // Actualizar directamente en el store (single owner, S3).
         useTableStore.getState().releaseTable(tableId)
-        setTables((prevTables) =>
-          prevTables.map((table) =>
-            table.id === tableId ? { ...table, status: "available", waiter: undefined, waiter_name: undefined } : table,
-          ),
-        )
 
         if (activeTable === tableId) {
           setActiveTable(null)
@@ -838,9 +826,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           // Actualizar en base de datos
           await tableService.updateTableStatus(activeTable, "kitchen")
 
-          // Actualizar directamente en el store y estado local
+          // Actualizar directamente en el store (single owner, S3).
           useTableStore.getState().updateTableStatus(activeTable, "kitchen")
-          setTables((prevTables) => prevTables.map((t) => (t.id === activeTable ? { ...t, status: "kitchen" } : t)))
         }
 
         const orderNumber = `${Math.floor(Math.random() * 9000) + 1000}`
@@ -877,20 +864,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           // Actualizar en base de datos
           await tableService.assignWaiter(activeTable, profile.id, "occupied")
 
-          // Actualizar directamente en el store y estado local
+          // Actualizar directamente en el store (single owner, S3).
           useTableStore.getState().assignWaiterToTable(activeTable, profile.id)
-          setTables((prevTables) =>
-            prevTables.map((t) =>
-              t.id === activeTable
-                ? {
-                    ...t,
-                    status: "occupied",
-                    waiter: profile.id,
-                    waiter_name: profile.name,
-                  }
-                : t,
-            ),
-          )
         }
 
         // Calcular totales usando la función del store
@@ -921,9 +896,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         // Actualizar en base de datos
         await tableService.updateTableStatus(activeTable, "kitchen")
 
-        // Actualizar directamente en el store y estado local
+        // Actualizar directamente en el store (single owner, S3).
         useTableStore.getState().updateTableStatus(activeTable, "kitchen")
-        setTables((prevTables) => prevTables.map((t) => (t.id === activeTable ? { ...t, status: "kitchen" } : t)))
 
         // Agregar la orden al store
         const orderItems: OrderItem[] = cartItems.map((ci) => ({
@@ -1109,7 +1083,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
               <TabsContent value="tables" className="mt-0 p-0">
                 {/* Table selection */}
                 <TablesSection
-                  tables={tables}
                   activeTable={activeTable}
                   profile={profile}
                   profiles={profiles}
@@ -1117,7 +1090,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                   onReserveTable={handleReserveTable}
                   onReleaseTable={handleReleaseTable}
                   isTableAccessible={checkTableAccess}
-                  key={`tables-section-${activeTable ?? 'none'}`}
                 />
 
                 {activeTable && (

@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import type { Profile, DailySales, PopularDish, CategorySales, OrderStatus } from "@/types"
+import type { Profile, DailySales, PopularDish, CategorySales, OrderStatus, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
+import { useShallow } from "zustand/react/shallow"
 import { useOrderStore } from "@/store/useOrderStore"
 import { SalesChart } from "@/components/admin/SalesChart"
 import { PopularDishesChart } from "@/components/admin/PopularDishesChart"
@@ -39,6 +40,7 @@ import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { hasTable, isDeliveryOrder, orderTypeFromRow } from "@/lib/delivery/kitchen"
+import { mergeOrdersList, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
 import { tableService } from "@/lib/supabase/service"
 import { PaymentMethodsManager } from "@/components/admin/payment-methods/PaymentMethodsManager"
@@ -129,7 +131,26 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
     setSelectedDate(registerDate)
   }
 
-  const tables = useTableStore((s) => s.tables)
+  // D6 Rule B: render-path counts project to primitives, never to the full
+  // `tables` array — see design.md D6. Combined into one object per site so a
+  // single shallow comparison covers the whole projection.
+  const tableStatusCounts = useTableStore(
+    useShallow((s) => ({
+      available: s.tables.filter((t) => t.status === "available").length,
+      reserved: s.tables.filter((t) => t.status === "reserved").length,
+      kitchen: s.tables.filter((t) => t.status === "kitchen").length,
+      served: s.tables.filter((t) => t.status === "served").length,
+    })),
+  )
+  const assignedTableCountByWaiter = useTableStore(
+    useShallow((s) => {
+      const counts: Record<string, number> = {}
+      for (const t of s.tables) {
+        if (t.waiter) counts[t.waiter] = (counts[t.waiter] ?? 0) + 1
+      }
+      return counts
+    }),
+  )
   const isTableAccessibleByWaiter = useTableStore((s) => s.isTableAccessibleByWaiter)
   const reserveTable = useTableStore((s) => s.reserveTable)
   const releaseTable = useTableStore((s) => s.releaseTable)
@@ -221,8 +242,24 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
             })
           }
 
-          // Actualizar la lista de órdenes via React Query invalidation
-          queryClient.invalidateQueries({ queryKey: ['orders', 'admin'] })
+          // S5: replace the per-event invalidateQueries with a cache patch
+          // through mergeOrdersList. D7 consequence 2: only carry the fields
+          // the broadcast actually sent; mergeOrdersList's reference-stable
+          // contract preserves untouched subtrees (items/bill/waiter in the
+          // cache) on no-op ids.
+          // `wireRowToPartialOrder` is the shared wire→app mapping; it maps
+          // `orderType: orderTypeFromRow(row)` exactly like the initial-load
+          // mapper, so a domicilio arriving by realtime lands in the cache
+          // with its delivery flag instead of being labelled "Mesa ?"
+          // (odd/tasks/domicilios.md S14).
+          const conv: OrderChange = {
+            eventType: payload.eventType,
+            new: payload.new ? wireRowToPartialOrder(payload.new) : null,
+            old: (payload.old as any)?.id ? { id: (payload.old as any).id } : null,
+          }
+          queryClient.setQueryData<Order[]>(['orders', 'admin'], (prev: Order[] | undefined) =>
+            prev ? mergeOrdersList(prev, conv) : prev,
+          )
         }
 
         // Suscribirse a cambios en órdenes
@@ -568,19 +605,19 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
                         <span>Disponibles:</span>
-                        <span className="font-medium">{tables.filter((t) => t.status === "available").length}</span>
+                        <span className="font-medium">{tableStatusCounts.available}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span>Reservadas:</span>
-                        <span className="font-medium">{tables.filter((t) => t.status === "reserved").length}</span>
+                        <span className="font-medium">{tableStatusCounts.reserved}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span>En cocina:</span>
-                        <span className="font-medium">{tables.filter((t) => t.status === "kitchen").length}</span>
+                        <span className="font-medium">{tableStatusCounts.kitchen}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span>Servidas:</span>
-                        <span className="font-medium">{tables.filter((t) => t.status === "served").length}</span>
+                        <span className="font-medium">{tableStatusCounts.served}</span>
                       </div>
                     </div>
                   </CardContent>
@@ -595,7 +632,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
                       {profiles
                         ?.filter((p) => p.role === "waiter")
                         .map((waiter) => {
-                          const assignedTables = tables.filter((t) => t.waiter === waiter.id)
+                          const assignedTablesCount = assignedTableCountByWaiter[waiter.id] ?? 0
                           return (
                             <div
                               key={waiter.id}
@@ -604,9 +641,9 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
                               <span className="font-medium">{waiter.name}</span>
                               <div className="flex items-center">
                                 <span
-                                  className={`px-2 py-1 rounded-full text-xs ${assignedTables.length > 0 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100" : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"}`}
+                                  className={`px-2 py-1 rounded-full text-xs ${assignedTablesCount > 0 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100" : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"}`}
                                 >
-                                  {assignedTables.length > 0 ? `${assignedTables.length} mesas` : "Disponible"}
+                                  {assignedTablesCount > 0 ? `${assignedTablesCount} mesas` : "Disponible"}
                                 </span>
                               </div>
                             </div>
@@ -735,7 +772,13 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {combinedActiveOrders.map((order) => {
-                    const table = tables.find((t) => t.id === order.tableId)
+                    // D6 Rule A variant: `OrderCard` (out of scope, components/pos/*)
+                    // requires the full `Table` object, so a primitive projection
+                    // does not apply here. No subscription is taken; getState() is
+                    // read fresh on every render this component already performs
+                    // for unrelated reasons (order data), which is safe because a
+                    // table's `number` never changes after creation.
+                    const table = useTableStore.getState().getTableById(order.tableId)
                     const waiter = profiles?.find((p) => p.id === order.waiter)
 
                     // Determinar si la orden es nueva (menos de 30 segundos)

@@ -106,6 +106,16 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const deliveriesRef = useRef(new Map<string, DeliveryOrderWithBill>())
   deliveriesRef.current = new Map(deliveries.map((row) => [row.delivery.orderId, row]))
 
+  // D6 Rule C: the table-filter dropdown below (~line 950) genuinely lists every
+  // non-available table, so it keeps the full-array subscription; that re-render
+  // is correct, not a defect (see design.md D6). Because this legitimate Rule C
+  // dependency already exists in this component, the render-path table lookups
+  // that also consume `tables` (order card table numbers, the table-number
+  // filter) are left on the same subscription rather than narrowed separately —
+  // narrowing them would add a shallow-compare projection with zero additional
+  // re-render reduction, since this component already re-renders on every table
+  // write regardless. The realtime-event handlers below are handler-only reads
+  // and use Rule A (`getState()`) instead, independent of this subscription.
   const tables = useTableStore((s) => s.tables)
   // Realtime handlers are bound once at mount: read tables through a ref.
   const tablesRef = useRef(tables)
@@ -265,8 +275,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     try {
       log.info("Actualización de orden recibida:", { payload })
 
-      // Invalidate React Query cache so it refetches in background
-      queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
+      // S5: invalidate removed — order store already mutated by addOrder/updateOrder/removeOrder on these lines.
 
       // Si es una eliminación de orden
       if (payload.eventType === "DELETE") {
@@ -317,6 +326,10 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
         // Si es una nueva orden, mostrar notificación
         if (isNewOrder) {
+          // D6 Rule A: the place label in the toast comes from
+          // `placeText(storeOrder)` → `placeOf`, which reads the handler-safe
+          // `tablesRef` mirror instead of taking its own subscription, so no
+          // table lookup (and no subscription) is needed here.
           toast({
             title: "¡Nueva orden!",
             description: `Nueva orden recibida para ${placeText(storeOrder)}.`,
@@ -341,8 +354,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   // Manejar actualizaciones de items de órdenes
   const handleOrderItemUpdate = async (payload: RealtimePayload, isNewItem = false) => {
     try {
-      // Invalidate React Query cache so it refetches in background
-      queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
+      // S5: invalidate removed — order store already mutated by addOrder/updateOrder/removeOrder on these lines.
       log.info("Actualización de item recibido:", { payload, isNewItem })
 
       // Si no hay datos de la orden o del item, salir
@@ -422,6 +434,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
           }))
 
           // Notificar al usuario
+          // D6 Rule A: the place label comes from `placeText(storeOrder)` →
+          // `placeOf` (handler-safe `tablesRef` mirror), no lookup needed here.
           toast({
             title: "¡Nuevo producto en cocina!",
             description: `Se ha agregado un nuevo producto a la orden de ${placeText(storeOrder)}.`,
@@ -442,6 +456,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
           }))
 
           // Notificar al usuario
+          // D6 Rule A: the place label comes from `placeText(storeOrder)` →
+          // `placeOf` (handler-safe `tablesRef` mirror), no lookup needed here.
           toast({
             title: "¡Nueva orden en cocina!",
             description: `Se ha recibido una nueva orden para ${placeText(storeOrder)}.`,
@@ -1065,7 +1081,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
         <TabsContent value="tables">
           <TablesSection
-            tables={tables}
             activeTable={selectedTable}
             profile={profile}
             profiles={profiles}
