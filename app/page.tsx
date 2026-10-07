@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { ProfileSelection } from "@/components/profiles/ProfileSelection"
 import { WaiterView } from "@/components/views/WaiterView"
 import { KitchenView } from "@/components/views/KitchenView"
@@ -17,14 +17,65 @@ import { useOrderStore } from "@/store/useOrderStore"
 import { tableService, orderService } from "@/lib/supabase/service"
 import { supabase } from "@/lib/supabase/client"
 import { viewForRole } from "@/lib/auth/roles"
+import { startupLoadsForRole, startupRole, type ShellLoad } from "@/lib/shell/startup-loads"
+import { shouldReloadAuthProfile } from "@/lib/shell/auth-events"
+import { log } from "@/lib/log"
 import type { Profile, ProfileRole } from "@/types"
 import { orderTypeFromRow } from "@/lib/delivery/kitchen"
+
+/**
+ * One call for both statuses: the shell used to issue `getByStatus("kitchen")`
+ * and `getByStatus("delivered")` back to back and concatenated them.
+ */
+async function loadKitchenAndDeliveredOrders() {
+  const dbOrders = await orderService.getByStatus(["kitchen", "delivered"])
+
+  // Convertir las órdenes de la base de datos al formato que espera el store
+  const storeOrders = dbOrders.map((dbOrder) => {
+    const items = dbOrder.order_items.map((item) => ({
+      id: item.dish_id || `item-${item.id}`,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      comments: item.comments ?? undefined,
+      categoryId: "",
+      image: "",
+      status: (item.status ?? "kitchen") as "kitchen" | "served",
+      addedAt: item.added_at ? new Date(item.added_at) : undefined,
+    }))
+
+    return {
+      id: dbOrder.id,
+      tableId: dbOrder.table_id ?? "",
+      orderType: orderTypeFromRow(dbOrder),
+      items,
+      status: dbOrder.status as "active" | "kitchen" | "delivered" | "paid" | "cancelled",
+      bill: {
+        subtotal: dbOrder.subtotal,
+        tax: dbOrder.tax,
+        taxPercentage: dbOrder.tax_percentage,
+        tip: dbOrder.tip,
+        tipPercentage: dbOrder.tip_percentage,
+        total: dbOrder.total,
+        totalDiscounts: dbOrder.total_discounts ?? 0,
+      },
+      waiter: dbOrder.waiter_id ?? "",
+      createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
+      isPartialOrder: dbOrder.is_partial_order ?? false,
+      parentOrderId: dbOrder.parent_order_id ?? null,
+    }
+  })
+
+  useOrderStore.getState().setOrders(storeOrders as any)
+}
 
 export default function Home() {
   const selectedProfile = useProfileStore((s) => s.selectedProfile)
   const setSelectedProfile = useProfileStore((s) => s.setSelectedProfile)
   const setAuthProfile = useProfileStore((s) => s.setAuthProfile)
   const authProfile = useProfileStore((s) => s.authProfile)
+  // The REAL role (never the impersonated one) decides the startup loads.
+  const authRole = useProfileStore((s) => s.authProfile?.role)
   const roleProfiles = useProfileStore((s) => s.roleProfiles)
   const setProfiles = useProfileStore((s) => s.setProfiles)
   const showProfileSelection = useProfileStore((s) => s.showProfileSelection)
@@ -34,10 +85,17 @@ export default function Home() {
   // root page component to every store write, including every unrelated table
   // patch — the widest-blast-radius subscription in the codebase.
   const setTables = useTableStore((s) => s.setTables)
-  const { loadCurrentRegister, loadAllRegisters } = useCashRegisterStore()
+  // Selector reads only: the two destructures that used to sit here subscribed
+  // the WHOLE app to every cash-register and config write, which is what made a
+  // register load blink the screen.
+  const loadAllRegisters = useCashRegisterStore((s) => s.loadAllRegisters)
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const { loadConfigFromDB } = useConfigStore()
+  // `profileResolved` separates "we have not asked yet" from "there is no
+  // profile row", so the startup loads never run twice for one identity.
+  const [profileResolved, setProfileResolved] = useState(false)
+  const loadConfigFromDB = useConfigStore((s) => s.loadConfigFromDB)
+  const startupKeyRef = useRef<string | null>(null)
 
   // Cargar el profile del usuario autenticado desde la DB
   const loadProfileFromAuth = async () => {
@@ -66,19 +124,37 @@ export default function Home() {
 
   // Verificar estado de autenticación al cargar la página
   useEffect(() => {
+    let cancelled = false
+    let lastUserId: string | null = null
+
     const checkAuth = async () => {
       const { data } = await supabase.auth.getSession()
-      setIsAuthenticated(!!data.session)
+      if (cancelled) return
+
+      lastUserId = data.session?.user?.id ?? null
+      // Resolve the identity BEFORE flipping `isAuthenticated`, so the startup
+      // effect below runs once with the real role already in the store.
       if (data.session) {
         await loadProfileFromAuth()
       }
+      if (cancelled) return
+      setProfileResolved(true)
+      setIsAuthenticated(!!data.session)
 
-      // Suscribirse a cambios en la autenticación
+      // Suscribirse a cambios en la autenticación. The cleanup used to be
+      // returned from inside this async function, so React never saw it and the
+      // listener leaked for the life of the page.
       const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+        const userId = session?.user?.id ?? null
         setIsAuthenticated(!!session)
-        if (session) {
-          loadProfileFromAuth()
+        if (!shouldReloadAuthProfile(event, lastUserId, userId)) {
+          // TOKEN_REFRESHED / INITIAL_SESSION duplicate: re-reading the profile
+          // here used to reset an admin's impersonated view.
+          lastUserId = userId
+          return
         }
+        lastUserId = userId
+        void loadProfileFromAuth()
       })
 
       return () => {
@@ -86,121 +162,114 @@ export default function Home() {
       }
     }
 
-    checkAuth()
+    // Keep the returned cleanup outside the async function so it always runs.
+    let dispose: (() => void) | undefined
+    checkAuth().then((cleanup) => {
+      dispose = cleanup
+    })
+
+    return () => {
+      cancelled = true
+      dispose?.()
+    }
   }, [])
 
   // Cargar la configuración al iniciar la aplicación
   useEffect(() => {
-    const initApp = async () => {
-      try {
-        // Solo cargar datos si el usuario está autenticado
-        if (!isAuthenticated) {
-          setIsLoading(false)
+    if (!isAuthenticated) {
+      setIsLoading(false)
+      // Signing out arms the next sign-in, even for the same role.
+      startupKeyRef.current = null
+      return
+    }
+    // Keep the full-screen loader until the identity is known: running the loads
+    // now and again one tick later (when `authProfile` lands) doubled them.
+    if (!profileResolved) return
+
+    const role = startupRole({
+      authRole,
+      // Read without subscribing: impersonating a role must not re-run this.
+      selectedRole: useProfileStore.getState().selectedProfile?.role,
+    })
+    const loads = startupLoadsForRole(role)
+    const key = `${isAuthenticated}|${role ?? "unknown"}`
+    if (startupKeyRef.current === key) return
+    startupKeyRef.current = key
+
+    let cancelled = false
+
+    const runLoads = async () => {
+      // Parallel, and one failure never blocks the rest. No fixed delay behind
+      // the loader any more.
+      const results = await Promise.allSettled(
+        loads.map((load) => runStartupLoad(load, role)),
+      )
+
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          log.error(`Error al cargar "${loads[index]}" al iniciar:`, { error: String(result.reason) })
+        }
+      })
+
+      if (!cancelled) setIsLoading(false)
+    }
+
+    const runStartupLoad = async (load: ShellLoad, startupRoleValue: string | null) => {
+      switch (load) {
+        // Only an admin may seed the missing `business_config` keys (RLS).
+        case "config":
+          return loadConfigFromDB({ canWrite: startupRoleValue === "admin" })
+
+        case "tables": {
+          const tablesData = await tableService.getAll()
+          setTables(
+            tablesData.map((table) => ({
+              id: table.id,
+              number: table.number,
+              status: table.status as "available" | "reserved" | "occupied" | "kitchen" | "served",
+              waiter: table.waiter_id ?? undefined,
+              restaurantId: table.restaurant_id,
+            })),
+          )
           return
         }
 
-        // Cargar la configuración desde la base de datos
-        await loadConfigFromDB()
+        case "waiters": {
+          const waitersData = await tableService.getWaiters()
+          setProfiles(
+            waitersData.map((w) => ({
+              id: w.id,
+              name: w.name,
+              username: w.username ?? null,
+              role: w.role as ProfileRole,
+              hasPassword: false,
+            })),
+          )
+          return
+        }
 
-        // Cargar mesas
-        const tablesData = await tableService.getAll()
-        const formattedTables = tablesData.map((table) => ({
-          id: table.id,
-          number: table.number,
-          status: table.status as "available" | "reserved" | "occupied" | "kitchen" | "served",
-          waiter: table.waiter_id ?? undefined,
-          restaurantId: table.restaurant_id,
-        }))
-        setTables(formattedTables)
+        case "kitchenOrders":
+          return loadKitchenAndDeliveredOrders()
 
-        // Cargar meseros y mapearlos al formato Profile del store
-        const waitersData = await tableService.getWaiters()
-        const waiterProfiles: Profile[] = waitersData.map((w) => ({
-          id: w.id,
-          name: w.name,
-          username: w.username ?? null,
-          role: w.role as ProfileRole,
-          hasPassword: false,
-        }))
-        setProfiles(waiterProfiles)
-
-        // Cargar órdenes activas
-        await loadActiveOrders()
-
-        // Cargar información de caja actual
-        await loadCurrentRegister()
-
-        await loadAllRegisters()
-
-      } catch (error) {
-      } finally {
-        // Finalizar la carga después de un breve retraso para mostrar la pantalla de carga
-        setTimeout(() => {
-          setIsLoading(false)
-        }, 500)
+        case "allRegisters":
+          return loadAllRegisters()
       }
     }
 
-    async function loadActiveOrders() {
-      try {
-        // Cargar órdenes en cocina y entregadas
-        const kitchenOrders = await orderService.getByStatus("kitchen")
-        const deliveredOrders = await orderService.getByStatus("delivered")
+    void runLoads()
 
-        // Combinar las órdenes
-        const dbOrders = [...kitchenOrders, ...deliveredOrders]
-
-        // Convertir las órdenes de la base de datos al formato que espera el store
-        const storeOrders = dbOrders.map((dbOrder) => {
-          // Convertir los items de la orden
-          const items = dbOrder.order_items.map((item) => ({
-            id: item.dish_id || `item-${item.id}`,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            comments: item.comments ?? undefined,
-            categoryId: "",
-            image: "",
-            status: (item.status ?? "kitchen") as "kitchen" | "served",
-            addedAt: item.added_at ? new Date(item.added_at) : undefined,
-          }))
-
-          // Crear el objeto de orden para el store
-          return {
-            id: dbOrder.id,
-            tableId: dbOrder.table_id ?? "",
-            orderType: orderTypeFromRow(dbOrder),
-            items,
-            status: dbOrder.status as "active" | "kitchen" | "delivered" | "paid" | "cancelled",
-            bill: {
-              subtotal: dbOrder.subtotal,
-              tax: dbOrder.tax,
-              taxPercentage: dbOrder.tax_percentage,
-              tip: dbOrder.tip,
-              tipPercentage: dbOrder.tip_percentage,
-              total: dbOrder.total,
-              totalDiscounts: dbOrder.total_discounts ?? 0,
-            },
-            waiter: dbOrder.waiter_id ?? "",
-            createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
-            isPartialOrder: dbOrder.is_partial_order ?? false,
-            parentOrderId: dbOrder.parent_order_id ?? null,
-          }
-        })
-
-        // Actualizar el store con las órdenes
-        useOrderStore.getState().setOrders(storeOrders as any)
-      } catch (error) {
-        console.error("Error al cargar órdenes activas:", error)
-      }
+    return () => {
+      cancelled = true
     }
-
-    if (isAuthenticated) {
-      initApp()
-    } else {
-      setIsLoading(false)
-    }
-  }, [loadConfigFromDB, setTables, loadCurrentRegister, loadAllRegisters, isAuthenticated])
+  }, [
+    isAuthenticated,
+    profileResolved,
+    authRole,
+    loadConfigFromDB,
+    loadAllRegisters,
+    setTables,
+    setProfiles,
+  ])
 
   // Pantalla de carga mientras se inicializa la aplicación
   if (isLoading) {

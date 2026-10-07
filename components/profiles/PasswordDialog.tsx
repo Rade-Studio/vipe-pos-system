@@ -19,12 +19,15 @@ export function PasswordDialog({ open, onOpenChange, profile, onSuccess }: Passw
   const [password, setPassword] = useState("")
   const [error, setError] = useState(false)
   const [maskedPassword, setMaskedPassword] = useState("")
-  const { kitchenPassword, cashierPassword, adminPassword, waiterPassword, deliveryPassword, loadConfigFromDB } = useConfigStore()
-
-  // Cargar configuración al montar el componente
-  useEffect(() => {
-    loadConfigFromDB()
-  }, [loadConfigFromDB])
+  // Selector reads: this dialog used to destructure the whole config store and
+  // then re-load the config (9 requests) on every open. The shell already
+  // loaded it — and the profile PINs have not been synced from the DB since P2
+  // — so the dialog only reads the store now.
+  const kitchenPassword = useConfigStore((s) => s.kitchenPassword)
+  const cashierPassword = useConfigStore((s) => s.cashierPassword)
+  const adminPassword = useConfigStore((s) => s.adminPassword)
+  const waiterPassword = useConfigStore((s) => s.waiterPassword)
+  const deliveryPassword = useConfigStore((s) => s.deliveryPassword)
 
   // Efecto para enmascarar la contraseña con asteriscos
   useEffect(() => {

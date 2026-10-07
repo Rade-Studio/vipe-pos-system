@@ -13,7 +13,6 @@ import { closeRegisterRpc } from "@/lib/supabase/payments-service"
 type CashRegisterState = {
   currentRegister: CashRegister | null
   registers: CashRegister[]
-  isLoading: boolean
 
   // Acciones de apertura y cierre
   openRegister: (initialCash: number) => Promise<boolean>
@@ -52,11 +51,17 @@ export const useCashRegisterStore = create<CashRegisterState>()(
     (set, get) => ({
       currentRegister: null,
       registers: [],
-      isLoading: false,
+
+      // Neither load flips a shared `isLoading` any more. All twelve
+      // `useCashRegisterStore()` consumers read the store without a selector,
+      // so every extra `set` re-rendered all of them, and running both loads in
+      // parallel from the shell made the flag bounce while each finished. No
+      // component read it (the cashier/admin/delivery screens use their own
+      // local flag or a React Query one), so the observable contract is the
+      // register data itself.
 
       loadCurrentRegister: async () => {
         try {
-          set({ isLoading: true })
           const register = await cashRegisterService.getCurrentRegister()
           if (register) {
             set({
@@ -66,20 +71,15 @@ export const useCashRegisterStore = create<CashRegisterState>()(
           }
         } catch (error) {
           log.error("Error al cargar la caja actual:", { error: String(error) })
-        } finally {
-          set({ isLoading: false })
         }
       },
 
       loadAllRegisters: async () => {
         try {
-          set({ isLoading: true })
           const registers = await cashRegisterService.getAllRegisters()
           set({ registers })
         } catch (error) {
           log.error("Error al cargar todas las cajas:", { error: String(error) })
-        } finally {
-          set({ isLoading: false })
         }
       },
 

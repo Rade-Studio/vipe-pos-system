@@ -50,7 +50,7 @@ type ConfigState = {
   error: string | null
 
   // Acciones para sincronización con la base de datos
-  loadConfigFromDB: () => Promise<void>
+  loadConfigFromDB: (options?: { canWrite?: boolean }) => Promise<void>
   saveConfigToDB: () => Promise<void>
 }
 
@@ -95,15 +95,19 @@ export const useConfigStore = create<ConfigState>()(
           deliveryPassword: passwords.delivery ?? state.deliveryPassword,
         })),
       // Cargar configuración desde la base de datos
-      loadConfigFromDB: async () => {
+      //
+      // `canWrite` mirrors the `business_config` RLS: only an admin may insert
+      // the missing default keys (`business_config_insert_policy` in
+      // supabase/migrations/20261005150000_tenant_scope_remaining_tables.sql).
+      // Every other role passes `{ canWrite: false }` and only reads, instead
+      // of firing 8 inserts RLS was always going to reject.
+      loadConfigFromDB: async ({ canWrite = true }: { canWrite?: boolean } = {}) => {
         try {
           set({ isLoading: true, error: null })
 
-          // Inicializar configuración por defecto si no existe
-          await businessConfigService.initializeDefaultConfig()
-
-          // Obtener toda la configuración
-          const config = await businessConfigService.getAllConfig()
+          // Una sola lectura de `business_config`; se insertan únicamente las
+          // claves que falten y solo si el rol puede escribirlas.
+          const config = await businessConfigService.loadConfig({ canWrite })
 
           set({
             tipPercentage: config.tip_percentage,
