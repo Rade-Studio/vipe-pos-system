@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import type { Profile, DailySales, PopularDish, CategorySales, OrderStatus, Order } from "@/types"
+import type { Order, Profile } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
@@ -25,14 +25,12 @@ import { CashRegisterSummary } from "@/components/admin/CashRegisterSummary"
 import { TransactionsByRegisterId } from "@/components/admin/TransactionsByRegisterId"
 import { orderService } from "@/lib/supabase/service"
 import { dashboardService } from "@/lib/supabase/dashboard-service"
-import { queryClient } from "@/lib/queryClient"
 import { log } from "@/lib/log"
 import { AlertCircle, RefreshCw } from "lucide-react"
 import { formatCurrency } from "@/utils/helpers"
 import { LowStockIngredients } from "@/components/admin/inventory/LowStockIngredients"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TableManagementPanel } from "@/components/admin/tables/TableManagementPanel"
-import { supabase } from "@/lib/supabase/client"
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
@@ -46,6 +44,28 @@ import { tableService } from "@/lib/supabase/service"
 import { PaymentMethodsManager } from "@/components/admin/payment-methods/PaymentMethodsManager"
 import { CouriersManager } from "@/components/admin/couriers/CouriersManager"
 import { DeliveryFeeSetting } from "@/components/admin/couriers/DeliveryFeeSetting"
+import {
+  adminOrdersQueryKey,
+  countOrdersByStatus,
+  countPaidOrdersOn,
+  fetchActiveAdminOrders,
+  gridOrdersFromStore,
+  mergeOrderLists,
+  newOrderIdsAt,
+  withoutOrder,
+  type AdminOrder,
+} from "@/lib/admin/orders"
+import {
+  DAILY_SALES_DAYS,
+  DASHBOARD_STALE_MS,
+  POPULAR_DISHES_DAYS,
+  POPULAR_DISHES_LIMIT,
+  dashboardDailySalesKey,
+  dashboardKitchenOrdersKey,
+  dashboardMonthSalesKey,
+  dashboardPopularDishesKey,
+} from "@/lib/admin/dashboard"
+import { daysAgoIso, monthStartIso, startOfLocalDayMs } from "@/lib/admin/dates"
 
 interface AdminViewProps {
   profile: Profile
@@ -53,75 +73,210 @@ interface AdminViewProps {
   authRole?: string
 }
 
+/** Stable empty arrays: `useQuery` defaults must not be a new identity per render. */
+const EMPTY_ORDERS: AdminOrder[] = []
+const EMPTY_DAILY_SALES: never[] = []
+const EMPTY_POPULAR_DISHES: never[] = []
+
+/**
+ * A clock that ticks only while `enabled`.
+ *
+ * The "new order" pulse used to be `new Date() - createdAt < 30000` evaluated
+ * inside the render of every card, so its answer depended on WHEN the render
+ * happened: a card that rendered once inside the window kept
+ * `animate-pulse-light` forever. The window is now a function of the data and
+ * this clock, so the class always comes back off.
+ */
+function useTickingNow(enabled: boolean, intervalMs = 10_000): number {
+  const [nowMs, setNowMs] = useState<number>(() => Date.now())
+
+  useEffect(() => {
+    if (!enabled) return
+    const timer = setInterval(() => setNowMs(Date.now()), intervalMs)
+
+    return () => clearInterval(timer)
+  }, [enabled, intervalMs])
+
+  return nowMs
+}
+
+interface ActiveOrdersGridProps {
+  orders: AdminOrder[]
+  /** First load (nothing to show yet). A REFETCH keeps the cards on screen. */
+  isLoading: boolean
+  onDelete: (orderId: string) => void
+  onRefresh: () => void
+}
+
+/**
+ * "Órdenes en Cocina y Servidas": the card grid, its first-load skeleton and its
+ * empty state. Split out of `AdminView` so the two invariants this task is about
+ * — a refresh never blanks the grid, and a card never pulses forever — are
+ * testable without the whole panel.
+ */
+export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: ActiveOrdersGridProps) {
+  const profiles = useProfileStore((s) => s.profiles)
+  const nowMs = useTickingNow(true, 10_000)
+
+  // The pulse set is recomputed from the data and the clock, never from the
+  // render timestamp.
+  const pulsingOrderIds = useMemo(() => newOrderIdsAt(orders, nowMs), [orders, nowMs])
+
+  if (isLoading && orders.length === 0) {
+    return (
+      <div
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+        data-testid="admin-orders-skeleton"
+      >
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Card key={i} className="overflow-hidden">
+            <CardHeader className="pb-2">
+              <div className="flex justify-between">
+                <Skeleton className="h-6 w-24" />
+                <Skeleton className="h-6 w-16" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-4 w-full mb-2" />
+              <Skeleton className="h-4 w-3/4 mb-2" />
+              <Skeleton className="h-4 w-1/2 mb-4" />
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, j) => (
+                  <div key={j} className="flex justify-between">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end mt-4">
+                <Skeleton className="h-9 w-24" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="text-center py-10 bg-muted/20 rounded-lg">
+        <p className="text-muted-foreground">No hay órdenes activas en este momento</p>
+        <Button variant="outline" size="sm" onClick={onRefresh} className="mt-4">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          <span>Verificar nuevamente</span>
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {orders.map((order) => {
+        // D6 Rule A variant: `OrderCard` (out of scope, components/pos/*)
+        // requires the full `Table` object, so a primitive projection
+        // does not apply here. No subscription is taken; getState() is
+        // read fresh on every render this component already performs
+        // for unrelated reasons (order data), which is safe because a
+        // table's `number` never changes after creation.
+        const table = useTableStore.getState().getTableById(order.tableId)
+        const waiter = profiles?.find((p) => p.id === order.waiter)
+
+        return (
+          <div
+            key={order.id}
+            className={pulsingOrderIds.has(order.id) ? "animate-pulse-light" : ""}
+            data-testid={`admin-order-${order.id}`}
+          >
+            <OrderCard
+              order={order}
+              table={table}
+              waiter={waiter}
+              isAdmin={true}
+              showActions={true}
+              onDelete={onDelete}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
-  const [monthSales, setMonthSales] = useState<number>(0)
-  const [kitchenOrdersCount, setKitchenOrdersCount] = useState<number>(0)
-  const [availableTables, setAvailableTables] = useState<number>(0)
-  const [totalTables, setTotalTables] = useState<number>(0)
-  const [activeWaiters, setActiveWaiters] = useState<number>(0)
-  const [assignedTables, setAssignedTables] = useState<number>(0)
-  const [loadingActiveOrders, setLoadingActiveOrders] = useState<boolean>(false)
-  const [activeOrdersFromDB, setActiveOrdersFromDB] = useState<any[]>([])
 
-  // Estados para los datos de las gráficas
-  const [dailySales, setDailySales] = useState<DailySales[]>([])
-  const [popularDishes, setPopularDishes] = useState<PopularDish[]>([])
+  // Which top-level tab is open. T9 (S1): the dashboard reads and the
+  // active-orders read are gated on it, so nothing loads for a tab nobody is
+  // looking at, and everything that IS open is served from the query cache.
+  const [activeTab, setActiveTab] = useState<string>("dashboard")
+  const isDashboardOpen = activeTab === "dashboard"
+  const isOrdersTabOpen = activeTab === "orders"
 
-  // Estado para controlar la carga de datos
-  const [isLoading, setIsLoading] = useState<boolean>(true)
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  // Fetch admin orders via React Query
-  const fetchAdminOrders = async () => {
-    const { data: dbOrders } = await supabase
-      .from("orders")
-      .select(`
-        *,
-        order_items(*),
-        tables(number),
-        profiles(full_name)
-      `)
-      .in("status", ["active", "kitchen", "delivered"])
-      .order("created_at", { ascending: false })
-
-    return (dbOrders || []).map((order) => ({
-      id: order.id,
-      tableId: order.table_id ?? "",
-      orderType: orderTypeFromRow(order),
-      waiter: order.waiter_id ?? "",
-      status: order.status,
-      items:
-        (order.order_items || []).map((item) => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          categoryId: "",
-          image: "",
-          comments: item.comments || "",
-          status: item.status || "kitchen",
-        })) || [],
-      bill: {
-        subtotal: order.subtotal || 0,
-        tax: order.tax || 0,
-        taxPercentage: order.tax_percentage || 0,
-        tip: order.tip || 0,
-        tipPercentage: order.tip_percentage || 0,
-        total: order.total || 0,
-        totalDiscounts: order.total_discounts ?? 0,
-      },
-      createdAt: order.created_at ? new Date(order.created_at) : new Date(),
-      tableName: order.tables?.number || "N/A",
-      waiterName: order.profiles?.full_name || "Desconocido",
-    }))
-  }
-
-  const { data: adminOrdersData = [] } = useQuery({
-    queryKey: ['orders', 'admin'],
-    queryFn: fetchAdminOrders,
+  // The ONE active-orders read (it replaces `fetchAdminOrders`,
+  // `loadActiveOrdersFromDB` and the store's three-call `loadOrders`).
+  const {
+    data: adminOrdersData = EMPTY_ORDERS,
+    isLoading: isLoadingActiveOrders,
+    isFetching: isFetchingActiveOrders,
+    isError: isActiveOrdersError,
+    refetch: refetchActiveOrders,
+  } = useQuery<AdminOrder[]>({
+    queryKey: adminOrdersQueryKey,
+    queryFn: fetchActiveAdminOrders,
+    // Only the Órdenes tab renders this list, so only that tab needs the read.
+    enabled: isOrdersTabOpen,
+    staleTime: 15_000,
   })
+
+  useEffect(() => {
+    if (!isActiveOrdersError) return
+    log.error("Error al cargar órdenes activas:", { error: "fetchActiveAdminOrders failed" })
+    toast({
+      title: "Error",
+      description: "No se pudieron cargar las órdenes activas",
+      variant: "destructive",
+    })
+  }, [isActiveOrdersError, toast])
+
+  // Dashboard reads: four independent queries, so React Query runs them in
+  // parallel and each one is cached and skipped while the tab is closed. The
+  // tables / waiters numbers are NOT read again here: the shell already loaded
+  // both for the admin (lib/shell/startup-loads.ts) and the two cards below the
+  // charts render from those same stores.
+  const monthStart = monthStartIso(new Date())
+  const popularDishesSince = daysAgoIso(new Date(), POPULAR_DISHES_DAYS)
+
+  const { data: monthSales = 0, isLoading: isLoadingMonthSales } = useQuery({
+    queryKey: dashboardMonthSalesKey(monthStart),
+    queryFn: () => dashboardService.getMonthSales(monthStart),
+    enabled: isDashboardOpen,
+    staleTime: DASHBOARD_STALE_MS,
+  })
+  const { data: kitchenOrdersCount = 0, isLoading: isLoadingKitchenOrders } = useQuery({
+    queryKey: dashboardKitchenOrdersKey(),
+    queryFn: () => dashboardService.countOrdersByStatus("kitchen"),
+    enabled: isDashboardOpen,
+    staleTime: DASHBOARD_STALE_MS,
+  })
+  const { data: dailySales = EMPTY_DAILY_SALES, isLoading: isLoadingDailySales } = useQuery({
+    queryKey: dashboardDailySalesKey(DAILY_SALES_DAYS),
+    queryFn: () => dashboardService.getDailySales(DAILY_SALES_DAYS),
+    enabled: isDashboardOpen,
+    staleTime: DASHBOARD_STALE_MS,
+  })
+  const { data: popularDishes = EMPTY_POPULAR_DISHES, isLoading: isLoadingPopularDishes } = useQuery({
+    queryKey: dashboardPopularDishesKey(POPULAR_DISHES_DAYS, POPULAR_DISHES_LIMIT),
+    queryFn: () => dashboardService.getPopularDishes(POPULAR_DISHES_LIMIT, popularDishesSince),
+    enabled: isDashboardOpen,
+    staleTime: DASHBOARD_STALE_MS,
+  })
+
+  const isDashboardLoading =
+    isLoadingMonthSales || isLoadingKitchenOrders || isLoadingDailySales || isLoadingPopularDishes
 
   // Añadir estados para el manejo de realtime
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false)
@@ -133,15 +288,22 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
 
   // D6 Rule B: render-path counts project to primitives, never to the full
   // `tables` array — see design.md D6. Combined into one object per site so a
-  // single shallow comparison covers the whole projection.
+  // single shallow comparison covers the whole projection. `total` and
+  // `assigned` come from the SAME slice the shell already loaded, so the
+  // "Mesas Disponibles x / y" card no longer needs its own `tables` read.
   const tableStatusCounts = useTableStore(
     useShallow((s) => ({
       available: s.tables.filter((t) => t.status === "available").length,
       reserved: s.tables.filter((t) => t.status === "reserved").length,
       kitchen: s.tables.filter((t) => t.status === "kitchen").length,
       served: s.tables.filter((t) => t.status === "served").length,
+      total: s.tables.length,
+      assigned: s.tables.filter((t) => t.waiter).length,
     })),
   )
+  const availableTables = tableStatusCounts.available
+  const totalTables = tableStatusCounts.total
+  const assignedTables = tableStatusCounts.assigned
   const assignedTableCountByWaiter = useTableStore(
     useShallow((s) => {
       const counts: Record<string, number> = {}
@@ -155,55 +317,114 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
   const reserveTable = useTableStore((s) => s.reserveTable)
   const releaseTable = useTableStore((s) => s.releaseTable)
 
-  const orders = useOrderStore((s) => s.orders)
-  const getOrderById = useOrderStore((s) => s.getOrderById)
-  const removeOrder = useOrderStore((s) => s.removeOrder)
-  const loadOrders = useOrderStore((s) => s.loadOrders)
-  const getOrdersByStatus = (statuses: OrderStatus[]) => useOrderStore.getState().getOrdersByStatus(statuses)
+  const storeOrders = useOrderStore((s) => s.orders)
 
   const profiles = useProfileStore((s) => s.profiles)
 
-  // Cargar datos del dashboard
-  useEffect(() => {
-    const loadDashboardData = async () => {
-      try {
-        setIsLoading(true)
+  // "Meseros Activos": the shell loads exactly `role = waiter AND active` for
+  // the admin, and the card below this one already lists that slice.
+  const activeWaiters = useMemo(
+    () => (profiles ?? []).filter((p) => p.role === "waiter").length,
+    [profiles],
+  )
 
-        // Cargar estadísticas generales
-        const stats = await dashboardService.getDashboardStats()
-        setMonthSales(stats.monthSales)
-        setKitchenOrdersCount(stats.kitchenOrdersCount)
-        setAvailableTables(stats.availableTables)
-        setTotalTables(stats.totalTables)
-        setActiveWaiters(stats.activeWaiters)
+  // The grid list: the store orders the admin listed before (kitchen, delivered
+  // and paid) plus everything the query read, de-duplicated by id and memoised.
+  const combinedActiveOrders = useMemo(
+    () => mergeOrderLists(gridOrdersFromStore(storeOrders), adminOrdersData),
+    [storeOrders, adminOrdersData],
+  )
 
-        // Cargar datos para las gráficas
-        const salesData = await dashboardService.getDailySales(30)
-        const dishesData = await dashboardService.getPopularDishes(10)
+  // Dashboard "Órdenes Activas" counters, over the very same list the grid
+  // renders (before: the store snapshot alone, refreshed only by a full reload).
+  const kitchenCount = useMemo(
+    () => countOrdersByStatus(combinedActiveOrders, ["kitchen"]),
+    [combinedActiveOrders],
+  )
+  const deliveredCount = useMemo(
+    () => countOrdersByStatus(combinedActiveOrders, ["delivered"]),
+    [combinedActiveOrders],
+  )
+  const paidTodayCount = useMemo(
+    () => countPaidOrdersOn(combinedActiveOrders, startOfLocalDayMs(new Date())),
+    [combinedActiveOrders],
+  )
 
-        setDailySales(salesData)
-        setPopularDishes(dishesData)
+  // Category mapping
+  const categoryMap: Record<string, string> = {
+    "1": "Entradas",
+    "2": "Platos Principales",
+    "3": "Postres",
+    "4": "Bebidas",
+    "5": "Café",
+  }
 
-        // Obtener mesas asignadas a meseros
-        const { data: assignedTablesData } = await supabase.from("tables").select("id").not("waiter_id", "is", null)
+  // Admin can access all tables
+  const checkTableAccess = () => true
 
-        setAssignedTables(assignedTablesData?.length || 0)
-      } catch (error) {
-        log.error("Error al cargar datos del dashboard:", { error: String(error) })
-      } finally {
-        setIsLoading(false)
+  /**
+   * "Actualizar": ONE read of the active orders (the query it refetches). It
+   * used to run its own `orders` query AND the store's three-call `loadOrders`,
+   * and blanked the whole grid with skeletons while it did.
+   */
+  const handleRefreshActiveOrders = async () => {
+    setNewOrdersCount(0)
+    const result = await refetchActiveOrders()
+
+    if (result.isError) {
+      // Reported by the `isError` effect above, exactly once.
+      return
+    }
+
+    toast({
+      title: "Órdenes actualizadas",
+      description: `Se han cargado ${result.data?.length ?? 0} órdenes activas`,
+    })
+  }
+
+  const handleDeleteOrder = async (orderId: string) => {
+    try {
+      // Verificar si la orden existe
+      const order = combinedActiveOrders.find((candidate) => candidate.id === orderId)
+      if (!order) return
+
+      // Eliminar la orden de la base de datos
+      await orderService.deleteOrder(orderId)
+
+      // Actualizar la lista que se está pintando (la del query, en su cache).
+      // The store copy, if there is one, is dropped by the same patch.
+      queryClient.setQueryData<AdminOrder[]>(
+        adminOrdersQueryKey,
+        (prev: AdminOrder[] | undefined) => (prev ? withoutOrder(prev, orderId) : prev),
+      )
+      useOrderStore.setState((state) => ({
+        orders: withoutOrder(state.orders, orderId),
+      }))
+
+      // Delivery orders have no table to release.
+      if (hasTable(order)) {
+        await tableService.update(order.tableId, {
+          status: "available",
+          waiter_id: null,
+        } as any)
       }
-    }
 
-    loadDashboardData()
-  }, [])
+      // Mantener este toast ya que es una acción importante iniciada por el usuario
+      toast({
+        title: "Orden eliminada",
+        description: "La orden ha sido eliminada correctamente",
+      })
+    } catch (error) {
+      log.error("Error al eliminar la orden:", { error: String(error) })
 
-  // Sync admin orders from React Query to local state
-  useEffect(() => {
-    if (adminOrdersData.length > 0) {
-      setActiveOrdersFromDB(adminOrdersData)
+      // Mantener este toast ya que es un error importante
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error desconocido",
+        variant: "destructive",
+      })
     }
-  }, [adminOrdersData])
+  }
 
   // Suscribirse a cambios en tiempo real
   useEffect(() => {
@@ -214,7 +435,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         log.info("Configurando suscripción en tiempo real para órdenes...")
 
         // Función para manejar cambios en órdenes
-        const handleOrderChange = async (payload: any, isNewOrder?: boolean) => {
+        const handleOrderChange = async (payload: any, _isNewOrder?: boolean) => {
           log.info("Cambio en orden detectado:", { eventType: payload.eventType, newId: payload.new?.id })
 
           // Incrementar contador de nuevas órdenes si es una inserción
@@ -257,7 +478,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
             new: payload.new ? wireRowToPartialOrder(payload.new) : null,
             old: (payload.old as any)?.id ? { id: (payload.old as any).id } : null,
           }
-          queryClient.setQueryData<Order[]>(['orders', 'admin'], (prev: Order[] | undefined) =>
+          queryClient.setQueryData<Order[]>(adminOrdersQueryKey, (prev: Order[] | undefined) =>
             prev ? mergeOrdersList(prev, conv) : prev,
           )
         }
@@ -296,168 +517,11 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
     }
   }, [toast])
 
-  // Cargar órdenes activas desde la base de datos
-  const loadActiveOrdersFromDB = async (showToast = true) => {
-    setLoadingActiveOrders(true)
-    try {
-      // Obtener órdenes con estado "active", "kitchen" y "delivered" de la base de datos
-      const { data: dbOrders, error } = await supabase
-        .from("orders")
-        .select(`
-        *,
-        order_items(*),
-        tables(number),
-        profiles(full_name)
-      `)
-        .in("status", ["active", "kitchen", "delivered"])
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        throw error
-      }
-
-      log.info("Órdenes activas cargadas desde DB:", { count: dbOrders?.length || 0 })
-
-      // Transformar los datos al formato que espera la aplicación
-      const formattedOrders =
-        dbOrders?.map((order) => ({
-          id: order.id,
-          tableId: order.table_id ?? "",
-          orderType: orderTypeFromRow(order),
-          waiter: order.waiter_id ?? "",
-          status: order.status, // Mantener el estado original de la orden
-          items:
-            order.order_items?.map((item) => ({
-              id: item.id,
-              name: item.name,
-              price: item.price,
-              quantity: item.quantity,
-              categoryId: "",
-              image: "",
-              comments: item.comments || "",
-              status: item.status || "kitchen", // Estado del item
-            })) || [],
-          bill: {
-            subtotal: order.subtotal || 0,
-            tax: order.tax || 0,
-            taxPercentage: order.tax_percentage || 0,
-            tip: order.tip || 0,
-            tipPercentage: order.tip_percentage || 0,
-            total: order.total || 0,
-            totalDiscounts: order.total_discounts ?? 0,
-          },
-          createdAt: order.created_at ? new Date(order.created_at) : new Date(),
-          // Información adicional para mostrar
-          tableName: order.tables?.number || "N/A",
-          waiterName: order.profiles?.full_name || "Desconocido",
-        })) || []
-
-      setActiveOrdersFromDB(formattedOrders)
-
-      // También actualizar el store con estas órdenes
-      await loadOrders()
-
-      // Resetear el contador de nuevas órdenes
-      setNewOrdersCount(0)
-
-      // Solo mostrar toast si se solicita explícitamente (actualización manual)
-      if (showToast) {
-        toast({
-          title: "Órdenes actualizadas",
-          description: `Se han cargado ${formattedOrders.length} órdenes activas`,
-        })
-      }
-    } catch (error) {
-      log.error("Error al cargar órdenes activas:", { error: String(error) })
-
-      // Mantener este toast ya que es un error importante
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las órdenes activas",
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingActiveOrders(false)
-    }
-  }
-
-  // Cargar órdenes activas al montar el componente y cuando se selecciona la pestaña
-  useEffect(() => {
-    loadActiveOrdersFromDB(false) // Pasar false para no mostrar toast en la carga inicial
-  }, [])
-
-  // Obtener órdenes activas y completadas
-  const activeOrders = getOrdersByStatus(["kitchen", "delivered"])
-  const paidOrders = getOrdersByStatus(["paid"])
-
-  // Combinar órdenes del store con las de la base de datos, evitando duplicados
-  const combinedActiveOrders = [...activeOrders, ...paidOrders]
-
-  // Agregar órdenes de la base de datos que no estén ya en el store
-  activeOrdersFromDB.forEach((dbOrder) => {
-    if (!combinedActiveOrders.some((order) => order.id === dbOrder.id)) {
-      combinedActiveOrders.push(dbOrder)
-    }
-  })
-
-  // Category mapping
-  const categoryMap: Record<string, string> = {
-    "1": "Entradas",
-    "2": "Platos Principales",
-    "3": "Postres",
-    "4": "Bebidas",
-    "5": "Café",
-  }
-
-  // Admin can access all tables
-  const checkTableAccess = () => true
-
-  const handleDeleteOrder = async (orderId: string) => {
-    try {
-      // Verificar si la orden existe
-      const order = getOrderById(orderId)
-      if (!order) return
-
-      // Eliminar la orden de la base de datos
-      await orderService.deleteOrder(orderId)
-
-      // Actualizar el estado local
-      removeOrder(orderId)
-
-      // Actualizar la lista de órdenes activas
-      setActiveOrdersFromDB((prev) => prev.filter((order) => order.id !== orderId))
-      // Delivery orders have no table to release.
-      if (hasTable(order)) {
-        await tableService.update(order.tableId, {
-          status: "available",
-          waiter_id: null,
-        } as any)
-      }
-
-      // Mantener este toast ya que es una acción importante iniciada por el usuario
-      toast({
-        title: "Orden eliminada",
-        description: "La orden ha sido eliminada correctamente",
-      })
-    } catch (error) {
-      log.error("Error al eliminar la orden:", { error: String(error) })
-
-      // Mantener este toast ya que es un error importante
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Error desconocido",
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingActiveOrders(false)
-    }
-  }
-
   return (
     <div className="flex flex-col h-screen p-4">
       <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Panel de Administración" />
 
-      <Tabs defaultValue="dashboard">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="tables">Mesas</TabsTrigger>
@@ -467,7 +531,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         </TabsList>
 
         <TabsContent value="dashboard">
-          {isLoading ? (
+          {isDashboardLoading ? (
             <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-4">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -663,23 +727,15 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <span>En cocina:</span>
-                      <span className="font-medium">{getOrdersByStatus(["kitchen"]).length}</span>
+                      <span className="font-medium">{kitchenCount}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span>Entregadas (pendientes de pago):</span>
-                      <span className="font-medium">{getOrdersByStatus(["delivered"]).length}</span>
+                      <span className="font-medium">{deliveredCount}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span>Completadas hoy:</span>
-                      <span className="font-medium">
-                        {
-                          getOrdersByStatus(["paid"]).filter((order) => {
-                            const today = new Date()
-                            const orderDate = new Date(order.createdAt)
-                            return orderDate.setHours(0, 0, 0, 0) === today.setHours(0, 0, 0, 0)
-                          }).length
-                        }
-                      </span>
+                      <span className="font-medium">{paidTodayCount}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -718,10 +774,10 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => loadActiveOrdersFromDB(true)}
-                    disabled={loadingActiveOrders}
+                    onClick={handleRefreshActiveOrders}
+                    disabled={isFetchingActiveOrders}
                   >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${loadingActiveOrders ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isFetchingActiveOrders ? "animate-spin" : ""}`} />
                     <span>Actualizar</span>
                     {newOrdersCount > 0 && (
                       <span className="ml-1 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">
@@ -732,73 +788,12 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
                 </div>
               </div>
 
-              {loadingActiveOrders ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <Card key={i} className="overflow-hidden">
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between">
-                          <Skeleton className="h-6 w-24" />
-                          <Skeleton className="h-6 w-16" />
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <Skeleton className="h-4 w-full mb-2" />
-                        <Skeleton className="h-4 w-3/4 mb-2" />
-                        <Skeleton className="h-4 w-1/2 mb-4" />
-                        <div className="space-y-2">
-                          {Array.from({ length: 3 }).map((_, j) => (
-                            <div key={j} className="flex justify-between">
-                              <Skeleton className="h-4 w-32" />
-                              <Skeleton className="h-4 w-16" />
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex justify-end mt-4">
-                          <Skeleton className="h-9 w-24" />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : combinedActiveOrders.length === 0 ? (
-                <div className="text-center py-10 bg-muted/20 rounded-lg">
-                  <p className="text-muted-foreground">No hay órdenes activas en este momento</p>
-                  <Button variant="outline" size="sm" onClick={() => loadActiveOrdersFromDB(true)} className="mt-4">
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    <span>Verificar nuevamente</span>
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {combinedActiveOrders.map((order) => {
-                    // D6 Rule A variant: `OrderCard` (out of scope, components/pos/*)
-                    // requires the full `Table` object, so a primitive projection
-                    // does not apply here. No subscription is taken; getState() is
-                    // read fresh on every render this component already performs
-                    // for unrelated reasons (order data), which is safe because a
-                    // table's `number` never changes after creation.
-                    const table = useTableStore.getState().getTableById(order.tableId)
-                    const waiter = profiles?.find((p) => p.id === order.waiter)
-
-                    // Determinar si la orden es nueva (menos de 30 segundos)
-                    const isNewOrder = new Date().getTime() - new Date(order.createdAt).getTime() < 30000
-
-                    return (
-                      <div key={order.id} className={`${isNewOrder ? "animate-pulse-light" : ""}`}>
-                        <OrderCard
-                          order={order}
-                          table={table}
-                          waiter={waiter}
-                          isAdmin={true}
-                          showActions={true}
-                          onDelete={handleDeleteOrder}
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+              <ActiveOrdersGrid
+                orders={combinedActiveOrders}
+                isLoading={isLoadingActiveOrders}
+                onDelete={handleDeleteOrder}
+                onRefresh={handleRefreshActiveOrders}
+              />
             </TabsContent>
 
             <TabsContent value="completed">

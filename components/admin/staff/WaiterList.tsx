@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -8,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { WaiterForm } from "./WaiterForm"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { ADMIN_LIST_STALE_MS, catalogKeys, fetchStaff } from "@/lib/admin/catalog"
 import { Badge } from "@/components/ui/badge"
 import { Edit, Trash, Plus } from "lucide-react"
 import {
@@ -23,9 +25,7 @@ import {
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
 import { roleLabel } from "@/lib/auth/roles"
-
-// Roles managed from this screen. Admin accounts are provisioned outside of it.
-const STAFF_ROLES = ["waiter", "kitchen", "cashier", "delivery_operator"] as const
+import type { StaffRole } from "@/lib/supabase/staff-service"
 
 interface Waiter {
   id: string
@@ -34,41 +34,40 @@ interface Waiter {
   email: string | null
   auth_user_id: string | null
   active: boolean
-  role: (typeof STAFF_ROLES)[number]
+  role: StaffRole
 }
 
 export function WaiterList() {
   const { toast } = useToast()
-  const [waiters, setWaiters] = useState<Waiter[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedWaiter, setSelectedWaiter] = useState<Waiter | undefined>(undefined)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [waiterToDelete, setWaiterToDelete] = useState<Waiter | null>(null)
 
-  const fetchWaiters = async () => {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.from("profiles").select("*").in("role", STAFF_ROLES).order("full_name")
-
-      if (error) throw error
-
-      setWaiters((data || []) as unknown as Waiter[])
-    } catch (error: any) {
-      log.error("Error fetching staff:", { error: String(error) })
-      toast({
-        title: "Error",
-        description: "No se pudo cargar el personal",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+  // T9 (S1): cached read of the staff directory. The old `useEffect` re-read
+  // it on every visit to the Personal sub-tab and re-rendered the skeleton
+  // table every time.
+  const {
+    data: waiters = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery<Waiter[]>({
+    queryKey: catalogKeys.staff,
+    queryFn: fetchStaff,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
 
   useEffect(() => {
-    fetchWaiters()
-  }, [])
+    if (!isError) return
+    log.error("Error fetching staff:", { error: String(error) })
+    toast({
+      title: "Error",
+      description: "No se pudo cargar el personal",
+      variant: "destructive",
+    })
+  }, [isError, error, toast])
 
   const handleAddWaiter = () => {
     setSelectedWaiter(undefined)
@@ -93,7 +92,7 @@ export function WaiterList() {
 
       if (error) throw error
 
-      setWaiters(waiters.filter((w) => w.id !== waiterToDelete.id))
+      queryClient.invalidateQueries({ queryKey: catalogKeys.staff })
       toast({
         title: "Integrante eliminado",
         description: "El integrante del personal ha sido eliminado correctamente",
@@ -113,7 +112,8 @@ export function WaiterList() {
 
   const handleFormSuccess = () => {
     setIsFormOpen(false)
-    fetchWaiters()
+    // The Edge Function created the account; only this list has to re-read.
+    queryClient.invalidateQueries({ queryKey: catalogKeys.staff })
   }
 
   return (
@@ -126,7 +126,7 @@ export function WaiterList() {
         </Button>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="w-full">
           <div className="rounded-md border">
             <table className="w-full caption-bottom text-sm">
