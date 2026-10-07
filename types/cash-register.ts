@@ -50,16 +50,7 @@ export interface CashRegister {
   updated_at?: Date
 }
 
-export interface CashRegisterSummary {
-  initialCash: number
-  totalCash: number
-  totalTransfer: number
-  totalNequi: number
-  totalBancolombia: number
-  totalSales: number
-  totalTips: number
-  totalChange: number
-  totalCashDeposits: number
-  totalCashWithdrawals: number
-  finalCash: number
-}
+// Legacy `CashRegisterSummary` type removed in task 8c: the only authority on
+// totals, tips, expected cash and the legacy block is the server's
+// `register_summary` RPC (see `lib/payments/register-summary.ts`). The
+// browser never recomputes any of those numbers any more.

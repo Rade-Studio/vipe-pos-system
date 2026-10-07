@@ -239,6 +239,14 @@ npm run test
 yarn test
 ```
 
+La lógica pura de TypeScript (`lib/payments`, `store`) se prueba con Vitest en
+entorno Node, sin navegador:
+
+```bash
+pnpm test                                      # una pasada
+pnpm test:watch                                # modo interactivo
+```
+
 ### Pruebas de base de datos
 
 El comportamiento de la base de datos (políticas RLS, permisos, RPCs) se cubre con

@@ -20,13 +20,14 @@ SET LOCAL search_path = public, extensions;
 SELECT plan(11);
 
 -- --- Migration history -----------------------------------------------------
--- 33 files live in supabase/migrations/. The CLI records each applied file in
--- supabase_migrations.schema_migrations; the count proves none was skipped and
--- that nothing ran outside the folder.
+-- 38 files live in supabase/migrations/ (one more since the register_summary
+-- / close_register RPCs).
+-- The CLI records each applied file in supabase_migrations.schema_migrations;
+-- the count proves none was skipped and that nothing ran outside the folder.
 SELECT is(
   (SELECT count(*) FROM supabase_migrations.schema_migrations)::bigint,
-  33::bigint,
-  'all 33 migration files are recorded in supabase_migrations.schema_migrations'
+  38::bigint,
+  'all 38 migration files are recorded in supabase_migrations.schema_migrations'
 );
 
 -- --- orders.status ---------------------------------------------------------
@@ -79,7 +80,10 @@ SELECT is(
 );
 
 -- --- Functions -------------------------------------------------------------
-SELECT has_function('public', 'complete_payment', 'complete_payment() exists');
+-- pay_order is the new atomic checkout RPC (migration 20261006120000). The
+-- broken legacy public.complete_payment() was dropped in the same migration
+-- and is asserted absent in 070_pay_order.test.sql.
+SELECT has_function('public', 'pay_order', 'pay_order() exists');
 SELECT has_function('public', 'delete_order_with_items', 'delete_order_with_items() exists');
 
 -- --- Tenant isolation in the policies --------------------------------------
