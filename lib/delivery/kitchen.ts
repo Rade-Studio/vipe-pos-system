@@ -95,3 +95,15 @@ export function pendingDeliveryPayments<
 >(rows: readonly T[]): T[] {
   return rows.filter((row) => !row.isPaid && row.delivery.status !== 'cancelled')
 }
+
+/**
+ * Toast text once the kitchen served every item. A delivery is reported
+ * ready only after the server accepted `mark_ready`; a skipped or failed
+ * transition says nothing about the delivery state.
+ */
+export function servedOrderMessage(input: { delivery: boolean; deliveryReady: boolean }): string {
+  if (!input.delivery) return 'Todos los productos fueron entregados y la mesa quedó servida.'
+  return input.deliveryReady
+    ? 'Todos los productos fueron entregados y el domicilio quedó listo para despachar.'
+    : 'Todos los productos fueron entregados.'
+}

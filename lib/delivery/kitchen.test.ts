@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  servedOrderMessage,
   groupDineInOrdersByTable,
   hasTable,
   isDeliveryOrder,
@@ -151,5 +152,25 @@ describe('pendingDeliveryPayments', () => {
       row('5', 'failed', false),
     ]
     expect(pendingDeliveryPayments(rows).map((r) => r.delivery.orderId)).toEqual(['1', '2', '5'])
+  })
+})
+
+describe('servedOrderMessage', () => {
+  it('reports a served table for dine-in orders', () => {
+    expect(servedOrderMessage({ delivery: false, deliveryReady: false })).toBe(
+      'Todos los productos fueron entregados y la mesa quedó servida.',
+    )
+  })
+
+  it('reports a ready delivery only once the server confirmed it', () => {
+    expect(servedOrderMessage({ delivery: true, deliveryReady: true })).toBe(
+      'Todos los productos fueron entregados y el domicilio quedó listo para despachar.',
+    )
+  })
+
+  it('never claims a delivery is ready when marking it was skipped or failed', () => {
+    expect(servedOrderMessage({ delivery: true, deliveryReady: false })).toBe(
+      'Todos los productos fueron entregados.',
+    )
   })
 })

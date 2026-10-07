@@ -33,6 +33,7 @@ import {
   orderHeading,
   orderPlaceText,
   orderTypeFromRow,
+  servedOrderMessage,
   shouldMarkDeliveryReady,
   type PlaceFilter,
 } from "@/lib/delivery/kitchen"
@@ -624,8 +625,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   }
 
   // Moves a delivery to "ready" once the kitchen served everything. Never
-  // blocks the kitchen flow: a failure only surfaces a toast.
-  const markDeliveryReady = async (orderId: string) => {
+  // throws: a failure only surfaces a toast. Resolves true only when the
+  // server accepted the transition.
+  const markDeliveryReady = async (orderId: string): Promise<boolean> => {
     try {
       // Fresh read: the operator may have moved the delivery meanwhile.
       const rows = await queryClient.fetchQuery({
@@ -634,8 +636,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
         staleTime: 0,
       })
       const row = rows.find((r) => r.delivery.orderId === orderId)
-      if (!shouldMarkDeliveryReady(row?.delivery.status)) return
+      if (!shouldMarkDeliveryReady(row?.delivery.status)) return false
       await setDeliveryStatus({ orderId, action: "mark_ready" })
+      return true
     } catch (error) {
       log.error("Error al marcar el domicilio como listo:", { error: String(error) })
       toast({
@@ -643,18 +646,21 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
         description: "Los productos quedaron entregados, pero no se pudo marcar el domicilio como listo. Avise al operador de domicilios.",
         variant: "destructive",
       })
+      return false
     } finally {
       queryClient.invalidateQueries({ queryKey: activeDeliveriesQueryKey })
     }
   }
 
   // Closes an order whose items are all served: dine-in frees its table
-  // for service, delivery moves to ready.
-  const completeOrder = async (order: Order) => {
+  // for service, delivery moves to ready. Returns the toast text.
+  const completeOrder = async (order: Order): Promise<string> => {
     await orderService.updateStatus(order.id, "delivered")
     updateOrderStatus(order.id, "delivered")
     if (hasTable(order)) updateTableStatus(order.tableId, "served")
-    if (isDeliveryOrder(order)) void markDeliveryReady(order.id)
+    const delivery = isDeliveryOrder(order)
+    const deliveryReady = delivery ? await markDeliveryReady(order.id) : false
+    return servedOrderMessage({ delivery, deliveryReady })
   }
 
   // Handle marking an item as delivered (served)
@@ -728,13 +734,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
         // Si no quedan más items, cerrar la orden (mesa servida o domicilio listo)
         if (remainingItems.length === 0) {
-          await completeOrder(order)
+          const description = await completeOrder(order)
 
-          toast(
-            isDeliveryOrder(order)
-              ? { title: "Domicilio listo", description: "El domicilio quedó listo para despachar." }
-              : { title: "Mesa actualizada", description: "La mesa ha sido marcada como servida." },
-          )
+          toast({ title: isDeliveryOrder(order) ? "Domicilio actualizado" : "Mesa actualizada", description })
         }
       }
     } catch (error) {
@@ -787,14 +789,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       }
 
       // Cerrar la orden (mesa servida o domicilio listo)
-      await completeOrder(order)
+      const description = await completeOrder(order)
 
-      toast({
-        title: "Orden entregada",
-        description: isDeliveryOrder(order)
-          ? "Todos los productos han sido marcados como entregados y el domicilio quedó listo."
-          : "Todos los productos han sido marcados como entregados y la mesa como servida.",
-      })
+      toast({ title: "Orden entregada", description })
 
       // Eliminar la orden del store ya que todos sus items han sido entregados
       removeOrder(orderToDeliver)

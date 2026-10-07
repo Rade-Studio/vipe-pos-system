@@ -57,10 +57,12 @@ export function DeliveryPaymentsPanel({ onPaid }: DeliveryPaymentsPanelProps) {
     }
   }
 
-  if (error) {
-    return <p className="mb-6 text-sm text-destructive">No se pudieron cargar los domicilios por cobrar.</p>
-  }
-  if (pending.length === 0) return null
+  // A failed refetch keeps the last data, so the list and an open payment
+  // dialog stay mounted; the error is only a note.
+  const errorNote = error ? (
+    <p className="mb-3 text-sm text-destructive">No se pudieron cargar los domicilios por cobrar.</p>
+  ) : null
+  if (pending.length === 0) return errorNote ? <div className="mb-6">{errorNote}</div> : null
 
   return (
     <div className="mb-6">
@@ -68,6 +70,7 @@ export function DeliveryPaymentsPanel({ onPaid }: DeliveryPaymentsPanelProps) {
         <Bike className="h-5 w-5" />
         Domicilios por cobrar
       </h3>
+      {errorNote}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {pending.map(({ delivery, subtotal, tax }) => (
           <Card key={delivery.orderId} className="overflow-hidden">
