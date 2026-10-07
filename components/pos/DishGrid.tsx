@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ShoppingCart, AlertTriangle, Tag } from "lucide-react"
@@ -11,9 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { formatCurrency } from "@/utils/helpers"
 import { useConfigStore } from "@/store/use-config-store"
-import inventoryControlService from "@/lib/supabase/inventory-control-service"
-import { Skeleton } from "@/components/ui/skeleton"
-import {toast} from "@/components/ui/use-toast";
+import { useDishStockStatus } from "@/hooks/use-menu"
 import { createPortal } from "react-dom"
 import { FlyImage } from "@/components/animations/FlyImage"
 
@@ -28,8 +26,6 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null)
   const [isTouchDevice, setIsTouchDevice] = useState(false)
-  const [stockStatus, setStockStatus] = useState<Map<string, boolean>>(new Map())
-  const [isLoadingStock, setIsLoadingStock] = useState(false)
   const [flyImg, setFlyImg] = useState<null | {
     src: string
     from: { x: number; y: number }
@@ -38,48 +34,16 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
 
   const { inventoryControlEnabled } = useConfigStore()
 
+  // T6/S1: one batched read for the whole grid (three table reads instead of
+  // three per dish) and no skeleton gate: the dishes stay on screen while it
+  // runs, and a dish is only "Agotado" once the read has actually said so.
+  const dishIds = useMemo(() => dishes.map((dish) => dish.id), [dishes])
+  const { data: stockStatus } = useDishStockStatus(dishIds, inventoryControlEnabled)
+
   // Detectar si es un dispositivo táctil
   useEffect(() => {
     setIsTouchDevice("ontouchstart" in window || navigator.maxTouchPoints > 0)
   }, [])
-
-  // Cargar el estado de stock de los platos si el control de inventario está activado
-  useEffect(() => {
-    if (inventoryControlEnabled && dishes.length > 0) {
-      loadStockStatus()
-    }
-  }, [inventoryControlEnabled, dishes])
-
-  const loadStockStatus = async () => {
-    if (!inventoryControlEnabled) return
-
-    setIsLoadingStock(true)
-    try {
-      // Verificar el stock solo para los platos mostrados
-      const stockPromises = dishes.map(async (dish) => {
-        try {
-          // Usar checkStockForDish en lugar de checkDishStock
-          const hasStock = await inventoryControlService.checkStockForDish(dish.id)
-          return [dish.id, hasStock] as [string, boolean]
-        } catch (error) {
-          // En caso de error, asumimos que el plato está disponible
-          return [dish.id, true] as [string, boolean]
-        }
-      })
-
-      const stockResults = (await Promise.all(stockPromises)) as [string, boolean][]
-      const newStockStatus = new Map<string, boolean>(stockResults)
-      setStockStatus(newStockStatus)
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudieron verificar los stocks. Intente nuevamente.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoadingStock(false)
-    }
-  }
 
   const triggerImageFly = (img: HTMLImageElement) => {
     const fromRect = img.getBoundingClientRect()
@@ -166,34 +130,15 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
     return <div className="text-center py-10 text-muted-foreground">No hay productos disponibles en esta categoría</div>
   }
 
-  // Si está cargando el estado de stock, mostrar Skeletons en lugar del mensaje de texto
-  if (inventoryControlEnabled && isLoadingStock) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {Array.from({ length: dishes.length }).map((_, index) => (
-          <Card key={index} className="overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <Skeleton className="h-20 w-20 rounded-md" />
-                <div className="space-y-2 flex-1">
-                  <Skeleton className="h-5 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-6 w-24 mt-2" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    )
-  }
-
   return (
     <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {dishes.map((dish) => {
-          // Verificar si el plato está agotado
-          const isOutOfStock = inventoryControlEnabled && !stockStatus.get(dish.id)
+          // Verificar si el plato está agotado. Solo cuando la lectura por
+          // lotes lo ha dicho: antes, un `stockStatus.get()` sin dato pintaba
+          // "Agotado" sobre toda la categoría (y el grid entero se reemplazaba
+          // por skeletons mientras la consulta corría).
+          const isOutOfStock = inventoryControlEnabled && stockStatus?.get(dish.id) === false
 
           return (
               <Card
