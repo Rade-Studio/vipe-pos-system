@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import type { Profile, DailySales, PopularDish, CategorySales, OrderStatus } from "@/types"
+import type { Profile, DailySales, PopularDish, CategorySales, OrderStatus, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
+import { mergeOrdersList, type OrderChange } from "@/lib/realtime/order-merge"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
 import { tableService } from "@/lib/supabase/service"
 
@@ -233,8 +234,28 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
             })
           }
 
-          // Actualizar la lista de órdenes via React Query invalidation
-          queryClient.invalidateQueries({ queryKey: ['orders', 'admin'] })
+          // S5: replace the per-event invalidateQueries with a cache patch
+          // through mergeOrdersList. D7 consequence 2: only carry the fields
+          // the broadcast actually sent; mergeOrdersList's reference-stable
+          // contract preserves untouched subtrees (items/bill/waiter in the
+          // cache) on no-op ids.
+          const wireToAppOrder = (dbRow: any): Partial<Order> | null => {
+            if (!dbRow?.id || !dbRow.status) return null
+            return {
+              id: dbRow.id,
+              tableId: dbRow.table_id ?? "",
+              status: dbRow.status as OrderStatus,
+              ...(dbRow.waiter_id !== undefined ? { waiter: dbRow.waiter_id } : {}),
+            } as Partial<Order>
+          }
+          const conv: OrderChange = {
+            eventType: payload.eventType,
+            new: payload.new ? wireToAppOrder(payload.new) : null,
+            old: (payload.old as any)?.id ? { id: (payload.old as any).id } : null,
+          }
+          queryClient.setQueryData<Order[]>(['orders', 'admin'], (prev: Order[] | undefined) =>
+            prev ? mergeOrdersList(prev, conv) : prev,
+          )
         }
 
         // Suscribirse a cambios en órdenes

@@ -1,8 +1,9 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import type { Profile, Order, CartItem } from "@/types"
+import type { Profile, Order, OrderStatus, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
@@ -243,8 +244,50 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     const unsubscribe = realtimeService.subscribeToOrders((payload) => {
       log.info("Cambio en orden recibido:", { payload })
 
-      // Invalidate queries so React Query refetches in background
-      queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })
+      // S5: replace the per-event invalidateQueries with direct local-state
+      // mutation. The cashier cache is a 5-derive object under ['orders','cashier'],
+      // so patching the React Query cache alone would not reach any of the
+      // local-state arrays this view renders from (activeOrders / kitchenOrders
+      // / deliveredOrders / partialOrders / ordersByTable) until the next refetch.
+      // D7 consequence 2: only carry fields the broadcast actually sent — do
+      // not fabricate items/bill on INSERT; on UPDATE the { ...x, ...payload.new }
+      // shape preserves untouched Order fields (items/bill/etc.) by reference.
+      const id = (payload.new as any)?.id ?? (payload.old as any)?.id
+      if (id) {
+        if (payload.eventType === "INSERT" && (payload.new as any)?.id && (payload.new as any).status) {
+          const o: Order = {
+            id: (payload.new as any).id,
+            tableId: (payload.new as any).table_id ?? "",
+            items: [],
+            status: (payload.new as any).status as OrderStatus,
+            bill: { subtotal: 0, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 0, totalDiscounts: 0 },
+            waiter: (payload.new as any).waiter_id ?? "",
+            createdAt: new Date(),
+          }
+          if (o.status === "active") setActiveOrders((prev) => [...prev, o])
+          else if (o.status === "kitchen") setKitchenOrders((prev) => [...prev, o])
+          else if (o.status === "delivered") setDeliveredOrders((prev) => [...prev, o])
+        } else if (payload.eventType === "UPDATE") {
+          const apply = (setter: React.Dispatch<React.SetStateAction<Order[]>>) =>
+            setter((prev) => prev.map((x) => (x.id === id ? { ...x, ...(payload.new as any) } : x)))
+          apply(setActiveOrders)
+          apply(setKitchenOrders)
+          apply(setDeliveredOrders)
+        } else if (payload.eventType === "DELETE") {
+          setActiveOrders((prev) => prev.filter((x) => x.id !== id))
+          setKitchenOrders((prev) => prev.filter((x) => x.id !== id))
+          setDeliveredOrders((prev) => prev.filter((x) => x.id !== id))
+          setPartialOrders((prev) => prev.filter((x) => x.id !== id))
+          setOrdersByTable((prev) => {
+            const out: Record<string, Order[]> = {}
+            for (const [k, v] of Object.entries(prev)) {
+              const filtered = (v || []).filter((x) => x.id !== id)
+              if (filtered.length) out[k] = filtered
+            }
+            return out
+          })
+        }
+      }
     })
 
     // Limpiar suscripción al desmontar

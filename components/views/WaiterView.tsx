@@ -20,6 +20,7 @@ import { tableService, orderService, waiterService } from "@/lib/supabase/servic
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { queryClient } from "@/lib/queryClient"
 import type { TableChange } from "@/lib/realtime/table-merge"
+import { mergeOrdersList, type OrderChange } from "@/lib/realtime/order-merge"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { useConfigStore } from "@/store/use-config-store"
@@ -57,6 +58,20 @@ const normalizeDishId = (id: string): string => {
     return id.substring(0, 36)
   }
   return id
+}
+
+// S5: snake_case wire row → camelCase partial Order. Only carries the fields the
+// realtime broadcast actually sent; undefined subtrees (items/bill/waiter in the
+// React Query cache) are preserved by mergeOrdersList's reference-stable merge.
+// Returns null if the row lacks the minimum id+status shape mergeOrdersList needs.
+const wireToAppOrder = (dbRow: any): Partial<Order> | null => {
+  if (!dbRow?.id || !dbRow.status) return null
+  return {
+    id: dbRow.id,
+    tableId: dbRow.table_id ?? "",
+    status: dbRow.status as OrderStatus,
+    ...(dbRow.waiter_id !== undefined ? { waiter: dbRow.waiter_id } : {}),
+  } as Partial<Order>
 }
 
 export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewProps) {
@@ -271,8 +286,16 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         return
       }
 
-      // Invalidate queries so React Query refetches in background
-      queryClient.invalidateQueries({ queryKey: ['orders'] })
+      // S5: payload-application replaces the per-event invalidateQueries.
+      // D7 consequence 2: only carry fields the broadcast actually sent —
+      // undefined subtrees (items/bill/waiter in the cache) are preserved by
+      // mergeOrdersList's no-op-on-id-miss contract.
+      const conv: OrderChange = {
+        eventType: payload.eventType,
+        new: payload.new ? wireToAppOrder(payload.new) : null,
+        old: (payload.old as any)?.id ? { id: (payload.old as any).id } : null,
+      }
+      queryClient.setQueryData<Order[]>(['orders'], (prev: Order[] | undefined) => prev ? mergeOrdersList(prev, conv) : prev)
     })
 
     // Guardar referencias para limpieza

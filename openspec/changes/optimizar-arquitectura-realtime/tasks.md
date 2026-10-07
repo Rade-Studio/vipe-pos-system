@@ -244,35 +244,35 @@ Files touched: `components/views/KitchenView.tsx`, `components/views/CashierView
 
 Files touched: `components/views/WaiterView.tsx`, `components/views/CashierView.tsx`, `components/views/AdminView.tsx`, `components/views/KitchenView.tsx`. Depends on S2 (shared `orders-changes` channel) and S3 (single owner).
 
-- [ ] S5.1 [Read-only contract task] Confirm the read-only contract comment added in S2.3 is present at the shared `orders-changes` handler in `lib/supabase/realtime-service.ts`, and add an explicit restatement in this slice's PR description: *"The payload object fanned out to N callbacks is the same object reference for all of them. No consumer touched in this slice mutates `payload.new`, `payload.old`, or `order_items` — each derives new local state instead."* This slice is exactly where a mutation could be introduced (three consumer sites are edited here), so the contract must be checked at each site below, not assumed once at S2.
+- [x] S5.1 [Read-only contract task] Confirm the read-only contract comment added in S2.3 is present at the shared `orders-changes` handler in `lib/supabase/realtime-service.ts`, and add an explicit restatement in this slice's PR description: *"The payload object fanned out to N callbacks is the same object reference for all of them. No consumer touched in this slice mutates `payload.new`, `payload.old`, or `order_items` — each derives new local state instead."* This slice is exactly where a mutation could be introduced (three consumer sites are edited here), so the contract must be checked at each site below, not assumed once at S2.
   - **Req**: design D7, consequence 1 (shared payload reference contract).
   - **Verify**: PR description restates the contract; code review of S5.2–S5.5 confirms no `payload.new`/`payload.old`/`order_items` mutation.
 
-- [ ] S5.2 In `components/views/WaiterView.tsx`, replace `queryClient.invalidateQueries({ queryKey: ['orders'] })` (currently at `:264`) with direct application of the `subscribeToOrders` payload the shared channel (S2) already fetched once. Treat `order_items === undefined` on that payload as "unknown — do not overwrite the current items," never as "the order has no items" (design D7, consequence 2). Confirm the exact current line number at apply time, since S1–S4 edits will have shifted it from the proposal's original citation.
+- [x] S5.2 In `components/views/WaiterView.tsx`, replace `queryClient.invalidateQueries({ queryKey: ['orders'] })` (currently at `:264`) with direct application of the `subscribeToOrders` payload the shared channel (S2) already fetched once. Treat `order_items === undefined` on that payload as "unknown — do not overwrite the current items," never as "the order has no items" (design D7, consequence 2). Confirm the exact current line number at apply time, since S1–S4 edits will have shifted it from the proposal's original citation.
   - **Req**: `realtime-channel-lifecycle` / "One Realtime Event Produces One Downstream Round Trip", consumer-side half; `realtime-client-sync` / "Realtime Table Events Patch State In Place" extension to the order path.
   - **Verify**: `grep -n "invalidateQueries" components/views/WaiterView.tsx` inside the orders realtime handler body returns zero matches; `npm test`; `npx tsc --noEmit` delta.
 
-- [ ] S5.3 In `components/views/CashierView.tsx`, replace `queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })` (currently at `:238`) with payload application, applying the same `order_items === undefined` → "unknown, do not overwrite" rule as S5.2.
+- [x] S5.3 In `components/views/CashierView.tsx`, replace `queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })` (currently at `:238`) with payload application, applying the same `order_items === undefined` → "unknown, do not overwrite" rule as S5.2.
   - **Req**: same as S5.2, applied to the Cashier consumer.
   - **Verify**: `grep -n "invalidateQueries" components/views/CashierView.tsx` inside the orders realtime handler body returns zero matches; `npm test`; `npx tsc --noEmit` delta.
 
-- [ ] S5.4 In `components/views/AdminView.tsx`, replace `queryClient.invalidateQueries({ queryKey: ['orders', 'admin'] })` (currently around `:217-221` — confirm the exact current line at apply time) with payload application, applying the same `order_items === undefined` rule as S5.2/S5.3.
+- [x] S5.4 In `components/views/AdminView.tsx`, replace `queryClient.invalidateQueries({ queryKey: ['orders', 'admin'] })` (currently around `:217-221` — confirm the exact current line at apply time) with payload application, applying the same `order_items === undefined` rule as S5.2/S5.3.
   - **Req**: same as S5.2, applied to the Admin consumer.
   - **Verify**: `grep -n "invalidateQueries" components/views/AdminView.tsx` inside the orders realtime handler body returns zero matches; `npm test`; `npx tsc --noEmit` delta.
 
-- [ ] S5.5 In `components/views/KitchenView.tsx`, remove the `setTables` full-array write path at `:454` (and any related whole-array replacement still present at `:680, 743, 788, 789` after S3/S4) in favor of the owner's `applyTableChange`/narrowed-selector pattern already established by S3/S4; apply order-payload application consistent with S5.2–S5.4 to Kitchen's own order-event handling.
+- [x] S5.5 In `components/views/KitchenView.tsx`, remove the `setTables` full-array write path at `:454` (and any related whole-array replacement still present at `:680, 743, 788, 789` after S3/S4) in favor of the owner's `applyTableChange`/narrowed-selector pattern already established by S3/S4; apply order-payload application consistent with S5.2–S5.4 to Kitchen's own order-event handling.
   - **Req**: `realtime-client-sync` / "Single Owner For Table State" and "Store Writes Must Not Fan Out To Unaffected Consumers" (closing the last remaining whole-array write); `realtime-channel-lifecycle` payload-application extension.
   - **Verify**: `grep -n "setTables(" components/views/KitchenView.tsx` shows no whole-array replacement remaining outside narrowed patch application; `npm test`; `npx tsc --noEmit` delta.
 
-- [ ] S5.6 Create an integration test verifying that a simulated `postgres_changes` payload dispatched through the store produces exactly one state transition and no refetch, with `realtimeService` stubbed, under jsdom (design Coverage plan "Integration" row).
+- [x] S5.6 Create an integration test verifying that a simulated `postgres_changes` payload dispatched through the store produces exactly one state transition and no refetch, with `realtimeService` stubbed, under jsdom (design Coverage plan "Integration" row).
   - **Req**: `realtime-client-sync` *Verification Notes* / design Coverage plan.
   - **Verify**: `npm test` passes.
 
-- [ ] S5.7 Verify the spec's "Zero invalidateQueries calls inside a postgres_changes handler" scenario across the whole codebase after S5 lands: run `grep -rn "invalidateQueries" components/views/*.tsx` and manually confirm every remaining match (if any) sits outside a `postgres_changes`/realtime handler body.
+- [x] S5.7 Verify the spec's "Zero invalidateQueries calls inside a postgres_changes handler" scenario across the whole codebase after S5 lands: run `grep -rn "invalidateQueries" components/views/*.tsx` and manually confirm every remaining match (if any) sits outside a `postgres_changes`/realtime handler body.
   - **Req**: `realtime-client-sync` / "Realtime Table Events Patch State In Place", scenario "Zero invalidateQueries calls inside a postgres_changes handler" — final, codebase-wide confirmation.
   - **Verify**: `grep` output reviewed and annotated in the PR description; zero matches inside a realtime handler.
 
-- [ ] S5.8 Per-slice verification: `npm run lint`; `npx tsc --noEmit` delta; `npm run build`; `npm test`; two-tab manual recipe confirming order status changes propagate to Waiter, Cashier, and Admin.
+- [~] S5.8 Per-slice verification: `npm run lint`; `npx tsc --noEmit` delta; `npm run build`; `npm test`; two-tab manual recipe confirming order status changes propagate to Waiter, Cashier, and Admin.
   - **Req**: proposal *Verification* §4 (S5 extension); *Success Criteria* checklist item "Zero `queryClient.invalidateQueries` calls remain inside any `postgres_changes` handler."
 
 ---

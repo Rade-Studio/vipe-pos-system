@@ -243,8 +243,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     try {
       log.info("Actualización de orden recibida:", { payload })
 
-      // Invalidate React Query cache so it refetches in background
-      queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
+      // S5: invalidate removed — order store already mutated by addOrder/updateOrder/removeOrder on these lines.
 
       // Si es una eliminación de orden
       if (payload.eventType === "DELETE") {
@@ -321,8 +320,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   // Manejar actualizaciones de items de órdenes
   const handleOrderItemUpdate = async (payload: RealtimePayload, isNewItem = false) => {
     try {
-      // Invalidate React Query cache so it refetches in background
-      queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
+      // S5: invalidate removed — order store already mutated by addOrder/updateOrder/removeOrder on these lines.
       log.info("Actualización de item recibido:", { payload, isNewItem })
 
       // Si no hay datos de la orden o del item, salir
