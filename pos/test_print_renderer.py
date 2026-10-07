@@ -9,12 +9,13 @@ assert byte-exact output captured before the tender branch was added, so any
 unintentional drift on existing tickets fails the suite.
 """
 
+import hashlib
 import unittest
 
-try:
-    from pos.print_renderer import render_invoice  # when run from repo root
+try:  # when run from repo root
+    from pos.print_renderer import build_invoice_bytes, render_invoice, render_kitchen_order
 except ImportError:  # when run from inside pos/
-    from print_renderer import render_invoice
+    from print_renderer import build_invoice_bytes, render_invoice, render_kitchen_order
 
 
 # ---------------------------------------------------------------------------
@@ -422,6 +423,142 @@ class MalformedTenderFallbackTests(unittest.TestCase):
         self.assertIn("FORMAS DE PAGO:", joined)
         self.assertRegex(joined, r"NEQUI\s+11\.900")
         self.assertRegex(joined, r"EFECTIVO\s+5\.000")
+
+
+# ---------------------------------------------------------------------------
+# Delivery (domicilios) — additive `delivery` block
+# ---------------------------------------------------------------------------
+
+_DELIVERY = {
+    "customerName": "Ana Perez",
+    "phone": "3101234567",
+    "address": "Calle 10 #5-20, Centro (Porton verde)",
+    "notes": "Sin cebolla",
+    "paymentMode": "cash_on_delivery",
+    "cashChangeFor": 50000,
+    "deliveryFee": 3000,
+}
+
+_KITCHEN_ITEMS = [
+    {"name": "Arepa", "quantity": 2, "comments": "sin queso"},
+    {"name": "Jugo", "quantity": 1},
+]
+
+
+def _kitchen_lines(order: dict):
+    return [line["text"] for line in render_kitchen_order(order)["lines"]]
+
+
+class DineInByteIdentityTests(unittest.TestCase):
+    """Golden snapshots captured BEFORE the delivery block existed."""
+
+    def test_dine_in_kitchen_ticket_is_unchanged(self):
+        lines = _kitchen_lines(
+            {"invoiceNumber": "1234", "table": 5, "waiter": "Juan", "items": _KITCHEN_ITEMS}
+        )
+        self.assertTrue(lines[0] == "COMANDA \u2014 Mesa 5")
+        self.assertEqual(
+            lines[2:],
+            [
+                "Mesero: Juan",
+                "--------------------------------",
+                "AREPA                          x2",
+                "  Sin queso",
+                "JUGO                           x1",
+                "--------------------------------",
+            ],
+        )
+
+    def test_dine_in_invoice_bytes_are_unchanged(self):
+        invoice = {
+            "businessInfo": {"name": "Mi Rest", "nit": "900", "address": "Calle 1", "phone": "300"},
+            "bill": {
+                "subtotal": 10000, "tax": 1900, "taxPercentage": 19, "tip": 1000,
+                "tipPercentage": 10, "total": 12900, "totalDiscounts": 0,
+            },
+            "date": "2025-01-15T12:30:00",
+            "table": 5,
+            "waiter": "Juan",
+            "paymentMethod": "cash",
+            "cashReceived": 20000,
+            "cashChange": 7100,
+        }
+        raw = build_invoice_bytes("INV-1", invoice, [_BASE_ITEM | {"name": "Hamburguesa"}])
+        self.assertEqual(
+            hashlib.sha256(raw).hexdigest(),
+            "2d72bfa976cbd53c25750e363a8af9b3c813b7a53cb7e8c3962528d2e13a834e",
+        )
+
+
+class DeliveryKitchenTicketTests(unittest.TestCase):
+    def _order(self, **extra):
+        return {
+            "invoiceNumber": "1234", "table": None, "waiter": "Luis",
+            "items": _KITCHEN_ITEMS, "delivery": _DELIVERY, **extra,
+        }
+
+    def test_header_says_domicilio_with_customer_instead_of_mesa(self):
+        lines = _kitchen_lines(self._order())
+        self.assertEqual(lines[0], "COMANDA \u2014 DOMICILIO")
+        self.assertEqual(lines[2], "Cliente: Ana Perez")
+        self.assertNotIn("Mesa", "\n".join(lines))
+
+    def test_order_notes_are_printed_but_not_the_address(self):
+        text = "\n".join(_kitchen_lines(self._order()))
+        self.assertIn("NOTAS: Sin cebolla", text)
+        self.assertNotIn("Calle 10", text)
+
+    def test_no_notes_line_when_notes_missing(self):
+        delivery = {k: v for k, v in _DELIVERY.items() if k != "notes"}
+        text = "\n".join(_kitchen_lines(self._order(delivery=delivery)))
+        self.assertNotIn("NOTAS", text)
+
+
+class DeliveryInvoiceTests(unittest.TestCase):
+    def _invoice(self, delivery=_DELIVERY, **bill):
+        base_bill = {
+            "subtotal": 10000, "tax": 1900, "taxPercentage": 19, "tip": 0,
+            "tipPercentage": 0, "total": 14900, "totalDiscounts": 0,
+        }
+        return {
+            "businessInfo": _BASE_BUSINESS,
+            "bill": {**base_bill, **bill},
+            "date": "2025-01-15T12:30:00",
+            "table": "\u2014",
+            "waiter": "uuid-should-not-print",
+            "paymentMethod": "cash",
+            "delivery": delivery,
+        }
+
+    def test_prints_customer_phone_address_instead_of_mesa(self):
+        text = "\n".join(_render_lines(self._invoice()))
+        self.assertIn("CLIENTE: Ana Perez", text)
+        self.assertIn("TEL: 3101234567", text)
+        self.assertIn("DIRECCION: Calle 10 #5-20, Centro (Porton verde)", text)
+        self.assertNotIn("MESA:", text)
+        self.assertNotIn("MESERO:", text)
+
+    def test_fee_line_is_included_in_total_sin_propina(self):
+        lines = _render_lines(self._invoice())
+        self.assertIn("DOMICILIO: 3.000", lines)
+        self.assertIn("TOTAL SIN PROPINA: 14.900", lines)
+        self.assertIn("TOTAL A PAGAR: 14.900", lines)
+        self.assertLess(lines.index("IVA: 1.900"), lines.index("DOMICILIO: 3.000"))
+
+    def test_total_matches_pay_order_with_tip(self):
+        # pay_order charges subtotal + tax + fee + tip.
+        lines = _render_lines(self._invoice(tip=1000, tipPercentage=10, total=15900))
+        self.assertIn("TOTAL SIN PROPINA: 14.900", lines)
+        self.assertIn("TOTAL A PAGAR: 15.900", lines)
+
+    def test_cash_on_delivery_prints_cambio_para(self):
+        self.assertIn("CAMBIO PARA: 50.000", _render_lines(self._invoice()))
+
+    def test_prepaid_or_missing_cash_change_has_no_cambio_para(self):
+        prepaid = {**_DELIVERY, "paymentMode": "prepaid", "cashChangeFor": None}
+        self.assertNotIn("CAMBIO PARA", "\n".join(_render_lines(self._invoice(delivery=prepaid))))
+        cod = {k: v for k, v in _DELIVERY.items() if k != "cashChangeFor"}
+        self.assertNotIn("CAMBIO PARA", "\n".join(_render_lines(self._invoice(delivery=cod))))
 
 
 if __name__ == "__main__":

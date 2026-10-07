@@ -113,6 +113,7 @@ export function DeliveryPaymentsPanel({ onPaid }: DeliveryPaymentsPanelProps) {
           orderId={payingRow.delivery.orderId}
           tableId={null}
           deliveryFee={payingRow.delivery.deliveryFee}
+          delivery={payingRow.delivery}
           onSuccess={() => {
             setPayingId(null)
             void queryClient.invalidateQueries({ queryKey: activeDeliveriesQueryKey })

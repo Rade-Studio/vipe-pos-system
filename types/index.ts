@@ -191,6 +191,24 @@ export type CashRegister = {
  */
 export type InvoiceTender = import("@/lib/payments/invoice-tenders").InvoiceTender
 
+/**
+ * Optional home-delivery block carried by kitchen commands and invoices.
+ * Additive: payloads without it print exactly as dine-in tickets. Built
+ * by `lib/delivery/print.ts`; mirrored by `pos/print_renderer.py`.
+ */
+export interface DeliveryPrintInfo {
+  customerName: string
+  phone: string
+  /** One display line: "line, neighborhood (reference)". */
+  address: string
+  notes?: string
+  paymentMode: "prepaid" | "cash_on_delivery"
+  /** Whole COP pesos; only for cash_on_delivery. */
+  cashChangeFor?: number
+  /** Whole COP pesos; already part of the invoice total. */
+  deliveryFee: number
+}
+
 export interface PrintableInvoice {
   invoiceNumber: string
   date: Date
@@ -231,6 +249,8 @@ export interface PrintableInvoice {
    * left alone for compatibility).
    */
   change?: number
+  /** Present for delivery orders; see `DeliveryPrintInfo`. */
+  delivery?: DeliveryPrintInfo
 }
 
 export type PrintableKitchenOrder = {
@@ -245,7 +265,10 @@ export type CommandPayload = {
   invoiceNumber: string;
   items: any[];
   waiter: string;
-  table: number;
+  /** Null / absent for delivery orders. */
+  table?: number | null;
+  /** Present for delivery orders; see `DeliveryPrintInfo`. */
+  delivery?: DeliveryPrintInfo;
 }
 
 export type IngredientTransactionsOrders = {

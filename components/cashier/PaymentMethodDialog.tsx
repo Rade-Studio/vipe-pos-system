@@ -18,6 +18,8 @@ import { AlertTriangle, Check, X } from "lucide-react"
 import { useConfigStore } from "@/store/use-config-store"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { PrintableInvoice, CartItem } from "@/types"
+import type { DeliveryOrder } from "@/lib/delivery/types"
+import { buildDeliveryPrintInfo } from "@/lib/delivery/print"
 import { toast } from "@/utils/toast"
 import { NumericKeypad } from "@/components/ui/numeric-keypad"
 import { listPaymentMethods, payOrder } from "@/lib/supabase/payments-service"
@@ -69,6 +71,8 @@ interface PaymentMethodDialogProps {
    * amount due; the tip stays on the food subtotal.
    */
   deliveryFee?: number
+  /** The order's delivery snapshot; when set, the invoice prints the delivery block. */
+  delivery?: DeliveryOrder | null
   onSuccess: () => void
   isPartialPayment?: boolean
   selectedItems?: string[]
@@ -118,6 +122,7 @@ export function PaymentMethodDialog({
   amount: _amount,
   tableTotal: _tableTotal,
   deliveryFee = 0,
+  delivery = null,
   onSuccess,
   isPartialPayment: _isPartialPayment = false,
   selectedItems: _selectedItems = [],
@@ -345,6 +350,7 @@ const drawerWarning =
         cashChange: legacy.cashChange > 0 ? legacy.cashChange : undefined,
         tenders: invoiceTenders,
         change: legacy.cashChange,
+        ...(delivery ? { delivery: buildDeliveryPrintInfo(delivery) } : {}),
       }
       if (invoiceTenders.length === 1) {
         log.info("Pago con método único:", { method: invoiceTenders[0]!.methodName })

@@ -546,6 +546,7 @@ def handle_comanda(payload):
             "table": table,
             "waiter": waiter,
             "items": items,
+            "delivery": data.get("delivery"),
         }
         raw_bytes = print_renderer.build_comanda_bytes(order, encoding=encoding)
         pr._raw(raw_bytes)

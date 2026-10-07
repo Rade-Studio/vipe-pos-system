@@ -307,6 +307,7 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
           orderId={dialogRow.delivery.orderId}
           tableId={null}
           deliveryFee={dialogRow.delivery.deliveryFee}
+          delivery={dialogRow.delivery}
           onSuccess={() => {
             setDialog(null)
             void invalidateBoard()

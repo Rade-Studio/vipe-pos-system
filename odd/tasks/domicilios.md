@@ -48,7 +48,7 @@ through the existing `pay_order` ledger.
 - [x] 7. Admin: couriers screen, default delivery fee, role assignable to staff.
 - [x] 8. Kitchen, cashier and admin views stop assuming a table; DOMICILIO label; kitchen
       marks delivery orders ready.
-- [ ] 9. Printing: kitchen ticket and invoice carry delivery data (TS + Python parity,
+- [x] 9. Printing: kitchen ticket and invoice carry delivery data (TS + Python parity,
       additive payload).
 - [ ] 10. Staff accounts from the app: Supabase Edge Function `create-staff-account` (service
       role) callable only by an admin; tenant taken from the caller's profile; roles waiter,
@@ -98,3 +98,4 @@ through the existing `pay_order` ledger.
 | 8 | `24c4eed` | lib/delivery/kitchen.ts (17 tests: headings, place text, mark-ready rule, place filter, dine-in grouping, pending delivery payments; RED: module missing). Kitchen: DOMICILIO banner + card heading with the customer, Domicilios filter, no table update for delivery orders, marks the delivery ready when the last item is served (failure toast, never blocks). Cashier: delivery orders out of the table grid, Domicilios por cobrar panel (unpaid, not cancelled, any day) paying through PaymentMethodDialog with the fee. Admin: no table update and a Domicilio toast for delivery orders. Parent: OrderCard heading prop (no Mesa ? on delivery cards). Vitest 25 files / 462; typecheck 0; build OK. |
 | 8 RDD | review-40973b5bd40faaf0 | Medium tier, reliability -> APPROVED, burned. Advisory acted on in `9f9cbbb`: ready toast before mark_ready outcome; panel error unmounting the payment dialog. Left: banner loading on error, orchestration untested. |
 | 8 fix | `9f9cbbb` | servedOrderMessage (3 tests, RED: not a function); completeOrder awaits mark_ready and reports the confirmed outcome; cashier panel keeps list/dialog on refetch error. Vitest 25/465; typecheck 0; build OK. RDD review-c343dad8d498d870 APPROVED, burned (advisory: kitchen now awaits the transition; error toast precedes the served toast). |
+| 9 | (this commit) | Delivery orders created on the board now send the kitchen command once after create_delivery_order succeeds (before: never printed in the kitchen). Additive `delivery` block on CommandPayload/PrintableInvoice (lib/delivery/print.ts, tests). Kitchen ticket COMANDA — DOMICILIO + Cliente + NOTAS; invoice CLIENTE/TEL/DIRECCION instead of MESA/MESERO, DOMICILIO fee line inside TOTAL SIN PROPINA, CAMBIO PARA for COD; TS and Python parity. Dine-in goldens written and passing on the old code first (Python invoice SHA-256, TS line snapshots), still passing. RED TS 6 + Python 6; parent label normalization RED 2+2. Vitest 26/479; Python 22 OK; typecheck 0; build OK. |

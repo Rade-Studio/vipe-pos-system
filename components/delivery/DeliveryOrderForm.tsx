@@ -38,6 +38,9 @@ import {
   type OrderDraftAction,
 } from '@/lib/delivery/order-draft'
 import { createSingleFlight } from '@/lib/payments/single-flight'
+import { buildDeliveryKitchenCommand, newKitchenOrderNumber } from '@/lib/delivery/print'
+import { realtimeService } from '@/lib/supabase/realtime-service'
+import { useProfileStore } from '@/store/useProfileStore'
 import { toast } from '@/hooks/use-toast'
 
 const DELIVERY_SERVICE_ERROR_TOAST: Record<DeliveryServiceErrorKind, string> = {
@@ -80,6 +83,8 @@ interface DeliveryOrderFormProps {
  */
 export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: DeliveryOrderFormProps) {
   const [draft, dispatch] = useReducer(draftRef, initialOrderDraft({ suggestedFee }))
+  // Shown on the kitchen ticket as the waiter (WaiterView does the same with its profile).
+  const operatorName = useProfileStore((s) => s.authProfile?.name) ?? ''
   const [phoneLookupError, setPhoneLookupError] = useState<string | null>(null)
   // One gate per form instance; the state flag only drives the button.
   const [submitGate] = useState(createSingleFlight)
@@ -201,7 +206,21 @@ export function DeliveryOrderForm({ suggestedFee, taxPct, onSubmitted }: Deliver
       setSubmitting(true)
       try {
         const input = toCreateInput(draft)
-        await createDeliveryOrder(input)
+        const created = await createDeliveryOrder(input)
+        // Reached only when the create succeeded: the kitchen command goes
+        // out exactly once per submitted order, never on a failed create.
+        try {
+          realtimeService.sendCommand(
+            buildDeliveryKitchenCommand({
+              delivery: created.delivery,
+              lines: draft.cartLines,
+              waiter: operatorName,
+              invoiceNumber: newKitchenOrderNumber(),
+            }),
+          )
+        } catch {
+          toast.warning('El domicilio se creó, pero no se pudo enviar la comanda a cocina')
+        }
         toast.success('Domicilio creado y enviado a cocina')
         onSubmitted()
       } catch (err) {
