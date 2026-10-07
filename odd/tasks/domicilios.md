@@ -39,7 +39,7 @@ through the existing `pay_order` ledger.
 - [x] 3. RPCs: atomic `create_delivery_order`, delivery state machine RPC (ready,
       dispatch with courier, delivered, failed, re-dispatch, cancel), `pay_order` amount
       due includes the delivery fee, `split_order` rejects delivery orders.
-- [ ] 4. `lib/delivery` pure logic (state machine mirror, fee, phone normalization,
+- [x] 4. `lib/delivery` pure logic (state machine mirror, fee, phone normalization,
       address formatting) + typed service.
 - [ ] 5. Operator view: delivery board by state + new order flow (phone lookup, customer
       and address create/pick, items, fee, payment mode, cash change).
@@ -74,3 +74,4 @@ through the existing `pay_order` ledger.
 | 3 RDD | review-7d8d23dda22585bd | Medium tier, reliability refused twice (repeated finding id; multiple JSON objects) -> retry spent, lineage left in reviewing. Rejected payloads read: most claims self-refute; one real: cancel checked for payments before locking the order. Two-session probe (A: pay_order held open 4 s; B: cancel) ended with order.status=cancelled and 1 payment -> fixed in the next commit. |
 | 3 fix | `cacf01f` | set_delivery_status cancel locks the order before the payment check and also refuses an order already marked paid. Same two-session probe after the fix: B waits for A, then fails with "already has a payment"; final order.status=paid, delivery=received, 1 payment. pgTAP 13 files / 746 after db reset. |
 | 3 fix RDD | review-2eab9446b01a8059 | Medium tier, reliability failed natively then escalated (unknown_causality) on 2 findings: the lock move is called "correct in intent" but fragile because it relies on pay_order locking the order (documented and true; proven by the two-session probe); "served/closed" order states do not exist (status CHECK: active, kitchen, delivered, cancelled, paid) and the delivery state machine already limits cancel to received/preparing/ready/failed. No defect. |
+| 4 | (this commit) | lib/delivery: state machine mirroring the 11 server transitions and the role matrix, Spanish status labels, phone normalization (+57/57 stripped only for a 10-digit mobile starting with 3; 7..15 digits), fee/total/change-for helpers, address formatting, strict parsers; lib/supabase/delivery-service.ts (findCustomerByPhone, listCouriers, createDeliveryOrder, setDeliveryStatus, listActiveDeliveries hides delivered/cancelled rows not updated today) with DeliveryServiceError. RED per file; GREEN Vitest 21 files / 362; typecheck 0. |
