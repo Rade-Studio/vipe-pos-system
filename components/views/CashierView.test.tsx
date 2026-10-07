@@ -22,7 +22,7 @@
  * charged from DeliveryPaymentsPanel, never as a "Mesa ?".
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { queryClient } from "@/lib/queryClient"
 import { CashierView } from "./CashierView"
@@ -259,6 +259,57 @@ describe("opening the payment dialog (S1: reuse the order the view already loade
     expect(getById).not.toHaveBeenCalled()
     // …and the dialog still shows the order the card was rendering.
     expect(screen.getByText("Bandeja paisa")).toBeInTheDocument()
+  })
+
+  it("bills the order it was reopened for, not the previously opened one", async () => {
+    // Order A: 2 x 20 000 + 19 % = 47 600. Order B: 1 x 10 000 + 19 % = 11 900.
+    getByStatus.mockResolvedValue([
+      dbRow(),
+      dbRow({
+        id: "o-2",
+        table_id: "t-2",
+        order_items: [{ id: "oi-2", name: "Limonada", price: 10_000, quantity: 1, comments: null }],
+        subtotal: 10_000,
+        tax: 1_900,
+        total: 11_900,
+      }),
+    ])
+    useTableStore.setState({
+      tables: [
+        { id: "t-1", number: 1, status: "occupied" },
+        { id: "t-2", number: 2, status: "occupied" },
+      ],
+    })
+    renderCashier()
+    await screen.findByText("Mesa 2")
+
+    // The "Pago Total" button inside the card that renders the given table label.
+    const buttonFor = (tableLabel: string) => {
+      let node: HTMLElement | null = screen.getByText(tableLabel)
+      while (node && within(node).queryAllByRole("button", { name: "Pago Total" }).length === 0) {
+        node = node.parentElement
+      }
+      const [button] = within(node!).getAllByRole("button", { name: "Pago Total" })
+      return button
+    }
+
+    fireEvent.click(buttonFor("Mesa 1"))
+    await screen.findByRole("heading", { name: "Cobrar orden" })
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }))
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Cobrar orden" })).not.toBeInTheDocument())
+
+    fireEvent.click(buttonFor("Mesa 2"))
+    await screen.findByRole("heading", { name: "Cobrar orden" })
+
+    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar" }))
+
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    const input = payOrder.mock.calls[0][0] as { orderId: string; tenders: Array<{ amount: number }> }
+    expect(input.orderId).toBe("o-2")
+    expect(input.tenders.reduce((sum, t) => sum + t.amount, 0)).toBe(11_900)
   })
 })
 

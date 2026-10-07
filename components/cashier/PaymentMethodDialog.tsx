@@ -143,9 +143,13 @@ export function PaymentMethodDialog({
   const [invoiceData, setInvoiceData] = useState<PrintableInvoice | null>(null)
   // Seeded from the order the caller passed, so opening the dialog with one
   // already loaded never shows the "Cargando información de la orden" flash.
-  const [orderData, setOrderData] = useState<OrderForBill | null>(() =>
-    hasBillableItems(order) ? order : null,
+  // The loaded order is keyed by the id it belongs to: the dialog stays mounted
+  // between open cycles, so a copy left over from a previous order must never
+  // be billed (or seed the draft) for the order the dialog is now open for.
+  const [loadedOrder, setLoadedOrder] = useState<{ orderId: string; data: OrderForBill } | null>(() =>
+    hasBillableItems(order) ? { orderId, data: order! } : null,
   )
+  const orderData = loadedOrder?.orderId === orderId ? loadedOrder.data : null
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -201,7 +205,7 @@ export function PaymentMethodDialog({
 
     const known = orderRef.current
     if (hasBillableItems(known)) {
-      setOrderData(known)
+      setLoadedOrder({ orderId, data: known! })
       setLoadingOrder(false)
       return
     }
@@ -211,7 +215,7 @@ export function PaymentMethodDialog({
       try {
         const fetched = await orderService.getById(orderId)
         if (cancelled) return
-        setOrderData(fetched as OrderForBill)
+        setLoadedOrder({ orderId, data: fetched as OrderForBill })
       } catch (err) {
         log.error("Error al cargar la orden para pago:", { error: String(err) })
         if (!cancelled) toast.error("No se pudo cargar la información de la orden")
