@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+pos/dist
+pos/build
+*.log
+.atl
+.env*
+.DS_Store

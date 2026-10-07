@@ -1,0 +1,10 @@
+# pnpm-workspace.yaml
+# pnpm v11+ requires buildAllow in this file, not .npmrc or package.json
+packages:
+  - '.'
+
+allowBuilds:
+  sharp: true
+  '@parcel/watcher': true
+  esbuild: true
+  unrs-resolver: true

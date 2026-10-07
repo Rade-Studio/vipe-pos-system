@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState } from "react"
+import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -116,7 +117,7 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
 
       onSuccess()
     } catch (error: any) {
-      console.error("Error:", error)
+      log.error("Error:", { error: String(error) })
       toast({
         title: "Error",
         description: error.message || "Ha ocurrido un error",

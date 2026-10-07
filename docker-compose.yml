@@ -1,0 +1,51 @@
+# ============================================
+# VIPE POS - App Next.js en Docker (desarrollo)
+# ============================================
+# La base de datos local NO se levanta con Docker Compose: la gestiona la
+# Supabase CLI (pnpm supabase start / db reset), que expone sus servicios en
+# los puertos 4432x del host.
+#
+# Uso:
+#   # 1. Levantar Supabase y copiar URL/anon key al .env de la raíz:
+#   pnpm supabase start
+#   pnpm supabase status
+#   # 2. Verificar que .env contiene:
+#   #    NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:44321
+#   #    NEXT_PUBLIC_SUPABASE_ANON_KEY=<ANON_KEY de `pnpm supabase status`>
+#   # 3. Levantar la app:
+#   docker compose up -d  (o: pnpm docker:dev)
+# ============================================
+
+services:
+  # -------------------------------
+  # APP NEXT.JS
+  # -------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # IMPORTANTE: NEXT_PUBLIC_* se inlinean al build time en Next.js, no son
+      # runtime. Sin estos args, el cliente usa el fallback xyzcompany.supabase.co
+      # definido en lib/supabase/client.ts y la app apunta a producción.
+      # Los valores vienen del entorno o del .env de la raíz; en local salen de
+      # `pnpm supabase status`.
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?define NEXT_PUBLIC_SUPABASE_URL en el entorno o .env - ver pnpm supabase status}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?define NEXT_PUBLIC_SUPABASE_ANON_KEY en el entorno o .env - ver pnpm supabase status}
+    container_name: vipe-pos-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?define NEXT_PUBLIC_SUPABASE_URL en el entorno o .env - ver pnpm supabase status}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?define NEXT_PUBLIC_SUPABASE_ANON_KEY en el entorno o .env - ver pnpm supabase status}
+    ports:
+      - "3003:3000"
+    # Sin bind-mount: la imagen standalone ya contiene build + node_modules minimal.
+    # Volúmenes anónimos como /app/node_modules o /app/.next enmascaran el build
+    # de la imagen y rompen `npm start` / healthcheck (next / curl not found).
+    # Para dev con hot-reload: usar un Dockerfile dev o bind-mounts selectivos.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

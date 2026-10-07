@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/log"
 
 interface IngredientTransaction {
   id?: string
@@ -33,7 +34,7 @@ const ingredientTransactionService = {
         ingredient_unit: transaction.ingredients ? transaction.ingredients.unit : "",
       }))
     } catch (error) {
-      console.error("Error al obtener transacciones de ingredientes:", error)
+      log.error("Error al obtener transacciones de ingredientes:", { error: String(error) })
       throw error
     }
   },
@@ -49,14 +50,14 @@ const ingredientTransactionService = {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error(`Error al obtener transacciones para el ingrediente ${ingredientId}:`, error)
+      log.error(`Error al obtener transacciones para el ingrediente ${ingredientId}:`, { error: String(error) })
       throw error
     }
   },
 
   async create(transaction: IngredientTransaction) {
     try {
-      console.log("Creando transacción de ingrediente:", transaction)
+      log.info("Creando transacción de ingrediente:", { transaction })
 
       // Asegurarse de que todos los campos requeridos estén presentes
       const now = new Date().toISOString()
@@ -75,14 +76,14 @@ const ingredientTransactionService = {
       const { data, error } = await supabase.from("ingredient_transactions").insert([transactionData]).select()
 
       if (error) {
-        console.error("Error al crear transacción de ingrediente:", error)
+        log.error("Error al crear transacción de ingrediente:", { error: String(error) })
         throw error
       }
 
-      console.log("Transacción creada exitosamente:", data)
+      log.info("Transacción creada exitosamente:", { data })
       return data?.[0]
     } catch (error) {
-      console.error("Error en create de transacción de ingrediente:", error)
+      log.error("Error en create de transacción de ingrediente:", { error: String(error) })
       throw error
     }
   },
@@ -94,7 +95,7 @@ const ingredientTransactionService = {
       if (error) throw error
       return true
     } catch (error) {
-      console.error(`Error al eliminar transacción ${id}:`, error)
+      log.error(`Error al eliminar transacción ${id}:`, { error: String(error) })
       throw error
     }
   },

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/log"
 
 // Unidades de medida comunes en restaurantes
 const UNITS = [
@@ -96,20 +97,20 @@ export function IngredientForm({ onSuccess, ingredient }: IngredientFormProps) {
 
           // Actualizar el mapa de nombre a ID
           const newNameToIdMap: Record<string, string> = {}
-          newData.forEach((cat: any) => {
+          newData?.forEach((cat: any) => {
             newNameToIdMap[cat.name] = cat.id
           })
           setCategoryMap(newNameToIdMap)
 
           setCategories(
-            newData.map((cat: any) => ({
+            (newData ?? []).map((cat: any) => ({
               value: cat.id,
               label: cat.name,
             })),
           )
         }
       } catch (error: any) {
-        console.error("Error loading categories:", error)
+        log.error("Error loading categories:", { error: String(error) })
         toast({
           variant: "destructive",
           title: "Error",
@@ -137,7 +138,7 @@ export function IngredientForm({ onSuccess, ingredient }: IngredientFormProps) {
         setFormData((prev) => ({ ...prev, category: "" }))
       }
 
-      console.log("Categoría seleccionada:", ingredient.category_id || categoryMap[ingredient.category] || "")
+      log.info("Categoría seleccionada:", { category: ingredient.category_id || categoryMap[ingredient.category] || "" })
     }
   }, [ingredient, categoryMap])
 
@@ -217,7 +218,7 @@ export function IngredientForm({ onSuccess, ingredient }: IngredientFormProps) {
         onSuccess()
       }
     } catch (error: any) {
-      console.error("Error saving ingredient:", error)
+      log.error("Error saving ingredient:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

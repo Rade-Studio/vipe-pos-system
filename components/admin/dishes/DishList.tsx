@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Plus, Edit, Trash2, BookOpen } from "lucide-react"
-import { dishService, categoryService } from "@/lib/supabase-service"
-import type { Dish, Category } from "@/types/models"
-import { DishForm } from "./DishForm"
+import { dishService, categoryService } from "@/lib/supabase/service"
+import type { Dish, Category } from "@/types"
+import { log } from "@/lib/log"
+import { DishForm } from "@/components/admin/menu/DishForm"
 import { useToast } from "@/hooks/use-toast"
 import {
   AlertDialog,
@@ -44,10 +45,10 @@ export function DishList() {
     try {
       setLoading(true)
       const [dishesData, categoriesData] = await Promise.all([dishService.getAll(), categoryService.getAll()])
-      setDishes(dishesData)
-      setCategories(categoriesData)
+      setDishes(dishesData as unknown as Dish[])
+      setCategories(categoriesData as unknown as Category[])
     } catch (error) {
-      console.error("Error loading data:", error)
+      log.error("Error loading data:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -89,7 +90,7 @@ export function DishList() {
       })
       loadData()
     } catch (error) {
-      console.error("Error deleting dish:", error)
+      log.error("Error deleting dish:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -119,7 +120,7 @@ export function DishList() {
       setShowForm(false)
       loadData()
     } catch (error) {
-      console.error("Error saving dish:", error)
+      log.error("Error saving dish:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -244,11 +245,13 @@ export function DishList() {
       </CardContent>
 
       <DishForm
-        open={showForm}
-        onOpenChange={setShowForm}
-        dish={editingDish}
-        categories={categories}
-        onSubmit={handleFormSubmit}
+        dish={editingDish as any}
+        categories={categories as any}
+        onSuccess={() => {
+          setShowForm(false)
+          handleFormSubmit({} as Omit<Dish, "id" | "createdAt">)
+        }}
+        isNewDish={!editingDish}
       />
 
       <RecipeManager

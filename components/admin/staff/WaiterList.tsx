@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -46,9 +47,9 @@ export function WaiterList() {
 
       if (error) throw error
 
-      setWaiters(data || [])
+      setWaiters((data || []) as unknown as Waiter[])
     } catch (error: any) {
-      console.error("Error fetching waiters:", error)
+      log.error("Error fetching waiters:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudieron cargar los meseros",
@@ -92,7 +93,7 @@ export function WaiterList() {
         description: "El mesero ha sido eliminado correctamente",
       })
     } catch (error: any) {
-      console.error("Error deleting waiter:", error)
+      log.error("Error deleting waiter:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudo eliminar el mesero",
@@ -189,7 +190,7 @@ export function WaiterList() {
                 <TableCell>{waiter.username}</TableCell>
                 <TableCell>{waiter.email || "-"}</TableCell>
                 <TableCell>
-                  <Badge variant={waiter.active ? "success" : "secondary"}>
+                  <Badge variant={waiter.active ? "default" : "secondary"}>
                     {waiter.active ? "Activo" : "Inactivo"}
                   </Badge>
                 </TableCell>

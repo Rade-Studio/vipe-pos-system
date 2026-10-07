@@ -5,6 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { log } from "@/lib/log"
 import { Label } from "@/components/ui/label"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
@@ -59,7 +60,7 @@ export function AddCashDialog({ open, onOpenChange, onSuccess }: AddCashDialogPr
         toast.error("No se pudo agregar efectivo a la caja")
       }
     } catch (error) {
-      console.error("Error al agregar efectivo a la caja:", error)
+      log.error("Error al agregar efectivo a la caja:", { error: String(error) })
       toast.error("Ocurrió un error al agregar efectivo a la caja")
     } finally {
       setIsSubmitting(false)

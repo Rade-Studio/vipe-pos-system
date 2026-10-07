@@ -1,9 +1,13 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
+import { useTableStore } from "@/store/useTableStore"
+import { useCartStore } from "@/store/useCartStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,13 +28,16 @@ import { TransactionsList } from "@/components/cashier/TransactionsList"
 import { Skeleton } from "@/components/ui/skeleton"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { orderService } from "@/lib/supabase/service"
+import { queryClient } from "@/lib/queryClient"
+import { log } from "@/lib/log"
 
 interface CashierViewProps {
   profile: Profile
   onChangeProfile: () => void
+  authRole?: string
 }
 
-export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
+export function CashierView({ profile, onChangeProfile, authRole }: CashierViewProps) {
   const [activeTab, setActiveTab] = useState<"orders" | "transactions">("orders")
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   const [partialPaymentDialogOpen, setPartialPaymentDialogOpen] = useState(false)
@@ -50,8 +57,74 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
   const [refreshing, setRefreshing] = useState(false)
 
   const { toast: toastHook } = useToast()
+  const queryClient = useQueryClient()
 
-  const { tables, profiles, cartItems, calculateOrderBill } = usePOSStore()
+  // Fetch all orders via React Query
+  const fetchAllOrders = async () => {
+    const [activeData, kitchenData, deliveredData] = await Promise.all([
+      orderService.getByStatus(["active"]),
+      orderService.getByStatus(["kitchen"]),
+      orderService.getByStatus(["delivered"]),
+    ])
+
+    const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
+      id: dbOrder.id,
+      tableId: dbOrder.table_id,
+      items: dbOrder.order_items.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        comments: item.comments || undefined,
+        categoryId: "",
+      })),
+      status: dbOrder.status,
+      bill: {
+        subtotal: dbOrder.subtotal,
+        tax: dbOrder.tax,
+        taxPercentage: dbOrder.tax_percentage,
+        tip: dbOrder.tip,
+        tipPercentage: dbOrder.tip_percentage,
+        total: dbOrder.total,
+        totalDiscounts: dbOrder.total_discounts ?? 0,
+      },
+      waiter: dbOrder.waiter_id ?? "",
+      createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
+      isPartialOrder: dbOrder.is_partial_order || false,
+      parentOrderId: dbOrder.parent_order_id || null,
+    })
+
+    const activeOrdersConverted = activeData.map(convertDBOrderToAppOrder)
+    const kitchenOrdersConverted = kitchenData.map(convertDBOrderToAppOrder)
+    const deliveredOrdersConverted = deliveredData.map(convertDBOrderToAppOrder)
+    const allOrders = [...activeOrdersConverted, ...kitchenOrdersConverted, ...deliveredOrdersConverted]
+    const partialOrdersFiltered = allOrders.filter((order) => order.isPartialOrder)
+    const ordersByTableGrouped = allOrders
+      .filter((order) => !order.isPartialOrder)
+      .reduce(
+        (acc, order) => {
+          if (!acc[order.tableId]) {
+            acc[order.tableId] = []
+          }
+          acc[order.tableId].push(order)
+          return acc
+        },
+        {} as Record<string, Order[]>,
+      )
+
+    return { activeOrdersConverted, kitchenOrdersConverted, deliveredOrdersConverted, partialOrdersFiltered, ordersByTableGrouped }
+  }
+
+  const { data: ordersData } = useQuery({
+    queryKey: ['orders', 'cashier'],
+    queryFn: fetchAllOrders,
+  })
+
+  const tables = useTableStore((s) => s.tables)
+  const profiles = useProfileStore((s) => s.profiles)
+  const cartItems = useCartStore((s) => s.cartItems)
+  const calculateOrderBill = (items: CartItem[], tipPercentage?: number, taxPercentage?: number) =>
+    useCartStore.getState().calculateOrderBill(items, tipPercentage, taxPercentage)
 
   const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
   const { businessName, businessAddress, businessPhone, businessNIT, tipPercentage, taxPercentage } = useConfigStore()
@@ -70,14 +143,14 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       // Convertir datos de la BD al formato de la aplicación
       const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
         id: dbOrder.id,
-        tableId: dbOrder.table_id,
+        tableId: dbOrder.table_id ?? "",
         items: dbOrder.order_items.map((item: any) => ({
           id: item.id,
           name: item.name,
           price: item.price,
           quantity: item.quantity,
           comments: item.comments || undefined,
-          categoryId: item.category_id || "",
+          categoryId: "",
         })),
         status: dbOrder.status,
         bill: {
@@ -87,12 +160,13 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
           tip: dbOrder.tip,
           tipPercentage: dbOrder.tip_percentage,
           total: dbOrder.total,
+          totalDiscounts: dbOrder.total_discounts ?? 0,
         },
-        waiter: dbOrder.waiter_id,
-        createdAt: new Date(dbOrder.created_at),
+        waiter: dbOrder.waiter_id ?? "",
+        createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
         isPartialOrder: dbOrder.is_partial_order || false,
         parentOrderId: dbOrder.parent_order_id || null,
-      })
+      } as unknown as Order)
 
       // Convertir todas las órdenes
       const activeOrdersConverted = activeOrdersData.map(convertDBOrderToAppOrder)
@@ -126,7 +200,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       setPartialOrders(partialOrdersFiltered)
       setOrdersByTable(ordersByTableGrouped)
     } catch (error) {
-      console.error("Error al cargar órdenes:", error)
+      log.error("Error al cargar órdenes:", { error: String(error) })
       toast.error("Error al cargar órdenes desde la base de datos")
     } finally {
       setIsLoading(false)
@@ -137,35 +211,38 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
   // Función para refrescar manualmente los datos
   const handleRefresh = () => {
     setRefreshing(true)
-    loadOrdersFromDB()
+    queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })
+    setRefreshing(false)
   }
 
-  // Cargar órdenes y datos de caja al montar el componente
+  // Sync orders data from React Query to local state
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        await loadCurrentRegister()
-        await loadOrdersFromDB()
-      } catch (error) {
-        console.error("Error al inicializar:", error)
-      }
+    if (ordersData) {
+      setActiveOrders(ordersData.activeOrdersConverted)
+      setKitchenOrders(ordersData.kitchenOrdersConverted)
+      setDeliveredOrders(ordersData.deliveredOrdersConverted)
+      setPartialOrders(ordersData.partialOrdersFiltered)
+      setOrdersByTable(ordersData.ordersByTableGrouped)
     }
+  }, [ordersData])
 
-    initialize()
+  // Cargar datos de caja al montar y suscribirse a realtime
+  useEffect(() => {
+    loadCurrentRegister()
 
     // Suscribirse a cambios en órdenes
     const unsubscribe = realtimeService.subscribeToOrders((payload) => {
-      console.log("Cambio en orden recibido:", payload)
+      log.info("Cambio en orden recibido:", { payload })
 
-      // Recargar órdenes cuando hay cambios
-      loadOrdersFromDB()
+      // Invalidate queries so React Query refetches in background
+      queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })
     })
 
     // Limpiar suscripción al desmontar
     return () => {
       unsubscribe()
     }
-  }, [loadOrdersFromDB, loadCurrentRegister])
+  }, [loadCurrentRegister])
 
   // Función para obtener una orden por ID
   const getOrderById = useCallback(
@@ -242,7 +319,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
         // Recargar órdenes
         await loadOrdersFromDB()
       } catch (error) {
-        console.error("Error al procesar el pago:", error)
+        log.error("Error al procesar el pago:", { error: String(error) })
       }
     }
   }
@@ -304,7 +381,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       setPartialPaymentDialogOpen(false)
       await loadOrdersFromDB()
     } catch (error) {
-      console.error("Error al crear la orden parcial:", error)
+      log.error("Error al crear la orden parcial:", { error: String(error) })
       toast.error("No se pudo crear la orden parcial")
     } finally {
       setIsCreatingPartialOrder(false)
@@ -321,7 +398,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       // Recargar órdenes
       await loadOrdersFromDB()
     } catch (error) {
-      console.error("Error al eliminar la orden parcial:", error)
+      log.error("Error al eliminar la orden parcial:", { error: String(error) })
       toast.error("No se pudo eliminar la orden parcial")
     }
   }
@@ -463,6 +540,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       <Header
         profile={profile}
         onChangeProfile={onChangeProfile}
+        authRole={authRole}
         title={activeTab === "orders" ? "Caja - Órdenes para Facturar" : "Historial de Transacciones"}
       />
       <div className="flex justify-end mb-2">

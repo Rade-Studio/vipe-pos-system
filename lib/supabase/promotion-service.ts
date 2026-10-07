@@ -1,4 +1,5 @@
 import { supabase } from "./client"
+import { log } from "@/lib/log"
 
 export interface Promotion {
   id: string
@@ -54,7 +55,7 @@ export const promotionService = {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
-        ])
+        ] as any)
         .select()
 
       if (error) throw error
@@ -72,7 +73,7 @@ export const promotionService = {
         .update({
           ...promotion,
           updated_at: new Date().toISOString(),
-        })
+        } as any)
         .eq("id", id)
         .select()
 
@@ -134,7 +135,7 @@ export const promotionService = {
       if (error) throw error
       return data?.map((item) => item.dishes) || []
     } catch (error) {
-      console.error("Error getting promotion dishes:", error)
+      log.error("Error getting promotion dishes:", { error: String(error) })
       throw error
     }
   },
@@ -167,7 +168,7 @@ export const promotionService = {
       if (error) throw error
       return true
     } catch (error) {
-      console.error("Error removing dishes from promotion:", error)
+      log.error("Error removing dishes from promotion:", { error: String(error) })
       throw error
     }
   },

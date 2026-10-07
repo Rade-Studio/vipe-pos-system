@@ -11,8 +11,9 @@ import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
 import { CreditCard, Banknote, Smartphone, Printer, ArrowLeft, Check, AlertTriangle, PlusCircle } from "lucide-react"
 import type { PaymentMethod } from "@/types/cash-register"
-import { usePOSStore } from "@/store/use-pos-store"
 import { useConfigStore } from "@/store/use-config-store"
+import { useOrderStore } from "@/store/useOrderStore"
+import { useCartStore } from "@/store/useCartStore"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { PrintableInvoice, CartItem } from "@/types"
 import { useToast } from "@/hooks/use-toast"
@@ -21,6 +22,7 @@ import { toast } from "@/utils/toast"
 import { Switch } from "@/components/ui/switch"
 import { AddCashDialog } from "@/components/cashier/AddCashDialog"
 import { orderService, tableService } from "@/lib/supabase/service"
+import { log } from "@/lib/log"
 import { supabase } from "@/lib/supabase/client"
 import {cn} from "@/lib/utils";
 
@@ -77,8 +79,9 @@ export function PaymentMethodDialog({
   const [loading, setLoading] = useState(false)
   const [paying, setPaying] = useState(false)
 
-  const { addTransaction, isRegisterOpen, hasEnoughCashForChange, getCurrentRegisterSummary } = useCashRegisterStore()
-  const { completePayment, completePartialPayment, undoPartialPayment, calculateOrderBill } = usePOSStore()
+  const { isRegisterOpen, hasEnoughCashForChange, getCurrentRegisterSummary } = useCashRegisterStore()
+  const { completePayment, completePartialPayment, undoPartialPayment } = useOrderStore()
+  const { calculateOrderBill } = useCartStore()
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast: toastHook } = useToast()
 
@@ -110,14 +113,16 @@ export function PaymentMethodDialog({
         }
 
         // Obtener información de la mesa
-        const tableInfo = await tableService.getById(order.table_id)
+        const tableInfo = order.table_id ? await tableService.getById(order.table_id) : null
 
         // Obtener información del mesero
-        const { data: waiterInfo } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .eq("id", order.waiter_id)
-          .single()
+        const { data: waiterInfo } = order.waiter_id
+          ? await supabase
+              .from("profiles")
+              .select("id, full_name")
+              .eq("id", order.waiter_id)
+              .single()
+          : { data: null }
 
         setOrderData({
           ...order,
@@ -184,12 +189,13 @@ export function PaymentMethodDialog({
         price: item.price,
         quantity: item.quantity,
         comments: item.comments || undefined,
-        categoryId: item.category_id || "",
-        originalPrice: item.original_price,
-        discountAmount: item.discount_amount,
-        discountPercentage: item.discount_percentage,
-        promotionId: item.promotion_id,
-        promotionName: item.promotion_name,
+        categoryId: "",
+        image: "",
+        originalPrice: undefined,
+        discountAmount: undefined,
+        discountPercentage: undefined,
+        promotionId: undefined,
+        promotionName: undefined,
       }),
     )
   }, [orderData])
@@ -226,18 +232,18 @@ export function PaymentMethodDialog({
       // Determinar los items a incluir en la factura
       const invoiceItems =
         isPartialPayment && selectedItems.length > 0
-          ? orderItems.filter((item) => selectedItems.includes(item.id))
+          ? orderItems.filter((item: CartItem) => selectedItems.includes(item.id))
           : orderItems
 
       // Calcular el total de descuentos
-      const totalDiscounts = invoiceItems.reduce((sum, item) => {
+      const totalDiscounts = invoiceItems.reduce((sum: number, item: CartItem) => {
         if (item.originalPrice && item.originalPrice > item.price) {
           return sum + (item.originalPrice - item.price) * item.quantity
         }
         return sum
       }, 0)
 
-      console.log("Total de descuentos calculado:", totalDiscounts)
+      log.info("Total de descuentos calculado:", { totalDiscounts })
 
       // Calcular el total para los items seleccionados
       const bill = {
@@ -269,7 +275,7 @@ export function PaymentMethodDialog({
         cashChange: paymentMethod === "cash" ? change : undefined,
       }
 
-      console.log("Datos de factura generados:", {
+      log.info("Datos de factura generados:", {
         items: invoiceItems.length,
         totalDiscounts,
         bill,
@@ -279,7 +285,7 @@ export function PaymentMethodDialog({
       setInvoiceData(invoice)
       setShowInvoice(true)
     } catch (error) {
-      console.error("Error al generar la vista previa de la factura:", error)
+      log.error("Error al generar la vista previa de la factura:", { error: String(error) })
       toast.error("Ocurrió un error al generar la vista previa de la factura")
     }
   }
@@ -435,41 +441,44 @@ export function PaymentMethodDialog({
       const orderTableId = orderData.table_id
       const waiterId = orderData.waiter_id
 
-      // Calcular el monto de propina
-      const tipAmount = includeTip && orderData.tip ? orderData.tip : 0
+      // Build payment methods array in 'method:amount' format for the RPC
+      const paymentMethods: string[] = []
+      if (paymentMethod === "multiple") {
+        for (const [method, isSelected] of Object.entries(selectedMethods)) {
+          if (isSelected) {
+            const amount = Number(paymentAmounts[method as PaymentMethod]) || 0
+            if (amount > 0) {
+              paymentMethods.push(`${method}:${amount}`)
+            }
+          }
+        }
+      } else {
+        const amount = paymentMethod === "cash" ? Number(cashReceived || 0) : finalAmount
+        paymentMethods.push(`${paymentMethod}:${amount}`)
+      }
 
-      // Procesar el pago con el monto final (con o sin propina)
-      const transaction = await addTransaction(
-        orderId,
-        orderTableId,
-        finalAmount,
-        paymentMethod,
-        paymentMethod === "multiple" ? selectedMethods : undefined,
-        paymentMethod === "multiple" ? paymentAmounts : undefined,
-        paymentMethod === "cash" ? cashAmount : undefined,
-        paymentMethod === "cash" ? change : undefined,
-        waiterId,
-        tipAmount,
-      )
+      // Get current cash register ID for the RPC
+      const registerId = useCashRegisterStore.getState().currentRegister?.id ?? ""
 
-      if (transaction) {
+      // Atomic RPC: replaces addTransaction + completePayment two-step pattern
+      const result = await orderService.completePaymentRpc(orderId, paymentMethods, registerId)
+
+      if (result) {
         // Completar el pago en la base de datos
         let invoiceNumber
 
         try {
           if (isPartialPayment) {
-            invoiceNumber = await orderService.completePayment(orderId, paymentMethod)
-            // También actualizamos el store para mantener la coherencia
+            // Also update the store for partial payments (existing behavior)
             await completePartialPayment(orderId, selectedItems)
+            invoiceNumber = `INV-${orderId.substring(0, 8)}`
           } else {
-            invoiceNumber = await orderService.completePayment(orderId, paymentMethod)
-            // También actualizamos el store para mantener la coherencia
-            await completePayment(orderId)
+            invoiceNumber = result.status === "already_paid"
+              ? `INV-${orderId.substring(0, 8)}-repaid`
+              : `INV-${orderId.substring(0, 8)}`
           }
         } catch (error) {
-          console.error("Error al completar pago en el store:", error)
-          // Si hay un error al actualizar el store, pero la transacción se completó,
-          // generamos un número de factura para continuar
+          log.error("Error al completar pago en el store:", { error: String(error) })
           invoiceNumber = orderId.substring(0, 8)
         }
 
@@ -504,7 +513,7 @@ export function PaymentMethodDialog({
         toast.error("Error al procesar el pago. Verifique que la caja esté abierta.")
       }
     } catch (error) {
-      console.error("Error al procesar el pago:", error)
+      log.error("Error al procesar el pago:", { error: String(error) })
       toast.error("Ocurrió un error al procesar el pago")
     } finally {
       setProcessingPayment(false)
@@ -519,7 +528,7 @@ export function PaymentMethodDialog({
       onOpenChange(false)
       toast.success("Se ha deshecho el pago parcial")
     } catch (error) {
-      console.error("Error al deshacer pago parcial:", error)
+      log.error("Error al deshacer pago parcial:", { error: String(error) })
       toast.error("No se pudo deshacer el pago parcial")
     }
   }

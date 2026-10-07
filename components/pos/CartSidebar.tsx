@@ -31,7 +31,7 @@ import {
 } from "../ui/dialog";
 import { Slider } from "../ui/slider";
 import { useConfigStore } from "@/store/use-config-store";
-import { usePOSStore } from "@/store/use-pos-store";
+import { useCartStore } from "@/store/useCartStore";
 import { useDrag } from "@use-gesture/react";
 import { useSpring, animated } from "@react-spring/web";
 
@@ -71,7 +71,7 @@ export function CartSidebar({
   >({});
   const [showTipDialog, setShowTipDialog] = useState(false);
   const { tipPercentage, taxPercentage, setTipPercentage } = useConfigStore();
-  const { calculateOrderBill } = usePOSStore();
+  const calculateOrderBill = useCartStore((s) => s.calculateOrderBill);
 
   const bill = calculateOrderBill(cartItems, tipPercentage, taxPercentage);
   const [{x}, api] = useSpring(() => ({x: 0}));

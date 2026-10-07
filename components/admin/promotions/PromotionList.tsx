@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -39,9 +40,9 @@ export function PromotionList() {
       setLoading(true)
       // Usar el método getAllPromotions en lugar de acceder directamente a supabase
       const data = await promotionService.getAllPromotions()
-      setPromotions(data || [])
+      setPromotions((data || []) as unknown as Promotion[])
     } catch (error) {
-      console.error("Error loading promotions:", error)
+      log.error("Error loading promotions:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudieron cargar las promociones",
@@ -78,7 +79,7 @@ export function PromotionList() {
         description: "La promoción ha sido eliminada correctamente",
       })
     } catch (error) {
-      console.error("Error deleting promotion:", error)
+      log.error("Error deleting promotion:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudo eliminar la promoción",
@@ -160,7 +161,7 @@ export function PromotionList() {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={isPromotionActive(promotion) ? "success" : promotion.active ? "outline" : "secondary"}
+                      variant={isPromotionActive(promotion) ? "default" : promotion.active ? "outline" : "secondary"}
                     >
                       {isPromotionActive(promotion) ? "Activa" : promotion.active ? "Pendiente/Vencida" : "Inactiva"}
                     </Badge>

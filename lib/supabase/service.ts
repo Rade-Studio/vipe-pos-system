@@ -1,7 +1,7 @@
 import type { CartItem, Order, Profile, PaymentMethod } from "@/types"
 import { supabase as clientSupabase } from "./client"
 import ingredientTransactionService from "./ingredient-transaction-service"
-import { Waiter } from "@/types/models"
+import { log } from "@/lib/log"
 
 // Reutilizar el cliente de Supabase ya inicializado
 export const supabase = clientSupabase
@@ -31,7 +31,7 @@ export const ingredientService = {
         }
       })
     } catch (error) {
-      console.error("Error en getAll de ingredientes:", error)
+      log.error("Error en getAll de ingredientes:", { error: String(error) })
       throw error
     }
   },
@@ -58,7 +58,7 @@ export const ingredientService = {
         category_id: ingredient.category_id,
       }
     } catch (error) {
-      console.error("Error en getById de ingredientes:", error)
+      log.error("Error en getById de ingredientes:", { error: String(error) })
       throw error
     }
   },
@@ -186,7 +186,7 @@ export const tableService = {
       .order("number")
 
     if (error) {
-      console.error("Error al obtener mesas:", error)
+      log.error("Error al obtener mesas:", { error: String(error) })
       throw error
     }
 
@@ -211,7 +211,7 @@ export const tableService = {
       .single()
 
     if (error) {
-      console.error("Error al obtener mesa por ID:", error)
+      log.error("Error al obtener mesa por ID:", { error: String(error) })
       throw error
     }
 
@@ -223,7 +223,7 @@ export const tableService = {
 
   async create(table: { number: number; status: string }) {
     try {
-      console.log("Creando mesa con datos:", table)
+      log.info("Creando mesa con datos:", { table })
 
       const { data, error } = await supabase
         .from("tables")
@@ -234,14 +234,14 @@ export const tableService = {
         .select()
 
       if (error) {
-        console.error("Error al crear mesa:", error)
+        log.error("Error al crear mesa:", { error: String(error) })
         throw error
       }
 
-      console.log("Mesa creada:", data?.[0])
+      log.info("Mesa creada:", { data: data?.[0] })
       return data?.[0]
     } catch (error) {
-      console.error("Error en create de mesas:", error)
+      log.error("Error en create de mesas:", { error: String(error) })
       throw error
     }
   },
@@ -257,7 +257,7 @@ export const tableService = {
       .select()
 
     if (error) {
-      console.error("Error al actualizar mesa:", error)
+      log.error("Error al actualizar mesa:", { error: String(error) })
       throw error
     }
 
@@ -266,7 +266,7 @@ export const tableService = {
 
   async delete(id: string) {
     try {
-      console.log("Intentando eliminar mesa con ID:", id)
+      log.info("Intentando eliminar mesa con ID:", { id })
 
       // Verificar si hay órdenes activas para esta mesa
       const { data: activeOrders, error: ordersError } = await supabase
@@ -276,12 +276,12 @@ export const tableService = {
         .neq("status", "paid")
 
       if (ordersError) {
-        console.error("Error al verificar órdenes activas:", ordersError)
+        log.error("Error al verificar órdenes activas:", { ordersError: String(ordersError) })
         throw ordersError
       }
 
       if (activeOrders && activeOrders.length > 0) {
-        console.error("No se puede eliminar la mesa porque tiene órdenes activas")
+        log.warn("No se puede eliminar la mesa porque tiene órdenes activas")
         throw new Error("No se puede eliminar una mesa con órdenes activas")
       }
 
@@ -289,14 +289,14 @@ export const tableService = {
       const { error } = await supabase.from("tables").delete().eq("id", id)
 
       if (error) {
-        console.error("Error al eliminar mesa:", error)
+        log.error("Error al eliminar mesa:", { error: String(error) })
         throw error
       }
 
-      console.log("Mesa eliminada correctamente")
+      log.info("Mesa eliminada correctamente")
       return true
     } catch (error) {
-      console.error("Error en delete de mesas:", error)
+      log.error("Error en delete de mesas:", { error: String(error) })
       throw error
     }
   },
@@ -309,7 +309,7 @@ export const tableService = {
       .eq("active", true)
 
     if (error) {
-      console.error("Error al obtener meseros:", error)
+      log.error("Error al obtener meseros:", { error: String(error) })
       throw error
     }
 
@@ -337,7 +337,7 @@ export const tableService = {
       .select()
 
     if (error) {
-      console.error("Error al asignar mesero a mesa:", error)
+      log.error("Error al asignar mesero a mesa:", { error: String(error) })
       throw error
     }
 
@@ -359,16 +359,16 @@ export const tableService = {
     const { data, error } = await supabase.from("tables").update(updates).eq("id", tableId).select()
 
     if (error) {
-      console.error("Error al actualizar estado de la mesa:", error)
+      log.error("Error al actualizar estado de la mesa:", { error: String(error) })
       throw error
     }
 
-    console.log(`Mesa ${tableId} actualizada a estado ${status}`, data?.[0])
+    log.info(`Mesa ${tableId} actualizada a estado ${status}`, { data: data?.[0] })
     return data?.[0]
   },
 
   async releaseTable(tableId: string) {
-    console.log(`Liberando mesa ${tableId}...`)
+    log.info(`Liberando mesa ${tableId}...`)
     const { data, error } = await supabase
       .from("tables")
       .update({
@@ -380,11 +380,11 @@ export const tableService = {
       .select()
 
     if (error) {
-      console.error("Error al liberar mesa:", error)
+      log.error("Error al liberar mesa:", { error: String(error) })
       throw error
     }
 
-    console.log(`Mesa ${tableId} liberada correctamente`, data?.[0])
+    log.info(`Mesa ${tableId} liberada correctamente`, { data: data?.[0] })
     return data?.[0]
   },
   // Añadir este método para actualizar el estado de una mesa
@@ -395,7 +395,7 @@ export const tableService = {
       if (error) throw error
       return data
     } catch (error) {
-      console.error("Error al actualizar estado de mesa:", error)
+      log.error("Error al actualizar estado de mesa:", { error: String(error) })
       throw error
     }
   },
@@ -524,7 +524,7 @@ export const waiterService = {
       if (error) throw error
       return data || []
     } catch (error) {
-      console.error("Error al obtener meseros:", error)
+      log.error("Error al obtener meseros:", { error: String(error) })
       throw error
     }
   },
@@ -533,7 +533,7 @@ export const waiterService = {
     const { data, error } = await supabase.from("profiles").select("*").eq("id", id).eq("role", "waiter").single()
 
     if (error) {
-      console.error("Error al obtener mesero por ID:", error)
+      log.error("Error al obtener mesero por ID:", { error: String(error) })
       throw error
     }
 
@@ -558,7 +558,7 @@ export const waiterService = {
       .select()
 
     if (error) {
-      console.error("Error al crear mesero:", error)
+      log.error("Error al crear mesero:", { error: String(error) })
       throw error
     }
 
@@ -580,7 +580,7 @@ export const waiterService = {
       .select()
 
     if (error) {
-      console.error("Error al actualizar mesero:", error)
+      log.error("Error al actualizar mesero:", { error: String(error) })
       throw error
     }
 
@@ -591,7 +591,7 @@ export const waiterService = {
     const { error } = await supabase.from("profiles").delete().eq("id", id).eq("role", "waiter")
 
     if (error) {
-      console.error("Error al eliminar mesero:", error)
+      log.error("Error al eliminar mesero:", { error: String(error) })
       throw error
     }
 
@@ -637,7 +637,7 @@ export const orderService = {
       .select()
 
     if (orderError) {
-      console.error("Error al crear orden:", orderError)
+      log.error("Error al crear orden:", { orderError: String(orderError) })
       throw orderError
     }
 
@@ -647,7 +647,7 @@ export const orderService = {
       throw new Error("No se pudo obtener el ID de la orden creada")
     }
 
-    console.log("Orden creada con ID:", orderId)
+    log.info("Orden creada con ID:", { orderId })
 
     // Luego creamos los items de la orden
     const orderItems = order.items.map((item) => ({
@@ -665,7 +665,7 @@ export const orderService = {
     const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
 
     if (itemsError) {
-      console.error("Error al crear items de la orden:", itemsError)
+      log.error("Error al crear items de la orden:", { itemsError: String(itemsError) })
       // Intentamos eliminar la orden si hubo un error al crear los items
       await supabase.from("orders").delete().eq("id", orderId)
       throw itemsError
@@ -675,7 +675,7 @@ export const orderService = {
     try {
       await tableService.updateTableStatus(order.table_id, "kitchen")
     } catch (error) {
-      console.error("Error al actualizar estado de la mesa:", error)
+      log.error("Error al actualizar estado de la mesa:", { error: String(error) })
       // No lanzamos el error para no interrumpir el flujo principal
     }
 
@@ -695,7 +695,7 @@ export const orderService = {
         .single()
 
       if (parentError) {
-        console.error("Error al obtener orden padre:", parentError)
+        log.error("Error al obtener orden padre:", { parentError: String(parentError) })
         throw parentError
       }
 
@@ -806,7 +806,7 @@ export const orderService = {
 
       return partialOrder
     } catch (error) {
-      console.error("Error al crear orden parcial:", error)
+      log.error("Error al crear orden parcial:", { error: String(error) })
       throw error
     }
   },
@@ -821,7 +821,7 @@ export const orderService = {
       .single()
 
     if (orderError) {
-      console.error("Error al verificar orden parcial:", orderError)
+      log.error("Error al verificar orden parcial:", { orderError: String(orderError) })
       throw orderError
     }
 
@@ -911,7 +911,7 @@ export const orderService = {
     const { error: itemsError } = await supabase.from("order_items").delete().eq("order_id", orderId)
 
     if (itemsError) {
-      console.error("Error al eliminar items de la orden parcial:", itemsError)
+      log.error("Error al eliminar items de la orden parcial:", { itemsError: String(itemsError) })
       throw itemsError
     }
 
@@ -919,7 +919,7 @@ export const orderService = {
     const { error: orderDeleteError } = await supabase.from("orders").delete().eq("id", orderId)
 
     if (orderDeleteError) {
-      console.error("Error al eliminar orden parcial:", orderDeleteError)
+      log.error("Error al eliminar orden parcial:", { orderDeleteError: String(orderDeleteError) })
       throw orderDeleteError
     }
 
@@ -938,7 +938,7 @@ export const orderService = {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error al obtener órdenes:", error)
+      log.error("Error al obtener órdenes:", { error: String(error) })
       throw error
     }
 
@@ -958,7 +958,7 @@ export const orderService = {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error al obtener órdenes por mesa:", error)
+      log.error("Error al obtener órdenes por mesa:", { error: String(error) })
       throw error
     }
 
@@ -983,7 +983,7 @@ export const orderService = {
 
       // Mostrar detalles de la primera orden si hay resultados
       if (data && data.length > 0) {
-        console.log("Primera orden:", {
+        log.info("Primera orden:", {
           id: data[0].id,
           table_id: data[0].table_id,
           waiter_id: data[0].waiter_id,
@@ -1009,7 +1009,7 @@ export const orderService = {
       .select()
 
     if (error) {
-      console.error("Error al actualizar estado de la orden:", error)
+      log.error("Error al actualizar estado de la orden:", { error: String(error) })
       throw error
     }
 
@@ -1021,7 +1021,7 @@ export const orderService = {
           await tableService.updateTableStatus(order.table_id, "served")
         }
       } catch (error) {
-        console.error("Error al actualizar estado de la mesa:", error)
+        log.error("Error al actualizar estado de la mesa:", { error: String(error) })
       }
     }
 
@@ -1039,187 +1039,92 @@ export const orderService = {
             .neq("status", "paid")
 
           if (activeOrdersError) {
-            console.error("Error al verificar órdenes activas:", activeOrdersError)
+            log.error("Error al verificar órdenes activas:", { activeOrdersError: String(activeOrdersError) })
           } else if (!activeOrders || activeOrders.length === 0) {
             // Si no hay otras órdenes activas, liberar la mesa
-            console.log(`No hay más órdenes activas para la mesa ${order.table_id}, liberando...`)
+            log.info(`No hay más órdenes activas para la mesa ${order.table_id}, liberando...`)
             await tableService.releaseTable(order.table_id)
           }
         }
       } catch (error) {
-        console.error("Error al actualizar estado de la mesa:", error)
+        log.error("Error al actualizar estado de la mesa:", { error: String(error) })
       }
     }
 
     return data?.[0]
   },
 
-  async completePayment(orderId: string, paymentMethod: string, cashReceived?: number, cashChange?: number) {
-    // Primero obtenemos la orden actual para verificar sus datos
-    const { data: currentOrder, error: getOrderError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", orderId)
-      .single()
-
-    if (getOrderError) {
-      console.error("Error al obtener la orden actual:", getOrderError)
-      throw getOrderError
-    }
-
-    // Actualizar el estado de la orden a "paid"
-    // Eliminamos los campos que no existen en el esquema (payment_method, cash_received, cash_change)
-    const { data, error } = await supabase
-      .from("orders")
-      .update({
-        status: "paid",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orderId)
-      .select()
+  // RPC wrapper for complete_payment (P3 atomic payment)
+  async completePaymentRpc(orderId: string, paymentMethods: string[], cashRegisterId: string): Promise<any> {
+    const { data, error } = await (supabase.rpc as any)("complete_payment", {
+      p_order_id: orderId,
+      p_payment_methods: paymentMethods,
+      p_cash_register_id: cashRegisterId,
+    })
 
     if (error) {
-      console.error("Error al completar pago de orden:", error)
+      log.error("Error in complete_payment RPC:", { error: String(error) })
       throw error
     }
 
-    // Generar número de factura
-    const invoiceNumber = `INV-${Date.now()}`
+    return data
+  },
 
-    // Ya no intentamos actualizar el número de factura en la base de datos
-    // porque la columna 'invoice_number' no existe en el esquema
+  // Deprecated: use completePaymentRpc instead.
+  // This method is kept for backward compatibility during the migration window.
+  async completePayment(orderId: string, paymentMethod: string, _cashReceived?: number, _cashChange?: number) {
+    log.warn(
+      "[deprecation] completePayment(orderId, paymentMethod) is deprecated. " +
+      "Migrate to completePaymentRpc(orderId, paymentMethods[], cashRegisterId). " +
+      "See docs/payment-atomicity-test.md for the RPC interface."
+    )
 
-    // Si la orden se marca como pagada, actualizar el estado de la mesa
-    try {
-      const order = data[0]
-      if (order && order.table_id) {
-        // Verificar si hay otras órdenes activas para esta mesa
-        const { data: activeOrders, error: activeOrdersError } = await supabase
-          .from("orders")
-          .select("id")
-          .eq("table_id", order.table_id)
-          .neq("id", orderId)
-          .neq("status", "paid")
+    // Get the current register ID from the cash register store
+    // (imported dynamically to avoid circular dependency)
+    const { useCashRegisterStore } = await import("@/store/use-cash-register-store")
+    const currentRegister = useCashRegisterStore.getState().currentRegister
+    const registerId = currentRegister?.id ?? ""
 
-        if (activeOrdersError) {
-          console.error("Error al verificar órdenes activas:", activeOrdersError)
-        } else if (!activeOrders || activeOrders.length === 0) {
-          // Si no hay otras órdenes activas, liberar la mesa
-          await tableService.releaseTable(order.table_id)
-        }
-      }
-    } catch (error) {
-      console.error("Error al actualizar estado de la mesa:", error)
+    // Convert single paymentMethod to array format: 'method:amount'
+    // The amount is derived from the order's bill_total_cents (server-side via RPC)
+    const paymentMethods = [`${paymentMethod}:0`]
+
+    const result = await this.completePaymentRpc(orderId, paymentMethods, registerId)
+
+    if (result?.status === "already_paid") {
+      return `INV-${orderId.substring(0, 8)}-repaid`
     }
 
-    return invoiceNumber
+    return `INV-${orderId.substring(0, 8)}`
   },
 
   async completePartialPayment(orderId: string, selectedItems: string[]) {
     return this.completePayment(orderId, "cash")
   },
 
-  async deleteOrder(orderId: string) {
-    try {
-      // Primero obtenemos la orden para verificar su estado
-      const { data: order, error: getOrderError } = await supabase.from("orders").select("*").eq("id", orderId).single()
+  // RPC wrapper for delete_order_with_items (P3 atomic delete)
+  async deleteOrderRpc(orderId: string) {
+    const { error } = await (supabase.rpc as any)("delete_order_with_items", {
+      p_order_id: orderId,
+    })
 
-      if (getOrderError) {
-        console.error("Error al obtener la orden:", getOrderError)
-        throw getOrderError
-      }
-
-      if (!order) {
-        throw new Error("No se encontró la orden")
-      }
-
-      // Verificar que la orden esté en estado "kitchen"
-      if (order.status !== "kitchen") {
-        throw new Error("Solo se pueden eliminar órdenes que estén en cocina")
-      }
-
-      // Eliminar los items de la orden
-      const { error: itemsError } = await supabase.from("order_items").delete().eq("order_id", orderId)
-
-      if (itemsError) {
-        console.error("Error al eliminar items de la orden:", itemsError)
-        throw itemsError
-      }
-
-      // Eliminar las transacciones de ingredientes
-      // Tomar las transacciones de ingredientes de la orden
-      const { data: transactions, error: transactionsError } = await supabase
-          .from("ingredient_transactions_orders")
-          .select("*")
-          .eq("order_id", orderId)
-
-      if (transactionsError) {
-        console.error("Error al eliminar transacciones de ingredientes de la orden:", transactionsError)
-        throw transactionsError
-      }
-
-      // Obtener las transacciones de ingredientes de la orden
-      const { data: transactionsIngredients, error: transactionsIngredientsError } = await supabase
-          .from("ingredient_transactions")
-          .select("*")
-          .in("id", transactions.map(t => t.ingredient_transaction_id))
-
-      // Recalcular el stock de ingredientes y sumar lo gastado
-      const updatedIngredients = transactionsIngredients?.map(transaction => async () => {
-        const { data: ingredient, error: ingredientError } = await supabase
-            .from("ingredients")
-            .select("*")
-            .eq("id", transaction.ingredient_id ?? "")
-            .single()
-
-        if (ingredientError) {
-          console.error("Error al actualizar stock de ingredientes:", ingredientError)
-          throw ingredientError
-        }
-
-        const { data: updatedIngredient, error: updatedIngredientError } = await supabase
-            .from("ingredients")
-            .update({
-              stock: ingredient.stock + transaction.quantity
-            })
-            .eq("id", transaction.ingredient_id ?? "")
-
-        if (updatedIngredientError) {
-          console.error("Error al actualizar stock de ingredientes:", updatedIngredientError)
-          throw updatedIngredientError
-        }
-
-        console.log("------ Ingrediente actualizado ------", updatedIngredient)
-
-      })
-
-      if (updatedIngredients)
-        await Promise.all(updatedIngredients.map(update => update()))
-
-      // Eliminar las transacciones de ingredientes
-      const {  error: transactionsDeleteError } = await supabase
-          .from("ingredient_transactions")
-          .delete()
-          .in("id", transactions.map(t => t.ingredient_transaction_id))
-
-      if (transactionsDeleteError) {
-        console.error("Error al eliminar transacciones de ingredientes de la orden:", transactionsDeleteError)
-        throw transactionsDeleteError
-      }
-
-      // Eliminar la orden
-      const { error: orderError } = await supabase.from("orders").delete().eq("id", orderId)
-
-      if (orderError) {
-        console.error("Error al eliminar la orden:", orderError)
-        throw orderError
-      }
-
-      return true
-    } catch (error) {
-      console.error("Error en deleteOrder:", error)
+    if (error) {
+      log.error("Error in delete_order_with_items RPC:", { error: String(error) })
       throw error
     }
+
+    return true
+  },
+
+  // Deprecated: use deleteOrderRpc instead.
+  // This method is kept for backward compatibility during the migration window.
+  async deleteOrder(orderId: string) {
+    log.warn(
+      "[deprecation] deleteOrder(orderId) is deprecated. " +
+      "Migrate to deleteOrderRpc(orderId). " +
+      "See docs/payment-atomicity-test.md for the RPC interface."
+    )
+    return this.deleteOrderRpc(orderId)
   },
 
   async getById(orderId: string) {
@@ -1234,13 +1139,13 @@ export const orderService = {
         .single()
 
       if (error) {
-        console.error("Error al obtener orden por ID:", error)
+        log.error("Error al obtener orden por ID:", { error: String(error) })
         throw error
       }
 
       return data
     } catch (error) {
-      console.error("Error en getById de órdenes:", error)
+      log.error("Error en getById de órdenes:", { error: String(error) })
       throw error
     }
   },
@@ -1252,7 +1157,7 @@ export const orderService = {
       if (error) throw error
       return { data, error: null }
     } catch (error) {
-      console.error("Error al añadir items a la orden:", error)
+      log.error("Error al añadir items a la orden:", { error: String(error) })
       return { data: null, error }
     }
   },
@@ -1295,7 +1200,7 @@ export const orderService = {
 
       return { success: true, error: null }
     } catch (error) {
-      console.error("Error al recalcular totales de la orden:", error)
+      log.error("Error al recalcular totales de la orden:", { error: String(error) })
       return { success: false, error }
     }
   },
@@ -1337,7 +1242,7 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
           .eq("order_id", order.id)
 
         if (payError) {
-          console.error("Error al obtener métodos de pago:", payError)
+          log.error("Error al obtener métodos de pago:", { payError: String(payError) })
         }
 
         let paymentMethod: PaymentMethod | "multiple" | undefined
@@ -1373,7 +1278,7 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
       })
     )
 
-    return orders
+    return orders as unknown as Order[]
   } catch (error) {
     throw error
   }

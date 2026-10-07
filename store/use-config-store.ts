@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import businessConfigService from "@/lib/supabase/business-config-service"
+import { log } from "@/lib/log"
 
 type ConfigState = {
   // Impuestos y propinas
@@ -23,7 +24,11 @@ type ConfigState = {
   businessPhone: string
   businessNIT: string
 
-  // Contraseñas de perfiles
+
+
+  // Contraseñas de perfiles (eliminadas de business_config en P2;
+  // mantenidas en el store para no romper ConfigurationPanel;
+  // no se sincronizan con la DB — role viene de auth.users.app_metadata)
   kitchenPassword: string
   cashierPassword: string
   adminPassword: string
@@ -37,13 +42,7 @@ type ConfigState = {
     nit?: string
   }) => void
 
-  // Acciones para contraseñas
-  setProfilePasswords: (passwords: {
-    kitchen?: string
-    cashier?: string
-    admin?: string
-    waiter?: string
-  }) => void
+
 
   // Estado de carga
   isLoading: boolean
@@ -64,13 +63,14 @@ export const useConfigStore = create<ConfigState>()(
       businessAddress: "Calle Principal #123, Ciudad",
       businessPhone: "123-456-7890",
       businessNIT: "900.123.456-7",
-      kitchenPassword: "1234",
-      cashierPassword: "5678",
-      adminPassword: "9999",
-      waiterPassword: "0000",
       isLoading: false,
       error: null,
       priceSuggestion: 300,
+      // Contraseñas locales (no se guardan en DB — role ahora viene de auth.users)
+      kitchenPassword: "",
+      cashierPassword: "",
+      adminPassword: "",
+      waiterPassword: "",
 
       // Acciones
       setTipPercentage: (percentage: number) => set({ tipPercentage: percentage }),
@@ -84,14 +84,13 @@ export const useConfigStore = create<ConfigState>()(
           businessPhone: info.phone ?? state.businessPhone,
           businessNIT: info.nit ?? state.businessNIT,
         })),
-      setProfilePasswords: (passwords) =>
+      setProfilePasswords: (passwords: { kitchen?: string; cashier?: string; admin?: string; waiter?: string }) =>
         set((state) => ({
           kitchenPassword: passwords.kitchen ?? state.kitchenPassword,
           cashierPassword: passwords.cashier ?? state.cashierPassword,
           adminPassword: passwords.admin ?? state.adminPassword,
           waiterPassword: passwords.waiter ?? state.waiterPassword,
         })),
-
       // Cargar configuración desde la base de datos
       loadConfigFromDB: async () => {
         try {
@@ -112,10 +111,6 @@ export const useConfigStore = create<ConfigState>()(
             businessAddress: config.business_address,
             businessPhone: config.business_phone,
             businessNIT: config.business_nit,
-            kitchenPassword: config.kitchen_password,
-            cashierPassword: config.cashier_password,
-            adminPassword: config.admin_password,
-            waiterPassword: config.waiter_password,
             isLoading: false,
           })
 
@@ -142,19 +137,15 @@ export const useConfigStore = create<ConfigState>()(
             business_address: state.businessAddress,
             business_phone: state.businessPhone,
             business_nit: state.businessNIT,
-            kitchen_password: state.kitchenPassword,
-            cashier_password: state.cashierPassword,
-            admin_password: state.adminPassword,
-            waiter_password: state.waiterPassword,
           }
 
           await businessConfigService.saveMultipleConfig(configToSave)
 
           set({ isLoading: false })
 
-          console.log("Configuración guardada en la base de datos")
+          log.info("Configuración guardada en la base de datos")
         } catch (error) {
-          console.error("Error al guardar configuración:", error)
+          log.error("Error al guardar configuración:", { error: String(error) })
           set({
             isLoading: false,
             error: error instanceof Error ? error.message : "Error desconocido al guardar configuración",

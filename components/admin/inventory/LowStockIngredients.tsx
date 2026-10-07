@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { log } from "@/lib/log"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -29,7 +30,7 @@ export function LowStockIngredients() {
       const lowStockItems = data.filter((item) => item.stock <= item.min_stock)
       setIngredients(lowStockItems)
     } catch (error: any) {
-      console.error("Error fetching ingredients:", error)
+      log.error("Error fetching ingredients:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",

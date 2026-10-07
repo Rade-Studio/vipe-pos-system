@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { tableService } from "@/lib/supabase/service"
+import { log } from "@/lib/log"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, Plus, Search, Filter } from "lucide-react"
@@ -37,7 +38,7 @@ export function TableManagementPanel() {
         const data = await tableService.getAll()
         setTables(data)
       } catch (error) {
-        console.error("Error al cargar mesas:", error)
+        log.error("Error al cargar mesas:", { error: String(error) })
         toast({
           title: "Error",
           description: "No se pudieron cargar las mesas. Intente nuevamente.",
@@ -53,7 +54,7 @@ export function TableManagementPanel() {
 
     // Suscribirse a cambios en tiempo real
     const unsubscribe = realtimeService.subscribeToTables(async (payload) => {
-      console.log("Cambio en mesa recibido en panel de administración:", payload)
+      log.info("Cambio en mesa recibido en panel de administración:", { payload })
 
       // Para simplificar, recargamos todas las mesas cuando hay un cambio
       // Esto asegura que tengamos todos los datos relacionados (como perfiles)
@@ -105,7 +106,7 @@ export function TableManagementPanel() {
 
       // No es necesario recargar las mesas manualmente, la suscripción en tiempo real lo hará
     } catch (error) {
-      console.error("Error al crear mesa:", error)
+      log.error("Error al crear mesa:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudo crear la mesa. Intente nuevamente.",
@@ -147,7 +148,7 @@ export function TableManagementPanel() {
 
       // No es necesario recargar las mesas manualmente, la suscripción en tiempo real lo hará
     } catch (error) {
-      console.error("Error al actualizar mesa:", error)
+      log.error("Error al actualizar mesa:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudo actualizar la mesa. Intente nuevamente.",
@@ -176,7 +177,7 @@ export function TableManagementPanel() {
         description: "La mesa ha sido eliminada exitosamente.",
       })
     } catch (error: any) {
-      console.error("Error al eliminar mesa:", error)
+      log.error("Error al eliminar mesa:", { error: String(error) })
 
       // Mostrar mensaje específico si hay órdenes activas
       if (error.message && error.message.includes("órdenes activas")) {
@@ -288,7 +289,7 @@ export function TableManagementPanel() {
                           <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary mr-2">
                             {table.profiles?.full_name
                               ?.split(" ")
-                              .map((name) => name[0])
+                              .map((name: string) => name[0])
                               .join("")
                               .toUpperCase() || "??"}
                           </div>

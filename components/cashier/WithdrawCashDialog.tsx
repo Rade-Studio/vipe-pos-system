@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { log } from "@/lib/log"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -98,7 +99,7 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
         onSuccess()
       }
     } catch (error) {
-      console.error("Error al retirar efectivo:", error)
+      log.error("Error al retirar efectivo:", { error: String(error) })
       setError("Ocurrió un error al retirar el efectivo")
     }
   }

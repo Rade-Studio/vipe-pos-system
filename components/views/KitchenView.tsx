@@ -1,15 +1,26 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import type { Profile } from "@/types"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import type { Profile, Order, OrderStatus, OrderItem, OrderItemStatus } from "@/types"
+import type { Tables } from "@/types/supabase"
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
+
+type DbOrder = Tables<"orders"> & { order_items?: Tables<"order_items">[] | null }
+type DbOrderItem = Tables<"order_items">
+type RealtimePayload = RealtimePostgresChangesPayload<any>
 import { Header } from "@/components/layout/Header"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
+import { useTableStore } from "@/store/useTableStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import { OrderCard } from "@/components/pos/OrderCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { orderService, tableService } from "@/lib/supabase/service"
 import { realtimeService } from "@/lib/supabase/realtime-service"
+import { queryClient } from "@/lib/queryClient"
+import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { Bell, RefreshCw, Wifi, WifiOff, Filter } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -39,9 +50,10 @@ import {
 interface KitchenViewProps {
   profile: Profile
   onChangeProfile: () => void
+  authRole?: string
 }
 
-export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
+export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewProps) {
   const [activeTab, setActiveTab] = useState<"orders" | "tables">("orders")
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
   const [showWaiterDialog, setShowWaiterDialog] = useState(false)
@@ -56,22 +68,39 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   const [filterWaiter, setFilterWaiter] = useState<string | null>(null)
   const [filterTable, setFilterTable] = useState<number | null>(null)
   const { toast } = useToast()
+  const queryClient = useQueryClient()
 
-  const {
-    tables,
-    getOrdersByStatus,
-    updateOrderStatus,
-    profiles,
-    assignWaiterToTable,
-    setActiveTable,
-    setOrders,
-    addOrder,
-    orders,
-    updateTableStatus,
-    setTables,
-    updateOrder,
-    removeOrder,
-  } = usePOSStore()
+  // Fetch kitchen orders via React Query
+  const fetchKitchenOrders = async () => {
+    const activeOrders = await orderService.getByStatus("kitchen")
+    const ordersWithKitchenItems = activeOrders.filter((order) =>
+      order.order_items?.some((item) => item.status === "kitchen"),
+    )
+    return ordersWithKitchenItems
+      .map((o) => convertDbOrderToStoreOrder(o as DbOrder))
+      .filter((o): o is Order => o !== null)
+  }
+
+  const { data: kitchenOrdersData = [] } = useQuery({
+    queryKey: ['orders', 'kitchen'],
+    queryFn: fetchKitchenOrders,
+  })
+
+  const tables = useTableStore((s) => s.tables)
+  const setTables = useTableStore((s) => s.setTables)
+  const updateTableStatus = useTableStore((s) => s.updateTableStatus)
+  const assignWaiterToTable = useTableStore((s) => s.assignWaiterToTable)
+  const setActiveTable = useTableStore((s) => s.setActiveTable)
+
+  const orders = useOrderStore((s) => s.orders)
+  const setOrders = useOrderStore((s) => s.setOrders)
+  const addOrder = useOrderStore((s) => s.addOrder)
+  const updateOrder = useOrderStore((s) => s.updateOrder)
+  const removeOrder = useOrderStore((s) => s.removeOrder)
+  const updateOrderStatus = useOrderStore((s) => s.updateOrderStatus)
+  const getOrdersByStatus = (statuses: OrderStatus[]) => useOrderStore.getState().getOrdersByStatus(statuses)
+
+  const profiles = useProfileStore((s) => s.profiles)
 
   // Referencia para la función de cancelación de suscripción
   const unsubscribeRef = useRef<(() => void) | null>(null)
@@ -84,9 +113,24 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     ordersRef.current = orders
   }, [orders])
 
-  // Cargar órdenes y mesas al iniciar y configurar suscripción en tiempo real
+  // Sync React Query kitchen orders data to Zustand store
   useEffect(() => {
-    loadInitialData()
+    if (kitchenOrdersData.length > 0) {
+      setOrders([])
+      setNewItems({})
+      kitchenOrdersData.forEach((order) => {
+        if (order) {
+          addOrder(order)
+          if (order.items && order.items.length > 0) {
+            realtimeService.registerItems(order.id, order.items.map((item) => item.id))
+          }
+        }
+      })
+    }
+  }, [kitchenOrdersData])
+
+  // Configurar suscripción en tiempo real al montar
+  useEffect(() => {
     setupRealtimeSubscription()
 
     // Limpiar la suscripción al desmontar
@@ -99,15 +143,19 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   }, [])
 
   // Convertir orden de la base de datos al formato del store
-  const convertDbOrderToStoreOrder = (dbOrder) => {
+  const convertDbOrderToStoreOrder = (dbOrder: DbOrder): Order | null => {
     // Asegurarse de que order_items existe y es un array
-    const orderItems = Array.isArray(dbOrder.order_items) ? dbOrder.order_items : []
+    const orderItems: DbOrderItem[] = Array.isArray(dbOrder.order_items) ? dbOrder.order_items : []
 
     // Filtrar solo los items que están en estado "kitchen"
     const kitchenItems = orderItems.filter((item) => item.status === "kitchen")
 
     // Ordenar los items por fecha de creación
-    kitchenItems.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    kitchenItems.sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0
+      return aTime - bTime
+    })
 
     // Si no hay items en cocina, no incluir esta orden
     if (kitchenItems.length === 0) {
@@ -115,44 +163,45 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     }
 
     // Convertir los items de la orden
-    const items = kitchenItems.map((item) => ({
-      id: item.id, // Usar el ID del item
-      dishId: item.dish_id || `item-${item.id}`,
+    const items: OrderItem[] = kitchenItems.map((item) => ({
+      id: String(item.id), // Usar el ID del item
       name: item.name,
       price: item.price,
-      quantity: item.quantity,
-      comments: item.comments || undefined,
-      categoryId: item.category_id || "",
+      quantity: item.quantity ?? 1,
+      comments: item.comments ?? undefined,
+      categoryId: "",
       image: "/placeholder.svg?height=50&width=50", // Imagen por defecto
-      status: item.status, // Incluir el estado del item
-      addedAt: item.added_at ? new Date(item.created_at) : undefined,
+      status: (item.status ?? "kitchen") as OrderItemStatus,
+      addedAt: item.added_at ? new Date(item.added_at) : undefined,
     }))
 
     // Crear el objeto de orden para el store
-    return {
+    const order: Order = {
       id: dbOrder.id,
-      tableId: dbOrder.table_id,
+      tableId: dbOrder.table_id ?? "",
       items,
-      status: dbOrder.status,
+      status: dbOrder.status as OrderStatus,
       bill: {
-        subtotal: dbOrder.subtotal || 0,
-        tax: dbOrder.tax || 0,
-        taxPercentage: dbOrder.tax_percentage || 0,
-        tip: dbOrder.tip || 0,
-        tipPercentage: dbOrder.tip_percentage || 0,
-        total: dbOrder.total || 0,
+        subtotal: dbOrder.subtotal ?? 0,
+        tax: dbOrder.tax ?? 0,
+        taxPercentage: dbOrder.tax_percentage ?? 0,
+        tip: dbOrder.tip ?? 0,
+        tipPercentage: dbOrder.tip_percentage ?? 0,
+        total: dbOrder.total ?? 0,
+        totalDiscounts: dbOrder.total_discounts ?? 0,
       },
-      waiter: dbOrder.waiter_id,
-      createdAt: new Date(dbOrder.created_at),
-      isPartialOrder: dbOrder.is_partial_order || false,
-      parentOrderId: dbOrder.parent_order_id || null,
+      waiter: dbOrder.waiter_id ?? "",
+      createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
+      isPartialOrder: dbOrder.is_partial_order ?? false,
+      parentOrderId: dbOrder.parent_order_id ?? undefined,
     }
+    return order
   }
 
   // Configurar suscripción en tiempo real
   const setupRealtimeSubscription = () => {
     try {
-      console.log("Configurando suscripción en tiempo real para cocina...")
+      log.info("Configurando suscripción en tiempo real para cocina...")
 
       // Suscribirse a eventos de cocina
       const unsubscribe = realtimeService.subscribeToKitchen(
@@ -167,9 +216,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       // Guardar la función de cancelación
       unsubscribeRef.current = unsubscribe
 
-      console.log("Suscripción configurada correctamente")
+      log.info("Suscripción configurada correctamente")
     } catch (error) {
-      console.error("Error al configurar suscripción en tiempo real:", error)
+      log.error("Error al configurar suscripción en tiempo real:", { error: String(error) })
       setRealtimeConnected(false)
       toast({
         title: "Error de conexión",
@@ -180,9 +229,12 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   }
 
   // Manejar actualizaciones de órdenes
-  const handleOrderUpdate = async (payload, isNewOrder = false) => {
+  const handleOrderUpdate = async (payload: RealtimePayload, isNewOrder = false) => {
     try {
-      console.log("Actualización de orden recibida:", payload)
+      log.info("Actualización de orden recibida:", { payload })
+
+      // Invalidate React Query cache so it refetches in background
+      queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
 
       // Si es una eliminación de orden
       if (payload.eventType === "DELETE") {
@@ -209,7 +261,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       // Cargar la orden completa con sus items
       const fullOrderDetails = await orderService.getById(orderDetails.id)
       if (!fullOrderDetails) {
-        console.error("No se pudo cargar la orden completa:", orderDetails.id)
+        log.error("No se pudo cargar la orden completa:", { orderId: orderDetails.id })
         return
       }
 
@@ -224,11 +276,11 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
       if (existingOrder) {
         // Si existe, actualizar la orden
-        console.log("Actualizando orden existente en el store:", orderDetails.id)
+        log.info("Actualizando orden existente en el store:", { orderId: orderDetails.id })
         updateOrder(orderDetails.id, storeOrder)
       } else {
         // Si no existe, agregar la orden
-        console.log("Agregando nueva orden al store:", orderDetails.id)
+        log.info("Agregando nueva orden al store:", { orderId: orderDetails.id })
         addOrder(storeOrder)
 
         // Si es una nueva orden, mostrar notificación
@@ -251,14 +303,16 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         }
       }
     } catch (error) {
-      console.error("Error al procesar actualización de orden:", error)
+      log.error("Error al procesar actualización de orden:", { error: String(error) })
     }
   }
 
   // Manejar actualizaciones de items de órdenes
-  const handleOrderItemUpdate = async (payload, isNewItem = false) => {
+  const handleOrderItemUpdate = async (payload: RealtimePayload, isNewItem = false) => {
     try {
-      console.log("Actualización de item recibido:", payload, "Es nuevo item:", isNewItem)
+      // Invalidate React Query cache so it refetches in background
+      queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
+      log.info("Actualización de item recibido:", { payload, isNewItem })
 
       // Si no hay datos de la orden o del item, salir
       if (!payload.new || !payload.new.order_id) return
@@ -267,8 +321,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       const itemId = payload.new.id
 
       // Si un item fue entregado (cambió de estado "kitchen" a otro)
-      if (payload.old && payload.old.status === "kitchen" && payload.new.status !== "kitchen") {
-        console.log("Item entregado detectado:", itemId)
+      if (payload.old && (payload.old as any).status === "kitchen" && payload.new.status !== "kitchen") {
+        log.info("Item entregado detectado:", { itemId })
 
         // Eliminar el item de la lista de nuevos items
         setNewItems((prev) => {
@@ -311,7 +365,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       }
 
       // Si es un nuevo item o un item actualizado a estado "kitchen"
-      if (isNewItem || (payload.old && payload.old.status !== "kitchen" && payload.new.status === "kitchen")) {
+      if (isNewItem || (payload.old && (payload.old as any).status !== "kitchen" && payload.new.status === "kitchen")) {
         // Cargar la orden completa con sus items
         const orderDetails = await orderService.getById(orderId)
         if (!orderDetails) return
@@ -327,7 +381,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
         if (existingOrder) {
           // Si existe, actualizar la orden
-          console.log("Actualizando orden existente en el store con nuevo item:", orderId)
+          log.info("Actualizando orden existente en el store con nuevo item:", { orderId })
           updateOrder(orderId, storeOrder)
 
           // Marcar el item como nuevo
@@ -348,7 +402,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           setNewOrderAlert(true)
         } else {
           // Si no existe, agregar la orden
-          console.log("Agregando orden con nuevo item al store:", orderId)
+          log.info("Agregando orden con nuevo item al store:", { orderId })
           addOrder(storeOrder)
 
           // Marcar el item como nuevo
@@ -370,7 +424,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         }
       }
     } catch (error) {
-      console.error("Error al procesar actualización de item:", error)
+      log.error("Error al procesar actualización de item:", { error: String(error) })
     }
   }
 
@@ -379,13 +433,13 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
     setRealtimeConnected(status)
 
     if (status) {
-      console.log("Conexión en tiempo real establecida")
+      log.info("Conexión en tiempo real establecida")
     } else {
-      console.log("Conexión en tiempo real perdida")
+      log.info("Conexión en tiempo real perdida")
     }
   }
 
-  // Cargar datos iniciales
+  // Cargar datos iniciales (mesas only; orders handled by useQuery)
   const loadInitialData = async () => {
     setLoading(true)
     try {
@@ -398,11 +452,8 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         waiter: table.waiter_id || undefined,
       }))
       setTables(formattedTables)
-
-      // Cargar órdenes en cocina
-      await loadKitchenOrders()
     } catch (error) {
-      console.error("Error al cargar datos iniciales:", error)
+      log.error("Error al cargar datos iniciales:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudieron cargar los datos. Intente nuevamente.",
@@ -416,23 +467,25 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   // Cargar órdenes en cocina
   const loadKitchenOrders = async () => {
     try {
-      console.log("Iniciando carga de órdenes con items en cocina...")
+      log.info("Iniciando carga de órdenes con items en cocina...")
 
       // Obtener órdenes con estado "active" de la base de datos
       const activeOrders = await orderService.getByStatus("kitchen")
-      console.log("Órdenes activas obtenidas de la BD:", activeOrders.length)
+      log.info("Órdenes activas obtenidas de la BD:", { count: activeOrders.length })
 
       // Filtrar las órdenes que tienen al menos un item en estado "kitchen"
       const ordersWithKitchenItems = activeOrders.filter((order) =>
         order.order_items?.some((item) => item.status === "kitchen"),
       )
 
-      console.log("Órdenes con items en cocina:", ordersWithKitchenItems.length)
+      log.info("Órdenes con items en cocina:", { count: ordersWithKitchenItems.length })
 
       // Procesar las órdenes para el store
-      const storeOrders = ordersWithKitchenItems.map(convertDbOrderToStoreOrder).filter(Boolean) // Eliminar nulls
+      const storeOrders: Order[] = ordersWithKitchenItems
+        .map((o) => convertDbOrderToStoreOrder(o as DbOrder))
+        .filter((o): o is Order => o !== null) // Eliminar nulls
 
-      console.log("Órdenes convertidas para el store:", storeOrders.length)
+      log.info("Órdenes convertidas para el store:", { count: storeOrders.length })
 
       // Limpiar órdenes anteriores en el store
       setOrders([])
@@ -442,7 +495,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
       // Agregar las órdenes al store
       storeOrders.forEach((order) => {
-        console.log("Agregando orden al store:", order.id)
+        log.info("Agregando orden al store:", { orderId: order.id })
         addOrder(order)
 
         // Registrar los items de esta orden en el servicio de tiempo real
@@ -454,9 +507,9 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         }
       })
 
-      console.log("Órdenes agregadas al store correctamente")
+      log.info("Órdenes agregadas al store correctamente")
     } catch (error) {
-      console.error("Error al cargar órdenes de cocina:", error)
+      log.error("Error al cargar órdenes de cocina:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudieron cargar las órdenes de cocina.",
@@ -469,7 +522,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   const handleRefreshOrders = async () => {
     setRefreshing(true)
     try {
-      await loadKitchenOrders()
+      await queryClient.invalidateQueries({ queryKey: ['orders', 'kitchen'] })
 
       // Desactivar la alerta de nuevas órdenes al refrescar manualmente
       setNewOrderAlert(false)
@@ -480,7 +533,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         description: "Las órdenes se han actualizado correctamente.",
       })
     } catch (error) {
-      console.error("Error al actualizar órdenes:", error)
+      log.error("Error al actualizar órdenes:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudieron actualizar las órdenes.",
@@ -511,7 +564,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         description: "Intentando restablecer la conexión en tiempo real...",
       })
     } catch (error) {
-      console.error("Error al reconectar:", error)
+      log.error("Error al reconectar:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudo restablecer la conexión. Intente nuevamente.",
@@ -553,7 +606,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
   const handleMarkAsDelivered = async (orderId: string, itemId?: string) => {
     try {
       if (!itemId) {
-        console.error("Se requiere el ID del item para marcarlo como entregado")
+        log.error("Se requiere el ID del item para marcarlo como entregado")
         toast({
           title: "Error",
           description: "No se pudo procesar la acción. Intente nuevamente.",
@@ -569,7 +622,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         .eq("id", itemId)
 
       if (error) {
-        console.error("Error al actualizar estado del item:", error)
+        log.error("Error al actualizar estado del item:", { error: String(error) })
         throw error
       }
 
@@ -598,7 +651,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
           }
           return order
         })
-        .filter(Boolean) // Eliminar nulls
+        .filter((o): o is Order => o !== null) // Eliminar nulls
 
       // Actualizar el store con las órdenes actualizadas
       setOrders(updatedOrders)
@@ -634,7 +687,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         }
       }
     } catch (error) {
-      console.error("Error al marcar el item como entregado:", error)
+      log.error("Error al marcar el item como entregado:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudo marcar el producto como entregado. Intente nuevamente.",
@@ -659,7 +712,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       const order = orders.find((o) => o.id === orderToDeliver)
 
       if (!order || order.items.length === 0) {
-        console.error("Orden no encontrada o sin items")
+        log.error("Orden no encontrada o sin items")
         return
       }
 
@@ -667,7 +720,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       const itemIds = order.items.map((item) => item.id)
 
       if (itemIds.length === 0) {
-        console.log("No hay items para marcar como entregados")
+        log.info("No hay items para marcar como entregados")
         return
       }
 
@@ -678,7 +731,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         .in("id", itemIds)
 
       if (error) {
-        console.error("Error al actualizar estado de los items:", error)
+        log.error("Error al actualizar estado de los items:", { error: String(error) })
         throw error
       }
 
@@ -705,7 +758,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
         return newState
       })
     } catch (error) {
-      console.error("Error al marcar todos los items como entregados:", error)
+      log.error("Error al marcar todos los items como entregados:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudieron marcar todos los productos como entregados. Intente nuevamente.",
@@ -787,7 +840,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
 
   return (
     <div className="flex flex-col h-screen p-4">
-      <Header profile={profile} onChangeProfile={onChangeProfile} title="Cocina" />
+      <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Cocina" />
 
       <Tabs defaultValue="orders" onValueChange={(value) => setActiveTab(value as "orders" | "tables")}>
         <div className="flex items-center mb-4 flex-wrap gap-2">
@@ -954,6 +1007,7 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
             tables={tables}
             activeTable={selectedTable}
             profile={profile}
+            profiles={profiles}
             onSelectTable={handleTableSelect}
             onReserveTable={() => {}}
             onReleaseTable={() => {}}
@@ -966,7 +1020,6 @@ export function KitchenView({ profile, onChangeProfile }: KitchenViewProps) {
       <WaiterSelectionModal
         open={showWaiterDialog}
         onOpenChange={setShowWaiterDialog}
-        waiters={waiters}
         onSelect={handleWaiterSelect}
       />
 
