@@ -778,8 +778,18 @@ BEGIN
   END IF;
 
   IF p_action = 'cancel' THEN
+    -- Lock the order before looking for payments: pay_order holds this lock
+    -- while it writes, so the check cannot pass and then lose to a payment
+    -- committed in between (which would cancel a paid order).
+    PERFORM 1 FROM public.orders o
+      WHERE o.id = p_order_id
+        AND o.restaurant_id = v_caller_tenant
+        FOR UPDATE;
+
     -- Refuse to cancel an order that has a payment: refunds are out of scope.
-    IF EXISTS (SELECT 1 FROM public.payments p WHERE p.order_id = p_order_id) THEN
+    IF EXISTS (SELECT 1 FROM public.payments p WHERE p.order_id = p_order_id)
+       OR EXISTS (SELECT 1 FROM public.orders o
+                   WHERE o.id = p_order_id AND o.status = 'paid') THEN
       RAISE EXCEPTION 'set_delivery_status: order % already has a payment (refunds are out of scope)',
         p_order_id
         USING ERRCODE = 'P0001';
@@ -814,15 +824,9 @@ BEGIN
            failed_at       = v_now
      WHERE od.order_id = p_order_id;
   ELSIF p_action = 'cancel' THEN
-    -- Lock the order row before the orders.status update. parent-before-child
-    -- (here: order is the parent of the delivery mirror) is the same shape
-    -- split_order uses; pay_order locks the order FOR UPDATE, the register
-    -- FOR SHARE, so a concurrent cancel + pay_order pair cannot form a cycle.
-    PERFORM 1 FROM public.orders o
-      WHERE o.id = p_order_id
-        AND o.restaurant_id = v_caller_tenant
-        FOR UPDATE;
-
+    -- The order row is already locked by the payment check above. pay_order
+    -- locks the order FOR UPDATE and never the delivery row, so a concurrent
+    -- cancel + pay_order pair cannot form a cycle.
     UPDATE public.order_deliveries od
        SET delivery_status = 'cancelled',
            cancelled_at    = v_now
