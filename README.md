@@ -418,15 +418,23 @@ Si necesitas cambiar las credenciales:
 
 ## 🚀 Despliegue
 
-La aplicación está optimizada para desplegarse en Vercel:
+La aplicación se despliega en Railway con el `Dockerfile` del repositorio (configurado en `railway.json`). Supabase sigue siendo la base de datos.
+
+| Ambiente | Rama | Despliegue |
+|----------|------|------------|
+| `production` | `main` | Automático en cada push a `main` |
+| `staging` | `dev` | Automático en cada push a `dev` |
+
+Cada ambiente necesita estas variables en el servicio `web` de Railway. Se usan en el build, así que un cambio requiere redesplegar:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+Para construir localmente:
 
 ```bash
-npm run build
-# o
-yarn build
+pnpm build
 ```
-
-Para otros proveedores, asegúrate de configurar correctamente las variables de entorno.
 
 ## 🤝 Contribución
 
