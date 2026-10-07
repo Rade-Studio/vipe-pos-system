@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { log } from "@/lib/log"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import type { Order, Profile, Table } from "@/types"
@@ -76,7 +77,21 @@ export function OrderCard({
     try {
       await onMarkAsDelivered(itemId)
     } catch (error) {
-      console.error("Error al marcar el item como entregado:", error)
+      log.error("Error al marcar el item como entregado:", { error: String(error) })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Manejador de entrega de todos los items
+  const handleMarkAllAsDelivered = async () => {
+    if (!onMarkAllAsDelivered) return
+    setLoading(true)
+    try {
+      await onMarkAllAsDelivered(order.id)
+      setShowCompleteDialog(false)
+    } catch (error) {
+      log.error("Error al marcar todos los items como entregados:", { error: String(error) })
     } finally {
       setLoading(false)
     }
@@ -89,7 +104,7 @@ export function OrderCard({
     try {
       onDelete(order.id)
     } catch (error) {
-      console.error("Error al eliminar la orden:", error)
+      log.error("Error al eliminar la orden:", { error: String(error) })
     } finally {
       setLoading(false)
       setIsDeleteDialogOpen(false)
@@ -106,11 +121,7 @@ export function OrderCard({
   const localDate = new Date(order.createdAt).toLocaleString()
 
   // Agrupar items idénticos (mismo nombre y comentarios)
-  const visibleItems = isKitchenView
-    ? order.items.filter((it) => it.status === "kitchen")
-    : order.items
-
-  const groupedItems = visibleItems.reduce((acc, item) => {
+  const groupedItems: Record<string, any> = order.items.reduce((acc: Record<string, any>, item) => {
     // Crear una clave única basada en nombre y comentarios
     const key = `${item.name}|${item.comments || ""}|${item.addedAt?.getTime()}`
 
@@ -206,7 +217,7 @@ export function OrderCard({
         {/* Items agrupados */}
         <div className="space-y-3 mt-2">
           {groupedItemsArray.map((item: any, index) => {
-            const isAnyItemNew = item.ids.some((id) => newItems.includes(id))
+            const isAnyItemNew = item.ids.some((id: string) => newItems.includes(id))
 
             return (
               <div
@@ -303,7 +314,7 @@ export function OrderCard({
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction onClick={onMarkAllAsDelivered} className="bg-green-600 hover:bg-green-700">
+                      <AlertDialogAction onClick={handleMarkAllAsDelivered} className="bg-green-600 hover:bg-green-700">
                         Entregar Todo
                       </AlertDialogAction>
                     </AlertDialogFooter>

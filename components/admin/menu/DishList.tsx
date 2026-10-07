@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/log"
 import { Edit, Plus, Search, Trash, BookOpen } from "lucide-react"
 import {
   AlertDialog,
@@ -58,7 +59,7 @@ export function DishList() {
       setDishes(dishesData || [])
       setCategories(categoriesData || [])
     } catch (error: any) {
-      console.error("Error fetching data:", error)
+      log.error("Error fetching data:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -93,7 +94,7 @@ export function DishList() {
 
       fetchData()
     } catch (error: any) {
-      console.error("Error deleting dish:", error)
+      log.error("Error deleting dish:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -205,7 +206,7 @@ export function DishList() {
                       <TableCell>{getCategoryName(dish.category_id)}</TableCell>
                       <TableCell>{formatCurrency(dish.price)}</TableCell>
                       <TableCell>
-                        <Badge variant={dish.active ? "success" : "secondary"}>
+                        <Badge variant={dish.active ? "default" : "secondary"}>
                           {dish.active ? "Activo" : "Inactivo"}
                         </Badge>
                       </TableCell>

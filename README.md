@@ -67,19 +67,27 @@ SUPABASE_SERVICE_ROLE_KEY=tu_clave_de_servicio_de_supabase
 
 ### 4. Configurar la base de datos
 
-Ejecuta los scripts SQL en el siguiente orden para configurar la base de datos en Supabase:
+La base de datos local se levanta con la [Supabase CLI](https://supabase.com/docs/guides/cli).
+Todo el esquema vive en un único directorio versionado, `supabase/migrations/`:
 
-1. `create-database-schema.sql` - Crea las tablas principales
-2. `create-storage-bucket.sql` - Configura el almacenamiento
-3. `create-business-config-table.sql` - Tabla de configuración
-4. `create-payment-transactions-table.sql` - Transacciones de pago
-5. `create-cash-transactions-table.sql` - Transacciones de caja
-6. `create-ingredient-transactions-table.sql` - Transacciones de ingredientes
-7. `create-recipes-tables.sql` - Tablas de recetas
-8. `create-promotions-table.sql` - Tabla de promociones
-9. `insert-sample-data.sql` - Datos de ejemplo (opcional)
+```bash
+pnpm supabase start        # levanta db, auth, storage, realtime y studio
+pnpm supabase db reset     # aplica las migraciones y carga supabase/seed.sql
+```
 
-Puedes ejecutar estos scripts desde la interfaz SQL de Supabase o usando la herramienta CLI.
+`pnpm supabase status` muestra la URL local y las claves (`API_URL`,
+`ANON_KEY`, `SERVICE_ROLE_KEY`) para pegarlas en el `.env` de la sección anterior.
+
+### Fresh stack
+
+Para borrar la base local y reconstruirla desde cero (migraciones + datos de ejemplo):
+
+```bash
+pnpm supabase db reset
+```
+
+**Warning:** `supabase db reset` destruye los datos locales (perfiles, mesas, comandas).
+Para detener los contenedores: `pnpm supabase stop` (agrega `--no-backup` para borrar también los datos locales).
 
 ### 5. Iniciar el servidor de desarrollo
 
@@ -230,6 +238,29 @@ npm run test
 # o
 yarn test
 ```
+
+La lógica pura de TypeScript (`lib/payments`, `store`) se prueba con Vitest en
+entorno Node, sin navegador:
+
+```bash
+pnpm test                                      # una pasada
+pnpm test:watch                                # modo interactivo
+```
+
+### Pruebas de base de datos
+
+El comportamiento de la base de datos (políticas RLS, permisos, RPCs) se cubre con
+pruebas SQL de pgTAP en `supabase/tests/`, que se ejecutan con la Supabase CLI
+contra la base local (requiere `pnpm supabase start`):
+
+```bash
+pnpm test:db                                  # todos los archivos
+pnpm supabase test db supabase/tests/001_bootstrap.test.sql   # uno solo
+```
+
+Cada archivo es autónomo (`BEGIN; ... SELECT plan(n); ... finish(); ROLLBACK;`), así
+que la base nunca se modifica. Consulta `supabase/tests/README.md` para escribir
+pruebas y suplantar los roles `anon` / `authenticated`.
 
 ---
 
@@ -387,15 +418,23 @@ Si necesitas cambiar las credenciales:
 
 ## 🚀 Despliegue
 
-La aplicación está optimizada para desplegarse en Vercel:
+La aplicación se despliega en Railway con el `Dockerfile` del repositorio (configurado en `railway.json`). Supabase sigue siendo la base de datos.
+
+| Ambiente | Rama | Despliegue |
+|----------|------|------------|
+| `production` | `main` | Automático en cada push a `main` |
+| `staging` | `dev` | Automático en cada push a `dev` |
+
+Cada ambiente necesita estas variables en el servicio `web` de Railway. Se usan en el build, así que un cambio requiere redesplegar:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+Para construir localmente:
 
 ```bash
-npm run build
-# o
-yarn build
+pnpm build
 ```
-
-Para otros proveedores, asegúrate de configurar correctamente las variables de entorno.
 
 ## 🤝 Contribución
 

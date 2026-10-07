@@ -2,12 +2,13 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import type {
   CashRegister,
-  CashRegisterSummary,
-  PaymentMethod,
   PaymentTransaction,
   CashTransaction,
 } from "@/types/cash-register"
 import { cashRegisterService } from "@/lib/supabase/cash-register-service"
+import { log } from "@/lib/log"
+import type { RegisterSummary } from "@/lib/payments/register-summary"
+import { closeRegisterRpc } from "@/lib/supabase/payments-service"
 
 type CashRegisterState = {
   currentRegister: CashRegister | null
@@ -16,21 +17,14 @@ type CashRegisterState = {
 
   // Acciones de apertura y cierre
   openRegister: (initialCash: number) => Promise<boolean>
-  closeRegister: () => Promise<CashRegisterSummary | null>
-
-  // Acciones de transacciones
-  addTransaction: (
-    orderId: string,
-    tableId: string,
-    amount: number,
-    method: PaymentMethod | "multiple",
-    paymentsMethod?: Record<PaymentMethod, boolean> | undefined,
-    paymentsAmount?: Record<PaymentMethod, string> | undefined,
-    cashReceived?: number,
-    cashChange?: number,
-    waiterId?: string,
-    tipAmount?: number,
-  ) => Promise<PaymentTransaction | null>
+  /**
+   * Server-driven close. Returns the `RegisterSummary` the
+   * `close_register` RPC computed at the FOR-UPDATE lock instant,
+   * or `null` if there is no open register / the RPC rejected.
+   * `finalCash` lives on the returned summary's `expectedCashAfterTips`
+   * (the value the server stored in `cash_registers.final_cash`).
+   */
+  closeRegister: () => Promise<RegisterSummary | null>
 
   // Acciones para transacciones de efectivo
   addCashToRegister: (amount: number) => Promise<boolean>
@@ -43,24 +37,14 @@ type CashRegisterState = {
 
   // Consultas
   isRegisterOpen: () => boolean
-  getCurrentRegisterSummary: () => CashRegisterSummary | null
   getRegisterById: (id: string) => CashRegister | null
   getAllRegisters: () => CashRegister[]
-  hasEnoughCashForChange: (changeAmount: number) => boolean
 
   // Carga de datos
   loadCurrentRegister: () => Promise<void>
   loadAllRegisters: () => Promise<void>
   loadTransactionsByRegisterId: (registerId: string) => Promise<PaymentTransaction[]>
   loadCashTransactionsByRegisterId: (registerId: string) => Promise<CashTransaction[]>
-  loadTransactionsByDate: (
-    date: Date,
-  ) => Promise<
-    (CashRegisterSummary & { transactions: PaymentTransaction[]; cashTransactions: CashTransaction[] }) | null
-  >
-  loadTransactionsByRegisters: (registers: string[]) => Promise<
-    (CashRegisterSummary & { transactions: PaymentTransaction[]; cashTransactions: CashTransaction[] }) | null
-  >
 }
 
 export const useCashRegisterStore = create<CashRegisterState>()(
@@ -81,7 +65,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
             })
           }
         } catch (error) {
-          console.error("Error al cargar la caja actual:", error)
+          log.error("Error al cargar la caja actual:", { error: String(error) })
         } finally {
           set({ isLoading: false })
         }
@@ -93,7 +77,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
           const registers = await cashRegisterService.getAllRegisters()
           set({ registers })
         } catch (error) {
-          console.error("Error al cargar todas las cajas:", error)
+          log.error("Error al cargar todas las cajas:", { error: String(error) })
         } finally {
           set({ isLoading: false })
         }
@@ -115,12 +99,12 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           // Si es el registro actual, actualizarlo también
           if (get().currentRegister?.id === registerId) {
-            set({ currentRegister: { ...get().currentRegister, transactions } })
+            set({ currentRegister: { ...get().currentRegister, transactions } as any })
           }
 
           return transactions
         } catch (error) {
-          console.error("Error al cargar transacciones:", error)
+          log.error("Error al cargar transacciones:", { error: String(error) })
           return []
         }
       },
@@ -141,102 +125,13 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           // Si es el registro actual, actualizarlo también
           if (get().currentRegister?.id === registerId) {
-            set({ currentRegister: { ...get().currentRegister, cashTransactions } })
+            set({ currentRegister: { ...get().currentRegister, cashTransactions } as any })
           }
 
           return cashTransactions
         } catch (error) {
-          console.error("Error al cargar transacciones de efectivo:", error)
+          log.error("Error al cargar transacciones de efectivo:", { error: String(error) })
           return []
-        }
-      },
-
-      loadTransactionsByDate: async (date: Date) => {
-        try {
-          set({ isLoading: true })
-
-          // Crear fechas para el inicio y fin del día
-          const startDate = new Date(date)
-          startDate.setHours(0, 0, 0, 0)
-
-          const endDate = new Date(date)
-          endDate.setHours(23, 59, 59, 999)
-
-          // Obtener transacciones para el rango de fechas
-          const transactions = await cashRegisterService.getTransactionsByDateRange(startDate, endDate)
-
-          // Obtener transacciones de efectivo para el rango de fechas
-          const cashTransactions = await cashRegisterService.getCashTransactionsByDateRange(startDate, endDate)
-
-          if ((!transactions || transactions.length === 0) && (!cashTransactions || cashTransactions.length === 0)) {
-            return null
-          }
-
-          // Crear un registro temporal con las transacciones del día
-          const tempRegister: CashRegister = {
-            id: "temp-" + date.toISOString(),
-            openingTimestamp: startDate,
-            status: "open",
-            initialCash: 0, // No tenemos este dato para días pasados
-            transactions: transactions,
-            cashTransactions: cashTransactions, // Ahora incluimos las transacciones de efectivo
-          }
-
-          // Calcular el resumen para este registro temporal
-          const summary = cashRegisterService.calculateRegisterSummary(tempRegister)
-
-          // Agregar las transacciones al resumen para poder exportarlas
-          return {
-            ...summary,
-            transactions: transactions,
-            cashTransactions: cashTransactions, // Incluimos las transacciones de efectivo en el resultado
-          }
-        } catch (error) {
-          console.error("Error al cargar transacciones por fecha:", error)
-          return null
-        } finally {
-          set({ isLoading: false })
-        }
-      },
-
-      loadTransactionsByRegisters: async (registers: string[]) => {
-        try {
-          set({ isLoading: true })
-
-          // Obtener transacciones para el rango de fechas
-          const transactions = await cashRegisterService.getTransactionsByRegisters(registers)
-
-          // Obtener transacciones de efectivo para el rango de fechas
-          const cashTransactions = await cashRegisterService.getCashTransactionsByRegisters(registers)
-
-          if ((!transactions || transactions.length === 0) && (!cashTransactions || cashTransactions.length === 0)) {
-            return null
-          }
-
-          // Crear un registro temporal con las transacciones del día
-          const tempRegister: CashRegister = {
-            id: "temp-" + new Date().toISOString(),
-            openingTimestamp: new Date(),
-            status: "open",
-            initialCash: 0, // No tenemos este dato para días pasados
-            transactions: transactions,
-            cashTransactions: cashTransactions, // Ahora incluimos las transacciones de efectivo
-          }
-
-          // Calcular el resumen para este registro temporal
-          const summary = cashRegisterService.calculateRegisterSummary(tempRegister)
-
-          // Agregar las transacciones al resumen para poder exportarlas
-          return {
-            ...summary,
-            transactions: transactions,
-            cashTransactions: cashTransactions, // Incluimos las transacciones de efectivo en el resultado
-          }
-        } catch (error) {
-          console.error("Error al cargar transacciones por fecha:", error)
-          return null
-        } finally {
-          set({ isLoading: false })
         }
       },
 
@@ -256,33 +151,32 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           return true
         } catch (error) {
-          console.error("Error al abrir la caja:", error)
+          log.error("Error al abrir la caja:", { error: String(error) })
           return false
         }
       },
 
+      /**
+       * Server-driven close. Calls the `close_register` RPC, which
+       * takes the row lock, computes the snapshot, UPDATEs the
+       * register, and returns the final_cash (= expected_cash_after_tips)
+       * the UI should display. The browser does NOT recompute anything
+       * from the local transactions.
+       */
       closeRegister: async () => {
         const { currentRegister } = get()
-
         if (!currentRegister || currentRegister.status === "closed") {
           return null
         }
 
         try {
-          // Calcular el resumen antes de cerrar la caja
-          const summary = cashRegisterService.calculateRegisterSummary(currentRegister)
+          const result = await closeRegisterRpc(currentRegister.id)
 
-          if (!summary) return null
-
-          // Cerrar la caja en Supabase
-          await cashRegisterService.closeRegister(currentRegister.id, summary.finalCash)
-
-          // Cerrar la caja localmente
           const closedRegister: CashRegister = {
             ...currentRegister,
             status: "closed",
             closingTimestamp: new Date(),
-            finalCash: summary.finalCash,
+            finalCash: result.finalCash,
           }
 
           set((state) => ({
@@ -290,61 +184,18 @@ export const useCashRegisterStore = create<CashRegisterState>()(
             registers: state.registers.map((reg) => (reg.id === closedRegister.id ? closedRegister : reg)),
           }))
 
-          return summary
+          return result.summary
         } catch (error) {
-          console.error("Error al cerrar la caja:", error)
+          log.error("Error al cerrar la caja:", { error: String(error) })
           return null
         }
       },
 
-      addTransaction: async (orderId, tableId, amount, method, paymentsMethod, paymentsAmount, cashReceived, cashChange, waiterId, tipAmount) => {
-        const { currentRegister } = get()
-
-        if (!currentRegister || currentRegister.status === "closed") {
-          return null
-        }
-
-        try {
-          // Si es un pago en efectivo y hay cambio, verificar si hay suficiente efectivo
-          if (method === "cash" && cashChange && cashChange > 0) {
-            const hasEnough = get().hasEnoughCashForChange(cashChange)
-            if (!hasEnough) {
-              throw new Error("No hay suficiente efectivo en caja para dar el cambio")
-            }
-          }
-
-          // Agregar transacción a Supabase
-          const transactions = await cashRegisterService.addTransaction(
-            currentRegister.id,
-            orderId,
-            tableId,
-            amount,
-            method,
-            paymentsMethod,
-            paymentsAmount,
-            cashReceived,
-            cashChange,
-            waiterId,
-            tipAmount,
-          )
-
-          // Actualizar el registro actual
-          const updatedRegister: CashRegister = {
-            ...currentRegister,
-            transactions: [...currentRegister.transactions, ...transactions],
-          }
-
-          set((state) => ({
-            currentRegister: updatedRegister,
-            registers: state.registers.map((reg) => (reg.id === updatedRegister.id ? updatedRegister : reg)),
-          }))
-
-          return transactions[0]
-        } catch (error) {
-          console.error("Error al agregar transacción:", error)
-          throw error
-        }
-      },
+      // Legacy `addTransaction` was removed in task 8c: the only writer of
+      // public.payments is the server-side `pay_order` RPC, so the browser
+      // never writes a transaction from any client action. The legacy
+      // `payment_transactions` rows remain readable as a separate history
+      // block on the cashier/admin screens.
 
       // Función para agregar efectivo a la caja
       addCashToRegister: async (amount: number) => {
@@ -376,7 +227,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           return true
         } catch (error) {
-          console.error("Error al agregar efectivo a la caja:", error)
+          log.error("Error al agregar efectivo a la caja:", { error: String(error) })
           return false
         }
       },
@@ -405,7 +256,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           return cashTransaction
         } catch (error) {
-          console.error("Error al agregar transacción de efectivo:", error)
+          log.error("Error al agregar transacción de efectivo:", { error: String(error) })
           return null
         }
       },
@@ -413,24 +264,6 @@ export const useCashRegisterStore = create<CashRegisterState>()(
       isRegisterOpen: () => {
         const { currentRegister } = get()
         return !!currentRegister && currentRegister.status === "open"
-      },
-
-      getCurrentRegisterSummary: () => {
-        const { currentRegister } = get()
-
-        if (!currentRegister) {
-          return null
-        }
-
-        return cashRegisterService.calculateRegisterSummary(currentRegister)
-      },
-
-      // Función para verificar si hay suficiente efectivo para dar cambio
-      hasEnoughCashForChange: (changeAmount: number) => {
-        const summary = get().getCurrentRegisterSummary()
-        if (!summary) return false
-
-        return summary.finalCash >= changeAmount
       },
 
       getRegisterById: (id: string) => {

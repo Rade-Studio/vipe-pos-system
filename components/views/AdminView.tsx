@@ -1,10 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import type { Profile, DailySales, PopularDish, CategorySales } from "@/types"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import type { Profile, DailySales, PopularDish, CategorySales, OrderStatus } from "@/types"
 import { Header } from "@/components/layout/Header"
-import { AdminLayout } from "@/components/admin/AdminLayout"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
+import { useTableStore } from "@/store/useTableStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import { SalesChart } from "@/components/admin/SalesChart"
 import { PopularDishesChart } from "@/components/admin/PopularDishesChart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -22,6 +24,8 @@ import { CashRegisterSummary } from "@/components/admin/CashRegisterSummary"
 import { TransactionsByRegisterId } from "@/components/admin/TransactionsByRegisterId"
 import { orderService } from "@/lib/supabase/service"
 import { dashboardService } from "@/lib/supabase/dashboard-service"
+import { queryClient } from "@/lib/queryClient"
+import { log } from "@/lib/log"
 import { AlertCircle, RefreshCw } from "lucide-react"
 import { formatCurrency } from "@/utils/helpers"
 import { LowStockIngredients } from "@/components/admin/inventory/LowStockIngredients"
@@ -35,14 +39,16 @@ import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
-import {tableService} from "@/lib/supabase-service";
+import { tableService } from "@/lib/supabase/service"
+import { PaymentMethodsManager } from "@/components/admin/payment-methods/PaymentMethodsManager"
 
 interface AdminViewProps {
   profile: Profile
   onChangeProfile: () => void
+  authRole?: string
 }
 
-export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
+export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [monthSales, setMonthSales] = useState<number>(0)
   const [kitchenOrdersCount, setKitchenOrdersCount] = useState<number>(0)
@@ -60,28 +66,77 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   // Estado para controlar la carga de datos
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const { toast } = useToast()
+  const queryClient = useQueryClient()
+
+  // Fetch admin orders via React Query
+  const fetchAdminOrders = async () => {
+    const { data: dbOrders } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        order_items(*),
+        tables(number),
+        profiles(full_name)
+      `)
+      .in("status", ["active", "kitchen", "delivered"])
+      .order("created_at", { ascending: false })
+
+    return (dbOrders || []).map((order) => ({
+      id: order.id,
+      tableId: order.table_id ?? "",
+      waiter: order.waiter_id ?? "",
+      status: order.status,
+      items:
+        (order.order_items || []).map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          categoryId: "",
+          image: "",
+          comments: item.comments || "",
+          status: item.status || "kitchen",
+        })) || [],
+      bill: {
+        subtotal: order.subtotal || 0,
+        tax: order.tax || 0,
+        taxPercentage: order.tax_percentage || 0,
+        tip: order.tip || 0,
+        tipPercentage: order.tip_percentage || 0,
+        total: order.total || 0,
+        totalDiscounts: order.total_discounts ?? 0,
+      },
+      createdAt: order.created_at ? new Date(order.created_at) : new Date(),
+      tableName: order.tables?.number || "N/A",
+      waiterName: order.profiles?.full_name || "Desconocido",
+    }))
+  }
+
+  const { data: adminOrdersData = [] } = useQuery({
+    queryKey: ['orders', 'admin'],
+    queryFn: fetchAdminOrders,
+  })
 
   // Añadir estados para el manejo de realtime
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false)
   const [newOrdersCount, setNewOrdersCount] = useState<number>(0)
-  const [activeTab, setActiveTab] = useState<string>("dashboard")
 
   const handleChangeRegisterDetails = (registerDate: Date) => {
     setSelectedDate(registerDate)
   }
 
-  const {
-    tables,
-    profiles,
-    orders,
-    getOrdersByStatus,
-    isTableAccessibleByWaiter,
-    reserveTable,
-    releaseTable,
-    getOrderById,
-    removeOrder,
-    loadOrders,
-  } = usePOSStore()
+  const tables = useTableStore((s) => s.tables)
+  const isTableAccessibleByWaiter = useTableStore((s) => s.isTableAccessibleByWaiter)
+  const reserveTable = useTableStore((s) => s.reserveTable)
+  const releaseTable = useTableStore((s) => s.releaseTable)
+
+  const orders = useOrderStore((s) => s.orders)
+  const getOrderById = useOrderStore((s) => s.getOrderById)
+  const removeOrder = useOrderStore((s) => s.removeOrder)
+  const loadOrders = useOrderStore((s) => s.loadOrders)
+  const getOrdersByStatus = (statuses: OrderStatus[]) => useOrderStore.getState().getOrdersByStatus(statuses)
+
+  const profiles = useProfileStore((s) => s.profiles)
 
   // Cargar datos del dashboard
   useEffect(() => {
@@ -109,7 +164,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
 
         setAssignedTables(assignedTablesData?.length || 0)
       } catch (error) {
-        console.error("Error al cargar datos del dashboard:", error)
+        log.error("Error al cargar datos del dashboard:", { error: String(error) })
       } finally {
         setIsLoading(false)
       }
@@ -118,17 +173,24 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
     loadDashboardData()
   }, [])
 
+  // Sync admin orders from React Query to local state
+  useEffect(() => {
+    if (adminOrdersData.length > 0) {
+      setActiveOrdersFromDB(adminOrdersData)
+    }
+  }, [adminOrdersData])
+
   // Suscribirse a cambios en tiempo real
   useEffect(() => {
     let unsubscribe: (() => void) | null = null
 
     const setupRealtimeSubscription = async () => {
       try {
-        console.log("Configurando suscripción en tiempo real para órdenes...")
+        log.info("Configurando suscripción en tiempo real para órdenes...")
 
         // Función para manejar cambios en órdenes
         const handleOrderChange = async (payload: any, isNewOrder?: boolean) => {
-          console.log("Cambio en orden detectado:", payload.eventType, payload.new?.id)
+          log.info("Cambio en orden detectado:", { eventType: payload.eventType, newId: payload.new?.id })
 
           // Incrementar contador de nuevas órdenes si es una inserción
           if (payload.eventType === "INSERT") {
@@ -152,8 +214,8 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
             })
           }
 
-          // Actualizar la lista de órdenes
-          await loadActiveOrdersFromDB(false) // Pasar false para no mostrar toast
+          // Actualizar la lista de órdenes via React Query invalidation
+          queryClient.invalidateQueries({ queryKey: ['orders', 'admin'] })
         }
 
         // Suscribirse a cambios en órdenes
@@ -166,7 +228,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         //   description: "Las órdenes se actualizarán automáticamente",
         // })
       } catch (error) {
-        console.error("Error al configurar suscripción en tiempo real:", error)
+        log.error("Error al configurar suscripción en tiempo real:", { error: String(error) })
         setRealtimeConnected(false)
 
         // Mantener este toast ya que es un error importante que el usuario debe conocer
@@ -183,7 +245,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
     // Limpiar suscripción al desmontar (sin mostrar toast)
     return () => {
       if (unsubscribe) {
-        console.log("Cancelando suscripción en tiempo real")
+        log.info("Cancelando suscripción en tiempo real")
         unsubscribe()
         setRealtimeConnected(false)
       }
@@ -210,14 +272,14 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         throw error
       }
 
-      console.log("Órdenes activas cargadas desde DB:", dbOrders?.length || 0)
+      log.info("Órdenes activas cargadas desde DB:", { count: dbOrders?.length || 0 })
 
       // Transformar los datos al formato que espera la aplicación
       const formattedOrders =
         dbOrders?.map((order) => ({
           id: order.id,
           tableId: order.table_id,
-          waiter: order.waiter_id,
+          waiter: order.waiter_id ?? "",
           status: order.status, // Mantener el estado original de la orden
           items:
             order.order_items?.map((item) => ({
@@ -225,7 +287,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
               name: item.name,
               price: item.price,
               quantity: item.quantity,
-              categoryId: item.category_id || "",
+              categoryId: "",
               image: "",
               comments: item.comments || "",
               status: item.status || "kitchen", // Estado del item
@@ -237,8 +299,9 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
             tip: order.tip || 0,
             tipPercentage: order.tip_percentage || 0,
             total: order.total || 0,
+            totalDiscounts: order.total_discounts ?? 0,
           },
-          createdAt: new Date(order.created_at),
+          createdAt: order.created_at ? new Date(order.created_at) : new Date(),
           // Información adicional para mostrar
           tableName: order.tables?.number || "N/A",
           waiterName: order.profiles?.full_name || "Desconocido",
@@ -260,7 +323,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         })
       }
     } catch (error) {
-      console.error("Error al cargar órdenes activas:", error)
+      log.error("Error al cargar órdenes activas:", { error: String(error) })
 
       // Mantener este toast ya que es un error importante
       toast({
@@ -321,7 +384,7 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
       await tableService.update(order.tableId, {
         status: "available",
         waiter_id: null,
-      })
+      } as any)
 
       // Mantener este toast ya que es una acción importante iniciada por el usuario
       toast({
@@ -329,12 +392,12 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
         description: "La orden ha sido eliminada correctamente",
       })
     } catch (error) {
-      console.error("Error al eliminar la orden:", error)
+      log.error("Error al eliminar la orden:", { error: String(error) })
 
       // Mantener este toast ya que es un error importante
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "Error desconocido",
         variant: "destructive",
       })
     } finally {
@@ -343,18 +406,16 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
   }
 
   return (
-    <AdminLayout
-      profile={profile}
-      onChangeProfile={onChangeProfile}
-      activeTab={activeTab}
-      onSelectTab={setActiveTab}
-    >
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4 md:hidden">
+    <div className="flex flex-col h-screen p-4">
+      <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Panel de Administración" />
+
+      <Tabs defaultValue="dashboard">
+        <TabsList className="mb-4">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="tables">Mesas</TabsTrigger>
           <TabsTrigger value="orders">Órdenes</TabsTrigger>
           <TabsTrigger value="cash">Caja</TabsTrigger>
+          <TabsTrigger value="config">Configuración</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard">
@@ -723,32 +784,50 @@ export function AdminView({ profile, onChangeProfile }: AdminViewProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="config_menu">
-          <div className="space-y-6">
-            <CategoryList />
-            <DishList />
-            <PromotionList />
-          </div>
-        </TabsContent>
+        <TabsContent value="config">
+          <Tabs defaultValue="menu">
+            <TabsList className="mb-4">
+              <TabsTrigger value="menu">Menú</TabsTrigger>
+              <TabsTrigger value="inventory">Inventario</TabsTrigger>
+              <TabsTrigger value="payment-methods">Métodos de pago</TabsTrigger>
+              <TabsTrigger value="waiters">Meseros</TabsTrigger>
+              <TabsTrigger value="settings">Ajustes</TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="config_inventory">
-          <div className="space-y-6">
-            <IngredientList />
-          </div>
-        </TabsContent>
+            <TabsContent value="menu">
+              <div className="space-y-6">
+                <CategoryList />
+                <DishList />
+                <PromotionList />
+              </div>
+            </TabsContent>
 
-        <TabsContent value="config_personal">
-          <div className="space-y-6">
-            <WaiterList />
-          </div>
-        </TabsContent>
+            <TabsContent value="inventory">
+              <div className="space-y-6">
+                <IngredientList />
+              </div>
+            </TabsContent>
 
-        <TabsContent value="config_business">
-          <div className="space-y-6">
-            <ConfigurationPanel />
-          </div>
+            <TabsContent value="payment-methods">
+              <div className="space-y-6">
+                <PaymentMethodsManager />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="waiters">
+              <div className="space-y-6">
+                <WaiterList />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="settings">
+              <div className="space-y-6">
+                <ConfigurationPanel />
+              </div>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
-    </AdminLayout>
+    </div>
   )
 }

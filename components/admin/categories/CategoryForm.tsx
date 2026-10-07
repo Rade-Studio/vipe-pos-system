@@ -59,7 +59,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="icon">Icono</Label>
-          <IconSelector value={formData.icon} onChange={(value) => handleSelectChange("icon", value)} />
+          <IconSelector value={formData.icon} onChange={(value: string) => handleSelectChange("icon", value)} />
         </div>
 
         <div className="flex items-center space-x-2 md:mt-8">

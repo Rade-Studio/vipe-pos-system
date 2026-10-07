@@ -2,15 +2,17 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { log } from "@/lib/log"
 import { Label } from "@/components/ui/label"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
 import { NumericKeypad } from "@/components/ui/numeric-keypad"
 import { toast } from "@/utils/toast"
 import { Loader2 } from "lucide-react"
+import { useRegisterSummary } from "@/hooks/use-register-summary"
 
 interface AddCashDialogProps {
   open: boolean
@@ -22,11 +24,16 @@ export function AddCashDialog({ open, onOpenChange, onSuccess }: AddCashDialogPr
   const [cashAmount, setCashAmount] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const { addCashToRegister, getCurrentRegisterSummary } = useCashRegisterStore()
+  const { addCashToRegister, currentRegister } = useCashRegisterStore()
 
-  // Obtener el efectivo actual en caja
-  const currentSummary = getCurrentRegisterSummary()
-  const currentCash = currentSummary?.finalCash || 0
+  // El efectivo que la UI muestra viene del resumen del servidor
+  // (`expected_cash`), no de la suma local de transacciones.
+  const summaryIds = useMemo(
+    () => (currentRegister ? [currentRegister.id] : []),
+    [currentRegister],
+  )
+  const { data: summary } = useRegisterSummary(summaryIds)
+  const currentCash = summary?.expectedCash ?? 0
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) {
@@ -59,7 +66,7 @@ export function AddCashDialog({ open, onOpenChange, onSuccess }: AddCashDialogPr
         toast.error("No se pudo agregar efectivo a la caja")
       }
     } catch (error) {
-      console.error("Error al agregar efectivo a la caja:", error)
+      log.error("Error al agregar efectivo a la caja:", { error: String(error) })
       toast.error("Ocurrió un error al agregar efectivo a la caja")
     } finally {
       setIsSubmitting(false)

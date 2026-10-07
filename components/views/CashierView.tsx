@@ -1,9 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
+import { useTableStore } from "@/store/useTableStore"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,7 +16,6 @@ import { CreditCard, SplitSquareVertical, Trash2, User, RefreshCw } from "lucide
 import { CashRegisterStatus } from "@/components/cashier/CashRegisterStatus"
 import { PaymentMethodDialog } from "@/components/cashier/PaymentMethodDialog"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
-import { useToast } from "@/hooks/use-toast"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { PrintableInvoice } from "@/types"
 import { useConfigStore } from "@/store/use-config-store"
@@ -24,13 +25,19 @@ import { TransactionsList } from "@/components/cashier/TransactionsList"
 import { Skeleton } from "@/components/ui/skeleton"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { orderService } from "@/lib/supabase/service"
+import { queryClient } from "@/lib/queryClient"
+import { log } from "@/lib/log"
+import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
+import { createSingleFlight } from "@/lib/payments/single-flight"
+import { PaymentServiceError, splitOrder, undoSplit } from "@/lib/supabase/payments-service"
 
 interface CashierViewProps {
   profile: Profile
   onChangeProfile: () => void
+  authRole?: string
 }
 
-export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
+export function CashierView({ profile, onChangeProfile, authRole }: CashierViewProps) {
   const [activeTab, setActiveTab] = useState<"orders" | "transactions">("orders")
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   const [partialPaymentDialogOpen, setPartialPaymentDialogOpen] = useState(false)
@@ -39,7 +46,12 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
   const [showCompletedInvoice, setShowCompletedInvoice] = useState(false)
   const [completedInvoiceData, setCompletedInvoiceData] = useState<PrintableInvoice | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [isCreatingPartialOrder, setIsCreatingPartialOrder] = useState(false)
+  const [isSplitting, setIsSplitting] = useState(false)
+  const [isUndoingSplit, setIsUndoingSplit] = useState(false)
+  // Synchronous gates: the state flags above only drive the UI.
+  const [splitGate] = useState(createSingleFlight)
+  const [undoGate] = useState(createSingleFlight)
+  const [partialParentItems, setPartialParentItems] = useState<CartItem[]>([])
 
   // Estados para almacenar datos en tiempo real
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
@@ -49,12 +61,74 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
   const [ordersByTable, setOrdersByTable] = useState<Record<string, Order[]>>({})
   const [refreshing, setRefreshing] = useState(false)
 
-  const { toast: toastHook } = useToast()
+  
 
-  const { tables, profiles, cartItems, calculateOrderBill } = usePOSStore()
+  // Fetch all orders via React Query
+  const fetchAllOrders = async () => {
+    const [activeData, kitchenData, deliveredData] = await Promise.all([
+      orderService.getByStatus(["active"]),
+      orderService.getByStatus(["kitchen"]),
+      orderService.getByStatus(["delivered"]),
+    ])
+
+    const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
+      id: dbOrder.id,
+      tableId: dbOrder.table_id,
+      items: dbOrder.order_items.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        comments: item.comments || undefined,
+        categoryId: "",
+      })),
+      status: dbOrder.status,
+      bill: {
+        subtotal: dbOrder.subtotal,
+        tax: dbOrder.tax,
+        taxPercentage: dbOrder.tax_percentage,
+        tip: dbOrder.tip,
+        tipPercentage: dbOrder.tip_percentage,
+        total: dbOrder.total,
+        totalDiscounts: dbOrder.total_discounts ?? 0,
+      },
+      waiter: dbOrder.waiter_id ?? "",
+      createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
+      isPartialOrder: dbOrder.is_partial_order || false,
+      parentOrderId: dbOrder.parent_order_id || null,
+    })
+
+    const activeOrdersConverted = activeData.map(convertDBOrderToAppOrder)
+    const kitchenOrdersConverted = kitchenData.map(convertDBOrderToAppOrder)
+    const deliveredOrdersConverted = deliveredData.map(convertDBOrderToAppOrder)
+    const allOrders = [...activeOrdersConverted, ...kitchenOrdersConverted, ...deliveredOrdersConverted]
+    const partialOrdersFiltered = allOrders.filter((order) => order.isPartialOrder)
+    const ordersByTableGrouped = allOrders
+      .filter((order) => !order.isPartialOrder)
+      .reduce(
+        (acc, order) => {
+          if (!acc[order.tableId]) {
+            acc[order.tableId] = []
+          }
+          acc[order.tableId].push(order)
+          return acc
+        },
+        {} as Record<string, Order[]>,
+      )
+
+    return { activeOrdersConverted, kitchenOrdersConverted, deliveredOrdersConverted, partialOrdersFiltered, ordersByTableGrouped }
+  }
+
+  const { data: ordersData } = useQuery({
+    queryKey: ['orders', 'cashier'],
+    queryFn: fetchAllOrders,
+  })
+
+  const tables = useTableStore((s) => s.tables)
+  const profiles = useProfileStore((s) => s.profiles)
 
   const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
-  const { businessName, businessAddress, businessPhone, businessNIT, tipPercentage, taxPercentage } = useConfigStore()
+  const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
 
   // Función para cargar órdenes desde la base de datos
   const loadOrdersFromDB = useCallback(async () => {
@@ -70,14 +144,14 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       // Convertir datos de la BD al formato de la aplicación
       const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
         id: dbOrder.id,
-        tableId: dbOrder.table_id,
+        tableId: dbOrder.table_id ?? "",
         items: dbOrder.order_items.map((item: any) => ({
           id: item.id,
           name: item.name,
           price: item.price,
           quantity: item.quantity,
           comments: item.comments || undefined,
-          categoryId: item.category_id || "",
+          categoryId: "",
         })),
         status: dbOrder.status,
         bill: {
@@ -87,12 +161,13 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
           tip: dbOrder.tip,
           tipPercentage: dbOrder.tip_percentage,
           total: dbOrder.total,
+          totalDiscounts: dbOrder.total_discounts ?? 0,
         },
-        waiter: dbOrder.waiter_id,
-        createdAt: new Date(dbOrder.created_at),
+        waiter: dbOrder.waiter_id ?? "",
+        createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
         isPartialOrder: dbOrder.is_partial_order || false,
         parentOrderId: dbOrder.parent_order_id || null,
-      })
+      } as unknown as Order)
 
       // Convertir todas las órdenes
       const activeOrdersConverted = activeOrdersData.map(convertDBOrderToAppOrder)
@@ -126,7 +201,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       setPartialOrders(partialOrdersFiltered)
       setOrdersByTable(ordersByTableGrouped)
     } catch (error) {
-      console.error("Error al cargar órdenes:", error)
+      log.error("Error al cargar órdenes:", { error: String(error) })
       toast.error("Error al cargar órdenes desde la base de datos")
     } finally {
       setIsLoading(false)
@@ -137,35 +212,38 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
   // Función para refrescar manualmente los datos
   const handleRefresh = () => {
     setRefreshing(true)
-    loadOrdersFromDB()
+    queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })
+    setRefreshing(false)
   }
 
-  // Cargar órdenes y datos de caja al montar el componente
+  // Sync orders data from React Query to local state
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        await loadCurrentRegister()
-        await loadOrdersFromDB()
-      } catch (error) {
-        console.error("Error al inicializar:", error)
-      }
+    if (ordersData) {
+      setActiveOrders(ordersData.activeOrdersConverted)
+      setKitchenOrders(ordersData.kitchenOrdersConverted)
+      setDeliveredOrders(ordersData.deliveredOrdersConverted)
+      setPartialOrders(ordersData.partialOrdersFiltered)
+      setOrdersByTable(ordersData.ordersByTableGrouped)
     }
+  }, [ordersData])
 
-    initialize()
+  // Cargar datos de caja al montar y suscribirse a realtime
+  useEffect(() => {
+    loadCurrentRegister()
 
     // Suscribirse a cambios en órdenes
     const unsubscribe = realtimeService.subscribeToOrders((payload) => {
-      console.log("Cambio en orden recibido:", payload)
+      log.info("Cambio en orden recibido:", { payload })
 
-      // Recargar órdenes cuando hay cambios
-      loadOrdersFromDB()
+      // Invalidate queries so React Query refetches in background
+      queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })
     })
 
     // Limpiar suscripción al desmontar
     return () => {
       unsubscribe()
     }
-  }, [loadOrdersFromDB, loadCurrentRegister])
+  }, [loadCurrentRegister])
 
   // Función para obtener una orden por ID
   const getOrderById = useCallback(
@@ -242,7 +320,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
         // Recargar órdenes
         await loadOrdersFromDB()
       } catch (error) {
-        console.error("Error al procesar el pago:", error)
+        log.error("Error al procesar el pago:", { error: String(error) })
       }
     }
   }
@@ -255,75 +333,152 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       return
     }
 
-    // Obtener todos los items de la mesa
-    const allItems = getAllTableItems(tableId)
+    // The server's split_order RPC only accepts the parent's own
+    // items, not the merged table view. Resolve the single splittable
+    // parent (non-partial, active|kitchen|delivered) and bail out
+    // early if the table is ambiguous.
+    const tableOrders = getOrdersByTable(tableId)
+    const parentId = pickSplitParent(
+      tableOrders.map((o) => ({
+        id: o.id,
+        isPartialOrder: !!o.isPartialOrder,
+        status: o.status,
+      })),
+    )
+    if (!parentId) {
+      toast.error(
+        "No hay una orden principal válida para crear el pago parcial. Verifique que la mesa tenga una sola orden en estado activo, en cocina o entregada.",
+      )
+      return
+    }
+    const parentOrder = tableOrders.find((o) => o.id === parentId)
+    if (!parentOrder) {
+      toast.error("No se encontró la orden padre para el pago parcial")
+      return
+    }
 
-    // Verificar si solo hay un producto con cantidad 1
-    const isSingleItemWithQuantityOne = allItems.length === 1 && allItems[0].quantity === 1
-
-    if (isSingleItemWithQuantityOne) {
+    // Feed the dialog ONLY the parent's items (mirrors the server rule).
+    const parentItems: CartItem[] = parentOrder.items.map((item) => ({ ...item }))
+    if (parentItems.length === 1 && parentItems[0].quantity === 1) {
       toast.error("No se puede hacer pago parcial con un solo producto")
       return
     }
 
+    setPartialParentItems(parentItems)
     setSelectedTableId(tableId)
     setPartialPaymentDialogOpen(true)
   }
 
-  // Manejar la creación de una orden parcial
-  const handleCreatePartialOrder = async (items: { itemId: string; quantity: number }[]) => {
-    if (!selectedTableId) return
-
-    const tableOrders = getOrdersByTable(selectedTableId)
-    if (tableOrders.length === 0) return
-
-    try {
-      setIsCreatingPartialOrder(true)
-
-      // Filtrar los items seleccionados
-      const parentOrder = tableOrders[0]
-      const partialItems = parentOrder.items
-        .filter((item) => items.some((selected) => selected.itemId === item.id && selected.quantity > 0))
-        .map((item) => {
-          const selectedItem = items.find((selected) => selected.itemId === item.id)
-          return {
-            ...item,
-            quantity: selectedItem ? selectedItem.quantity : item.quantity,
-          }
-        })
-
-      // Calcular el total de la orden parcial
-      const bill = calculateOrderBill(partialItems, tipPercentage, taxPercentage)
-
-      // Crear la orden parcial en la base de datos
-      await orderService.createPartialOrder(parentOrder.id, partialItems, bill)
-
-      toast.success("Se ha creado una nueva orden parcial para el pago")
-
-      // Cerrar el diálogo y recargar órdenes
-      setPartialPaymentDialogOpen(false)
-      await loadOrdersFromDB()
-    } catch (error) {
-      console.error("Error al crear la orden parcial:", error)
-      toast.error("No se pudo crear la orden parcial")
-    } finally {
-      setIsCreatingPartialOrder(false)
+  // Translate PaymentServiceError kinds into Spanish toast messages
+  // the same way the rest of the cashier does (kept local so this
+  // file stays the only place that knows the user-facing strings).
+  const splitErrorMessage = (kind: string, fallback: string): string => {
+    switch (kind) {
+      case 'not-authorized':
+        return 'No tiene permisos para modificar órdenes'
+      case 'not-found':
+        return 'La orden ya no existe o fue pagada'
+      case 'rejected':
+        return fallback // server message explains the business rule
+      case 'invalid-input':
+        return 'La selección de productos no es válida'
+      default:
+        return 'No se pudo procesar la operación. Intente nuevamente.'
     }
   }
 
-  // Manejar la eliminación de una orden parcial
-  const handleDeletePartialOrder = async (partialOrderId: string) => {
-    try {
-      await orderService.deletePartialOrder(partialOrderId)
+  // Manejar la creación de una orden parcial
+  const handleCreatePartialOrder = async (items: { itemId: string; quantity: number }[]) => {
+    if (!selectedTableId || splitGate.isRunning()) return
 
-      toast.success("Los productos han sido devueltos a la orden original")
-
-      // Recargar órdenes
-      await loadOrdersFromDB()
-    } catch (error) {
-      console.error("Error al eliminar la orden parcial:", error)
-      toast.error("No se pudo eliminar la orden parcial")
+    const tableOrders = getOrdersByTable(selectedTableId)
+    const parentId = pickSplitParent(
+      tableOrders.map((o) => ({
+        id: o.id,
+        isPartialOrder: !!o.isPartialOrder,
+        status: o.status,
+      })),
+    )
+    if (!parentId) {
+      toast.error("La orden padre ya no está disponible para el pago parcial")
+      return
     }
+
+    // Convert the dialog payload (itemId/quantity) into the
+    // buildSplitItems input keyed by the parent's order_item.id.
+    const selection: Record<string, number> = {}
+    for (const it of items) selection[it.itemId] = it.quantity
+
+    const parentOrder = tableOrders.find((o) => o.id === parentId)
+    if (!parentOrder) return
+    const parentItems = parentOrder.items.map((item) => ({
+      id: item.id,
+      quantity: item.quantity,
+    }))
+
+    const validation = buildSplitItems(parentItems, selection)
+    if ('error' in validation) {
+      const messages: Record<typeof validation.error, string> = {
+        empty: 'Debe seleccionar al menos un producto para el pago parcial',
+        'over-quantity':
+          'La cantidad seleccionada supera la cantidad disponible en la orden',
+        'unknown-item': 'Uno de los productos seleccionados ya no pertenece a la orden',
+        'moves-everything':
+          'Está moviendo toda la orden. Use el pago total en lugar del pago parcial',
+        'too-many-lines': 'La orden parcial admite máximo 50 líneas',
+      }
+      toast.error(messages[validation.error])
+      return
+    }
+
+    await splitGate.run(async () => {
+      try {
+        setIsSplitting(true)
+
+        await splitOrder({
+          parentOrderId: parentId,
+          items: validation.items.map((i) => ({ orderItemId: i.order_item_id, quantity: i.quantity })),
+        })
+
+        toast.success('Se ha creado una nueva orden parcial para el pago')
+        setPartialPaymentDialogOpen(false)
+        await loadOrdersFromDB()
+      } catch (error) {
+        if (error instanceof PaymentServiceError) {
+          log.error('Error al crear la orden parcial:', { kind: error.kind, message: error.message })
+          toast.error(splitErrorMessage(error.kind, error.message))
+        } else {
+          log.error('Error al crear la orden parcial:', { error: String(error) })
+          toast.error('No se pudo crear la orden parcial')
+        }
+      } finally {
+        setIsSplitting(false)
+      }
+    })
+  }
+
+  // Manejar la eliminación (undo) de una orden parcial
+  const handleDeletePartialOrder = async (partialOrderId: string) => {
+    await undoGate.run(async () => {
+      try {
+        setIsUndoingSplit(true)
+
+        await undoSplit({ childOrderId: partialOrderId })
+
+        toast.success('Los productos han sido devueltos a la orden original')
+        await loadOrdersFromDB()
+      } catch (error) {
+        if (error instanceof PaymentServiceError) {
+          log.error('Error al eliminar la orden parcial:', { kind: error.kind, message: error.message })
+          toast.error(splitErrorMessage(error.kind, error.message))
+        } else {
+          log.error('Error al eliminar la orden parcial:', { error: String(error) })
+          toast.error('No se pudo eliminar la orden parcial')
+        }
+      } finally {
+        setIsUndoingSplit(false)
+      }
+    })
   }
 
   // Función para mostrar la factura completada
@@ -463,6 +618,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
       <Header
         profile={profile}
         onChangeProfile={onChangeProfile}
+        authRole={authRole}
         title={activeTab === "orders" ? "Caja - Órdenes para Facturar" : "Historial de Transacciones"}
       />
       <div className="flex justify-end mb-2">
@@ -662,6 +818,7 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
                                       variant="outline"
                                       className="flex-1"
                                       onClick={() => handleDeletePartialOrder(order.id)}
+                                      disabled={isUndoingSplit}
                                     >
                                       <Trash2 className="mr-2 h-4 w-4" />
                                       Eliminar
@@ -837,8 +994,9 @@ export function CashierView({ profile, onChangeProfile }: CashierViewProps) {
         <PartialPaymentDialog
           open={partialPaymentDialogOpen}
           onOpenChange={setPartialPaymentDialogOpen}
-          tableItems={getAllTableItems(selectedTableId)}
+          tableItems={partialParentItems}
           onCreatePartialOrder={handleCreatePartialOrder}
+          busy={isSplitting}
         />
       )}
 

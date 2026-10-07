@@ -60,15 +60,15 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
         try {
           // Usar checkStockForDish en lugar de checkDishStock
           const hasStock = await inventoryControlService.checkStockForDish(dish.id)
-          return [dish.id, hasStock]
+          return [dish.id, hasStock] as [string, boolean]
         } catch (error) {
           // En caso de error, asumimos que el plato está disponible
-          return [dish.id, true]
+          return [dish.id, true] as [string, boolean]
         }
       })
 
-      const stockResults = await Promise.all(stockPromises)
-      const newStockStatus = new Map(stockResults)
+      const stockResults = (await Promise.all(stockPromises)) as [string, boolean][]
+      const newStockStatus = new Map<string, boolean>(stockResults)
       setStockStatus(newStockStatus)
     } catch (error) {
       toast({

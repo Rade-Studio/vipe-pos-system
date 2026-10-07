@@ -17,8 +17,9 @@ import { es } from "date-fns/locale"
 import { CalendarIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Promotion } from "@/lib/supabase/promotion-service"
-import { dishService } from "@/lib/supabase-service"
+import { log } from "@/lib/log"
 import { promotionService } from "@/lib/supabase/promotion-service"
+import { dishService } from "@/lib/supabase"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {toast} from "@/components/ui/use-toast";
@@ -70,14 +71,14 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
       const dishesData = await dishService.getAll()
       setDishes(dishesData)
     } catch (error) {
-      console.error("Error loading dishes:", error)
+      log.error("Error loading dishes:", { error: String(error) })
     }
   }
 
   const loadPromotionDishes = async (promotionId: string) => {
     try {
       const dishIds = await promotionService.getPromotionDishes(promotionId)
-      setSelectedDishes(dishIds.map((dish) => dish.id))
+      setSelectedDishes(dishIds.map((dish: any) => dish.id))
     } catch (error) {
       toast({
         title: "Error",
@@ -92,7 +93,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
       name: "",
       description: "",
       discount_type: "percentage",
-      discount_value: "",
+      discount_value: null,
       start_date: new Date().toISOString(),
       end_date: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
       active: true,
@@ -110,7 +111,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
     const { name, value } = e.target
 
     if (value === "") {
-      setFormData((prev) => ({ ...prev, [name]: "" }))
+      setFormData((prev) => ({ ...prev, [name]: null }))
       return
     }
 
@@ -160,13 +161,13 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
         const currentDishes = await promotionService.getPromotionDishes(promotion.id)
 
         // Platos a eliminar
-        const dishesToRemove = currentDishes.filter((id) => !selectedDishes.includes(id))
+        const dishesToRemove = currentDishes.filter((dish: any) => !selectedDishes.includes(dish.id))
         if (dishesToRemove.length > 0) {
-          await promotionService.removePromotionDishes(promotion.id, dishesToRemove.map((dish) => dish.id))
+          await promotionService.removePromotionDishes(promotion.id, dishesToRemove.map((dish: any) => dish.id))
         }
 
         // Platos a añadir
-        const dishesToAdd = selectedDishes.filter((id) => !currentDishes.includes(id))
+        const dishesToAdd = selectedDishes.filter((id) => !currentDishes.some((d: any) => d.id === id))
         if (dishesToAdd.length > 0) {
           await promotionService.assignDishesToPromotion(promotion.id, dishesToAdd)
         }
@@ -187,7 +188,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
       onOpenChange(false)
       resetForm()
     } catch (error) {
-      console.error("Error saving promotion:", error)
+      log.error("Error saving promotion:", { error: String(error) })
     } finally {
       setLoading(false)
     }
@@ -263,7 +264,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
                     id="discount_value"
                     name="discount_value"
                     type="number"
-                    value={formData.discount_value}
+                    value={formData.discount_value ?? ""}
                     onChange={handleNumberChange}
                     min={0}
                     max={formData.discount_type === "percentage" ? 100 : undefined}

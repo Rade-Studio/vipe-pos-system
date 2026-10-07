@@ -5,12 +5,20 @@ import { Table as TableUI, TableBody, TableCell, TableHead, TableHeader, TableRo
 import { Button } from "@/components/ui/button"
 import { Printer, RefreshCw } from "lucide-react"
 import {formatCurrency, formatDate, formatDateTime} from "@/utils/helpers"
-import { usePOSStore } from "@/store/use-pos-store"
+import { useProfileStore } from "@/store/useProfileStore"
+import { useTableStore } from "@/store/useTableStore"
+import { useOrderStore } from "@/store/useOrderStore"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { Order, Table, Profile, PrintableInvoice } from "@/types"
 import { useConfigStore } from "@/store/use-config-store"
 import { format } from "date-fns"
 import { getOrdersByDate } from "@/lib/supabase/service"
+import { listPaymentMethods } from "@/lib/supabase/payments-service"
+import {
+  invoiceTendersFromPayment,
+  legacyInvoiceFields,
+} from "@/lib/payments/invoice-tenders"
+import { log } from "@/lib/log"
 import { useToast } from "@/components/ui/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Pagination } from "@/components/ui/pagination"
@@ -22,7 +30,9 @@ interface CompletedOrdersTableProps {
 }
 
 export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps) {
-  const { orders, tables, profiles } = usePOSStore()
+  const orders = useOrderStore((s) => s.orders)
+  const tables = useTableStore((s) => s.tables)
+  const profiles = useProfileStore((s) => s.profiles)
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast } = useToast()
 
@@ -41,7 +51,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       const fetchedOrders = await getOrdersByDate(selectedDate)
       setDbOrders(fetchedOrders)
     } catch (error) {
-      console.error("Error al cargar órdenes:", error)
+      log.error("Error al cargar órdenes:", { error: String(error) })
       toast({
         title: "Error",
         description: "No se pudieron cargar las órdenes de la base de datos",
@@ -123,30 +133,29 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     initialItemsPerPage: 10,
   })
 
-  const handlePrintInvoice = (order: Order) => {
+  const handlePrintInvoice = async (order: Order) => {
     // Encontrar la mesa correspondiente
     const table = tables.find((t) => t.id === order.tableId)
     // Encontrar el mesero correspondiente
     const waiter = profiles.find((p) => p.id === order.waiter)
 
     if (!table || !waiter) {
-      console.error("Mesa o mesero no encontrado para la orden:", order.id)
+      log.error("Mesa o mesero no encontrado para la orden:", { orderId: order.id })
       toast({
         title: "Advertencia",
         description: "No se encontró información completa de la mesa o mesero para esta orden",
-        variant: "warning",
       })
     }
 
     // Asegurarnos de que tenemos todos los valores necesarios para la factura
-    const subtotal = order.subtotal || order.bill?.subtotal || 0
-    const tax = order.tax || order.bill?.tax || 0
-    const taxPercentage = order.taxPercentage || order.bill?.taxPercentage || 0
-    const tip = order.tip || order.bill?.tip || 0
-    const tipPercentage = order.tipPercentage || order.bill?.tipPercentage || 0
-    const total = order.total || order.bill?.total || 0
+    const subtotal = order.bill?.subtotal ?? 0
+    const tax = order.bill?.tax ?? 0
+    const taxPercentage = order.bill?.taxPercentage ?? 0
+    const tip = order.bill?.tip ?? 0
+    const tipPercentage = order.bill?.tipPercentage ?? 0
+    const total = order.bill?.total ?? 0
 
-    console.log("Datos de la orden para factura:", {
+    log.info("Datos de la orden para factura:", {
       id: order.id,
       subtotal,
       tax,
@@ -156,6 +165,39 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       total,
       items: order.items?.length || 0,
     })
+
+    // Multi-tender reprint: when the order has a ledger payment, build
+    // the tender list from it (resolved through the active catalog)
+    // and use the legacy helper so the single-label block is still
+    // correct for the old Python listener. Orders without a ledger
+    // payment (pre-pay-order flow) keep the original `paymentMethod`
+    // label as-is.
+    let tenders: PrintableInvoice["tenders"]
+    let change: number | undefined
+    let legacyPaymentMethod: PrintableInvoice["paymentMethod"] | undefined
+    let legacyCashReceived: number | undefined
+    let legacyCashChange: number | undefined
+    if (order.ledgerPayment) {
+      let catalog: Awaited<ReturnType<typeof listPaymentMethods>> | undefined
+      try {
+        catalog = await listPaymentMethods()
+      } catch (err) {
+        log.error("No se pudo cargar el catálogo para reimprimir:", {
+          error: String(err),
+        })
+        toast({
+          title: "Advertencia",
+          description: "No se pudieron cargar los nombres de los métodos de pago; la factura muestra sus códigos",
+        })
+      }
+      const resolved = invoiceTendersFromPayment(order.ledgerPayment, catalog)
+      const legacy = legacyInvoiceFields(resolved)
+      tenders = resolved
+      change = legacy.cashChange
+      legacyPaymentMethod = legacy.paymentMethod as PrintableInvoice["paymentMethod"]
+      legacyCashReceived = legacy.cashReceived ?? undefined
+      legacyCashChange = legacy.cashChange > 0 ? legacy.cashChange : undefined
+    }
 
     // Generar la factura
     const invoice: PrintableInvoice = {
@@ -179,7 +221,11 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
       },
       waiter: waiter?.name || "Desconocido",
       table: table?.number.toString() || "N/A",
-      paymentMethod: order.paymentMethod || "cash"
+      paymentMethod: legacyPaymentMethod ?? (order.paymentMethod || "cash"),
+      cashReceived: legacyCashReceived,
+      cashChange: legacyCashChange,
+      tenders,
+      change,
     }
 
     setSelectedInvoice(invoice)

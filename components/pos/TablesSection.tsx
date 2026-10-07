@@ -39,7 +39,6 @@ export function TablesSection({
   return (
     <div className="mb-4">
       <TableGrid
-        tables={tables}
         activeTable={activeTable}
         waiterId={profile.id}
         onSelectTable={onSelectTable}

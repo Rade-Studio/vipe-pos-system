@@ -1,0 +1,73 @@
+schema: spec-driven
+
+# vipe-pos-system — SDD configuration
+# Initialized by sdd-init on 2026-09-17.
+# Edit `rules:` blocks per phase as the team standardizes conventions.
+
+context: |
+  Tech stack: Next.js 15.2.4 (App Router, standalone output) + React 19 + TypeScript 5 (strict)
+  State: Zustand (pos / config / cash-register stores), TanStack React Query
+  UI: Tailwind CSS 3.4 + shadcn/ui (Radix primitives), lucide-react icons, sonner toasts,
+      vaul drawers, embla-carousel, react-spring, recharts, cmdk
+  Forms/validation: react-hook-form + zod, @hookform/resolvers
+  Backend: Supabase (PostgreSQL, Auth, Storage, Realtime) via @supabase/supabase-js
+  Database: 22 SQL migrations under supabase/migrations/, dev stack via docker-compose
+  Auxiliary service (Windows only): Python 3.11 printer listener at pos/app.py (escpos-python,
+    customtkinter, pystray, Pillow, html2text, pywin32, usb) packaged with PyInstaller + Inno Setup
+  Package manager: pnpm (pnpm-lock.yaml + pnpm-workspace.yaml present at root)
+  Containerization: Dockerfile (node:20-alpine), docker-compose.yml (dev), docker-compose.prod.yml
+  Style: conventional commits, Spanish product copy + English source code/identifiers/comments
+  Delivery strategy: auto-chain; change slug revision-completa-sistema
+
+# Persistent testing capability snapshot (mirror of Engram sdd/vipe-pos-system/testing-capabilities).
+testing:
+  strict_tdd: false
+  strict_tdd_rationale: |
+    No test runner installed in TS project (no jest/vitest/playwright config, no `test` script
+    in package.json, zero .test/.spec files anywhere). Python subproject has no pytest setup.
+    No CI workflow defines a workspace-level test command. Strict TDD fails closed to false.
+  projects:
+    - path: .
+      stack: nextjs-15.2.4 + react-19 + typescript-5 + tailwindcss-3.4 + shadcn/ui + supabase-js + zustand
+      package_manager: pnpm
+      test_command: ""            # absent in package.json; would need runner install
+      lint_command: "npm run lint"          # next lint (eslint.ignoreDuringBuilds: true)
+      typecheck_command: "npx tsc --noEmit" # strict:true but next.config disables build-time check
+      build_command: "npm run build"
+      dev_command: "npm run dev"
+    - path: pos/
+      stack: python-3.11 + escpos-python + customtkinter + pystray + Pillow + pywin32 + usb
+      test_command: ""            # no pytest configured; requirements.txt not present
+      notes: Windows-only printing listener; not exercised by the web project
+
+rules:
+  proposal:
+    - Include rollback plan for any change that mutates supabase/migrations/
+    - State whether Supabase RLS/policies change is required
+  specs:
+    - Use Given/When/Then scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - One delta spec per bounded domain (orders, menu, inventory, payments, etc.)
+  design:
+    - Include sequence diagrams for flows that cross web ↔ Supabase ↔ POS printer listener
+    - Document any change to Zustand store contracts
+    - Document any change to React Query cache keys / invalidation strategy
+  tasks:
+    - Group by phase, hierarchical numbering
+    - One session = one logical batch
+    - For tests: write them only after test runner is installed (strict_tdd: false)
+  apply:
+    guidelines:
+      - Follow existing folder conventions: app/, components/{role}/, hooks/, lib/supabase/, store/, types/, utils/
+      - Keep src files in English (identifiers, comments); UI copy may stay Spanish
+      - Never edit generated files under .next/ or supabase/.temp/
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: "npm run build"
+    coverage_threshold: 0
+    smoke_command: "npm run lint && npx tsc --noEmit"
+  archive:
+    - Warn before merging destructive deltas to openspec/specs/
+    - Every archived change MUST keep its full lineage in changes/archive/YYYY-MM-DD-{slug}/

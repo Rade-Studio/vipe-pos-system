@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/log"
 import { Edit, Plus, Search, Trash } from "lucide-react"
 import {
   AlertDialog,
@@ -42,7 +43,7 @@ export function CategoryList() {
 
       setCategories(data || [])
     } catch (error: any) {
-      console.error("Error fetching categories:", error)
+      log.error("Error fetching categories:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -99,7 +100,7 @@ export function CategoryList() {
 
       fetchCategories()
     } catch (error: any) {
-      console.error("Error deleting category:", error)
+      log.error("Error deleting category:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
@@ -200,7 +201,7 @@ export function CategoryList() {
                     <TableCell className="font-medium">{category.name}</TableCell>
                     <TableCell>{category.description || "-"}</TableCell>
                     <TableCell>
-                      <Badge variant={category.active ? "success" : "secondary"}>
+                      <Badge variant={category.active ? "default" : "secondary"}>
                         {category.active ? "Activa" : "Inactiva"}
                       </Badge>
                     </TableCell>

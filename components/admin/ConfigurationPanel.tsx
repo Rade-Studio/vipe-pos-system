@@ -9,7 +9,7 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { useConfigStore } from "@/store/use-config-store"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Loader2, Save, RefreshCw, Eye, EyeOff } from "lucide-react"
+import { Loader2, Save, RefreshCw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export function ConfigurationPanel() {
@@ -22,23 +22,11 @@ export function ConfigurationPanel() {
     businessAddress,
     businessPhone,
     businessNIT,
-    kitchenPassword,
-    cashierPassword,
-    adminPassword,
-    waiterPassword,
-    menuPrimaryColor,
-    menuSecondaryColor,
-    menuLogo,
-    menuSchedule,
-    menuDarkMode,
-    deliveryEnabled,
     setTipPercentage,
     setTaxPercentage,
     setPriceSuggestion,
     setInventoryControlEnabled,
     setBusinessInfo,
-    setProfilePasswords,
-    setMenuConfig,
     isLoading,
     error,
     loadConfigFromDB,
@@ -54,26 +42,6 @@ export function ConfigurationPanel() {
     address: businessAddress,
     phone: businessPhone,
     nit: businessNIT,
-  })
-  const [localPasswords, setLocalPasswords] = useState({
-    kitchen: kitchenPassword,
-    cashier: cashierPassword,
-    admin: adminPassword,
-    waiter: waiterPassword,
-  })
-  const [localMenuConfig, setLocalMenuConfig] = useState({
-    primaryColor: menuPrimaryColor,
-    secondaryColor: menuSecondaryColor,
-    logo: menuLogo,
-    schedule: menuSchedule,
-    darkMode: menuDarkMode,
-    deliveryEnabled: deliveryEnabled,
-  })
-  const [showPasswords, setShowPasswords] = useState({
-    kitchen: false,
-    cashier: false,
-    admin: false,
-    waiter: false,
   })
   const { toast } = useToast()
 
@@ -94,20 +62,6 @@ export function ConfigurationPanel() {
       phone: businessPhone,
       nit: businessNIT,
     })
-    setLocalPasswords({
-      kitchen: kitchenPassword,
-      cashier: cashierPassword,
-      admin: adminPassword,
-      waiter: waiterPassword,
-    })
-    setLocalMenuConfig({
-      primaryColor: menuPrimaryColor,
-      secondaryColor: menuSecondaryColor,
-      logo: menuLogo,
-      schedule: menuSchedule,
-      darkMode: menuDarkMode,
-      deliveryEnabled: deliveryEnabled,
-    })
   }, [
     tipPercentage,
     taxPercentage,
@@ -116,14 +70,6 @@ export function ConfigurationPanel() {
     businessAddress,
     businessPhone,
     businessNIT,
-    kitchenPassword,
-    cashierPassword,
-    adminPassword,
-    waiterPassword,
-    menuPrimaryColor,
-    menuSecondaryColor,
-    menuLogo,
-    menuSchedule,
   ])
 
   // Mostrar errores si ocurren
@@ -176,42 +122,6 @@ export function ConfigurationPanel() {
     }
   }
 
-  const handleSavePasswords = async () => {
-    setProfilePasswords(localPasswords)
-
-    try {
-      await saveConfigToDB()
-      toast({
-        title: "Contraseñas guardadas",
-        description: "Las contraseñas se han guardado correctamente.",
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudieron guardar las contraseñas. Intente nuevamente.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleSaveMenuConfig = async () => {
-    setMenuConfig(localMenuConfig)
-
-    try {
-      await saveConfigToDB()
-      toast({
-        title: "Configuración guardada",
-        description: "La configuración del menú público se ha guardado.",
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo guardar la configuración. Intente nuevamente.",
-        variant: "destructive",
-      })
-    }
-  }
-
   const handleRefresh = async () => {
     try {
       await loadConfigFromDB()
@@ -228,13 +138,6 @@ export function ConfigurationPanel() {
     }
   }
 
-  const togglePasswordVisibility = (profile: keyof typeof showPasswords) => {
-    setShowPasswords((prev) => ({
-      ...prev,
-      [profile]: !prev[profile],
-    }))
-  }
-
   return (
     <Tabs defaultValue="taxes">
       <div className="flex justify-between items-center mb-4">
@@ -242,8 +145,6 @@ export function ConfigurationPanel() {
           <TabsTrigger value="taxes">Impuestos y Propinas</TabsTrigger>
           <TabsTrigger value="business">Información del Negocio</TabsTrigger>
           <TabsTrigger value="inventory">Control de Inventario</TabsTrigger>
-          <TabsTrigger value="passwords">Contraseñas</TabsTrigger>
-          <TabsTrigger value="menu">Menú Público</TabsTrigger>
         </TabsList>
 
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
@@ -415,184 +316,13 @@ export function ConfigurationPanel() {
               <ul className="list-disc list-inside text-sm text-amber-700 mt-2 space-y-1">
                 <li>Se verificará el stock de ingredientes al enviar órdenes a cocina</li>
                 <li>Se descontará automáticamente el stock de los ingredientes</li>
-                <li>Los platos sin stock suficiente se mostrarán como &quot;Agotado&quot;</li>
+                <li>Los platos sin stock suficiente se mostrarán como "Agotado"</li>
                 <li>Los platos sin receta definida no serán afectados</li>
               </ul>
             </div>
           </CardContent>
           <CardFooter>
             <Button onClick={handleSaveTaxAndTip} disabled={isLoading}>
-              {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-              Guardar Configuración
-            </Button>
-          </CardFooter>
-        </Card>
-      </TabsContent>
-
-      <TabsContent value="passwords">
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuración de Contraseñas</CardTitle>
-            <CardDescription>Configure las contraseñas para los diferentes perfiles del sistema.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="adminPassword">Contraseña de Administrador</Label>
-                <div className="flex">
-                  <Input
-                    id="adminPassword"
-                    type={showPasswords.admin ? "text" : "password"}
-                    value={localPasswords.admin}
-                    onChange={(e) => setLocalPasswords({ ...localPasswords, admin: e.target.value })}
-                    disabled={isLoading}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="ml-2"
-                    onClick={() => togglePasswordVisibility("admin")}
-                  >
-                    {showPasswords.admin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="kitchenPassword">Contraseña de Cocina</Label>
-                <div className="flex">
-                  <Input
-                    id="kitchenPassword"
-                    type={showPasswords.kitchen ? "text" : "password"}
-                    value={localPasswords.kitchen}
-                    onChange={(e) => setLocalPasswords({ ...localPasswords, kitchen: e.target.value })}
-                    disabled={isLoading}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="ml-2"
-                    onClick={() => togglePasswordVisibility("kitchen")}
-                  >
-                    {showPasswords.kitchen ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cashierPassword">Contraseña de Cajero</Label>
-                <div className="flex">
-                  <Input
-                    id="cashierPassword"
-                    type={showPasswords.cashier ? "text" : "password"}
-                    value={localPasswords.cashier}
-                    onChange={(e) => setLocalPasswords({ ...localPasswords, cashier: e.target.value })}
-                    disabled={isLoading}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="ml-2"
-                    onClick={() => togglePasswordVisibility("cashier")}
-                  >
-                    {showPasswords.cashier ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-md bg-blue-50 p-4 border border-blue-200">
-              <h4 className="text-sm font-medium text-blue-800 mb-2">Información sobre contraseñas</h4>
-              <p className="text-sm text-blue-700">Recomendaciones para las contraseñas:</p>
-              <ul className="list-disc list-inside text-sm text-blue-700 mt-2 space-y-1">
-                <li>Use contraseñas numéricas para facilitar el ingreso en el teclado numérico</li>
-                <li>Evite usar la misma contraseña para diferentes perfiles</li>
-                <li>Cambie las contraseñas periódicamente por seguridad</li>
-                <li>Recuerde comunicar los cambios a su personal</li>
-              </ul>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={handleSavePasswords} disabled={isLoading}>
-              {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-              Guardar Contraseñas
-            </Button>
-          </CardFooter>
-        </Card>
-      </TabsContent>
-
-      <TabsContent value="menu">
-        <Card>
-          <CardHeader>
-            <CardTitle>Menú Público</CardTitle>
-            <CardDescription>Personaliza los colores y horario de la página pública.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="primaryColor">Color Primario</Label>
-              <Input
-                id="primaryColor"
-                type="color"
-                value={localMenuConfig.primaryColor}
-                onChange={(e) => setLocalMenuConfig({ ...localMenuConfig, primaryColor: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="secondaryColor">Color Secundario</Label>
-              <Input
-                id="secondaryColor"
-                type="color"
-                value={localMenuConfig.secondaryColor}
-                onChange={(e) => setLocalMenuConfig({ ...localMenuConfig, secondaryColor: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="menuLogo">URL del Logo</Label>
-              <Input
-                id="menuLogo"
-                value={localMenuConfig.logo}
-                onChange={(e) => setLocalMenuConfig({ ...localMenuConfig, logo: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="menuSchedule">Horario de Atención</Label>
-              <Input
-                id="menuSchedule"
-                value={localMenuConfig.schedule}
-                onChange={(e) => setLocalMenuConfig({ ...localMenuConfig, schedule: e.target.value })}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="darkMode">Modo Oscuro</Label>
-                <p className="text-sm text-muted-foreground">Tema para la página pública</p>
-              </div>
-              <Switch
-                id="darkMode"
-                checked={localMenuConfig.darkMode}
-                onCheckedChange={(v) => setLocalMenuConfig({ ...localMenuConfig, darkMode: v })}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="deliveryEnabled">Habilitar Domicilios</Label>
-                <p className="text-sm text-muted-foreground">Muestra el botón de domicilios en la página</p>
-              </div>
-              <Switch
-                id="deliveryEnabled"
-                checked={localMenuConfig.deliveryEnabled}
-                onCheckedChange={(v) => setLocalMenuConfig({ ...localMenuConfig, deliveryEnabled: v })}
-              />
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={handleSaveMenuConfig} disabled={isLoading}>
               {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
               Guardar Configuración
             </Button>

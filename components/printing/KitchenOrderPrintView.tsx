@@ -4,6 +4,7 @@ import { useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Printer } from "lucide-react"
 import { formatDate } from "@/utils/helpers"
+import { renderKitchenOrder } from "@/lib/print/renderKitchenOrder"
 import type { PrintableKitchenOrder } from "@/types"
 
 interface KitchenOrderPrintViewProps {
@@ -11,8 +12,51 @@ interface KitchenOrderPrintViewProps {
   onClose: () => void
 }
 
+/**
+ * Render a PrintLine[] into a minimal HTML string for the browser print window.
+ * This is the web-side consumer of the shared PrintLine[] data structure.
+ */
+function renderLinesToHtml(
+  orderNumber: string,
+  lines: Array<{ text: string; bold?: boolean; align?: string }>,
+): string {
+  const alignClass = (align?: string) => {
+    if (align === "center") return 'style="text-align:center"'
+    if (align === "right") return 'style="text-align:right"'
+    return 'style="text-align:left"'
+  }
+
+  const body = lines
+    .map((line) => {
+      const bold = line.bold ? "<strong>" : ""
+      const boldClose = line.bold ? "</strong>" : ""
+      return `<div ${alignClass(line.align)}>${bold}${line.text}${boldClose}</div>`
+    })
+    .join("\n")
+
+  return `<html>
+<head><title>Comanda ${orderNumber}</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:20px;font-size:14px}
+.order-container{max-width:80mm;margin:0 auto}
+@media print{body{width:80mm;margin:0;padding:0}}
+</style>
+</head>
+<body><div class="order-container">${body}</div>
+<script>window.onload=function(){window.print();window.onafterprint=function(){window.close()}}</script>
+</body></html>`
+}
+
 export function KitchenOrderPrintView({ order, onClose }: KitchenOrderPrintViewProps) {
   const printRef = useRef<HTMLDivElement>(null)
+
+  // Use the shared renderer to produce the data structure.
+  const rendered = renderKitchenOrder({
+    orderNumber: order.orderNumber,
+    table: order.table,
+    waiter: order.waiter,
+    items: order.items,
+  })
 
   const handlePrint = () => {
     const content = printRef.current
@@ -21,110 +65,7 @@ export function KitchenOrderPrintView({ order, onClose }: KitchenOrderPrintViewP
     const printWindow = window.open("", "_blank")
     if (!printWindow) return
 
-    // Crear el contenido HTML para imprimir
-    const html = `
-      <html>
-        <head>
-          <title>Comanda ${order.orderNumber}</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              margin: 0;
-              padding: 20px;
-              font-size: 14px;
-            }
-            .order-container {
-              max-width: 80mm;
-              margin: 0 auto;
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 20px;
-            }
-            .order-title {
-              font-size: 16px;
-              font-weight: bold;
-              margin: 15px 0;
-              text-align: center;
-            }
-            .info-row {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 5px;
-            }
-            .divider {
-              border-top: 1px dashed #000;
-              margin: 10px 0;
-            }
-            .item-row {
-              margin-bottom: 10px;
-            }
-            .item-name {
-              font-weight: bold;
-              font-size: 16px;
-            }
-            .item-quantity {
-              font-size: 18px;
-              font-weight: bold;
-            }
-            .comments {
-              font-style: italic;
-              margin-top: 5px;
-            }
-            @media print {
-              body {
-                width: 80mm;
-                margin: 0;
-                padding: 0;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="order-container">
-            <div class="order-title">COMANDA ${order.orderNumber}</div>
-            
-            <div class="info-row">
-              <div>Fecha:</div>
-              <div>${formatDate(order.date)}</div>
-            </div>
-            <div class="info-row">
-              <div>Mesa:</div>
-              <div>${order.table}</div>
-            </div>
-            <div class="info-row">
-              <div>Mesero:</div>
-              <div>${order.waiter}</div>
-            </div>
-            
-            <div class="divider"></div>
-            
-            ${order.items
-              .map(
-                (item) => `
-              <div class="item-row">
-                <div class="info-row">
-                  <div class="item-name">${item.name}</div>
-                  <div class="item-quantity">x${item.quantity}</div>
-                </div>
-                ${item.comments ? `<div class="comments">${item.comments}</div>` : ""}
-              </div>
-            `,
-              )
-              .join("")}
-          </div>
-          <script>
-            window.onload = function() {
-              window.print();
-              window.onafterprint = function() {
-                window.close();
-              }
-            }
-          </script>
-        </body>
-      </html>
-    `
-
+    const html = renderLinesToHtml(order.orderNumber, rendered.lines)
     printWindow.document.open()
     printWindow.document.write(html)
     printWindow.document.close()
