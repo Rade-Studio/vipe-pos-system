@@ -30,6 +30,11 @@ export function isDeliveryOrder(order: { orderType?: OrderType }): boolean {
   return order.orderType === 'delivery'
 }
 
+/** Waiter order lists: delivery orders belong to the delivery operator. */
+export function ordersForWaiter<T extends { orderType?: OrderType }>(orders: readonly T[]): T[] {
+  return orders.filter((order) => !isDeliveryOrder(order))
+}
+
 /** True when the order sits at a table the view may look up or update. */
 export function hasTable(order: { orderType?: OrderType; tableId?: string | null }): boolean {
   return !isDeliveryOrder(order) && typeof order.tableId === 'string' && order.tableId !== ''
@@ -56,6 +61,15 @@ export function orderPlaceText(order: PlaceOrder, delivery?: PlaceDelivery | nul
     return name === null ? 'un domicilio' : `el domicilio de ${name}`
   }
   return order.tableNumber == null ? 'una mesa' : `la mesa ${order.tableNumber}`
+}
+
+/** Invoice reprint: "DOMICILIO" for a delivery, the table number otherwise. */
+export function invoicePlaceLabel(
+  order: { orderType?: OrderType },
+  table?: { number: number } | null,
+): string {
+  if (isDeliveryOrder(order)) return 'DOMICILIO'
+  return table?.number != null ? table.number.toString() : 'N/A'
 }
 
 /**

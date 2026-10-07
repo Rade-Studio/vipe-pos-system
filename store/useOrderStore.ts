@@ -2,6 +2,7 @@ import { create } from "zustand"
 import { v4 as uuidv4 } from "uuid"
 import type { Order } from "@/types"
 import { supabase, tableService, orderService } from "@/lib/supabase"
+import { orderTypeFromRow } from "@/lib/delivery/kitchen"
 
 interface OrderState {
   orders: Order[]
@@ -79,6 +80,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
           return {
             id: dbOrder.id,
             tableId: dbOrder.table_id || "",
+            orderType: orderTypeFromRow(dbOrder),
             items,
             status: dbOrder.status,
             bill: {

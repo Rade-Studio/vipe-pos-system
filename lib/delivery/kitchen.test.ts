@@ -3,9 +3,11 @@ import {
   servedOrderMessage,
   groupDineInOrdersByTable,
   hasTable,
+  invoicePlaceLabel,
   isDeliveryOrder,
   matchesPlaceFilter,
   orderHeading,
+  ordersForWaiter,
   orderPlaceText,
   orderTypeFromRow,
   pendingDeliveryPayments,
@@ -20,6 +22,17 @@ describe('orderTypeFromRow', () => {
     expect(orderTypeFromRow({})).toBe('dine_in')
     expect(orderTypeFromRow(null)).toBe('dine_in')
     expect(orderTypeFromRow({ order_type: 'DELIVERY' })).toBe('dine_in')
+  })
+})
+
+describe('ordersForWaiter', () => {
+  it('drops delivery orders and keeps every dine-in order in order', () => {
+    const orders = [
+      { id: 'a', orderType: 'dine_in' as const, tableId: 't1' },
+      { id: 'b', orderType: 'delivery' as const, tableId: '' },
+      { id: 'c', tableId: 't2' },
+    ]
+    expect(ordersForWaiter(orders).map((o) => o.id)).toEqual(['a', 'c'])
   })
 })
 
@@ -75,6 +88,28 @@ describe('orderPlaceText', () => {
     expect(orderPlaceText({ orderType: 'dine_in' })).toBe('una mesa')
     expect(orderPlaceText({ orderType: 'delivery' }, { customerName: 'Ana' })).toBe('el domicilio de Ana')
     expect(orderPlaceText({ orderType: 'delivery' })).toBe('un domicilio')
+  })
+})
+
+describe('invoicePlaceLabel', () => {
+  it('labels a delivery invoice as a delivery, never "N/A"', () => {
+    expect(invoicePlaceLabel({ orderType: 'delivery' })).toBe('DOMICILIO')
+    expect(invoicePlaceLabel({ orderType: 'delivery' }, null)).toBe('DOMICILIO')
+    expect(invoicePlaceLabel({ orderType: 'delivery' }, undefined)).toBe('DOMICILIO')
+  })
+
+  it('ignores a stray table on a delivery order', () => {
+    expect(invoicePlaceLabel({ orderType: 'delivery' }, { number: 3 })).toBe('DOMICILIO')
+  })
+
+  it('prints the table number of a dine-in order as a string', () => {
+    expect(invoicePlaceLabel({ orderType: 'dine_in' }, { number: 7 })).toBe('7')
+    expect(invoicePlaceLabel({}, { number: 12 })).toBe('12')
+  })
+
+  it('keeps "N/A" for a dine-in order whose table was not found', () => {
+    expect(invoicePlaceLabel({ orderType: 'dine_in' })).toBe('N/A')
+    expect(invoicePlaceLabel({}, null)).toBe('N/A')
   })
 })
 

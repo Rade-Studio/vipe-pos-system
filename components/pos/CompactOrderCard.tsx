@@ -84,7 +84,9 @@ export function CompactOrderCard({ order, waiter, table }: CompactOrderCardProps
         <div className="flex justify-between items-start mb-2">
           <div className="flex items-center">
             <MapPin className="h-4 w-4 text-red-500 mr-1" />
-            <span className="font-bold text-lg">Mesa {table?.number || "?"}</span>
+            <span className="font-bold text-lg">
+              {order.orderType === "delivery" ? "DOMICILIO" : `Mesa ${table?.number || "?"}`}
+            </span>
           </div>
           <Badge
             variant="outline"

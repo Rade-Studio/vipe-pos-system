@@ -35,6 +35,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 // Importar el nuevo componente CompactOrderCard
 import { CompactOrderCard } from "@/components/pos/CompactOrderCard"
+import { orderTypeFromRow, ordersForWaiter } from "@/lib/delivery/kitchen"
 // Importar el hook para detectar dispositivos móviles
 import { useIsMobile } from "@/hooks/use-mobile"
 import {animated, useSpring} from "@react-spring/web"
@@ -120,7 +121,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
   const fetchOrders = async () => {
     const activeOrdersData = await orderService.getByStatus(["active", "kitchen", "delivered"])
-    return activeOrdersData.map((order) => {
+    const mapped = activeOrdersData.map((order) => {
       const items = order.order_items.map((item) => ({
         id: item.id,
         dishId: item.dish_id || `item-${item.id}`,
@@ -136,6 +137,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       return {
         id: order.id,
         tableId: order.table_id ?? "",
+        orderType: orderTypeFromRow(order),
         items,
         status: order.status as OrderStatus,
         bill: {
@@ -153,6 +155,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         parentOrderId: order.parent_order_id ?? undefined,
       } as unknown as Order
     })
+    // Delivery orders belong to the delivery operator, not to the waiters.
+    return ordersForWaiter(mapped)
   }
 
   // React Query hooks for tables and orders
