@@ -29,9 +29,18 @@ Invoice:
             "bill":        {"subtotal": 0, "tax": 0, "taxPercentage": 0, "tip": 0, "tipPercentage": 0,
                              "total": 0, "totalDiscounts": 0},
             "date":        "2025-01-01T12:00:00",
-            "paymentMethod": "cash",
+            "paymentMethod": "cash",                # 'cash'|'transfer'|'nequi'|'bancolombia'|'multiple'
             "cashReceived": 0,
-            "cashChange": 0,
+            "cashChange":   0,
+            # New in task 10b (additive — old payloads keep working).
+            "tenders": [                              # when non-empty, replaces the legacy payment block
+                {"methodCode": "nequi", "methodName": "Nequi", "methodKind": "electronic",
+                 "amount": 30000, "cashReceived": None},
+                {"methodCode": "cash",  "methodName": "Efectivo", "methodKind": "cash",
+                 "amount": 17000, "cashReceived": 20000},
+                ...
+            ],
+            "change": 3000,                           # total change across every cash line
         },
         "displayItems": [
             {"name": "...", "quantity": 1, "price": 1000,
@@ -39,6 +48,15 @@ Invoice:
             ...
         ]
     }
+
+When `invoice.tenders` is present and non-empty, the ticket prints
+`FORMAS DE PAGO:` followed by one `NAME  $amount` line per tender
+(amount right-padded to 10 chars), a per-cash-line `RECIBIDO / CAMBIO`
+sub-line when `cashReceived > amount`, and a total `CAMBIO` line when
+`invoice.change > 0`. Otherwise the legacy single-label `FORMA DE PAGO:`
++ `RECIBIDO:` / `CAMBIO:` block is rendered unchanged. Malformed tender
+entries (missing keys, non-numeric `amount`) are dropped, and a tender
+list that ends up empty after filtering falls back to the legacy block.
 """
 
 from datetime import datetime
@@ -238,16 +256,62 @@ def render_invoice(invoice_number: str, invoice: dict, display_items: list[dict]
 
     lines.append({"text": "--------------------------------", "bold": False, "align": "center"})
 
-    # Payment method
-    method_text = _payment_method_text(invoice.get("paymentMethod", "N/A"))
-    lines.append({"text": f"FORMA DE PAGO: {method_text}", "bold": False, "align": "left"})
+    # Payment method. The multi-tender path takes over when there is at
+    # least one valid tender line; otherwise we fall back to the legacy
+    # single-label block (so historical invoices reprint unchanged).
+    valid_tenders, _all_malformed = _normalize_tenders(invoice.get("tenders"))
+    if valid_tenders:
+        lines.append({"text": "FORMAS DE PAGO:", "bold": False, "align": "left"})
+        # `invoice.change` is the authoritative total the new payload
+        # carries. When it is missing (e.g. a hand-built test fixture)
+        # we fall back to the per-line change so the total stays correct.
+        total_change = invoice.get("change", 0)
+        change_provided = "change" in invoice and invoice.get("change") is not None
+        for t in valid_tenders:
+            name = (t.get("methodName") or t.get("methodCode") or "").upper()
+            amount = t["amount"]
+            lines.append(
+                {
+                    "text": f"{name}  {_format_currency(amount).rjust(10)}",
+                    "bold": False,
+                    "align": "left",
+                }
+            )
+            if t.get("methodKind") == "cash":
+                received = t.get("cashReceived")
+                if received is not None and received > amount:
+                    line_change = received - amount
+                    lines.append(
+                        {
+                            "text": f"  RECIBIDO {_format_currency(received).rjust(8)} / "
+                            f"CAMBIO {_format_currency(line_change).rjust(8)}",
+                            "bold": False,
+                            "align": "left",
+                        }
+                    )
+                    if not change_provided:
+                        total_change += line_change
+        if (total_change or 0) > 0:
+            lines.append(
+                {
+                    "text": f"CAMBIO: {_format_currency(total_change)}",
+                    "bold": False,
+                    "align": "left",
+                }
+            )
+    else:
+        # Legacy path, also used when every tender entry was malformed:
+        # the web always fills paymentMethod ("multiple" for mixed
+        # payments), so it stays the label source.
+        method_text = _payment_method_text(invoice.get("paymentMethod", "N/A"))
+        lines.append({"text": f"FORMA DE PAGO: {method_text}", "bold": False, "align": "left"})
 
-    if invoice.get("cashReceived", 0) > 0:
-        for label, value in [
-            (f"RECIBIDO: {_format_currency(invoice.get('cashReceived', 0))}", False),
-            (f"CAMBIO: {_format_currency(invoice.get('cashChange', 0))}", False),
-        ]:
-            lines.append({"text": label, "bold": False, "align": "left"})
+        if invoice.get("cashReceived", 0) > 0:
+            for label in [
+                f"RECIBIDO: {_format_currency(invoice.get('cashReceived', 0))}",
+                f"CAMBIO: {_format_currency(invoice.get('cashChange', 0))}",
+            ]:
+                lines.append({"text": label, "bold": False, "align": "left"})
 
     lines.append({"text": "--------------------------------", "bold": False, "align": "center"})
 
@@ -334,3 +398,38 @@ def _payment_method_text(method: str) -> str:
         "nequi": "Nequi",
         "bancolombia": "Bancolombia App",
     }.get(method.lower(), method.capitalize() if method else "N/A")
+
+
+def _normalize_tenders(raw):
+    """Filter and validate the raw `tenders` array from the payload.
+
+    Returns ``(valid, all_malformed)``:
+      - ``valid``: list of tender dicts with an ``int`` ``amount`` and the
+        keys we render (`methodCode`, `methodName`, `methodKind`,
+        `amount`, optional `cashReceived`).
+      - ``all_malformed``: True when the payload had a tender list but
+        every entry failed validation, so the legacy payment block can
+        be used as a safe fallback. Missing keys and non-integer
+        ``amount`` values cause the entry to be dropped; a non-dict
+        entry (or a non-list raw value) is treated the same way.
+    """
+    if not isinstance(raw, list):
+        return [], False
+    valid: list[dict] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        amount = entry.get("amount")
+        if not isinstance(amount, int) or isinstance(amount, bool):
+            continue
+        if not entry.get("methodCode") and not entry.get("methodName"):
+            continue
+        normalized = {
+            "methodCode": entry.get("methodCode") or "",
+            "methodName": entry.get("methodName") or entry.get("methodCode") or "",
+            "methodKind": entry.get("methodKind") or "electronic",
+            "amount": amount,
+            "cashReceived": entry.get("cashReceived"),
+        }
+        valid.append(normalized)
+    return valid, (len(raw) > 0 and len(valid) == 0)

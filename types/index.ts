@@ -79,6 +79,13 @@ export type Order = {
   parentOrderId?: string
   paymentMethod?: PaymentMethod | "multiple"
   restaurantId?: string
+  /**
+   * Ledger payment row attached by `getOrdersByDate` so the admin
+   * reprint can build a tender list without a second round-trip.
+   * Lives here (and not in `lib/supabase/service.ts`) so every
+   * consumer that reads `Order` from the store gets the same shape.
+   */
+  ledgerPayment?: import("@/lib/payments/payment-list").PaymentRow
 }
 
 // Cart types
@@ -167,6 +174,15 @@ export type CashRegister = {
 // server's `register_summary` RPC; see `lib/payments/register-summary.ts`.)
 
 // Tipos para impresión
+
+/**
+ * One row of the printable invoice's payment block. Re-exported
+ * here so `PrintableInvoice.tenders` does not force every consumer
+ * to import from `lib/payments`. The shape is owned by
+ * `lib/payments/invoice-tenders.ts`.
+ */
+export type InvoiceTender = import("@/lib/payments/invoice-tenders").InvoiceTender
+
 export interface PrintableInvoice {
   invoiceNumber: string
   date: Date
@@ -192,6 +208,21 @@ export interface PrintableInvoice {
   multiplePayments?: Record<PaymentMethod, boolean> | undefined
   cashReceived?: number
   cashChange?: number
+  /**
+   * Tender lines for the multi-method print path. When present, the
+   * on-screen view and the hidden ticket render one block per line
+   * (name + amount, plus "Recibido" / "Cambio" for cash lines). The
+   * legacy single-label block (`paymentMethod` / `cashReceived` /
+   * `cashChange`) is still populated so old Python listeners keep
+   * working — see `lib/payments/invoice-tenders.legacyInvoiceFields`.
+   */
+  tenders?: InvoiceTender[]
+  /**
+   * Total change across every cash line. Mirrors `cashChange` but
+   * is the value the new Python listener reads (the old field is
+   * left alone for compatibility).
+   */
+  change?: number
 }
 
 export type PrintableKitchenOrder = {
