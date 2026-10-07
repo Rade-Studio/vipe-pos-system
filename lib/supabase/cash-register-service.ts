@@ -2,7 +2,6 @@ import { supabase } from "./client"
 import { log } from "@/lib/log"
 import type {
   CashRegister,
-  CashRegisterSummary,
   PaymentMethod,
   PaymentTransaction,
   CashTransaction,
@@ -378,102 +377,14 @@ export const cashRegisterService = {
     }
   },
 
-  // Actualizar la función addTransaction para incluir waiterId y tipAmount
-  async addTransaction(
-      registerId: string,
-      orderId: string,
-      tableId: string,
-      amount: number, // Este 'amount' principal solo se usa si el método NO es 'multiple'
-      method: PaymentMethod | "multiple",
-      paymentsMethod?: Record<PaymentMethod, boolean> | undefined,
-      paymentsAmount?: Record<PaymentMethod, string> | undefined, // Se mantiene como string por si viene de un input de texto
-      cashReceived?: number,
-      cashChange?: number,
-      waiterId?: string,
-      tipAmount?: number,
-  ): Promise<PaymentTransaction[]> { // Cambia el tipo de retorno a un array de transacciones
-    try {
-      const transactionsToInsert: any[] = [];
+  // Legacy `addTransaction` was removed in task 8c: the only writer of
+  // public.payment_transactions is the retired public.complete_payment
+  // RPC, which dropped, and the only writer of public.payments is the
+  // server-side `pay_order` RPC. The browser never writes a transaction
+  // row from a client action any more (see
+  // `lib/supabase/payments-service.ts`).
 
-      if (method === "multiple" && paymentsMethod && paymentsAmount) {
-        log.info("Múltiples pagos:", { paymentsMethod, paymentsAmount });
-        // Lógica para múltiples métodos de pago
-        const countMethodsTrue = Object.values(paymentsMethod).filter((isTrue) => isTrue).length;
-        const tipAmountDist = countMethodsTrue > 1 && tipAmount ? Math.round(Number(tipAmount) / countMethodsTrue) : undefined; // Si hay más de un método de pago, el tipo no se puede distribuir
-        for (const [paymentMethodKey, isTrue] of Object.entries(paymentsMethod)) {
-          if (isTrue) {
-            const currentMethod = paymentMethodKey as PaymentMethod;
-            const currentAmountStr = paymentsAmount[currentMethod];
-            const currentAmount = parseFloat(currentAmountStr);
-
-            if (isNaN(currentAmount) || currentAmount <= 0) {
-              continue; // Salta esta iteración si el monto no es válido
-            }
-
-            transactionsToInsert.push({
-              order_id: orderId,
-              table_id: tableId,
-              waiter_id: waiterId,
-              amount: currentAmount,
-              method: currentMethod,
-              cash_received: currentMethod === "cash" ? cashReceived : undefined, // Solo si es efectivo
-              cash_change: currentMethod === "cash" ? cashChange : undefined, // Solo si es efectivo
-              timestamp: new Date().toISOString(),
-              cash_register_id: registerId,
-              tip_amount: tipAmountDist, // Si hay más de un método de pago se distribuye la propina
-            });
-          }
-        }
-      } else {
-        // Lógica para un único método de pago
-        transactionsToInsert.push({
-          order_id: orderId,
-          table_id: tableId,
-          waiter_id: waiterId,
-          amount: amount,
-          tip_amount: tipAmount || 0,
-          method: method,
-          cash_received: cashReceived,
-          cash_change: cashChange,
-          timestamp: new Date().toISOString(),
-          cash_register_id: registerId,
-        });
-      }
-
-      if (transactionsToInsert.length === 0) {
-        throw new Error("No hay transacciones válidas para insertar.");
-      }
-
-      log.info("Transacciones a insertar:", { transactionsToInsert });
-
-      const {data, error} = await supabase.from("payment_transactions").insert(transactionsToInsert).select();
-
-      if (error) {
-        log.error("Error al agregar transacción(es):", { error: String(error) });
-        throw error;
-      }
-
-      log.info("Transacción(es) agregada(s) con éxito:", { data });
-
-      // Convertir el formato de la base de datos al formato del store para cada transacción
-      return data.map((d: any) => ({
-        id: d.id,
-        orderId: d.order_id,
-        tableId: d.table_id,
-        waiterId: d.waiter_id,
-        amount: d.amount,
-        tipAmount: d.tip_amount,
-        method: d.method,
-        cashReceived: d.cash_received,
-        cashChange: d.cash_change,
-        timestamp: new Date(d.timestamp),
-        cash_register_id: d.cash_register_id,
-      }));
-    } catch (error) {
-      log.error("Error en addTransaction:", { error: String(error) });
-      throw error;
-    }
-  },
+  // Actualizar la función getTransactionsByRegisterId para incluir waiterId y tipAmount
 
   // Nueva función para agregar transacciones de efectivo (ingresos o retiros)
   async addCashTransaction(
@@ -754,114 +665,14 @@ export const cashRegisterService = {
     }
   },
 
-  // Actualizar la función calculateRegisterSummary para incluir totalTips y cashTransactions
-  calculateRegisterSummary(register: CashRegister): CashRegisterSummary {
-    // Inicializar el resumen
-    const summary: CashRegisterSummary = {
-      initialCash: register.initialCash,
-      totalCash: 0,
-      totalTransfer: 0,
-      totalNequi: 0,
-      totalBancolombia: 0,
-      totalSales: 0,
-      totalTips: 0,
-      totalChange: 0,
-      totalCashDeposits: 0,
-      totalCashWithdrawals: 0,
-      finalCash: register.initialCash,
-    }
+  // El agregado multi-registro ahora lo calcula el servidor (ver
+  // Legacy `calculateRegisterSummary` (multi- and single-register) was
+  // removed in task 8c: the server's `register_summary` RPC is the only
+  // authority on totals, tips and expected cash (see
+  // `lib/supabase/payments-service.ts` and `useRegisterSummary`). The
+  // store dropped its `loadTransactionsByDate` / `loadTransactionsByRegisters`
+  // shims; the cashier/admin screens consume the new ledger through
+  // `useRegisterPayments` and the legacy rows through `getTransactionsByRegisters`.
 
-    // Calcular totales por método de pago
-    register.transactions.forEach((transaction) => {
-      summary.totalSales += transaction.amount
-
-      // Sumar propinas
-      if (transaction.tipAmount) {
-        summary.totalTips += transaction.tipAmount
-      }
-
-      switch (transaction.method) {
-        case "cash":
-          summary.totalCash += transaction.amount
-          if (transaction.cashChange) {
-            summary.totalChange += transaction.cashChange
-          }
-          break
-        case "transfer":
-          summary.totalTransfer += transaction.amount
-          break
-        case "nequi":
-          summary.totalNequi += transaction.amount
-          break
-        case "bancolombia":
-          summary.totalBancolombia += transaction.amount
-          break
-      }
-    })
-
-    // Calcular totales de transacciones de efectivo
-    register.cashTransactions.forEach((transaction) => {
-      if (transaction.type === "deposit") {
-        summary.totalCashDeposits += transaction.amount
-      } else if (transaction.type === "withdrawal") {
-        summary.totalCashWithdrawals += transaction.amount
-      }
-    })
-
-    // Calcular efectivo final
-    summary.finalCash =
-      summary.initialCash +
-      summary.totalCash -
-      summary.totalChange +
-      summary.totalCashDeposits -
-      summary.totalCashWithdrawals
-
-    return summary
-  },
-
-  // Nuevo método para calcular el resumen de múltiples cajas
-  calculateMultipleRegistersSummary(registers: CashRegister[]): CashRegisterSummary {
-    // Inicializar el resumen
-    const summary: CashRegisterSummary = {
-      initialCash: 0,
-      totalCash: 0,
-      totalTransfer: 0,
-      totalNequi: 0,
-      totalBancolombia: 0,
-      totalSales: 0,
-      totalTips: 0,
-      totalChange: 0,
-      totalCashDeposits: 0,
-      totalCashWithdrawals: 0,
-      finalCash: 0,
-    }
-
-    // Sumar los valores de todas las cajas
-    registers.forEach((register) => {
-      const registerSummary = this.calculateRegisterSummary(register)
-
-      summary.initialCash += registerSummary.initialCash || 0
-      summary.totalCash += registerSummary.totalCash || 0
-      summary.totalTransfer += registerSummary.totalTransfer || 0
-      summary.totalNequi += registerSummary.totalNequi || 0
-      summary.totalBancolombia += registerSummary.totalBancolombia || 0
-      summary.totalSales += registerSummary.totalSales || 0
-      summary.totalTips += registerSummary.totalTips || 0
-      summary.totalChange += registerSummary.totalChange || 0
-      summary.totalCashDeposits += registerSummary.totalCashDeposits || 0
-      summary.totalCashWithdrawals += registerSummary.totalCashWithdrawals || 0
-      // TODO(writer): agregar agregación de summary.cashTransactions si CashRegisterSummary lo requiere
-    })
-
-    // Calcular efectivo final
-    summary.finalCash =
-      summary.initialCash +
-      summary.totalCash -
-      summary.totalChange +
-      summary.totalCashDeposits -
-      summary.totalCashWithdrawals
-
-    return summary
-  },
   currentRegisterId: null,
 }

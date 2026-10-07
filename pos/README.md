@@ -157,3 +157,64 @@ Key `--hidden-import` flags:
   for legacy firmware (code pages 437, 850, 858).
 - **Shared renderer**: `pos/print_renderer.py` produces the same ESC/POS byte stream as the
   web preview in `lib/print/renderKitchenOrder.ts`.
+
+---
+
+## Multi-tender payment breakdown (tarea 10b)
+
+A partir de la tarea 10a el web envía, además del campo `paymentMethod`
+tradicional, un arreglo `tenders` con cada línea de pago
+(`methodCode`, `methodName`, `methodKind: 'cash'|'electronic'`,
+`amount`, `cashReceived?`) y un campo `change` con el cambio total.
+
+Cuando el payload incluye `tenders` no vacío, el ticket imprime:
+
+```
+FORMAS DE PAGO:
+NEQUI          30.000
+EFECTIVO       17.000
+  RECIBIDO  20.000 / CAMBIO   3.000
+CAMBIO: 3.000
+```
+
+Si la línea de pago es en efectivo y el cliente entregó más del valor
+de esa línea (`cashReceived > amount`), se imprime la sub-línea
+indentada `RECIBIDO … / CAMBIO …`. Si el total de cambio (`change`) es
+mayor a cero se agrega además una línea final `CAMBIO: …`.
+
+Si el payload no incluye `tenders` (facturas antiguas, reimpresiones
+previas a 10a), se mantiene el bloque legacy sin cambios:
+
+```
+FORMA DE PAGO: <etiqueta>
+RECIBIDO: …
+CAMBIO: …
+```
+
+### Importante: reinstalar el listener
+
+El listener de Windows es un `.exe` empaquetado con PyInstaller. Los
+listeners ya instalados en los restaurantes **siguen imprimiendo el
+bloque legacy** (una sola línea `FORMA DE PAGO:`) aunque el web envíe el
+nuevo payload, porque su `print_renderer.py` no conoce todavía la rama
+de `tenders`. Para que el desglose por forma de pago se imprima, hay
+que **reconstruir y reinstalar el `.exe`** con la versión actualizada
+del renderer. Hasta que eso pase, los tickets siguen funcionando igual
+que antes (el payload nuevo es aditivo: el campo `tenders` simplemente
+se ignora).
+
+### Pruebas
+
+Las pruebas de regresión del renderer viven en
+`pos/test_print_renderer.py` (stdlib `unittest`, sin dependencias
+nuevas). Cubren tanto el bloque legacy (con snapshots byte-exactos
+capturados antes del cambio) como la nueva ruta de `tenders` y la
+caída al bloque legacy ante un payload malformado.
+
+```bash
+# Desde la raíz del repo
+python3 -m unittest pos.test_print_renderer
+
+# O desde la carpeta pos/
+cd pos && python3 -m unittest test_print_renderer
+```
