@@ -108,7 +108,7 @@ jobs:
       deployments: write
     env:
       TARGET: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-      TARGET_URL: ${{ github.ref == 'refs/heads/main' && 'https://vipe.212.56.33.197.sslip.io' || 'https://vipe-staging.212.56.33.197.sslip.io' }}
+      TARGET_URL: ${{ github.ref == 'refs/heads/main' && 'https://vipepos.radestudio.org' || 'https://vipe-staging.212.56.33.197.sslip.io' }}
 
     steps:
       # Bookkeeping only: if GitHub refuses the record, the release still ships.
