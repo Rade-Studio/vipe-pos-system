@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 
 jobs:
@@ -79,3 +79,113 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - run: pip install -r pos/requirements.txt --dry-run
+
+  # ---------------------------------------------------------------------------
+  # deploy — ships what landed, never what is proposed: it runs on a push to
+  # `dev` (Coolify staging) or `main` (Coolify production) and only after every
+  # job above passed on that same commit. Pull requests never deploy.
+  #
+  # It asks Coolify to deploy the branch, then follows that deployment until it
+  # finishes, so a failed build or a failed healthcheck fails this job instead
+  # of passing silently. Coolify keeps the previous container running until the
+  # new one is healthy, so a failure here leaves the site on the last release.
+  #
+  # Repository secrets: COOLIFY_URL, COOLIFY_TOKEN, COOLIFY_APP_UUID_STAGING and
+  # COOLIFY_APP_UUID_PRODUCTION. COOLIFY_TOKEN is a Coolify token with the
+  # `deploy` and `read` abilities: `deploy` queues the release and `read` is
+  # needed to follow its status (a deploy-only token gets 403 there).
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy
+    needs: [lint, typecheck, unit-tests, build, db-tests, pos-deps-check]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # `deployments: write` lets the job record each release in the repository's
+    # Deployments list.
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      TARGET: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+      TARGET_URL: ${{ github.ref == 'refs/heads/main' && 'https://vipe.212.56.33.197.sslip.io' || 'https://vipe-staging.212.56.33.197.sslip.io' }}
+
+    steps:
+      # Bookkeeping only: if GitHub refuses the record, the release still ships.
+      - name: Record the deployment on GitHub
+        id: record
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          id=$(jq -n --arg ref "$GITHUB_SHA" --arg env "$TARGET" \
+                '{ref: $ref, environment: $env, auto_merge: false, required_contexts: [],
+                  production_environment: ($env == "production"), description: "Coolify deployment"}' \
+            | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq '.id')
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+            -f state=in_progress -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null
+
+      - name: Deploy to Coolify and wait for the result
+        id: coolify
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          APP_UUID: ${{ github.ref == 'refs/heads/main' && secrets.COOLIFY_APP_UUID_PRODUCTION || secrets.COOLIFY_APP_UUID_STAGING }}
+        run: |
+          set -euo pipefail
+          for name in COOLIFY_URL COOLIFY_TOKEN APP_UUID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing secret for $name ($TARGET)."
+              exit 1
+            fi
+          done
+
+          api() { curl -fsS -H "Authorization: Bearer $COOLIFY_TOKEN" -H 'Accept: application/json' "$@"; }
+
+          # Never retried: a repeated POST queues a second deployment.
+          response=$(api -X POST -H 'Content-Type: application/json' \
+            -d "{\"uuid\":\"$APP_UUID\",\"force\":false}" \
+            "$COOLIFY_URL/api/v1/deploy")
+          deployment=$(jq -r '.deployments[0].deployment_uuid // empty' <<<"$response")
+          if [ -z "$deployment" ]; then
+            echo "::error::Coolify did not queue a deployment: $response"
+            exit 1
+          fi
+          echo "Deploying $GITHUB_SHA to $TARGET (Coolify deployment $deployment)."
+
+          # 25 minutes at 10-second intervals; the job timeout is the hard cap.
+          for _ in $(seq 1 150); do
+            # Reads are safe to retry; a transient error just waits for the next poll.
+            status=$(api --retry 3 --retry-all-errors "$COOLIFY_URL/api/v1/deployments/$deployment" | jq -r '.status' || echo unknown)
+            case "$status" in
+              finished)
+                echo "Deployed to $TARGET."
+                exit 0 ;;
+              failed|cancelled*)
+                echo "::error::Coolify deployment $deployment ended as '$status'. The previous release is still serving."
+                exit 1 ;;
+            esac
+            sleep 10
+          done
+
+          echo "::error::Coolify deployment $deployment did not finish in time (last status: $status)."
+          exit 1
+
+      - name: Report the result on GitHub
+        if: always() && steps.record.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.record.outputs.id }}
+          OUTCOME: ${{ steps.coolify.outcome }}
+        run: |
+          set -euo pipefail
+          case "$OUTCOME" in
+            success) state=success ;;
+            *) state=failure ;;
+          esac
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state="$state" -f environment_url="$TARGET_URL" \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null
+          echo "GitHub deployment $DEPLOYMENT_ID marked $state ($TARGET_URL)."
