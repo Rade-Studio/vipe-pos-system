@@ -29,6 +29,17 @@ pnpm supabase db reset
 pnpm test:db
 ```
 
+### Edge Function `create-staff-account`
+
+La creación de cuentas de personal desde la app usa la Edge Function `supabase/functions/create-staff-account`. Para probarla en local:
+
+```bash
+pnpm supabase start
+pnpm supabase functions serve    # sirve las funciones con la configuración de supabase/config.toml
+```
+
+`supabase/config.toml` define `[functions.create-staff-account] verify_jwt = true`, por lo que cada petición debe llevar el JWT de un administrador.
+
 > `supabase db reset` destruye los datos locales (perfiles, mesas, comandas).
 > Para detener los contenedores: `pnpm supabase stop` (agrega `--no-backup` para
 > borrar también los datos locales).
@@ -41,7 +52,8 @@ de `pnpm supabase status`), y se pasan como build args porque Next.js las inline
 en build time.
 
 ```bash
-# App en http://localhost:3003 (puerto del host 3003 -> 3000 del contenedor)
+# Landing en http://localhost:3003 y portal del sistema en http://localhost:3003/portal
+# (puerto del host 3003 -> 3000 del contenedor)
 docker compose up -d --build
 docker compose logs -f app
 docker compose down
@@ -55,7 +67,8 @@ Los servicios de Supabase local siguen accesibles en el host:
 
 | Servicio | URL |
 |----------|-----|
-| App Next.js (contenedor) | http://localhost:3003 |
+| Landing page (contenedor) | http://localhost:3003 |
+| Portal del sistema (login) | http://localhost:3003/portal |
 | Supabase API (URL local) | http://127.0.0.1:44321 |
 | Supabase Studio | http://127.0.0.1:54323 |
 
@@ -117,6 +130,18 @@ server {
 ```
 
 ---
+
+### Edge Function y migraciones en producción
+
+```bash
+# Aplicar migraciones pendientes (incluye el esquema de domicilios)
+pnpm supabase db push
+
+# Desplegar la función de alta de personal
+pnpm supabase functions deploy create-staff-account --project-ref <ref>
+```
+
+`SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta la plataforma en la función; no hay que configurarlos como secretos. `verify_jwt` se toma de `supabase/config.toml`.
 
 ## Estructura de archivos
 

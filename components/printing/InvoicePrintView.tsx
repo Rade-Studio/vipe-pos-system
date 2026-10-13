@@ -71,7 +71,7 @@ export function InvoicePrintView({
     return null
   }
 
-  const { invoiceNumber, date, businessInfo, items, bill, waiter, table, paymentMethod, tenders, change } = invoice
+  const { invoiceNumber, date, businessInfo, items, bill, waiter, table, paymentMethod, tenders, change, delivery } = invoice
 
   log.info("Renderizando factura con datos:", {
     waiter,
@@ -100,7 +100,7 @@ export function InvoicePrintView({
   }
 
   // Calcular el total sin propina
-  const totalSinPropina = (bill?.subtotal || 0) + (bill?.tax || 0)
+  const totalSinPropina = (bill?.subtotal || 0) + (bill?.tax || 0) + (delivery?.deliveryFee ?? 0)
 
   // Asegurarse de que siempre tengamos valores válidos para mostrar
   const displayWaiter = waiter || "No asignado"
@@ -167,14 +167,33 @@ export function InvoicePrintView({
                     <span className="font-medium dark:text-white">Hora:</span>
                     <span className="float-right dark:text-gray-300">{format(date || new Date(), "HH:mm:ss")}</span>
                   </div>
-                  <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded">
-                    <span className="font-medium dark:text-white">Mesa:</span>
-                    <span className="float-right dark:text-gray-300">{displayTable}</span>
-                  </div>
-                  <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded col-span-2">
-                    <span className="font-medium dark:text-white">Mesero:</span>
-                    <span className="float-right dark:text-gray-300">{displayWaiter}</span>
-                  </div>
+                  {delivery ? (
+                    <>
+                      <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded">
+                        <span className="font-medium dark:text-white">Cliente:</span>
+                        <span className="float-right dark:text-gray-300">{delivery.customerName}</span>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded">
+                        <span className="font-medium dark:text-white">Teléfono:</span>
+                        <span className="float-right dark:text-gray-300">{delivery.phone}</span>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded col-span-2">
+                        <span className="font-medium dark:text-white">Dirección:</span>
+                        <span className="float-right dark:text-gray-300">{delivery.address}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded">
+                        <span className="font-medium dark:text-white">Mesa:</span>
+                        <span className="float-right dark:text-gray-300">{displayTable}</span>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded col-span-2">
+                        <span className="font-medium dark:text-white">Mesero:</span>
+                        <span className="float-right dark:text-gray-300">{displayWaiter}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Tabla de items */}
@@ -239,6 +258,12 @@ export function InvoicePrintView({
                     <div className="flex justify-between text-sm text-red-600 dark:text-red-400">
                       <span>Descuentos:</span>
                       <span>-{formatCurrency(bill?.totalDiscounts || 0)}</span>
+                    </div>
+                  )}
+                  {delivery && (
+                    <div className="flex justify-between text-sm">
+                      <span>Domicilio:</span>
+                      <span>{formatCurrency(delivery.deliveryFee)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-medium pt-1 border-t dark:border-gray-700">
@@ -453,6 +478,7 @@ export function InvoicePrintView({
                   cashChange: invoice.cashChange,
                   tenders,
                   change,
+                  delivery,
                 },
                 displayItems,
               }) : { lines: [] }).lines.map((line, i) => (

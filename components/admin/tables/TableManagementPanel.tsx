@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { tableService } from "@/lib/supabase/service"
 import { log } from "@/lib/log"
 import { realtimeService } from "@/lib/supabase/realtime-service"
+import { mergeRowList, type RowChange } from "@/lib/realtime/table-merge"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, Plus, Search, Filter } from "lucide-react"
 import { getStatusLabel } from "@/utils/helpers"
@@ -52,13 +53,57 @@ export function TableManagementPanel() {
     // Cargar mesas inicialmente
     loadTables()
 
-    // Suscribirse a cambios en tiempo real
-    const unsubscribe = realtimeService.subscribeToTables(async (payload) => {
+    // Suscribirse a cambios en tiempo real — merge the row in place instead
+    // of reloading the whole panel (A-4, D9). The panel holds raw DB rows
+    // (not the mapped `Table` shape used elsewhere via useTableStore), so it
+    // uses the generic row merger rather than mergeTableList/toTable.
+    //
+    // A postgres_changes payload never carries the joined `profiles`
+    // relation this panel renders (table.profiles?.full_name) — merging the
+    // raw payload row directly would silently drop the waiter's display name
+    // until the next full reload. Fixed with a targeted per-row refetch:
+    // tableService.getById already selects the same `profiles(id, full_name)`
+    // join as the initial getAll() fetch, so re-fetching just the one
+    // changed row keeps the join alive without reintroducing a full-panel
+    // reload or its loading spinner (setLoading is never called here — not
+    // doing so is the entire point of A-4). DELETE needs no fetch: the
+    // payload's `old.id` is enough for mergeRowList to filter the row out.
+    const unsubscribe = realtimeService.subscribeToTables((payload) => {
       log.info("Cambio en mesa recibido en panel de administración:", { payload })
 
-      // Para simplificar, recargamos todas las mesas cuando hay un cambio
-      // Esto asegura que tengamos todos los datos relacionados (como perfiles)
-      await loadTables()
+      const change = payload as unknown as RowChange
+
+      if (change.eventType === "DELETE") {
+        setTables((prevTables) => mergeRowList(prevTables, change))
+        return
+      }
+
+      const id = change.new?.id
+      if (typeof id !== "string" || !id) {
+        // No id to enrich — mergeRowList's own D10 contract already treats
+        // an id-less INSERT/UPDATE as a no-op.
+        setTables((prevTables) => mergeRowList(prevTables, change))
+        return
+      }
+
+      tableService
+        .getById(id)
+        .then((enrichedRow) => {
+          setTables((prevTables) =>
+            mergeRowList(prevTables, {
+              eventType: change.eventType,
+              new: enrichedRow as unknown as Record<string, unknown>,
+            }),
+          )
+        })
+        .catch((error) => {
+          // A row missing its waiter name is better than a dropped event —
+          // deliberately fall back to merging the raw payload row so the
+          // table's own fields (status, number, updated_at) still update
+          // even when the enrichment fetch itself fails.
+          log.error("Error al enriquecer mesa desde postgres_changes:", { error: String(error) })
+          setTables((prevTables) => mergeRowList(prevTables, change))
+        })
     })
 
     // Limpiar suscripción al desmontar

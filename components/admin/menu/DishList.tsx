@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -9,6 +10,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/log"
+import {
+  ADMIN_LIST_STALE_MS,
+  catalogKeys,
+  errorMessage,
+  fetchCategories,
+  fetchDishes,
+} from "@/lib/admin/catalog"
 import { Edit, Plus, Search, Trash, BookOpen } from "lucide-react"
 import {
   AlertDialog,
@@ -30,9 +38,7 @@ import { usePagination } from "@/hooks/use-pagination"
 
 export function DishList() {
   const { toast } = useToast()
-  const [dishes, setDishes] = useState<any[]>([])
-  const [categories, setCategories] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState("")
   const [openDialog, setOpenDialog] = useState(false)
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
@@ -40,39 +46,29 @@ export function DishList() {
   const [openRecipeDialog, setOpenRecipeDialog] = useState(false)
   const [recipeSelectedDish, setRecipeSelectedDish] = useState<any>(null)
 
-  const fetchData = async () => {
-    setLoading(true)
-    try {
-      // Fetch dishes
-      const { data: dishesData, error: dishesError } = await supabase.from("dishes").select("*").order("name")
-
-      if (dishesError) throw dishesError
-
-      // Fetch categories
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from("categories")
-        .select("*")
-        .order("name")
-
-      if (categoriesError) throw categoriesError
-
-      setDishes(dishesData || [])
-      setCategories(categoriesData || [])
-    } catch (error: any) {
-      log.error("Error fetching data:", { error: String(error) })
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: `Error al cargar los datos: ${error.message}`,
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+  // T9 (S1): two cached reads. `categories` is the SAME slot `CategoryList`
+  // reads, so visiting the Menú tab fetches it once for both lists instead of
+  // once per list per visit.
+  const { data: dishes = [], isLoading, isError, error } = useQuery<any[]>({
+    queryKey: catalogKeys.dishes,
+    queryFn: fetchDishes,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
+  const { data: categories = [] } = useQuery<any[]>({
+    queryKey: catalogKeys.categories,
+    queryFn: fetchCategories,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    if (!isError) return
+    log.error("Error fetching data:", { error: String(error) })
+    toast({
+      variant: "destructive",
+      title: "Error",
+      description: `Error al cargar los datos: ${errorMessage(error)}`,
+    })
+  }, [isError, error, toast])
 
   const handleEdit = (dish: any) => {
     setSelectedDish(dish)
@@ -92,7 +88,8 @@ export function DishList() {
         description: `El plato ${selectedDish.name} ha sido eliminado correctamente.`,
       })
 
-      fetchData()
+      // A recipe change can touch a dish's cost/availability too.
+      queryClient.invalidateQueries({ queryKey: catalogKeys.dishes })
     } catch (error: any) {
       log.error("Error deleting dish:", { error: String(error) })
       toast({
@@ -162,7 +159,7 @@ export function DishList() {
               dish={selectedDish}
               categories={categories}
               onSuccess={() => {
-                fetchData()
+                queryClient.invalidateQueries({ queryKey: catalogKeys.dishes })
                 handleDialogClose()
               }}
             />
@@ -180,7 +177,7 @@ export function DishList() {
           />
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="text-center py-4">Cargando platos...</div>
         ) : filteredDishes.length === 0 ? (
           <div className="text-center py-4 text-muted-foreground">
@@ -253,7 +250,7 @@ export function DishList() {
                 onOpenChange={setOpenRecipeDialog}
                 dish={recipeSelectedDish}
                 onSuccess={() => {
-                  fetchData()
+                  queryClient.invalidateQueries({ queryKey: catalogKeys.dishes })
                   setOpenRecipeDialog(false)
                 }}
               />

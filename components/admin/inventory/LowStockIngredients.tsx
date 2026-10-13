@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { log } from "@/lib/log"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Package } from "lucide-react"
-import { ingredientService } from "@/lib/supabase"
+import { ADMIN_LIST_STALE_MS, catalogKeys, errorMessage, fetchIngredients } from "@/lib/admin/catalog"
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { StockTransactionForm } from "./StockTransactionForm"
@@ -15,35 +16,33 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export function LowStockIngredients() {
   const { toast } = useToast()
-  const [ingredients, setIngredients] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [openStockDialog, setOpenStockDialog] = useState(false)
   const [selectedIngredient, setSelectedIngredient] = useState<any>(null)
   // Agregar un nuevo estado para controlar si se muestran todos los elementos
   const [showAll, setShowAll] = useState(false)
 
-  const fetchIngredients = async () => {
-    setLoading(true)
-    try {
-      const data = await ingredientService.getAll()
-      // Filtrar solo los ingredientes con stock bajo
-      const lowStockItems = data.filter((item) => item.stock <= item.min_stock)
-      setIngredients(lowStockItems)
-    } catch (error: any) {
-      log.error("Error fetching ingredients:", { error: String(error) })
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: `Error al cargar los ingredientes: ${error.message}`,
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+  // T9 (S1): the dashboard's stock alert and the Inventario sub-tab now read
+  // the SAME `ingredients` slot, so the dashboard does not pull the whole table
+  // on its own and the Inventario tab is a cache hit after the dashboard.
+  const { data: allIngredients = [], isLoading, isError, error } = useQuery<any[]>({
+    queryKey: catalogKeys.ingredients,
+    queryFn: fetchIngredients,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
 
   useEffect(() => {
-    fetchIngredients()
-  }, [])
+    if (!isError) return
+    log.error("Error fetching ingredients:", { error: String(error) })
+    toast({
+      variant: "destructive",
+      title: "Error",
+      description: `Error al cargar los ingredientes: ${errorMessage(error)}`,
+    })
+  }, [isError, error, toast])
+
+  // Filtrar solo los ingredientes con stock bajo
+  const ingredients = allIngredients.filter((item) => item.stock <= item.min_stock)
 
   const handleStockTransaction = (ingredient: any) => {
     setSelectedIngredient(ingredient)
@@ -53,13 +52,15 @@ export function LowStockIngredients() {
   const handleStockDialogClose = () => {
     setOpenStockDialog(false)
     setSelectedIngredient(null)
-    fetchIngredients() // Actualizar la lista después de cerrar
+    // A stock movement changes the low-stock alert AND the Inventario list:
+    // one key, one invalidation.
+    void queryClient.invalidateQueries({ queryKey: catalogKeys.ingredients })
   }
 
   // Reemplazar el indicador de carga simple por Skeletons
   // Buscar:
   // Reemplazar con:
-  if (loading) {
+  if (isLoading && ingredients.length === 0) {
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

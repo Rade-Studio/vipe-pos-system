@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Table as TableUI, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Printer, RefreshCw } from "lucide-react"
@@ -18,8 +19,11 @@ import {
   invoiceTendersFromPayment,
   legacyInvoiceFields,
 } from "@/lib/payments/invoice-tenders"
+import { invoicePlaceLabel, isDeliveryOrder } from "@/lib/delivery/kitchen"
 import { log } from "@/lib/log"
 import { useToast } from "@/components/ui/use-toast"
+import { localDayKey, startOfLocalDayMs } from "@/lib/admin/dates"
+import { mergeOrderLists, paidOrdersOn } from "@/lib/admin/orders"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Pagination } from "@/components/ui/pagination"
 import { ItemsPerPage } from "@/components/ui/items-per-page"
@@ -29,77 +33,70 @@ interface CompletedOrdersTableProps {
   selectedDate?: Date
 }
 
+/** Cache slot for "the paid orders of one local day". */
+export function completedOrdersQueryKey(selectedDate?: Date) {
+  return ["orders", "completed", localDayKey(selectedDate)] as const
+}
+
 export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps) {
   const orders = useOrderStore((s) => s.orders)
-  const tables = useTableStore((s) => s.tables)
   const profiles = useProfileStore((s) => s.profiles)
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast } = useToast()
 
   const [selectedInvoice, setSelectedInvoice] = useState<PrintableInvoice | null>(null)
   const [invoiceOpen, setInvoiceOpen] = useState(false)
-  const [dbOrders, setDbOrders] = useState<Order[]>([])
-  const [isLoading, setIsLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
 
-  // Función para cargar órdenes de la base de datos
-  const loadOrdersFromDB = async () => {
-    if (!selectedDate) return
-
-    setIsLoading(true)
-    try {
-      const fetchedOrders = await getOrdersByDate(selectedDate)
-      setDbOrders(fetchedOrders)
-    } catch (error) {
-      log.error("Error al cargar órdenes:", { error: String(error) })
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las órdenes de la base de datos",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // Cargar órdenes cuando cambia la fecha seleccionada
-  useEffect(() => {
-    if (selectedDate) {
-      loadOrdersFromDB()
-    } else {
-      setDbOrders([])
-    }
-  }, [selectedDate])
-
-  // Filtrar órdenes pagadas del estado local
-  const localCompletedOrders = orders.filter((order) => {
-    if (order.status !== "paid") return false
-
-    if (selectedDate) {
-      const orderDate = new Date(order.createdAt)
-      return (
-        orderDate.getFullYear() === selectedDate.getFullYear() &&
-        orderDate.getMonth() === selectedDate.getMonth() &&
-        orderDate.getDate() === selectedDate.getDate()
-      )
-    }
-
-    return true
+  // T9 (S1/S2): the day's orders are a QUERY keyed on the day, not local state
+  // behind a `useEffect`. The old version re-read the day on every mount (Radix
+  // unmounts this sub-tab on every tab switch) and replaced the whole table with
+  // skeletons while it did. `placeholderData: keepPreviousData` keeps the rows
+  // of the previous day on screen while a new day loads, and `isError` (not the
+  // discarded promise) reports a failed read through the same toast.
+  const {
+    data: dbOrders = [],
+    isLoading,
+    isFetching,
+    isError,
+    refetch,
+  } = useQuery<Order[]>({
+    queryKey: completedOrdersQueryKey(selectedDate),
+    queryFn: () => getOrdersByDate(selectedDate as Date),
+    enabled: Boolean(selectedDate),
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
   })
 
-  // Combinar órdenes locales y de la base de datos, evitando duplicados
-  const allOrders = useMemo(() => {
-    const combinedOrders = [...localCompletedOrders]
+  const loadOrdersFromDB = async () => {
+    await refetch()
+  }
 
-    // Agregar órdenes de la base de datos que no estén ya en el estado local
-    dbOrders.forEach((dbOrder) => {
-      if (!combinedOrders.some((order) => order.id === dbOrder.id)) {
-        combinedOrders.push(dbOrder)
-      }
+  // A failed read is reported once per failure, exactly like the old
+  // hand-rolled loader did (first load and manual refresh alike). Reading
+  // `isError` instead of awaiting the promise keeps the message out of an
+  // unhandled rejection.
+  useEffect(() => {
+    if (!isError) return
+    log.error("Error al cargar órdenes:", { error: "getOrdersByDate failed" })
+    toast({
+      title: "Error",
+      description: "No se pudieron cargar las órdenes de la base de datos",
+      variant: "destructive",
     })
+  }, [isError, toast])
 
-    // Ordenar por fecha, más reciente primero
-    return combinedOrders.sort((a, b) => {
+  // Paid orders the order store already holds for that day, merged by id with
+  // the day's query (unchanged contract: the store list is a subset of what
+  // the query returns, and a store-only paid order still shows).
+  const localCompletedOrders = useMemo(() => {
+    if (!selectedDate) return orders.filter((order) => order.status === "paid")
+    return paidOrdersOn(orders, startOfLocalDayMs(selectedDate))
+  }, [orders, selectedDate])
+
+  // The rows of the selected day, newest first.
+  const allOrders = useMemo(() => {
+    return [...mergeOrderLists(localCompletedOrders, dbOrders)].sort((a, b) => {
       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
       const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
       return dateB - dateA
@@ -125,7 +122,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     const allMatches = [...byId, ...byWaiter]
     const uniqueOrders = Array.from(new Map(allMatches.map((o: Order) => [o.id, o])).values())
     return uniqueOrders
-  }, [allOrders, searchTerm, tables, profiles])
+  }, [allOrders, searchTerm, profiles])
 
   // Usar el hook de paginación
   const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination({
@@ -134,12 +131,16 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
   })
 
   const handlePrintInvoice = async (order: Order) => {
-    // Encontrar la mesa correspondiente
-    const table = tables.find((t) => t.id === order.tableId)
+    // Encontrar la mesa correspondiente (D6 Rule A: handler-only read, no subscription).
+    // Async porque el flujo de pagos multi-método carga el catálogo antes de armar la factura.
+    const table = useTableStore.getState().getTableById(order.tableId)
     // Encontrar el mesero correspondiente
     const waiter = profiles.find((p) => p.id === order.waiter)
+    // Un domicilio no tiene mesa: se factura como DOMICILIO y no avisa
+    // que falte la mesa. El mesero faltante sigue avisando como siempre.
+    const missingTable = !table && !isDeliveryOrder(order)
 
-    if (!table || !waiter) {
+    if (missingTable || !waiter) {
       log.error("Mesa o mesero no encontrado para la orden:", { orderId: order.id })
       toast({
         title: "Advertencia",
@@ -220,7 +221,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
         totalDiscounts: order.bill?.totalDiscounts || 0,
       },
       waiter: waiter?.name || "Desconocido",
-      table: table?.number.toString() || "N/A",
+      table: invoicePlaceLabel(order, table ?? null),
       paymentMethod: legacyPaymentMethod ?? (order.paymentMethod || "cash"),
       cashReceived: legacyCashReceived,
       cashChange: legacyCashChange,
@@ -236,8 +237,8 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Órdenes Completadas</h2>
-        <Button variant="outline" size="sm" onClick={loadOrdersFromDB} disabled={isLoading || !selectedDate}>
-          <RefreshCw className={`h-4 w-4 mr-1 ${isLoading ? "animate-spin" : ""}`} />
+        <Button variant="outline" size="sm" onClick={loadOrdersFromDB} disabled={isFetching || !selectedDate}>
+          <RefreshCw className={`h-4 w-4 mr-1 ${isFetching ? "animate-spin" : ""}`} />
           Actualizar
         </Button>
       </div>
@@ -269,7 +270,8 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              // Mostrar skeletons durante la carga
+              // Skeletons only when there is nothing to show yet: a refetch
+              // (Actualizar, or coming back to the sub-tab) keeps the rows.
               Array(5)
                 .fill(0)
                 .map((_, index) => (

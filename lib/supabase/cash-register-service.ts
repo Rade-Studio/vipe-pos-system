@@ -153,6 +153,54 @@ export const cashRegisterService = {
     }
   },
 
+  /**
+   * T10 (S1): the OPEN/CLOSED check for the screens that only need to know
+   * whether a register is open (the delivery board and the cashier delivery
+   * panel, before they open a payment). ONE request: `getCurrentRegister`
+   * issues three (the register row plus an unbounded read of
+   * `payment_transactions` and `cash_transactions`), and neither of those two
+   * histories is used to decide whether a payment may start.
+   *
+   * The returned `CashRegister` carries empty transaction arrays on purpose —
+   * the row exists so the store can answer `isRegisterOpen()` and hand the
+   * payment dialog its `cash_register_id`. A screen that renders transaction
+   * history must call `getCurrentRegister` instead.
+   */
+  async getOpenRegister(): Promise<CashRegister | null> {
+    try {
+      const { data, error } = await supabase
+        .from("cash_registers")
+        .select("id, opening_timestamp, initial_cash, status, closing_timestamp, created_at, updated_at")
+        .eq("status", "open")
+        .order("opening_timestamp", { ascending: false })
+        .limit(1)
+        .single()
+
+      if (error) {
+        // No hay caja abierta, no es un error (same contract as above).
+        if (error.code === "PGRST116") {
+          return null
+        }
+        throw error
+      }
+
+      return {
+        id: data.id,
+        openingTimestamp: new Date(data.opening_timestamp),
+        closingTimestamp: data.closing_timestamp ? new Date(data.closing_timestamp) : undefined,
+        initialCash: data.initial_cash,
+        status: data.status as "open" | "closed",
+        transactions: [],
+        cashTransactions: [],
+        created_at: data.created_at ? new Date(data.created_at) : undefined,
+        updated_at: data.updated_at ? new Date(data.updated_at) : undefined,
+      }
+    } catch (error) {
+      log.error("Error en getOpenRegister:", { error: String(error) })
+      throw error
+    }
+  },
+
   async getAllRegisters(): Promise<CashRegister[]> {
     try {
       const { data, error } = await supabase

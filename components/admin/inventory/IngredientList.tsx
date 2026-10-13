@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -11,6 +12,14 @@ import { StockTransactionForm } from "./StockTransactionForm"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { ingredientService } from "@/lib/supabase"
+import {
+  ADMIN_LIST_STALE_MS,
+  catalogKeys,
+  errorMessage,
+  fetchIngredientCategories,
+  fetchIngredients,
+  withCategoryName,
+} from "@/lib/admin/catalog"
 import { AlertCircle, Edit, Plus, Search, Trash, Package, Filter } from "lucide-react"
 import {
   AlertDialog,
@@ -27,7 +36,6 @@ import { StockTransactionsList } from "./StockTransactionsList"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { ingredientCategoryService } from "@/lib/supabase"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/utils/helpers"
 import { Pagination } from "@/components/ui/pagination"
@@ -36,9 +44,7 @@ import { usePagination } from "@/hooks/use-pagination"
 
 export function IngredientList() {
   const { toast } = useToast()
-  const [ingredients, setIngredients] = useState<any[]>([])
-  const [categories, setCategories] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [showLowStock, setShowLowStock] = useState(false)
@@ -48,45 +54,45 @@ export function IngredientList() {
   const [selectedIngredient, setSelectedIngredient] = useState<any>(null)
   const [activeTab, setActiveTab] = useState("ingredients")
 
-  const fetchIngredients = async () => {
-    setLoading(true)
-    try {
-      // Primero obtenemos las categorías
-      const categoriesData = await ingredientCategoryService.getAll()
-
-      // Luego obtenemos los ingredientes
-      const data = await ingredientService.getAll()
-
-      // Enriquecemos los ingredientes con los nombres de las categorías
-      const enrichedIngredients = data.map((ingredient) => {
-        const category = categoriesData.find((cat) => cat.id === ingredient.category_id)
-        return {
-          ...ingredient,
-          category: category?.name || "Sin categoría",
-        }
-      })
-
-      setIngredients(enrichedIngredients)
-
-      // Extraer categorías únicas para el filtro
-      const uniqueCategories = Array.from(new Set(categoriesData.map((cat) => cat.name))).filter(Boolean) as string[]
-
-      setCategories(uniqueCategories)
-    } catch (error: any) {
-      log.error("Error fetching ingredients:", { error: String(error) })
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: `Error al cargar los ingredientes: ${error.message}`,
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+  // T9 (S1): cached reads. `ingredients` is the SAME slot the dashboard's
+  // low-stock alert reads, so visiting Inventario after the Dashboard costs
+  // zero requests, and a revisit inside the stale window costs zero too.
+  const { data: rawIngredients = [], isLoading, isError, error } = useQuery<any[]>({
+    queryKey: catalogKeys.ingredients,
+    queryFn: fetchIngredients,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
+  const { data: ingredientCategories = [] } = useQuery<any[]>({
+    queryKey: catalogKeys.ingredientCategories,
+    queryFn: fetchIngredientCategories,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
 
   useEffect(() => {
-    fetchIngredients()
-  }, [])
+    if (!isError) return
+    log.error("Error fetching ingredients:", { error: String(error) })
+    toast({
+      variant: "destructive",
+      title: "Error",
+      description: `Error al cargar los ingredientes: ${errorMessage(error)}`,
+    })
+  }, [isError, error, toast])
+
+  // Enriched with the category NAME the list renders, exactly as before.
+  const ingredients = useMemo(
+    () => rawIngredients.map((ingredient) => withCategoryName(ingredient, ingredientCategories)),
+    [rawIngredients, ingredientCategories],
+  )
+
+  // Categorías únicas para el filtro
+  const categories = useMemo(
+    () =>
+      Array.from(new Set(ingredientCategories.map((cat) => cat.name))).filter(Boolean) as string[],
+    [ingredientCategories],
+  )
+
+  const invalidateIngredients = () =>
+    queryClient.invalidateQueries({ queryKey: catalogKeys.ingredients })
 
   const handleEdit = (ingredient: any) => {
     setSelectedIngredient(ingredient)
@@ -109,7 +115,7 @@ export function IngredientList() {
         description: `El ingrediente ${selectedIngredient.name} ha sido eliminado correctamente.`,
       })
 
-      fetchIngredients()
+      invalidateIngredients()
     } catch (error: any) {
       log.error("Error deleting ingredient:", { error: String(error) })
       toast({
@@ -184,7 +190,7 @@ export function IngredientList() {
               <IngredientForm
                 ingredient={selectedIngredient}
                 onSuccess={() => {
-                  fetchIngredients()
+                  invalidateIngredients()
                   handleDialogClose()
                 }}
               />
@@ -266,7 +272,7 @@ export function IngredientList() {
               </div>
             </div>
 
-            {loading ? (
+            {isLoading ? (
               <div className="rounded-md border">
                 <div className="p-4">
                   <div className="space-y-3">
@@ -418,7 +424,7 @@ export function IngredientList() {
                 <StockTransactionForm
                   ingredientId={selectedIngredient?.id}
                   onSuccess={() => {
-                    fetchIngredients()
+                    invalidateIngredients()
                     handleStockDialogClose()
                   }}
                 />

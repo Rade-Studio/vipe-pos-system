@@ -1,4 +1,5 @@
 import type { CartItem, Order, Profile, PaymentMethod } from "@/types"
+import { orderTypeFromRow } from "@/lib/delivery/kitchen"
 import { supabase as clientSupabase } from "./client"
 import ingredientTransactionService from "./ingredient-transaction-service"
 import { log } from "@/lib/log"
@@ -985,6 +986,7 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
         return {
           id: order.id,
           tableId: order.table_id,
+          orderType: orderTypeFromRow(order),
           waiter: order.waiter_id,
           status: order.status,
           items: order.order_items || [],

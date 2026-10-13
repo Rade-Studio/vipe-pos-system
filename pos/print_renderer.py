@@ -49,6 +49,21 @@ Invoice:
         ]
     }
 
+Delivery (domicilios) — additive. Both payloads may carry an optional
+`delivery` block; payloads without it render exactly as before:
+    "delivery": {
+        "customerName": "Ana", "phone": "3101234567",
+        "address": "Calle 10 #5-20, Centro (Porton verde)",
+        "notes": "Sin cebolla",              # optional
+        "paymentMode": "prepaid" | "cash_on_delivery",
+        "cashChangeFor": 50000,              # optional, only for cash_on_delivery
+        "deliveryFee": 3000,
+    }
+Kitchen tickets print `COMANDA — DOMICILIO` + `Cliente:` instead of
+`Mesa N` (`table` may be null) and the order notes. Invoices print the
+customer, phone and address instead of MESA/MESERO, a `DOMICILIO:` fee
+line that is part of TOTAL SIN PROPINA, and `CAMBIO PARA:` for COD.
+
 When `invoice.tenders` is present and non-empty, the ticket prints
 `FORMAS DE PAGO:` followed by one `NAME  $amount` line per tender
 (amount right-padded to 10 chars), a per-cash-line `RECIBIDO / CAMBIO`
@@ -95,15 +110,25 @@ def render_kitchen_order(order: dict) -> KitchenOrderRender:
     table = order.get("table", "N/A")
     waiter = order.get("waiter", "N/A")
     items = order.get("items", [])
+    delivery = _delivery_block(order.get("delivery"))
 
     date_str = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    lines: list[PrintLine] = [
-        {"text": f"COMANDA — Mesa {table}", "bold": True, "align": "center"},
-        {"text": f"Fecha:  {date_str}", "bold": False, "align": "left"},
-        {"text": f"Mesero: {waiter}", "bold": False, "align": "left"},
-        {"text": "--------------------------------", "bold": False, "align": "center"},
-    ]
+    if delivery is None:
+        lines: list[PrintLine] = [
+            {"text": f"COMANDA — Mesa {table}", "bold": True, "align": "center"},
+            {"text": f"Fecha:  {date_str}", "bold": False, "align": "left"},
+            {"text": f"Mesero: {waiter}", "bold": False, "align": "left"},
+            {"text": "--------------------------------", "bold": False, "align": "center"},
+        ]
+    else:
+        lines = [
+            {"text": "COMANDA — DOMICILIO", "bold": True, "align": "center"},
+            {"text": f"Fecha:  {date_str}", "bold": False, "align": "left"},
+            {"text": f"Cliente: {delivery.get('customerName') or 'N/A'}", "bold": False, "align": "left"},
+            {"text": f"Mesero: {waiter}", "bold": False, "align": "left"},
+            {"text": "--------------------------------", "bold": False, "align": "center"},
+        ]
 
     for item in items:
         name = (item.get("name") or "").upper()
@@ -112,6 +137,10 @@ def render_kitchen_order(order: dict) -> KitchenOrderRender:
         lines.append({"text": f"{name:<30} x{qty}", "bold": False, "align": "left"})
         if comments:
             lines.append({"text": f"  {comments.capitalize()}", "bold": False, "align": "left"})
+
+    notes = ((delivery or {}).get("notes") or "").strip()
+    if notes:
+        lines.append({"text": f"NOTAS: {notes}", "bold": False, "align": "left"})
 
     lines.append({"text": "--------------------------------", "bold": False, "align": "center"})
 
@@ -195,14 +224,21 @@ def render_invoice(invoice_number: str, invoice: dict, display_items: list[dict]
         lines.append({"text": text, "bold": False, "align": "center"})
 
     # Invoice info
+    delivery = _delivery_block(invoice.get("delivery"))
     date_str = _format_invoice_date(invoice.get("date", ""))
-    for label, value in [
+    info_rows = [
         ("FACTURA:", invoice.get("invoiceNumber", invoice_number)),
         ("FECHA:", date_str),
-        ("MESA:", invoice.get("table", "N/A")),
-        ("MESERO:", invoice.get("waiter", "N/A")),
-    ]:
+    ]
+    if delivery is None:
+        info_rows += [
+            ("MESA:", invoice.get("table", "N/A")),
+            ("MESERO:", invoice.get("waiter", "N/A")),
+        ]
+    for label, value in info_rows:
         lines.append({"text": f"{label:<12}{value}", "bold": False, "align": "left"})
+    if delivery is not None:
+        lines.extend(_delivery_invoice_lines(delivery))
 
     lines.append({"text": "--------------------------------", "bold": False, "align": "center"})
     lines.append({"text": "CANT DESCRIPCION            IMPORTE", "bold": False, "align": "left"})
@@ -238,7 +274,11 @@ def render_invoice(invoice_number: str, invoice: dict, display_items: list[dict]
             }
         )
 
-    subtotal = bill.get("subtotal", 0) + bill.get("tax", 0)
+    fee = delivery.get("deliveryFee", 0) if delivery is not None else 0
+    if delivery is not None:
+        lines.append({"text": f"DOMICILIO: {_format_currency(fee)}", "bold": False, "align": "left"})
+
+    subtotal = bill.get("subtotal", 0) + bill.get("tax", 0) + fee
     lines.append(
         {"text": f"TOTAL SIN PROPINA: {_format_currency(subtotal)}", "bold": False, "align": "left"}
     )
@@ -375,6 +415,34 @@ def build_invoice_bytes(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _delivery_block(raw):
+    """Return the `delivery` payload block when it is a dict, else None."""
+    if not isinstance(raw, dict):
+        return None
+    fee = raw.get("deliveryFee")
+    if not isinstance(fee, (int, float)) or isinstance(fee, bool):
+        fee = 0
+    return {**raw, "deliveryFee": fee}
+
+
+def _delivery_invoice_lines(delivery: dict) -> list[PrintLine]:
+    """Customer / phone / address (and COD change) rows of a delivery invoice."""
+    rows = [
+        f"CLIENTE: {delivery.get('customerName') or 'N/A'}",
+        f"TEL: {delivery.get('phone') or 'N/A'}",
+        f"DIRECCION: {delivery.get('address') or 'N/A'}",
+    ]
+    change_for = delivery.get("cashChangeFor")
+    if (
+        delivery.get("paymentMode") == "cash_on_delivery"
+        and isinstance(change_for, (int, float))
+        and not isinstance(change_for, bool)
+        and change_for > 0
+    ):
+        rows.append(f"CAMBIO PARA: {_format_currency(change_for)}")
+    return [{"text": text, "bold": False, "align": "left"} for text in rows]
+
 
 def _format_currency(value: float) -> str:
     """Format integer cents as Colombian peso string (no decimals, dot separator)."""

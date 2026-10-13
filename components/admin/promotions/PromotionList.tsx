@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +13,7 @@ import { PlusCircle, Edit, Trash2, AlertCircle } from "lucide-react"
 import { PromotionForm } from "./PromotionForm"
 import { promotionService, type Promotion } from "@/lib/supabase/promotion-service"
 import { useToast } from "@/hooks/use-toast"
+import { ADMIN_LIST_STALE_MS, catalogKeys, fetchPromotions } from "@/lib/admin/catalog"
 import {
   Dialog,
   DialogContent,
@@ -23,35 +25,36 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export function PromotionList() {
-  const [promotions, setPromotions] = useState<Promotion[]>([])
-  const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
   const [formOpen, setFormOpen] = useState(false)
   const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [promotionToDelete, setPromotionToDelete] = useState<Promotion | null>(null)
-  const { toast } = useToast()
+
+  // T9 (S1): cached read. The old `useEffect` + local state re-read every
+  // promotion on every visit to the Menú sub-tab and showed "Cargando
+  // promociones..." again each time.
+  const {
+    data: promotions = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery<Promotion[]>({
+    queryKey: catalogKeys.promotions,
+    queryFn: fetchPromotions,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
 
   useEffect(() => {
-    loadPromotions()
-  }, [])
-
-  const loadPromotions = async () => {
-    try {
-      setLoading(true)
-      // Usar el método getAllPromotions en lugar de acceder directamente a supabase
-      const data = await promotionService.getAllPromotions()
-      setPromotions((data || []) as unknown as Promotion[])
-    } catch (error) {
-      log.error("Error loading promotions:", { error: String(error) })
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las promociones",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+    if (!isError) return
+    log.error("Error loading promotions:", { error: String(error) })
+    toast({
+      title: "Error",
+      description: "No se pudieron cargar las promociones",
+      variant: "destructive",
+    })
+  }, [isError, error, toast])
 
   const handleCreatePromotion = () => {
     setSelectedPromotion(null)
@@ -73,7 +76,7 @@ export function PromotionList() {
 
     try {
       await promotionService.deletePromotion(promotionToDelete.id)
-      setPromotions((prev) => prev.filter((p) => p.id !== promotionToDelete.id))
+      queryClient.invalidateQueries({ queryKey: catalogKeys.promotions })
       toast({
         title: "Promoción eliminada",
         description: "La promoción ha sido eliminada correctamente",
@@ -92,7 +95,7 @@ export function PromotionList() {
   }
 
   const handleFormSubmit = async () => {
-    await loadPromotions()
+    await queryClient.invalidateQueries({ queryKey: catalogKeys.promotions })
     toast({
       title: selectedPromotion ? "Promoción actualizada" : "Promoción creada",
       description: selectedPromotion
@@ -120,7 +123,7 @@ export function PromotionList() {
       <CardContent>
         {promotions.length === 0 ? (
           <div className="text-center py-8">
-            {loading ? (
+            {isLoading ? (
               <p>Cargando promociones...</p>
             ) : (
               <Alert>

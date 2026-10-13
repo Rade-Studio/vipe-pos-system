@@ -1,11 +1,13 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import type React from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
+import { useShallow } from "zustand/react/shallow"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -30,6 +32,19 @@ import { log } from "@/lib/log"
 import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
 import { createSingleFlight } from "@/lib/payments/single-flight"
 import { PaymentServiceError, splitOrder, undoSplit } from "@/lib/supabase/payments-service"
+import {
+  CASHIER_ORDER_STATUSES,
+  applyCashierOrderEvent,
+  billSourceFromOrder,
+  cashierOrdersQueryKey,
+  deriveCashierViews,
+  toCashierOrder,
+} from "@/lib/cashier/orders"
+import type { CashierOrderRow } from "@/lib/cashier/orders"
+import { DeliveryPaymentsPanel } from "@/components/cashier/DeliveryPaymentsPanel"
+
+/** Stable empty reference so the query's default value never re-allocates. */
+const NO_ORDERS: Order[] = []
 
 interface CashierViewProps {
   profile: Profile
@@ -45,7 +60,6 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [showCompletedInvoice, setShowCompletedInvoice] = useState(false)
   const [completedInvoiceData, setCompletedInvoiceData] = useState<PrintableInvoice | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
   const [isSplitting, setIsSplitting] = useState(false)
   const [isUndoingSplit, setIsUndoingSplit] = useState(false)
   // Synchronous gates: the state flags above only drive the UI.
@@ -53,206 +67,111 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const [undoGate] = useState(createSingleFlight)
   const [partialParentItems, setPartialParentItems] = useState<CartItem[]>([])
 
-  // Estados para almacenar datos en tiempo real
-  const [activeOrders, setActiveOrders] = useState<Order[]>([])
-  const [kitchenOrders, setKitchenOrders] = useState<Order[]>([])
-  const [deliveredOrders, setDeliveredOrders] = useState<Order[]>([])
-  const [partialOrders, setPartialOrders] = useState<Order[]>([])
-  const [ordersByTable, setOrdersByTable] = useState<Record<string, Order[]>>({})
-  const [refreshing, setRefreshing] = useState(false)
+  // The whole screen renders from ONE loaded list (mount, "Actualizar" and the
+  // realtime patch share this cache slot); every bucket the view shows is
+  // derived from it in `lib/cashier/orders.ts`, so there is nothing left to
+  // re-sync by hand after a payment, a split or an undo.
+  const [registerSettled, setRegisterSettled] = useState(false)
 
-  
-
-  // Fetch all orders via React Query
-  const fetchAllOrders = async () => {
-    const [activeData, kitchenData, deliveredData] = await Promise.all([
-      orderService.getByStatus(["active"]),
-      orderService.getByStatus(["kitchen"]),
-      orderService.getByStatus(["delivered"]),
-    ])
-
-    const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
-      id: dbOrder.id,
-      tableId: dbOrder.table_id,
-      items: dbOrder.order_items.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        comments: item.comments || undefined,
-        categoryId: "",
-      })),
-      status: dbOrder.status,
-      bill: {
-        subtotal: dbOrder.subtotal,
-        tax: dbOrder.tax,
-        taxPercentage: dbOrder.tax_percentage,
-        tip: dbOrder.tip,
-        tipPercentage: dbOrder.tip_percentage,
-        total: dbOrder.total,
-        totalDiscounts: dbOrder.total_discounts ?? 0,
-      },
-      waiter: dbOrder.waiter_id ?? "",
-      createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
-      isPartialOrder: dbOrder.is_partial_order || false,
-      parentOrderId: dbOrder.parent_order_id || null,
-    })
-
-    const activeOrdersConverted = activeData.map(convertDBOrderToAppOrder)
-    const kitchenOrdersConverted = kitchenData.map(convertDBOrderToAppOrder)
-    const deliveredOrdersConverted = deliveredData.map(convertDBOrderToAppOrder)
-    const allOrders = [...activeOrdersConverted, ...kitchenOrdersConverted, ...deliveredOrdersConverted]
-    const partialOrdersFiltered = allOrders.filter((order) => order.isPartialOrder)
-    const ordersByTableGrouped = allOrders
-      .filter((order) => !order.isPartialOrder)
-      .reduce(
-        (acc, order) => {
-          if (!acc[order.tableId]) {
-            acc[order.tableId] = []
-          }
-          acc[order.tableId].push(order)
-          return acc
-        },
-        {} as Record<string, Order[]>,
-      )
-
-    return { activeOrdersConverted, kitchenOrdersConverted, deliveredOrdersConverted, partialOrdersFiltered, ordersByTableGrouped }
+  // ONE request for the three statuses the cashier lists (S1). It used to be
+  // three `getByStatus` calls, one per status, feeding three arrays plus a
+  // by-table group that every refresh had to re-sync.
+  const fetchCashierOrders = async (): Promise<Order[]> => {
+    const rows = (await orderService.getByStatus([...CASHIER_ORDER_STATUSES])) as CashierOrderRow[]
+    return rows.map(toCashierOrder)
   }
 
-  const { data: ordersData } = useQuery({
-    queryKey: ['orders', 'cashier'],
-    queryFn: fetchAllOrders,
+  const { data: orders = NO_ORDERS, isLoading, isFetching } = useQuery<Order[]>({
+    queryKey: cashierOrdersQueryKey,
+    queryFn: fetchCashierOrders,
   })
 
-  const tables = useTableStore((s) => s.tables)
+  // Active / kitchen / delivered / partial / by-table, all derived. A realtime
+  // status change re-buckets the row here, with no refetch.
+  const { partial: partialOrders, byTable: ordersByTable } = useMemo(
+    () => deriveCashierViews(orders),
+    [orders],
+  )
+
+  // The order the payment dialog charges: the very row the card rendered, so
+  // opening the dialog never re-reads it.
+  const selectedOrder = useMemo(
+    () => (selectedOrderId ? orders.find((order) => order.id === selectedOrderId) : undefined),
+    [orders, selectedOrderId],
+  )
+
+  // D6 Rule B: render-path reads project to a primitive (table number) via a
+  // shallow-compared lookup map, never to the full `tables` array — see design.md D6.
+  const tableNumberById = useTableStore(
+    useShallow((s) => {
+      const map: Record<string, number> = {}
+      for (const t of s.tables) map[t.id] = t.number
+      return map
+    }),
+  )
   const profiles = useProfileStore((s) => s.profiles)
 
   const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
 
-  // Función para cargar órdenes desde la base de datos
-  const loadOrdersFromDB = useCallback(async () => {
-    setIsLoading(true)
+  // Función para refrescar manualmente los datos
+  //
+  // A refresh invalidates the ONE orders query. It never flips a local
+  // `isLoading`: React Query keeps the previous data while it refetches, so the
+  // "Órdenes" tab (and the delivery panel above it) stay mounted instead of
+  // being replaced by skeletons on every payment, split, undo or manual
+  // refresh (S2). The same call backs the "Actualizar" button, whose spinner is
+  // driven by the query's real `isFetching`.
+  const refreshOrders = useCallback(async () => {
     try {
-      // Cargar órdenes por estado en paralelo para mejorar el rendimiento
-      const [activeOrdersData, kitchenOrdersData, deliveredOrdersData] = await Promise.all([
-        orderService.getByStatus(["active"]),
-        orderService.getByStatus(["kitchen"]),
-        orderService.getByStatus(["delivered"]),
-      ])
-
-      // Convertir datos de la BD al formato de la aplicación
-      const convertDBOrderToAppOrder = (dbOrder: any): Order => ({
-        id: dbOrder.id,
-        tableId: dbOrder.table_id ?? "",
-        items: dbOrder.order_items.map((item: any) => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          comments: item.comments || undefined,
-          categoryId: "",
-        })),
-        status: dbOrder.status,
-        bill: {
-          subtotal: dbOrder.subtotal,
-          tax: dbOrder.tax,
-          taxPercentage: dbOrder.tax_percentage,
-          tip: dbOrder.tip,
-          tipPercentage: dbOrder.tip_percentage,
-          total: dbOrder.total,
-          totalDiscounts: dbOrder.total_discounts ?? 0,
-        },
-        waiter: dbOrder.waiter_id ?? "",
-        createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
-        isPartialOrder: dbOrder.is_partial_order || false,
-        parentOrderId: dbOrder.parent_order_id || null,
-      } as unknown as Order)
-
-      // Convertir todas las órdenes
-      const activeOrdersConverted = activeOrdersData.map(convertDBOrderToAppOrder)
-      const kitchenOrdersConverted = kitchenOrdersData.map(convertDBOrderToAppOrder)
-      const deliveredOrdersConverted = deliveredOrdersData.map(convertDBOrderToAppOrder)
-
-      // Combinar todas las órdenes
-      const allOrders = [...activeOrdersConverted, ...kitchenOrdersConverted, ...deliveredOrdersConverted]
-
-      // Filtrar órdenes parciales
-      const partialOrdersFiltered = allOrders.filter((order) => order.isPartialOrder)
-
-      // Agrupar órdenes por mesa (excluyendo órdenes parciales)
-      const ordersByTableGrouped = allOrders
-        .filter((order) => !order.isPartialOrder)
-        .reduce(
-          (acc, order) => {
-            if (!acc[order.tableId]) {
-              acc[order.tableId] = []
-            }
-            acc[order.tableId].push(order)
-            return acc
-          },
-          {} as Record<string, Order[]>,
-        )
-
-      // Actualizar estados
-      setActiveOrders(activeOrdersConverted)
-      setKitchenOrders(kitchenOrdersConverted)
-      setDeliveredOrders(deliveredOrdersConverted)
-      setPartialOrders(partialOrdersFiltered)
-      setOrdersByTable(ordersByTableGrouped)
+      await queryClient.invalidateQueries({ queryKey: cashierOrdersQueryKey })
     } catch (error) {
       log.error("Error al cargar órdenes:", { error: String(error) })
       toast.error("Error al cargar órdenes desde la base de datos")
-    } finally {
-      setIsLoading(false)
-      setRefreshing(false)
     }
   }, [])
 
-  // Función para refrescar manualmente los datos
-  const handleRefresh = () => {
-    setRefreshing(true)
-    queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })
-    setRefreshing(false)
-  }
-
-  // Sync orders data from React Query to local state
-  useEffect(() => {
-    if (ordersData) {
-      setActiveOrders(ordersData.activeOrdersConverted)
-      setKitchenOrders(ordersData.kitchenOrdersConverted)
-      setDeliveredOrders(ordersData.deliveredOrdersConverted)
-      setPartialOrders(ordersData.partialOrdersFiltered)
-      setOrdersByTable(ordersData.ordersByTableGrouped)
-    }
-  }, [ordersData])
-
   // Cargar datos de caja al montar y suscribirse a realtime
   useEffect(() => {
-    loadCurrentRegister()
+    // The open register is owned by this screen (T5): the "Transacciones" tab
+    // and `DeliveryPaymentsPanel` read it from the store instead of loading it
+    // again. `registerSettled` lets the tab keep its spinner until it is known.
+    let alive = true
+    void Promise.resolve(loadCurrentRegister()).finally(() => {
+      if (alive) setRegisterSettled(true)
+    })
 
     // Suscribirse a cambios en órdenes
     const unsubscribe = realtimeService.subscribeToOrders((payload) => {
       log.info("Cambio en orden recibido:", { payload })
 
-      // Invalidate queries so React Query refetches in background
-      queryClient.invalidateQueries({ queryKey: ['orders', 'cashier'] })
+      // S5/T8: the payload is applied IN PLACE on the single orders cache slot
+      // the screen renders from. The buckets are derived from that list, so an
+      // `active -> kitchen` move re-buckets the card and a move to `paid` takes
+      // it off the screen — with no `invalidateQueries` and no refetch.
+      // D7 consequence 2: only fields the broadcast actually sent are carried,
+      // so an UPDATE that omits items/bill keeps them by reference.
+      // Delivery invariant (odd/tasks/domicilios.md S13/S14): the shared
+      // `wireRowToPartialOrder` maps the wire row with
+      // `orderType: orderTypeFromRow(row)` — the same mapping the initial-load
+      // converter uses — so a domicilio arriving over realtime keeps its
+      // delivery flag instead of being labelled "Mesa ?".
+      queryClient.setQueryData<Order[]>([...cashierOrdersQueryKey], (prev: Order[] | undefined) =>
+        applyCashierOrderEvent(prev ?? [], payload as { eventType: string }),
+      )
     })
 
     // Limpiar suscripción al desmontar
     return () => {
+      alive = false
       unsubscribe()
     }
   }, [loadCurrentRegister])
 
   // Función para obtener una orden por ID
   const getOrderById = useCallback(
-    (orderId: string): Order | undefined => {
-      // Buscar en todas las órdenes
-      const allOrders = [...activeOrders, ...kitchenOrders, ...deliveredOrders]
-      return allOrders.find((order) => order.id === orderId)
-    },
-    [activeOrders, kitchenOrders, deliveredOrders],
+    (orderId: string): Order | undefined => orders.find((order) => order.id === orderId),
+    [orders],
   )
 
   // Función para obtener órdenes por mesa
@@ -266,8 +185,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   // Función para obtener el total de una mesa
   const getTableTotalAmount = useCallback(
     (tableId: string): number => {
-      const orders = getOrdersByTable(tableId)
-      return orders.reduce((total, order) => total + order.bill.total, 0)
+      const tableOrders = getOrdersByTable(tableId)
+      return tableOrders.reduce((total, order) => total + order.bill.total, 0)
     },
     [getOrdersByTable],
   )
@@ -317,8 +236,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         setSelectedTableId(null)
         setPaymentMethodDialogOpen(false)
 
-        // Recargar órdenes
-        await loadOrdersFromDB()
+        // Recargar órdenes (sin parpadeo: la lista sigue montada)
+        await refreshOrders()
       } catch (error) {
         log.error("Error al procesar el pago:", { error: String(error) })
       }
@@ -442,7 +361,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
 
         toast.success('Se ha creado una nueva orden parcial para el pago')
         setPartialPaymentDialogOpen(false)
-        await loadOrdersFromDB()
+        await refreshOrders()
       } catch (error) {
         if (error instanceof PaymentServiceError) {
           log.error('Error al crear la orden parcial:', { kind: error.kind, message: error.message })
@@ -466,7 +385,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         await undoSplit({ childOrderId: partialOrderId })
 
         toast.success('Los productos han sido devueltos a la orden original')
-        await loadOrdersFromDB()
+        await refreshOrders()
       } catch (error) {
         if (error instanceof PaymentServiceError) {
           log.error('Error al eliminar la orden parcial:', { kind: error.kind, message: error.message })
@@ -486,7 +405,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     const order = getOrderById(orderId)
     if (!order) return
 
-    const table = tables.find((t) => t.id === order.tableId)
+    // D6 Rule A: handler-only read, no subscription needed at the point of use.
+    const table = useTableStore.getState().getTableById(order.tableId)
     const waiter = profiles.find((p) => p.id === order.waiter)
 
     if (!table || !waiter) return
@@ -523,9 +443,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   // Calcular datos para análisis
   const calculateAnalytics = useCallback(() => {
     // Obtener todas las órdenes pagadas
-    const paidOrders = [...activeOrders, ...kitchenOrders, ...deliveredOrders].filter(
-      (order) => order.status === "paid",
-    )
+    const paidOrders = orders.filter((order) => order.status === "paid")
 
     // Total de ventas
     const totalSales = paidOrders.reduce((total, order) => total + order.bill.total, 0)
@@ -599,7 +517,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       popularDishes,
       categorySales,
     }
-  }, [activeOrders, kitchenOrders, deliveredOrders])
+  }, [orders])
 
   // Obtener datos de análisis
   const analytics = calculateAnalytics()
@@ -625,11 +543,13 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         <Button
           variant="outline"
           size="sm"
-          onClick={handleRefresh}
-          disabled={refreshing || isLoading}
+          onClick={() => void refreshOrders()}
+          // `isFetching` is the real refetch in flight (first load included);
+          // the spinner shows exactly while a request is running.
+          disabled={isFetching}
           className="ml-auto"
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
           Actualizar datos
         </Button>
       </div>
@@ -700,198 +620,111 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
             </div>
           ) : (
             <>
+              <DeliveryPaymentsPanel onPaid={() => void refreshOrders()} />
+
               {partialOrders.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold mb-3">
-                    {isLoading ? <Skeleton className="h-7 w-40 inline-block" /> : "Órdenes Parciales"}
-                  </h3>
+                  <h3 className="text-lg font-semibold mb-3">Órdenes Parciales</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {isLoading
-                      ? // Skeletons para órdenes parciales
-                        Array.from({ length: 2 }).map((_, i) => (
-                          <Card key={`skeleton-partial-${i}`} className="overflow-hidden border-2 border-primary/10">
+                    {partialOrders.map((order) => {
+                        // D6 Rule B: render path only needs the table's number.
+                        const tableNumber = tableNumberById[order.tableId]
+                        const waiter = profiles?.find((p) => p.id === order.waiter)
+
+                        // Agrupar items por nombre y comentarios
+                        const groupedItems: Record<string, CartItem> = {}
+                        order.items.forEach((item) => {
+                          const key = `${item.name}-${item.comments || ""}`
+                          if (!groupedItems[key]) {
+                            groupedItems[key] = { ...item }
+                          } else {
+                            groupedItems[key].quantity += item.quantity
+                          }
+                        })
+                        const displayItems = Object.values(groupedItems)
+
+                        return (
+                          <Card key={order.id} className="overflow-hidden border-2 border-primary/30">
                             <CardContent className="p-0">
-                              <div className="p-4 border-b bg-primary/5">
+                              <div className="p-4 border-b bg-primary/10">
                                 <div className="flex justify-between items-center">
-                                  <Skeleton className="h-5 w-40" />
-                                  <Skeleton className="h-5 w-24 rounded-full" />
+                                  <h3 className="font-bold">Mesa {tableNumber} - Orden Parcial</h3>
+                                  <Badge variant="outline" className="bg-primary/20">
+                                    {displayItems.reduce((total, item) => total + item.quantity, 0)} unidades
+                                  </Badge>
                                 </div>
-                                <div className="flex items-center mt-1">
-                                  <Skeleton className="h-4 w-24 mt-2" />
+                                {waiter && (
+                                  <div className="flex items-center mt-1">
+                                    <User className="h-3 w-3 mr-1 text-muted-foreground" />
+                                    <Badge variant="secondary" className="text-xs">
+                                      {waiter.name}
+                                    </Badge>
+                                  </div>
+                                )}
+                                <div className="text-sm text-muted-foreground">
+                                  Creado: {formatDate(order.createdAt)}
                                 </div>
-                                <Skeleton className="h-3 w-32 mt-1" />
                               </div>
 
-                              <div className="h-48 p-4">
-                                <div className="space-y-3">
-                                  {Array.from({ length: 3 }).map((_, j) => (
-                                    <div key={j} className="flex flex-col py-2 border-b">
-                                      <div className="flex justify-between">
-                                        <Skeleton className="h-4 w-32" />
-                                        <Skeleton className="h-4 w-20" />
+                              <ScrollArea className="h-48 p-4">
+                                {displayItems.map((item) => (
+                                  <div
+                                    key={`${item.name}-${item.comments || ""}`}
+                                    className="flex flex-col py-2 border-b last:border-0"
+                                  >
+                                    <div className="flex justify-between">
+                                      <div className="font-medium">{item.name}</div>
+                                      <div className="font-medium">
+                                        {formatCurrency(item.price * item.quantity)} ({item.quantity}x)
                                       </div>
-                                      <Skeleton className="h-3 w-40 mt-1" />
                                     </div>
-                                  ))}
-                                </div>
-                              </div>
+                                    {item.comments && (
+                                      <div className="text-xs italic text-muted-foreground">{item.comments}</div>
+                                    )}
+                                  </div>
+                                ))}
+                              </ScrollArea>
 
-                              <div className="p-4 border-t bg-muted/5">
-                                <div className="flex justify-between mb-4">
-                                  <Skeleton className="h-5 w-16" />
-                                  <Skeleton className="h-5 w-24" />
+                              <div className="p-4 border-t bg-muted/10">
+                                <div className="flex justify-between font-bold mb-4">
+                                  <span>Total:</span>
+                                  <span>{formatCurrency(order.bill.total)}</span>
                                 </div>
                                 <div className="flex gap-2">
-                                  <Skeleton className="h-9 w-full rounded-md" />
-                                  <Skeleton className="h-9 w-full rounded-md" />
+                                  <Button
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => handleDeletePartialOrder(order.id)}
+                                    disabled={isUndoingSplit}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Eliminar
+                                  </Button>
+                                  <Button className="flex-1" onClick={() => handleOpenPaymentDialog(order.id)}>
+                                    <CreditCard className="mr-2 h-4 w-4" />
+                                    Pago Total
+                                  </Button>
                                 </div>
                               </div>
                             </CardContent>
                           </Card>
-                        ))
-                      : // Contenido real de órdenes parciales
-                        partialOrders.map((order) => {
-                          const table = tables.find((t) => t.id === order.tableId)
-                          const waiter = profiles?.find((p) => p.id === order.waiter)
-
-                          // Agrupar items por nombre y comentarios
-                          const groupedItems: Record<string, CartItem> = {}
-                          order.items.forEach((item) => {
-                            const key = `${item.name}-${item.comments || ""}`
-                            if (!groupedItems[key]) {
-                              groupedItems[key] = { ...item }
-                            } else {
-                              groupedItems[key].quantity += item.quantity
-                            }
-                          })
-                          const displayItems = Object.values(groupedItems)
-
-                          return (
-                            <Card key={order.id} className="overflow-hidden border-2 border-primary/30">
-                              <CardContent className="p-0">
-                                <div className="p-4 border-b bg-primary/10">
-                                  <div className="flex justify-between items-center">
-                                    <h3 className="font-bold">Mesa {table?.number} - Orden Parcial</h3>
-                                    <Badge variant="outline" className="bg-primary/20">
-                                      {displayItems.reduce((total, item) => total + item.quantity, 0)} unidades
-                                    </Badge>
-                                  </div>
-                                  {waiter && (
-                                    <div className="flex items-center mt-1">
-                                      <User className="h-3 w-3 mr-1 text-muted-foreground" />
-                                      <Badge variant="secondary" className="text-xs">
-                                        {waiter.name}
-                                      </Badge>
-                                    </div>
-                                  )}
-                                  <div className="text-sm text-muted-foreground">
-                                    Creado: {formatDate(order.createdAt)}
-                                  </div>
-                                </div>
-
-                                <ScrollArea className="h-48 p-4">
-                                  {displayItems.map((item) => (
-                                    <div
-                                      key={`${item.name}-${item.comments || ""}`}
-                                      className="flex flex-col py-2 border-b last:border-0"
-                                    >
-                                      <div className="flex justify-between">
-                                        <div className="font-medium">{item.name}</div>
-                                        <div className="font-medium">
-                                          {formatCurrency(item.price * item.quantity)} ({item.quantity}x)
-                                        </div>
-                                      </div>
-                                      {item.comments && (
-                                        <div className="text-xs italic text-muted-foreground">{item.comments}</div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </ScrollArea>
-
-                                <div className="p-4 border-t bg-muted/10">
-                                  <div className="flex justify-between font-bold mb-4">
-                                    <span>Total:</span>
-                                    <span>{formatCurrency(order.bill.total)}</span>
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      variant="outline"
-                                      className="flex-1"
-                                      onClick={() => handleDeletePartialOrder(order.id)}
-                                      disabled={isUndoingSplit}
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Eliminar
-                                    </Button>
-                                    <Button className="flex-1" onClick={() => handleOpenPaymentDialog(order.id)}>
-                                      <CreditCard className="mr-2 h-4 w-4" />
-                                      Pago Total
-                                    </Button>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          )
-                        })}
+                        )
+                    })}
                   </div>
                 </div>
               )}
 
               {/* Órdenes Regulares */}
-              <h3 className="text-lg font-semibold mb-3">
-                {isLoading ? <Skeleton className="h-7 w-40 inline-block" /> : "Órdenes Regulares"}
-              </h3>
+              <h3 className="text-lg font-semibold mb-3">Órdenes Regulares</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {isLoading ? (
-                  // Skeletons para órdenes regulares
-                  Array.from({ length: 4 }).map((_, i) => (
-                    <Card key={`skeleton-regular-${i}`} className="overflow-hidden">
-                      <CardContent className="p-0">
-                        <div className="p-4 border-b bg-muted/20">
-                          <div className="flex justify-between items-center">
-                            <Skeleton className="h-5 w-32" />
-                            <Skeleton className="h-5 w-24 rounded-full" />
-                          </div>
-                          <div className="flex items-center mt-1">
-                            <Skeleton className="h-4 w-24 mt-2" />
-                          </div>
-                          <Skeleton className="h-3 w-40 mt-1" />
-                        </div>
-
-                        <div className="h-48 p-4">
-                          <div className="space-y-3">
-                            {Array.from({ length: 4 }).map((_, j) => (
-                              <div key={j} className="flex flex-col py-2 border-b">
-                                <div className="flex justify-between">
-                                  <Skeleton className="h-4 w-32" />
-                                  <Skeleton className="h-4 w-20" />
-                                </div>
-                                <Skeleton className="h-3 w-40 mt-1" />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="p-4 border-t bg-muted/10">
-                          <div className="flex justify-between mb-4">
-                            <Skeleton className="h-5 w-16" />
-                            <Skeleton className="h-5 w-24" />
-                          </div>
-                          <div className="flex gap-2">
-                            <Skeleton className="h-9 w-full rounded-md" />
-                            <Skeleton className="h-9 w-full rounded-md" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                ) : Object.keys(ordersByTable).length === 0 ? (
+                {Object.keys(ordersByTable).length === 0 ? (
                   <div className="col-span-full text-center py-10 text-muted-foreground">
                     No hay órdenes pendientes para facturar
                   </div>
                 ) : (
                   Object.entries(ordersByTable).map(([tableId, orders]) => {
-                    const table = tables.find((t) => t.id === tableId)
+                    // D6 Rule B: render path only needs the table's number.
+                    const tableNumber = tableNumberById[tableId]
                     const tableTotal = getTableTotalAmount(tableId)
 
                     // Get all items from all orders for this table and group them
@@ -908,7 +741,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                         <CardContent className="p-0">
                           <div className="p-4 border-b bg-muted/20">
                             <div className="flex justify-between items-center">
-                              <h3 className="font-bold">Mesa {table?.number}</h3>
+                              <h3 className="font-bold">Mesa {tableNumber}</h3>
                               <Badge variant="default">
                                 {allItems.reduce((total, item) => total + item.quantity, 0)} unidades
                               </Badge>
@@ -984,7 +817,9 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         <TabsContent value="transactions">
           <CashRegisterStatus />
           <div className="mt-6">
-            <TransactionsList />
+            {/* The open register is loaded once, by this screen; the list only
+                renders it and keeps a spinner until it is known. */}
+            <TransactionsList registerLoading={!registerSettled} />
           </div>
         </TabsContent>
       </Tabs>
@@ -1001,16 +836,20 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       )}
 
       {/* Payment Method Dialog */}
-      {selectedOrderId && (
+      {selectedOrderId && selectedOrder && (
         <PaymentMethodDialog
           open={paymentMethodDialogOpen}
           onOpenChange={setPaymentMethodDialogOpen}
           orderId={selectedOrderId}
-          tableId={getOrderById(selectedOrderId)?.tableId || ""}
-          amount={getOrderById(selectedOrderId)?.bill.total || 0}
-          tableTotal={getTableTotalAmount(getOrderById(selectedOrderId)?.tableId || "")}
+          // The card that opened the dialog already holds this order: hand it
+          // over instead of making the dialog read it again (S1). The dialog
+          // only falls back to a fetch when it cannot bill from what it got.
+          order={billSourceFromOrder(selectedOrder)}
+          tableId={selectedOrder.tableId || ""}
+          amount={selectedOrder.bill.total || 0}
+          tableTotal={getTableTotalAmount(selectedOrder.tableId)}
           onSuccess={handlePaymentComplete}
-          isPartialPayment={getOrderById(selectedOrderId)?.isPartialOrder || false}
+          isPartialPayment={selectedOrder.isPartialOrder || false}
           selectedItems={[]}
         />
       )}

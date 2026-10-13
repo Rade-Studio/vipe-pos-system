@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { CashTransaction, PaymentTransaction } from "@/types/cash-register"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useQuery } from "@tanstack/react-query"
+import { cashTransactionsQueryKey, registersByDateQueryKey, sortedRegisterIds } from "@/lib/admin/cash"
 import { useRegisterPayments } from "@/hooks/use-register-payments"
 import { totalsByMethod, methodLabel, toCsvRows, csvEscape } from "@/lib/payments/payment-list"
 import type { PaymentRow } from "@/lib/payments/payment-list"
@@ -30,8 +31,7 @@ interface TransactionsByDateListProps {
 export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: TransactionsByDateListProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedDate, setSelectedDate] = useState<Date>(propSelectedDate || new Date())
-  const [registers, setRegisters] = useState<string[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState("sales")
   const [legacyOpen, setLegacyOpen] = useState(false)
   const { toast } = useToast()
   const { profiles } = useProfileStore()
@@ -49,26 +49,34 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
     }
   }, [propSelectedDate])
 
-  useEffect(() => {
-    const loadRegisters = async () => {
-      setIsLoading(true)
-      try {
-        const registersForDate = await cashRegisterService.getRegistersByDate(selectedDate)
-        setRegisters(registersForDate.map((r) => r.id))
-      } catch (error) {
-        log.error("Error al cargar cajas por fecha:", { error: String(error) })
-        setRegisters([])
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  // T9 (S1): the day's registers are a QUERY keyed on the day, shared with
+  // `CashRegisterSummary` — this panel used to re-read the very same day on
+  // every mount of the Caja tab through its own `useEffect`.
+  const {
+    data: registersForDate,
+    isLoading: isLoadingRegisters,
+    isError: isRegistersError,
+  } = useQuery<{ id: string }[]>({
+    queryKey: registersByDateQueryKey(selectedDate),
+    queryFn: () => cashRegisterService.getRegistersByDate(selectedDate),
+    enabled: Boolean(selectedDate),
+    staleTime: 30_000,
+  })
 
-    loadRegisters()
-  }, [selectedDate])
+  useEffect(() => {
+    if (isRegistersError) {
+      log.error("Error al cargar cajas por fecha:", { error: "getRegistersByDate failed" })
+    }
+  }, [isRegistersError])
+
+  const registers = useMemo(
+    () => (registersForDate ?? []).map((register) => register.id),
+    [registersForDate],
+  )
 
   // New payments ledger is the source of truth. Empty ids short-circuit
   // the query, so the admin screen is safe before the date picker fires.
-  const sortedRegisters = useMemo(() => [...registers].sort(), [registers])
+  const sortedRegisters = useMemo(() => sortedRegisterIds(registers), [registers])
   const { data: payments = [], isLoading: loadingPayments } = useRegisterPayments(sortedRegisters)
 
   // Catalog for the method label + summary cards.
@@ -88,14 +96,17 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
     enabled: sortedRegisters.length > 0,
   })
 
-  // Cash movements remain a separate read; not driven by the new ledger.
+  // Cash movements remain a separate read, gated on the tab that shows them
+  // and keyed exactly like `CashRegisterSummary`'s, so the two panels of the
+  // same Caja tab are one cache slot, not two reads.
   const { data: cashTransactions = [] } = useQuery<CashTransaction[]>({
-    queryKey: ["cash-transactions-by-registers", sortedRegisters],
+    queryKey: cashTransactionsQueryKey(sortedRegisters),
     queryFn: () =>
       sortedRegisters.length === 0
         ? Promise.resolve([])
         : cashRegisterService.getCashTransactionsByRegisters(sortedRegisters),
-    enabled: sortedRegisters.length > 0,
+    enabled: sortedRegisters.length > 0 && activeTab === "cash",
+    staleTime: 30_000,
   })
 
   const methodById = useMemo(
@@ -253,7 +264,7 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
     })
   }
 
-  const isLoadingAnything = isLoading || loadingPayments
+  const isLoadingAnything = isLoadingRegisters || loadingPayments
 
   return (
     <div className="space-y-4">
@@ -314,7 +325,7 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
         </Card>
       </div>
 
-      <Tabs defaultValue="sales">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="sales">Ventas</TabsTrigger>
           <TabsTrigger value="cash">Movimientos de Efectivo</TabsTrigger>
@@ -520,7 +531,7 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
+              {isLoadingRegisters ? (
                 <div className="flex justify-center items-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>

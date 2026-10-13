@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -9,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/log"
+import { ADMIN_LIST_STALE_MS, catalogKeys, errorMessage, fetchCategories } from "@/lib/admin/catalog"
 import { Edit, Plus, Search, Trash } from "lucide-react"
 import {
   AlertDialog,
@@ -26,37 +28,36 @@ import * as LucideIcons from "lucide-react"
 
 export function CategoryList() {
   const { toast } = useToast()
-  const [categories, setCategories] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState("")
   const [openDialog, setOpenDialog] = useState(false)
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<any>(null)
 
-  const fetchCategories = async () => {
-    setLoading(true)
-    try {
-      // Ya no necesitamos crear el cliente aquí, ya lo importamos
-      const { data, error } = await supabase.from("categories").select("*").order("name")
-
-      if (error) throw error
-
-      setCategories(data || [])
-    } catch (error: any) {
-      log.error("Error fetching categories:", { error: String(error) })
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: `Error al cargar las categorías: ${error.message}`,
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+  // T9 (S1): a cached read. Radix unmounts this sub-tab on every tab switch,
+  // so the old `useEffect` + local state re-read the whole list (and blanked it
+  // behind "Cargando categorías...") on every visit. `DishList` reads the SAME
+  // key, so the Menú tab now fetches `categories` once per visit, not twice.
+  const {
+    data: categories = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery<any[]>({
+    queryKey: catalogKeys.categories,
+    queryFn: fetchCategories,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
 
   useEffect(() => {
-    fetchCategories()
-  }, [])
+    if (!isError) return
+    log.error("Error fetching categories:", { error: String(error) })
+    toast({
+      variant: "destructive",
+      title: "Error",
+      description: `Error al cargar las categorías: ${errorMessage(error)}`,
+    })
+  }, [isError, error, toast])
 
   const handleEdit = (category: any) => {
     setSelectedCategory(category)
@@ -98,7 +99,8 @@ export function CategoryList() {
         description: `La categoría ${selectedCategory.name} ha sido eliminada correctamente.`,
       })
 
-      fetchCategories()
+      // Only this list's key: no reload, no blanking.
+      queryClient.invalidateQueries({ queryKey: catalogKeys.categories })
     } catch (error: any) {
       log.error("Error deleting category:", { error: String(error) })
       toast({
@@ -158,7 +160,7 @@ export function CategoryList() {
             <CategoryForm
               category={selectedCategory}
               onSuccess={() => {
-                fetchCategories()
+                queryClient.invalidateQueries({ queryKey: catalogKeys.categories })
                 handleDialogClose()
               }}
             />
@@ -176,7 +178,7 @@ export function CategoryList() {
           />
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="text-center py-4">Cargando categorías...</div>
         ) : filteredCategories.length === 0 ? (
           <div className="text-center py-4 text-muted-foreground">

@@ -173,3 +173,123 @@ html {
 .animate-pulse-light {
   animation: pulse-light 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* ---------------------------------------------------------------------------
+ * Landing page (root route /). Scoped with the lp- prefix.
+ * ------------------------------------------------------------------------- */
+.lp-root {
+  overflow-x: clip;
+}
+
+.lp-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black, transparent);
+  animation: lp-grid-pan 18s linear infinite;
+}
+
+.lp-gradient-text {
+  background-image: linear-gradient(90deg, #c4b5fd, #f0abfc, #7dd3fc, #c4b5fd);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: lp-gradient-shift 8s ease-in-out infinite;
+}
+
+.lp-float {
+  animation: lp-float 6s ease-in-out infinite;
+}
+
+.lp-marquee {
+  animation: lp-marquee 40s linear infinite;
+}
+
+.lp-marquee:hover {
+  animation-play-state: paused;
+}
+
+.lp-orbit {
+  animation: lp-orbit 24s linear infinite;
+}
+
+.lp-fade-in {
+  animation: lp-fade-in 500ms ease both;
+}
+
+.lp-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 300ms ease;
+  background: radial-gradient(
+    400px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(167, 139, 250, 0.16),
+    transparent 60%
+  );
+}
+
+.lp-spotlight:hover::before {
+  opacity: 1;
+}
+
+@keyframes lp-grid-pan {
+  to {
+    background-position: 64px 64px;
+  }
+}
+
+@keyframes lp-gradient-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes lp-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0);
+  }
+}
+
+@keyframes lp-marquee {
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes lp-orbit {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes lp-fade-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-grid,
+  .lp-gradient-text,
+  .lp-float,
+  .lp-marquee,
+  .lp-orbit,
+  .lp-fade-in {
+    animation: none;
+  }
+}

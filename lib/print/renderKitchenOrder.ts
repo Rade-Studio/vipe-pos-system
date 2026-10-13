@@ -13,6 +13,8 @@
  * compare the resulting byte streams.
  */
 
+import type { DeliveryPrintInfo } from '@/types'
+
 export interface PrintLine {
   text: string
   bold?: boolean
@@ -32,11 +34,14 @@ export interface KitchenOrderRender {
 export function renderKitchenOrder(order: {
   orderNumber?: string
   invoiceNumber?: string
-  table: string | number
+  /** Absent / null for delivery orders. */
+  table?: string | number | null
   waiter: string
   items: Array<{ name: string; quantity: number; comments?: string }>
+  delivery?: DeliveryPrintInfo
 }): KitchenOrderRender {
   const orderNumber = order.orderNumber ?? order.invoiceNumber ?? ''
+  const delivery = order.delivery
   const tableDisplay = typeof order.table === 'number' ? `Mesa ${order.table}` : order.table
   const dateDisplay = new Date().toLocaleString('es-CO', {
     day: '2-digit',
@@ -46,12 +51,20 @@ export function renderKitchenOrder(order: {
     minute: '2-digit',
   })
 
-  const lines: PrintLine[] = [
-    { text: `COMANDA — ${tableDisplay}`, bold: true, align: 'center' },
-    { text: `Fecha:  ${dateDisplay}`, bold: false, align: 'left' },
-    { text: `Mesero: ${order.waiter}`, bold: false, align: 'left' },
-    { text: '--------------------------------', bold: false, align: 'center' },
-  ]
+  const lines: PrintLine[] = delivery
+    ? [
+        { text: 'COMANDA — DOMICILIO', bold: true, align: 'center' },
+        { text: `Fecha:  ${dateDisplay}`, bold: false, align: 'left' },
+        { text: `Cliente: ${delivery.customerName || 'N/A'}`, bold: false, align: 'left' },
+        { text: `Mesero: ${order.waiter}`, bold: false, align: 'left' },
+        { text: '--------------------------------', bold: false, align: 'center' },
+      ]
+    : [
+        { text: `COMANDA — ${tableDisplay}`, bold: true, align: 'center' },
+        { text: `Fecha:  ${dateDisplay}`, bold: false, align: 'left' },
+        { text: `Mesero: ${order.waiter}`, bold: false, align: 'left' },
+        { text: '--------------------------------', bold: false, align: 'center' },
+      ]
 
   for (const item of order.items) {
     const name = (item.name || '').toUpperCase()
@@ -64,6 +77,9 @@ export function renderKitchenOrder(order: {
       lines.push({ text: `  ${item.comments.trim()}`, bold: false, align: 'left' })
     }
   }
+
+  const notes = delivery?.notes?.trim()
+  if (notes) lines.push({ text: `NOTAS: ${notes}`, bold: false, align: 'left' })
 
   lines.push({ text: '--------------------------------', bold: false, align: 'center' })
 
@@ -128,6 +144,8 @@ export function renderInvoice(params: {
     }>
     /** Total change across every cash line. New payload field. */
     change?: number
+    /** Delivery block: prints customer / address / fee instead of MESA / MESERO. */
+    delivery?: DeliveryPrintInfo
   }
   displayItems: Array<{
     name: string
@@ -175,8 +193,18 @@ export function renderInvoice(params: {
   // Invoice info
   lines.push({ text: `FACTURA: ${params.invoiceNumber}`, align: 'left' })
   lines.push({ text: `FECHA: ${dateStr}`, align: 'left' })
-  lines.push({ text: `MESA: ${tableDisplay}`, align: 'left' })
-  if (invoice.waiter) lines.push({ text: `MESERO: ${invoice.waiter}`, align: 'left' })
+  const delivery = invoice.delivery
+  if (delivery) {
+    lines.push({ text: `CLIENTE: ${delivery.customerName || 'N/A'}`, align: 'left' })
+    lines.push({ text: `TEL: ${delivery.phone || 'N/A'}`, align: 'left' })
+    lines.push({ text: `DIRECCION: ${delivery.address || 'N/A'}`, align: 'left' })
+    if (delivery.paymentMode === 'cash_on_delivery' && (delivery.cashChangeFor ?? 0) > 0) {
+      lines.push({ text: `CAMBIO PARA: ${formatCurrency(delivery.cashChangeFor!)}`, align: 'left' })
+    }
+  } else {
+    lines.push({ text: `MESA: ${tableDisplay}`, align: 'left' })
+    if (invoice.waiter) lines.push({ text: `MESERO: ${invoice.waiter}`, align: 'left' })
+  }
   lines.push({ text: '--------------------------------', align: 'center' })
 
   // Items header
@@ -206,7 +234,11 @@ export function renderInvoice(params: {
     })
   }
 
-  const subtotalNoTip = bill.subtotal + bill.tax
+  // The delivery fee is part of what pay_order charges, before the tip.
+  const deliveryFee = delivery?.deliveryFee ?? 0
+  if (delivery) lines.push({ text: `DOMICILIO: ${formatCurrency(deliveryFee)}`, align: 'left' })
+
+  const subtotalNoTip = bill.subtotal + bill.tax + deliveryFee
   lines.push({ text: `TOTAL SIN PROPINA: ${formatCurrency(subtotalNoTip)}`, align: 'left' })
   lines.push({
     text: `PROPINA VOLUNTARIA (${bill.tipPercentage}%): ${formatCurrency(bill.tip)}`,

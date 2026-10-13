@@ -30,7 +30,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(29);
+SELECT plan(33);
 
 -- ============================================
 -- 1. Tables: anon holds nothing
@@ -144,6 +144,16 @@ SELECT is(
   has_function_privilege('authenticated', 'public.delete_order_with_items(uuid)', 'EXECUTE'),
   true,
   'authenticated keeps EXECUTE on delete_order_with_items'
+);
+SELECT is(
+  has_function_privilege('authenticated', 'public.create_delivery_order(jsonb,jsonb,jsonb,bigint,text,bigint,text)', 'EXECUTE'),
+  true,
+  'authenticated keeps EXECUTE on create_delivery_order'
+);
+SELECT is(
+  has_function_privilege('authenticated', 'public.set_delivery_status(uuid,text,uuid,text)', 'EXECUTE'),
+  true,
+  'authenticated keeps EXECUTE on set_delivery_status'
 );
 SELECT is(
   has_schema_privilege('authenticated', 'private', 'USAGE'),
@@ -317,6 +327,16 @@ SELECT throws_ok(
   $$ SELECT public.close_register('a0eebc99-0000-0000-0000-000000000000') $$,
   '42501', NULL,
   'anon cannot call close_register'
+);
+SELECT throws_ok(
+  $$ SELECT public.create_delivery_order('{}'::jsonb, '{}'::jsonb, '[]'::jsonb, 0, 'prepaid', NULL, NULL) $$,
+  '42501', NULL,
+  'anon cannot call create_delivery_order'
+);
+SELECT throws_ok(
+  $$ SELECT public.set_delivery_status('a0eebc99-0000-0000-0000-000000000000'::uuid, 'deliver', NULL, NULL) $$,
+  '42501', NULL,
+  'anon cannot call set_delivery_status'
 );
 
 RESET ROLE;

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -8,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { WaiterForm } from "./WaiterForm"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { ADMIN_LIST_STALE_MS, catalogKeys, fetchStaff } from "@/lib/admin/catalog"
 import { Badge } from "@/components/ui/badge"
 import { Edit, Trash, Plus } from "lucide-react"
 import {
@@ -22,47 +24,50 @@ import {
 } from "@/components/ui/alert-dialog"
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
+import { roleLabel } from "@/lib/auth/roles"
+import type { StaffRole } from "@/lib/supabase/staff-service"
 
 interface Waiter {
   id: string
   full_name: string
   username: string
   email: string | null
+  auth_user_id: string | null
   active: boolean
+  role: StaffRole
 }
 
 export function WaiterList() {
   const { toast } = useToast()
-  const [waiters, setWaiters] = useState<Waiter[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedWaiter, setSelectedWaiter] = useState<Waiter | undefined>(undefined)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [waiterToDelete, setWaiterToDelete] = useState<Waiter | null>(null)
 
-  const fetchWaiters = async () => {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.from("profiles").select("*").eq("role", "waiter").order("full_name")
-
-      if (error) throw error
-
-      setWaiters((data || []) as unknown as Waiter[])
-    } catch (error: any) {
-      log.error("Error fetching waiters:", { error: String(error) })
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los meseros",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+  // T9 (S1): cached read of the staff directory. The old `useEffect` re-read
+  // it on every visit to the Personal sub-tab and re-rendered the skeleton
+  // table every time.
+  const {
+    data: waiters = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery<Waiter[]>({
+    queryKey: catalogKeys.staff,
+    queryFn: fetchStaff,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
 
   useEffect(() => {
-    fetchWaiters()
-  }, [])
+    if (!isError) return
+    log.error("Error fetching staff:", { error: String(error) })
+    toast({
+      title: "Error",
+      description: "No se pudo cargar el personal",
+      variant: "destructive",
+    })
+  }, [isError, error, toast])
 
   const handleAddWaiter = () => {
     setSelectedWaiter(undefined)
@@ -87,16 +92,16 @@ export function WaiterList() {
 
       if (error) throw error
 
-      setWaiters(waiters.filter((w) => w.id !== waiterToDelete.id))
+      queryClient.invalidateQueries({ queryKey: catalogKeys.staff })
       toast({
-        title: "Mesero eliminado",
-        description: "El mesero ha sido eliminado correctamente",
+        title: "Integrante eliminado",
+        description: "El integrante del personal ha sido eliminado correctamente",
       })
     } catch (error: any) {
-      log.error("Error deleting waiter:", { error: String(error) })
+      log.error("Error deleting staff member:", { error: String(error) })
       toast({
         title: "Error",
-        description: "No se pudo eliminar el mesero",
+        description: "No se pudo eliminar el integrante del personal",
         variant: "destructive",
       })
     } finally {
@@ -107,20 +112,21 @@ export function WaiterList() {
 
   const handleFormSuccess = () => {
     setIsFormOpen(false)
-    fetchWaiters()
+    // The Edge Function created the account; only this list has to re-read.
+    queryClient.invalidateQueries({ queryKey: catalogKeys.staff })
   }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Meseros</h2>
+        <h2 className="text-2xl font-bold">Personal</h2>
         <Button onClick={handleAddWaiter} size="sm">
           <Plus className="h-4 w-4 mr-2" />
-          Agregar Mesero
+          Agregar personal
         </Button>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="w-full">
           <div className="rounded-md border">
             <table className="w-full caption-bottom text-sm">
@@ -134,6 +140,9 @@ export function WaiterList() {
                   </th>
                   <th className="h-12 px-4 text-left align-middle font-medium">
                     <Skeleton className="h-4 w-20" />
+                  </th>
+                  <th className="h-12 px-4 text-left align-middle font-medium">
+                    <Skeleton className="h-4 w-16" />
                   </th>
                   <th className="h-12 px-4 text-left align-middle font-medium">
                     <Skeleton className="h-4 w-16" />
@@ -158,6 +167,9 @@ export function WaiterList() {
                     <td className="p-4 align-middle">
                       <Skeleton className="h-6 w-16 rounded-full" />
                     </td>
+                    <td className="p-4 align-middle">
+                      <Skeleton className="h-6 w-16 rounded-full" />
+                    </td>
                     <td className="p-4 align-middle text-right">
                       <div className="flex justify-end gap-2">
                         <Skeleton className="h-8 w-8 rounded-full" />
@@ -171,7 +183,7 @@ export function WaiterList() {
           </div>
         </div>
       ) : waiters.length === 0 ? (
-        <div className="text-center py-4">No hay meseros registrados</div>
+        <div className="text-center py-4">No hay personal registrado</div>
       ) : (
         <Table>
           <TableHeader>
@@ -179,6 +191,7 @@ export function WaiterList() {
               <TableHead>Nombre</TableHead>
               <TableHead>Usuario</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead>Rol</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -189,6 +202,14 @@ export function WaiterList() {
                 <TableCell className="font-medium">{waiter.full_name}</TableCell>
                 <TableCell>{waiter.username}</TableCell>
                 <TableCell>{waiter.email || "-"}</TableCell>
+                <TableCell>
+                  <Badge variant="outline">{roleLabel(waiter.role) ?? waiter.role}</Badge>
+                  {waiter.auth_user_id === null && (
+                    <Badge variant="secondary" className="ml-2">
+                      Sin acceso
+                    </Badge>
+                  )}
+                </TableCell>
                 <TableCell>
                   <Badge variant={waiter.active ? "default" : "secondary"}>
                     {waiter.active ? "Activo" : "Inactivo"}
@@ -213,7 +234,7 @@ export function WaiterList() {
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>{selectedWaiter ? "Editar Mesero" : "Agregar Mesero"}</DialogTitle>
+            <DialogTitle>{selectedWaiter ? "Editar personal" : "Agregar personal"}</DialogTitle>
           </DialogHeader>
           <WaiterForm waiter={selectedWaiter} onSuccess={handleFormSuccess} onCancel={() => setIsFormOpen(false)} />
         </DialogContent>
@@ -224,7 +245,7 @@ export function WaiterList() {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción eliminará permanentemente al mesero {waiterToDelete?.full_name}.
+              Esta acción eliminará permanentemente a {waiterToDelete?.full_name}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

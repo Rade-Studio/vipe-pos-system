@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   Dialog,
@@ -18,6 +18,8 @@ import { AlertTriangle, Check, X } from "lucide-react"
 import { useConfigStore } from "@/store/use-config-store"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { PrintableInvoice, CartItem } from "@/types"
+import type { DeliveryOrder } from "@/lib/delivery/types"
+import { buildDeliveryPrintInfo } from "@/lib/delivery/print"
 import { toast } from "@/utils/toast"
 import { NumericKeypad } from "@/components/ui/numeric-keypad"
 import { listPaymentMethods, payOrder } from "@/lib/supabase/payments-service"
@@ -53,21 +55,38 @@ import { useRegisterSummary } from "@/hooks/use-register-summary"
 import { canGiveChange, registerSummaryQueryKey } from "@/lib/payments/register-summary"
 import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
 import { queryClient } from "@/lib/queryClient"
+import { hasBillableItems, type CashierBillSource } from "@/lib/cashier/orders"
 
 interface PaymentMethodDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   orderId: string
-  tableId: string
+  /**
+   * The order the caller already holds (the cashier card renders it), in the
+   * `orders` row shape. When it carries its items the dialog bills straight
+   * from it and NEVER reads the order again; when it is missing or itemless
+   * (the delivery panel, or a realtime stub) it falls back to `getById`.
+   */
+  order?: CashierBillSource | null
+  /** Null / omitted for delivery orders (no table). Unused by the dialog. */
+  tableId?: string | null
   /** Bill total (subtotal + tax + tip) from the caller's cache. Kept for API compat. */
-  amount: number
-  tableTotal: number
+  amount?: number
+  tableTotal?: number
+  /**
+   * Delivery fee (whole pesos) of a delivery order, default 0. pay_order
+   * charges subtotal + tax + delivery_fee, so the dialog adds it to the
+   * amount due; the tip stays on the food subtotal.
+   */
+  deliveryFee?: number
+  /** The order's delivery snapshot; when set, the invoice prints the delivery block. */
+  delivery?: DeliveryOrder | null
   onSuccess: () => void
   isPartialPayment?: boolean
   selectedItems?: string[]
 }
 
-interface OrderForBill {
+interface OrderForBill extends CashierBillSource {
   order_items: Array<{ id: string; name: string; price: number; quantity: number; comments?: string | null }>
   tax_percentage: number
   tip_percentage: number
@@ -103,6 +122,7 @@ export function PaymentMethodDialog({
   open,
   onOpenChange,
   orderId,
+  order = null,
   // tableId / amount / tableTotal / isPartialPayment / selectedItems are
   // part of the legacy props contract; the new dialog fetches the order
   // directly and computes the bill client-side, so they are unused but
@@ -110,6 +130,8 @@ export function PaymentMethodDialog({
   tableId: _tableId,
   amount: _amount,
   tableTotal: _tableTotal,
+  deliveryFee = 0,
+  delivery = null,
   onSuccess,
   isPartialPayment: _isPartialPayment = false,
   selectedItems: _selectedItems = [],
@@ -119,7 +141,15 @@ export function PaymentMethodDialog({
   )
   const [showInvoice, setShowInvoice] = useState(false)
   const [invoiceData, setInvoiceData] = useState<PrintableInvoice | null>(null)
-  const [orderData, setOrderData] = useState<OrderForBill | null>(null)
+  // Seeded from the order the caller passed, so opening the dialog with one
+  // already loaded never shows the "Cargando información de la orden" flash.
+  // The loaded order is keyed by the id it belongs to: the dialog stays mounted
+  // between open cycles, so a copy left over from a previous order must never
+  // be billed (or seed the draft) for the order the dialog is now open for.
+  const [loadedOrder, setLoadedOrder] = useState<{ orderId: string; data: OrderForBill } | null>(() =>
+    hasBillableItems(order) ? { orderId, data: order! } : null,
+  )
+  const orderData = loadedOrder?.orderId === orderId ? loadedOrder.data : null
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -157,16 +187,35 @@ export function PaymentMethodDialog({
 
   // Load the order when the dialog opens so we can compute the bill
   // client-side and display accurate numbers even if the caller's
-  // `amount` prop is stale.
+  // `amount` prop is stale. When the caller already holds it (the cashier
+  // screen), that copy is used as-is and NO request is issued (S1).
+  //
+  // The prop is read through a ref on purpose: the effect is keyed on the
+  // OPEN CYCLE (open + orderId), not on the identity of the object the parent
+  // re-creates on every render. Adopting a fresh object per render would
+  // re-seed the draft (wiping what the cashier typed) and loop.
+  const orderRef = useRef(order)
+  useEffect(() => {
+    orderRef.current = order
+  }, [order])
+
   useEffect(() => {
     if (!open || !orderId) return
     let cancelled = false
+
+    const known = orderRef.current
+    if (hasBillableItems(known)) {
+      setLoadedOrder({ orderId, data: known! })
+      setLoadingOrder(false)
+      return
+    }
+
     setLoadingOrder(true)
     ;(async () => {
       try {
-        const order = await orderService.getById(orderId)
+        const fetched = await orderService.getById(orderId)
         if (cancelled) return
-        setOrderData(order as OrderForBill)
+        setLoadedOrder({ orderId, data: fetched as OrderForBill })
       } catch (err) {
         log.error("Error al cargar la orden para pago:", { error: String(err) })
         if (!cancelled) toast.error("No se pudo cargar la información de la orden")
@@ -179,12 +228,21 @@ export function PaymentMethodDialog({
     }
   }, [open, orderId])
 
-  // Re-seed the draft when the dialog opens with a fresh order. A new
-  // idempotency key is generated for each "open" of the dialog (one
-  // attempt); it is preserved across `submitFailed` so a retry uses
-  // the same key per the server's idempotency contract.
+  // Re-seed the draft ONCE per open cycle + order. A later cache patch of the
+  // same order (a realtime event, a refetch) must not wipe the amounts the
+  // cashier already entered, so the effect does not re-seed on identity changes.
+  // A new `open` of the dialog generates a fresh idempotency key (one attempt);
+  // it is preserved across `submitFailed` so a retry uses the same key per the
+  // server's idempotency contract.
+  const seededForRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!open || !orderData) return
+    if (!open) {
+      seededForRef.current = null
+      return
+    }
+    if (!orderData) return
+    if (seededForRef.current === orderId) return
+    seededForRef.current = orderId
     const bill = computeBill(
       orderData.order_items.map((it) => ({ price: it.price, quantity: it.quantity })),
       orderData.tax_percentage,
@@ -194,13 +252,14 @@ export function PaymentMethodDialog({
       initialPaymentDraft({
         amountDue: bill.amountDue,
         suggestedTip: bill.suggestedTip,
+        deliveryFee,
         idempotencyKey: uuid(),
       }),
     )
     setShowInvoice(false)
     setInvoiceData(null)
     setSubmitError(null)
-  }, [open, orderData, orderId])
+  }, [open, orderData, orderId, deliveryFee])
 
   // dispatch wrapper. `useReducer` would be more conventional here but
   // the draft is reset wholesale on each open, so `useState` + a
@@ -324,7 +383,8 @@ const drawerWarning =
           taxPercentage: orderData.tax_percentage,
           tip: draft.tip,
           tipPercentage: orderData.tip_percentage,
-          total: bill.amountDue + draft.tip,
+          // draft.amountDue already includes the delivery fee (0 for table orders).
+          total: draft.amountDue + draft.tip,
           totalDiscounts: 0,
         },
         waiter: orderData.waiter_id ?? "—",
@@ -335,6 +395,7 @@ const drawerWarning =
         cashChange: legacy.cashChange > 0 ? legacy.cashChange : undefined,
         tenders: invoiceTenders,
         change: legacy.cashChange,
+        ...(delivery ? { delivery: buildDeliveryPrintInfo(delivery) } : {}),
       }
       if (invoiceTenders.length === 1) {
         log.info("Pago con método único:", { method: invoiceTenders[0]!.methodName })
@@ -396,6 +457,12 @@ const drawerWarning =
             <span>Impuestos</span>
             <span>{formatCurrency(bill.tax)}</span>
           </div>
+          {deliveryFee > 0 && (
+            <div className="flex justify-between">
+              <span>Domicilio</span>
+              <span>{formatCurrency(deliveryFee)}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span>Propina</span>
             <span>{formatCurrency(draft.tip)}</span>

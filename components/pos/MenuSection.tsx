@@ -1,107 +1,75 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { log } from "@/lib/log"
 import { CategorySelector } from "@/components/pos/CategorySelector"
 import { DishGrid } from "@/components/pos/DishGrid"
-import type { Category, Dish } from "@/types"
-import { categoryService } from "@/lib/supabase/service"
-import { dishServiceWithPromotions } from "@/lib/supabase/dish-service-with-promotions"
+import { useMenuCategories, useMenuDishes } from "@/hooks/use-menu"
 import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import type { Dish } from "@/types"
 
 interface MenuSectionProps {
   onAddToCart: (dish: Dish, comments?: string) => void
 }
 
+/**
+ * Categories, dishes and their promotions come from React Query (T6/S1/S2).
+ *
+ * This component is mounted per active table, and the Radix tab unmounts it
+ * when the waiter looks at the orders. It used to re-read everything on each
+ * mount behind full skeletons; now a remount reads the cache, and a category
+ * switch keeps the previous dishes on screen (see `useMenuDishes`). Skeletons
+ * are for the very first load only — `isPending` is false as soon as any data
+ * (previous or cached) is in place.
+ */
 export function MenuSection({ onAddToCart }: MenuSectionProps) {
-  const [categories, setCategories] = useState<Category[]>([])
-  const [dishes, setDishes] = useState<Dish[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-  const [loadingCategories, setLoadingCategories] = useState(true)
-  const [loadingDishes, setLoadingDishes] = useState(false)
   const { toast } = useToast()
 
-  // Cargar categorías al montar el componente
-  useEffect(() => {
-    loadCategories()
-  }, [])
+  const {
+    data: categories = [],
+    isPending: categoriesPending,
+    isError: categoriesError,
+  } = useMenuCategories()
 
-  // Cargar platos cuando cambia la categoría seleccionada
+  const {
+    data: dishes = [],
+    isPending: dishesPending,
+    isError: dishesError,
+  } = useMenuDishes(selectedCategory)
+
+  // Seleccionar la primera categoría por defecto (una sola vez, cuando llegan)
   useEffect(() => {
-    if (selectedCategory) {
-      loadDishesByCategory(selectedCategory)
+    if (!selectedCategory && categories.length > 0) {
+      setSelectedCategory(categories[0].id)
     }
-  }, [selectedCategory])
+  }, [categories, selectedCategory])
 
-  // Función para cargar categorías desde la base de datos
-  const loadCategories = async () => {
-    setLoadingCategories(true)
-    try {
-      const data = await categoryService.getAllActive()
-
-      // Convertir los datos de la base de datos al formato que espera el componente
-      const formattedCategories = data.map((category) => ({
-        id: category.id,
-        name: category.name,
-        icon: category.icon || null, // Asumiendo que el icono se guarda como string
-      }))
-
-      setCategories(formattedCategories as unknown as Category[])
-
-      // Seleccionar la primera categoría por defecto
-      if (formattedCategories.length > 0 && !selectedCategory) {
-        setSelectedCategory(formattedCategories[0].id)
-      }
-    } catch (err) {
-      log.error("Error al cargar categorías:", { err: String(err) })
+  useEffect(() => {
+    if (categoriesError) {
+      log.error("Error al cargar categorías:", { err: String(categoriesError) })
       toast({
         title: "Error",
         description: "No se pudieron cargar las categorías. Intente nuevamente.",
         variant: "destructive",
       })
-    } finally {
-      setLoadingCategories(false)
     }
-  }
+  }, [categoriesError, toast])
 
-  // Función para cargar platos por categoría desde la base de datos
-  const loadDishesByCategory = async (categoryId: string) => {
-    setLoadingDishes(true)
-    try {
-      // Usar el nuevo servicio con promociones
-      const data = await dishServiceWithPromotions.getByCategoryWithPromotions(categoryId)
-
-      // Convertir los datos de la base de datos al formato que espera el componente
-      const formattedDishes = data.map((dish: any) => ({
-        id: dish.id,
-        name: dish.name,
-        price: dish.price,
-        categoryId: dish.category_id ?? "",
-        image: dish.image_url || "/placeholder.svg?height=80&width=80",
-        // Añadir campos de promoción si existen
-        originalPrice: dish.originalPrice ?? null,
-        discountAmount: dish.discountAmount ?? null,
-        discountPercentage: dish.discountPercentage ?? null,
-        promotionId: dish.promotionId ?? null,
-        promotionName: dish.promotionName ?? null,
-      }))
-
-      setDishes(formattedDishes as unknown as Dish[])
-    } catch (err) {
-      log.error("Error al cargar platos:", { err: String(err) })
+  useEffect(() => {
+    if (dishesError) {
+      log.error("Error al cargar platos:", { err: String(dishesError) })
       toast({
         title: "Error",
         description: "No se pudieron cargar los platos. Intente nuevamente.",
         variant: "destructive",
       })
-    } finally {
-      setLoadingDishes(false)
     }
-  }
+  }, [dishesError, toast])
 
-  // Si estamos cargando categorías, mostrar un indicador de carga
-  if (loadingCategories) {
+  // Si estamos cargando categorías por primera vez, mostrar un indicador de carga
+  if (categoriesPending && categories.length === 0) {
     return (
       <div className="space-y-4">
         <h2 className="text-lg font-semibold">Menú</h2>
@@ -152,7 +120,7 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
 
       {/* Dishes */}
       <div className="min-h-[300px]">
-        {loadingDishes ? (
+        {dishesPending && dishes.length === 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
               <div key={i} className="border rounded-lg p-4 flex flex-col items-center">

@@ -1,4 +1,5 @@
 import type { JSX } from "react"
+import { APP_ROLES } from "@/lib/auth/roles"
 
 // ============================================
 // Restaurant (tenant root entity)
@@ -15,7 +16,10 @@ export interface Restaurant {
 
 // ============================================
 // Profile types
-export type ProfileRole = "waiter" | "kitchen" | "cashier" | "admin"
+// `profiles.role` is a varchar in the DB; the canonical list lives in
+// `lib/auth/roles.ts` and we derive this type from it so adding a role
+// there is enough to make it available everywhere.
+export type ProfileRole = (typeof APP_ROLES)[number]
 
 export type Profile = {
   id: string
@@ -43,6 +47,8 @@ export type Table = {
 // Order types
 export type OrderStatus = "active" | "cancelled" | "paid" | "delivered" | "kitchen"
 export type OrderItemStatus = "kitchen" | "served"
+/** orders.order_type: delivery orders have no table (table_id NULL). */
+export type OrderType = "dine_in" | "delivery"
 
 export type OrderBill = {
   subtotal: number
@@ -70,6 +76,8 @@ export type OrderItem = {
 export type Order = {
   id: string
   tableId: string
+  /** Absent on readers that do not map orders.order_type; treat as dine-in. */
+  orderType?: OrderType
   items: OrderItem[]
   status: OrderStatus
   bill: OrderBill
@@ -183,6 +191,24 @@ export type CashRegister = {
  */
 export type InvoiceTender = import("@/lib/payments/invoice-tenders").InvoiceTender
 
+/**
+ * Optional home-delivery block carried by kitchen commands and invoices.
+ * Additive: payloads without it print exactly as dine-in tickets. Built
+ * by `lib/delivery/print.ts`; mirrored by `pos/print_renderer.py`.
+ */
+export interface DeliveryPrintInfo {
+  customerName: string
+  phone: string
+  /** One display line: "line, neighborhood (reference)". */
+  address: string
+  notes?: string
+  paymentMode: "prepaid" | "cash_on_delivery"
+  /** Whole COP pesos; only for cash_on_delivery. */
+  cashChangeFor?: number
+  /** Whole COP pesos; already part of the invoice total. */
+  deliveryFee: number
+}
+
 export interface PrintableInvoice {
   invoiceNumber: string
   date: Date
@@ -223,6 +249,8 @@ export interface PrintableInvoice {
    * left alone for compatibility).
    */
   change?: number
+  /** Present for delivery orders; see `DeliveryPrintInfo`. */
+  delivery?: DeliveryPrintInfo
 }
 
 export type PrintableKitchenOrder = {
@@ -237,7 +265,10 @@ export type CommandPayload = {
   invoiceNumber: string;
   items: any[];
   waiter: string;
-  table: number;
+  /** Null / absent for delivery orders. */
+  table?: number | null;
+  /** Present for delivery orders; see `DeliveryPrintInfo`. */
+  delivery?: DeliveryPrintInfo;
 }
 
 export type IngredientTransactionsOrders = {

@@ -55,6 +55,8 @@ export function ProfileSelection({ profiles, onSelectProfile }: ProfileSelection
         return "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300"
       case "admin":
         return "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+      case "delivery_operator":
+        return "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300"
       default:
         return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
     }
@@ -66,6 +68,7 @@ export function ProfileSelection({ profiles, onSelectProfile }: ProfileSelection
     kitchen: "Cocina",
     cashier: "Caja",
     admin: "Administrador",
+    delivery_operator: "Operador de domicilios",
   }
 
   return (

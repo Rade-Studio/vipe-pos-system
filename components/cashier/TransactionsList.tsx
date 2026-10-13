@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
@@ -22,10 +22,18 @@ import { listPaymentMethods } from "@/lib/supabase/payments-service"
 import type { PaymentMethodOption } from "@/lib/payments/types"
 import type { PaymentTransaction } from "@/types/cash-register"
 
-export function TransactionsList() {
+interface TransactionsListProps {
+  /**
+   * True while the OWNER of the open-register load (the cashier screen) is
+   * still resolving it. The list renders the spinner from there instead of
+   * loading the register a second time when the tab mounts (S1).
+   */
+  registerLoading?: boolean
+}
+
+export function TransactionsList({ registerLoading = false }: TransactionsListProps = {}) {
   const [searchTerm, setSearchTerm] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const { currentRegister, loadCurrentRegister } = useCashRegisterStore()
+  const { currentRegister } = useCashRegisterStore()
   const { profiles } = useProfileStore()
   const { toast } = useToast()
   const [legacyOpen, setLegacyOpen] = useState(false)
@@ -37,20 +45,9 @@ export function TransactionsList() {
     return waiter ? waiter.name : "Desconocido"
   }
 
-  useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true)
-      try {
-        await loadCurrentRegister()
-      } catch (error) {
-        log.error("Error al cargar registro actual:", { error: String(error) })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadData()
-  }, [loadCurrentRegister])
+  // The open register is loaded ONCE by the screen that owns it (CashierView).
+  // This list used to run `loadCurrentRegister` again on every mount, i.e. a
+  // second register read each time the "Transacciones" tab was opened (S1).
 
   // New payments ledger is the source of truth. Empty ids short-circuit the
   // query, so the cashier screen is safe before a register is opened.
@@ -223,7 +220,7 @@ export function TransactionsList() {
     }
   }
 
-  const isLoadingAnything = isLoading || loadingPayments
+  const isLoadingAnything = registerLoading || loadingPayments
 
   return (
     <div className="space-y-4">
