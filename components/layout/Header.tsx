@@ -23,7 +23,7 @@ export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }
   const handleLogout = async () => {
     await supabase.auth.signOut()
     // Hard reload to clear all client state (stores, queries, realtime subs)
-    window.location.href = "/"
+    window.location.href = "/portal"
   }
 
   return (

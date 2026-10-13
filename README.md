@@ -98,13 +98,13 @@ npm run dev
 yarn dev
 ```
 
-La aplicación estará disponible en `http://localhost:3000`.
+La landing page pública estará disponible en `http://localhost:3000` y el portal del sistema (login y vistas por rol) en `http://localhost:3000/portal`.
 
 ## 📱 Guía de Uso
 
 ### Acceso al Sistema
 
-Al iniciar la aplicación, se mostrará una pantalla de selección de perfil:
+El sistema se usa desde `/portal`: tras iniciar sesión, se mostrará una pantalla de selección de perfil:
 
 - **Mesero**: Para tomar órdenes y gestionar mesas
 - **Cocina**: Para ver y procesar órdenes
