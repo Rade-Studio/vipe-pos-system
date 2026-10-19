@@ -163,7 +163,7 @@ import { realtimeService } from "@/lib/supabase/realtime-service"
 
 /* -------------------------------------------------------------- fixtures */
 
-const profile: Profile = { id: "cashier-1", name: "Caja", role: "cashier", hasPassword: false }
+const profile: Profile = { id: "cashier-1", name: "Caja", role: "cashier" }
 
 function renderCashier() {
   return render(
@@ -196,7 +196,7 @@ beforeEach(() => {
   listActiveDeliveries.mockClear()
   getByStatus.mockResolvedValue([dbRow()])
   useTableStore.setState({ tables: [{ id: "t-1", number: 1, status: "occupied" }] })
-  useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter", hasPassword: false }] })
+  useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter" }] })
   useCashRegisterStore.setState({ currentRegister: null, registers: [] })
 })
 

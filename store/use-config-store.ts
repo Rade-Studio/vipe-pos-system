@@ -26,14 +26,6 @@ type ConfigState = {
 
 
 
-  // Contraseñas de perfiles (eliminadas de business_config en P2;
-  // mantenidas en el store para no romper ConfigurationPanel;
-  // no se sincronizan con la DB — role viene de auth.users.app_metadata)
-  kitchenPassword: string
-  cashierPassword: string
-  adminPassword: string
-  waiterPassword: string
-  deliveryPassword: string
 
   // Acciones para información del negocio
   setBusinessInfo: (info: {
@@ -67,12 +59,6 @@ export const useConfigStore = create<ConfigState>()(
       isLoading: false,
       error: null,
       priceSuggestion: 300,
-      // Contraseñas locales (no se guardan en DB — role ahora viene de auth.users)
-      kitchenPassword: "",
-      cashierPassword: "",
-      adminPassword: "",
-      waiterPassword: "",
-      deliveryPassword: "",
 
       // Acciones
       setTipPercentage: (percentage: number) => set({ tipPercentage: percentage }),
@@ -85,14 +71,6 @@ export const useConfigStore = create<ConfigState>()(
           businessAddress: info.address ?? state.businessAddress,
           businessPhone: info.phone ?? state.businessPhone,
           businessNIT: info.nit ?? state.businessNIT,
-        })),
-      setProfilePasswords: (passwords: { kitchen?: string; cashier?: string; admin?: string; waiter?: string; delivery?: string }) =>
-        set((state) => ({
-          kitchenPassword: passwords.kitchen ?? state.kitchenPassword,
-          cashierPassword: passwords.cashier ?? state.cashierPassword,
-          adminPassword: passwords.admin ?? state.adminPassword,
-          waiterPassword: passwords.waiter ?? state.waiterPassword,
-          deliveryPassword: passwords.delivery ?? state.deliveryPassword,
         })),
       // Cargar configuración desde la base de datos
       //

@@ -191,7 +191,7 @@ function kitchenOrderRow() {
   }
 }
 
-const profile: Profile = { id: "kitchen-1", name: "Cocina", role: "kitchen", hasPassword: false }
+const profile: Profile = { id: "kitchen-1", name: "Cocina", role: "kitchen" }
 
 function makeClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
@@ -217,7 +217,7 @@ beforeEach(() => {
 
   useOrderStore.setState({ orders: [] })
   useTableStore.setState({ tables: [], activeTable: null })
-  useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter", hasPassword: false }] })
+  useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter" }] })
 })
 
 afterEach(() => {

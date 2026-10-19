@@ -46,10 +46,7 @@ const LOADS_BY_ROLE: Record<string, readonly ShellLoad[]> = {
   // (KitchenView:488) is never called, so nobody else loads them.
   // waiters: KitchenView:136.
   // config: no kitchen component reads `useConfigStore` (grep over
-  // components/views/KitchenView.tsx + components/kitchen/**), and the only
-  // consumer of the profile PINs, PasswordDialog, is reachable from
-  // "Cambiar Perfil", which Header.tsx:44 renders for `authRole === "admin"`
-  // only — and those PINs are no longer synced from the DB (P2).
+  // components/views/KitchenView.tsx + components/kitchen/**).
   kitchen: ["tables", "waiters"],
 
   // config: CashierView:135, PaymentMethodDialog:140.

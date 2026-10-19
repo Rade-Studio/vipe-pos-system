@@ -5,11 +5,11 @@ import type { Profile } from '@/types'
 // other role views. Kept apart from `profiles` (the waiter directory loaded from
 // the database) so loading the waiters never replaces the picker.
 const roleProfiles: Profile[] = [
-  { id: 'waiter-1', name: 'Mesero', full_name: 'Mesero', role: 'waiter', hasPassword: false },
-  { id: 'kitchen-1', name: 'Cocina', full_name: 'Cocina', role: 'kitchen', hasPassword: true },
-  { id: 'cashier-1', name: 'Caja', full_name: 'Caja', role: 'cashier', hasPassword: true },
-  { id: 'admin-1', name: 'Admin', full_name: 'Admin', role: 'admin', hasPassword: true },
-  { id: 'delivery-1', name: 'Domicilios', full_name: 'Domicilios', role: 'delivery_operator', hasPassword: true },
+  { id: 'waiter-1', name: 'Mesero', full_name: 'Mesero', role: 'waiter' },
+  { id: 'kitchen-1', name: 'Cocina', full_name: 'Cocina', role: 'kitchen' },
+  { id: 'cashier-1', name: 'Caja', full_name: 'Caja', role: 'cashier' },
+  { id: 'admin-1', name: 'Admin', full_name: 'Admin', role: 'admin' },
+  { id: 'delivery-1', name: 'Domicilios', full_name: 'Domicilios', role: 'delivery_operator' },
 ]
 
 interface ProfileState {
