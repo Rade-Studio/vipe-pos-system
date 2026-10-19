@@ -22,6 +22,9 @@ import { FormulasPage } from "@/components/admin/formulas/FormulasPage"
 import { ItemsPage } from "@/components/admin/stock/ItemsPage"
 import { MovementsPage } from "@/components/admin/stock/MovementsPage"
 import { LocationsPage } from "@/components/admin/stock/LocationsPage"
+import { PurchasesPage } from "@/components/admin/purchasing/PurchasesPage"
+import { ProductionPage } from "@/components/admin/production/ProductionPage"
+import { CountsPage } from "@/components/admin/counts/CountsPage"
 import { BusinessSettings } from "@/components/admin/settings/BusinessSettings"
 import { TaxSettings } from "@/components/admin/settings/TaxSettings"
 import { InventorySettings } from "@/components/admin/settings/InventorySettings"
@@ -310,6 +313,12 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         return <MovementsPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/locations":
         return <LocationsPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/purchases":
+        return <PurchasesPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/production":
+        return <ProductionPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/counts":
+        return <CountsPage description={meta.description} onNavigate={navigateTo} />
       case "settings/business":
         return <BusinessSettings />
       case "settings/taxes":
