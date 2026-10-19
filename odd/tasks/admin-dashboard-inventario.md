@@ -56,11 +56,11 @@ Live cost per line, total, per portion, margin, suggested price (`priceSuggestio
 
 | ID | Specs | Task | Route | Commit |
 |----|-------|------|-------|--------|
-| T1 | S2 | Remove per-role passwords (dialog, store fields, `hasPassword`, tests) | worker | — |
+| T1 | S2 | Remove per-role passwords (dialog, store fields, `hasPassword`, tests) | inline | 8e602f7 ✅ |
 | T2 | S1, S7 | Admin shell: sidebar, top bar, ⌘K, hash routing, primitives, responsive | worker | — |
 | T3 | S1, S7 | Settings pages: Negocio, Impuestos y propinas, Inventario, Métodos de pago, Domicilios, Personal | worker | — |
 | T4 | S3, S5 | DB schema + RPCs + pgTAP for inventory logistics and formulas | worker | — |
-| T5 | S3–S5 | Regenerate types; pure libs (units, formula costing, inventory math) with tests; services + React Query hooks | — | — |
+| T5 | S3–S5 | Regenerate types; pure libs (units, formula costing, inventory math) with tests; services + React Query hooks | worker (libs) + inline (services) | — |
 | T6 | S3, S4 | Formula builder with nested preparations | — | — |
 | T7 | S5 | Items catalog (SKU) + item detail (lots, movements) + adjust/waste/transfer + locations | — | — |
 | T8 | S5 | Suppliers + purchase orders + receiving | — | — |
@@ -77,3 +77,4 @@ Live cost per line, total, per portion, margin, suggested price (`priceSuggestio
 - **L1** (user, 2026-10-19): "Necesito mejorar el diseño de todo el usuario administrativo, esta actualmente como aplicacion, necesito que se piense mas como una dashboard, tipo shadcdn, minimalista, sencilla de usar y de configurar todo, dejaron de aparecer tambien las configuraciones de cambiar contraseña de cada rol, identifica si ya no se necesita y eliminemos esa funcionalidad por completo, de paso quiero mejorar el como se realiza las formulas de cada producto, debemos poder hacer formulas, subformulas, porque hay formulas que necesitan primero crear una formula y esa se necesita en otra formula de un producto, ejemplo una salsa o un pico de gallo, tambien necesito que sea interactivo para que no esten escribiendo tanto y se les complique crear formulas de productos, que sea full interactivo y rapido se creativo con eso, necesito mejorar el tema de inventarios, necesito crear toda una logistica completa de inventarios con SKU y tener dashboard bien hecha con respecto a eso, si quieres recrear componentes nuevos hazlo y elimina todo lo viejo y mal hecho. Pero si quiero que quede bastante profesional y minimalista la parte de configuraciones, y tambien responsivo en varios dispositivos"
 - **L2** (user answers, 2026-10-19): sub-formulas → "Preparación por lotes con stock propio (Recomendado)"; inventory modules → "Proveedores y órdenes de compra, Conteo físico y mermas, Lotes y vencimientos, Varias bodegas o ubicaciones".
 - **L3** (evidence): main checkout is on an old branch with uncommitted landing work; feature cut from `origin/dev` in a separate worktree to leave it untouched.
+- **L4** (evidence): T1 RED `ProfileSelection.test.tsx` (only Mesero selected, others opened the PIN dialog) → GREEN; typecheck clean; 17 affected files / 127 tests green. Workers: T4 `mvfdmk35-1-y6j2`, T2+T3 `mvfdmk39-2-xwvp`, T5 libs `mvfdpf5k-3-hacq`.
