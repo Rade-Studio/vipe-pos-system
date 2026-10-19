@@ -67,7 +67,7 @@ const LOADS_BY_ROLE: Record<string, readonly ShellLoad[]> = {
   // (DeliveryBoard `loadOpenRegister`, one request).
   delivery_operator: ["config"],
 
-  // config: CompletedOrdersTable:36, the settings pages, RecipeManager:80.
+  // config: CompletedOrdersTable:36, the settings pages, the formula builder.
   // tables: AdminView:137-156 (dashboard counters read them at mount).
   // waiters: AdminView:164, CompletedOrdersTable:35.
   // kitchenOrders: AdminView:158 / CompletedOrdersTable:34 read the shared

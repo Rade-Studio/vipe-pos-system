@@ -57,11 +57,8 @@ import {
   catalogKeys,
   fetchCategories,
   fetchDishes,
-  fetchIngredientCategories,
-  fetchIngredients,
   fetchPromotions,
   fetchStaff,
-  withCategoryName,
 } from "./catalog"
 
 beforeEach(() => {
@@ -74,8 +71,6 @@ const ALL_KEYS = [
   catalogKeys.dishes,
   catalogKeys.promotions,
   catalogKeys.staff,
-  catalogKeys.ingredients,
-  catalogKeys.ingredientCategories,
 ]
 
 describe("catalogKeys", () => {
@@ -92,11 +87,9 @@ describe("catalogKeys", () => {
     }
 
     // Invalidating by a PREFIX is how a mutation refreshes every reader, so the
-    // menu reads must share a prefix and the inventory reads must share theirs.
+    // menu reads must share a prefix.
     expect(catalogKeys.categories[0]).toBe(catalogKeys.dishes[0])
     expect(catalogKeys.categories[0]).toBe(catalogKeys.promotions[0])
-    expect(catalogKeys.ingredients[0]).toBe(catalogKeys.ingredientCategories[0])
-    expect(catalogKeys.ingredients[0]).not.toBe(catalogKeys.dishes[0])
   })
 
   it("returns the SAME array identity on every read (so it is safe as a dep and in a key)", () => {
@@ -112,8 +105,6 @@ describe("fetchers", () => {
       fetchDishes,
       fetchPromotions,
       fetchStaff,
-      fetchIngredients,
-      fetchIngredientCategories,
     ]) {
       expect(typeof fetcher).toBe("function")
     }
@@ -123,16 +114,12 @@ describe("fetchers", () => {
     await fetchCategories()
     await fetchDishes()
     await fetchStaff()
-    await fetchIngredients()
-    await fetchIngredientCategories()
 
     const tables = state.calls.map((call) => call.table)
 
     expect(tables).toContain("categories")
     expect(tables).toContain("dishes")
     expect(tables).toContain("profiles")
-    expect(tables).toContain("ingredients")
-    expect(tables).toContain("ingredient_categories")
   })
 
   it("asks for exactly the staff roles the Personal screen manages (never admin)", async () => {
@@ -155,38 +142,5 @@ describe("fetchers", () => {
 describe("ADMIN_LIST_STALE_MS", () => {
   it("is long enough that revisiting a sub-tab inside it costs zero requests", () => {
     expect(ADMIN_LIST_STALE_MS).toBeGreaterThan(30_000)
-  })
-})
-
-describe("withCategoryName", () => {
-  const categories = [
-    { id: "c-1", name: "Carnes" },
-    { id: "c-2", name: "Bebidas" },
-  ]
-
-  const row = (partial: { id: string; name?: string; category_id?: string; stock?: number }) => ({
-    id: partial.id,
-    ...(partial.name ? { name: partial.name } : {}),
-    ...(partial.category_id ? { category_id: partial.category_id } : {}),
-    ...(partial.stock === undefined ? {} : { stock: partial.stock }),
-  })
-
-  it("keeps every ingredient field and adds the category name the list renders", () => {
-    expect(
-      withCategoryName(row({ id: "i-1", name: "Bandeja", category_id: "c-1", stock: 2 }), categories),
-    ).toEqual({
-      id: "i-1",
-      name: "Bandeja",
-      category_id: "c-1",
-      stock: 2,
-      category: "Carnes",
-    })
-  })
-
-  it("labels an unknown or missing category as Sin categoría (same label the screen showed)", () => {
-    expect(withCategoryName(row({ id: "i-2", category_id: "nope" }), categories).category).toBe(
-      "Sin categoría",
-    )
-    expect(withCategoryName(row({ id: "i-3" }), categories).category).toBe("Sin categoría")
   })
 })

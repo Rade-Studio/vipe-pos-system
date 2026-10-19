@@ -32,20 +32,17 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { DishForm } from "./DishForm"
 import { formatCurrency } from "@/utils/helpers"
-import { RecipeManager } from "@/components/admin/dishes/RecipeManager"
 import { Pagination } from "@/components/ui/pagination"
 import { ItemsPerPage } from "@/components/ui/items-per-page"
 import { usePagination } from "@/hooks/use-pagination"
 
-export function DishList() {
+export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => void } = {}) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState("")
   const [openDialog, setOpenDialog] = useState(false)
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
   const [selectedDish, setSelectedDish] = useState<any>(null)
-  const [openRecipeDialog, setOpenRecipeDialog] = useState(false)
-  const [recipeSelectedDish, setRecipeSelectedDish] = useState<any>(null)
 
   // T9 (S1): two cached reads. `categories` is the SAME slot `CategoryList`
   // reads, so visiting the Menú tab fetches it once for both lists instead of
@@ -131,11 +128,6 @@ export function DishList() {
     return category ? category.name : "-"
   }
 
-  const handleManageRecipe = (dish: any) => {
-    setRecipeSelectedDish(dish)
-    setOpenRecipeDialog(true)
-  }
-
   return (
     <section className="min-w-0 space-y-3">
       <SectionHeader title="Platos" description="Productos de la carta, su precio y disponibilidad." />
@@ -214,9 +206,9 @@ export function DishList() {
                         </Badge>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right">
-                        <Button variant="outline" size="sm" onClick={() => handleManageRecipe(dish)} className="mr-1">
+                        <Button variant="outline" size="sm" onClick={() => onNavigate?.("formulas")} className="mr-1">
                           <BookOpen className="h-4 w-4 mr-1" />
-                          Receta
+                          Fórmula
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => handleEdit(dish)}>
                           <Edit className="h-4 w-4" />
@@ -243,26 +235,6 @@ export function DishList() {
             </div>
           </>
         )}
-
-        {/* Diálogo para gestionar recetas */}
-        <Dialog open={openRecipeDialog} onOpenChange={setOpenRecipeDialog}>
-          <DialogContent className="sm:max-w-[700px]">
-            <DialogHeader>
-              <DialogTitle>Gestionar Receta: {recipeSelectedDish?.name}</DialogTitle>
-            </DialogHeader>
-            {recipeSelectedDish && (
-              <RecipeManager
-                open={openRecipeDialog}
-                onOpenChange={setOpenRecipeDialog}
-                dish={recipeSelectedDish}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: catalogKeys.dishes })
-                  setOpenRecipeDialog(false)
-                }}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
 
         <AlertDialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
           <AlertDialogContent>

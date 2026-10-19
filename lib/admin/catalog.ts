@@ -17,7 +17,6 @@
  *     still there, never blanks the list.
  */
 import { supabase } from "@/lib/supabase/client"
-import { ingredientCategoryService, ingredientService } from "@/lib/supabase/service"
 import { promotionService, type Promotion } from "@/lib/supabase/promotion-service"
 import type { StaffRole } from "@/lib/supabase/staff-service"
 
@@ -36,8 +35,7 @@ export const ADMIN_STAFF_ROLES: readonly StaffRole[] = [
 export const ADMIN_LIST_STALE_MS = 60_000
 
 /**
- * The cache slots. Menu reads share the `catalog/menu` prefix, inventory reads
- * share `inventory`, so `invalidateQueries({ queryKey: ["catalog", "menu"] })`
+ * The cache slots. Menu reads share the `catalog/menu` prefix, so `invalidateQueries({ queryKey: ["catalog", "menu"] })`
  * refreshes the whole family and nothing else.
  */
 export const catalogKeys = {
@@ -45,8 +43,6 @@ export const catalogKeys = {
   dishes: ["catalog", "menu", "dishes"] as const,
   promotions: ["catalog", "menu", "promotions"] as const,
   staff: ["catalog", "staff"] as const,
-  ingredients: ["inventory", "ingredients"] as const,
-  ingredientCategories: ["inventory", "ingredient-categories"] as const,
 }
 
 /** The message an admin list shows when its read failed. */
@@ -81,27 +77,4 @@ export async function fetchStaff(): Promise<any[]> {
 
   if (error) throw error
   return data || []
-}
-
-export async function fetchIngredients(): Promise<any[]> {
-  return (await ingredientService.getAll()) as any[]
-}
-
-export async function fetchIngredientCategories(): Promise<any[]> {
-  return (await ingredientCategoryService.getAll()) as any[]
-}
-
-/**
- * The category NAME the inventory list renders next to every ingredient.
- *
- * Unchanged behaviour (same "Sin categoría" fallback the list showed), just
- * out of the component so it can be tested without a component.
- */
-export function withCategoryName<T extends { category_id?: string | null }>(
-  ingredient: T,
-  categories: readonly { id: string; name: string }[],
-): T & { category: string } {
-  const category = categories.find((candidate) => candidate.id === ingredient.category_id)
-
-  return { ...ingredient, category: category?.name || "Sin categoría" }
 }
