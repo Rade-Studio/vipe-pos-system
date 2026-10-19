@@ -19,7 +19,6 @@ import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Pencil, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -178,15 +177,18 @@ export function CouriersManager() {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Repartidores</CardTitle>
-        <Button onClick={openCreate}>
+    <section className="rounded-lg border bg-card text-card-foreground">
+      <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+        <div className="space-y-0.5">
+          <h2 className="text-base font-semibold">Repartidores</h2>
+          <p className="text-sm text-muted-foreground">Solo los activos se pueden asignar a un domicilio.</p>
+        </div>
+        <Button className="w-full sm:w-auto" onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />
           Nuevo repartidor
         </Button>
-      </CardHeader>
-      <CardContent>
+      </div>
+      <div className="overflow-x-auto p-4 sm:px-6">
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-10 w-full" />
@@ -243,7 +245,7 @@ export function CouriersManager() {
             </TableBody>
           </Table>
         )}
-      </CardContent>
+      </div>
 
       <Dialog
         open={dialogOpen}
@@ -305,6 +307,6 @@ export function CouriersManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </section>
   )
 }

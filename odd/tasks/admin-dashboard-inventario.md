@@ -57,8 +57,8 @@ Live cost per line, total, per portion, margin, suggested price (`priceSuggestio
 | ID | Specs | Task | Route | Commit |
 |----|-------|------|-------|--------|
 | T1 | S2 | Remove per-role passwords (dialog, store fields, `hasPassword`, tests) | inline | 8e602f7 ✅ |
-| T2 | S1, S7 | Admin shell: sidebar, top bar, ⌘K, hash routing, primitives, responsive | worker | — |
-| T3 | S1, S7 | Settings pages: Negocio, Impuestos y propinas, Inventario, Métodos de pago, Domicilios, Personal | worker | — |
+| T2 | S1, S7 | Admin shell: sidebar, top bar, ⌘K, hash routing, primitives, responsive | worker | c96cee3, 0ce6a99 ✅ |
+| T3 | S1, S7 | Settings pages: Negocio, Impuestos y propinas, Inventario, Métodos de pago, Domicilios, Personal | worker | ab09673 ✅ |
 | T4 | S3, S5 | DB schema + RPCs + pgTAP for inventory logistics and formulas | worker | — |
 | T5 | S3–S5 | Regenerate types; pure libs (units, formula costing, inventory math) with tests; services + React Query hooks | worker (libs) + inline (services) | — |
 | T6 | S3, S4 | Formula builder with nested preparations | — | — |
@@ -80,3 +80,4 @@ Live cost per line, total, per portion, margin, suggested price (`priceSuggestio
 - **L4** (evidence): T1 RED `ProfileSelection.test.tsx` (only Mesero selected, others opened the PIN dialog) → GREEN; typecheck clean; 17 affected files / 127 tests green. Workers: T4 `mvfdmk35-1-y6j2`, T2+T3 `mvfdmk39-2-xwvp`, T5 libs `mvfdpf5k-3-hacq`.
 - **L5** (evidence): T5 pure libs (worker `mvfdpf5k-3-hacq`) RED 136/136 failing on stubs → GREEN 136/136; parent re-ran `pnpm vitest run lib/inventory` 136 passed; typecheck clean. Committed separately from services/hooks (still pending on T4 signatures).
 - **L6** (delivery): slice 1 closed at `9026d18` (plan, T1, T5 pure libs; the libs commit is ~885 lines, ~60% tests, kept whole as one work unit). Later slices: shell+settings, DB layer, services+formula builder, inventory UI, sale consumption, restyle+cleanup. Push/PR remain the user's decision; chained PRs per slice recommended.
+- **L7** (evidence): T2+T3 (worker `mvfdmk39-2-xwvp`) RED navigation + settings-draft (module not found) → GREEN 16; component tests shell/⌘K 7, SaveBar 4; AdminView 8 read-gate invariants kept. Parent verified: typecheck clean, `pnpm test` 83 files / 1146 tests green. Known gaps: config LOAD error no longer toasts (save errors do); useIsMobile shows desktop layout for one frame on mobile. Slice 2 closed at `ab09673` (shell + settings). Risk: none (UI only; read gates pinned by AdminView tests).

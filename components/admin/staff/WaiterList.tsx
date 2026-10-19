@@ -117,14 +117,18 @@ export function WaiterList() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Personal</h2>
-        <Button onClick={handleAddWaiter} size="sm">
+    <section className="rounded-lg border bg-card text-card-foreground">
+      <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+        <div className="space-y-0.5">
+          <h2 className="text-base font-semibold">Equipo</h2>
+          <p className="text-sm text-muted-foreground">Cada persona entra con su usuario y ve la vista de su rol.</p>
+        </div>
+        <Button onClick={handleAddWaiter} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Agregar personal
         </Button>
       </div>
+      <div className="overflow-x-auto p-4 sm:px-6">
 
       {isLoading ? (
         <div className="w-full">
@@ -183,14 +187,14 @@ export function WaiterList() {
           </div>
         </div>
       ) : waiters.length === 0 ? (
-        <div className="text-center py-4">No hay personal registrado</div>
+        <p className="py-6 text-center text-sm text-muted-foreground">No hay personal registrado</p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Nombre</TableHead>
-              <TableHead>Usuario</TableHead>
-              <TableHead>Email</TableHead>
+              <TableHead className="hidden md:table-cell">Usuario</TableHead>
+              <TableHead className="hidden lg:table-cell">Email</TableHead>
               <TableHead>Rol</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
@@ -199,9 +203,14 @@ export function WaiterList() {
           <TableBody>
             {waiters.map((waiter) => (
               <TableRow key={waiter.id}>
-                <TableCell className="font-medium">{waiter.full_name}</TableCell>
-                <TableCell>{waiter.username}</TableCell>
-                <TableCell>{waiter.email || "-"}</TableCell>
+                <TableCell className="font-medium">
+                  <div className="flex flex-col">
+                    <span>{waiter.full_name}</span>
+                    <span className="text-xs font-normal text-muted-foreground md:hidden">{waiter.username}</span>
+                  </div>
+                </TableCell>
+                <TableCell className="hidden md:table-cell">{waiter.username}</TableCell>
+                <TableCell className="hidden lg:table-cell">{waiter.email || "-"}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{roleLabel(waiter.role) ?? waiter.role}</Badge>
                   {waiter.auth_user_id === null && (
@@ -230,6 +239,7 @@ export function WaiterList() {
           </TableBody>
         </Table>
       )}
+      </div>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[500px]">
@@ -254,6 +264,6 @@ export function WaiterList() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </section>
   )
 }

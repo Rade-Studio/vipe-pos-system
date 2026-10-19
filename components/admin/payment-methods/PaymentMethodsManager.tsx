@@ -27,7 +27,6 @@ import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Pencil, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -292,15 +291,18 @@ export function PaymentMethodsManager() {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Métodos de pago</CardTitle>
-        <Button onClick={() => { setCreateForm(EMPTY_CREATE); setCreateError(null); setCreateOpen(true) }}>
+    <section className="rounded-lg border bg-card text-card-foreground">
+      <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+        <div className="space-y-0.5">
+          <h2 className="text-base font-semibold">Métodos de pago</h2>
+          <p className="text-sm text-muted-foreground">El orden es el que ve el cajero al cobrar.</p>
+        </div>
+        <Button className="w-full sm:w-auto" onClick={() => { setCreateForm(EMPTY_CREATE); setCreateError(null); setCreateOpen(true) }}>
           <Plus className="mr-2 h-4 w-4" />
           Nuevo método
         </Button>
-      </CardHeader>
-      <CardContent>
+      </div>
+      <div className="overflow-x-auto p-4 sm:px-6">
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-10 w-full" />
@@ -316,7 +318,7 @@ export function PaymentMethodsManager() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nombre</TableHead>
-                <TableHead>Código</TableHead>
+                <TableHead className="hidden md:table-cell">Código</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="text-center">Orden</TableHead>
@@ -329,10 +331,10 @@ export function PaymentMethodsManager() {
                   <TableCell className="font-medium">
                     <div className="flex flex-col">
                       <span>{m.name}</span>
-                      <span className="text-xs text-muted-foreground font-mono">{m.code}</span>
+                      <span className="text-xs text-muted-foreground font-mono md:hidden">{m.code}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground font-mono">
+                  <TableCell className="hidden text-xs text-muted-foreground font-mono md:table-cell">
                     {m.code}
                   </TableCell>
                   <TableCell>
@@ -394,7 +396,7 @@ export function PaymentMethodsManager() {
             </TableBody>
           </Table>
         )}
-      </CardContent>
+      </div>
 
       {/* Create dialog */}
       <Dialog
@@ -512,6 +514,6 @@ export function PaymentMethodsManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </section>
   )
 }
