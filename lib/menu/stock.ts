@@ -12,9 +12,12 @@
  *   - recipe with no rows  -> available
  *   - every ingredient with enough stock -> available
  *   - any short or unknown ingredient -> unavailable
+ *
+ * A recipe yields `yield_quantity` portions (T12/S3), so one portion needs each
+ * line quantity divided by the yield; a missing or non-positive yield counts as 1.
  */
 
-export type RecipeRow = { id: string; dish_id: string }
+export type RecipeRow = { id: string; dish_id: string; yield_quantity?: number | null }
 export type RecipeIngredientRow = { recipe_id: string; ingredient_id: string; quantity: number }
 export type IngredientRow = { id: string; name: string; stock: number; unit: string | null }
 
@@ -29,10 +32,10 @@ export function evaluateDishStock(
   recipeIngredients: readonly RecipeIngredientRow[],
   ingredients: readonly IngredientRow[],
 ): Map<string, boolean> {
-  const firstRecipeByDish = new Map<string, string>()
+  const firstRecipeByDish = new Map<string, RecipeRow>()
   for (const recipe of recipes) {
     if (!firstRecipeByDish.has(recipe.dish_id)) {
-      firstRecipeByDish.set(recipe.dish_id, recipe.id)
+      firstRecipeByDish.set(recipe.dish_id, recipe)
     }
   }
 
@@ -47,18 +50,19 @@ export function evaluateDishStock(
 
   const result = new Map<string, boolean>()
   for (const dishId of dishIds) {
-    const recipeId = firstRecipeByDish.get(dishId)
-    if (recipeId === undefined) {
+    const recipe = firstRecipeByDish.get(dishId)
+    if (recipe === undefined) {
       result.set(dishId, true)
       continue
     }
 
-    const rows = ingredientsByRecipe.get(recipeId) ?? []
+    const recipeYield = recipe.yield_quantity != null && recipe.yield_quantity > 0 ? recipe.yield_quantity : 1
+    const rows = ingredientsByRecipe.get(recipe.id) ?? []
     result.set(
       dishId,
       rows.every((row) => {
         const ingredient = ingredientById.get(row.ingredient_id)
-        return ingredient !== undefined && ingredient.stock >= row.quantity
+        return ingredient !== undefined && ingredient.stock >= row.quantity / recipeYield
       }),
     )
   }

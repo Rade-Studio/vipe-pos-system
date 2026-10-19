@@ -32,8 +32,9 @@ const env = vi.hoisted(() => ({
   subscribeToOrders: vi.fn(),
   sendCommand: vi.fn(),
   orderCreate: vi.fn(),
-  checkOrderStock: vi.fn(),
-  reduceStock: vi.fn(),
+  checkDishesStock: vi.fn(),
+  consumeOrderStock: vi.fn(),
+  toastFn: vi.fn(),
   checkStockForDishes: vi.fn(),
   /** true while the dish can be sold, false once the send has reduced stock. */
   stockSoldOut: false,
@@ -52,8 +53,9 @@ const env = vi.hoisted(() => ({
     this.subscribeToOrders.mockReset()
     this.sendCommand.mockReset()
     this.orderCreate.mockReset()
-    this.checkOrderStock.mockReset()
-    this.reduceStock.mockReset()
+    this.checkDishesStock.mockReset()
+    this.consumeOrderStock.mockReset()
+    this.toastFn.mockReset()
     this.checkStockForDishes.mockReset()
     this.stockSoldOut = false
     this.tableCallbacks = []
@@ -67,8 +69,8 @@ const env = vi.hoisted(() => ({
     this.updateTableStatus.mockResolvedValue(undefined)
     this.releaseTable.mockResolvedValue(undefined)
     this.orderCreate.mockResolvedValue({ id: "o-new" })
-    this.checkOrderStock.mockResolvedValue({ hasStock: true, dishesWithoutStock: [], missingIngredients: [] })
-    this.reduceStock.mockResolvedValue(undefined)
+    this.checkDishesStock.mockResolvedValue({ ok: true, enabled: true, shortages: [] })
+    this.consumeOrderStock.mockResolvedValue({ orderId: "o-new", enabled: true, consumedItems: 1, totalCost: 0, shortages: [] })
     this.checkStockForDishes.mockImplementation(async () =>
       new Map(env.stockSoldOut ? [["d-1", false]] : [["d-1", true]]),
     )
@@ -106,11 +108,21 @@ vi.mock("@/lib/supabase/service", () => ({
 
 vi.mock("@/lib/supabase/inventory-control-service", () => ({
   default: {
-    checkOrderStock: env.checkOrderStock,
-    reduceStock: env.reduceStock,
     checkStockForDishes: env.checkStockForDishes,
   },
 }))
+
+vi.mock("@/lib/supabase/inventory", () => ({
+  checkDishesStock: env.checkDishesStock,
+  consumeOrderStock: env.consumeOrderStock,
+}))
+
+// A stable toast so the view's callbacks keep their identity across renders.
+const toastApi = vi.hoisted(() => ({ value: null as null | { toast: (...args: unknown[]) => void } }))
+vi.mock("@/hooks/use-toast", () => {
+  toastApi.value = { toast: (...args: unknown[]) => env.toastFn(...args) }
+  return { useToast: () => toastApi.value, toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }
+})
 
 vi.mock("@/lib/supabase/dish-service-with-promotions", () => ({
   dishServiceWithPromotions: { getByCategoryWithPromotions: env.dishesByCategory },
@@ -139,6 +151,10 @@ vi.mock("@/lib/supabase/realtime-service", () => ({
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
 
 import { WaiterView } from "./WaiterView"
+
+// jsdom has no layout: WaiterView scrolls the menu into view after a table is
+// picked, which jsdom does not implement.
+Element.prototype.scrollIntoView = vi.fn()
 
 const waiterProfile: Profile = { id: "w-1", name: "Ana", full_name: "Ana Gómez", role: "waiter" }
 const adminProfile: Profile = { id: "admin-1", name: "Jefe", full_name: "Jefe", role: "admin" }
@@ -444,8 +460,9 @@ describe("WaiterView — stock cache after sending to the kitchen (T6 advisory)"
     env.categories.mockResolvedValue([{ id: "cat-1", name: "Platos", icon: null }])
     env.dishesByCategory.mockResolvedValue([dishRow])
     // Sending the order is what makes the dish sell out.
-    env.reduceStock.mockImplementation(async () => {
+    env.consumeOrderStock.mockImplementation(async () => {
       env.stockSoldOut = true
+      return { orderId: "o-new", enabled: true, consumedItems: 1, totalCost: 0, shortages: [] }
     })
   })
 
@@ -495,5 +512,118 @@ describe("WaiterView — stock cache after sending to the kitchen (T6 advisory)"
     expect(await screen.findAllByText("Agotado")).not.toHaveLength(0)
 
     invalidateSpy.mockRestore()
+  })
+})
+/**
+ * T12 (S3, S5) — the pre-send check and the sale deduction moved to the atomic
+ * RPCs (`check_dishes_stock`, `consume_order_stock`). Non-admin roles can no
+ * longer write ingredients, so the old client-side deduction silently failed.
+ */
+describe("WaiterView — stock check and consumption through the RPCs (T12)", () => {
+  const DISH = "11111111-1111-1111-1111-111111111111"
+  const OTHER = "22222222-2222-2222-2222-222222222222"
+  const line = (id: string, quantity: number) => ({
+    id,
+    name: id.startsWith(OTHER) ? "Sopa" : "Bandeja",
+    price: 12000,
+    quantity,
+    categoryId: "cat-1",
+    image: "/dish.png",
+  })
+
+  beforeEach(() => {
+    useConfigStore.setState({ inventoryControlEnabled: true })
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
+    // Same dish twice (the second line carries a cart suffix) plus another dish.
+    useCartStore.setState({
+      cartItems: { "t-1": [line(DISH, 1), line(`${DISH}-extra`, 2), line(OTHER, 1)] },
+    })
+  })
+
+  afterEach(() => {
+    useConfigStore.setState({ inventoryControlEnabled: false })
+  })
+
+  async function send() {
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await act(async () => {
+      screen.getByRole("button", { name: /Enviar/ }).click()
+    })
+    await flush()
+  }
+
+  const shortage = { itemId: "i-1", name: "Arroz", unit: "g", required: 300, available: 120, missing: 180 }
+
+  it("checks the aggregated cart, sends on ok and consumes the new order once", async () => {
+    await send()
+
+    expect(env.checkDishesStock).toHaveBeenCalledTimes(1)
+    expect(env.checkDishesStock).toHaveBeenCalledWith([
+      { dishId: DISH, quantity: 3 },
+      { dishId: OTHER, quantity: 1 },
+    ])
+    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+    expect(env.consumeOrderStock).toHaveBeenCalledTimes(1)
+    expect(env.consumeOrderStock).toHaveBeenCalledWith("o-new")
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden enviada" }))
+  })
+
+  it("shows the shortage warning and does not send", async () => {
+    env.checkDishesStock.mockResolvedValue({ ok: false, enabled: true, shortages: [shortage] })
+    await send()
+
+    expect(screen.getByText("Advertencia de Inventario")).toBeInTheDocument()
+    expect(screen.getByText("Arroz")).toBeInTheDocument()
+    expect(screen.getByText("120 g")).toBeInTheDocument()
+    expect(screen.getByText("300 g")).toBeInTheDocument()
+    expect(env.orderCreate).not.toHaveBeenCalled()
+    expect(env.consumeOrderStock).not.toHaveBeenCalled()
+    expect(env.sendCommand).not.toHaveBeenCalled()
+  })
+
+  it("sends anyway without checking again and still consumes the order", async () => {
+    env.checkDishesStock.mockResolvedValue({ ok: false, enabled: true, shortages: [shortage] })
+    await send()
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Enviar de todos modos" }).click()
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    })
+    await flush()
+
+    expect(env.checkDishesStock).toHaveBeenCalledTimes(1)
+    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+    expect(env.consumeOrderStock).toHaveBeenCalledTimes(1)
+    expect(env.consumeOrderStock).toHaveBeenCalledWith("o-new")
+  })
+
+  it("neither checks nor consumes when inventory control is off", async () => {
+    useConfigStore.setState({ inventoryControlEnabled: false })
+    await send()
+
+    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+    expect(env.checkDishesStock).not.toHaveBeenCalled()
+    expect(env.consumeOrderStock).not.toHaveBeenCalled()
+  })
+
+  it("reports the order as sent with a warning when the consumption fails", async () => {
+    env.consumeOrderStock.mockRejectedValue(new Error("boom"))
+    await send()
+
+    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+    expect(env.sendCommand).toHaveBeenCalledTimes(1)
+    expect(env.toastFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Advertencia",
+        description: "La orden se envió correctamente, pero hubo un error al actualizar el inventario.",
+      }),
+    )
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden enviada" }))
+    expect(env.toastFn).not.toHaveBeenCalledWith(expect.objectContaining({ title: "Error" }))
   })
 })
