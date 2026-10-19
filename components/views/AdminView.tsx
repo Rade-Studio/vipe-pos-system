@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Order, Profile } from "@/types"
-import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useShallow } from "zustand/react/shallow"
@@ -12,21 +11,18 @@ import { SalesChart } from "@/components/admin/SalesChart"
 import { PopularDishesChart } from "@/components/admin/PopularDishesChart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { OrderCard } from "@/components/pos/OrderCard"
-import { ConfigurationPanel } from "@/components/admin/ConfigurationPanel"
 import { CompletedOrdersTable } from "@/components/admin/CompletedOrdersTable"
 import { IngredientList } from "@/components/admin/inventory/IngredientList"
 import { CategoryList } from "@/components/admin/menu/CategoryList"
 import { DishList } from "@/components/admin/menu/DishList"
-import { WaiterList } from "@/components/admin/staff/WaiterList"
 import { DatePicker } from "@/components/ui/date-picker"
-import { CashRegisterStatus } from "@/components/cashier/CashRegisterStatus"
 import { RegisterHistoryTable } from "@/components/cashier/RegisterHistoryTable"
 import { CashRegisterSummary } from "@/components/admin/CashRegisterSummary"
 import { TransactionsByRegisterId } from "@/components/admin/TransactionsByRegisterId"
 import { orderService } from "@/lib/supabase/service"
 import { dashboardService } from "@/lib/supabase/dashboard-service"
 import { log } from "@/lib/log"
-import { AlertCircle, RefreshCw } from "lucide-react"
+import { AlertCircle, ChefHat, DollarSign, RefreshCw, Table2, Users } from "lucide-react"
 import { formatCurrency } from "@/utils/helpers"
 import { LowStockIngredients } from "@/components/admin/inventory/LowStockIngredients"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -34,6 +30,7 @@ import { TableManagementPanel } from "@/components/admin/tables/TableManagementP
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 // Importar el servicio realtime
 import { realtimeService } from "@/lib/supabase/realtime-service"
@@ -41,9 +38,20 @@ import { hasTable, isDeliveryOrder, orderTypeFromRow } from "@/lib/delivery/kitc
 import { mergeOrdersList, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
 import { tableService } from "@/lib/supabase/service"
-import { PaymentMethodsManager } from "@/components/admin/payment-methods/PaymentMethodsManager"
-import { CouriersManager } from "@/components/admin/couriers/CouriersManager"
-import { DeliveryFeeSetting } from "@/components/admin/couriers/DeliveryFeeSetting"
+import { AdminShell } from "@/components/admin/shell/AdminShell"
+import { PageHeader } from "@/components/admin/common/PageHeader"
+import { StatCard } from "@/components/admin/common/StatCard"
+import { EmptyState } from "@/components/admin/common/EmptyState"
+import { BusinessSettings } from "@/components/admin/settings/BusinessSettings"
+import { TaxSettings } from "@/components/admin/settings/TaxSettings"
+import { InventorySettings } from "@/components/admin/settings/InventorySettings"
+import {
+  DeliverySettings,
+  PaymentMethodsSettings,
+  StaffSettings,
+} from "@/components/admin/settings/ManagedSettings"
+import { useHashSection } from "@/hooks/use-hash-section"
+import { getAdminSection, type AdminSectionId } from "@/lib/admin/navigation"
 import {
   adminOrdersQueryKey,
   countOrdersByStatus,
@@ -206,12 +214,13 @@ export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: Act
 export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
 
-  // Which top-level tab is open. T9 (S1): the dashboard reads and the
-  // active-orders read are gated on it, so nothing loads for a tab nobody is
-  // looking at, and everything that IS open is served from the query cache.
-  const [activeTab, setActiveTab] = useState<string>("dashboard")
-  const isDashboardOpen = activeTab === "dashboard"
-  const isOrdersTabOpen = activeTab === "orders"
+  // Which admin section is open (URL hash, see lib/admin/navigation.ts).
+  // T9 (S1): the dashboard reads and the active-orders read are gated on it,
+  // so nothing loads for a section nobody is looking at, and everything that
+  // IS open is served from the query cache.
+  const [section, navigate] = useHashSection()
+  const isDashboardOpen = section === "overview"
+  const isOrdersTabOpen = section === "orders"
 
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -227,7 +236,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
   } = useQuery<AdminOrder[]>({
     queryKey: adminOrdersQueryKey,
     queryFn: fetchActiveAdminOrders,
-    // Only the Órdenes tab renders this list, so only that tab needs the read.
+    // Only the Órdenes section renders this list, so only it needs the read.
     enabled: isOrdersTabOpen,
     staleTime: 15_000,
   })
@@ -517,374 +526,300 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
     }
   }, [toast])
 
-  return (
-    <div className="flex flex-col h-screen p-4">
-      <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Panel de Administración" />
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          <TabsTrigger value="tables">Mesas</TabsTrigger>
-          <TabsTrigger value="orders">Órdenes</TabsTrigger>
-          <TabsTrigger value="cash">Caja</TabsTrigger>
-          <TabsTrigger value="config">Configuración</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="dashboard">
-          {isDashboardLoading ? (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Card key={i}>
-                    <CardHeader className="pb-2">
-                      <Skeleton className="h-5 w-32" />
-                    </CardHeader>
-                    <CardContent>
-                      <Skeleton className="h-8 w-24 mb-1" />
-                      <Skeleton className="h-4 w-32" />
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Card key={i}>
-                    <CardHeader>
-                      <Skeleton className="h-6 w-40" />
-                    </CardHeader>
-                    <CardContent className="h-64">
-                      <div className="flex items-center justify-center h-full">
-                        <Skeleton className="h-full w-full rounded-md" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <Skeleton className="h-6 w-48" />
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <Card key={i}>
-                        <CardContent className="p-4">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <Skeleton className="h-5 w-32 mb-2" />
-                              <Skeleton className="h-4 w-24" />
-                            </div>
-                            <Skeleton className="h-6 w-6 rounded-full" />
-                          </div>
-                          <div className="mt-4">
-                            <Skeleton className="h-4 w-full mb-2" />
-                            <Skeleton className="h-4 w-3/4" />
-                          </div>
-                          <Skeleton className="h-8 w-full mt-4 rounded-md" />
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+  const renderDashboard = () =>
+    isDashboardLoading ? (
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-lg border p-4">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="mt-3 h-7 w-24" />
+              <Skeleton className="mt-2 h-3 w-32" />
             </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Resumen general */}
-              <div className="grid gap-4 md:grid-cols-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Ventas del Mes</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(monthSales)}</div>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date().toLocaleDateString("es-ES", { month: "long", year: "numeric" })}
-                    </p>
-                  </CardContent>
-                </Card>
+          ))}
+        </div>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Órdenes en Cocina</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{kitchenOrdersCount}</div>
-                    <p className="text-xs text-muted-foreground">Pendientes de preparación</p>
-                  </CardContent>
-                </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-6 w-40" />
+              </CardHeader>
+              <CardContent className="h-64">
+                <Skeleton className="h-full w-full rounded-md" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    ) : (
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            title="Ventas del Mes"
+            icon={DollarSign}
+            value={formatCurrency(monthSales)}
+            hint={new Date().toLocaleDateString("es-ES", { month: "long", year: "numeric" })}
+          />
+          <StatCard
+            title="Órdenes en Cocina"
+            icon={ChefHat}
+            value={kitchenOrdersCount}
+            hint="Pendientes de preparación"
+          />
+          <StatCard
+            title="Mesas Disponibles"
+            icon={Table2}
+            value={`${availableTables} / ${totalTables}`}
+            hint="Listas para asignar"
+          />
+          <StatCard
+            title="Meseros Activos"
+            icon={Users}
+            value={activeWaiters}
+            hint={`${assignedTables} mesas asignadas`}
+          />
+        </div>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Mesas Disponibles</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {availableTables} / {totalTables}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Listas para asignar</p>
-                  </CardContent>
-                </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <SalesChart data={dailySales} />
+          <PopularDishesChart data={popularDishes} />
+        </div>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Meseros Activos</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{activeWaiters}</div>
-                    <p className="text-xs text-muted-foreground">{assignedTables} mesas asignadas</p>
-                  </CardContent>
-                </Card>
-              </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center text-base">
+              <AlertCircle className="h-4 w-4 mr-2 text-destructive" />
+              Alertas de Inventario
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LowStockIngredients />
+          </CardContent>
+        </Card>
 
-              {/* Gráficas 2 columnas la primera con 3 partes y la segunda con 1 partes */}
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <SalesChart data={dailySales} />
-                <PopularDishesChart data={popularDishes} />
-              </div>
-
-              {/* Alertas de inventario */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <AlertCircle className="h-5 w-5 mr-2 text-red-500" />
-                    Alertas de Inventario
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <LowStockIngredients />
-                </CardContent>
-              </Card>
-
-              {/* Estado de mesas y meseros */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Estado de Mesas</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <span>Disponibles:</span>
-                        <span className="font-medium">{tableStatusCounts.available}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>Reservadas:</span>
-                        <span className="font-medium">{tableStatusCounts.reserved}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>En cocina:</span>
-                        <span className="font-medium">{tableStatusCounts.kitchen}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>Servidas:</span>
-                        <span className="font-medium">{tableStatusCounts.served}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Meseros Activos</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {profiles
-                        ?.filter((p) => p.role === "waiter")
-                        .map((waiter) => {
-                          const assignedTablesCount = assignedTableCountByWaiter[waiter.id] ?? 0
-                          return (
-                            <div
-                              key={waiter.id}
-                              className="flex justify-between items-center p-2 rounded-md bg-muted/50"
-                            >
-                              <span className="font-medium">{waiter.name}</span>
-                              <div className="flex items-center">
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs ${assignedTablesCount > 0 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100" : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"}`}
-                                >
-                                  {assignedTablesCount > 0 ? `${assignedTablesCount} mesas` : "Disponible"}
-                                </span>
-                              </div>
-                            </div>
-                          )
-                        })}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Órdenes activas */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Órdenes Activas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span>En cocina:</span>
-                      <span className="font-medium">{kitchenCount}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Entregadas (pendientes de pago):</span>
-                      <span className="font-medium">{deliveredCount}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Completadas hoy:</span>
-                      <span className="font-medium">{paidTodayCount}</span>
-                    </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Estado de Mesas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-3 text-sm">
+                {[
+                  ["Disponibles", tableStatusCounts.available],
+                  ["Reservadas", tableStatusCounts.reserved],
+                  ["En cocina", tableStatusCounts.kitchen],
+                  ["Servidas", tableStatusCounts.served],
+                ].map(([label, count]) => (
+                  <div key={label} className="flex justify-between items-center">
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="font-medium tabular-nums">{count}</dd>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </TabsContent>
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
 
-        <TabsContent value="tables">
-          <div className="space-y-6">
-            {/* Panel de gestión de mesas */}
-            <TableManagementPanel />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="orders">
-          <Tabs defaultValue="active">
-            <TabsList className="mb-4">
-              <TabsTrigger value="active">Órdenes Activas</TabsTrigger>
-              <TabsTrigger value="completed">Órdenes Completadas</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="active">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Órdenes en Cocina y Servidas</h2>
-                <div className="flex items-center gap-2">
-                  {realtimeConnected && (
-                    <span className="flex items-center text-xs text-green-600 dark:text-green-400">
-                      <span className="relative flex h-2 w-2 mr-1">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                      </span>
-                      Tiempo real activo
-                    </span>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRefreshActiveOrders}
-                    disabled={isFetchingActiveOrders}
-                  >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${isFetchingActiveOrders ? "animate-spin" : ""}`} />
-                    <span>Actualizar</span>
-                    {newOrdersCount > 0 && (
-                      <span className="ml-1 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">
-                        {newOrdersCount}
-                      </span>
-                    )}
-                  </Button>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Órdenes Activas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-3 text-sm">
+                <div className="flex justify-between items-center">
+                  <dt className="text-muted-foreground">En cocina</dt>
+                  <dd className="font-medium tabular-nums">{kitchenCount}</dd>
                 </div>
+                <div className="flex justify-between items-center">
+                  <dt className="text-muted-foreground">Entregadas (pendientes de pago)</dt>
+                  <dd className="font-medium tabular-nums">{deliveredCount}</dd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <dt className="text-muted-foreground">Completadas hoy</dt>
+                  <dd className="font-medium tabular-nums">{paidTodayCount}</dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+
+          <Card className="md:col-span-2 xl:col-span-1">
+            <CardHeader>
+              <CardTitle className="text-base">Meseros Activos</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {profiles
+                  ?.filter((p) => p.role === "waiter")
+                  .map((waiter) => {
+                    const assignedTablesCount = assignedTableCountByWaiter[waiter.id] ?? 0
+                    return (
+                      <div key={waiter.id} className="flex justify-between items-center rounded-md border px-3 py-2 text-sm">
+                        <span className="font-medium">{waiter.name}</span>
+                        <Badge variant={assignedTablesCount > 0 ? "default" : "secondary"}>
+                          {assignedTablesCount > 0 ? `${assignedTablesCount} mesas` : "Disponible"}
+                        </Badge>
+                      </div>
+                    )
+                  })}
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
 
-              <ActiveOrdersGrid
-                orders={combinedActiveOrders}
-                isLoading={isLoadingActiveOrders}
-                onDelete={handleDeleteOrder}
-                onRefresh={handleRefreshActiveOrders}
-              />
-            </TabsContent>
+  const refreshButton = (
+    <div className="flex items-center gap-3">
+      {realtimeConnected && (
+        <span className="flex items-center text-xs text-muted-foreground">
+          <span className="relative flex h-2 w-2 mr-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+          </span>
+          Tiempo real activo
+        </span>
+      )}
+      <Button variant="outline" size="sm" onClick={handleRefreshActiveOrders} disabled={isFetchingActiveOrders}>
+        <RefreshCw className={`h-4 w-4 mr-2 ${isFetchingActiveOrders ? "animate-spin" : ""}`} />
+        <span>Actualizar</span>
+        {newOrdersCount > 0 && (
+          <span className="ml-1 px-1.5 py-0.5 text-xs bg-destructive text-destructive-foreground rounded-full">
+            {newOrdersCount}
+          </span>
+        )}
+      </Button>
+    </div>
+  )
 
-            <TabsContent value="completed">
-              <div className="mb-4 flex items-center gap-2">
-                <span>Filtrar por fecha:</span>
-                <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
-              </div>
-              <CompletedOrdersTable selectedDate={selectedDate} />
-            </TabsContent>
-          </Tabs>
-        </TabsContent>
+  const dateFilter = (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-muted-foreground">Fecha</span>
+      <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
+    </div>
+  )
 
-        <TabsContent value="cash">
-          <div className="space-y-6">
-            <div className="mb-4 flex items-center gap-2">
-              <span>Filtrar por fecha:</span>
-              <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
-            </div>
+  const renderSection = (id: AdminSectionId) => {
+    const meta = getAdminSection(id)
 
+    switch (id) {
+      case "overview":
+        return (
+          <>
+            <PageHeader title="Resumen" description={meta.description} />
+            {renderDashboard()}
+          </>
+        )
+      case "orders":
+        return (
+          <>
+            <PageHeader title="Órdenes" description={meta.description} />
+            <Tabs defaultValue="active">
+              <TabsList className="mb-4">
+                <TabsTrigger value="active">Activas</TabsTrigger>
+                <TabsTrigger value="completed">Completadas</TabsTrigger>
+              </TabsList>
+              <TabsContent value="active" className="space-y-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-base font-semibold">Órdenes en Cocina y Servidas</h2>
+                  {refreshButton}
+                </div>
+                <ActiveOrdersGrid
+                  orders={combinedActiveOrders}
+                  isLoading={isLoadingActiveOrders}
+                  onDelete={handleDeleteOrder}
+                  onRefresh={handleRefreshActiveOrders}
+                />
+              </TabsContent>
+              <TabsContent value="completed" className="space-y-4">
+                {dateFilter}
+                <CompletedOrdersTable selectedDate={selectedDate} />
+              </TabsContent>
+            </Tabs>
+          </>
+        )
+      case "tables":
+        return (
+          <>
+            <PageHeader title="Mesas" description={meta.description} />
+            <TableManagementPanel />
+          </>
+        )
+      case "cash":
+        return (
+          <>
+            <PageHeader title="Caja" description={meta.description} actions={dateFilter} />
             <Tabs defaultValue="summary">
               <TabsList className="mb-4">
                 <TabsTrigger value="summary">Resumen</TabsTrigger>
                 <TabsTrigger value="transactions">Transacciones</TabsTrigger>
               </TabsList>
-
               <TabsContent value="summary">
                 <CashRegisterSummary selectedDate={selectedDate} />
               </TabsContent>
-
               <TabsContent value="transactions">
                 <TransactionsByRegisterId selectedDate={selectedDate} />
               </TabsContent>
             </Tabs>
+            <section className="space-y-4">
+              <h2 className="text-base font-semibold">Historial de Aperturas de Caja</h2>
+              <RegisterHistoryTable changeRegisterDetails={handleChangeRegisterDetails} />
+            </section>
+          </>
+        )
+      case "menu":
+        return (
+          <>
+            <PageHeader title="Menú" description={meta.description} />
+            <div className="space-y-6">
+              <CategoryList />
+              <DishList />
+              <PromotionList />
+            </div>
+          </>
+        )
+      case "inventory/items":
+        return (
+          <>
+            <PageHeader title="Artículos" description={meta.description} />
+            <IngredientList />
+          </>
+        )
+      case "settings/business":
+        return <BusinessSettings />
+      case "settings/taxes":
+        return <TaxSettings />
+      case "settings/inventory":
+        return <InventorySettings />
+      case "settings/payment-methods":
+        return <PaymentMethodsSettings />
+      case "settings/delivery":
+        return <DeliverySettings />
+      case "settings/staff":
+        return <StaffSettings />
+      default:
+        // Fórmulas and the inventory logistics modules arrive in later tasks
+        // of odd/tasks/admin-dashboard-inventario.md.
+        return (
+          <>
+            <PageHeader title={meta.label} description={meta.description} />
+            <EmptyState
+              title="Módulo en construcción"
+              description="Este módulo llega con la nueva logística de inventario y fórmulas."
+            />
+          </>
+        )
+    }
+  }
 
-            <h2 className="text-xl font-semibold mt-8 mb-4">Historial de Aperturas de Caja</h2>
-            <RegisterHistoryTable changeRegisterDetails={handleChangeRegisterDetails} />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="config">
-          <Tabs defaultValue="menu">
-            <TabsList className="mb-4">
-              <TabsTrigger value="menu">Menú</TabsTrigger>
-              <TabsTrigger value="inventory">Inventario</TabsTrigger>
-              <TabsTrigger value="payment-methods">Métodos de pago</TabsTrigger>
-              <TabsTrigger value="couriers">Repartidores</TabsTrigger>
-              <TabsTrigger value="waiters">Personal</TabsTrigger>
-              <TabsTrigger value="settings">Ajustes</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="menu">
-              <div className="space-y-6">
-                <CategoryList />
-                <DishList />
-                <PromotionList />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="inventory">
-              <div className="space-y-6">
-                <IngredientList />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="payment-methods">
-              <div className="space-y-6">
-                <PaymentMethodsManager />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="couriers">
-              <div className="space-y-6">
-                <CouriersManager />
-                <DeliveryFeeSetting />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="waiters">
-              <div className="space-y-6">
-                <WaiterList />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="settings">
-              <div className="space-y-6">
-                <ConfigurationPanel />
-              </div>
-            </TabsContent>
-          </Tabs>
-        </TabsContent>
-      </Tabs>
-    </div>
+  return (
+    <AdminShell
+      profile={profile}
+      authRole={authRole}
+      onChangeProfile={onChangeProfile}
+      section={section}
+      onNavigate={navigate}
+    >
+      {renderSection(section)}
+    </AdminShell>
   )
 }

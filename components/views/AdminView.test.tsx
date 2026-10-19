@@ -76,8 +76,6 @@ vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
 // The panel renders every other admin screen inside its tabs; they are covered
 // by their own suites, so they are stubbed here to keep this one about the
 // panel's own reads.
-vi.mock("@/components/layout/Header", () => ({ Header: () => <div>header</div> }))
-vi.mock("@/components/admin/ConfigurationPanel", () => ({ ConfigurationPanel: () => null }))
 vi.mock("@/components/admin/tables/TableManagementPanel", () => ({ TableManagementPanel: () => null }))
 vi.mock("@/components/admin/payment-methods/PaymentMethodsManager", () => ({
   PaymentMethodsManager: () => null,
@@ -129,15 +127,16 @@ function wrap(ui: React.ReactElement) {
   return <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
 }
 
-/** Radix `TabsTrigger` activates on mousedown, not click. */
-async function selectTab(name: string) {
-  const trigger = await screen.findByRole("tab", { name })
+/** Opens an admin section through its sidebar entry. */
+async function openSection(id: string) {
+  const entry = await screen.findByTestId(`nav-${id}`)
   await act(async () => {
-    fireEvent.mouseDown(trigger)
+    fireEvent.click(entry)
   })
 }
 
 beforeEach(() => {
+  window.location.hash = ""
   queryClient.clear()
   state.calls.length = 0
   state.realtime.subscribeToOrders = null
@@ -235,7 +234,7 @@ describe("ActiveOrdersGrid", () => {
 })
 
 describe("AdminView — requests issued while a tab is open", () => {
-  const profile = { id: "p-1", name: "Admin", role: "admin" as const, hasPassword: false }
+  const profile = { id: "p-1", name: "Admin", role: "admin" as const }
 
   function tableOf(state: Call[]) {
     return state.map((call) => `${call.table}.${call.method}`)
@@ -267,7 +266,7 @@ describe("AdminView — requests issued while a tab is open", () => {
     await waitFor(() => expect(screen.getByText("Ventas del Mes")).toBeInTheDocument())
     expect(state.calls.some((call) => call.table === "orders" && call.method === "in")).toBe(false)
 
-    await selectTab("Órdenes")
+    await openSection("orders")
 
     await waitFor(() =>
       expect(state.calls.some((call) => call.table === "orders" && call.method === "in")).toBe(true),
@@ -283,7 +282,7 @@ describe("AdminView — requests issued while a tab is open", () => {
     render(wrap(<AdminView profile={profile} onChangeProfile={() => {}} authRole="admin" />))
     await waitFor(() => expect(screen.getByText("Ventas del Mes")).toBeInTheDocument())
 
-    await selectTab("Órdenes")
+    await openSection("orders")
     await waitFor(() =>
       expect(state.calls.filter((call) => call.table === "orders" && call.method === "in")).toHaveLength(1),
     )
