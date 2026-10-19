@@ -325,38 +325,9 @@ CREATE TRIGGER ingredients_inventory_guard
   FOR EACH ROW
   EXECUTE FUNCTION public.ingredients_inventory_guard();
 
--- Backfill SKUs in creation order so MP-0001 is the oldest item.
-DO $$
-DECLARE
-  v_id uuid;
-BEGIN
-  FOR v_id IN
-    SELECT i.id FROM public.ingredients i
-     WHERE i.sku IS NULL
-     ORDER BY i.restaurant_id, i.created_at NULLS FIRST, i.id
-  LOOP
-    UPDATE public.ingredients SET sku = NULL WHERE id = v_id;
-  END LOOP;
-END $$;
-
--- DEFAULT '' keeps sku optional for clients: the guard turns blank into a
--- generated SKU before the CHECK runs.
-ALTER TABLE public.ingredients ALTER COLUMN sku SET NOT NULL;
-ALTER TABLE public.ingredients ALTER COLUMN sku SET DEFAULT '';
-
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                  WHERE conrelid = 'public.ingredients'::regclass AND conname = 'ingredients_sku_check') THEN
-    ALTER TABLE public.ingredients
-      ADD CONSTRAINT ingredients_sku_check CHECK (sku ~ '^[A-Z0-9][A-Z0-9-]{1,31}$');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                  WHERE conrelid = 'public.ingredients'::regclass AND conname = 'ingredients_restaurant_id_sku_key') THEN
-    ALTER TABLE public.ingredients
-      ADD CONSTRAINT ingredients_restaurant_id_sku_key UNIQUE (restaurant_id, sku);
-  END IF;
-END $$;
+-- The SKU backfill runs in SECTION 13b, after the recipes columns exist: the
+-- guard above reads recipes.ingredient_id, so updating existing rows here
+-- would fail on any database that already has ingredients.
 
 CREATE OR REPLACE FUNCTION public.ingredients_stock_guard()
 RETURNS trigger
@@ -937,6 +908,14 @@ CREATE TRIGGER recipe_ingredients_cycle_guard
 -- ============================================
 ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS stock_consumed_at timestamptz;
 
+-- Lines that exist before this migration were already handled by the old
+-- client-side deduction (or never will be). Stamp them so the first
+-- consume_order_stock on an order that is still open at deploy time does not
+-- deduct them a second time.
+UPDATE public.order_items
+   SET stock_consumed_at = COALESCE(updated_at, created_at, now())
+ WHERE stock_consumed_at IS NULL;
+
 COMMENT ON COLUMN public.order_items.stock_consumed_at IS
   'Set by consume_order_stock when the item''s formula was deducted; a stamped item is never consumed again.';
 
@@ -1005,6 +984,42 @@ BEGIN
   EXECUTE format('CREATE POLICY inventory_lots_select_policy ON public.inventory_lots FOR SELECT TO authenticated USING (%s)', v_stock);
   EXECUTE format('CREATE POLICY production_batches_select_policy ON public.production_batches FOR SELECT TO authenticated USING (%s)', v_stock);
   EXECUTE format('CREATE POLICY inventory_movements_select_policy ON public.inventory_movements FOR SELECT TO authenticated USING (%s)', v_admin);
+END $$;
+
+-- ============================================
+-- SECTION 13b: SKU backfill for existing items
+-- ============================================
+-- Backfill SKUs in creation order so MP-0001 is the oldest item.
+DO $$
+DECLARE
+  v_id uuid;
+BEGIN
+  FOR v_id IN
+    SELECT i.id FROM public.ingredients i
+     WHERE i.sku IS NULL
+     ORDER BY i.restaurant_id, i.created_at NULLS FIRST, i.id
+  LOOP
+    UPDATE public.ingredients SET sku = NULL WHERE id = v_id;
+  END LOOP;
+END $$;
+
+-- DEFAULT '' keeps sku optional for clients: the guard turns blank into a
+-- generated SKU before the CHECK runs.
+ALTER TABLE public.ingredients ALTER COLUMN sku SET NOT NULL;
+ALTER TABLE public.ingredients ALTER COLUMN sku SET DEFAULT '';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid = 'public.ingredients'::regclass AND conname = 'ingredients_sku_check') THEN
+    ALTER TABLE public.ingredients
+      ADD CONSTRAINT ingredients_sku_check CHECK (sku ~ '^[A-Z0-9][A-Z0-9-]{1,31}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid = 'public.ingredients'::regclass AND conname = 'ingredients_restaurant_id_sku_key') THEN
+    ALTER TABLE public.ingredients
+      ADD CONSTRAINT ingredients_restaurant_id_sku_key UNIQUE (restaurant_id, sku);
+  END IF;
 END $$;
 
 -- ============================================
