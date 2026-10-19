@@ -1,38 +1,58 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { DailySales } from "@/types"
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts"
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts"
+import { Panel } from "@/components/admin/common/Panel"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface SalesChartProps {
   data: DailySales[]
+  isLoading?: boolean
+  className?: string
 }
 
-export function SalesChart({ data }: SalesChartProps) {
+export function SalesChart({ data, isLoading = false, className }: SalesChartProps) {
   return (
-    <Card className="col-span-2">
-      <CardHeader>
-        <CardTitle>Ventas Diarias</CardTitle>
-      </CardHeader>
-      <CardContent className="pl-2">
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={data}>
-            <XAxis dataKey="date" allowDecimals={false} stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis
-              stroke="#888888"
+    <Panel title="Ventas diarias" description="Últimos 30 días" className={className} contentClassName="p-2 sm:p-4">
+      {isLoading ? (
+        <Skeleton className="h-[260px] w-full" />
+      ) : (
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={data} margin={{ left: -8, right: 8, top: 8 }}>
+            <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+            <XAxis
+              dataKey="date"
+              allowDecimals={false}
+              stroke="hsl(var(--muted-foreground))"
               fontSize={12}
               tickLine={false}
               axisLine={false}
+              minTickGap={16}
+            />
+            <YAxis
+              stroke="hsl(var(--muted-foreground))"
+              fontSize={12}
+              tickLine={false}
+              axisLine={false}
+              width={56}
               tickFormatter={(value) => `${value}`}
             />
             <Tooltip
+              cursor={{ fill: "hsl(var(--muted))" }}
+              contentStyle={{
+                background: "hsl(var(--popover))",
+                border: "1px solid hsl(var(--border))",
+                borderRadius: 8,
+                color: "hsl(var(--popover-foreground))",
+                fontSize: 12,
+              }}
               formatter={(value: number) => [`${value.toLocaleString("es-CO")}`, "Ventas"]}
               labelFormatter={(label) => `Fecha: ${label}`}
             />
-            <Bar dataKey="amount" fill="var(--chart-5)" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
-      </CardContent>
-    </Card>
+      )}
+    </Panel>
   )
 }
