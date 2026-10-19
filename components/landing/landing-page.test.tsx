@@ -56,4 +56,12 @@ describe("LandingPage", () => {
     expect(links.length).toBeGreaterThan(0)
     for (const link of links) expect(link).toHaveAttribute("href", "/portal")
   })
+
+  it("signs the footer with the RADE Studio logo linked to the studio site", () => {
+    render(<LandingPage />)
+    const footer = screen.getByRole("contentinfo")
+    const logo = within(footer).getByRole("img", { name: "RADE Studio" })
+    expect(logo).toHaveAttribute("src", "/brand/rade-horizontal-sobre-oscuro.svg")
+    expect(logo.closest("a")).toHaveAttribute("href", "https://radestudio.org")
+  })
 })

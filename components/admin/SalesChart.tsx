@@ -4,6 +4,7 @@ import type { DailySales } from "@/types"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts"
 import { Panel } from "@/components/admin/common/Panel"
 import { Skeleton } from "@/components/ui/skeleton"
+import { compactMoney } from "@/lib/admin/compact-money"
 
 interface SalesChartProps {
   data: DailySales[]
@@ -34,8 +35,8 @@ export function SalesChart({ data, isLoading = false, className }: SalesChartPro
               fontSize={12}
               tickLine={false}
               axisLine={false}
-              width={56}
-              tickFormatter={(value) => `${value}`}
+              width={64}
+              tickFormatter={(value: number) => compactMoney(value)}
             />
             <Tooltip
               cursor={{ fill: "hsl(var(--muted))" }}
@@ -46,7 +47,7 @@ export function SalesChart({ data, isLoading = false, className }: SalesChartPro
                 color: "hsl(var(--popover-foreground))",
                 fontSize: 12,
               }}
-              formatter={(value: number) => [`${value.toLocaleString("es-CO")}`, "Ventas"]}
+              formatter={(value: number) => [`$${value.toLocaleString("es-CO")}`, "Ventas"]}
               labelFormatter={(label) => `Fecha: ${label}`}
             />
             <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />

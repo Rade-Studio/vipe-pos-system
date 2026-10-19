@@ -109,9 +109,24 @@ export function LandingPage() {
         <FinalCta />
       </main>
       <footer className="border-t border-white/10 px-6 py-10">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-sm text-zinc-500 sm:flex-row">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 text-sm text-zinc-500 sm:flex-row">
           <span>© {new Date().getFullYear()} VipePOS · Punto de venta para restaurantes</span>
-          <span>Hecho con Next.js, Supabase y mucho café.</span>
+          <a
+            href="https://radestudio.org"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex items-center gap-3 text-zinc-500 transition hover:text-zinc-300"
+          >
+            <span>Un producto de</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/brand/rade-horizontal-sobre-oscuro.svg"
+              alt="RADE Studio"
+              width={113}
+              height={30}
+              className="h-7 w-auto opacity-80 transition group-hover:opacity-100"
+            />
+          </a>
         </div>
       </footer>
     </div>

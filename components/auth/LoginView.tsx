@@ -58,7 +58,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
 
       toast({
         title: "Inicio de sesión exitoso",
-        description: "Bienvenido al sistema VibePOS",
+        description: "Bienvenido al sistema VipePOS",
       })
 
       onLoginSuccess()
@@ -117,7 +117,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             </div>
           </div>
           <h1 className="text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-violet-400 to-indigo-400">
-            VibePOS
+            VipePOS
           </h1>
           <p className="mt-2 text-white/80 dark:text-white/70">
             Sistema de punto de venta con estilo para restaurantes
@@ -223,7 +223,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             animationComplete ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0",
           )}
         >
-          © {new Date().getFullYear()} VibePOS • Todos los derechos reservados
+          © {new Date().getFullYear()} VipePOS • Todos los derechos reservados
         </div>
       </div>
     </div>
