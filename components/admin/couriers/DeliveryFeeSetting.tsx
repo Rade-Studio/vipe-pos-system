@@ -15,7 +15,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -70,27 +69,29 @@ export function DeliveryFeeSetting() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Valor sugerido del domicilio</CardTitle>
-        <CardDescription>
-          Se propone al crear un domicilio; el operador puede cambiarlo en cada pedido.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <section className="rounded-lg border bg-card text-card-foreground">
+      <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between md:gap-8">
+        <div className="space-y-1 md:max-w-[50%]">
+          <h2 className="text-base font-semibold">Valor sugerido del domicilio</h2>
+          <p className="text-sm text-muted-foreground">
+            Se propone al crear un domicilio; el operador puede cambiarlo en cada pedido.
+          </p>
+        </div>
         {isLoading ? (
-          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-10 w-full md:w-64" />
         ) : (
-          <div className="flex items-end gap-3">
-            <div className="space-y-1">
-              <Label htmlFor="delivery-default-fee">Valor en pesos</Label>
+          <div className="flex items-end gap-2">
+            <div className="flex-1 space-y-1">
+              <Label htmlFor="delivery-default-fee" className="sr-only">
+                Valor en pesos
+              </Label>
               <Input
                 id="delivery-default-fee"
                 inputMode="numeric"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder="Ej. 5000"
-                className="w-48"
+                className="w-full md:w-40"
                 disabled={saving}
               />
             </div>
@@ -99,8 +100,8 @@ export function DeliveryFeeSetting() {
             </Button>
           </div>
         )}
-        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-      </CardContent>
-    </Card>
+      </div>
+      {error && <p className="px-4 pb-4 text-sm text-destructive sm:px-6">{error}</p>}
+    </section>
   )
 }
