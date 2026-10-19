@@ -15,7 +15,7 @@ Un sistema completo de punto de venta (POS) para restaurantes, diseñado para op
 - **Gestión de órdenes**: Creación, seguimiento y finalización de órdenes
 - **Pagos**: Procesamiento de pagos completos y parciales con diferentes métodos
 - **Caja registradora**: Apertura, cierre, adiciones y retiros de efectivo
-- **Inventario**: Control de ingredientes, recetas y alertas de stock bajo
+- **Inventario**: Artículos con SKU, fórmulas y preparaciones por lotes, bodegas, compras, conteos y mermas (ver [docs/inventario.md](docs/inventario.md))
 - **Reportes**: Ventas, productos populares, transacciones y más
 - **Domicilios**: Pedidos a domicilio con registro de clientes por teléfono, repartidores, tablero de estados y cobro anticipado o contra entrega (ver [docs/delivery-module.md](docs/delivery-module.md))
 - **Impresión**: Tickets de cocina y facturas para clientes
@@ -112,7 +112,7 @@ El sistema se usa desde `/portal`: tras iniciar sesión, se mostrará una pantal
 - **Operador de domicilios**: Para tomar pedidos a domicilio, despacharlos y cerrarlos
 - **Administrador**: Para configuración y reportes
 
-Cada perfil está protegido por una contraseña que puede configurarse en el panel de administración.
+El rol lo define la sesión de Supabase de la cuenta: los perfiles no tienen contraseña propia.
 
 #### Cuentas locales de desarrollo
 
@@ -176,15 +176,18 @@ El operador de domicilios trabaja desde un tablero de pedidos agrupados por esta
 
 ### Vista de Administrador
 
-1. Gestiona el menú (categorías y platos)
-2. Configura mesas
-3. Administra personal
-4. Controla inventario
-5. Configura promociones
-6. Visualiza reportes y estadísticas
-7. Configura parámetros del negocio (impuestos, propinas, etc.)
+El panel de administración es un dashboard con barra lateral (plegable en escritorio, menú lateral en móvil), buscador de secciones con `⌘K`/`Ctrl+K` y la sección actual en la URL (`#inventory/items`), así que recargar o volver atrás conserva dónde estabas.
 
-En Configuración también hay dos pestañas relacionadas con domicilios:
+| Grupo | Secciones |
+|-------|-----------|
+| General | Resumen, Órdenes, Mesas, Caja |
+| Catálogo | Menú (categorías, platos, promociones), Fórmulas |
+| Inventario | Resumen, Artículos, Movimientos, Compras, Producción, Conteos, Bodegas |
+| Configuración | Negocio, Impuestos y propinas, Inventario, Métodos de pago, Domicilios, Personal |
+
+La guía de inventario y fórmulas está en [docs/inventario.md](docs/inventario.md).
+
+En Configuración también hay dos apartados relacionados con domicilios:
 
 - **Repartidores**: crea, edita y activa/desactiva repartidores (nombre y teléfono; no inician sesión) y define el valor sugerido del domicilio
 - **Personal**: crea cuentas de acceso (correo, contraseña y rol: mesero, cocina, cajero u operador de domicilios) mediante la Edge Function `create-staff-account`. Solo la puede invocar un administrador, el restaurante se toma del administrador que la invoca y no permite crear cuentas de rol administrador. Ver [docs/delivery-module.md](docs/delivery-module.md#alta-de-cuentas-de-personal) y [DOCKER.md](DOCKER.md) para servirla o desplegarla
@@ -217,7 +220,7 @@ restaurant-pos/
 
 ## 🔄 Flujo de Datos
 
-1. **Autenticación**: Gestión de perfiles y acceso mediante contraseñas
+1. **Autenticación**: Sesión de Supabase; el rol de la cuenta define a qué perfil accede
 2. **Estado Global**: Almacenamiento de configuración, estado de caja, y datos del POS
 3. **Servicios de Supabase**: Comunicación con la base de datos para CRUD y operaciones complejas
 4. **Tiempo Real**: Actualización en tiempo real de órdenes, mesas y estados
@@ -228,7 +231,10 @@ restaurant-pos/
 
 - **categories**: Categorías de productos
 - **dishes**: Platos y bebidas
-- **ingredients**: Ingredientes para el inventario
+- **ingredients**: Artículos de inventario (materia prima y preparaciones, con SKU)
+- **inventory_locations**, **inventory_lots**, **inventory_movements**: Bodegas, lotes y kardex
+- **suppliers**, **purchase_orders**: Proveedores y órdenes de compra
+- **recipes**, **recipe_ingredients**: Fórmulas de platos y preparaciones (se guardan con la RPC `save_formula`)
 - **tables**: Mesas del restaurante
 - **profiles**: Usuarios del sistema
 - **orders**: Órdenes de clientes
@@ -250,18 +256,7 @@ En el panel de administración, puedes configurar:
 
 ### Control de Inventario
 
-Activa o desactiva el control de inventario para:
-- Seguimiento automático de ingredientes
-- Alertas de stock bajo
-- Prevención de venta de productos sin stock
-
-### Contraseñas de Acceso
-
-Configura contraseñas personalizadas para cada rol:
-- Mesero
-- Cocina `default: 1234`
-- Cajero `default: 5678`
-- Administrador `default: 9999`
+Con el control de inventario activo, cada venta descuenta la fórmula del plato en la bodega predeterminada. Ver [docs/inventario.md](docs/inventario.md).
 
 ### Información del Negocio
 
