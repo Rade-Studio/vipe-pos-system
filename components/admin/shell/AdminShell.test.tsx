@@ -128,3 +128,22 @@ describe("AdminShell command menu", () => {
     expect(onChangeProfile).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("AdminShell sidebar width", () => {
+  const setWidth = (width: number) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width })
+  }
+
+  it("starts collapsed to icons on tablet widths so the page keeps its room", () => {
+    setWidth(800)
+    const { container } = render(<Harness />)
+    expect(container.ownerDocument.querySelector('[data-state="collapsed"][data-collapsible="icon"]')).not.toBeNull()
+  })
+
+  it("starts expanded on wide screens", () => {
+    setWidth(1440)
+    const { container } = render(<Harness />)
+    expect(container.ownerDocument.querySelector('[data-state="expanded"]')).not.toBeNull()
+    expect(container.ownerDocument.querySelector('[data-state="collapsed"][data-collapsible="icon"]')).toBeNull()
+  })
+})

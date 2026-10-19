@@ -114,8 +114,18 @@ export function InventoryOverviewPage({ description, onNavigate }: InventoryOver
       id: "supplier",
       header: "Proveedor",
       cell: ({ item }) =>
-        (item.defaultSupplierId && supplierName.get(item.defaultSupplierId)) || (
-          <span className="text-muted-foreground">—</span>
+        item.kind === "prep" ? (
+          <button
+            type="button"
+            className="text-sm font-medium underline-offset-4 hover:underline"
+            onClick={() => onNavigate?.("inventory/production")}
+          >
+            Producir
+          </button>
+        ) : (
+          (item.defaultSupplierId && supplierName.get(item.defaultSupplierId)) || (
+            <span className="text-muted-foreground">—</span>
+          )
         ),
     },
   ]

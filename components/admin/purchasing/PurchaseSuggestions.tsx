@@ -29,7 +29,8 @@ const suggestedQuantity = (item: InventoryItem) =>
 export function buildSuggestions(items: readonly InventoryItem[], suppliers: readonly Supplier[]): SuggestionGroup[] {
   const known = new Map(suppliers.filter((s) => s.isActive).map((s) => [s.id, s]))
   const due = items
-    .filter((i) => i.isActive)
+    // Preparations are produced in the kitchen, never purchased.
+    .filter((i) => i.isActive && i.kind === "raw")
     .map((item) => ({ item, quantity: suggestedQuantity(item), default_supplier_id: item.defaultSupplierId && known.has(item.defaultSupplierId) ? item.defaultSupplierId : null }))
     .filter((row) => row.quantity > 0)
   const groups = [...groupBySupplier(due)].map(([supplierId, rows]) => ({
