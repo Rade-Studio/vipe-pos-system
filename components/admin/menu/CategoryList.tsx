@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { SectionHeader, Toolbar } from "@/components/admin/common/Panel"
+import { EmptyState } from "@/components/admin/common/EmptyState"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -132,15 +133,16 @@ export function CategoryList() {
   const renderIcon = (iconName: string) => {
     const IconComponent = (LucideIcons as any)[iconName]
     if (IconComponent) {
-      return <IconComponent className="h-5 w-5" />
+      return <IconComponent className="h-4 w-4 text-muted-foreground" />
     }
     return null
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Categorías del Menú</CardTitle>
+    <section className="min-w-0 space-y-3">
+      <SectionHeader title="Categorías" description="Agrupan los platos en la carta y en la toma de pedidos." />
+      <Toolbar
+        actions={
         <Dialog open={openDialog} onOpenChange={setOpenDialog}>
           <DialogTrigger asChild>
             <Button
@@ -166,32 +168,34 @@ export function CategoryList() {
             />
           </DialogContent>
         </Dialog>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center mb-4">
-          <Search className="mr-2 h-4 w-4 text-muted-foreground" />
+        }
+      >
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
           <Input
             placeholder="Buscar categorías..."
+            aria-label="Buscar categorías"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
+            className="pl-8"
           />
         </div>
+      </Toolbar>
 
         {isLoading ? (
-          <div className="text-center py-4">Cargando categorías...</div>
+          <p className="py-8 text-center text-sm text-muted-foreground">Cargando categorías...</p>
         ) : filteredCategories.length === 0 ? (
-          <div className="text-center py-4 text-muted-foreground">
-            {searchTerm ? "No se encontraron categorías con ese término de búsqueda" : "No hay categorías registradas"}
-          </div>
+          <EmptyState
+            title={searchTerm ? "No se encontraron categorías con ese término de búsqueda" : "No hay categorías registradas"}
+          />
         ) : (
-          <div className="rounded-md border">
+          <div className="rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Icono</TableHead>
+                  <TableHead className="w-12">Icono</TableHead>
                   <TableHead>Nombre</TableHead>
-                  <TableHead>Descripción</TableHead>
+                  <TableHead className="hidden md:table-cell">Descripción</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -201,13 +205,13 @@ export function CategoryList() {
                   <TableRow key={category.id}>
                     <TableCell>{category.icon && renderIcon(category.icon)}</TableCell>
                     <TableCell className="font-medium">{category.name}</TableCell>
-                    <TableCell>{category.description || "-"}</TableCell>
+                    <TableCell className="hidden text-muted-foreground md:table-cell">{category.description || "-"}</TableCell>
                     <TableCell>
-                      <Badge variant={category.active ? "default" : "secondary"}>
+                      <Badge variant={category.active ? "secondary" : "outline"}>
                         {category.active ? "Activa" : "Inactiva"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="whitespace-nowrap text-right">
                       <Button variant="ghost" size="icon" onClick={() => handleEdit(category)}>
                         <Edit className="h-4 w-4" />
                         <span className="sr-only">Editar</span>
@@ -239,7 +243,6 @@ export function CategoryList() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </CardContent>
-    </Card>
+    </section>
   )
 }

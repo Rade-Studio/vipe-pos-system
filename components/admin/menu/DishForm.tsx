@@ -398,7 +398,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
                             type="button"
                             variant="destructive"
                             size="icon"
-                            className="h-8 w-8 rounded-full bg-red-500/90 hover:bg-red-600 shadow-md"
+                            className="h-8 w-8 rounded-full shadow-md"
                             onClick={handleDeleteImage}
                             disabled={deletingImage}
                           >

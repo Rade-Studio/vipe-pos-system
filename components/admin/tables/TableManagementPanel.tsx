@@ -4,7 +4,11 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { EmptyState } from "@/components/admin/common/EmptyState"
+import { Toolbar } from "@/components/admin/common/Panel"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { tableService } from "@/lib/supabase/service"
@@ -12,7 +16,7 @@ import { log } from "@/lib/log"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { mergeRowList, type RowChange } from "@/lib/realtime/table-merge"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Plus, Search, Filter } from "lucide-react"
+import { Filter, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { getStatusLabel } from "@/utils/helpers"
 
 export function TableManagementPanel() {
@@ -244,180 +248,132 @@ export function TableManagementPanel() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
+  // Below `sm` every row becomes a small card (CSS grid on the same <tr>).
+  const cellClass = "p-0 sm:p-4"
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Administración de Mesas</CardTitle>
-        <Button onClick={() => setShowAddDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva Mesa
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {/* Barra de búsqueda y filtros */}
-        <div className="flex flex-col sm:flex-row gap-2 mb-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por número de mesa..."
-              className="pl-8"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <Select
-            value={statusFilter || ""}
-            onValueChange={(value) => {
-              if (value === "all") {
-                setStatusFilter(null)
-              } else {
-                setStatusFilter(value || null)
-              }
-            }}
-          >
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <div className="flex items-center">
-                <Filter className="h-4 w-4 mr-2" />
-                <span>{statusFilter ? getStatusLabel(statusFilter) : "Filtrar por estado"}</span>
-              </div>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los estados</SelectItem>
-              <SelectItem value="available">Disponible</SelectItem>
-              <SelectItem value="reserved">Reservada</SelectItem>
-              <SelectItem value="occupied">Ocupada</SelectItem>
-              <SelectItem value="kitchen">En cocina</SelectItem>
-              <SelectItem value="delivered">Servida</SelectItem>
-            </SelectContent>
-          </Select>
+    <div className="space-y-4">
+      <Toolbar
+        actions={
+          <Button onClick={() => setShowAddDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nueva Mesa
+          </Button>
+        }
+      >
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
+          <Input
+            placeholder="Buscar por número de mesa..."
+            aria-label="Buscar por número de mesa"
+            className="pl-8"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
+        <Select
+          value={statusFilter || ""}
+          onValueChange={(value) => {
+            if (value === "all") {
+              setStatusFilter(null)
+            } else {
+              setStatusFilter(value || null)
+            }
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <div className="flex items-center">
+              <Filter className="h-4 w-4 mr-2" />
+              <span>{statusFilter ? getStatusLabel(statusFilter) : "Filtrar por estado"}</span>
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los estados</SelectItem>
+            <SelectItem value="available">Disponible</SelectItem>
+            <SelectItem value="reserved">Reservada</SelectItem>
+            <SelectItem value="occupied">Ocupada</SelectItem>
+            <SelectItem value="kitchen">En cocina</SelectItem>
+            <SelectItem value="delivered">Servida</SelectItem>
+          </SelectContent>
+        </Select>
+      </Toolbar>
 
-        {/* Lista de mesas */}
-        {filteredTables.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            {searchQuery || statusFilter
-              ? "No se encontraron mesas con los criterios de búsqueda."
-              : "No hay mesas creadas."}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredTables.map((table) => (
-              <Card
-                key={table.id}
-                className="overflow-hidden border-t-4"
-                style={{ borderTopColor: getStatusColor(table.status) }}
-              >
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-xl font-bold">Mesa {table.number}</h3>
-                    <Badge status={table.status} />
-                  </div>
-
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center text-sm">
-                      <div className="w-24 font-medium">Estado:</div>
-                      <div>{getStatusLabel(table.status)}</div>
-                    </div>
-
-                    {table.waiter_id && (
-                      <div className="flex items-center text-sm">
-                        <div className="w-24 font-medium">Mesero:</div>
-                        <div className="flex items-center">
-                          <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary mr-2">
-                            {table.profiles?.full_name
-                              ?.split(" ")
-                              .map((name: string) => name[0])
-                              .join("")
-                              .toUpperCase() || "??"}
-                          </div>
-                          <span>{table.profiles?.full_name || "Desconocido"}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex items-center text-sm">
-                      <div className="w-24 font-medium">Última act.:</div>
-                      <div>
-                        {table.updated_at
-                          ? new Date(table.updated_at).toLocaleString("es-ES", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "N/A"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between gap-2 mt-auto">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 flex items-center justify-center"
-                      onClick={() => handleOpenEditDialog(table)}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="mr-1"
+      {loading ? (
+        <div className="space-y-2" data-testid="tables-loading">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
+      ) : filteredTables.length === 0 ? (
+        <EmptyState
+          title={searchQuery || statusFilter ? "No se encontraron mesas con los criterios de búsqueda." : "No hay mesas creadas."}
+        />
+      ) : (
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader className="hidden sm:table-header-group">
+              <TableRow>
+                <TableHead>Mesa</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Mesero</TableHead>
+                <TableHead className="hidden md:table-cell">Última act.</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredTables.map((table) => (
+                <TableRow key={table.id} className="grid grid-cols-2 items-center gap-x-3 gap-y-1 p-3 sm:table-row sm:p-0">
+                  <TableCell className={`${cellClass} font-medium`}>Mesa {table.number}</TableCell>
+                  <TableCell className={`${cellClass} text-right sm:text-left`}>
+                    <StatusBadge status={table.status} />
+                  </TableCell>
+                  <TableCell className={`${cellClass} text-muted-foreground sm:text-foreground`}>
+                    {table.waiter_id ? table.profiles?.full_name || "Desconocido" : "Sin mesero"}
+                  </TableCell>
+                  <TableCell className={`${cellClass} text-right text-xs text-muted-foreground sm:text-left md:table-cell sm:hidden`}>
+                    {table.updated_at
+                      ? new Date(table.updated_at).toLocaleString("es-ES", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "N/A"}
+                  </TableCell>
+                  <TableCell className={`${cellClass} col-span-2 pt-2 sm:text-right`}>
+                    <div className="flex gap-2 sm:justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 sm:flex-none"
+                        onClick={() => handleOpenEditDialog(table)}
                       >
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                      </svg>
-                      Editar
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="flex-1 flex items-center justify-center"
-                      onClick={() => handleOpenDeleteDialog(table.id)}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="mr-1"
+                        <Pencil className="mr-1 h-4 w-4" />
+                        Editar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 text-destructive hover:text-destructive sm:flex-none"
+                        onClick={() => handleOpenDeleteDialog(table.id)}
                       >
-                        <path d="M3 6h18"></path>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      </svg>
-                      Eliminar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+                        <Trash2 className="mr-1 h-4 w-4" />
+                        Eliminar
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
         {/* Diálogo para añadir mesa */}
         <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogContent className="w-full max-w-s p-4">
+          <DialogContent className="sm:max-w-sm">
             <DialogHeader>
-              <DialogTitle className="text-lg">Añadir Nueva Mesa</DialogTitle>
+              <DialogTitle>Añadir Nueva Mesa</DialogTitle>
             </DialogHeader>
             <div className="space-y-2">
               <div>
@@ -510,50 +466,19 @@ export function TableManagementPanel() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+    </div>
   )
 }
 
-// Componente Badge para mostrar el estado
-function Badge({ status }: { status: string }) {
-  const getStatusClass = () => {
-    switch (status) {
-      case "available":
-        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-      case "reserved":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-      case "occupied":
-        return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
-      case "kitchen":
-        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
-      case "delivered":
-        return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300"
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
-    }
-  }
-
-  return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusClass()}`}>{getStatusLabel(status)}</span>
-  )
+const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "warning"> = {
+  available: "outline",
+  reserved: "secondary",
+  occupied: "secondary",
+  kitchen: "warning",
+  delivered: "default",
 }
 
-// Función para obtener el color del estado para el borde superior
-function getStatusColor(status: string) {
-  switch (status) {
-    case "available":
-      return "#10b981" // green-500
-    case "reserved":
-      return "#3b82f6" // blue-500
-    case "occupied":
-      return "#f59e0b" // amber-500
-    case "kitchen":
-      return "#ef4444" // red-500
-    case "delivered":
-    case "served":
-      return "#8b5cf6" // violet-500
-    default:
-      return "#6b7280" // gray-500
-  }
+/** Table status as a neutral badge; only "available" and "kitchen" stand out. */
+function StatusBadge({ status }: { status: string }) {
+  return <Badge variant={STATUS_VARIANT[status] ?? "outline"}>{getStatusLabel(status)}</Badge>
 }
