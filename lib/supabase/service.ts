@@ -5,6 +5,7 @@ import ingredientTransactionService from "./ingredient-transaction-service"
 import { log } from "@/lib/log"
 import { getPaymentsByOrderIds } from "./payments-service"
 import { invoicePaymentMethod } from "@/lib/payments/payment-list"
+import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
 
 // Reutilizar el cliente de Supabase ya inicializado
 export const supabase = clientSupabase
@@ -608,7 +609,7 @@ export const orderService = {
     // Luego creamos los items de la orden
     const orderItems = order.items.map((item) => ({
       order_id: orderId,
-      dish_id: item.id.includes("-") ? null : item.id, // Si el ID contiene un guión, es un ID temporal
+      dish_id: dishIdFromCartItemId(item.id),
       name: item.name,
       price: item.price,
       quantity: item.quantity,

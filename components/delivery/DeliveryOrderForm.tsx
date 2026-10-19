@@ -40,6 +40,7 @@ import {
 import { createSingleFlight } from '@/lib/payments/single-flight'
 import { buildDeliveryKitchenCommand, newKitchenOrderNumber } from '@/lib/delivery/print'
 import { realtimeService } from '@/lib/supabase/realtime-service'
+import { consumeOrderStock } from '@/lib/supabase/inventory'
 import { useProfileStore } from '@/store/useProfileStore'
 import { toast } from '@/hooks/use-toast'
 
@@ -245,6 +246,11 @@ export function DeliveryOrderForm({
         } catch {
           toast.warning('El domicilio se creó, pero no se pudo enviar la comanda a cocina')
         }
+        // Sale stock is consumed server-side (no-op when inventory control is
+        // off). Not awaited: a failure must not undo or delay the creation.
+        void consumeOrderStock(created.orderId).catch(() => {
+          toast.warning('El domicilio se creó, pero hubo un error al actualizar el inventario.')
+        })
         toast.success('Domicilio creado y enviado a cocina')
         onSubmitted()
       } catch (err) {

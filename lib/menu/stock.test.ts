@@ -76,6 +76,26 @@ describe("evaluateDishStock — batched availability decision (T6/S1)", () => {
     expect(result.get("d-many")).toBe(true)
   })
 
+  // T12 (S3): a recipe yields `yield_quantity` portions, so one portion needs
+  // each line quantity divided by the yield.
+  it("divides each line quantity by the recipe yield", () => {
+    const yieldRecipes: RecipeRow[] = [{ id: "r-yield", dish_id: "d-yield", yield_quantity: 4 }]
+    const lines: RecipeIngredientRow[] = [{ recipe_id: "r-yield", ingredient_id: "i-1", quantity: 8 }]
+    const stockOf = (stock: number) => [{ id: "i-1", name: "Arroz", stock, unit: "g" }]
+
+    expect(evaluateDishStock(["d-yield"], yieldRecipes, lines, stockOf(2)).get("d-yield")).toBe(true)
+    expect(evaluateDishStock(["d-yield"], yieldRecipes, lines, stockOf(1.99)).get("d-yield")).toBe(false)
+  })
+
+  it("treats a missing or non-positive yield as 1", () => {
+    const lines: RecipeIngredientRow[] = [{ recipe_id: "r-y", ingredient_id: "i-1", quantity: 8 }]
+    const stock = [{ id: "i-1", name: "Arroz", stock: 7, unit: "g" }]
+    for (const yield_quantity of [undefined, null, 0, -2]) {
+      const rows: RecipeRow[] = [{ id: "r-y", dish_id: "d-y", yield_quantity }]
+      expect(evaluateDishStock(["d-y"], rows, lines, stock).get("d-y")).toBe(false)
+    }
+  })
+
   it("returns an empty map for no dishes", () => {
     expect(evaluateDishStock([], recipes, recipeIngredients, ingredients).size).toBe(0)
   })

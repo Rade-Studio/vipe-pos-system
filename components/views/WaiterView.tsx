@@ -17,6 +17,7 @@ import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintView"
 import type { PrintableKitchenOrder } from "@/types"
 import { tableService, orderService } from "@/lib/supabase/service"
+import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
 import { realtimeService } from "@/lib/supabase/realtime-service"
 import { queryClient } from "@/lib/queryClient"
 import type { TableChange } from "@/lib/realtime/table-merge"
@@ -25,7 +26,8 @@ import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { useWaiters } from "@/hooks/use-waiters"
 import { useConfigStore } from "@/store/use-config-store"
-import inventoryControlService from "@/lib/supabase/inventory-control-service"
+import { checkDishesStock, consumeOrderStock } from "@/lib/supabase/inventory"
+import { invalidationsFor } from "@/hooks/inventory/invalidations"
 import {
   Dialog,
   DialogContent,
@@ -90,6 +92,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const [loading, setLoading] = useState(true)
   const [sendingToKitchen, setSendingToKitchen] = useState(false)
   const [forceSubmit, setForceSubmit] = useState(false)
+  // "Enviar de todos modos" re-runs the send from a timeout, whose closure still
+  // sees the previous `forceSubmit`; the ref carries the decision to that run.
+  const forceSubmitRef = useRef(false)
   const [tableSelectionTime, setTableSelectionTime] = useState<Record<string, number>>({})
   const [realtimeConnected, setRealtimeConnected] = useState(false)
 
@@ -690,24 +695,35 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     clearCart(activeTable)
   }, [activeTable, clearCart])
 
-  // Verificar stock antes de enviar a cocina
+  // Verificar stock antes de enviar a cocina (check_dishes_stock: una sola
+  // lectura en el servidor, misma cantidad por plato agregada)
   const checkStockBeforeSending = useCallback(async () => {
-    if (!inventoryControlEnabled || forceSubmit) {
+    if (!inventoryControlEnabled || forceSubmit || forceSubmitRef.current) {
       return true
     }
 
     try {
-      const normalizedCartItems = cartItems.map((item) => ({
-        ...item,
-        id: normalizeDishId(item.id),
-      }))
+      const quantityByDish = new Map<string, number>()
+      for (const item of cartItems) {
+        const dishId = normalizeDishId(item.id)
+        quantityByDish.set(dishId, (quantityByDish.get(dishId) ?? 0) + item.quantity)
+      }
 
-      const stockCheck = await inventoryControlService.checkOrderStock(normalizedCartItems)
+      const stockCheck = await checkDishesStock(
+        [...quantityByDish].map(([dishId, quantity]) => ({ dishId, quantity })),
+      )
 
-      if (!stockCheck.hasStock) {
+      if (!stockCheck.ok) {
         setStockDetailWarning({
-          dishesWithoutStock: stockCheck.dishesWithoutStock,
-          missingIngredients: stockCheck.missingIngredients,
+          // The RPC reports short ingredients (nested preparations included),
+          // not which dishes use them, so no dish list is derivable here.
+          dishesWithoutStock: [],
+          missingIngredients: stockCheck.shortages.map((shortage) => ({
+            name: shortage.name,
+            required: shortage.required,
+            available: shortage.available,
+            unit: shortage.unit,
+          })),
         })
         setShowStockDetailWarning(true)
         return false
@@ -724,7 +740,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     }
   }, [inventoryControlEnabled, forceSubmit, cartItems, toast])
 
-  // Reducir stock después de enviar a cocina
+  // Descontar el stock de la orden en el servidor (consume_order_stock lee los
+  // order_items y omite los ya descontados, así que sirve también al agregar
+  // productos a una orden existente)
   const reduceStockAfterSending = useCallback(
     async (orderId: string) => {
       if (!inventoryControlEnabled) {
@@ -732,21 +750,16 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       }
 
       try {
-        const normalizedCartItems = cartItems.map((item) => ({
-          ...item,
-          id: normalizeDishId(item.id),
-        }))
-
-        await inventoryControlService.reduceStock(normalizedCartItems, orderId)
+        await consumeOrderStock(orderId)
 
         // T6 advisory: la lectura de stock del grid está cacheada (staleTime
         // 30 s), así que un plato que esta orden acaba de agotarse seguiría
-        // mostrando "Agregar". Invalidate el prefijo para que el siguiente
-        // render del menú vea el stock real. No se espera: es una lectura y no
-        // debe retrasar el "Orden enviada".
-        void queryClient
-          .invalidateQueries({ queryKey: ["menu", "stock"] })
-          .catch(() => undefined)
+        // mostrando "Agregar". Invalidate el stock (grid e inventario) para que
+        // el siguiente render vea el stock real. No se espera: es una lectura y
+        // no debe retrasar el "Orden enviada".
+        for (const queryKey of invalidationsFor({ type: "consumeOrder" })) {
+          void queryClient.invalidateQueries({ queryKey }).catch(() => undefined)
+        }
       } catch (error) {
         toast({
           title: "Advertencia",
@@ -755,7 +768,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         })
       }
     },
-    [inventoryControlEnabled, cartItems, toast, queryClient],
+    [inventoryControlEnabled, toast, queryClient],
   )
 
   // Verificar si ya existe una orden activa para la mesa
@@ -776,7 +789,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     try {
       const orderItems = items.map((item) => ({
         order_id: orderId,
-        dish_id: item.id.includes("-") ? null : item.id,
+        dish_id: dishIdFromCartItemId(item.id),
         name: item.name,
         price: item.price,
         quantity: item.quantity,
@@ -807,6 +820,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     const stockOk = await checkStockBeforeSending()
     if (!stockOk) return
 
+    forceSubmitRef.current = false
     if (forceSubmit) {
       setForceSubmit(false)
     }
@@ -998,6 +1012,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // Manejar envío forzado a cocina
   const handleForceSendToKitchen = useCallback(() => {
     setForceSubmit(true)
+    forceSubmitRef.current = true
     setShowStockDetailWarning(false)
 
     setTimeout(handleSendToKitchen, 100)
@@ -1005,6 +1020,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
   const handleCancelForceSendToKitchen = useCallback(() => {
     setForceSubmit(false)
+    forceSubmitRef.current = false
     setShowStockDetailWarning(false)
   }, [])
 

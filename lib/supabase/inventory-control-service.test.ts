@@ -116,6 +116,17 @@ describe("checkStockForDishes — batched read (T6/S1)", () => {
     expect(state.requests.map((r) => r.table)).toEqual(["recipes", "recipe_ingredients", "ingredients"])
   })
 
+  // T12 (S3): the recipe yield divides each line, so it must be read.
+  it("reads the recipe yield and divides the line quantities by it", async () => {
+    state.data.recipes = [
+      { id: "r-1", dish_id: UUID_A, yield_quantity: 1 },
+      { id: "r-2", dish_id: UUID_C, yield_quantity: 9 },
+    ]
+    const result = await inventoryControlService.checkStockForDishes(dishIds)
+    expect(requestsFor("recipes")[0].select).toBe("id, dish_id, yield_quantity")
+    expect(result.get(UUID_C)).toBe(true) // 9 / 9 = 1 needed, 1 in stock
+  })
+
   it("scopes each read to the ids of the previous step", async () => {
     await inventoryControlService.checkStockForDishes(dishIds)
     expect(requestsFor("recipes")[0].in).toEqual([["dish_id", dishIds]])
