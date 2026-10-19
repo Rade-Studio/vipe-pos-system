@@ -51,6 +51,7 @@ vi.mock("@/hooks/inventory", () => {
 
 import { PurchasesPage } from "./PurchasesPage"
 import { ReceiveDialog } from "./ReceiveDialog"
+import { buildSuggestions } from "./PurchaseSuggestions"
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -333,5 +334,16 @@ describe("suppliers", () => {
     })
     await act(async () => fireEvent.click(within(table).getAllByRole("button", { name: "Desactivar" })[0]))
     expect(h.updateSupplier.mutateAsync).toHaveBeenCalledWith({ id: "s1", input: { isActive: false } })
+  })
+})
+
+describe("buildSuggestions", () => {
+  it("never suggests buying a preparation: preparations are produced, not purchased", () => {
+    const raw = makeItem({ id: "raw", name: "Tomate", stock: 0, minStock: 2 })
+    const prep = makeItem({ id: "prep", name: "Salsa de la casa", kind: "prep", sku: "PR-0001", stock: 0, minStock: 500 })
+
+    const lines = buildSuggestions([raw, prep], []).flatMap((group) => group.lines.map((line) => line.item.id))
+
+    expect(lines).toEqual(["raw"])
   })
 })

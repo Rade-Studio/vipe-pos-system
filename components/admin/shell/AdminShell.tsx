@@ -19,6 +19,18 @@ interface AdminShellProps {
 }
 
 /** Sidebar + top bar + ⌘K around the open admin page. */
+/**
+ * Tablets (768-1279 px) start with the sidebar collapsed to icons: expanded it
+ * takes a third of the screen and squeezes every table. Phones get the sheet
+ * and wide screens the full sidebar. The admin view only mounts on the client
+ * (after sign-in), so reading the window here is safe.
+ */
+const SIDEBAR_EXPANDED_FROM = 1280
+
+function sidebarStartsOpen(): boolean {
+  return typeof window === "undefined" || window.innerWidth >= SIDEBAR_EXPANDED_FROM
+}
+
 export function AdminShell({ profile, authRole, onChangeProfile, section, onNavigate, children }: AdminShellProps) {
   const [commandOpen, setCommandOpen] = useState(false)
   const businessName = useConfigStore((s) => s.businessName)
@@ -35,7 +47,10 @@ export function AdminShell({ profile, authRole, onChangeProfile, section, onNavi
   }, [])
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": "16rem", "--sidebar-width-icon": "3rem" } as CSSProperties}>
+    <SidebarProvider
+      defaultOpen={sidebarStartsOpen()}
+      style={{ "--sidebar-width": "16rem", "--sidebar-width-icon": "3rem" } as CSSProperties}
+    >
       <AdminSidebar section={section} onNavigate={onNavigate} businessName={businessName} />
       <SidebarInset className="min-w-0">
         <AdminTopbar

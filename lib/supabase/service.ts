@@ -1,7 +1,6 @@
 import type { CartItem, Order, Profile, PaymentMethod } from "@/types"
 import { orderTypeFromRow } from "@/lib/delivery/kitchen"
 import { supabase as clientSupabase } from "./client"
-import ingredientTransactionService from "./ingredient-transaction-service"
 import { log } from "@/lib/log"
 import { getPaymentsByOrderIds } from "./payments-service"
 import { invoicePaymentMethod } from "@/lib/payments/payment-list"
@@ -9,91 +8,6 @@ import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
 
 // Reutilizar el cliente de Supabase ya inicializado
 export const supabase = clientSupabase
-
-// Servicio para ingredientes
-export const ingredientService = {
-  getAll: async () => {
-    try {
-      // Obtenemos los ingredientes con un join a las categorías
-      const { data: ingredients, error: ingError } = await supabase
-        .from("ingredients")
-        .select(`
-        *,
-        ingredient_categories(id, name)
-      `)
-        .order("name")
-
-      if (ingError) throw ingError
-
-      // Procesamos los datos para un formato más fácil de usar
-      return (ingredients || []).map((ingredient) => {
-        return {
-          ...ingredient,
-          category: ingredient.ingredient_categories ? ingredient.ingredient_categories.name : "Sin categoría",
-          // Mantenemos el category_id para edición
-          category_id: ingredient.category_id,
-        }
-      })
-    } catch (error) {
-      log.error("Error en getAll de ingredientes:", { error: String(error) })
-      throw error
-    }
-  },
-
-  getById: async (id: string) => {
-    try {
-      // Obtenemos el ingrediente con un join a la categoría
-      const { data: ingredient, error: ingError } = await supabase
-        .from("ingredients")
-        .select(`
-        *,
-        ingredient_categories(id, name)
-      `)
-        .eq("id", id)
-        .single()
-
-      if (ingError) throw ingError
-
-      // Procesamos los datos para un formato más fácil de usar
-      return {
-        ...ingredient,
-        category: ingredient.ingredient_categories ? ingredient.ingredient_categories.name : "Sin categoría",
-        // Mantenemos el category_id para edición
-        category_id: ingredient.category_id,
-      }
-    } catch (error) {
-      log.error("Error en getById de ingredientes:", { error: String(error) })
-      throw error
-    }
-  },
-
-  create: async (ingredient: any) => {
-    const { data, error } = await supabase.from("ingredients").insert([ingredient]).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  update: async (id: string, ingredient: any) => {
-    const { data, error } = await supabase.from("ingredients").update(ingredient).eq("id", id).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  delete: async (id: string) => {
-    const { error } = await supabase.from("ingredients").delete().eq("id", id)
-    if (error) throw error
-    return true
-  },
-}
-
-// Servicio para categorías de ingredientes
-export const ingredientCategoryService = {
-  getAll: async () => {
-    const { data, error } = await supabase.from("ingredient_categories").select("*").order("name")
-    if (error) throw error
-    return data || []
-  },
-}
 
 // Servicio para categorías
 export const categoryService = {
@@ -402,115 +316,6 @@ export const tableService = {
       log.error("Error al actualizar estado de mesa:", { error: String(error) })
       throw error
     }
-  },
-}
-
-// Servicios para recetas
-export const recipeService = {
-  getByDishId: async (dishId: string) => {
-    const { data, error } = await supabase.from("recipes").select("*").eq("dish_id", dishId).single()
-
-    if (error) {
-      // Si no existe la receta, devolvemos null en lugar de lanzar un error
-      if (error.code === "PGRST116") {
-        return null
-      }
-      throw error
-    }
-
-    return data
-  },
-
-  create: async (recipe: { dishId: string }) => {
-    const { data, error } = await supabase
-      .from("recipes")
-      .insert([
-        {
-          dish_id: recipe.dishId,
-          created_at: new Date().toISOString(),
-        },
-      ])
-      .select()
-
-    if (error) throw error
-    return data?.[0]
-  },
-
-  getRecipeIngredients: async (recipeId: string) => {
-    const { data, error } = await supabase
-      .from("recipe_ingredients")
-      .select(`
-        *,
-        ingredients (name, unit)
-      `)
-      .eq("recipe_id", recipeId)
-
-    if (error) throw error
-
-    // Procesamos los datos para un formato más fácil de usar
-    return (data || []).map((item) => ({
-      id: item.id,
-      recipeId: item.recipe_id,
-      ingredientId: item.ingredient_id,
-      quantity: item.quantity,
-      createdAt: item.created_at,
-      ingredient: item.ingredients
-        ? {
-            name: item.ingredients.name,
-            unit: item.ingredients.unit,
-          }
-        : undefined,
-    }))
-  },
-
-  addIngredientToRecipe: async (recipeIngredient: { recipeId: string; ingredientId: string; quantity: number }) => {
-    const { data, error } = await supabase
-      .from("recipe_ingredients")
-      .insert([
-        {
-          recipe_id: recipeIngredient.recipeId,
-          ingredient_id: recipeIngredient.ingredientId,
-          quantity: recipeIngredient.quantity,
-          created_at: new Date().toISOString(),
-        },
-      ])
-      .select()
-
-    if (error) throw error
-    return data?.[0]
-  },
-
-  updateRecipeIngredient: async (id: string, updates: { quantity: number }) => {
-    const { data, error } = await supabase
-      .from("recipe_ingredients")
-      .update({
-        quantity: updates.quantity,
-      })
-      .eq("id", id)
-      .select()
-
-    if (error) throw error
-    return data?.[0]
-  },
-
-  removeIngredientFromRecipe: async (recipeIngredientId: string) => {
-    const { error } = await supabase.from("recipe_ingredients").delete().eq("id", recipeIngredientId)
-
-    if (error) throw error
-    return true
-  },
-
-  deleteRecipe: async (recipeId: string) => {
-    // Primero eliminamos todos los ingredientes de la receta
-    const { error: ingredientsError } = await supabase.from("recipe_ingredients").delete().eq("recipe_id", recipeId)
-
-    if (ingredientsError) throw ingredientsError
-
-    // Luego eliminamos la receta
-    const { error } = await supabase.from("recipes").delete().eq("id", recipeId)
-
-    if (error) throw error
-    return true
   },
 }
 
@@ -980,11 +785,7 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
 export const services = {
   categories: categoryService,
   dishes: dishService,
-  ingredients: ingredientService,
-  ingredientCategories: ingredientCategoryService,
   waiters: waiterService,
   tables: tableService,
   orders: orderService,
-  ingredientTransactions: ingredientTransactionService,
-  recipes: recipeService,
 }

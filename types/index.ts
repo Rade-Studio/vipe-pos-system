@@ -144,11 +144,6 @@ export interface PopularDish {
   count: number
 }
 
-export interface CategorySales {
-  category: string
-  amount: number
-}
-
 // Cash register types
 export type PaymentMethod = "cash" | "transfer" | "nequi" | "bancolombia"
 
@@ -268,9 +263,4 @@ export type CommandPayload = {
   table?: number | null;
   /** Present for delivery orders; see `DeliveryPrintInfo`. */
   delivery?: DeliveryPrintInfo;
-}
-
-export type IngredientTransactionsOrders = {
-  ingredient_transaction_id: string
-  order_id: string
 }

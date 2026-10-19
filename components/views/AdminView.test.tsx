@@ -82,7 +82,6 @@ vi.mock("@/components/admin/payment-methods/PaymentMethodsManager", () => ({
 }))
 vi.mock("@/components/admin/couriers/CouriersManager", () => ({ CouriersManager: () => null }))
 vi.mock("@/components/admin/couriers/DeliveryFeeSetting", () => ({ DeliveryFeeSetting: () => null }))
-vi.mock("@/components/admin/inventory/IngredientList", () => ({ IngredientList: () => null }))
 vi.mock("@/components/admin/menu/CategoryList", () => ({ CategoryList: () => null }))
 vi.mock("@/components/admin/menu/DishList", () => ({ DishList: () => null }))
 vi.mock("@/components/admin/promotions/PromotionList", () => ({ PromotionList: () => null }))

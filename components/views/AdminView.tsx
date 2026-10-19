@@ -11,8 +11,6 @@ import { realtimeService } from "@/lib/supabase/realtime-service"
 import { hasTable, isDeliveryOrder, orderTypeFromRow } from "@/lib/delivery/kitchen"
 import { mergeOrdersList, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
 import { AdminShell } from "@/components/admin/shell/AdminShell"
-import { PageHeader } from "@/components/admin/common/PageHeader"
-import { EmptyState } from "@/components/admin/common/EmptyState"
 import { OverviewPage } from "@/components/admin/admin-pages/OverviewPage"
 import { OrdersPage } from "@/components/admin/admin-pages/OrdersPage"
 import { TablesPage } from "@/components/admin/admin-pages/TablesPage"
@@ -305,7 +303,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
           />
         )
       case "menu":
-        return <MenuPage description={meta.description} />
+        return <MenuPage description={meta.description} onNavigate={navigateTo} />
       case "formulas":
         return <FormulasPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/overview":
@@ -334,18 +332,10 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         return <DeliverySettings />
       case "settings/staff":
         return <StaffSettings />
-      default:
-        // Fórmulas and the inventory logistics modules arrive in later tasks
-        // of odd/tasks/admin-dashboard-inventario.md.
-        return (
-          <>
-            <PageHeader title={meta.label} description={meta.description} />
-            <EmptyState
-              title="Módulo en construcción"
-              description="Este módulo llega con la nueva logística de inventario y fórmulas."
-            />
-          </>
-        )
+      default: {
+        const unreachable: never = id
+        return unreachable
+      }
     }
   }
 
