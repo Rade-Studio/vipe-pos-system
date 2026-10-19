@@ -22,6 +22,10 @@ import { FormulasPage } from "@/components/admin/formulas/FormulasPage"
 import { ItemsPage } from "@/components/admin/stock/ItemsPage"
 import { MovementsPage } from "@/components/admin/stock/MovementsPage"
 import { LocationsPage } from "@/components/admin/stock/LocationsPage"
+import { PurchasesPage } from "@/components/admin/purchasing/PurchasesPage"
+import { ProductionPage } from "@/components/admin/production/ProductionPage"
+import { CountsPage } from "@/components/admin/counts/CountsPage"
+import { InventoryOverviewPage } from "@/components/admin/inventory-overview/InventoryOverviewPage"
 import { BusinessSettings } from "@/components/admin/settings/BusinessSettings"
 import { TaxSettings } from "@/components/admin/settings/TaxSettings"
 import { InventorySettings } from "@/components/admin/settings/InventorySettings"
@@ -273,7 +277,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
 
     switch (id) {
       case "overview":
-        return <OverviewPage description={meta.description} activeOrders={combinedActiveOrders} />
+        return <OverviewPage description={meta.description} activeOrders={combinedActiveOrders} onNavigate={navigateTo} />
       case "orders":
         return (
           <OrdersPage
@@ -304,12 +308,20 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         return <MenuPage description={meta.description} />
       case "formulas":
         return <FormulasPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/overview":
+        return <InventoryOverviewPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/items":
         return <ItemsPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/movements":
         return <MovementsPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/locations":
         return <LocationsPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/purchases":
+        return <PurchasesPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/production":
+        return <ProductionPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/counts":
+        return <CountsPage description={meta.description} onNavigate={navigateTo} />
       case "settings/business":
         return <BusinessSettings />
       case "settings/taxes":

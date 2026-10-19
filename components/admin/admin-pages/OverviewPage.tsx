@@ -8,7 +8,11 @@ import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { SalesChart } from "@/components/admin/SalesChart"
 import { PopularDishesChart } from "@/components/admin/PopularDishesChart"
-import { LowStockIngredients } from "@/components/admin/inventory/LowStockIngredients"
+import { StockStatusBadge } from "@/components/admin/stock/stock-ui"
+import { useInventoryItems } from "@/hooks/inventory"
+import { stockAlerts } from "@/lib/inventory/overview"
+import { formatQuantity } from "@/lib/inventory/units"
+import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/admin/common/PageHeader"
 import { StatCard } from "@/components/admin/common/StatCard"
 import { Panel } from "@/components/admin/common/Panel"
@@ -37,6 +41,7 @@ interface OverviewPageProps {
   description: string
   /** The same list the Órdenes grid renders (store + admin orders query). */
   activeOrders: AdminOrder[]
+  onNavigate?: (sectionId: string) => void
 }
 
 function StatValue({ isLoading, children }: { isLoading: boolean; children: ReactNode }) {
@@ -56,12 +61,57 @@ function CountList({ rows }: { rows: [string, number][] }) {
   )
 }
 
+const STOCK_ALERT_ROWS = 5
+
+function InventoryAlertsPanel({ onNavigate }: { onNavigate?: (sectionId: string) => void }) {
+  const { data: items = [], isLoading } = useInventoryItems()
+  const alerts = useMemo(() => stockAlerts(items, STOCK_ALERT_ROWS), [items])
+
+  return (
+    <Panel
+      title="Alertas de inventario"
+      description={
+        isLoading ? "Artículos en o por debajo del stock mínimo" : `${alerts.outCount} agotados · ${alerts.lowCount} bajo mínimo`
+      }
+      actions={
+        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => onNavigate?.("inventory/overview")}>
+          Ver inventario
+        </Button>
+      }
+    >
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full" />
+          ))}
+        </div>
+      ) : alerts.rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Ningún artículo necesita reposición.</p>
+      ) : (
+        <ul className="divide-y text-sm">
+          {alerts.rows.map(({ item, status }) => (
+            <li key={item.id} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+              <span className="min-w-0 truncate font-medium">{item.name}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="tabular-nums text-muted-foreground">
+                  {formatQuantity(item.stock, item.unit)} / {formatQuantity(item.minStock, item.unit)}
+                </span>
+                <StockStatusBadge status={status} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  )
+}
+
 /**
  * Resumen. Mounted only while the section is open, so its four dashboard reads
  * (T9, S1) never run for a section nobody is looking at; each one is cached and
  * shows its own skeleton instead of blanking the page.
  */
-export function OverviewPage({ description, activeOrders }: OverviewPageProps) {
+export function OverviewPage({ description, activeOrders, onNavigate }: OverviewPageProps) {
   // The tables / waiters numbers are NOT read here: the shell already loaded
   // both for the admin (lib/shell/startup-loads.ts).
   const monthStart = monthStartIso(new Date())
@@ -200,9 +250,7 @@ export function OverviewPage({ description, activeOrders }: OverviewPageProps) {
         </Panel>
       </div>
 
-      <Panel title="Alertas de inventario" description="Artículos en o por debajo del stock mínimo">
-        <LowStockIngredients />
-      </Panel>
+      <InventoryAlertsPanel onNavigate={onNavigate} />
     </div>
   )
 }
