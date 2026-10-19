@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Order, Profile } from "@/types"
 import { useOrderStore } from "@/store/useOrderStore"
-import { IngredientList } from "@/components/admin/inventory/IngredientList"
 import { orderService, tableService } from "@/lib/supabase/service"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
@@ -19,6 +18,10 @@ import { OrdersPage } from "@/components/admin/admin-pages/OrdersPage"
 import { TablesPage } from "@/components/admin/admin-pages/TablesPage"
 import { CashPage } from "@/components/admin/admin-pages/CashPage"
 import { MenuPage } from "@/components/admin/admin-pages/MenuPage"
+import { FormulasPage } from "@/components/admin/formulas/FormulasPage"
+import { ItemsPage } from "@/components/admin/stock/ItemsPage"
+import { MovementsPage } from "@/components/admin/stock/MovementsPage"
+import { LocationsPage } from "@/components/admin/stock/LocationsPage"
 import { BusinessSettings } from "@/components/admin/settings/BusinessSettings"
 import { TaxSettings } from "@/components/admin/settings/TaxSettings"
 import { InventorySettings } from "@/components/admin/settings/InventorySettings"
@@ -28,7 +31,7 @@ import {
   StaffSettings,
 } from "@/components/admin/settings/ManagedSettings"
 import { useHashSection } from "@/hooks/use-hash-section"
-import { getAdminSection, type AdminSectionId } from "@/lib/admin/navigation"
+import { getAdminSection, isAdminSectionId, type AdminSectionId } from "@/lib/admin/navigation"
 import {
   adminOrdersQueryKey,
   fetchActiveAdminOrders,
@@ -260,6 +263,11 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
     }
   }, [toast])
 
+  // Pages link to each other by section id (e.g. a preparation's "Producir").
+  const navigateTo = (sectionId: string) => {
+    if (isAdminSectionId(sectionId)) navigate(sectionId)
+  }
+
   const renderSection = (id: AdminSectionId) => {
     const meta = getAdminSection(id)
 
@@ -294,13 +302,14 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         )
       case "menu":
         return <MenuPage description={meta.description} />
+      case "formulas":
+        return <FormulasPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/items":
-        return (
-          <>
-            <PageHeader title="Artículos" description={meta.description} />
-            <IngredientList />
-          </>
-        )
+        return <ItemsPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/movements":
+        return <MovementsPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/locations":
+        return <LocationsPage description={meta.description} onNavigate={navigateTo} />
       case "settings/business":
         return <BusinessSettings />
       case "settings/taxes":
