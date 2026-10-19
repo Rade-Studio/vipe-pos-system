@@ -543,53 +543,6 @@ export const waiterService = {
     return data
   },
 
-  async create(waiter: {
-    full_name: string
-    username: string
-    email: string | null
-    password: string
-    active: boolean
-  }) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .insert({
-        ...waiter,
-        role: "waiter",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select()
-
-    if (error) {
-      log.error("Error al crear mesero:", { error: String(error) })
-      throw error
-    }
-
-    return data?.[0]
-  },
-
-  async update(
-    id: string,
-    waiter: { full_name?: string; username?: string; email?: string | null; password?: string; active?: boolean },
-  ) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .update({
-        ...waiter,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .eq("role", "waiter")
-      .select()
-
-    if (error) {
-      log.error("Error al actualizar mesero:", { error: String(error) })
-      throw error
-    }
-
-    return data?.[0]
-  },
-
   async delete(id: string) {
     const { error } = await supabase.from("profiles").delete().eq("id", id).eq("role", "waiter")
 
