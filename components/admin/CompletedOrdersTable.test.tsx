@@ -89,7 +89,7 @@ beforeEach(() => {
   getOrdersByDate.mockResolvedValue([paidOrder()])
   listPaymentMethods.mockResolvedValue([])
   queryClient.clear()
-  useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter", hasPassword: false }] })
+  useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter" }] })
   useTableStore.setState({ tables: [{ id: "t-1", number: 3, status: "served" }] })
 })
 

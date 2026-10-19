@@ -74,7 +74,7 @@ describe("D6 fan-out containment — Store Writes Must Not Fan Out To Unaffected
         ],
       })
       useProfileStore.setState({
-        profiles: [{ id: "w-1", name: "Ana", role: "waiter", hasPassword: false }],
+        profiles: [{ id: "w-1", name: "Ana", role: "waiter" }],
       })
 
       const probe = renderCounter()

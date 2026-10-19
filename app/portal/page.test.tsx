@@ -257,7 +257,7 @@ describe("shell startup loads per role", () => {
     env.role = "admin"
     await renderShell("admin-view")
     act(() => {
-      useProfileStore.getState().selectProfile({ id: "waiter-1", name: "Mesero", role: "waiter", hasPassword: false })
+      useProfileStore.getState().selectProfile({ id: "waiter-1", name: "Mesero", role: "waiter" })
     })
     expect(screen.getByText("waiter-view")).toBeInTheDocument()
     expect(env.getAllRegisters).toHaveBeenCalledTimes(1)
@@ -336,7 +336,7 @@ describe("shell auth listener", () => {
     env.role = "admin"
     await renderShell("admin-view")
     act(() => {
-      useProfileStore.getState().selectProfile({ id: "waiter-1", name: "Mesero", role: "waiter", hasPassword: false })
+      useProfileStore.getState().selectProfile({ id: "waiter-1", name: "Mesero", role: "waiter" })
     })
     expect(screen.getByText("waiter-view")).toBeInTheDocument()
 

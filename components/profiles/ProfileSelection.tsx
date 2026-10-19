@@ -1,9 +1,7 @@
 "use client"
 
-import { useState } from "react"
 import type { Profile } from "@/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { PasswordDialog } from "@/components/profiles/PasswordDialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
 
@@ -13,25 +11,6 @@ interface ProfileSelectionProps {
 }
 
 export function ProfileSelection({ profiles, onSelectProfile }: ProfileSelectionProps) {
-  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
-
-  const handleProfileClick = (profile: Profile) => {
-    setSelectedProfile(profile)
-
-    if (profile.hasPassword) {
-      setShowPasswordDialog(true)
-    } else {
-      onSelectProfile(profile)
-    }
-  }
-
-  const handlePasswordSuccess = () => {
-    if (selectedProfile && typeof onSelectProfile === "function") {
-      onSelectProfile(selectedProfile)
-    }
-  }
-
   // Filtrar solo los perfiles principales (no los meseros internos)
   const mainProfiles = profiles.filter((profile) => !profile.id.startsWith("internal-"))
 
@@ -87,7 +66,7 @@ export function ProfileSelection({ profiles, onSelectProfile }: ProfileSelection
               <div
                 key={profile.id}
                 className="flex flex-col items-center gap-2 cursor-pointer p-2 rounded-lg transition-colors hover:bg-muted"
-                onClick={() => handleProfileClick(profile)}
+                onClick={() => onSelectProfile(profile)}
               >
                 <Avatar className="h-24 w-24 border-2 border-primary/20">
                   <AvatarFallback className={`text-xl ${getRoleColor(profile.role)}`}>
@@ -101,15 +80,6 @@ export function ProfileSelection({ profiles, onSelectProfile }: ProfileSelection
           </div>
         </CardContent>
       </Card>
-
-      {selectedProfile && (
-        <PasswordDialog
-          open={showPasswordDialog}
-          onOpenChange={setShowPasswordDialog}
-          profile={selectedProfile}
-          onSuccess={handlePasswordSuccess}
-        />
-      )}
     </div>
   )
 }

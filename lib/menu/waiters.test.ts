@@ -17,8 +17,8 @@ const rows = [
 describe("mapWaiterRowsToProfiles (T6/S1)", () => {
   it("maps every row to the Profile shape the views render", () => {
     expect(mapWaiterRowsToProfiles(rows)).toEqual([
-      { id: "w-1", name: "Ana Gómez", full_name: "Ana Gómez", username: "ana", role: "waiter", hasPassword: false },
-      { id: "w-2", name: "Luis Pérez", full_name: "Luis Pérez", username: "luis", role: "waiter", hasPassword: false },
+      { id: "w-1", name: "Ana Gómez", full_name: "Ana Gómez", username: "ana", role: "waiter" },
+      { id: "w-2", name: "Luis Pérez", full_name: "Luis Pérez", username: "luis", role: "waiter" },
     ])
   })
 

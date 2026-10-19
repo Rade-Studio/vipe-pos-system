@@ -27,7 +27,6 @@ export type Profile = {
   full_name?: string
   username?: string | null
   role: ProfileRole
-  hasPassword: boolean
   restaurantId?: string
 }
 

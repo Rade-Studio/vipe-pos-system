@@ -114,7 +114,6 @@ export default function Home() {
       full_name: me.full_name,
       username: me.username,
       role: me.role as ProfileRole,
-      hasPassword: true,
       restaurantId: me.restaurant_id,
     }
     setAuthProfile(profile)     // identidad real (UUID válido)
@@ -242,7 +241,6 @@ export default function Home() {
               name: w.name,
               username: w.username ?? null,
               role: w.role as ProfileRole,
-              hasPassword: false,
             })),
           )
           return

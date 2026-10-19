@@ -25,6 +25,5 @@ export function mapWaiterRowsToProfiles(rows: readonly WaiterRow[]): Profile[] {
       full_name: row.full_name,
       username: row.username,
       role: row.role as ProfileRole,
-      hasPassword: false,
     }))
 }

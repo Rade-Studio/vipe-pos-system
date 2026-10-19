@@ -13,7 +13,7 @@ describe('useProfileStore role picker', () => {
 
   it('keeps the role tiles when the waiter directory is loaded', () => {
     useProfileStore.getState().setProfiles([
-      { id: 'b1e2c3d4-0000-0000-0000-000000000001', name: 'María', role: 'waiter', hasPassword: false },
+      { id: 'b1e2c3d4-0000-0000-0000-000000000001', name: 'María', role: 'waiter' },
     ])
 
     const state = useProfileStore.getState()

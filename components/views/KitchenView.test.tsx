@@ -204,7 +204,6 @@ const profile: Profile = {
   id: "k-1",
   name: "Cocina",
   role: "kitchen",
-  hasPassword: false,
 }
 
 function item(id: string, status: "kitchen" | "served" = "kitchen", minute = 0) {
@@ -260,7 +259,7 @@ const storeOrder = (id: string) => ordersInStore().find((order) => order.id === 
 beforeEach(() => {
   env.reset()
   useOrderStore.setState({ orders: [] })
-  useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter", hasPassword: false }] })
+  useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter" }] })
   useTableStore.setState({
     tables: [
       { id: "table-o-1", number: 1, status: "kitchen" },

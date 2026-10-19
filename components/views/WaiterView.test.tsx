@@ -140,8 +140,8 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
 
 import { WaiterView } from "./WaiterView"
 
-const waiterProfile: Profile = { id: "w-1", name: "Ana", full_name: "Ana Gómez", role: "waiter", hasPassword: false }
-const adminProfile: Profile = { id: "admin-1", name: "Jefe", full_name: "Jefe", role: "admin", hasPassword: true }
+const waiterProfile: Profile = { id: "w-1", name: "Ana", full_name: "Ana Gómez", role: "waiter" }
+const adminProfile: Profile = { id: "admin-1", name: "Jefe", full_name: "Jefe", role: "admin" }
 
 const waiterRows = [{ id: "w-1", full_name: "Ana Gómez", username: "ana", role: "waiter" }]
 
