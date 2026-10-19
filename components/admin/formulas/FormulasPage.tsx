@@ -178,7 +178,6 @@ export function FormulasPage({ description, onNavigate }: FormulasPageProps) {
     guard(isLevelDirty(top), `¿Descartar los cambios de «${top.target.name}»?`, () =>
       dispatch({ type: "pop", saved: false }),
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state])
 
   const closeMobileEditor = () => {
