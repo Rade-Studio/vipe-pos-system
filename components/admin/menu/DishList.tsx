@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { SectionHeader, Toolbar } from "@/components/admin/common/Panel"
+import { EmptyState } from "@/components/admin/common/EmptyState"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -136,9 +137,10 @@ export function DishList() {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Platos del Menú</CardTitle>
+    <section className="min-w-0 space-y-3">
+      <SectionHeader title="Platos" description="Productos de la carta, su precio y disponibilidad." />
+      <Toolbar
+        actions={
         <Dialog open={openDialog} onOpenChange={setOpenDialog}>
           <DialogTrigger asChild>
             <Button
@@ -165,33 +167,35 @@ export function DishList() {
             />
           </DialogContent>
         </Dialog>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center mb-4">
-          <Search className="mr-2 h-4 w-4 text-muted-foreground" />
+        }
+      >
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
           <Input
             placeholder="Buscar platos..."
+            aria-label="Buscar platos"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
+            className="pl-8"
           />
         </div>
+      </Toolbar>
 
         {isLoading ? (
-          <div className="text-center py-4">Cargando platos...</div>
+          <p className="py-8 text-center text-sm text-muted-foreground">Cargando platos...</p>
         ) : filteredDishes.length === 0 ? (
-          <div className="text-center py-4 text-muted-foreground">
-            {searchTerm ? "No se encontraron platos con ese término de búsqueda" : "No hay platos registrados"}
-          </div>
+          <EmptyState
+            title={searchTerm ? "No se encontraron platos con ese término de búsqueda" : "No hay platos registrados"}
+          />
         ) : (
           <>
-            <div className="rounded-md border">
+            <div className="rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nombre</TableHead>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead>Precio</TableHead>
+                    <TableHead className="hidden md:table-cell">Categoría</TableHead>
+                    <TableHead className="text-right">Precio</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
@@ -200,14 +204,16 @@ export function DishList() {
                   {paginatedData.map((dish) => (
                     <TableRow key={dish.id}>
                       <TableCell className="font-medium">{dish.name}</TableCell>
-                      <TableCell>{getCategoryName(dish.category_id)}</TableCell>
-                      <TableCell>{formatCurrency(dish.price)}</TableCell>
+                      <TableCell className="hidden text-muted-foreground md:table-cell">
+                        {getCategoryName(dish.category_id)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(dish.price)}</TableCell>
                       <TableCell>
-                        <Badge variant={dish.active ? "default" : "secondary"}>
+                        <Badge variant={dish.active ? "secondary" : "outline"}>
                           {dish.active ? "Activo" : "Inactivo"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="whitespace-nowrap text-right">
                         <Button variant="outline" size="sm" onClick={() => handleManageRecipe(dish)} className="mr-1">
                           <BookOpen className="h-4 w-4 mr-1" />
                           Receta
@@ -228,7 +234,7 @@ export function DishList() {
             </div>
 
             {/* Paginación */}
-            <div className="flex items-center justify-between mt-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <ItemsPerPage itemsPerPage={itemsPerPage} onChange={setItemsPerPage} options={[10, 25, 50, 100]} />
               <div className="text-sm text-muted-foreground">
                 Mostrando {paginatedData.length} de {filteredDishes.length} platos
@@ -273,7 +279,6 @@ export function DishList() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </CardContent>
-    </Card>
+    </section>
   )
 }

@@ -4,12 +4,13 @@ import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { SectionHeader, Toolbar } from "@/components/admin/common/Panel"
+import { EmptyState } from "@/components/admin/common/EmptyState"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { PlusCircle, Edit, Trash2, AlertCircle } from "lucide-react"
+import { Plus, Edit, Trash2, BadgePercent } from "lucide-react"
 import { PromotionForm } from "./PromotionForm"
 import { promotionService, type Promotion } from "@/lib/supabase/promotion-service"
 import { useToast } from "@/hooks/use-toast"
@@ -22,7 +23,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export function PromotionList() {
   const { toast } = useToast()
@@ -112,36 +112,36 @@ export function PromotionList() {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Promociones y Descuentos</CardTitle>
-        <Button onClick={handleCreatePromotion}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Nueva Promoción
-        </Button>
-      </CardHeader>
-      <CardContent>
+    <section className="min-w-0 space-y-3">
+      <SectionHeader
+        title="Promociones y descuentos"
+        description="Descuentos por porcentaje o monto fijo con vigencia."
+        actions={
+          <Button size="sm" onClick={handleCreatePromotion}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nueva Promoción
+          </Button>
+        }
+      />
         {promotions.length === 0 ? (
-          <div className="text-center py-8">
-            {isLoading ? (
-              <p>Cargando promociones...</p>
-            ) : (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  No hay promociones disponibles. Crea una nueva promoción para comenzar.
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
+          isLoading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Cargando promociones...</p>
+          ) : (
+            <EmptyState
+              icon={BadgePercent}
+              title="No hay promociones disponibles"
+              description="Crea una nueva promoción para comenzar."
+            />
+          )
         ) : (
+          <div className="rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Nombre</TableHead>
-                <TableHead>Tipo</TableHead>
+                <TableHead className="hidden md:table-cell">Tipo</TableHead>
                 <TableHead>Valor</TableHead>
-                <TableHead>Periodo</TableHead>
+                <TableHead className="hidden sm:table-cell">Periodo</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
@@ -150,32 +150,36 @@ export function PromotionList() {
               {promotions.map((promotion) => (
                 <TableRow key={promotion.id}>
                   <TableCell className="font-medium">{promotion.name}</TableCell>
-                  <TableCell>{promotion.discount_type === "percentage" ? "Porcentaje" : "Monto fijo"}</TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">
+                    {promotion.discount_type === "percentage" ? "Porcentaje" : "Monto fijo"}
+                  </TableCell>
                   <TableCell>
                     {promotion.discount_type === "percentage"
                       ? `${promotion.discount_value}%`
                       : `$${promotion.discount_value}`}
                   </TableCell>
-                  <TableCell>
-                    <div className="text-xs">
+                  <TableCell className="hidden sm:table-cell">
+                    <div className="whitespace-nowrap text-xs text-muted-foreground">
                       <div>Desde: {format(new Date(promotion.start_date), "dd/MM/yyyy", { locale: es })}</div>
                       <div>Hasta: {format(new Date(promotion.end_date), "dd/MM/yyyy", { locale: es })}</div>
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={isPromotionActive(promotion) ? "default" : promotion.active ? "outline" : "secondary"}
+                      variant={isPromotionActive(promotion) ? "secondary" : "outline"}
                     >
                       {isPromotionActive(promotion) ? "Activa" : promotion.active ? "Pendiente/Vencida" : "Inactiva"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="icon" onClick={() => handleEditPromotion(promotion)}>
+                      <Button variant="ghost" size="icon" onClick={() => handleEditPromotion(promotion)}>
                         <Edit className="h-4 w-4" />
+                        <span className="sr-only">Editar</span>
                       </Button>
-                      <Button variant="outline" size="icon" onClick={() => handleDeletePromotion(promotion)}>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeletePromotion(promotion)}>
                         <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Eliminar</span>
                       </Button>
                     </div>
                   </TableCell>
@@ -183,6 +187,7 @@ export function PromotionList() {
               ))}
             </TableBody>
           </Table>
+          </div>
         )}
 
         <PromotionForm
@@ -210,7 +215,6 @@ export function PromotionList() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+    </section>
   )
 }

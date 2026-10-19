@@ -37,9 +37,9 @@ export function RegisterSelector({ registers, selectedRegisters, onSelectionChan
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm font-medium">Cajas Registradoras</div>
-        <div className="flex space-x-2">
+        <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={selectAll} disabled={registers.length === 0}>
             Seleccionar Todas
           </Button>
@@ -58,7 +58,7 @@ export function RegisterSelector({ registers, selectedRegisters, onSelectionChan
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-full p-0">
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
           <Command>
             <CommandInput placeholder="Buscar caja..." />
             <CommandList>
@@ -83,7 +83,7 @@ export function RegisterSelector({ registers, selectedRegisters, onSelectionChan
                             minute: "2-digit",
                           })}
                         </span>
-                        <Badge variant={register.status === "open" ? "default" : "secondary"}>
+                        <Badge variant={register.status === "open" ? "secondary" : "outline"}>
                           {register.status === "open" ? "Abierta" : "Cerrada"}
                         </Badge>
                       </div>
@@ -101,7 +101,7 @@ export function RegisterSelector({ registers, selectedRegisters, onSelectionChan
       </Popover>
 
       {selectedRegisters.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-2">
+        <div className="flex flex-wrap gap-2">
           {selectedRegisters.map((id) => {
             const register = registers.find((r) => r.id === id)
             if (!register) return null

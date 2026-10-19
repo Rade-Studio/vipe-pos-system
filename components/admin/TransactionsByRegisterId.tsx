@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Panel, Toolbar, segmentedListClass, segmentedTriggerClass } from "@/components/admin/common/Panel"
+import { StatCard } from "@/components/admin/common/StatCard"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -9,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/utils/helpers"
 import { cashRegisterService } from "@/lib/supabase/cash-register-service"
 import { log } from "@/lib/log"
-import { Search, Download, Loader2 } from "lucide-react"
+import { Search, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useProfileStore } from "@/store/useProfileStore"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -266,315 +267,229 @@ export function TransactionsByRegisterId({ selectedDate: propSelectedDate }: Tra
 
   const isLoadingAnything = isLoadingRegisters || loadingPayments
 
+  const rowSkeleton = (
+    <div className="space-y-2">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-9 w-full" />
+      ))}
+    </div>
+  )
+
+  const emptyText = (text: string) => <p className="py-8 text-center text-sm text-muted-foreground">{text}</p>
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        {!propSelectedDate && (
-          <div className="flex items-center w-full sm:w-auto">
-            <DatePicker date={selectedDate} setDate={setSelectedDate as any} />
-          </div>
-        )}
-
-        <div className="flex items-center w-full sm:w-auto">
+      <Toolbar
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportToCSV}
+              disabled={payments.length === 0 && legacyTransactions.length === 0}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Exportar Ventas
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportCashTransactionsToCSV} disabled={!cashTransactions.length}>
+              <Download className="h-4 w-4 mr-2" />
+              Exportar Mov. Efectivo
+            </Button>
+          </>
+        }
+      >
+        {!propSelectedDate && <DatePicker date={selectedDate} setDate={setSelectedDate as any} />}
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
           <Input
             placeholder="Buscar transacciones..."
+            aria-label="Buscar transacciones"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
+            className="pl-8"
           />
-          <Button variant="ghost" size="icon">
-            <Search className="h-4 w-4" />
-          </Button>
         </div>
+      </Toolbar>
 
-        <div className="flex gap-2 w-full sm:w-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportToCSV}
-            disabled={payments.length === 0 && legacyTransactions.length === 0}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Exportar Ventas
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportCashTransactionsToCSV} disabled={!cashTransactions.length}>
-            <Download className="h-4 w-4 mr-2" />
-            Exportar Mov. Efectivo
-          </Button>
-        </div>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+        {isLoadingAnything
+          ? Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="rounded-lg border p-4">
+                <Skeleton className="mb-2 h-4 w-20" />
+                <Skeleton className="h-7 w-24" />
+              </div>
+            ))
+          : (
+            <>
+              {methodCards.slice(0, 4).map((card) => (
+                <StatCard key={card.id} title={card.name} value={formatCurrency(card.amount)} />
+              ))}
+              <StatCard title="Propinas" value={formatCurrency(tipsTotal)} />
+            </>
+          )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {methodCards.slice(0, 4).map((card) => (
-          <Card key={card.id}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">{card.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(card.amount)}</div>
-            </CardContent>
-          </Card>
-        ))}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Propinas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(tipsTotal)}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="sales">Ventas</TabsTrigger>
-          <TabsTrigger value="cash">Movimientos de Efectivo</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className={segmentedListClass}>
+          <TabsTrigger value="sales" className={segmentedTriggerClass}>Ventas</TabsTrigger>
+          <TabsTrigger value="cash" className={segmentedTriggerClass}>Movimientos de Efectivo</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="sales">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                Transacciones de Venta
-                {selectedDate && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    {selectedDate.toLocaleDateString()}
-                  </span>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoadingAnything ? (
-                <div>
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Card key={i}>
-                        <CardHeader className="pb-2">
-                          <Skeleton className="h-4 w-24" />
-                        </CardHeader>
-                        <CardContent>
-                          <Skeleton className="h-8 w-24" />
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-
-                  <Card>
-                    <CardHeader>
-                      <Skeleton className="h-6 w-48" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead><Skeleton className="h-4 w-16" /></TableHead>
-                              <TableHead><Skeleton className="h-4 w-16" /></TableHead>
-                              <TableHead><Skeleton className="h-4 w-24" /></TableHead>
-                              <TableHead><Skeleton className="h-4 w-20" /></TableHead>
-                              <TableHead className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableHead>
-                              <TableHead className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableHead>
-                              <TableHead className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableHead>
-                              <TableHead className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <TableRow key={i}>
-                                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                                <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                                <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                                <TableCell><Skeleton className="h-6 w-24 rounded-full" /></TableCell>
-                                <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                                <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                                <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                                <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              ) : filteredPayments.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  {searchTerm
-                    ? "No se encontraron transacciones que coincidan con la búsqueda"
-                    : selectedDate
-                      ? `No hay transacciones registradas para el ${selectedDate.toLocaleDateString()}`
-                      : "No hay transacciones registradas"}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Transaccion</TableHead>
-                        <TableHead>Orden</TableHead>
-                        <TableHead>Mesero</TableHead>
-                        <TableHead>Método</TableHead>
-                        <TableHead className="text-right">Monto</TableHead>
-                        <TableHead className="text-right">Propina</TableHead>
-                        <TableHead className="text-right">Cambio</TableHead>
+        <TabsContent value="sales" className="mt-0 space-y-4">
+          <Panel title="Transacciones de venta" description={selectedDate?.toLocaleDateString()} contentClassName="p-0">
+            {isLoadingAnything ? (
+              <div className="p-4">{rowSkeleton}</div>
+            ) : filteredPayments.length === 0 ? (
+              emptyText(
+                searchTerm
+                  ? "No se encontraron transacciones que coincidan con la búsqueda"
+                  : selectedDate
+                    ? `No hay transacciones registradas para el ${selectedDate.toLocaleDateString()}`
+                    : "No hay transacciones registradas",
+              )
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Transaccion</TableHead>
+                    <TableHead>Orden</TableHead>
+                    <TableHead>Mesero</TableHead>
+                    <TableHead>Método</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
+                    <TableHead className="text-right">Propina</TableHead>
+                    <TableHead className="text-right">Cambio</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredPayments.map((payment: PaymentRow) => {
+                    const label = methodLabel(payment, catalog)
+                    const badgeVariant: "default" | "outline" | "secondary" | "destructive" =
+                      label === "Múltiples"
+                        ? "outline"
+                        : (() => {
+                            const kind = methodById.get(payment.tenders[0]?.paymentMethodId ?? "")?.kind
+                            return kind === "cash" ? "default" : "secondary"
+                          })()
+                    return (
+                      <TableRow key={payment.id}>
+                        <TableCell className="whitespace-nowrap font-medium">
+                          {new Date(payment.createdAt).toLocaleTimeString()}
+                        </TableCell>
+                        <TableCell className="font-medium">{payment.id.substring(0, 8)}</TableCell>
+                        <TableCell>{payment.orderId.substring(0, 8)}</TableCell>
+                        <TableCell className="whitespace-nowrap">{getWaiterName(payment.cashierProfileId)}</TableCell>
+                        <TableCell>
+                          <Badge variant={badgeVariant}>{label}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(payment.totalCharged)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(payment.tipAmount)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(payment.changeGiven)}</TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredPayments.map((payment: PaymentRow) => {
-                        const label = methodLabel(payment, catalog)
-                        const badgeVariant: "default" | "outline" | "secondary" | "destructive" =
-                          label === "Múltiples"
-                            ? "outline"
-                            : (() => {
-                                const kind = methodById.get(payment.tenders[0]?.paymentMethodId ?? "")?.kind
-                                return kind === "cash" ? "default" : "secondary"
-                              })()
-                        return (
-                          <TableRow key={payment.id}>
-                            <TableCell className="font-medium">
-                              {new Date(payment.createdAt).toLocaleTimeString()}
-                            </TableCell>
-                            <TableCell className="font-medium">{payment.id.substring(0, 8)}</TableCell>
-                            <TableCell>{payment.orderId.substring(0, 8)}</TableCell>
-                            <TableCell>{getWaiterName(payment.cashierProfileId)}</TableCell>
-                            <TableCell>
-                              <Badge variant={badgeVariant}>{label}</Badge>
-                            </TableCell>
-                            <TableCell className="text-right">{formatCurrency(payment.totalCharged)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(payment.tipAmount)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(payment.changeGiven)}</TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </Panel>
 
           {legacyTransactions.length > 0 && (
-            <Card className="mt-4">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">
-                    Pagos del sistema anterior
-                    <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      ({legacyTransactions.length} registros de solo lectura)
-                    </span>
-                  </CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setLegacyOpen((v) => !v)}
-                    aria-expanded={legacyOpen}
-                  >
-                    {legacyOpen ? "Ocultar" : "Mostrar"}
-                  </Button>
-                </div>
-              </CardHeader>
+            <Panel
+              title="Pagos del sistema anterior"
+              description={`${legacyTransactions.length} registros de solo lectura`}
+              contentClassName={legacyOpen ? "p-0" : "hidden"}
+              actions={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLegacyOpen((v) => !v)}
+                  aria-expanded={legacyOpen}
+                >
+                  {legacyOpen ? "Ocultar" : "Mostrar"}
+                </Button>
+              }
+            >
               {legacyOpen && (
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Transaccion</TableHead>
-                          <TableHead>Orden</TableHead>
-                          <TableHead>Mesero</TableHead>
-                          <TableHead>Método</TableHead>
-                          <TableHead className="text-right">Monto</TableHead>
-                          <TableHead className="text-right">Propina</TableHead>
-                          <TableHead className="text-right">Cambio</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredLegacyTransactions.map((tx) => (
-                          <TableRow key={tx.id}>
-                            <TableCell className="font-medium">
-                              {new Date(tx.timestamp).toLocaleTimeString()}
-                            </TableCell>
-                            <TableCell className="font-medium">{tx.id.substring(0, 8)}</TableCell>
-                            <TableCell>{tx.orderId?.substring(0, 8) || "N/A"}</TableCell>
-                            <TableCell>{tx.waiterId ? getWaiterName(tx.waiterId) : "N/A"}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{tx.method}</Badge>
-                            </TableCell>
-                            <TableCell className="text-right">{formatCurrency(tx.amount)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(tx.tipAmount || 0)}</TableCell>
-                            <TableCell className="text-right">
-                              {tx.cashChange ? formatCurrency(tx.cashChange) : "-"}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Transaccion</TableHead>
+                      <TableHead>Orden</TableHead>
+                      <TableHead>Mesero</TableHead>
+                      <TableHead>Método</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
+                      <TableHead className="text-right">Propina</TableHead>
+                      <TableHead className="text-right">Cambio</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredLegacyTransactions.map((tx) => (
+                      <TableRow key={tx.id}>
+                        <TableCell className="whitespace-nowrap font-medium">
+                          {new Date(tx.timestamp).toLocaleTimeString()}
+                        </TableCell>
+                        <TableCell className="font-medium">{tx.id.substring(0, 8)}</TableCell>
+                        <TableCell>{tx.orderId?.substring(0, 8) || "N/A"}</TableCell>
+                        <TableCell>{tx.waiterId ? getWaiterName(tx.waiterId) : "N/A"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{tx.method}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(tx.amount)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(tx.tipAmount || 0)}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {tx.cashChange ? formatCurrency(tx.cashChange) : "-"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               )}
-            </Card>
+            </Panel>
           )}
         </TabsContent>
 
-        <TabsContent value="cash">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                Movimientos de Efectivo
-                {selectedDate && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    {selectedDate.toLocaleDateString()}
-                  </span>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoadingRegisters ? (
-                <div className="flex justify-center items-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-              ) : filteredCashTransactions.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  {searchTerm
-                    ? "No se encontraron movimientos de efectivo que coincidan con la búsqueda"
-                    : selectedDate
-                      ? `No hay movimientos de efectivo registrados para el ${selectedDate.toLocaleDateString()}`
-                      : "No hay movimientos de efectivo registrados"}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Descripción</TableHead>
-                        <TableHead className="text-right">Monto</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredCashTransactions.map((transaction) => (
-                        <TableRow key={transaction.id}>
-                          <TableCell className="font-medium">
-                            {new Date(transaction.timestamp).toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={transaction.type === "deposit" ? "default" : "destructive"}>
-                              {transaction.type === "deposit" ? "Ingreso" : "Retiro"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{transaction.description}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(transaction.amount)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="cash" className="mt-0">
+          <Panel title="Movimientos de efectivo" description={selectedDate?.toLocaleDateString()} contentClassName="p-0">
+            {isLoadingRegisters ? (
+              <div className="p-4">{rowSkeleton}</div>
+            ) : filteredCashTransactions.length === 0 ? (
+              emptyText(
+                searchTerm
+                  ? "No se encontraron movimientos de efectivo que coincidan con la búsqueda"
+                  : selectedDate
+                    ? `No hay movimientos de efectivo registrados para el ${selectedDate.toLocaleDateString()}`
+                    : "No hay movimientos de efectivo registrados",
+              )
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Descripción</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCashTransactions.map((transaction) => (
+                    <TableRow key={transaction.id}>
+                      <TableCell className="whitespace-nowrap font-medium">
+                        {new Date(transaction.timestamp).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={transaction.type === "deposit" ? "secondary" : "outline"}>
+                          {transaction.type === "deposit" ? "Ingreso" : "Retiro"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{transaction.description}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(transaction.amount)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Panel>
         </TabsContent>
       </Tabs>
     </div>

@@ -68,7 +68,7 @@ Live cost per line, total, per portion, margin, suggested price (`priceSuggestio
 | T10 | S5 | Physical counts | — | — |
 | T11 | S5 | Inventory dashboard | — | — |
 | T12 | S3, S5 | Sale consumption and pre-send check through RPCs (waiter + delivery) | — | — |
-| T13 | S1, S7 | Restyle Resumen, Órdenes, Mesas, Caja, Menú inside the shell | — | — |
+| T13 | S1, S7 | Restyle Resumen, Órdenes, Mesas, Caja, Menú inside the shell | worker | see L8 ✅ |
 | T14 | S6 | Delete old inventory/recipe/config components, dead admin files, old services; docs | — | — |
 | T15 | all | Final verification: typecheck, vitest, pgTAP, build, responsive check | — | — |
 
@@ -81,3 +81,4 @@ Live cost per line, total, per portion, margin, suggested price (`priceSuggestio
 - **L5** (evidence): T5 pure libs (worker `mvfdpf5k-3-hacq`) RED 136/136 failing on stubs → GREEN 136/136; parent re-ran `pnpm vitest run lib/inventory` 136 passed; typecheck clean. Committed separately from services/hooks (still pending on T4 signatures).
 - **L6** (delivery): slice 1 closed at `9026d18` (plan, T1, T5 pure libs; the libs commit is ~885 lines, ~60% tests, kept whole as one work unit). Later slices: shell+settings, DB layer, services+formula builder, inventory UI, sale consumption, restyle+cleanup. Push/PR remain the user's decision; chained PRs per slice recommended.
 - **L7** (evidence): T2+T3 (worker `mvfdmk39-2-xwvp`) RED navigation + settings-draft (module not found) → GREEN 16; component tests shell/⌘K 7, SaveBar 4; AdminView 8 read-gate invariants kept. Parent verified: typecheck clean, `pnpm test` 83 files / 1146 tests green. Known gaps: config LOAD error no longer toasts (save errors do); useIsMobile shows desktop layout for one frame on mobile. Slice 2 closed at `ab09673` (shell + settings). Risk: none (UI only; read gates pinned by AdminView tests).
+- **L8** (evidence): T13 (worker `mvfdz2rf-4-6gfd`) no new rule → no RED; existing AdminView/CashRegisterSummary/CompletedOrdersTable/TableManagementPanel/CategoryList suites unchanged and green. Parent verified typecheck clean, 83 files / 1146 tests. Gaps: layouts checked by class names only (browser check in T15); CashRegisterSummary keeps inner tabs pinned by its tests. Slice 3 closed (restyle). Risk: none (markup only).

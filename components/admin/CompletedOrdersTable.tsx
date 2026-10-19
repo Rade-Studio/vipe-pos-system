@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, type ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Table as TableUI, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Printer, RefreshCw } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Printer, RefreshCw, Search } from "lucide-react"
 import {formatCurrency, formatDate, formatDateTime} from "@/utils/helpers"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
@@ -31,6 +32,8 @@ import { usePagination } from "@/hooks/use-pagination"
 
 interface CompletedOrdersTableProps {
   selectedDate?: Date
+  /** Extra controls placed first in the toolbar row (e.g. the date picker). */
+  toolbar?: ReactNode
 }
 
 /** Cache slot for "the paid orders of one local day". */
@@ -38,7 +41,7 @@ export function completedOrdersQueryKey(selectedDate?: Date) {
   return ["orders", "completed", localDayKey(selectedDate)] as const
 }
 
-export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps) {
+export function CompletedOrdersTable({ selectedDate, toolbar }: CompletedOrdersTableProps) {
   const orders = useOrderStore((s) => s.orders)
   const profiles = useProfileStore((s) => s.profiles)
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
@@ -233,33 +236,44 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
     setInvoiceOpen(true)
   }
 
+  // Below `sm` every row is a small card (CSS grid on the same <tr>), so the
+  // rows render once and the table never forces a horizontal page scroll.
+  const cellClass = "p-0 sm:p-4"
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">Órdenes Completadas</h2>
-        <Button variant="outline" size="sm" onClick={loadOrdersFromDB} disabled={isFetching || !selectedDate}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        {toolbar}
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
+          <Input
+            type="text"
+            placeholder="Buscar por ID o mesero..."
+            aria-label="Buscar por ID o mesero"
+            className="pl-8"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="sm:ml-auto"
+          onClick={loadOrdersFromDB}
+          disabled={isFetching || !selectedDate}
+        >
           <RefreshCw className={`h-4 w-4 mr-1 ${isFetching ? "animate-spin" : ""}`} />
           Actualizar
         </Button>
       </div>
 
       {selectedDate && (
-        <div className="text-sm text-muted-foreground">Mostrando órdenes del {format(selectedDate, "dd/MM/yyyy")}</div>
+        <p className="text-sm text-muted-foreground">Mostrando órdenes del {format(selectedDate, "dd/MM/yyyy")}</p>
       )}
 
-      <div className="flex items-center mb-4">
-        <input
-          type="text"
-          placeholder="Buscar por ID o mesero..."
-          className="px-3 py-2 border rounded-md w-full max-w-sm"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
-
-      <div className="border rounded-md">
+      <div className="rounded-lg border">
         <TableUI>
-          <TableHeader>
+          <TableHeader className="hidden sm:table-header-group">
             <TableRow>
               <TableHead>ID</TableHead>
               <TableHead>Fecha</TableHead>
@@ -276,20 +290,8 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
                 .fill(0)
                 .map((_, index) => (
                   <TableRow key={`skeleton-${index}`}>
-                    <TableCell>
-                      <Skeleton className="h-5 w-16" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-5 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-5 w-24" />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Skeleton className="h-5 w-20 ml-auto" />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Skeleton className="h-8 w-24 ml-auto" />
+                    <TableCell colSpan={5}>
+                      <Skeleton className="h-5 w-full" />
                     </TableCell>
                   </TableRow>
                 ))
@@ -297,15 +299,29 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
               paginatedData.map((order) => {
                 const waiter = profiles.find((p) => p.id === order.waiter)
                 return (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-medium">{order.id.substring(0, 8)}</TableCell>
-                    <TableCell>{order.createdAt ? formatDateTime(order.createdAt) : "Fecha no disponible"}</TableCell>
-                    <TableCell>{waiter ? waiter.name : "Desconocido"}</TableCell>
-                    <TableCell className="text-right">
+                  <TableRow
+                    key={order.id}
+                    className="grid grid-cols-2 gap-x-3 gap-y-1 p-3 sm:table-row sm:p-0"
+                  >
+                    <TableCell className={`${cellClass} order-1 font-medium sm:order-none`}>
+                      {order.id.substring(0, 8)}
+                    </TableCell>
+                    <TableCell className={`${cellClass} order-3 text-muted-foreground sm:order-none sm:text-foreground`}>
+                      {order.createdAt ? formatDateTime(order.createdAt) : "Fecha no disponible"}
+                    </TableCell>
+                    <TableCell className={`${cellClass} order-4 text-right sm:order-none sm:text-left`}>
+                      {waiter ? waiter.name : "Desconocido"}
+                    </TableCell>
+                    <TableCell className={`${cellClass} order-2 text-right font-medium tabular-nums sm:order-none sm:font-normal`}>
                       {formatCurrency(order.bill?.total || 0)}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => handlePrintInvoice(order)}>
+                    <TableCell className={`${cellClass} order-5 col-span-2 pt-2 sm:order-none sm:text-right`}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                        onClick={() => handlePrintInvoice(order)}
+                      >
                         <Printer className="h-4 w-4 mr-1" />
                         Factura
                       </Button>
@@ -315,7 +331,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                   {searchTerm
                     ? "No se encontraron órdenes con ese término de búsqueda"
                     : `No hay órdenes completadas ${selectedDate ? "para esta fecha" : ""}`}
@@ -328,7 +344,7 @@ export function CompletedOrdersTable({ selectedDate }: CompletedOrdersTableProps
 
       {/* Paginación */}
       {completedOrders.length > 0 && (
-        <div className="flex items-center justify-between mt-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <ItemsPerPage itemsPerPage={itemsPerPage} onChange={setItemsPerPage} options={[10, 25, 50, 100]} />
           <div className="text-sm text-muted-foreground">
             Mostrando {paginatedData.length} de {completedOrders.length} órdenes
