@@ -25,7 +25,7 @@ type Ingredient = {
 
 type Recipe = {
   id: string
-  dish_id?: string
+  dish_id?: string | null
   dishId?: string
   [key: string]: unknown
 }
