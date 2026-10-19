@@ -17,7 +17,7 @@ interface HeaderProps {
   title?: string
 }
 
-export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }: HeaderProps) {
+export function Header({ profile, onChangeProfile, authRole, title = "VipePOS" }: HeaderProps) {
   const getRoleLabel = (role: string) => roleLabel(role) ?? role
 
   const handleLogout = async () => {

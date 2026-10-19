@@ -39,7 +39,7 @@ export function AdminSidebar({ section, onNavigate, businessName }: AdminSidebar
             <UtensilsCrossed className="h-4 w-4" aria-hidden />
           </div>
           <div className="grid min-w-0 leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-sm font-semibold">{businessName || "VibePOS"}</span>
+            <span className="truncate text-sm font-semibold">{businessName || "VipePOS"}</span>
             <span className="truncate text-xs text-muted-foreground">Administración</span>
           </div>
         </div>
