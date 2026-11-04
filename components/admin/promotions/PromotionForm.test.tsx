@@ -109,6 +109,26 @@ describe("PromotionForm", () => {
     expect(catalog.setPromotionDishes).toHaveBeenCalledWith("p-2", ["d-3"])
   })
 
+  it("rejects an empty discount value instead of sending 0", async () => {
+    render(<PromotionForm open onOpenChange={vi.fn()} promotion={promotion} onSubmit={vi.fn()} />)
+    await waitFor(() => expect(screen.getByLabelText("Arepa")).toBeChecked())
+
+    fireEvent.change(screen.getByLabelText("Porcentaje de descuento"), { target: { value: "" } })
+    await act(async () => {
+      fireEvent.submit(
+        screen.getByRole("button", { name: "Actualizar Promoción" }).closest("form") as HTMLFormElement,
+      )
+    })
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: "El valor del descuento debe ser mayor que 0", variant: "destructive" }),
+      ),
+    )
+    expect(catalog.updatePromotion).not.toHaveBeenCalled()
+    expect(catalog.setPromotionDishes).not.toHaveBeenCalled()
+  })
+
   it("shows the API message and keeps the dialog when the save fails", async () => {
     catalog.updatePromotion.mockRejectedValue(new Error("Invalid date"))
     const onOpenChange = vi.fn()

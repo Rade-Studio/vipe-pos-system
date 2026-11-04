@@ -1,0 +1,70 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+/**
+ * T7b (S4) — the API requires an icon name. The form must ask the user for
+ * one instead of silently sending a default.
+ */
+
+const catalog = vi.hoisted(() => ({
+  createCategory: vi.fn(),
+  updateCategory: vi.fn(),
+}))
+vi.mock("@/lib/api/catalog", () => catalog)
+const toastMock = vi.hoisted(() => vi.fn())
+vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
+
+import { CategoryForm } from "./CategoryForm"
+
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver
+
+beforeEach(() => {
+  catalog.createCategory.mockReset()
+  catalog.updateCategory.mockReset()
+  toastMock.mockClear()
+})
+
+describe("CategoryForm", () => {
+  it("requires an icon and sends nothing when none is selected", async () => {
+    render(<CategoryForm onSuccess={vi.fn()} />)
+    fireEvent.change(screen.getByPlaceholderText("Nombre de la categoría"), { target: { value: "Bebidas" } })
+
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("button", { name: "Crear" }).closest("form") as HTMLFormElement)
+    })
+
+    await waitFor(() => expect(screen.getByText("Selecciona un icono")).toBeInTheDocument())
+    expect(catalog.createCategory).not.toHaveBeenCalled()
+  })
+
+  it("sends the chosen icon as is when editing", async () => {
+    catalog.updateCategory.mockResolvedValue({})
+    const category = {
+      id: "c-1",
+      name: "Bebidas",
+      description: null,
+      icon: "Coffee",
+      active: true,
+      createdAt: null,
+      updatedAt: null,
+    }
+    render(<CategoryForm category={category} onSuccess={vi.fn()} />)
+    await waitFor(() => expect(screen.getByPlaceholderText("Nombre de la categoría")).toHaveValue("Bebidas"))
+
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("button", { name: "Actualizar" }).closest("form") as HTMLFormElement)
+    })
+
+    await waitFor(() => expect(catalog.updateCategory).toHaveBeenCalledTimes(1))
+    expect(catalog.updateCategory).toHaveBeenCalledWith("c-1", {
+      name: "Bebidas",
+      description: null,
+      icon: "Coffee",
+      active: true,
+    })
+  })
+})

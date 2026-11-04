@@ -154,6 +154,14 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (formData.discountValue == null || formData.discountValue <= 0) {
+      toast({
+        title: "Error",
+        description: "El valor del descuento debe ser mayor que 0",
+        variant: "destructive",
+      })
+      return
+    }
     setLoading(true)
 
     try {
@@ -161,7 +169,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
         name: formData.name,
         description: formData.description ? formData.description : null,
         discountType: formData.discountType,
-        discountValue: formData.discountValue ?? 0,
+        discountValue: formData.discountValue,
         startDate: formData.startDate,
         endDate: formData.endDate,
         active: formData.active,
