@@ -312,6 +312,13 @@ pnpm --filter @vipe/db schema:pull             # regenera packages/db/src/schema
 
 La API expone `GET /api/health` y la documentación OpenAPI en `/api/docs`.
 
+Catálogo y configuración (lecturas para cualquier rol autenticado, escrituras solo `admin`; DTOs en camelCase, campos desconocidos -> 422):
+
+- `GET|POST /api/catalog/categories` (`?active=true`), `PATCH|DELETE /api/catalog/categories/:id` (409 `Category has dishes` si tiene platos).
+- `GET|POST /api/catalog/dishes` (`?categoryId=&active=true&pricing=promotions`: aplica la mejor promoción vigente con el reloj del servidor), `PATCH|DELETE /api/catalog/dishes/:id`.
+- `GET|POST /api/catalog/promotions`, `GET /api/catalog/promotions/active`, `PATCH|DELETE /api/catalog/promotions/:id` (borra también sus platos), `GET|PUT /api/catalog/promotions/:id/dishes` (`PUT {dishIds}` reemplaza el conjunto de forma atómica).
+- `GET /api/config` (todas las claves conocidas con valores por defecto del servidor, tipadas) y `PUT /api/config` (upsert por restaurante y clave en una transacción; devuelve la configuración completa).
+
 #### Stack local sin Supabase (Postgres + API + web)
 
 ```bash

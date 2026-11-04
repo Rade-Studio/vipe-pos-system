@@ -84,6 +84,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CategoriesController_list"];
+        put?: never;
+        post: operations["CategoriesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["CategoriesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["CategoriesController_update"];
+        trace?: never;
+    };
+    "/api/catalog/dishes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DishesController_list"];
+        put?: never;
+        post: operations["DishesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/dishes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["DishesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["DishesController_update"];
+        trace?: never;
+    };
+    "/api/catalog/promotions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PromotionsController_list"];
+        put?: never;
+        post: operations["PromotionsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/promotions/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PromotionsController_active"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/promotions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["PromotionsController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["PromotionsController_update"];
+        trace?: never;
+    };
+    "/api/catalog/promotions/{id}/dishes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PromotionsController_dishes"];
+        put: operations["PromotionsController_setDishes"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ConfigController_get"];
+        put: operations["ConfigController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -112,6 +256,165 @@ export interface components {
             profile: components["schemas"]["SessionProfile"];
         };
         HealthResponse: Record<string, never>;
+        Category: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            icon: string;
+            active: boolean;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        CreateCategoryRequest: {
+            name: string;
+            description?: string | null;
+            icon: string;
+            /** @default true */
+            active: boolean;
+        };
+        UpdateCategoryRequest: {
+            name?: string;
+            description?: string | null;
+            icon?: string;
+            active?: boolean;
+        };
+        Dish: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            /** @description Price after the best active promotion when pricing=promotions applied one. */
+            price: number;
+            /** Format: uuid */
+            categoryId: string | null;
+            /** @description Opaque image reference. */
+            imageUrl: string | null;
+            active: boolean;
+            allowComments: boolean;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+            /** @description Only when a promotion applies (pricing=promotions). */
+            originalPrice?: number;
+            /** @description Only when a promotion applies. */
+            discountAmount?: number;
+            /** @description Only when a promotion applies; null for fixed amounts. */
+            discountPercentage?: number | null;
+            /**
+             * Format: uuid
+             * @description Only when a promotion applies.
+             */
+            promotionId?: string;
+            /** @description Only when a promotion applies. */
+            promotionName?: string;
+        };
+        CreateDishRequest: {
+            name: string;
+            description?: string | null;
+            price: number;
+            /** Format: uuid */
+            categoryId?: string | null;
+            imageUrl?: string | null;
+            /** @default true */
+            active: boolean;
+            /** @default false */
+            allowComments: boolean;
+        };
+        UpdateDishRequest: {
+            name?: string;
+            description?: string | null;
+            price?: number;
+            /** Format: uuid */
+            categoryId?: string | null;
+            imageUrl?: string | null;
+            active?: boolean;
+            allowComments?: boolean;
+        };
+        Promotion: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            /** @enum {string} */
+            discountType: "percentage" | "fixed_amount";
+            discountValue: number;
+            /** Format: date-time */
+            startDate: string;
+            /** Format: date-time */
+            endDate: string;
+            active: boolean;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        CreatePromotionRequest: {
+            name: string;
+            description?: string | null;
+            /** @enum {string} */
+            discountType: "percentage" | "fixed_amount";
+            discountValue: number;
+            /** Format: date-time */
+            startDate: string;
+            /** Format: date-time */
+            endDate: string;
+            /** @default true */
+            active: boolean;
+        };
+        UpdatePromotionRequest: {
+            name?: string;
+            description?: string | null;
+            /** @enum {string} */
+            discountType?: "percentage" | "fixed_amount";
+            discountValue?: number;
+            /** Format: date-time */
+            startDate?: string;
+            /** Format: date-time */
+            endDate?: string;
+            active?: boolean;
+        };
+        SetPromotionDishesRequest: {
+            /** @description The complete dish set; replaces the previous one. */
+            dishIds: string[];
+        };
+        BusinessConfig: {
+            /** @default 10 */
+            taxPercentage: number;
+            /** @default 10 */
+            tipPercentage: number;
+            /** @default 300 */
+            priceSuggestion: number;
+            /** @default Mi Restaurante */
+            businessName: string;
+            /** @default Dirección del Restaurante */
+            businessAddress: string;
+            /** @default 123-456-7890 */
+            businessPhone: string;
+            /** @default 123456789 */
+            businessNit: string;
+            /** @default false */
+            inventoryControlEnabled: boolean;
+            /**
+             * @description Suggested delivery fee in whole pesos.
+             * @default 0
+             */
+            deliveryDefaultFee: number;
+        };
+        UpdateBusinessConfigRequest: {
+            taxPercentage?: number;
+            tipPercentage?: number;
+            priceSuggestion?: number;
+            businessName?: string;
+            businessAddress?: string;
+            businessPhone?: string;
+            businessNit?: string;
+            inventoryControlEnabled?: boolean;
+            deliveryDefaultFee?: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -244,6 +547,580 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
+            };
+        };
+    };
+    CategoriesController_list: {
+        parameters: {
+            query?: {
+                /** @description Omitted: every category. */
+                active?: "true" | "false";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CategoriesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCategoryRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CategoriesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Category has dishes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CategoriesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCategoryRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DishesController_list: {
+        parameters: {
+            query?: {
+                /** @description Apply the best promotion active now; discounted dishes carry the promotion fields. */
+                pricing?: "promotions";
+                active?: "true" | "false";
+                categoryId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dish"][];
+                };
+            };
+            /** @description Invalid input, unknown fields or unknown category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DishesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDishRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dish"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DishesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DishesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDishRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dish"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PromotionsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Promotion"][];
+                };
+            };
+            /** @description Invalid input, unknown fields or unknown dish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PromotionsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePromotionRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Promotion"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown dish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PromotionsController_active: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active and inside their date window now (server clock). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Promotion"][];
+                };
+            };
+            /** @description Invalid input, unknown fields or unknown dish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PromotionsController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The promotion and its dish rows are deleted in one transaction. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown dish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PromotionsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePromotionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Promotion"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown dish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PromotionsController_dishes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dish"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown dish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PromotionsController_setDishes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPromotionDishesRequest"];
+            };
+        };
+        responses: {
+            /** @description The new dish set; replaces the previous one atomically. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dish"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown dish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ConfigController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every known key, server defaults filled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessConfig"];
+                };
+            };
+        };
+    };
+    ConfigController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBusinessConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Upserts the given keys and returns the full config. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessConfig"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value or unknown key. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
