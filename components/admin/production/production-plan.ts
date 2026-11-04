@@ -1,5 +1,5 @@
 import { formulaCost, scaleLines, type FormulaItem } from "@/lib/inventory/formula"
-import type { Formula, InventoryItem } from "@/lib/supabase/inventory/types"
+import type { Formula, InventoryItem } from "@/lib/api/inventory/types"
 
 export interface RequirementRow {
   itemId: string

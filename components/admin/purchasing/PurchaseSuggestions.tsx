@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { formatQuantity } from "@/lib/inventory/units"
 import { emptyDraft, purchaseDraftReducer, toCreateInput, type PurchaseDraft } from "@/lib/inventory/purchase-draft"
 import { groupBySupplier, reorderQuantity } from "@/lib/inventory/stock"
-import type { InventoryItem, Supplier } from "@/lib/supabase/inventory/types"
+import type { InventoryItem, Supplier } from "@/lib/api/inventory/types"
 
 export interface SuggestionGroup {
   supplierId: string | null

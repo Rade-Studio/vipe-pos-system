@@ -5,7 +5,7 @@ import { Plus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { formatQuantity } from "@/lib/inventory/units"
-import type { InventoryItem } from "@/lib/supabase/inventory/types"
+import type { InventoryItem } from "@/lib/api/inventory/types"
 import { cn } from "@/lib/utils"
 
 export type ComboboxItem = Pick<InventoryItem, "id" | "name" | "sku" | "unit" | "kind" | "stock">

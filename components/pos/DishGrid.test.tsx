@@ -26,14 +26,12 @@ vi.mock("@/lib/supabase/client", () => ({
   },
 }))
 
-vi.mock("@/lib/supabase/inventory-control-service", () => ({
-  default: {
-    // The T6 entry point: one read per category/menu.
-    checkStockForDishes: env.checkStockForDishes,
-    // Kept as a spy: if the grid still used the per-dish path, the suite would
-    // see N calls instead of one.
-    checkStockForDish: env.checkStockForDish,
-  },
+vi.mock("@/lib/api/inventory", () => ({
+  // The T6 entry point: one read per category/menu (POST /inventory/dish-availability since T10).
+  checkStockForDishes: env.checkStockForDishes,
+  // Kept as a spy: if the grid still used the per-dish path, the suite would
+  // see N calls instead of one.
+  checkStockForDish: env.checkStockForDish,
 }))
 
 import { DishGrid } from "./DishGrid"

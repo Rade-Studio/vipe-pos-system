@@ -19,7 +19,7 @@ import {
   useSuppliers,
 } from "@/hooks/inventory"
 import type { PurchaseDraft } from "@/lib/inventory/purchase-draft"
-import type { PurchaseOrder, PurchaseOrderStatus } from "@/lib/supabase/inventory/types"
+import type { PurchaseOrder, PurchaseOrderStatus } from "@/lib/api/inventory/types"
 import { PurchaseOrderSheet } from "./PurchaseOrderSheet"
 import { PurchaseSuggestions } from "./PurchaseSuggestions"
 import { PO_STATUSES, PO_STATUS_LABEL, PaymentBadge, PurchaseStatusBadge, canReceive, poNumber } from "./purchase-ui"

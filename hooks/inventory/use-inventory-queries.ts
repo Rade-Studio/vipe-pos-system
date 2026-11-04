@@ -10,9 +10,9 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query"
 
 import { toInventoryError } from "@/lib/inventory/errors"
 import { inventoryKeys } from "@/lib/inventory/query-keys"
-import * as inventory from "@/lib/supabase/inventory"
-import type { ListItemsOptions } from "@/lib/supabase/inventory/items-service"
-import type { MovementFilters, PurchaseOrderFilters } from "@/lib/supabase/inventory"
+import * as inventory from "@/lib/api/inventory"
+import type { ListItemsOptions } from "@/lib/api/inventory"
+import type { MovementFilters, PurchaseOrderFilters } from "@/lib/api/inventory"
 
 /** Wraps a service read so the query error is always an InventoryError. */
 export const mapped =

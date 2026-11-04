@@ -138,13 +138,8 @@ vi.mock("@/lib/api/catalog", () => ({
   fetchDishes: (filter: { categoryId: string }) => env.dishesByCategory(filter.categoryId),
 }))
 
-vi.mock("@/lib/supabase/inventory-control-service", () => ({
-  default: {
-    checkStockForDishes: env.checkStockForDishes,
-  },
-}))
-
-vi.mock("@/lib/supabase/inventory", () => ({
+vi.mock("@/lib/api/inventory", () => ({
+  checkStockForDishes: env.checkStockForDishes,
   checkDishesStock: env.checkDishesStock,
   consumeOrderStock: env.consumeOrderStock,
 }))

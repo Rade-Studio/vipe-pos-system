@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const catalog = vi.hoisted(() => ({ fetchCategories: vi.fn(), fetchDishes: vi.fn() }))
 vi.mock("@/lib/api/catalog", () => catalog)
-vi.mock("@/lib/supabase/inventory-control-service", () => ({ default: { checkStockForDishes: vi.fn() } }))
+vi.mock("@/lib/api/inventory", () => ({ checkStockForDishes: vi.fn() }))
 
 import { fetchMenuCategories, fetchMenuDishes } from "@/hooks/use-menu"
 

@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { useCreateLocation, useInventoryLocations, useUpdateLocation } from "@/hooks/inventory"
-import type { InventoryLocation } from "@/lib/supabase/inventory/types"
+import type { InventoryLocation } from "@/lib/api/inventory/types"
 import { FieldError } from "./stock-ui"
 
 const CODE_RE = /^[A-Z0-9][A-Z0-9-]{0,15}$/

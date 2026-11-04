@@ -1,10 +1,11 @@
 /**
  * Item create/edit form model (odd/tasks/admin-dashboard-inventario.md, T7).
  * Values are kept as strings while editing; `toInput` builds the item patch,
- * which never carries stock or cost (those move through inventory_adjust).
+ * which never carries stock or cost (those move through inventory_adjust;
+ * `toOpening` is the create's opening stock).
  */
 
-import type { InventoryItem, InventoryItemInput, ItemKind } from "@/lib/supabase/inventory/types"
+import type { InventoryItem, InventoryItemInput, ItemKind } from "@/lib/api/inventory/types"
 
 export interface ItemFormValues {
   name: string
@@ -153,7 +154,7 @@ export function toInput(values: ItemFormValues): InventoryItemInput {
   }
 }
 
-/** The opening movement to record after create, or null when there is no initial stock. */
+/** The opening stock sent with the create, or null when there is no initial stock. */
 export function toOpening(values: ItemFormValues): { quantity: number; unitCost: number | null } | null {
   const quantity = parseNumber(values.initialStock)
   if (quantity === undefined || Number.isNaN(quantity) || quantity <= 0) return null

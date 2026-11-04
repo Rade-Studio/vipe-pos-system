@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import type { CountLine } from "@/lib/supabase/inventory/types"
+import type { CountLine } from "@/lib/api/inventory/types"
 import { buildCountRows, countApplySummary, countProgress, filterCountRows } from "./count-sheet"
 
 const line = (patch: Partial<CountLine>): CountLine => ({

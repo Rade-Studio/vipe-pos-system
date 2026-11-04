@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { InventoryItem, InventoryLocation, Lot } from "@/lib/supabase/inventory/types"
+import type { InventoryItem, InventoryLocation, Lot } from "@/lib/api/inventory/types"
 
 const h = vi.hoisted(() => {
   const mutation = () => ({ mutateAsync: vi.fn(), isPending: false })
@@ -135,7 +135,7 @@ describe("ItemFormSheet", () => {
     })
   }
 
-  it("creates the item and records the opening stock at the default location", async () => {
+  it("creates the item with its opening stock in one request (T10)", async () => {
     h.createItem.mutateAsync.mockResolvedValue(makeItem({ id: "new", sku: "MP-0009" }))
     render(<ItemFormSheet open item={null} onOpenChange={() => {}} />)
     fill("Nombre", "Queso")
@@ -143,16 +143,23 @@ describe("ItemFormSheet", () => {
     fill("Costo inicial", "2500")
     await submit("Crear artículo")
 
-    expect(h.createItem.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ name: "Queso" }))
-    expect(h.adjustStock.mutateAsync).toHaveBeenCalledWith({
-      itemId: "new",
-      locationId: "l1",
-      movementType: "opening",
-      quantity: 5,
-      unitCost: 2500,
-      reason: "Stock inicial",
-    })
-    expect(h.createItem.mutateAsync.mock.invocationCallOrder[0]).toBeLessThan(h.adjustStock.mutateAsync.mock.invocationCallOrder[0])
+    expect(h.createItem.mutateAsync).toHaveBeenCalledTimes(1)
+    expect(h.createItem.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Queso", openingStock: { quantity: 5, unitCost: 2500 } }),
+    )
+    expect(h.adjustStock.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it("sends a null opening cost when the cost is blank", async () => {
+    h.createItem.mutateAsync.mockResolvedValue(makeItem({ id: "new" }))
+    render(<ItemFormSheet open item={null} onOpenChange={() => {}} />)
+    fill("Nombre", "Queso")
+    fill("Cantidad inicial", "5")
+    await submit("Crear artículo")
+    expect(h.createItem.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ openingStock: { quantity: 5, unitCost: null } }),
+    )
+    expect(h.adjustStock.mutateAsync).not.toHaveBeenCalled()
   })
 
   it("skips the opening movement when there is no initial stock", async () => {
@@ -162,6 +169,7 @@ describe("ItemFormSheet", () => {
     fill("Cantidad inicial", "0")
     await submit("Crear artículo")
     expect(h.createItem.mutateAsync).toHaveBeenCalledTimes(1)
+    expect(h.createItem.mutateAsync.mock.calls[0][0]).not.toHaveProperty("openingStock")
     expect(h.adjustStock.mutateAsync).not.toHaveBeenCalled()
   })
 

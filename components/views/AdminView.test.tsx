@@ -274,8 +274,11 @@ describe("AdminView — requests issued while a tab is open", () => {
     )
     expect(ordersReads.map((call) => call.args[1]).sort()).toEqual(["kitchen", "paid", "paid"])
     expect(tableOf(state.calls)).toContain("order_items.select")
-    // The low-stock alert on the dashboard shares the ingredient read.
-    expect(tableOf(state.calls)).toContain("ingredients.select")
+    // The low-stock alert on the dashboard reads the inventory items through the API (T10).
+    await waitFor(() =>
+      expect(state.apiCalls.filter((call) => call.path === "/api/inventory/items")).toHaveLength(1),
+    )
+    expect(tableOf(state.calls)).not.toContain("ingredients.select")
     // Nothing for the tabs that are closed.
     expect(state.calls.some((call) => call.table === "categories")).toBe(false)
     expect(state.calls.some((call) => call.table === "profiles")).toBe(false)
@@ -310,7 +313,9 @@ describe("AdminView — requests issued while a tab is open", () => {
 
     // One click = ONE request on the active statuses (no store `loadOrders` behind it).
     await waitFor(() => expect(state.apiCalls.filter((call) => call.path === "/api/orders")).toHaveLength(2))
-    expect(state.apiCalls).toHaveLength(2)
+    // Besides the dashboard's single low-stock read, nothing else is requested.
+    expect(state.apiCalls.filter((call) => call.path !== "/api/inventory/items")).toHaveLength(2)
+    expect(state.apiCalls.filter((call) => call.path === "/api/inventory/items")).toHaveLength(1)
     // The manual refresh still reports what it loaded.
     expect(toastMock).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Órdenes actualizadas" }),

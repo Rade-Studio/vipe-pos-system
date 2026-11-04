@@ -48,7 +48,7 @@ import {
   type CountSheetRow,
 } from "@/lib/inventory/count-sheet"
 import { formatQuantity } from "@/lib/inventory/units"
-import type { CountStatus, InventoryCount } from "@/lib/supabase/inventory/types"
+import type { CountStatus, InventoryCount } from "@/lib/api/inventory/types"
 import { cn } from "@/lib/utils"
 
 interface CountsPageProps {

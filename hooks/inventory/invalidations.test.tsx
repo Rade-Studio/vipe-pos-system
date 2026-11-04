@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { inventoryKeys, menuStockKey } from '@/lib/inventory/query-keys'
-import { invalidationsFor } from './invalidations'
+import { failureInvalidationsFor, invalidationsFor } from './invalidations'
 
 // `.tsx` so the dom project picks it up (hooks/** has no node-project glob).
 
@@ -59,5 +59,21 @@ describe('invalidationsFor', () => {
     expect(invalidationsFor({ type: 'countLine', countId: 'c1' })).toEqual([inventoryKeys.count('c1')])
     expect(invalidationsFor({ type: 'openCount' })).toEqual([inventoryKeys.counts()])
     expect(invalidationsFor({ type: 'cancelCount' })).toEqual([inventoryKeys.counts()])
+  })
+})
+
+describe('failureInvalidationsFor', () => {
+  it('a failed purchase order save refetches the order (and its list), so a stale lineId is not resent', () => {
+    expect(failureInvalidationsFor({ type: 'updatePurchase', purchaseId: 'po1' })).toEqual([inventoryKeys.purchases()])
+    expect(inventoryKeys.purchase('po1').slice(0, 2)).toEqual(inventoryKeys.purchases())
+  })
+
+  it('a failed update keeps the success invalidations of a purchase save', () => {
+    expect(invalidationsFor({ type: 'updatePurchase', purchaseId: 'po1' })).toEqual(invalidationsFor({ type: 'savePurchase' }))
+  })
+
+  it('other failed writes invalidate nothing', () => {
+    expect(failureInvalidationsFor({ type: 'savePurchase' })).toEqual([])
+    expect(failureInvalidationsFor({ type: 'adjust', itemId: 'i1' })).toEqual([])
   })
 })

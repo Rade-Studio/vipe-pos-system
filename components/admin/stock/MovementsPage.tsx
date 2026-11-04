@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Input } from "@/components/ui/input"
 import { useInventoryItems, useInventoryLocations, useInventoryMovements } from "@/hooks/inventory"
 import { formatQuantity } from "@/lib/inventory/units"
-import type { Movement, MovementFilters, MovementType } from "@/lib/supabase/inventory/types"
+import type { Movement, MovementFilters, MovementType } from "@/lib/api/inventory/types"
 import { formatCurrency } from "@/utils/helpers"
 import { MOVEMENT_LABEL, MOVEMENT_TYPES, NativeSelect, signedClass } from "./stock-ui"
 

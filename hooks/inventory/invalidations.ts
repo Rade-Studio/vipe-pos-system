@@ -16,6 +16,8 @@ export type InventoryMutation =
   | { type: "saveLocation" }
   | { type: "saveSupplier" }
   | { type: "savePurchase" }
+  /** Header and lines of one existing order (one PUT). */
+  | { type: "updatePurchase"; purchaseId: string }
   | { type: "openCount" }
   | { type: "cancelCount" }
   | { type: "countLine"; countId: string }
@@ -54,6 +56,7 @@ export function invalidationsFor(mutation: InventoryMutation): QueryKey[] {
     case "saveSupplier":
       return [inventoryKeys.suppliers()]
     case "savePurchase":
+    case "updatePurchase":
       return [inventoryKeys.purchases(), inventoryKeys.overview()]
     case "openCount":
     case "cancelCount":
@@ -61,4 +64,14 @@ export function invalidationsFor(mutation: InventoryMutation): QueryKey[] {
     case "countLine":
       return [inventoryKeys.count(mutation.countId)]
   }
+}
+
+/**
+ * Keys a FAILED mutation makes stale. A purchase order save that fails (a
+ * `lineId` removed elsewhere answers 422) refetches the order, so the sheet
+ * does not reload the cached stale lines; `purchases()` is the prefix of both
+ * the list and `purchase(id)`.
+ */
+export function failureInvalidationsFor(mutation: InventoryMutation): QueryKey[] {
+  return mutation.type === "updatePurchase" ? [inventoryKeys.purchases()] : []
 }

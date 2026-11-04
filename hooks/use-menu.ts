@@ -10,12 +10,12 @@
  * previous dishes on screen while the next ones load.
  *
  * The stock check is keyed by the exact set of dishes on screen, so one batched
- * read serves a whole category (see `inventoryControlService.checkStockForDishes`).
+ * read serves a whole category (see `checkStockForDishes`, `POST /inventory/dish-availability`).
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 
-import inventoryControlService from "@/lib/supabase/inventory-control-service"
+import { checkStockForDishes } from "@/lib/api/inventory"
 import { fetchCategories, fetchDishes } from "@/lib/api/catalog"
 import type { Category, Dish } from "@/types"
 
@@ -70,7 +70,7 @@ export function useMenuDishes(categoryId: string | null) {
 export function useDishStockStatus(dishIds: readonly string[], enabled: boolean) {
   return useQuery<Map<string, boolean>>({
     queryKey: dishStockKey(dishIds),
-    queryFn: () => inventoryControlService.checkStockForDishes([...dishIds]),
+    queryFn: () => checkStockForDishes([...dishIds]),
     enabled: enabled && dishIds.length > 0,
   })
 }

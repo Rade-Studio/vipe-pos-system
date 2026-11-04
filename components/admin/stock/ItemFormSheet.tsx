@@ -9,11 +9,9 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import {
-  useAdjustStock,
   useCreateCategory,
   useCreateItem,
   useInventoryCategories,
-  useInventoryLocations,
   useSuppliers,
   useUpdateItem,
 } from "@/hooks/inventory"
@@ -29,7 +27,7 @@ import {
   type ItemFormValues,
 } from "@/lib/inventory/item-form"
 import { UNIT_OPTIONS } from "@/lib/inventory/units"
-import type { InventoryItem } from "@/lib/supabase/inventory/types"
+import type { InventoryItem } from "@/lib/api/inventory/types"
 import { FieldError, KIND_LABEL, NativeSelect } from "./stock-ui"
 
 interface ItemFormSheetProps {
@@ -70,12 +68,10 @@ export function ItemFormSheet({ open, onOpenChange, item, onSaved }: ItemFormShe
 
   const categories = useInventoryCategories()
   const suppliers = useSuppliers()
-  const locations = useInventoryLocations()
   const createItem = useCreateItem()
   const updateItem = useUpdateItem()
-  const adjustStock = useAdjustStock()
   const createCategory = useCreateCategory()
-  const saving = createItem.isPending || updateItem.isPending || adjustStock.isPending
+  const saving = createItem.isPending || updateItem.isPending
 
   useEffect(() => {
     if (!open) return
@@ -110,19 +106,10 @@ export function ItemFormSheet({ open, onOpenChange, item, onSaved }: ItemFormShe
         toast({ title: "Artículo actualizado" })
         onSaved?.(saved)
       } else {
-        const saved = await createItem.mutateAsync(toInput(values))
+        // The opening stock goes with the insert: the server records it at
+        // the default location in the same transaction.
         const opening = toOpening(values)
-        const location = (locations.data ?? []).find((l) => l.isDefault)
-        if (opening && location) {
-          await adjustStock.mutateAsync({
-            itemId: saved.id,
-            locationId: location.id,
-            movementType: "opening",
-            quantity: opening.quantity,
-            unitCost: opening.unitCost,
-            reason: "Stock inicial",
-          })
-        }
+        const saved = await createItem.mutateAsync({ ...toInput(values), ...(opening ? { openingStock: opening } : {}) })
         toast({ title: "Artículo creado", description: `SKU ${saved.sku}` })
         onSaved?.(saved)
       }

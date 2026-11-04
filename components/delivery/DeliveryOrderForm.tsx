@@ -39,7 +39,7 @@ import {
 import { createSingleFlight } from '@/lib/payments/single-flight'
 import { buildDeliveryKitchenCommand, newKitchenOrderNumber } from '@/lib/delivery/print'
 import { sendCommand } from '@/lib/api/print'
-import { consumeOrderStock } from '@/lib/supabase/inventory'
+import { consumeOrderStock } from '@/lib/api/inventory'
 import { useProfileStore } from '@/store/useProfileStore'
 import { toast } from '@/hooks/use-toast'
 

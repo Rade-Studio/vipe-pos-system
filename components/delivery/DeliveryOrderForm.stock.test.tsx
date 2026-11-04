@@ -33,7 +33,7 @@ vi.mock("@/lib/supabase/delivery-service", async () => {
   return { ...actual, findCustomerByPhone: vi.fn(async () => null), createDeliveryOrder: env.createDeliveryOrder }
 })
 
-vi.mock("@/lib/supabase/inventory", () => ({ consumeOrderStock: env.consumeOrderStock }))
+vi.mock("@/lib/api/inventory", () => ({ consumeOrderStock: env.consumeOrderStock }))
 
 vi.mock("@/lib/api/print", () => ({ sendCommand: env.sendCommand }))
 

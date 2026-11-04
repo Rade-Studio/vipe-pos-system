@@ -3,7 +3,7 @@
  * reorder rows by urgency and top consumed shares.
  */
 
-import type { InventoryItem, InventoryOverview } from "@/lib/supabase/inventory/types"
+import type { InventoryItem, InventoryOverview } from "@/lib/api/inventory/types"
 import { reorderQuantity, stockStatus } from "./stock"
 
 export type SeriesPoint = InventoryOverview["series"][number]

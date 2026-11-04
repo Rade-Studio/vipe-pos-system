@@ -9,23 +9,24 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { InventoryError, toInventoryError } from "@/lib/inventory/errors"
-import * as inventory from "@/lib/supabase/inventory"
+import * as inventory from "@/lib/api/inventory"
 import type {
   AdjustStockInput,
+  CreateItemInput,
   CreatePreparationInput,
   CreatePurchaseOrderInput,
   InventoryItemInput,
   InventoryLocationInput,
   OpenCountInput,
   PaymentStatus,
-  PurchaseOrderLineInput,
   ProducePreparationInput,
   ReceiveLineInput,
   SaveFormulaInput,
   SupplierInput,
   TransferStockInput,
-} from "@/lib/supabase/inventory"
-import { type InventoryMutation, invalidationsFor } from "./invalidations"
+  UpdatePurchaseOrderInput,
+} from "@/lib/api/inventory"
+import { type InventoryMutation, failureInvalidationsFor, invalidationsFor } from "./invalidations"
 
 function useInventoryMutation<TVars, TResult>(
   fn: (vars: TVars) => Promise<TResult>,
@@ -42,6 +43,8 @@ function useInventoryMutation<TVars, TResult>(
     },
     onSuccess: (_result, vars) =>
       Promise.all(invalidationsFor(mutation(vars)).map((queryKey) => queryClient.invalidateQueries({ queryKey }))),
+    onError: (_error, vars) =>
+      Promise.all(failureInvalidationsFor(mutation(vars)).map((queryKey) => queryClient.invalidateQueries({ queryKey }))),
   })
 }
 
@@ -79,7 +82,7 @@ export const useSaveFormula = () =>
 // ---------------- catalog ----------------
 
 export const useCreateItem = () =>
-  useInventoryMutation((v: InventoryItemInput) => inventory.createItem(v), () => ({ type: "saveItem" }))
+  useInventoryMutation((v: CreateItemInput) => inventory.createItem(v), () => ({ type: "saveItem" }))
 
 export const useUpdateItem = () =>
   useInventoryMutation(
@@ -131,9 +134,8 @@ export const useCreatePurchaseOrder = () =>
 
 export const useUpdatePurchaseOrder = () =>
   useInventoryMutation(
-    (v: { id: string; patch: Parameters<typeof inventory.updatePurchaseOrder>[1] }) =>
-      inventory.updatePurchaseOrder(v.id, v.patch),
-    () => ({ type: "savePurchase" }),
+    (v: { id: string; input: UpdatePurchaseOrderInput }) => inventory.updatePurchaseOrder(v.id, v.input),
+    (v) => ({ type: "updatePurchase", purchaseId: v.id }),
   )
 
 export const useSetPurchaseOrderStatus = () =>
@@ -151,25 +153,10 @@ export const useSetPurchaseOrderPaymentStatus = () =>
 export const useDeletePurchaseOrder = () =>
   useInventoryMutation((id: string) => inventory.deletePurchaseOrder(id), () => ({ type: "savePurchase" }))
 
-export const useAddPurchaseOrderLine = () =>
-  useInventoryMutation(
-    (v: { purchaseOrderId: string; line: PurchaseOrderLineInput }) => inventory.addPurchaseOrderLine(v.purchaseOrderId, v.line),
-    () => ({ type: "savePurchase" }),
-  )
-
-export const useUpdatePurchaseOrderLine = () =>
-  useInventoryMutation(
-    (v: { lineId: string; quantity?: number; unitCost?: number }) =>
-      inventory.updatePurchaseOrderLine(v.lineId, { quantity: v.quantity, unitCost: v.unitCost }),
-    () => ({ type: "savePurchase" }),
-  )
-
-export const useRemovePurchaseOrderLine = () =>
-  useInventoryMutation((lineId: string) => inventory.removePurchaseOrderLine(lineId), () => ({ type: "savePurchase" }))
-
 export const useReceivePurchaseOrder = () =>
   useInventoryMutation(
-    (v: { purchaseOrderId: string; lines: ReceiveLineInput[] }) => inventory.receivePurchaseOrder(v.purchaseOrderId, v.lines),
+    (v: { purchaseOrderId: string; lines: ReceiveLineInput[]; paymentStatus?: PaymentStatus }) =>
+      inventory.receivePurchaseOrder(v.purchaseOrderId, v.lines, v.paymentStatus),
     () => ({ type: "receivePurchase" }),
   )
 
@@ -181,7 +168,7 @@ export const useOpenCount = () =>
 export const useSetCountedQuantity = () =>
   useInventoryMutation(
     (v: { countId: string; lineId: string; countedQuantity: number | null }) =>
-      inventory.setCountedQuantity(v.lineId, v.countedQuantity),
+      inventory.setCountedQuantity(v.countId, v.lineId, v.countedQuantity),
     (v) => ({ type: "countLine", countId: v.countId }),
   )
 

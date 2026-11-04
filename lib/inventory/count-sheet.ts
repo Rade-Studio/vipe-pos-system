@@ -4,7 +4,7 @@
  * the difference is counted − expected; uncounted lines stay unchanged.
  */
 
-import type { CountLine } from "@/lib/supabase/inventory/types"
+import type { CountLine } from "@/lib/api/inventory/types"
 
 export interface CountSheetRow {
   lineId: string

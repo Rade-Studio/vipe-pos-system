@@ -46,11 +46,11 @@ const ITEMS = [
 
 const FORMULAS = {
   byDish: {
-    burger: { recipeId: "r1", targetType: "dish", targetId: "burger", yieldQuantity: 1, notes: null, lines: [{ ingredientId: "pan", quantity: 1 }] },
+    burger: { recipeId: "r1", targetType: "dish", targetId: "burger", yieldQuantity: 1, notes: null, lines: [{ ingredientId: "pan", quantity: 1 }], unitCost: 850 },
   },
   byPrep: {
-    base: { recipeId: "r2", targetType: "prep", targetId: "base", yieldQuantity: 1000, notes: null, lines: [{ ingredientId: "aderezo", quantity: 200 }] },
-    aderezo: { recipeId: "r3", targetType: "prep", targetId: "aderezo", yieldQuantity: 500, notes: null, lines: [{ ingredientId: "tomate", quantity: 500 }] },
+    base: { recipeId: "r2", targetType: "prep", targetId: "base", yieldQuantity: 1000, notes: null, lines: [{ ingredientId: "aderezo", quantity: 200 }], unitCost: 1.5 },
+    aderezo: { recipeId: "r3", targetType: "prep", targetId: "aderezo", yieldQuantity: 500, notes: null, lines: [{ ingredientId: "tomate", quantity: 500 }], unitCost: 4 },
   },
 }
 
@@ -83,6 +83,7 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver
 Element.prototype.scrollIntoView ??= function () {}
 
+import { formatMoney } from "@/components/admin/inventory-shared"
 import { FormulasPage } from "./FormulasPage"
 
 const renderPage = () =>
@@ -115,6 +116,14 @@ beforeEach(() => {
 })
 
 describe("FormulasPage", () => {
+  it("lists the saved formulas with the server cost (T10)", async () => {
+    renderPage()
+    // Live costing would give 800 (one Pan brioche); the server answers 850.
+    const burger = await screen.findByRole("button", { name: /Hamburguesa/ })
+    expect(burger.textContent).toContain(formatMoney(850))
+    expect(burger.textContent).not.toContain(formatMoney(800))
+  })
+
   it("lists dishes with their status chips", async () => {
     renderPage()
     const burger = await screen.findByRole("button", { name: /Hamburguesa/ })

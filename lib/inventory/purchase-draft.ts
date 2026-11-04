@@ -9,7 +9,8 @@ import type {
   InventoryItem,
   PurchaseOrder,
   PurchaseOrderLineInput,
-} from "@/lib/supabase/inventory/types"
+  UpdatePurchaseOrderInput,
+} from "@/lib/api/inventory/types"
 
 export interface DraftLine {
   key: string
@@ -184,23 +185,10 @@ export function draftFromOrder(order: PurchaseOrder, items: readonly InventoryIt
   }
 }
 
-/** Line mutations that turn `order` into `draft`. */
-export function diffDraftLines(order: PurchaseOrder, draft: PurchaseDraft) {
-  const original = new Map(order.lines.map((l) => [l.id, l]))
-  const kept = new Set<string>()
-  const add: PurchaseOrderLineInput[] = []
-  const update: { lineId: string; quantity: number; unitCost: number }[] = []
-  for (const line of draft.lines) {
-    const before = line.lineId ? original.get(line.lineId) : undefined
-    if (!before || !line.lineId) {
-      add.push(toLineInput(line))
-      continue
-    }
-    kept.add(line.lineId)
-    if (before.quantity !== line.quantity || before.unitCost !== line.unitCost) {
-      update.push({ lineId: line.lineId, quantity: line.quantity, unitCost: line.unitCost })
-    }
+/** The full draft for `PUT /inventory/purchase-orders/:id`: loaded lines keep their `lineId`, new lines have none. */
+export function toUpdateInput(draft: PurchaseDraft): UpdatePurchaseOrderInput {
+  return {
+    ...toCreateInput(draft),
+    lines: draft.lines.map((line) => (line.lineId ? { lineId: line.lineId, ...toLineInput(line) } : toLineInput(line))),
   }
-  const remove = order.lines.filter((l) => !kept.has(l.id)).map((l) => l.id)
-  return { add, update, remove }
 }

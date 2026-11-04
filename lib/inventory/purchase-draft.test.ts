@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import type { InventoryItem, PurchaseOrder } from "@/lib/supabase/inventory/types"
+import type { InventoryItem, PurchaseOrder } from "@/lib/api/inventory/types"
 import {
-  diffDraftLines,
   draftFromOrder,
   draftTotal,
   emptyDraft,
@@ -13,6 +12,7 @@ import {
   lineTotal,
   purchaseDraftReducer,
   toCreateInput,
+  toUpdateInput,
   validateDraft,
   type PurchaseDraft,
 } from "./purchase-draft"
@@ -143,7 +143,7 @@ describe("toCreateInput", () => {
   })
 })
 
-describe("draftFromOrder and diffDraftLines", () => {
+describe("draftFromOrder and toUpdateInput", () => {
   const order: PurchaseOrder = {
     id: "po1",
     number: 3,
@@ -172,15 +172,20 @@ describe("draftFromOrder and diffDraftLines", () => {
     expect(lineEntryQuantity(s.lines[0])).toBe(2)
   })
 
-  it("diffs added, updated and removed lines", () => {
+  it("sends kept lines with their lineId, new lines without, and leaves removed lines out", () => {
     let s = draftFromOrder(order, [tomato, milk])
     s = purchaseDraftReducer(s, { type: "setEntryQuantity", key: s.lines[0].key, value: 3 })
     s = purchaseDraftReducer(s, { type: "removeLine", key: s.lines[1].key })
     s = purchaseDraftReducer(s, { type: "addItem", item: item({ id: "i3", name: "Sal", unit: "g", cost: 2 }), quantity: 500 })
-    expect(diffDraftLines(order, s)).toEqual({
-      add: [{ itemId: "i3", quantity: 500, unitCost: 2 }],
-      update: [{ lineId: "L1", quantity: 36, unitCost: 3000 }],
-      remove: ["L2"],
+    expect(toUpdateInput(s)).toEqual({
+      supplierId: "s1",
+      locationId: "l1",
+      expectedOn: null,
+      notes: "x",
+      lines: [
+        { lineId: "L1", itemId: "i2", quantity: 36, unitCost: 3000 },
+        { itemId: "i3", quantity: 500, unitCost: 2 },
+      ],
     })
   })
 })
