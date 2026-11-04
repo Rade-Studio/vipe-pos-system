@@ -31,7 +31,8 @@ import { queryClient } from "@/lib/queryClient"
 import { log } from "@/lib/log"
 import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
 import { createSingleFlight } from "@/lib/payments/single-flight"
-import { PaymentServiceError, splitOrder, undoSplit } from "@/lib/supabase/payments-service"
+import { splitOrder, undoSplit } from "@/lib/api/payments"
+import { PaymentServiceError } from "@/lib/payments/types"
 import {
   CASHIER_ORDER_STATUSES,
   applyCashierOrderEvent,

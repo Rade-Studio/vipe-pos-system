@@ -22,7 +22,7 @@ import type { DeliveryOrder } from "@/lib/delivery/types"
 import { buildDeliveryPrintInfo } from "@/lib/delivery/print"
 import { toast } from "@/utils/toast"
 import { NumericKeypad } from "@/components/ui/numeric-keypad"
-import { listPaymentMethods, payOrder } from "@/lib/supabase/payments-service"
+import { listPaymentMethods, payOrder } from "@/lib/api/payments"
 import { PaymentServiceError } from "@/lib/payments/types"
 import type {
   PayOrderResult,

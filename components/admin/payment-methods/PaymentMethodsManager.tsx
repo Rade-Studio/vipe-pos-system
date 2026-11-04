@@ -55,12 +55,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { listPaymentMethods } from "@/lib/supabase/payments-service"
 import {
   createPaymentMethod,
+  listPaymentMethods,
   reorderPaymentMethods,
   updatePaymentMethod,
-} from "@/lib/supabase/payments-service"
+} from "@/lib/api/payments"
 import { PaymentServiceError } from "@/lib/payments/types"
 import type {
   PaymentMethodKind,
@@ -245,18 +245,18 @@ export function PaymentMethodsManager() {
 
   const handleReorder = async (id: string, direction: "up" | "down") => {
     if (reorderGate.isRunning()) return
-    const { changes } = moveMethod(ordered, id, direction)
+    const { methods: next, changes } = moveMethod(ordered, id, direction)
     if (changes.length === 0) return
     const run = reorderGate.run(async () => {
       try {
-        await reorderPaymentMethods(changes)
+        // One atomic PUT with every id in the new order (the server refuses a partial list).
+        await reorderPaymentMethods(next.map((m) => m.id))
         toast.success("Orden guardado")
         await invalidate()
       } catch (err) {
         log.error("Error al reordenar métodos de pago:", { error: String(err) })
         toast.error(paymentErrorMessage(err))
-        // The updates run one by one, so some may have landed; reload the
-        // server order before the next move is computed from it.
+        // Reload the server order before the next move is computed from it.
         await invalidate()
       }
     })

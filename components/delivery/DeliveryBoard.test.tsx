@@ -81,13 +81,7 @@ vi.mock("@/lib/supabase/delivery-service", async () => {
 const getCurrentRegister = vi.hoisted(() => vi.fn())
 const getOpenRegister = vi.hoisted(() => vi.fn())
 
-vi.mock("@/lib/supabase/cash-register-service", () => ({
-  cashRegisterService: { getCurrentRegister, getOpenRegister },
-}))
-
-vi.mock("@/lib/supabase/service", () => ({
-  orderService: { getById: () => new Promise(() => {}) },
-}))
+vi.mock("@/lib/api/registers", () => ({ getCurrentRegister, getOpenRegister }))
 
 vi.mock("@/lib/api/catalog", () => ({
   fetchCategories: async () => [],
@@ -99,10 +93,8 @@ vi.mock("@/lib/api/config", () => ({
   fetchConfig: async () => ({ deliveryDefaultFee: 0 }),
 }))
 
-vi.mock("@/lib/supabase/payments-service", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/supabase/payments-service")>(
-    "@/lib/supabase/payments-service",
-  )
+vi.mock("@/lib/api/payments", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/payments")>("@/lib/api/payments")
   return { ...actual, listPaymentMethods: async () => [], payOrder: async () => ({}) }
 })
 

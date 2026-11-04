@@ -11,6 +11,7 @@ import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
 import { NumericKeypad } from "@/components/ui/numeric-keypad"
 import { toast } from "@/utils/toast"
+import { PaymentServiceError } from "@/lib/payments/types"
 import { Loader2 } from "lucide-react"
 
 interface OpenRegisterDialogProps {
@@ -57,7 +58,13 @@ export function OpenRegisterDialog({ open, onOpenChange, onSuccess }: OpenRegist
       }
     } catch (error) {
       log.error("Error al abrir la caja:", { error: String(error) })
-      toast.error("Ocurrió un error al abrir la caja")
+      // The server owns the one-open-register rule: its 409 message
+      // ("A register is already open") is the cashier's diagnostic.
+      const shown =
+        error instanceof PaymentServiceError && (error.kind === "rejected" || error.kind === "invalid-input")
+          ? error.message
+          : "Ocurrió un error al abrir la caja"
+      toast.error(shown)
     } finally {
       setIsSubmitting(false)
     }

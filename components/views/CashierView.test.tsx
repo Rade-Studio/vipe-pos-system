@@ -122,11 +122,8 @@ vi.mock("@/lib/api/client", () => {
     onSessionRefreshed: () => () => {},
   }
 })
-vi.mock("@/lib/supabase/cash-register-service", () => ({
-  cashRegisterService: { getCurrentRegister: () => getCurrentRegister() },
-  default: { getCurrentRegister: () => getCurrentRegister() },
-}))
-vi.mock("@/lib/supabase/payments-service", () => ({
+vi.mock("@/lib/api/registers", () => ({ getCurrentRegister: () => getCurrentRegister() }))
+vi.mock("@/lib/api/payments", () => ({
   listPaymentMethods: () => listPaymentMethods(),
   getRegisterSummary: () => getRegisterSummary(),
   listRegisterPayments: () => listRegisterPayments(),
@@ -175,6 +172,8 @@ vi.mock("@/components/layout/Header", () => ({
 }))
 
 import { realtimeService } from "@/lib/api/realtime"
+import { toast } from "@/utils/toast"
+import { PaymentServiceError } from "@/lib/payments/types"
 
 /* -------------------------------------------------------------- fixtures */
 
@@ -485,5 +484,64 @@ describe("regression guard", () => {
     expect(getById).toHaveBeenCalledWith("d-1")
     // The delivery fee is added to the amount due by the same dialog.
     expect(screen.getAllByText("Domicilio").length).toBeGreaterThanOrEqual(2)
+  })
+})
+describe("payment toasts (T9 PRESERVE: driven by the API result and the error kind)", () => {
+  /** Same as `payTheOrderInCash` without closing the invoice (absent on errors). */
+  async function submitCashPayment() {
+    fireEvent.click(screen.getByRole("button", { name: "Pago Total" }))
+    await screen.findByRole("heading", { name: "Cobrar orden" })
+    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar" }))
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+  }
+
+  beforeEach(() => {
+    vi.mocked(toast.success).mockClear()
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(toast.warning).mockClear()
+  })
+
+  it("alreadyPaid and drawerWarning keep their toasts", async () => {
+    payOrder.mockImplementationOnce(async () => ({
+      paymentId: "pay-1",
+      status: "already_paid" as never,
+      amountDue: 47_600,
+      tipAmount: 0,
+      totalCharged: 47_600,
+      changeGiven: 0,
+      drawerWarning: true,
+      drawerCashBefore: 0,
+      alreadyPaid: true,
+      tenders: [{ methodCode: "cash", amount: 47_600, cashReceived: 47_600 }],
+    }))
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    await submitCashPayment()
+
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("Esta orden ya estaba pagada. Mostrando factura."),
+    )
+    expect(toast.warning).toHaveBeenCalledWith(
+      "La caja no tenía efectivo suficiente para el cambio; registra el ingreso de efectivo",
+    )
+  })
+
+  it.each([
+    ["rejected", "Register is closed", "Register is closed"],
+    ["invalid-input", "tenders: Too small", "tenders: Too small"],
+    ["not-authorized", "permission denied", "No tienes permiso para cobrar"],
+    ["unknown", "boom", "Ocurrió un error al procesar el pago. Intenta de nuevo."],
+  ] as const)("kind %s toasts %j", async (kind, message, shown) => {
+    payOrder.mockImplementationOnce(async () => {
+      throw new PaymentServiceError({ kind, message })
+    })
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    await submitCashPayment()
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(shown))
   })
 })

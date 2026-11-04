@@ -88,14 +88,12 @@ vi.mock("@/lib/api/config", () => ({
   saveConfig: vi.fn(),
 }))
 
-vi.mock("@/lib/supabase/cash-register-service", () => ({
-  cashRegisterService: {
-    getCurrentRegister: () => env.getCurrentRegister(),
-    getAllRegisters: () => env.getAllRegisters(),
-  },
+vi.mock("@/lib/api/registers", () => ({
+  getCurrentRegister: () => env.getCurrentRegister(),
+  getAllRegisters: () => env.getAllRegisters(),
 }))
 
-vi.mock("@/lib/supabase/payments-service", () => ({ closeRegisterRpc: vi.fn() }))
+vi.mock("@/lib/api/payments", () => ({ closeRegisterRpc: vi.fn() }))
 
 vi.mock("@/components/auth/LoginView", () => ({
   LoginView: ({ onLoginSuccess }: { onLoginSuccess: (session: unknown) => void }) => (

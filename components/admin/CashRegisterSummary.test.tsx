@@ -11,11 +11,9 @@ vi.mock("@/lib/supabase/client", () => ({
   supabase: {},
   createSupabaseClient: () => ({}),
 }))
-vi.mock("@/lib/supabase/cash-register-service", () => ({
-  cashRegisterService: {
-    getRegistersByDate: (...args: unknown[]) => getRegistersByDate(...args),
-    getCashTransactionsByRegisters: (...args: unknown[]) => getCashTransactionsByRegisters(...args),
-  },
+vi.mock("@/lib/api/registers", () => ({
+  getRegistersByDate: (...args: unknown[]) => getRegistersByDate(...args),
+  getCashTransactionsByRegisters: (...args: unknown[]) => getCashTransactionsByRegisters(...args),
 }))
 
 /** The server snapshot the card renders; no RPC in a jsdom suite. */

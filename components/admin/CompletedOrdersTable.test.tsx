@@ -11,12 +11,12 @@ vi.mock("@/lib/supabase/client", () => ({
 }))
 
 const getOrdersByDate = vi.fn()
-vi.mock("@/lib/supabase/service", () => ({
+vi.mock("@/lib/api/completed-orders", () => ({
   getOrdersByDate: (...args: unknown[]) => getOrdersByDate(...args),
 }))
 
 const listPaymentMethods = vi.fn()
-vi.mock("@/lib/supabase/payments-service", () => ({
+vi.mock("@/lib/api/payments", () => ({
   listPaymentMethods: (...args: unknown[]) => listPaymentMethods(...args),
 }))
 

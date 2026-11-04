@@ -14,8 +14,8 @@ import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { Order, Table, Profile, PrintableInvoice } from "@/types"
 import { useConfigStore } from "@/store/use-config-store"
 import { format } from "date-fns"
-import { getOrdersByDate } from "@/lib/supabase/service"
-import { listPaymentMethods } from "@/lib/supabase/payments-service"
+import { getOrdersByDate } from "@/lib/api/completed-orders"
+import { listPaymentMethods } from "@/lib/api/payments"
 import {
   invoiceTendersFromPayment,
   legacyInvoiceFields,

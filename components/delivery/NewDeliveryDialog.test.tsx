@@ -24,10 +24,6 @@ vi.mock("@/lib/supabase/client", () => ({
 // T7b: the suggested fee is `deliveryDefaultFee` of the shared `GET /config` query.
 vi.mock("@/lib/api/config", () => ({ CONFIG_QUERY_KEY: ["config"], fetchConfig }))
 
-vi.mock("@/lib/supabase/service", () => ({
-  orderService: { getById: async () => ({}) },
-}))
-
 vi.mock("@/lib/api/catalog", () => ({
   fetchCategories: async () => [],
   fetchDishes: async () => [],
