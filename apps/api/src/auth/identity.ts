@@ -1,9 +1,28 @@
-import { and, type Database, eq, schema, sql } from '@vipe/db';
+import { and, type Database, eq, gt, isNull, schema, sql } from '@vipe/db';
 import type { CallerProfile } from './auth-context';
 
 export interface Identity {
   user: { id: string; email: string };
   profile: CallerProfile;
+}
+
+/**
+ * Is the token's session still live (not revoked by logout, not expired)?
+ * Read inside a request transaction; RLS on auth_sessions already limits this
+ * to the caller's own rows.
+ */
+export async function hasLiveSession(db: Database, sessionId: string): Promise<boolean> {
+  const [session] = await db
+    .select({ id: schema.authSessions.id })
+    .from(schema.authSessions)
+    .where(
+      and(
+        eq(schema.authSessions.id, sessionId),
+        isNull(schema.authSessions.revokedAt),
+        gt(schema.authSessions.expiresAt, sql`now()`),
+      ),
+    );
+  return session !== undefined;
 }
 
 /**

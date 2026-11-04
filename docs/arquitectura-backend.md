@@ -116,15 +116,62 @@ sin tocarlas, y un bug en la API no puede filtrar datos entre restaurantes.
 
 ### 4.5 Tiempo real con LISTEN/NOTIFY
 
-Triggers `AFTER INSERT/UPDATE/DELETE` en `orders`, `tables` y `order_deliveries` emiten
-`pg_notify('pos_changes', json)` con `{table, op, id, restaurant_id}`. El payload es
-mínimo a propósito: NOTIFY limita a 8 KB y una orden con ítems puede superarlo.
+Triggers `AFTER INSERT OR UPDATE OR DELETE FOR EACH ROW` llamados `notify_change` en
+`orders`, `tables` y `order_deliveries` (migración `0004_realtime_notify.sql`) emiten
+`pg_notify('pos_changes', private.change_payload(...))`. El payload nunca lleva la fila
+nueva: `{table, op, id, restaurant_id}` más, en UPDATE y DELETE, `old` con la fila
+anterior completa, porque las tres tablas son `REPLICA IDENTITY FULL` y la web ya lee
+`old` (por ejemplo `old.order_type` en un DELETE). En `order_deliveries` el `id` del
+payload es su llave `order_id`. NOTIFY rechaza payloads de 8000 bytes o más: si con `old`
+el payload supera 7000 bytes, `old` se reduce a las columnas llave (`id` u `order_id`,
+`restaurant_id`, `order_type` si existe) y se marca `old_truncated: true`. Un cambio
+revertido no notifica nada; los NOTIFY se entregan al hacer COMMIT.
 
-En la API, un cliente `pg` dedicado hace `LISTEN pos_changes`, carga la fila completa y la
-emite por un gateway socket.io a la sala `restaurant:<id>`. El evento conserva la forma
-`{eventType, new, old}` que hoy entrega `postgres_changes`, de modo que los merges puros
-de `lib/realtime/order-merge.ts` y `table-merge.ts` no cambian. El listener reconecta con
-backoff y los clientes recargan el estado al reconectar, igual que hoy.
+En la API, `PgListenerService` usa un `pg.Client` dedicado (fuera del pool, rol
+`vipe_api`, `application_name = vipe-realtime-listener`) con `LISTEN pos_changes`. Procesa
+las notificaciones en orden: para INSERT y UPDATE carga la fila con
+`private.realtime_row(table, id)`; DELETE no tiene fila nueva. El gateway socket.io
+(namespace `/realtime`) la emite a la sala `restaurant:<restaurant_id>` como evento
+`pos_changes`:
+
+```json
+{
+  "schema": "public",
+  "table": "orders",
+  "commit_timestamp": "2026-11-04T18:45:21.512Z",
+  "eventType": "UPDATE",
+  "new": { "id": "...", "restaurant_id": "...", "status": "kitchen", "...": "..." },
+  "old": { "id": "...", "restaurant_id": "...", "status": "active", "...": "..." },
+  "errors": null
+}
+```
+
+Es la forma de `RealtimePostgresChangesPayload`, así que `lib/realtime/order-merge.ts` y
+`table-merge.ts` no cambian. INSERT lleva `old: {}`; DELETE lleva `new: {}` y la fila
+borrada en `old`. `commit_timestamp` es la hora en que la API recibió la notificación
+(Postgres no informa la hora del commit). Si la fila desapareció antes de cargarla, el
+evento se omite: su DELETE llega después.
+
+**Excepción deliberada a RLS.** `private.realtime_row` es `SECURITY DEFINER` con
+`search_path = ''` y `EXECUTE` solo para `vipe_api`: lee una fila por llave primaria
+(`order_id` en `order_deliveries`) de exactamente esas tres tablas sin `app.user_id`, porque
+el listener no actúa en nombre de un usuario y debe repartir el cambio a la sala que indica
+el payload. Cualquier otra tabla lanza `22023`. Un `SELECT` directo de `vipe_api` sobre esas
+tablas sin `app.user_id` sigue sin ver filas (`170_realtime_notify.test.sql`).
+
+El socket se autentica con la cookie `vipe_access` del handshake: JWT válido, sesión viva
+y perfil activo, resueltos en una unidad de trabajo; si no, `connect_error` `unauthorized`.
+Al quedar en su sala recibe `ready`. El upgrade a WebSocket con un `Origin` distinto de
+`WEB_ORIGIN` se rechaza (`allowRequest`); sin `Origin` (clientes no navegador) solo cuenta la
+cookie. Si se pierde la conexión del listener (error, cierre o un `SELECT 1` de latido cada
+30 s que falla, más TCP keepalive), se cierra ese cliente, reconecta con backoff exponencial
+de 1 s a 30 s y, tras cada reconexión, emite `resync` a todos los clientes para que vuelvan a
+leer el estado, como hoy al re-suscribir el canal.
+
+Cualquier rol puede llamar `pg_notify('pos_changes', ...)`, así que el listener no confía en
+el `restaurant_id` del aviso: en INSERT y UPDATE emite a la sala del `restaurant_id` de la
+fila cargada y descarta el aviso si no coincide; en DELETE descarta el aviso si
+`old.restaurant_id` difiere.
 
 ### 4.6 Contratos generados
 

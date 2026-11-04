@@ -335,6 +335,14 @@ Autenticación por cookies httpOnly (`SameSite=Lax`): `vipe_access` (JWT de acce
 
 Los errores siempre tienen la forma `{statusCode, error, message}`.
 
+Tiempo real: socket.io en el namespace `/realtime` (ruta `/socket.io`), autenticado con la misma cookie `vipe_access` del handshake; sin cookie válida, sesión viva y perfil activo la conexión falla con `connect_error` `unauthorized`. Un `Origin` de navegador distinto de `WEB_ORIGIN` también se rechaza. Cada socket entra a la sala `restaurant:<id>` de su restaurante y recibe:
+
+| Evento | Payload |
+| --- | --- |
+| `ready` | `{restaurantId}` al quedar suscrito. |
+| `pos_changes` | `{schema: 'public', table, commit_timestamp, eventType: 'INSERT' \| 'UPDATE' \| 'DELETE', new, old, errors: null}`, la forma de `postgres_changes` de Supabase, para `orders`, `tables` y `order_deliveries`. |
+| `resync` | Sin payload; el listener de Postgres se reconectó y pudo perder cambios: el cliente vuelve a leer el estado. |
+
 ### Pruebas de base de datos
 
 El comportamiento de la base de datos (políticas RLS, permisos, RPCs) se cubre con

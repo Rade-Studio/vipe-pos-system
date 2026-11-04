@@ -32,9 +32,10 @@ export function clearAuthCookies(res: Response, env: Env): void {
  * Read one cookie from the request header (Express does not parse cookies).
  * Values are never percent-decoded: the API only sets JWT and base64url
  * values, so a value that would need decoding is not one of ours and reads
- * as absent (401), never as a decoding error (500).
+ * as absent (401), never as a decoding error (500). Also reads a socket.io
+ * handshake, which carries the same headers.
  */
-export function readCookie(req: Request, name: string): string | undefined {
+export function readCookie(req: Pick<Request, 'headers'>, name: string): string | undefined {
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const separator = part.indexOf('=');
     if (separator > 0 && part.slice(0, separator).trim() === name) {

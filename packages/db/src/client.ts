@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool, type PoolClient, type PoolConfig } from 'pg';
+import { Client, Pool, type PoolClient, type PoolConfig } from 'pg';
 import * as schema from './schema';
 
 /**
@@ -24,3 +24,18 @@ export function bindDb(client: PoolClient) {
 }
 
 export type Database = ReturnType<typeof bindDb>;
+
+/**
+ * A standalone connection outside the pool, for LISTEN: a pooled connection
+ * would be handed to other work and lose its subscriptions. Same role rules
+ * as `createDb`. The caller connects, listens and ends it.
+ */
+export function createListenerClient(connectionString: string, applicationName: string) {
+  // TCP keepalive lets the OS notice a peer that vanished without a FIN.
+  return new Client({
+    connectionString,
+    application_name: applicationName,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+  });
+}

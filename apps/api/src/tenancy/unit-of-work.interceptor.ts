@@ -7,10 +7,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { and, eq, gt, isNull, schema, sql } from '@vipe/db';
 import { defer, lastValueFrom, type Observable } from 'rxjs';
 import { type AuthenticatedRequest, NO_PROFILE_MESSAGE } from '../auth/auth-context';
-import { loadProfile } from '../auth/identity';
+import { hasLiveSession, loadProfile } from '../auth/identity';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { UnitOfWork } from '../db/unit-of-work';
 
@@ -44,18 +43,7 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
     ]);
     return defer(() =>
       this.uow.run(auth.userId, async (db) => {
-        // RLS on auth_sessions already limits this to the caller's own rows.
-        const [session] = await db
-          .select({ id: schema.authSessions.id })
-          .from(schema.authSessions)
-          .where(
-            and(
-              eq(schema.authSessions.id, auth.sessionId),
-              isNull(schema.authSessions.revokedAt),
-              gt(schema.authSessions.expiresAt, sql`now()`),
-            ),
-          );
-        if (!session) {
+        if (!(await hasLiveSession(db, auth.sessionId))) {
           throw new UnauthorizedException('Session revoked or expired');
         }
         const profile = await loadProfile(db);

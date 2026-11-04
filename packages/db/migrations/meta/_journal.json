@@ -29,6 +29,27 @@
       "when": 1793817053522,
       "tag": "0003_session_revoke_timeouts",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793817533971,
+      "tag": "0004_realtime_notify",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793818846612,
+      "tag": "0005_fix_order_deliveries_guard_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793819322993,
+      "tag": "0006_fix_payment_rows_guard_delete",
+      "breakpoints": true
     }
   ]
 }
