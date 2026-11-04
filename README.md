@@ -354,6 +354,12 @@ El inicio y cierre de sesión ya pasan por la API. Este stack no necesita variab
 Supabase: sin `NEXT_PUBLIC_SUPABASE_URL` ni la clave anónima, el cliente heredado usa
 valores inertes y los módulos aún no migrados simplemente no devuelven datos.
 
+Pagos y caja: `/api/payments` (métodos de pago con código y orden calculados en el servidor, cobro con `pay_order`, división de cuentas) y `/api/registers` (apertura con hora del servidor, una sola caja abierta por restaurante, resumen y cierre con `register_summary`/`close_register`, movimientos de efectivo). Las fechas de caja y de órdenes completadas (`?date=AAAA-MM-DD`) usan la zona horaria del restaurante (columna `restaurants.timezone`, por defecto `America/Bogota`).
+
+Inventario (`/api/inventory`): artículos con stock inicial en la misma transacción, categorías, bodegas, proveedores, lotes FEFO, movimientos paginados (fechas `from`/`to` en la zona horaria del restaurante), ajustes y traslados, órdenes de compra con diff de líneas atómico y recepción con estado de pago, producción, conteos, fórmulas con costo unitario calculado en el servidor y resumen. Disponibilidad de platos: `POST /api/inventory/dish-availability` aplica la regla de `check_dishes_stock` (saldo de la bodega principal; control de inventario desactivado = todo disponible).
+
+Errores: las respuestas 4xx originadas en la base de datos incluyen `code` (SQLSTATE) y, para `P0001` con `DETAIL`, `details`; los 422 de validación no llevan `code`.
+
 Tiempo real: la web abre una sola conexión `socket.io-client` (versión fija `4.8.4`, la
 misma del servidor) al namespace `/realtime`, autenticada con la cookie de sesión
 (`lib/api/realtime.ts`). Recibe `pos_changes` (mesas con `waiter_name`, órdenes con

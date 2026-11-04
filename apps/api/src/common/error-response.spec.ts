@@ -52,6 +52,16 @@ describe('toErrorResponse', () => {
     expect(toErrorResponse(drizzleWrapped(pgError(code)))).toEqual({ statusCode, error, message, code });
   });
 
+  it('keeps the message of a 22023 raised by a plpgsql RAISE (the inventory UI matches it)', () => {
+    const raised = Object.assign(pgError('22023', 'save_formula: ingredient x appears twice'), { routine: 'exec_stmt_raise' });
+    const expected = { statusCode: 422, error: 'Unprocessable Entity', message: 'save_formula: ingredient x appears twice', code: '22023' };
+    expect(toErrorResponse(raised)).toEqual(expected);
+    expect(toErrorResponse(drizzleWrapped(raised))).toEqual(expected);
+    // A 22023 from a built-in function keeps the generic message.
+    const builtin = Object.assign(pgError('22023', 'invalid value for parameter'), { routine: 'parse_int' });
+    expect(toErrorResponse(builtin).message).toBe('Invalid data');
+  });
+
   it('never returns the driver DETAIL outside P0001', () => {
     expect(toErrorResponse(pgError('23505', 'dup', 'Key (email)=(a@b.c) already exists.'))).toEqual({
       statusCode: 409,

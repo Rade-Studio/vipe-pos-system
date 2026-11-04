@@ -244,6 +244,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orders/completed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OrdersController_completed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/orders/{id}": {
         parameters: {
             query?: never;
@@ -382,6 +398,694 @@ export interface paths {
         get: operations["WaitersController_list"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PaymentMethodsController_list"];
+        put?: never;
+        post: operations["PaymentMethodsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/methods/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["PaymentMethodsController_reorder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/methods/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["PaymentMethodsController_update"];
+        trace?: never;
+    };
+    "/api/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PaymentsController_list"];
+        put?: never;
+        post: operations["PaymentsController_pay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["SplitController_split"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}/undo-split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["SplitController_undoSplit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["RegistersController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registers/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["RegistersController_current"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registers/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["RegistersController_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registers/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["RegistersController_open"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["RegistersController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registers/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["RegistersController_close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/registers/{id}/cash-transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["RegistersController_cashTransactions"];
+        put?: never;
+        post: operations["RegistersController_addCashTransaction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InventoryItemsController_list"];
+        put?: never;
+        post: operations["InventoryItemsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/items/preparations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["InventoryItemsController_createPreparation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/items/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InventoryItemsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["InventoryItemsController_update"];
+        trace?: never;
+    };
+    "/api/inventory/items/{id}/lots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InventoryItemsController_lots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/item-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InventoryCategoriesController_list"];
+        put?: never;
+        post: operations["InventoryCategoriesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/item-categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["InventoryCategoriesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["InventoryCategoriesController_update"];
+        trace?: never;
+    };
+    "/api/inventory/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InventoryLocationsController_list"];
+        put?: never;
+        post: operations["InventoryLocationsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/locations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["InventoryLocationsController_update"];
+        trace?: never;
+    };
+    "/api/inventory/suppliers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SuppliersController_list"];
+        put?: never;
+        post: operations["SuppliersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/suppliers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["SuppliersController_update"];
+        trace?: never;
+    };
+    "/api/inventory/movements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MovementsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/movements/adjust": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MovementsController_adjust"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/movements/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MovementsController_transfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/purchase-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PurchaseOrdersController_list"];
+        put?: never;
+        post: operations["PurchaseOrdersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/purchase-orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PurchaseOrdersController_get"];
+        put: operations["PurchaseOrdersController_update"];
+        post?: never;
+        delete: operations["PurchaseOrdersController_remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/purchase-orders/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PurchaseOrdersController_setStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/purchase-orders/{id}/payment-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PurchaseOrdersController_setPaymentStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/purchase-orders/{id}/receive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PurchaseOrdersController_receive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CountsController_list"];
+        put?: never;
+        post: operations["CountsController_open"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/counts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CountsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/counts/{id}/lines/{lineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["CountsController_setCounted"];
+        trace?: never;
+    };
+    "/api/inventory/counts/{id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CountsController_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/counts/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CountsController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/formulas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["FormulasController_list"];
+        put: operations["FormulasController_save"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InventoryController_batches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/production": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["InventoryController_produce"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InventoryController_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/check-stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["InventoryController_checkStock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["InventoryController_consume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/dish-availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["InventoryController_availability"];
         delete?: never;
         options?: never;
         head?: never;
@@ -631,6 +1335,101 @@ export interface components {
             /** @description Only with include=waiter. */
             waiterName?: string | null;
         };
+        PaymentTender: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            paymentId: string;
+            lineNo: number;
+            /** Format: uuid */
+            paymentMethodId: string;
+            /** @description Snapshot at payment time. */
+            methodCode: string;
+            /** @enum {string} */
+            methodKind: "cash" | "electronic";
+            amount: number;
+            cashReceived: number | null;
+        };
+        Payment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderId: string;
+            /** Format: uuid */
+            cashRegisterId: string;
+            /** Format: uuid */
+            cashierProfileId: string | null;
+            amountDue: number;
+            tipAmount: number;
+            totalCharged: number;
+            changeGiven: number;
+            /** Format: uuid */
+            idempotencyKey: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description By lineNo. */
+            tenders: components["schemas"]["PaymentTender"][];
+        };
+        LegacyPaymentTransaction: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderId: string;
+            /** Format: uuid */
+            tableId: string | null;
+            /** Format: uuid */
+            waiterId: string | null;
+            amount: number;
+            tipAmount: number | null;
+            totalDiscounts: number | null;
+            /** @description Free-text legacy method (cash, transfer, nequi, bancolombia). */
+            method: string;
+            cashReceived: number | null;
+            cashChange: number | null;
+            /** Format: date-time */
+            timestamp: string;
+            /** Format: uuid */
+            cashRegisterId: string;
+        };
+        CompletedOrder: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tableId: string | null;
+            /**
+             * Format: uuid
+             * @description Waiter profile id.
+             */
+            waiterId: string | null;
+            /** @enum {string} */
+            status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
+            /** @enum {string} */
+            orderType: "dine_in" | "delivery";
+            subtotal: number;
+            tax: number;
+            taxPercentage: number;
+            tip: number;
+            tipPercentage: number;
+            total: number;
+            totalDiscounts: number;
+            isPartialOrder: boolean;
+            /** Format: uuid */
+            parentOrderId: string | null;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+            /** @description Always embedded, oldest first. */
+            items: components["schemas"]["OrderItem"][];
+            /** @description Only with include=table. */
+            tableNumber?: number | null;
+            /** @description Only with include=waiter. */
+            waiterName?: string | null;
+            /** @description The payment with its tenders; null for orders paid before pay_order. */
+            payment: components["schemas"]["Payment"] | null;
+            /** @description Legacy payment_transactions rows, only when payment is null. */
+            legacyTransactions: components["schemas"]["LegacyPaymentTransaction"][];
+        };
         StockShortage: {
             /** Format: uuid */
             ingredientId: string;
@@ -774,6 +1573,846 @@ export interface components {
             id: string;
             name: string;
             username: string | null;
+        };
+        PaymentMethod: {
+            /** Format: uuid */
+            id: string;
+            /** @description Stable key derived from the name on create; immutable. */
+            code: string;
+            name: string;
+            /**
+             * @description Only cash gives change.
+             * @enum {string}
+             */
+            kind: "cash" | "electronic";
+            isActive: boolean;
+            sortOrder: number;
+        };
+        CreatePaymentMethodRequest: {
+            name: string;
+            /** @enum {string} */
+            kind: "cash" | "electronic";
+        };
+        ReorderPaymentMethodsRequest: {
+            /** @description Every payment method id of the restaurant, once, in the new order. */
+            ids: string[];
+        };
+        UpdatePaymentMethodRequest: {
+            name?: string;
+            isActive?: boolean;
+        };
+        PayOrderTenderInput: {
+            /** Format: uuid */
+            paymentMethodId: string;
+            /** @description Applied amount in whole pesos (capped for cash). */
+            amount: number;
+            /** @description Cash handed over; required for cash, null for electronic. */
+            cashReceived?: number | null;
+        };
+        PayOrderRequest: {
+            /** Format: uuid */
+            orderId: string;
+            /** Format: uuid */
+            cashRegisterId: string;
+            tipAmount: number;
+            tenders: components["schemas"]["PayOrderTenderInput"][];
+            /**
+             * Format: uuid
+             * @description Same key replays answer already_paid.
+             */
+            idempotencyKey: string;
+        };
+        PayOrderTenderEcho: {
+            lineNo: number;
+            methodCode: string;
+            amount: number;
+            cashReceived: number | null;
+        };
+        PayOrderResult: {
+            /** Format: uuid */
+            paymentId: string;
+            /** @enum {string} */
+            status: "paid" | "already_paid";
+            /** @description status === 'already_paid'. */
+            alreadyPaid: boolean;
+            amountDue: number;
+            tipAmount: number;
+            totalCharged: number;
+            changeGiven: number;
+            /** @description Warn only: the change exceeds the cash in the drawer. */
+            drawerWarning: boolean;
+            drawerCashBefore: number;
+            tenders: components["schemas"]["PayOrderTenderEcho"][];
+        };
+        SplitOrderItemInput: {
+            /** Format: uuid */
+            orderItemId: string;
+            quantity: number;
+        };
+        SplitOrderRequest: {
+            items: components["schemas"]["SplitOrderItemInput"][];
+        };
+        OrderBillSummary: {
+            /** Format: uuid */
+            orderId: string;
+            subtotal: number;
+            tax: number;
+            tip: number;
+            total: number;
+        };
+        SplitOrderResult: {
+            /** Format: uuid */
+            childOrderId: string;
+            parent: components["schemas"]["OrderBillSummary"];
+            child: components["schemas"]["OrderBillSummary"];
+        };
+        UndoSplitResult: {
+            parent: components["schemas"]["OrderBillSummary"];
+        };
+        CashTransaction: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            cashRegisterId: string;
+            amount: number;
+            /** @enum {string} */
+            type: "deposit" | "withdrawal";
+            /** @description Empty string when none was given. */
+            description: string;
+            /**
+             * Format: date-time
+             * @description Server clock.
+             */
+            timestamp: string;
+        };
+        CashRegister: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: date-time
+             * @description Server clock.
+             */
+            openingTimestamp: string;
+            /** Format: date-time */
+            closingTimestamp: string | null;
+            initialCash: number;
+            finalCash: number | null;
+            /** @enum {string} */
+            status: "open" | "closed";
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+            /** @description Only with include=transactions; legacy payment_transactions, newest first. */
+            transactions?: components["schemas"]["LegacyPaymentTransaction"][];
+            /** @description Only with include=cashTransactions; newest first. */
+            cashTransactions?: components["schemas"]["CashTransaction"][];
+        };
+        RegisterMethodSummary: {
+            /** Format: uuid */
+            paymentMethodId: string;
+            code: string;
+            name: string;
+            /** @enum {string} */
+            kind: "cash" | "electronic";
+            sortOrder: number;
+            isActive: boolean;
+            total: number;
+            tendersCount: number;
+        };
+        RegisterLegacySummary: {
+            paymentsCount: number;
+            total: number;
+            tips: number;
+            change: number;
+            /** @description Legacy total per free-text method. */
+            byMethod: {
+                [key: string]: number;
+            };
+        };
+        RegisterSummary: {
+            registersCount: number;
+            initialCash: number;
+            paymentsCount: number;
+            totalBilled: number;
+            totalTips: number;
+            totalSales: number;
+            totalChange: number;
+            methods: components["schemas"]["RegisterMethodSummary"][];
+            cashDeposits: number;
+            cashWithdrawals: number;
+            expectedCash: number;
+            tipsPayout: number;
+            expectedCashAfterTips: number;
+            legacy: components["schemas"]["RegisterLegacySummary"];
+        };
+        OpenRegisterRequest: {
+            initialCash: number;
+        };
+        CloseRegisterResult: {
+            /** @enum {string} */
+            status: "closed" | "already_closed";
+            /** Format: uuid */
+            cashRegisterId: string;
+            /** @description expected_cash_after_tips at the close, from the database. */
+            finalCash: number;
+            /**
+             * Format: date-time
+             * @description Server clock of the close (the original one on a replay).
+             */
+            closingTimestamp: string;
+            summary: components["schemas"]["RegisterSummary"];
+        };
+        CreateCashTransactionRequest: {
+            amount: number;
+            /** @enum {string} */
+            type: "deposit" | "withdrawal";
+            description?: string | null;
+        };
+        InventoryItem: {
+            /** Format: uuid */
+            id: string;
+            sku: string;
+            name: string;
+            description: string | null;
+            /** @enum {string} */
+            kind: "raw" | "prep";
+            unit: string;
+            barcode: string | null;
+            cost: number;
+            stock: number;
+            minStock: number;
+            maxStock: number | null;
+            purchaseUnit: string | null;
+            purchaseFactor: number;
+            /** Format: uuid */
+            defaultSupplierId: string | null;
+            trackLots: boolean;
+            shelfLifeDays: number | null;
+            isActive: boolean;
+            /** Format: uuid */
+            categoryId: string | null;
+            categoryName: string | null;
+        };
+        OpeningStockInput: {
+            /**
+             * Format: uuid
+             * @description Omitted = the default location.
+             */
+            locationId?: string;
+            /** @description Greater than 0. */
+            quantity: number;
+            /** @description Omitted or null = the item cost (no average-cost update). */
+            unitCost?: number | null;
+        };
+        CreateItemRequest: {
+            name: string;
+            unit: string;
+            /** @enum {string} */
+            kind?: "raw" | "prep";
+            /** @description Omit or null to let the server assign MP-0001 / PR-0001. */
+            sku?: string | null;
+            description?: string | null;
+            barcode?: string | null;
+            minStock?: number;
+            maxStock?: number | null;
+            purchaseUnit?: string | null;
+            purchaseFactor?: number;
+            /** Format: uuid */
+            defaultSupplierId?: string | null;
+            trackLots?: boolean;
+            shelfLifeDays?: number | null;
+            isActive?: boolean;
+            /** Format: uuid */
+            categoryId?: string | null;
+            /** @description inventory_adjust(opening) in the same transaction as the insert. */
+            openingStock?: components["schemas"]["OpeningStockInput"];
+        };
+        CreatePreparationInput: {
+            name: string;
+            unit: string;
+            /** @description Not stored on the item: it is the formula yield, passed to save_formula later. */
+            yieldQuantity?: number;
+            /** Format: uuid */
+            categoryId?: string | null;
+        };
+        UpdateItemRequest: {
+            name?: string;
+            unit?: string;
+            /** @enum {string} */
+            kind?: "raw" | "prep";
+            sku?: string | null;
+            description?: string | null;
+            barcode?: string | null;
+            minStock?: number;
+            maxStock?: number | null;
+            purchaseUnit?: string | null;
+            purchaseFactor?: number;
+            /** Format: uuid */
+            defaultSupplierId?: string | null;
+            trackLots?: boolean;
+            shelfLifeDays?: number | null;
+            isActive?: boolean;
+            /** Format: uuid */
+            categoryId?: string | null;
+        };
+        Lot: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            itemId: string;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string | null;
+            lotCode: string | null;
+            /** Format: date */
+            expiresOn: string | null;
+            quantity: number;
+            unitCost: number;
+            /** Format: date-time */
+            receivedAt: string;
+        };
+        InventoryCategory: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+        };
+        CreateInventoryCategoryRequest: {
+            name: string;
+            description?: string | null;
+        };
+        UpdateInventoryCategoryRequest: {
+            name?: string;
+            description?: string | null;
+        };
+        InventoryLocation: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            code: string;
+            isDefault: boolean;
+            isActive: boolean;
+        };
+        InventoryLocationInput: {
+            name: string;
+            /** @description Trimmed and upper-cased; unique per restaurant. */
+            code: string;
+            isDefault?: boolean;
+            isActive?: boolean;
+        };
+        UpdateInventoryLocationRequest: {
+            name?: string;
+            code?: string;
+            isDefault?: boolean;
+            isActive?: boolean;
+        };
+        Supplier: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            taxId: string | null;
+            contactName: string | null;
+            phone: string | null;
+            email: string | null;
+            leadTimeDays: number | null;
+            notes: string | null;
+            isActive: boolean;
+        };
+        SupplierInput: {
+            name: string;
+            taxId?: string | null;
+            contactName?: string | null;
+            phone?: string | null;
+            email?: string | null;
+            leadTimeDays?: number | null;
+            notes?: string | null;
+            isActive?: boolean;
+        };
+        UpdateSupplierRequest: {
+            name?: string;
+            taxId?: string | null;
+            contactName?: string | null;
+            phone?: string | null;
+            email?: string | null;
+            leadTimeDays?: number | null;
+            notes?: string | null;
+            isActive?: boolean;
+        };
+        Movement: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            itemId: string;
+            itemName: string | null;
+            sku: string | null;
+            unit: string | null;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string | null;
+            /** Format: uuid */
+            lotId: string | null;
+            /** @enum {string} */
+            movementType: "opening" | "purchase" | "sale" | "production_consume" | "production_output" | "adjustment" | "waste" | "transfer_out" | "transfer_in" | "count_adjustment";
+            /** @description Signed. */
+            quantity: number;
+            unitCost: number;
+            totalCost: number;
+            reason: string | null;
+            notes: string | null;
+            referenceType: string | null;
+            /** Format: uuid */
+            referenceId: string | null;
+            /** Format: uuid */
+            createdBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        MovementPage: {
+            /** @description Newest first. */
+            rows: components["schemas"]["Movement"][];
+            /** @description Exact count for the filters. */
+            total: number;
+        };
+        AdjustStockInput: {
+            /** Format: uuid */
+            itemId: string;
+            /** Format: uuid */
+            locationId: string;
+            /** @enum {string} */
+            movementType: "opening" | "adjustment" | "waste";
+            /** @description Signed for adjustment, positive otherwise. */
+            quantity: number;
+            unitCost?: number | null;
+            reason?: string | null;
+            notes?: string | null;
+            /** Format: uuid */
+            lotId?: string | null;
+            lotCode?: string | null;
+            /** Format: date */
+            expiresOn?: string | null;
+        };
+        AdjustStockResult: {
+            /** Format: uuid */
+            itemId: string;
+            /** Format: uuid */
+            locationId: string;
+            /** @enum {string} */
+            movementType: "opening" | "adjustment" | "waste";
+            /** @description Signed. */
+            quantity: number;
+            /** @description Signed. */
+            totalCost: number;
+            stock: number;
+        };
+        TransferStockInput: {
+            /** Format: uuid */
+            itemId: string;
+            /** Format: uuid */
+            fromLocationId: string;
+            /** Format: uuid */
+            toLocationId: string;
+            quantity: number;
+            notes?: string | null;
+        };
+        TransferStockResult: {
+            /** Format: uuid */
+            transferId: string;
+            /** Format: uuid */
+            itemId: string;
+            /** Format: uuid */
+            fromLocationId: string;
+            /** Format: uuid */
+            toLocationId: string;
+            quantity: number;
+            totalCost: number;
+        };
+        PurchaseOrderLine: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            itemId: string;
+            itemName: string | null;
+            sku: string | null;
+            unit: string | null;
+            quantity: number;
+            unitCost: number;
+            receivedQuantity: number;
+            /** @description max(0, quantity - receivedQuantity), 3 decimals. */
+            pendingQuantity: number;
+            /** @description quantity x unitCost rounded to cents. */
+            total: number;
+        };
+        PurchaseOrder: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** Format: uuid */
+            supplierId: string;
+            supplierName: string | null;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string | null;
+            /** @enum {string} */
+            status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
+            /** Format: date */
+            expectedOn: string | null;
+            /** @enum {string} */
+            paymentStatus: "pending" | "paid";
+            notes: string | null;
+            /** Format: date-time */
+            orderedAt: string | null;
+            /** Format: date-time */
+            receivedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            lines: components["schemas"]["PurchaseOrderLine"][];
+            /** @description Sum of the line totals, rounded to cents. */
+            total: number;
+        };
+        PurchaseOrderLineInput: {
+            /** Format: uuid */
+            itemId: string;
+            quantity: number;
+            unitCost: number;
+        };
+        CreatePurchaseOrderInput: {
+            /** Format: uuid */
+            supplierId: string;
+            /** Format: uuid */
+            locationId: string;
+            /** Format: date */
+            expectedOn?: string | null;
+            notes?: string | null;
+            lines: components["schemas"]["PurchaseOrderLineInput"][];
+        };
+        PurchaseOrderLineUpdate: {
+            /** Format: uuid */
+            itemId: string;
+            quantity: number;
+            unitCost: number;
+            /**
+             * Format: uuid
+             * @description An existing line of this order; omitted = a new line.
+             */
+            lineId?: string;
+        };
+        UpdatePurchaseOrderRequest: {
+            /** Format: uuid */
+            supplierId: string;
+            /** Format: uuid */
+            locationId: string;
+            /** Format: date */
+            expectedOn?: string | null;
+            notes?: string | null;
+            /** @description The final set of lines; missing existing lines are removed. */
+            lines: components["schemas"]["PurchaseOrderLineUpdate"][];
+        };
+        PurchaseOrderStatusRequest: {
+            /** @enum {string} */
+            status: "ordered" | "cancelled";
+        };
+        PaymentStatusRequest: {
+            /** @enum {string} */
+            paymentStatus: "pending" | "paid";
+        };
+        ReceiveLineInput: {
+            /** Format: uuid */
+            lineId: string;
+            quantity: number;
+            /** @description Omitted = the line cost. */
+            unitCost?: number;
+            lotCode?: string;
+            /** Format: date */
+            expiresOn?: string;
+        };
+        ReceivePurchaseOrderRequest: {
+            lines: components["schemas"]["ReceiveLineInput"][];
+            /**
+             * @description Set after the receipt in the same transaction.
+             * @enum {string}
+             */
+            paymentStatus?: "pending" | "paid";
+        };
+        ReceivePurchaseResult: {
+            /** Format: uuid */
+            purchaseOrderId: string;
+            /** @enum {string} */
+            status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
+            receivedLines: number;
+            totalCost: number;
+        };
+        InventoryCount: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string | null;
+            /** @enum {string} */
+            status: "open" | "applied" | "cancelled";
+            notes: string | null;
+            /** Format: date-time */
+            appliedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CountLine: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            itemId: string;
+            itemName: string | null;
+            sku: string | null;
+            unit: string | null;
+            expectedQuantity: number;
+            countedQuantity: number | null;
+            notes: string | null;
+        };
+        InventoryCountDetail: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string | null;
+            /** @enum {string} */
+            status: "open" | "applied" | "cancelled";
+            notes: string | null;
+            /** Format: date-time */
+            appliedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description By item name (es). */
+            lines: components["schemas"]["CountLine"][];
+        };
+        OpenCountInput: {
+            /**
+             * Format: uuid
+             * @description null = default location.
+             */
+            locationId?: string | null;
+            /** @description null = every active item. */
+            itemIds?: string[] | null;
+            notes?: string | null;
+        };
+        OpenCountResult: {
+            /** Format: uuid */
+            countId: string;
+            number: number;
+            /** Format: uuid */
+            locationId: string;
+            /** @enum {string} */
+            status: "open" | "applied" | "cancelled";
+            linesCount: number;
+        };
+        SetCountedQuantityRequest: {
+            /** @description null clears the line (not counted yet). */
+            countedQuantity: number | null;
+        };
+        ApplyCountResult: {
+            /** Format: uuid */
+            countId: string;
+            /** @enum {string} */
+            status: "open" | "applied" | "cancelled";
+            adjustedLines: number;
+            valueDelta: number;
+        };
+        FormulaLine: {
+            /** Format: uuid */
+            ingredientId: string;
+            quantity: number;
+        };
+        Formula: {
+            /** Format: uuid */
+            recipeId: string;
+            /** @enum {string} */
+            targetType: "dish" | "prep";
+            /** Format: uuid */
+            targetId: string;
+            yieldQuantity: number;
+            notes: string | null;
+            lines: components["schemas"]["FormulaLine"][];
+            /** @description Cost per yielded unit at the current ingredients.cost, as save_formula computes it: round(sum(quantity x cost) / yieldQuantity, 4). */
+            unitCost: number;
+        };
+        FormulaIndex: {
+            /** @description By dish id. */
+            byDish: {
+                [key: string]: components["schemas"]["Formula"];
+            };
+            /** @description By prep item id. */
+            byPrep: {
+                [key: string]: components["schemas"]["Formula"];
+            };
+        };
+        SaveFormulaInput: {
+            /** @enum {string} */
+            targetType: "dish" | "prep";
+            /** Format: uuid */
+            targetId: string;
+            yieldQuantity: number;
+            lines: components["schemas"]["FormulaLine"][];
+            notes?: string | null;
+        };
+        SaveFormulaResult: {
+            /** Format: uuid */
+            recipeId: string;
+            /** @enum {string} */
+            targetType: "dish" | "prep";
+            /** Format: uuid */
+            targetId: string;
+            yieldQuantity: number;
+            linesCount: number;
+            totalCost: number;
+            unitCost: number;
+        };
+        ProductionBatch: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            itemId: string;
+            itemName: string | null;
+            unit: string | null;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string | null;
+            /** Format: uuid */
+            lotId: string | null;
+            lotCode: string | null;
+            quantity: number;
+            unitCost: number;
+            totalCost: number;
+            /** Format: date */
+            expiresOn: string | null;
+            notes: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ProducePreparationInput: {
+            /** Format: uuid */
+            itemId: string;
+            quantity: number;
+            /**
+             * Format: uuid
+             * @description Omitted = the default location.
+             */
+            locationId?: string | null;
+            /** @description Omitted = PB-YYYYMMDD-HH24MISS. */
+            lotCode?: string | null;
+            notes?: string | null;
+        };
+        ConsumedInput: {
+            /** Format: uuid */
+            itemId: string;
+            name: string;
+            quantity: number;
+            totalCost: number;
+        };
+        ProducePreparationResult: {
+            /** Format: uuid */
+            batchId: string;
+            /** Format: uuid */
+            lotId: string;
+            lotCode: string;
+            /** Format: uuid */
+            itemId: string;
+            /** Format: uuid */
+            locationId: string;
+            quantity: number;
+            unitCost: number;
+            totalCost: number;
+            /** Format: date */
+            expiresOn: string | null;
+            consumed: components["schemas"]["ConsumedInput"][];
+        };
+        OverviewKpis: {
+            totalValue: number;
+            itemsCount: number;
+            activeItems: number;
+            lowStockCount: number;
+            outOfStockCount: number;
+            expiringSoonCount: number;
+            expiredCount: number;
+            wasteValue: number;
+            purchasesValue: number;
+            consumptionValue: number;
+            openPurchaseOrders: number;
+        };
+        OverviewSeriesPoint: {
+            /** Format: date */
+            date: string;
+            inValue: number;
+            outValue: number;
+            wasteValue: number;
+        };
+        OverviewCategoryValue: {
+            /** Format: uuid */
+            categoryId: string | null;
+            categoryName: string | null;
+            value: number;
+        };
+        OverviewTopConsumed: {
+            /** Format: uuid */
+            itemId: string;
+            name: string;
+            unit: string;
+            quantity: number;
+            value: number;
+        };
+        InventoryOverview: {
+            days: number;
+            /** Format: date-time */
+            generatedAt: string;
+            kpis: components["schemas"]["OverviewKpis"];
+            series: components["schemas"]["OverviewSeriesPoint"][];
+            valueByCategory: components["schemas"]["OverviewCategoryValue"][];
+            topConsumed: components["schemas"]["OverviewTopConsumed"][];
+        };
+        DishStockCheckItem: {
+            /** Format: uuid */
+            dishId: string;
+            quantity: number;
+        };
+        CheckStockRequest: {
+            items: components["schemas"]["DishStockCheckItem"][];
+        };
+        StockCheckShortage: {
+            /** Format: uuid */
+            itemId: string;
+            name: string;
+            unit: string;
+            required: number;
+            available: number;
+            missing: number;
+        };
+        DishStockCheckResult: {
+            ok: boolean;
+            /** @description false when inventory control is off (then ok and no shortages). */
+            enabled: boolean;
+            shortages: components["schemas"]["StockCheckShortage"][];
+        };
+        ConsumeOrderRequest: {
+            /** Format: uuid */
+            orderId: string;
+        };
+        ConsumeShortage: {
+            /** Format: uuid */
+            itemId: string;
+            name: string;
+            unit: string;
+            missing: number;
+        };
+        ConsumeOrderStockResult: {
+            /** Format: uuid */
+            orderId: string;
+            enabled: boolean;
+            consumedItems: number;
+            totalCost: number;
+            shortages: components["schemas"]["ConsumeShortage"][];
+        };
+        DishAvailabilityRequest: {
+            dishIds: string[];
         };
     };
     responses: never;
@@ -1563,6 +3202,36 @@ export interface operations {
             };
         };
     };
+    OrdersController_completed: {
+        parameters: {
+            query: {
+                /** @description YYYY-MM-DD: paid orders created that day in the restaurant's timezone. */
+                date: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, with the payment and tenders or the legacy payment_transactions rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompletedOrder"][];
+                };
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     OrdersController_get: {
         parameters: {
             query?: {
@@ -2021,6 +3690,2165 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Waiter"][];
                 };
+            };
+        };
+    };
+    PaymentMethodsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every method, inactive included, by sortOrder. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethod"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PaymentMethodsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePaymentMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description code derived from the name (unique), appended last. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethod"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PaymentMethodsController_reorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderPaymentMethodsRequest"];
+            };
+        };
+        responses: {
+            /** @description sortOrder = position in ids, all or nothing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethod"][];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PaymentMethodsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePaymentMethodRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethod"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PaymentsController_list: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated register ids. Send exactly one filter. */
+                cashRegisterIds?: unknown;
+                /** @description Comma-separated order ids (at most 500). */
+                orderIds?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenders embedded, newest first; [] for an empty list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payment"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PaymentsController_pay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description pay_order result; a replay with the same idempotencyKey answers already_paid. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayOrderResult"];
+                };
+            };
+            /** @description Not admin, cashier or delivery_operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Order not found (P0002). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SplitController_split: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SplitOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description split_order: the items move to a new partial child order; both bills recomputed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SplitOrderResult"];
+                };
+            };
+            /** @description Not admin or cashier. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SplitController_undoSplit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description undo_split on the partial child order :id: its items go back to the parent. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UndoSplitResult"];
+                };
+            };
+            /** @description Not admin or cashier. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_list: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated: transactions, cashTransactions (legacy payment_transactions and cash movements). */
+                include?: unknown;
+                /** @description YYYY-MM-DD: registers opened that day in the restaurant's timezone. */
+                date?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest opening first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegister"][];
+                };
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_current: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated: transactions, cashTransactions (legacy payment_transactions and cash movements). */
+                include?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The open register, or null (200) when none is open. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegister"];
+                };
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_summary: {
+        parameters: {
+            query: {
+                /** @description Comma-separated register ids (1..100). */
+                ids: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description register_summary over the registers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegisterSummary"];
+                };
+            };
+            /** @description Not admin, cashier or delivery_operator (42501 from the RPC). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An id is unknown or of another restaurant (P0002). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_open: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description openingTimestamp is the server clock. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegister"];
+                };
+            };
+            /** @description Not admin or cashier. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A register is already open. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_get: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated: transactions, cashTransactions (legacy payment_transactions and cash movements). */
+                include?: unknown;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegister"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_close: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description close_register result; a replay answers already_closed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloseRegisterResult"];
+                };
+            };
+            /** @description Not admin or cashier. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or of another restaurant (P0002). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_cashTransactions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashTransaction"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_addCashTransaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCashTransactionRequest"];
+            };
+        };
+        responses: {
+            /** @description timestamp is the server clock. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashTransaction"];
+                };
+            };
+            /** @description Not admin or cashier. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Register is closed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryItemsController_list: {
+        parameters: {
+            query?: {
+                /** @description false = active only. */
+                includeInactive?: "true" | "false";
+                kind?: "raw" | "prep";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description By name. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryItem"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryItemsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Insert plus optional opening stock in one transaction. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryItem"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryItemsController_createPreparation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePreparationInput"];
+            };
+        };
+        responses: {
+            /** @description A kind=prep item, SKU PR-#### assigned by the server. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryItem"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryItemsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryItem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryItemsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateItemRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryItem"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryItemsController_lots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description FEFO order (expires_on ASC NULLS LAST, received_at). Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Lot"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryCategoriesController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description By name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCategory"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryCategoriesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInventoryCategoryRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCategory"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryCategoriesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Its items keep existing without category. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryCategoriesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInventoryCategoryRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCategory"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryLocationsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default first, then by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLocation"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryLocationsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryLocationInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLocation"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryLocationsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInventoryLocationRequest"];
+            };
+        };
+        responses: {
+            /** @description isDefault: true moves the default here (trigger). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLocation"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuppliersController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description By name. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Supplier"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuppliersController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Supplier"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuppliersController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSupplierRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Supplier"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MovementsController_list: {
+        parameters: {
+            query?: {
+                /** @description Default 50, at most 500. */
+                pageSize?: unknown;
+                /** @description 1-based. */
+                page?: unknown;
+                /** @description Inclusive; a bare date means the whole local day of the restaurant timezone. */
+                to?: unknown;
+                /** @description YYYY-MM-DD (local midnight of the restaurant timezone) or ISO date-time, inclusive. */
+                from?: unknown;
+                /** @description Comma-separated movement types. */
+                types?: unknown;
+                locationId?: unknown;
+                itemId?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovementPage"];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MovementsController_adjust: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustStockInput"];
+            };
+        };
+        responses: {
+            /** @description inventory_adjust. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdjustStockResult"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MovementsController_transfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferStockInput"];
+            };
+        };
+        responses: {
+            /** @description inventory_transfer (FEFO). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferStockResult"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseOrdersController_list: {
+        parameters: {
+            query?: {
+                supplierId?: unknown;
+                /** @description Comma-separated statuses. */
+                status?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, lines and totals included. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseOrdersController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePurchaseOrderInput"];
+            };
+        };
+        responses: {
+            /** @description Draft header and lines in one transaction. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseOrdersController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseOrdersController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePurchaseOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Header replaced and line diff applied in one transaction. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseOrdersController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Drafts only (422 P0001 otherwise). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseOrdersController_setStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchaseOrderStatusRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseOrdersController_setPaymentStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentStatusRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrder"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseOrdersController_receive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceivePurchaseOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description receive_purchase_order, then paymentStatus, in one transaction. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceivePurchaseResult"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CountsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CountsController_open: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenCountInput"];
+            };
+        };
+        responses: {
+            /** @description open_inventory_count. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenCountResult"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CountsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lines by item name (es). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCountDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CountsController_setCounted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                lineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCountedQuantityRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountLine"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CountsController_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description apply_inventory_count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyCountResult"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CountsController_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FormulasController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every formula of the tenant by dish id and by prep id, with unitCost. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormulaIndex"];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FormulasController_save: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveFormulaInput"];
+            };
+        };
+        responses: {
+            /** @description save_formula (atomic replace). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveFormulaResult"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_batches: {
+        parameters: {
+            query?: {
+                /** @description Default 100, at most 500. */
+                limit?: unknown;
+                itemId?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionBatch"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_produce: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProducePreparationInput"];
+            };
+        };
+        responses: {
+            /** @description produce_preparation; shortages answer 422 P0001 with `details`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProducePreparationResult"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_overview: {
+        parameters: {
+            query?: {
+                /** @description Default 30 (1..365, checked by the RPC). */
+                days?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description inventory_overview (admin; 403 42501 otherwise). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryOverview"];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_checkStock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckStockRequest"];
+            };
+        };
+        responses: {
+            /** @description check_dishes_stock; enabled false when inventory control is off. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DishStockCheckResult"];
+                };
+            };
+            /** @description Not admin, cashier, waiter or delivery_operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_consume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsumeOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description consume_order_stock (idempotent). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumeOrderStockResult"];
+                };
+            };
+            /** @description Not admin, cashier, waiter or delivery_operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_availability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DishAvailabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description dishId -> available (one portion, check_dishes_stock rule; all true when inventory control is off). Unknown ids are left out. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Not admin, cashier, waiter or delivery_operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -6,6 +6,7 @@ import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { EnvModule } from './config/env.module';
 import { DbModule } from './db/db.module';
 import { HealthModule } from './health/health.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -28,6 +29,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     TablesModule,
     PaymentsModule,
     RegistersModule,
+    InventoryModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

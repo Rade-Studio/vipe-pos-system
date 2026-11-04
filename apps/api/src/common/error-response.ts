@@ -17,7 +17,7 @@ export interface ErrorResponse {
  * SQLSTATEs the API answers with a client error. The driver message is never
  * returned (it can name tables, constraints or values), except for P0001: the
  * plpgsql RPCs RAISE EXCEPTION with messages (and DETAIL) written for the
- * caller. Every one of them also carries its SQLSTATE as `code`.
+ * caller; a 22023 they RAISE also keeps its message. Every one of them also carries its SQLSTATE as `code`.
  */
 const SQLSTATE_RESPONSES: Record<string, { statusCode: number; message: string }> = {
   '23505': { statusCode: 409, message: 'Conflict with existing data' },
@@ -56,7 +56,10 @@ export function toErrorResponse(exception: unknown): ErrorResponse {
   }
   const mapped = pg ? SQLSTATE_RESPONSES[pg.code] : undefined;
   if (pg && mapped) {
-    return { ...body(mapped.statusCode, mapped.message), code: pg.code };
+    // The RPCs raise 22023 with messages written for the caller (`fn_name: ...`),
+    // which the inventory UI matches; built-in 22023 messages stay generic.
+    const message = pg.code === '22023' && pg.raised ? pg.message : mapped.message;
+    return { ...body(mapped.statusCode, message), code: pg.code };
   }
   return body(500, 'Internal server error');
 }
@@ -71,12 +74,16 @@ function details(response: string | object): Record<string, unknown> {
 }
 
 /** The `pg` error behind an exception; Drizzle wraps it as `cause`. */
-function findPostgresError(exception: unknown): { code: string; message: string; detail?: string } | undefined {
+function findPostgresError(
+  exception: unknown,
+): { code: string; message: string; detail?: string; raised: boolean } | undefined {
   let current: unknown = exception;
   for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
-    const { code, detail } = current as { code?: unknown; detail?: unknown };
+    const { code, detail, routine } = current as { code?: unknown; detail?: unknown; routine?: unknown };
     if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) {
-      return { code, message: current.message, ...(typeof detail === 'string' ? { detail } : {}) };
+      // `exec_stmt_raise` is the server routine behind a plpgsql RAISE.
+      const raised = routine === 'exec_stmt_raise';
+      return { code, message: current.message, raised, ...(typeof detail === 'string' ? { detail } : {}) };
     }
     current = current.cause;
   }

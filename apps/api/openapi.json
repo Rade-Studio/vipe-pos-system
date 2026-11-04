@@ -935,6 +935,46 @@
         ]
       }
     },
+    "/api/orders/completed": {
+      "get": {
+        "operationId": "OrdersController_completed",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "description": "YYYY-MM-DD: paid orders created that day in the restaurant's timezone.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first, with the payment and tenders or the legacy payment_transactions rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompletedOrder"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/orders/{id}": {
       "get": {
         "operationId": "OrdersController_get",
@@ -1469,6 +1509,2535 @@
         ],
         "tags": [
           "staff"
+        ]
+      }
+    },
+    "/api/payments/methods": {
+      "get": {
+        "operationId": "PaymentMethodsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Every method, inactive included, by sortOrder.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentMethod"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      },
+      "post": {
+        "operationId": "PaymentMethodsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentMethodRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "code derived from the name (unique), appended last.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethod"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/payments/methods/order": {
+      "put": {
+        "operationId": "PaymentMethodsController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderPaymentMethodsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "sortOrder = position in ids, all or nothing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentMethod"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/payments/methods/{id}": {
+      "patch": {
+        "operationId": "PaymentMethodsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePaymentMethodRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethod"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/payments": {
+      "get": {
+        "operationId": "PaymentsController_list",
+        "parameters": [
+          {
+            "name": "cashRegisterIds",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated register ids. Send exactly one filter.",
+            "schema": {}
+          },
+          {
+            "name": "orderIds",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated order ids (at most 500).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenders embedded, newest first; [] for an empty list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Payment"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      },
+      "post": {
+        "operationId": "PaymentsController_pay",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "pay_order result; a replay with the same idempotencyKey answers already_paid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayOrderResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, cashier or delivery_operator."
+          },
+          "404": {
+            "description": "Order not found (P0002)."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/orders/{id}/split": {
+      "post": {
+        "operationId": "SplitController_split",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SplitOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "split_order: the items move to a new partial child order; both bills recomputed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SplitOrderResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/orders/{id}/undo-split": {
+      "post": {
+        "operationId": "SplitController_undoSplit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "undo_split on the partial child order :id: its items go back to the parent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoSplitResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/registers": {
+      "get": {
+        "operationId": "RegistersController_list",
+        "parameters": [
+          {
+            "name": "include",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated: transactions, cashTransactions (legacy payment_transactions and cash movements).",
+            "schema": {}
+          },
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "description": "YYYY-MM-DD: registers opened that day in the restaurant's timezone.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest opening first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CashRegister"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
+    "/api/registers/current": {
+      "get": {
+        "operationId": "RegistersController_current",
+        "parameters": [
+          {
+            "name": "include",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated: transactions, cashTransactions (legacy payment_transactions and cash movements).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The open register, or null (200) when none is open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashRegister"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
+    "/api/registers/summary": {
+      "get": {
+        "operationId": "RegistersController_summary",
+        "parameters": [
+          {
+            "name": "ids",
+            "required": true,
+            "in": "query",
+            "description": "Comma-separated register ids (1..100).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "register_summary over the registers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterSummary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, cashier or delivery_operator (42501 from the RPC)."
+          },
+          "404": {
+            "description": "An id is unknown or of another restaurant (P0002)."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
+    "/api/registers/open": {
+      "post": {
+        "operationId": "RegistersController_open",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenRegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "openingTimestamp is the server clock.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashRegister"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier."
+          },
+          "409": {
+            "description": "A register is already open."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
+    "/api/registers/{id}": {
+      "get": {
+        "operationId": "RegistersController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated: transactions, cashTransactions (legacy payment_transactions and cash movements).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashRegister"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
+    "/api/registers/{id}/close": {
+      "post": {
+        "operationId": "RegistersController_close",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "close_register result; a replay answers already_closed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseRegisterResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier."
+          },
+          "404": {
+            "description": "Unknown or of another restaurant (P0002)."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
+    "/api/registers/{id}/cash-transactions": {
+      "get": {
+        "operationId": "RegistersController_cashTransactions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CashTransaction"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      },
+      "post": {
+        "operationId": "RegistersController_addCashTransaction",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCashTransactionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "timestamp is the server clock.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashTransaction"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier."
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Register is closed."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
+    "/api/inventory/items": {
+      "get": {
+        "operationId": "InventoryItemsController_list",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "required": false,
+            "in": "query",
+            "description": "false = active only.",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "raw",
+                "prep"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "By name. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InventoryItem"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "post": {
+        "operationId": "InventoryItemsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Insert plus optional opening stock in one transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryItem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/items/preparations": {
+      "post": {
+        "operationId": "InventoryItemsController_createPreparation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePreparationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A kind=prep item, SKU PR-#### assigned by the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryItem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/items/{id}": {
+      "get": {
+        "operationId": "InventoryItemsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryItem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "patch": {
+        "operationId": "InventoryItemsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryItem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/items/{id}/lots": {
+      "get": {
+        "operationId": "InventoryItemsController_lots",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "FEFO order (expires_on ASC NULLS LAST, received_at). Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Lot"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/item-categories": {
+      "get": {
+        "operationId": "InventoryCategoriesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "By name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InventoryCategory"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "post": {
+        "operationId": "InventoryCategoriesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInventoryCategoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryCategory"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/item-categories/{id}": {
+      "patch": {
+        "operationId": "InventoryCategoriesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInventoryCategoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryCategory"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "delete": {
+        "operationId": "InventoryCategoriesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Its items keep existing without category."
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/locations": {
+      "get": {
+        "operationId": "InventoryLocationsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Default first, then by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InventoryLocation"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "post": {
+        "operationId": "InventoryLocationsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryLocationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryLocation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/locations/{id}": {
+      "patch": {
+        "operationId": "InventoryLocationsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInventoryLocationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "isDefault: true moves the default here (trigger).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryLocation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/suppliers": {
+      "get": {
+        "operationId": "SuppliersController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "By name. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Supplier"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "post": {
+        "operationId": "SuppliersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Supplier"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/suppliers/{id}": {
+      "patch": {
+        "operationId": "SuppliersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSupplierRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Supplier"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/movements": {
+      "get": {
+        "operationId": "MovementsController_list",
+        "parameters": [
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "Default 50, at most 500.",
+            "schema": {}
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "1-based.",
+            "schema": {}
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive; a bare date means the whole local day of the restaurant timezone.",
+            "schema": {}
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "YYYY-MM-DD (local midnight of the restaurant timezone) or ISO date-time, inclusive.",
+            "schema": {}
+          },
+          {
+            "name": "types",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated movement types.",
+            "schema": {}
+          },
+          {
+            "name": "locationId",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "itemId",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MovementPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/movements/adjust": {
+      "post": {
+        "operationId": "MovementsController_adjust",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustStockInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "inventory_adjust.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustStockResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/movements/transfer": {
+      "post": {
+        "operationId": "MovementsController_transfer",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferStockInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "inventory_transfer (FEFO).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferStockResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/purchase-orders": {
+      "get": {
+        "operationId": "PurchaseOrdersController_list",
+        "parameters": [
+          {
+            "name": "supplierId",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated statuses.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first, lines and totals included. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PurchaseOrder"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "post": {
+        "operationId": "PurchaseOrdersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePurchaseOrderInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Draft header and lines in one transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/purchase-orders/{id}": {
+      "get": {
+        "operationId": "PurchaseOrdersController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "put": {
+        "operationId": "PurchaseOrdersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePurchaseOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Header replaced and line diff applied in one transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "delete": {
+        "operationId": "PurchaseOrdersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Drafts only (422 P0001 otherwise)."
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/purchase-orders/{id}/status": {
+      "post": {
+        "operationId": "PurchaseOrdersController_setStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrderStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/purchase-orders/{id}/payment-status": {
+      "post": {
+        "operationId": "PurchaseOrdersController_setPaymentStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/purchase-orders/{id}/receive": {
+      "post": {
+        "operationId": "PurchaseOrdersController_receive",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivePurchaseOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "receive_purchase_order, then paymentStatus, in one transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivePurchaseResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/counts": {
+      "get": {
+        "operationId": "CountsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Newest first. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InventoryCount"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "post": {
+        "operationId": "CountsController_open",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenCountInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "open_inventory_count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenCountResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/counts/{id}": {
+      "get": {
+        "operationId": "CountsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lines by item name (es).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryCountDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/counts/{id}/lines/{lineId}": {
+      "patch": {
+        "operationId": "CountsController_setCounted",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCountedQuantityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountLine"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/counts/{id}/apply": {
+      "post": {
+        "operationId": "CountsController_apply",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "apply_inventory_count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyCountResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/counts/{id}/cancel": {
+      "post": {
+        "operationId": "CountsController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryCount"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/formulas": {
+      "get": {
+        "operationId": "FormulasController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Every formula of the tenant by dish id and by prep id, with unitCost.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormulaIndex"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "put": {
+        "operationId": "FormulasController_save",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveFormulaInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "save_formula (atomic replace).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveFormulaResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/batches": {
+      "get": {
+        "operationId": "InventoryController_batches",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Default 100, at most 500.",
+            "schema": {}
+          },
+          {
+            "name": "itemId",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductionBatch"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/production": {
+      "post": {
+        "operationId": "InventoryController_produce",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProducePreparationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "produce_preparation; shortages answer 422 P0001 with `details`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProducePreparationResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/overview": {
+      "get": {
+        "operationId": "InventoryController_overview",
+        "parameters": [
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "description": "Default 30 (1..365, checked by the RPC).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "inventory_overview (admin; 403 42501 otherwise).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/check-stock": {
+      "post": {
+        "operationId": "InventoryController_checkStock",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckStockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "check_dishes_stock; enabled false when inventory control is off.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DishStockCheckResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, cashier, waiter or delivery_operator."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/consume": {
+      "post": {
+        "operationId": "InventoryController_consume",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsumeOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "consume_order_stock (idempotent).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsumeOrderStockResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, cashier, waiter or delivery_operator."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/dish-availability": {
+      "post": {
+        "operationId": "InventoryController_availability",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DishAvailabilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "dishId -> available (one portion, check_dishes_stock rule; all true when inventory control is off). Unknown ids are left out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, cashier, waiter or delivery_operator."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
         ]
       }
     }
@@ -2230,6 +4799,315 @@
           "items"
         ]
       },
+      "PaymentTender": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "paymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lineNo": {
+            "type": "number"
+          },
+          "paymentMethodId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "methodCode": {
+            "type": "string",
+            "description": "Snapshot at payment time."
+          },
+          "methodKind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          },
+          "amount": {
+            "type": "number"
+          },
+          "cashReceived": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "paymentId",
+          "lineNo",
+          "paymentMethodId",
+          "methodCode",
+          "methodKind",
+          "amount",
+          "cashReceived"
+        ]
+      },
+      "Payment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cashRegisterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cashierProfileId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "amountDue": {
+            "type": "number"
+          },
+          "tipAmount": {
+            "type": "number"
+          },
+          "totalCharged": {
+            "type": "number"
+          },
+          "changeGiven": {
+            "type": "number"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "tenders": {
+            "description": "By lineNo.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaymentTender"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "cashRegisterId",
+          "cashierProfileId",
+          "amountDue",
+          "tipAmount",
+          "totalCharged",
+          "changeGiven",
+          "idempotencyKey",
+          "createdAt",
+          "tenders"
+        ]
+      },
+      "LegacyPaymentTransaction": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tableId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "waiterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number"
+          },
+          "tipAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "totalDiscounts": {
+            "type": "number",
+            "nullable": true
+          },
+          "method": {
+            "type": "string",
+            "description": "Free-text legacy method (cash, transfer, nequi, bancolombia)."
+          },
+          "cashReceived": {
+            "type": "number",
+            "nullable": true
+          },
+          "cashChange": {
+            "type": "number",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cashRegisterId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "tableId",
+          "waiterId",
+          "amount",
+          "tipAmount",
+          "totalDiscounts",
+          "method",
+          "cashReceived",
+          "cashChange",
+          "timestamp",
+          "cashRegisterId"
+        ]
+      },
+      "CompletedOrder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tableId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "waiterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Waiter profile id."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "kitchen",
+              "delivered",
+              "cancelled",
+              "paid"
+            ]
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ]
+          },
+          "subtotal": {
+            "type": "number"
+          },
+          "tax": {
+            "type": "number"
+          },
+          "taxPercentage": {
+            "type": "number"
+          },
+          "tip": {
+            "type": "number"
+          },
+          "tipPercentage": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "totalDiscounts": {
+            "type": "number"
+          },
+          "isPartialOrder": {
+            "type": "boolean"
+          },
+          "parentOrderId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "items": {
+            "description": "Always embedded, oldest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          },
+          "tableNumber": {
+            "type": "number",
+            "nullable": true,
+            "description": "Only with include=table."
+          },
+          "waiterName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Only with include=waiter."
+          },
+          "payment": {
+            "nullable": true,
+            "description": "The payment with its tenders; null for orders paid before pay_order.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Payment"
+              }
+            ]
+          },
+          "legacyTransactions": {
+            "description": "Legacy payment_transactions rows, only when payment is null.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LegacyPaymentTransaction"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tableId",
+          "waiterId",
+          "status",
+          "orderType",
+          "subtotal",
+          "tax",
+          "taxPercentage",
+          "tip",
+          "tipPercentage",
+          "total",
+          "totalDiscounts",
+          "isPartialOrder",
+          "parentOrderId",
+          "createdAt",
+          "updatedAt",
+          "items",
+          "payment",
+          "legacyTransactions"
+        ]
+      },
       "StockShortage": {
         "type": "object",
         "properties": {
@@ -2628,6 +5506,2823 @@
           "id",
           "name",
           "username"
+        ]
+      },
+      "PaymentMethod": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable key derived from the name on create; immutable."
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ],
+            "description": "Only cash gives change."
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "kind",
+          "isActive",
+          "sortOrder"
+        ]
+      },
+      "CreatePaymentMethodRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ]
+      },
+      "ReorderPaymentMethodsRequest": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "Every payment method id of the restaurant, once, in the new order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "UpdatePaymentMethodRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PayOrderTenderInput": {
+        "type": "object",
+        "properties": {
+          "paymentMethodId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Applied amount in whole pesos (capped for cash)."
+          },
+          "cashReceived": {
+            "type": "number",
+            "nullable": true,
+            "description": "Cash handed over; required for cash, null for electronic."
+          }
+        },
+        "required": [
+          "paymentMethodId",
+          "amount"
+        ]
+      },
+      "PayOrderRequest": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cashRegisterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tipAmount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "tenders": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PayOrderTenderInput"
+            }
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Same key replays answer already_paid."
+          }
+        },
+        "required": [
+          "orderId",
+          "cashRegisterId",
+          "tipAmount",
+          "tenders",
+          "idempotencyKey"
+        ]
+      },
+      "PayOrderTenderEcho": {
+        "type": "object",
+        "properties": {
+          "lineNo": {
+            "type": "number"
+          },
+          "methodCode": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "cashReceived": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "lineNo",
+          "methodCode",
+          "amount",
+          "cashReceived"
+        ]
+      },
+      "PayOrderResult": {
+        "type": "object",
+        "properties": {
+          "paymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "paid",
+              "already_paid"
+            ]
+          },
+          "alreadyPaid": {
+            "type": "boolean",
+            "description": "status === 'already_paid'."
+          },
+          "amountDue": {
+            "type": "number"
+          },
+          "tipAmount": {
+            "type": "number"
+          },
+          "totalCharged": {
+            "type": "number"
+          },
+          "changeGiven": {
+            "type": "number"
+          },
+          "drawerWarning": {
+            "type": "boolean",
+            "description": "Warn only: the change exceeds the cash in the drawer."
+          },
+          "drawerCashBefore": {
+            "type": "number"
+          },
+          "tenders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PayOrderTenderEcho"
+            }
+          }
+        },
+        "required": [
+          "paymentId",
+          "status",
+          "alreadyPaid",
+          "amountDue",
+          "tipAmount",
+          "totalCharged",
+          "changeGiven",
+          "drawerWarning",
+          "drawerCashBefore",
+          "tenders"
+        ]
+      },
+      "SplitOrderItemInput": {
+        "type": "object",
+        "properties": {
+          "orderItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "orderItemId",
+          "quantity"
+        ]
+      },
+      "SplitOrderRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SplitOrderItemInput"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "OrderBillSummary": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "subtotal": {
+            "type": "number"
+          },
+          "tax": {
+            "type": "number"
+          },
+          "tip": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "orderId",
+          "subtotal",
+          "tax",
+          "tip",
+          "total"
+        ]
+      },
+      "SplitOrderResult": {
+        "type": "object",
+        "properties": {
+          "childOrderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parent": {
+            "$ref": "#/components/schemas/OrderBillSummary"
+          },
+          "child": {
+            "$ref": "#/components/schemas/OrderBillSummary"
+          }
+        },
+        "required": [
+          "childOrderId",
+          "parent",
+          "child"
+        ]
+      },
+      "UndoSplitResult": {
+        "type": "object",
+        "properties": {
+          "parent": {
+            "$ref": "#/components/schemas/OrderBillSummary"
+          }
+        },
+        "required": [
+          "parent"
+        ]
+      },
+      "CashTransaction": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cashRegisterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "deposit",
+              "withdrawal"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "description": "Empty string when none was given."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Server clock."
+          }
+        },
+        "required": [
+          "id",
+          "cashRegisterId",
+          "amount",
+          "type",
+          "description",
+          "timestamp"
+        ]
+      },
+      "CashRegister": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "openingTimestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Server clock."
+          },
+          "closingTimestamp": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "initialCash": {
+            "type": "number"
+          },
+          "finalCash": {
+            "type": "number",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "transactions": {
+            "description": "Only with include=transactions; legacy payment_transactions, newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LegacyPaymentTransaction"
+            }
+          },
+          "cashTransactions": {
+            "description": "Only with include=cashTransactions; newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashTransaction"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "openingTimestamp",
+          "closingTimestamp",
+          "initialCash",
+          "finalCash",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "RegisterMethodSummary": {
+        "type": "object",
+        "properties": {
+          "paymentMethodId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "number"
+          },
+          "tendersCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "paymentMethodId",
+          "code",
+          "name",
+          "kind",
+          "sortOrder",
+          "isActive",
+          "total",
+          "tendersCount"
+        ]
+      },
+      "RegisterLegacySummary": {
+        "type": "object",
+        "properties": {
+          "paymentsCount": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "tips": {
+            "type": "number"
+          },
+          "change": {
+            "type": "number"
+          },
+          "byMethod": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Legacy total per free-text method."
+          }
+        },
+        "required": [
+          "paymentsCount",
+          "total",
+          "tips",
+          "change",
+          "byMethod"
+        ]
+      },
+      "RegisterSummary": {
+        "type": "object",
+        "properties": {
+          "registersCount": {
+            "type": "number"
+          },
+          "initialCash": {
+            "type": "number"
+          },
+          "paymentsCount": {
+            "type": "number"
+          },
+          "totalBilled": {
+            "type": "number"
+          },
+          "totalTips": {
+            "type": "number"
+          },
+          "totalSales": {
+            "type": "number"
+          },
+          "totalChange": {
+            "type": "number"
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegisterMethodSummary"
+            }
+          },
+          "cashDeposits": {
+            "type": "number"
+          },
+          "cashWithdrawals": {
+            "type": "number"
+          },
+          "expectedCash": {
+            "type": "number"
+          },
+          "tipsPayout": {
+            "type": "number"
+          },
+          "expectedCashAfterTips": {
+            "type": "number"
+          },
+          "legacy": {
+            "$ref": "#/components/schemas/RegisterLegacySummary"
+          }
+        },
+        "required": [
+          "registersCount",
+          "initialCash",
+          "paymentsCount",
+          "totalBilled",
+          "totalTips",
+          "totalSales",
+          "totalChange",
+          "methods",
+          "cashDeposits",
+          "cashWithdrawals",
+          "expectedCash",
+          "tipsPayout",
+          "expectedCashAfterTips",
+          "legacy"
+        ]
+      },
+      "OpenRegisterRequest": {
+        "type": "object",
+        "properties": {
+          "initialCash": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "initialCash"
+        ]
+      },
+      "CloseRegisterResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "closed",
+              "already_closed"
+            ]
+          },
+          "cashRegisterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "finalCash": {
+            "type": "number",
+            "description": "expected_cash_after_tips at the close, from the database."
+          },
+          "closingTimestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Server clock of the close (the original one on a replay)."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RegisterSummary"
+          }
+        },
+        "required": [
+          "status",
+          "cashRegisterId",
+          "finalCash",
+          "closingTimestamp",
+          "summary"
+        ]
+      },
+      "CreateCashTransactionRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0.01
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "deposit",
+              "withdrawal"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "amount",
+          "type"
+        ]
+      },
+      "InventoryItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "raw",
+              "prep"
+            ]
+          },
+          "unit": {
+            "type": "string"
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "cost": {
+            "type": "number"
+          },
+          "stock": {
+            "type": "number"
+          },
+          "minStock": {
+            "type": "number"
+          },
+          "maxStock": {
+            "type": "number",
+            "nullable": true
+          },
+          "purchaseUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "purchaseFactor": {
+            "type": "number"
+          },
+          "defaultSupplierId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "trackLots": {
+            "type": "boolean"
+          },
+          "shelfLifeDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "categoryName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "sku",
+          "name",
+          "description",
+          "kind",
+          "unit",
+          "barcode",
+          "cost",
+          "stock",
+          "minStock",
+          "maxStock",
+          "purchaseUnit",
+          "purchaseFactor",
+          "defaultSupplierId",
+          "trackLots",
+          "shelfLifeDays",
+          "isActive",
+          "categoryId",
+          "categoryName"
+        ]
+      },
+      "OpeningStockInput": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Omitted = the default location."
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Greater than 0."
+          },
+          "unitCost": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "description": "Omitted or null = the item cost (no average-cost update)."
+          }
+        },
+        "required": [
+          "quantity"
+        ]
+      },
+      "CreateItemRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "raw",
+              "prep"
+            ]
+          },
+          "sku": {
+            "type": "string",
+            "nullable": true,
+            "description": "Omit or null to let the server assign MP-0001 / PR-0001."
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "minStock": {
+            "type": "number"
+          },
+          "maxStock": {
+            "type": "number",
+            "nullable": true
+          },
+          "purchaseUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "purchaseFactor": {
+            "type": "number"
+          },
+          "defaultSupplierId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "trackLots": {
+            "type": "boolean"
+          },
+          "shelfLifeDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "openingStock": {
+            "description": "inventory_adjust(opening) in the same transaction as the insert.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OpeningStockInput"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "unit"
+        ]
+      },
+      "CreatePreparationInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "yieldQuantity": {
+            "type": "number",
+            "description": "Not stored on the item: it is the formula yield, passed to save_formula later."
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "unit"
+        ]
+      },
+      "UpdateItemRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "raw",
+              "prep"
+            ]
+          },
+          "sku": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "minStock": {
+            "type": "number"
+          },
+          "maxStock": {
+            "type": "number",
+            "nullable": true
+          },
+          "purchaseUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "purchaseFactor": {
+            "type": "number"
+          },
+          "defaultSupplierId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "trackLots": {
+            "type": "boolean"
+          },
+          "shelfLifeDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
+      },
+      "Lot": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lotCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiresOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitCost": {
+            "type": "number"
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "itemId",
+          "locationId",
+          "locationName",
+          "lotCode",
+          "expiresOn",
+          "quantity",
+          "unitCost",
+          "receivedAt"
+        ]
+      },
+      "InventoryCategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description"
+        ]
+      },
+      "CreateInventoryCategoryRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateInventoryCategoryRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "InventoryLocation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "code",
+          "isDefault",
+          "isActive"
+        ]
+      },
+      "InventoryLocationInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "description": "Trimmed and upper-cased; unique per restaurant."
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "code"
+        ]
+      },
+      "UpdateInventoryLocationRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Supplier": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "taxId": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "leadTimeDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "taxId",
+          "contactName",
+          "phone",
+          "email",
+          "leadTimeDays",
+          "notes",
+          "isActive"
+        ]
+      },
+      "SupplierInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "taxId": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "leadTimeDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateSupplierRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "taxId": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "leadTimeDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Movement": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sku": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lotId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "movementType": {
+            "type": "string",
+            "enum": [
+              "opening",
+              "purchase",
+              "sale",
+              "production_consume",
+              "production_output",
+              "adjustment",
+              "waste",
+              "transfer_out",
+              "transfer_in",
+              "count_adjustment"
+            ]
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Signed."
+          },
+          "unitCost": {
+            "type": "number"
+          },
+          "totalCost": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "referenceType": {
+            "type": "string",
+            "nullable": true
+          },
+          "referenceId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "itemId",
+          "itemName",
+          "sku",
+          "unit",
+          "locationId",
+          "locationName",
+          "lotId",
+          "movementType",
+          "quantity",
+          "unitCost",
+          "totalCost",
+          "reason",
+          "notes",
+          "referenceType",
+          "referenceId",
+          "createdBy",
+          "createdAt"
+        ]
+      },
+      "MovementPage": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "description": "Newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Movement"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Exact count for the filters."
+          }
+        },
+        "required": [
+          "rows",
+          "total"
+        ]
+      },
+      "AdjustStockInput": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "movementType": {
+            "type": "string",
+            "enum": [
+              "opening",
+              "adjustment",
+              "waste"
+            ]
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Signed for adjustment, positive otherwise."
+          },
+          "unitCost": {
+            "type": "number",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "lotId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "lotCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiresOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        },
+        "required": [
+          "itemId",
+          "locationId",
+          "movementType",
+          "quantity"
+        ]
+      },
+      "AdjustStockResult": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "movementType": {
+            "type": "string",
+            "enum": [
+              "opening",
+              "adjustment",
+              "waste"
+            ]
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Signed."
+          },
+          "totalCost": {
+            "type": "number",
+            "description": "Signed."
+          },
+          "stock": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "locationId",
+          "movementType",
+          "quantity",
+          "totalCost",
+          "stock"
+        ]
+      },
+      "TransferStockInput": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fromLocationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toLocationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "itemId",
+          "fromLocationId",
+          "toLocationId",
+          "quantity"
+        ]
+      },
+      "TransferStockResult": {
+        "type": "object",
+        "properties": {
+          "transferId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fromLocationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toLocationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "totalCost": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "transferId",
+          "itemId",
+          "fromLocationId",
+          "toLocationId",
+          "quantity",
+          "totalCost"
+        ]
+      },
+      "PurchaseOrderLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sku": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitCost": {
+            "type": "number"
+          },
+          "receivedQuantity": {
+            "type": "number"
+          },
+          "pendingQuantity": {
+            "type": "number",
+            "description": "max(0, quantity - receivedQuantity), 3 decimals."
+          },
+          "total": {
+            "type": "number",
+            "description": "quantity x unitCost rounded to cents."
+          }
+        },
+        "required": [
+          "id",
+          "itemId",
+          "itemName",
+          "sku",
+          "unit",
+          "quantity",
+          "unitCost",
+          "receivedQuantity",
+          "pendingQuantity",
+          "total"
+        ]
+      },
+      "PurchaseOrder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "supplierId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "supplierName": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "ordered",
+              "partially_received",
+              "received",
+              "cancelled"
+            ]
+          },
+          "expectedOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paid"
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderLine"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Sum of the line totals, rounded to cents."
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "supplierId",
+          "supplierName",
+          "locationId",
+          "locationName",
+          "status",
+          "expectedOn",
+          "paymentStatus",
+          "notes",
+          "orderedAt",
+          "receivedAt",
+          "createdAt",
+          "lines",
+          "total"
+        ]
+      },
+      "PurchaseOrderLineInput": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitCost": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "quantity",
+          "unitCost"
+        ]
+      },
+      "CreatePurchaseOrderInput": {
+        "type": "object",
+        "properties": {
+          "supplierId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderLineInput"
+            }
+          }
+        },
+        "required": [
+          "supplierId",
+          "locationId",
+          "lines"
+        ]
+      },
+      "PurchaseOrderLineUpdate": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitCost": {
+            "type": "number"
+          },
+          "lineId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "An existing line of this order; omitted = a new line."
+          }
+        },
+        "required": [
+          "itemId",
+          "quantity",
+          "unitCost"
+        ]
+      },
+      "UpdatePurchaseOrderRequest": {
+        "type": "object",
+        "properties": {
+          "supplierId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "lines": {
+            "description": "The final set of lines; missing existing lines are removed.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderLineUpdate"
+            }
+          }
+        },
+        "required": [
+          "supplierId",
+          "locationId",
+          "lines"
+        ]
+      },
+      "PurchaseOrderStatusRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ordered",
+              "cancelled"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "PaymentStatusRequest": {
+        "type": "object",
+        "properties": {
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paid"
+            ]
+          }
+        },
+        "required": [
+          "paymentStatus"
+        ]
+      },
+      "ReceiveLineInput": {
+        "type": "object",
+        "properties": {
+          "lineId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitCost": {
+            "type": "number",
+            "description": "Omitted = the line cost."
+          },
+          "lotCode": {
+            "type": "string"
+          },
+          "expiresOn": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "required": [
+          "lineId",
+          "quantity"
+        ]
+      },
+      "ReceivePurchaseOrderRequest": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReceiveLineInput"
+            }
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paid"
+            ],
+            "description": "Set after the receipt in the same transaction."
+          }
+        },
+        "required": [
+          "lines"
+        ]
+      },
+      "ReceivePurchaseResult": {
+        "type": "object",
+        "properties": {
+          "purchaseOrderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "ordered",
+              "partially_received",
+              "received",
+              "cancelled"
+            ]
+          },
+          "receivedLines": {
+            "type": "number"
+          },
+          "totalCost": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "purchaseOrderId",
+          "status",
+          "receivedLines",
+          "totalCost"
+        ]
+      },
+      "InventoryCount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "applied",
+              "cancelled"
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "appliedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "locationId",
+          "locationName",
+          "status",
+          "notes",
+          "appliedAt",
+          "createdAt"
+        ]
+      },
+      "CountLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sku": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedQuantity": {
+            "type": "number"
+          },
+          "countedQuantity": {
+            "type": "number",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "itemId",
+          "itemName",
+          "sku",
+          "unit",
+          "expectedQuantity",
+          "countedQuantity",
+          "notes"
+        ]
+      },
+      "InventoryCountDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "applied",
+              "cancelled"
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "appliedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lines": {
+            "description": "By item name (es).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "locationId",
+          "locationName",
+          "status",
+          "notes",
+          "appliedAt",
+          "createdAt",
+          "lines"
+        ]
+      },
+      "OpenCountInput": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "null = default location."
+          },
+          "itemIds": {
+            "nullable": true,
+            "description": "null = every active item.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "OpenCountResult": {
+        "type": "object",
+        "properties": {
+          "countId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "applied",
+              "cancelled"
+            ]
+          },
+          "linesCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "countId",
+          "number",
+          "locationId",
+          "status",
+          "linesCount"
+        ]
+      },
+      "SetCountedQuantityRequest": {
+        "type": "object",
+        "properties": {
+          "countedQuantity": {
+            "type": "number",
+            "nullable": true,
+            "description": "null clears the line (not counted yet)."
+          }
+        },
+        "required": [
+          "countedQuantity"
+        ]
+      },
+      "ApplyCountResult": {
+        "type": "object",
+        "properties": {
+          "countId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "applied",
+              "cancelled"
+            ]
+          },
+          "adjustedLines": {
+            "type": "number"
+          },
+          "valueDelta": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "countId",
+          "status",
+          "adjustedLines",
+          "valueDelta"
+        ]
+      },
+      "FormulaLine": {
+        "type": "object",
+        "properties": {
+          "ingredientId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "ingredientId",
+          "quantity"
+        ]
+      },
+      "Formula": {
+        "type": "object",
+        "properties": {
+          "recipeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "dish",
+              "prep"
+            ]
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "yieldQuantity": {
+            "type": "number"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormulaLine"
+            }
+          },
+          "unitCost": {
+            "type": "number",
+            "description": "Cost per yielded unit at the current ingredients.cost, as save_formula computes it: round(sum(quantity x cost) / yieldQuantity, 4)."
+          }
+        },
+        "required": [
+          "recipeId",
+          "targetType",
+          "targetId",
+          "yieldQuantity",
+          "notes",
+          "lines",
+          "unitCost"
+        ]
+      },
+      "FormulaIndex": {
+        "type": "object",
+        "properties": {
+          "byDish": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Formula"
+            },
+            "description": "By dish id."
+          },
+          "byPrep": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Formula"
+            },
+            "description": "By prep item id."
+          }
+        },
+        "required": [
+          "byDish",
+          "byPrep"
+        ]
+      },
+      "SaveFormulaInput": {
+        "type": "object",
+        "properties": {
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "dish",
+              "prep"
+            ]
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "yieldQuantity": {
+            "type": "number"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormulaLine"
+            }
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "targetType",
+          "targetId",
+          "yieldQuantity",
+          "lines"
+        ]
+      },
+      "SaveFormulaResult": {
+        "type": "object",
+        "properties": {
+          "recipeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "dish",
+              "prep"
+            ]
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "yieldQuantity": {
+            "type": "number"
+          },
+          "linesCount": {
+            "type": "number"
+          },
+          "totalCost": {
+            "type": "number"
+          },
+          "unitCost": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "recipeId",
+          "targetType",
+          "targetId",
+          "yieldQuantity",
+          "linesCount",
+          "totalCost",
+          "unitCost"
+        ]
+      },
+      "ProductionBatch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemName": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lotId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "lotCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitCost": {
+            "type": "number"
+          },
+          "totalCost": {
+            "type": "number"
+          },
+          "expiresOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "itemId",
+          "itemName",
+          "unit",
+          "locationId",
+          "locationName",
+          "lotId",
+          "lotCode",
+          "quantity",
+          "unitCost",
+          "totalCost",
+          "expiresOn",
+          "notes",
+          "createdAt"
+        ]
+      },
+      "ProducePreparationInput": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Omitted = the default location."
+          },
+          "lotCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "Omitted = PB-YYYYMMDD-HH24MISS."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "itemId",
+          "quantity"
+        ]
+      },
+      "ConsumedInput": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "totalCost": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "name",
+          "quantity",
+          "totalCost"
+        ]
+      },
+      "ProducePreparationResult": {
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lotCode": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitCost": {
+            "type": "number"
+          },
+          "totalCost": {
+            "type": "number"
+          },
+          "expiresOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "consumed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConsumedInput"
+            }
+          }
+        },
+        "required": [
+          "batchId",
+          "lotId",
+          "lotCode",
+          "itemId",
+          "locationId",
+          "quantity",
+          "unitCost",
+          "totalCost",
+          "expiresOn",
+          "consumed"
+        ]
+      },
+      "OverviewKpis": {
+        "type": "object",
+        "properties": {
+          "totalValue": {
+            "type": "number"
+          },
+          "itemsCount": {
+            "type": "number"
+          },
+          "activeItems": {
+            "type": "number"
+          },
+          "lowStockCount": {
+            "type": "number"
+          },
+          "outOfStockCount": {
+            "type": "number"
+          },
+          "expiringSoonCount": {
+            "type": "number"
+          },
+          "expiredCount": {
+            "type": "number"
+          },
+          "wasteValue": {
+            "type": "number"
+          },
+          "purchasesValue": {
+            "type": "number"
+          },
+          "consumptionValue": {
+            "type": "number"
+          },
+          "openPurchaseOrders": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "totalValue",
+          "itemsCount",
+          "activeItems",
+          "lowStockCount",
+          "outOfStockCount",
+          "expiringSoonCount",
+          "expiredCount",
+          "wasteValue",
+          "purchasesValue",
+          "consumptionValue",
+          "openPurchaseOrders"
+        ]
+      },
+      "OverviewSeriesPoint": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "inValue": {
+            "type": "number"
+          },
+          "outValue": {
+            "type": "number"
+          },
+          "wasteValue": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "inValue",
+          "outValue",
+          "wasteValue"
+        ]
+      },
+      "OverviewCategoryValue": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "categoryName": {
+            "type": "string",
+            "nullable": true
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "categoryId",
+          "categoryName",
+          "value"
+        ]
+      },
+      "OverviewTopConsumed": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "name",
+          "unit",
+          "quantity",
+          "value"
+        ]
+      },
+      "InventoryOverview": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "number"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kpis": {
+            "$ref": "#/components/schemas/OverviewKpis"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OverviewSeriesPoint"
+            }
+          },
+          "valueByCategory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OverviewCategoryValue"
+            }
+          },
+          "topConsumed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OverviewTopConsumed"
+            }
+          }
+        },
+        "required": [
+          "days",
+          "generatedAt",
+          "kpis",
+          "series",
+          "valueByCategory",
+          "topConsumed"
+        ]
+      },
+      "DishStockCheckItem": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 999
+          }
+        },
+        "required": [
+          "dishId",
+          "quantity"
+        ]
+      },
+      "CheckStockRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DishStockCheckItem"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "StockCheckShortage": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "required": {
+            "type": "number"
+          },
+          "available": {
+            "type": "number"
+          },
+          "missing": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "name",
+          "unit",
+          "required",
+          "available",
+          "missing"
+        ]
+      },
+      "DishStockCheckResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "false when inventory control is off (then ok and no shortages)."
+          },
+          "shortages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockCheckShortage"
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "enabled",
+          "shortages"
+        ]
+      },
+      "ConsumeOrderRequest": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "orderId"
+        ]
+      },
+      "ConsumeShortage": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "missing": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "name",
+          "unit",
+          "missing"
+        ]
+      },
+      "ConsumeOrderStockResult": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "consumedItems": {
+            "type": "number"
+          },
+          "totalCost": {
+            "type": "number"
+          },
+          "shortages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConsumeShortage"
+            }
+          }
+        },
+        "required": [
+          "orderId",
+          "enabled",
+          "consumedItems",
+          "totalCost",
+          "shortages"
+        ]
+      },
+      "DishAvailabilityRequest": {
+        "type": "object",
+        "properties": {
+          "dishIds": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "dishIds"
         ]
       }
     }
