@@ -173,6 +173,41 @@ el `restaurant_id` del aviso: en INSERT y UPDATE emite a la sala del `restaurant
 fila cargada y descarta el aviso si no coincide; en DELETE descarta el aviso si
 `old.restaurant_id` difiere.
 
+#### Impresión
+
+Antes, la web enviaba comandas y facturas por broadcast de Supabase a canales globales
+(`room_commands`, `room_bills`). Cada impresora recibía los tickets de todos los
+restaurantes, y un ticket enviado con el servicio apagado se perdía. Ahora:
+
+- **Identidad.** Cada servicio de impresión (`pos/app.py`) usa un token de
+  `printer_tokens`, ligado a un restaurante. Solo se guarda el sha256; `vipe_api` no puede
+  leer `token_hash`. Un admin lo crea, lista y revoca en `/api/devices/printers`.
+- **Cola durable.** `POST /api/print/commands` y `POST /api/print/invoices` (cualquier rol
+  con sesión) insertan en `print_jobs` dentro de la transacción de la petición, con RLS por
+  restaurante. Tras el commit (`UnitOfWork.afterCommit`) el gateway emite
+  `print_job {id, kind, payload}` a la sala `printers:<restaurantId>`. Un rollback no emite
+  nada. Los payloads son los del broadcast anterior, así que `pos/print_renderer.py` no
+  cambia. En comandas, el id del trabajo reemplaza el `invoiceNumber` aleatorio.
+- **Socket de impresoras.** El mismo namespace `/realtime` acepta `auth: {token}` además de
+  la cookie. Un socket con token entra solo a `printers:<id>` (nunca a `restaurant:<id>`) y
+  actualiza `last_seen_at`. Un socket de la web nunca recibe `print_job`. Al revocar un
+  token se desconectan sus sockets.
+- **Pendientes y confirmación.** En cada conexión el servicio pide
+  `GET /api/print/jobs/pending` y confirma cada ticket impreso con
+  `POST /api/print/jobs/:id/ack`, y vuelve a pedir pendientes cada 60 s. La lista trae como
+  máximo 500, del más antiguo al más nuevo, y se pagina con `?after=<id>` (clave
+  `(created_at, id)`). La confirmación es idempotente: se queda el primer `printed_at`.
+  Ambas rutas usan `Authorization: Bearer <token>`. Al arrancar, la API borra los trabajos
+  con más de 7 días y deja en el log cuántos nunca se imprimieron. El servicio confirma sin
+  imprimir las comandas con más de 12 horas y los tickets que no puede generar.
+
+**Segunda excepción deliberada a RLS.** El servicio de impresión no tiene `app.user_id`,
+por eso lee y confirma sus trabajos con funciones `SECURITY DEFINER`
+(`search_path = ''`, `EXECUTE` solo para `vipe_api`): `private.touch_printer`,
+`private.printer_pending_jobs`, `private.ack_print_job` y `private.prune_print_jobs`. Las
+tres primeras reciben el hash del token y resuelven el restaurante dentro de la función. Un
+token revocado no resuelve nada (`200_printing.test.sql`).
+
 ### 4.6 Contratos generados
 
 La API publica OpenAPI. El frontend consume un cliente tipado generado con

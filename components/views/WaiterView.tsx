@@ -30,7 +30,7 @@ import {
 } from "@/lib/api/orders"
 import { conflictMessage } from "@/lib/api/errors"
 import { realtimeService } from "@/lib/api/realtime"
-import { realtimeService as printingService } from "@/lib/supabase/realtime-service"
+import { sendCommand } from "@/lib/api/print"
 import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
 import type { TableChange } from "@/lib/realtime/table-merge"
 import { createLocalChangeRegistry } from "@/lib/kitchen/realtime"
@@ -774,7 +774,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         )
       }
 
-      printingService.sendCommand(kitchenOrder)
+      void sendCommand(kitchenOrder)
       clearCart(activeTable)
 
       toast(

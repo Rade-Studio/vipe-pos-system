@@ -26,6 +26,6 @@ export function configureApp<T extends INestApplication>(app: T): T {
 export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
   return SwaggerModule.createDocument(
     app,
-    new DocumentBuilder().setTitle('VIPE POS API').setVersion('0.1.0').addCookieAuth('vipe_access').build(),
+    new DocumentBuilder().setTitle('VIPE POS API').setVersion('0.1.0').addCookieAuth('vipe_access').addBearerAuth().build(),
   );
 }

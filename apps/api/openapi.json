@@ -4040,6 +4040,270 @@
           "inventory"
         ]
       }
+    },
+    "/api/print/invoices": {
+      "post": {
+        "operationId": "PrintController_printInvoice",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoicePrintRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Queued; sent to the restaurant printers after commit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrintJobCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "print"
+        ]
+      }
+    },
+    "/api/print/commands": {
+      "post": {
+        "operationId": "PrintController_printCommand",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandPrintRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Queued kitchen command; its id is the payload invoiceNumber.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrintJobCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "print"
+        ]
+      }
+    },
+    "/api/print/jobs/pending": {
+      "get": {
+        "operationId": "PrintController_pending",
+        "parameters": [
+          {
+            "name": "after",
+            "required": false,
+            "in": "query",
+            "description": "Job id: return the jobs after it (page until fewer than 500).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unprinted jobs of the token's restaurant, oldest first, at most 500.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingPrintJob"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, unknown or revoked printer token."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "print"
+        ]
+      }
+    },
+    "/api/print/jobs/{id}/ack": {
+      "post": {
+        "operationId": "PrintController_ack",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Printed; repeating the ack is a no-op."
+          },
+          "401": {
+            "description": "Missing, unknown or revoked printer token."
+          },
+          "404": {
+            "description": "Not a job of the token's restaurant."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "print"
+        ]
+      }
+    },
+    "/api/devices/printers": {
+      "get": {
+        "operationId": "PrinterDevicesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrinterDevice"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "devices"
+        ]
+      },
+      "post": {
+        "operationId": "PrinterDevicesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePrinterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The plaintext token is returned only here.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedPrinterDevice"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Invalid name or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/devices/printers/{id}": {
+      "delete": {
+        "operationId": "PrinterDevicesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked (idempotent); its live sockets are disconnected."
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "devices"
+        ]
+      }
     }
   },
   "info": {
@@ -4056,6 +4320,11 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "vipe_access"
+      },
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
       }
     },
     "schemas": {
@@ -8323,6 +8592,201 @@
         },
         "required": [
           "dishIds"
+        ]
+      },
+      "InvoicePrintRequest": {
+        "type": "object",
+        "properties": {
+          "invoice": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "PrintableInvoice (types/index.ts); invoiceNumber is required."
+          },
+          "displayItems": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "maxItems": 500
+          }
+        },
+        "required": [
+          "invoice",
+          "displayItems"
+        ]
+      },
+      "PrintJobCreated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Also the invoiceNumber of a command payload."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "invoice",
+              "command"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "createdAt"
+        ]
+      },
+      "CommandPrintRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "minItems": 1,
+            "maxItems": 500
+          },
+          "waiter": {
+            "type": "string",
+            "minLength": 1
+          },
+          "table": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null or absent for delivery orders."
+          },
+          "delivery": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "DeliveryPrintInfo (types/index.ts)."
+          }
+        },
+        "required": [
+          "items",
+          "waiter"
+        ]
+      },
+      "PendingPrintJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "invoice",
+              "command"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "invoice: {invoiceNumber, invoice, displayItems}; command: {invoiceNumber (job id), items, waiter, table?, delivery?}."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "payload",
+          "createdAt"
+        ]
+      },
+      "PrinterDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "createdAt",
+          "revokedAt",
+          "lastSeenAt"
+        ]
+      },
+      "CreatePrinterRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CreatedPrinterDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "token": {
+            "type": "string",
+            "description": "Plaintext token (VIPE_PRINTER_TOKEN). Shown only in this response."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "createdAt",
+          "revokedAt",
+          "lastSeenAt",
+          "token"
         ]
       }
     }

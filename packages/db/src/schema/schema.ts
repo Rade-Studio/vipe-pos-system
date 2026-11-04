@@ -1,4 +1,4 @@
-import { pgTable, index, foreignKey, unique, pgPolicy, uuid, varchar, text, timestamp, numeric, check, boolean, uniqueIndex, bigint, integer, date, jsonb, smallint } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, unique, pgPolicy, uuid, varchar, text, timestamp, uniqueIndex, numeric, check, boolean, bigint, integer, date, jsonb, smallint } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 import { citext } from "./citext"
 
@@ -166,7 +166,7 @@ export const customers = pgTable("customers", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	index("idx_customers_restaurant_id_phone").using("btree", table.restaurantId.asc().nullsLast().op("text_ops"), table.phone.asc().nullsLast().op("text_ops")),
+	index("idx_customers_restaurant_id_phone").using("btree", table.restaurantId.asc().nullsLast().op("text_ops"), table.phone.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
 			columns: [table.restaurantId],
 			foreignColumns: [restaurants.id],
@@ -445,7 +445,7 @@ export const inventoryLots = pgTable("inventory_lots", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	index("idx_inventory_lots_fefo").using("btree", table.ingredientId.asc().nullsLast().op("uuid_ops"), table.locationId.asc().nullsLast().op("date_ops"), table.expiresOn.asc().nullsLast().op("date_ops"), table.receivedAt.asc().nullsLast().op("uuid_ops")),
+	index("idx_inventory_lots_fefo").using("btree", table.ingredientId.asc().nullsLast().op("timestamptz_ops"), table.locationId.asc().nullsLast().op("timestamptz_ops"), table.expiresOn.asc().nullsLast().op("date_ops"), table.receivedAt.asc().nullsLast().op("uuid_ops")),
 	index("idx_inventory_lots_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("uq_inventory_lots_general").using("btree", table.ingredientId.asc().nullsLast().op("uuid_ops"), table.locationId.asc().nullsLast().op("uuid_ops")).where(sql`((lot_code IS NULL) AND (expires_on IS NULL))`),
 	foreignKey({
@@ -487,8 +487,8 @@ export const inventoryMovements = pgTable("inventory_movements", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	index("idx_inventory_movements_ingredient_id_created_at").using("btree", table.ingredientId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.desc().nullsFirst().op("uuid_ops")),
-	index("idx_inventory_movements_reference").using("btree", table.referenceType.asc().nullsLast().op("text_ops"), table.referenceId.asc().nullsLast().op("text_ops")),
-	index("idx_inventory_movements_restaurant_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.desc().nullsFirst().op("uuid_ops")),
+	index("idx_inventory_movements_reference").using("btree", table.referenceType.asc().nullsLast().op("uuid_ops"), table.referenceId.asc().nullsLast().op("text_ops")),
+	index("idx_inventory_movements_restaurant_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
 	foreignKey({
 			columns: [table.createdBy],
 			foreignColumns: [profiles.id],
@@ -546,7 +546,7 @@ export const orderDeliveries = pgTable("order_deliveries", {
 	notes: text(),
 }, (table) => [
 	index("idx_order_deliveries_restaurant_id_courier_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.courierId.asc().nullsLast().op("uuid_ops")),
-	index("idx_order_deliveries_restaurant_id_delivery_status").using("btree", table.restaurantId.asc().nullsLast().op("text_ops"), table.deliveryStatus.asc().nullsLast().op("text_ops")),
+	index("idx_order_deliveries_restaurant_id_delivery_status").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.deliveryStatus.asc().nullsLast().op("text_ops")),
 	foreignKey({
 			columns: [table.courierId],
 			foreignColumns: [couriers.id],
@@ -812,7 +812,7 @@ export const payments = pgTable("payments", {
 	idempotencyKey: uuid("idempotency_key").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	index("idx_payments_restaurant_id_cash_register_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.cashRegisterId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("uuid_ops")),
+	index("idx_payments_restaurant_id_cash_register_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.cashRegisterId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
 			columns: [table.cashRegisterId],
 			foreignColumns: [cashRegisters.id],
@@ -1233,4 +1233,51 @@ export const authSessions = pgTable("auth_sessions", {
 		}).onDelete("cascade"),
 	unique("auth_sessions_refresh_hash_key").on(table.refreshHash),
 	pgPolicy("auth_sessions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(user_id = ( SELECT private.current_user_id() AS current_user_id))` }),
+]);
+
+export const printerTokens = pgTable("printer_tokens", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	name: text().notNull(),
+	tokenHash: text("token_hash").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	revokedAt: timestamp("revoked_at", { withTimezone: true, mode: 'string' }),
+	lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "printer_tokens_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	unique("printer_tokens_token_hash_key").on(table.tokenHash),
+	pgPolicy("printer_tokens_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("printer_tokens_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	pgPolicy("printer_tokens_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	check("printer_tokens_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 100)`),
+]);
+
+export const printJobs = pgTable("print_jobs", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	kind: text().notNull(),
+	payload: jsonb().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	printedAt: timestamp("printed_at", { withTimezone: true, mode: 'string' }),
+	printerTokenId: uuid("printer_token_id"),
+}, (table) => [
+	index("print_jobs_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("print_jobs_pending_idx").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")).where(sql`(printed_at IS NULL)`),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "print_jobs_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.printerTokenId],
+			foreignColumns: [printerTokens.id],
+			name: "print_jobs_printer_token_id_fkey"
+		}).onDelete("set null"),
+	pgPolicy("print_jobs_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("print_jobs_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	check("print_jobs_kind_check", sql`kind = ANY (ARRAY['invoice'::text, 'command'::text])`),
 ]);

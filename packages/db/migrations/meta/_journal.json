@@ -71,6 +71,13 @@
       "when": 1793823843237,
       "tag": "0009_one_open_register",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793827453432,
+      "tag": "0010_printing",
+      "breakpoints": true
     }
   ]
 }

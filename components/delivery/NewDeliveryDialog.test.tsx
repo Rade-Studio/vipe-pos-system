@@ -36,8 +36,9 @@ vi.mock("@/lib/supabase/delivery-service", async () => {
   return { ...actual, listActiveDeliveries: vi.fn(async () => []), findCustomerByPhone: vi.fn(async () => null) }
 })
 
-vi.mock("@/lib/supabase/realtime-service", () => ({
-  realtimeService: { sendCommand: vi.fn() },
+vi.mock("@/lib/api/print", () => ({
+  sendCommand: vi.fn(),
+  sendFactura: vi.fn(),
 }))
 
 import { NewDeliveryDialog } from "@/components/delivery/NewDeliveryDialog"

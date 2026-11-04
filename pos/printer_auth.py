@@ -1,32 +1,24 @@
 """
 pos/printer_auth.py
 ------------------
-Service-role token resolution for the printer listener's Realtime connection.
+Connection settings of the printing service (T8c of
+odd/tasks/migracion-backend-nestjs.md).
 
-Design (Q5-A)
--------------
-Token is resolved via env var ``VIPE_PRINTER_TOKEN`` at boot.
-Full dynamic rotation (GoTrue admin endpoint at boot + 24 h background rotation)
-is the follow-up to this slice.
-
-This module ships the interface only:
-  - ``resolve_token()`` reads ``VIPE_PRINTER_TOKEN`` from the environment.
-  - A ``TokenProvider`` protocol is defined so the dynamic-rotator implementation
-    (follow-up) can be swapped in without changing call sites.
+The service authenticates to the VIPE API with a printer token bound to one
+restaurant. An admin creates it with ``POST /api/devices/printers`` (the
+plaintext ``vpt_...`` value is shown once); the API stores only its sha256.
+The token is sent as ``auth: {token}`` in the socket.io handshake and as
+``Authorization: Bearer`` on ``/api/print/jobs/*``.
 
 Env vars
 --------
-VIPE_PRINTER_TOKEN  — service-role JWT for the printer listener station.
-                       In dev mode this is loaded from ``.env`` via python-dotenv.
-                       In production it should be injected by the installer or
-                       a secret-management tool (Windows Credential Manager, etc.).
+VIPE_API_URL        — base URL of the API, e.g. ``https://pos.example.com``
+                       or ``http://localhost:4000`` in development.
+VIPE_PRINTER_TOKEN  — printer token (``vpt_...``).
 
-Usage
------
-    from printer_auth import resolve_token
-
-    token = resolve_token()   # raises RuntimeError if not set
-    # token is passed to AsyncRealtimeClient params=... and headers=...
+In dev mode both come from ``pos/.env`` via python-dotenv. In production
+``app.py`` keeps them DPAPI-encrypted under ``%APPDATA%/VipePOS`` and asks for
+them on the first run.
 """
 
 import logging
@@ -34,29 +26,25 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Token resolution
-# ---------------------------------------------------------------------------
+
+def resolve_api_url() -> str:
+    """Return ``VIPE_API_URL`` without a trailing slash; RuntimeError if unset."""
+    url = os.getenv("VIPE_API_URL", "").strip().rstrip("/")
+    if not url:
+        raise RuntimeError(
+            "VIPE_API_URL environment variable is not set. "
+            "Set it to the VIPE API base URL (for example http://localhost:4000)."
+        )
+    return url
+
 
 def resolve_token() -> str:
-    """
-    Resolve the service-role JWT from the environment.
-
-    Returns
-    -------
-    str
-        The service-role token string.
-
-    Raises
-    ------
-    RuntimeError
-        If ``VIPE_PRINTER_TOKEN`` is not set or is empty.
-    """
+    """Return ``VIPE_PRINTER_TOKEN``; RuntimeError if unset or empty."""
     token = os.getenv("VIPE_PRINTER_TOKEN", "").strip()
     if not token:
         raise RuntimeError(
             "VIPE_PRINTER_TOKEN environment variable is not set. "
-            "Set it to a valid Supabase service-role JWT before starting the listener."
+            "Create a printer token in the VIPE admin (POST /api/devices/printers) and set it."
         )
     return token
 

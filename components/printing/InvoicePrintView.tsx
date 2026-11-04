@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
 import { format } from "date-fns"
 import { toast } from "@/utils/toast"
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { sendFactura } from "@/lib/api/print"
 import { Printer, Check, X, ArrowLeft, Receipt, Tag } from "lucide-react"
 import { renderInvoice } from "@/lib/print/renderKitchenOrder"
 import type { PrintableInvoice } from "@/types"
@@ -55,7 +55,7 @@ export function InvoicePrintView({
 
     try {
       setIsPrinting(true)
-      realtimeService.sendFactura(invoiceNumber, invoice, displayItems)
+      void sendFactura(invoiceNumber, invoice, displayItems)
       toast.success("Imprimiendo factura...")
 
       setTimeout(() => {

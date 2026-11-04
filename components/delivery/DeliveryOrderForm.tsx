@@ -38,7 +38,7 @@ import {
 } from '@/lib/delivery/order-draft'
 import { createSingleFlight } from '@/lib/payments/single-flight'
 import { buildDeliveryKitchenCommand, newKitchenOrderNumber } from '@/lib/delivery/print'
-import { realtimeService } from '@/lib/supabase/realtime-service'
+import { sendCommand } from '@/lib/api/print'
 import { consumeOrderStock } from '@/lib/supabase/inventory'
 import { useProfileStore } from '@/store/useProfileStore'
 import { toast } from '@/hooks/use-toast'
@@ -234,7 +234,7 @@ export function DeliveryOrderForm({
         // Reached only when the create succeeded: the kitchen command goes
         // out exactly once per submitted order, never on a failed create.
         try {
-          realtimeService.sendCommand(
+          void sendCommand(
             buildDeliveryKitchenCommand({
               delivery: created.delivery,
               lines: draft.cartLines,

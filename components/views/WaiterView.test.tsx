@@ -156,9 +156,7 @@ vi.mock("@/hooks/use-toast", () => {
   return { useToast: () => toastApi.value, toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }
 })
 
-vi.mock("@/lib/supabase/realtime-service", () => ({
-  realtimeService: { sendCommand: env.sendCommand },
-}))
+vi.mock("@/lib/api/print", () => ({ sendCommand: env.sendCommand }))
 
 vi.mock("@/lib/api/realtime", () => ({
   realtimeService: {

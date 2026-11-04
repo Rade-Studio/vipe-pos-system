@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions } from "./schema";
+import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs } from "./schema";
 
 export const businessConfigRelations = relations(businessConfig, ({one}) => ({
 	restaurant: one(restaurants, {
@@ -42,6 +42,8 @@ export const restaurantsRelations = relations(restaurants, ({many}) => ({
 	recipes: many(recipes),
 	suppliers: many(suppliers),
 	tables: many(tables),
+	printerTokens: many(printerTokens),
+	printJobs: many(printJobs),
 }));
 
 export const cashRegistersRelations = relations(cashRegisters, ({one, many}) => ({
@@ -542,5 +544,24 @@ export const authSessionsRelations = relations(authSessions, ({one}) => ({
 	user: one(users, {
 		fields: [authSessions.userId],
 		references: [users.id]
+	}),
+}));
+
+export const printerTokensRelations = relations(printerTokens, ({one, many}) => ({
+	restaurant: one(restaurants, {
+		fields: [printerTokens.restaurantId],
+		references: [restaurants.id]
+	}),
+	printJobs: many(printJobs),
+}));
+
+export const printJobsRelations = relations(printJobs, ({one}) => ({
+	restaurant: one(restaurants, {
+		fields: [printJobs.restaurantId],
+		references: [restaurants.id]
+	}),
+	printerToken: one(printerTokens, {
+		fields: [printJobs.printerTokenId],
+		references: [printerTokens.id]
 	}),
 }));

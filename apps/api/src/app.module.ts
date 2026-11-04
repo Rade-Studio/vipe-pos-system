@@ -9,6 +9,7 @@ import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
+import { PrintModule } from './print/print.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { RegistersModule } from './registers/registers.module';
 import { SettingsModule } from './settings/settings.module';
@@ -30,6 +31,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     PaymentsModule,
     RegistersModule,
     InventoryModule,
+    PrintModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

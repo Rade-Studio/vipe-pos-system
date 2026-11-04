@@ -161,8 +161,9 @@ vi.mock("@/lib/api/realtime", () => ({
     subscribeToTables: () => () => {},
   },
 }))
-vi.mock("@/lib/supabase/realtime-service", () => ({
-  realtimeService: { sendFactura: vi.fn() },
+vi.mock("@/lib/api/print", () => ({
+  sendCommand: vi.fn(),
+  sendFactura: vi.fn(),
 }))
 vi.mock("@/utils/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },

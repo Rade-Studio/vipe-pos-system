@@ -74,6 +74,10 @@ class RecentlyPrintedCache:
 
         return True
 
+    def forget(self, invoice_number: str) -> None:
+        """Drop one entry so a failed print can be retried."""
+        self._cache.pop(invoice_number, None)
+
     def clear(self) -> None:
         """Clear all entries (mainly for testing)."""
         self._cache.clear()

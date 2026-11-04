@@ -5,7 +5,7 @@ import { DbClient } from '../db/db-client';
 import { PgListenerService } from './pg-listener.service';
 import { RealtimeGateway } from './realtime.gateway';
 
-/** pg_notify -> PgListenerService -> RealtimeGateway rooms (T6). */
+/** pg_notify -> PgListenerService -> RealtimeGateway rooms (T6); the gateway also carries print jobs (T8c). */
 @Module({
   imports: [AuthModule],
   providers: [
@@ -17,5 +17,6 @@ import { RealtimeGateway } from './realtime.gateway';
       inject: [ENV, DbClient, RealtimeGateway],
     },
   ],
+  exports: [RealtimeGateway],
 })
 export class RealtimeModule {}

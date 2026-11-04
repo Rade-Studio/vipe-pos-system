@@ -11,6 +11,9 @@
 --   caja@vipe.local     cashier
 --   cocina@vipe.local   kitchen
 --
+-- Printer token for the printing service (pos/app.py --dev), documented in
+-- README: VIPE_PRINTER_TOKEN=vpt_dev-printer-token-2026. Only its sha256 is stored.
+--
 -- The hash is argon2id, generated with the API's `argon2` dependency:
 --   node -e "require('argon2').hash('vipe-dev-2026',{type:require('argon2').argon2id}).then(console.log)"
 
@@ -64,5 +67,10 @@ INSERT INTO public.tables (id, number, status, restaurant_id) VALUES
   ('b1000000-0000-0000-0000-000000000005', 5, 'available', 'a0eebc99-0000-0000-0000-000000000000'),
   ('b1000000-0000-0000-0000-000000000006', 6, 'available', 'a0eebc99-0000-0000-0000-000000000000')
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.printer_tokens (id, restaurant_id, name, token_hash) VALUES
+  ('a1000000-0000-0000-0000-000000000001', 'a0eebc99-0000-0000-0000-000000000000', 'Impresoras dev',
+   encode(sha256(convert_to('vpt_dev-printer-token-2026', 'UTF8')), 'hex'))
+ON CONFLICT (id) DO UPDATE SET token_hash = EXCLUDED.token_hash, revoked_at = NULL;
 
 COMMIT;

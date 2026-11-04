@@ -358,6 +358,8 @@ Pagos y caja: `/api/payments` (métodos de pago con código y orden calculados e
 
 Inventario (`/api/inventory`): artículos con stock inicial en la misma transacción, categorías, bodegas, proveedores, lotes FEFO, movimientos paginados (fechas `from`/`to` en la zona horaria del restaurante), ajustes y traslados, órdenes de compra con diff de líneas atómico y recepción con estado de pago, producción, conteos, fórmulas con costo unitario calculado en el servidor y resumen. Disponibilidad de platos: `POST /api/inventory/dish-availability` aplica la regla de `check_dishes_stock` (saldo de la bodega principal; control de inventario desactivado = todo disponible).
 
+Impresión: `POST /api/print/commands` y `POST /api/print/invoices` (cualquier rol con sesión) encolan el ticket y lo envían a las impresoras del restaurante; `GET /api/print/jobs/pending` y `POST /api/print/jobs/:id/ack` (token de impresora como `Authorization: Bearer`); `GET|POST /api/devices/printers` y `DELETE /api/devices/printers/:id` (admin). Detalle en [Servicio de impresión](#️-servicio-de-impresión-python).
+
 Errores: las respuestas 4xx originadas en la base de datos incluyen `code` (SQLSTATE) y, para `P0001` con `DETAIL`, `details`; los 422 de validación no llevan `code`.
 
 Tiempo real: la web abre una sola conexión `socket.io-client` (versión fija `4.8.4`, la
@@ -437,161 +439,157 @@ de `supabase/tests/` siguen ahí hasta que se retire Supabase (T13).
 
 ---
 
-## 🖨️ Sistema de Impresión y Suscripción en Python
+## 🖨️ Servicio de impresión (Python)
 
-Complementario a la aplicación web, este sistema se encarga de:
+`pos/app.py` es un servicio de Windows (ícono en la bandeja) que imprime comandas y facturas en impresoras térmicas ESC/POS, USB o de red. Se conecta a la API de VIPE, no a Supabase.
 
-* Escuchar en tiempo real los eventos de Supabase (comandas y facturas).
-* Imprimir automáticamente en impresoras térmicas USB o de red.
-* Ejecutarse al iniciar Windows gracias al instalador.
+### Cómo llega un ticket a la impresora
+
+1. La web llama a `sendCommand` o `sendFactura` (`lib/api/print.ts`), que hacen `POST /api/print/commands` o `POST /api/print/invoices` con la sesión del usuario.
+2. La API guarda el ticket en `print_jobs` dentro de la transacción de la petición. Cuando la transacción confirma, emite `print_job {id, kind, payload}` solo a la sala `printers:<restaurantId>` del restaurante del usuario.
+3. El servicio de impresión imprime el ticket y confirma con `POST /api/print/jobs/<id>/ack`.
+4. En cada conexión o reconexión, y cada 60 s mientras está conectado, el servicio pide `GET /api/print/jobs/pending` e imprime lo que quedó pendiente. La API devuelve como máximo 500 trabajos, del más antiguo al más nuevo; el servicio sigue con `?after=<id del último>` hasta recibir menos de 500. Un ticket enviado con el PC apagado se imprime al volver.
+
+Cada impresora recibe solo los tickets de su restaurante.
+
+**Regla de los 7 días.** Cuando arranca, la API borra los trabajos con más de 7 días, impresos o no. Si alguno nunca se imprimió, lo deja en el log de la API como advertencia (`pruned N print jobs older than 7 days that were never printed`). Un servicio de impresión apagado más de 7 días pierde esos tickets.
+
+**Comandas viejas.** Una comanda con más de 12 horas se confirma sin imprimirla, para que la cocina no reciba una ráfaga de pedidos atrasados tras un corte largo. Las facturas se imprimen sin importar su antigüedad.
+
+| `kind` | `payload` (igual al antiguo broadcast) | Impresora |
+| --- | --- | --- |
+| `command` | `{invoiceNumber, items, waiter, table?, delivery?}`; `invoiceNumber` es el id del trabajo | `comandas` |
+| `invoice` | `{invoiceNumber, invoice, displayItems}` (`invoice` es un `PrintableInvoice`) | `facturas` |
+
+El servicio descarta duplicados por id de trabajo, así que un ticket que llega por el socket y por la lista de pendientes sale una sola vez. Una reimpresión de la misma factura es un trabajo nuevo y sí se imprime. Si la impresora no está configurada o falla, el trabajo queda pendiente y se reintenta en la siguiente consulta (máximo 60 s). Un ticket que no se puede generar (datos inválidos) se confirma y se descarta, con su id en el log.
+
+### Tokens de impresora
+
+El servicio se autentica con un token de impresora ligado a un restaurante. No usa cookies ni claves de base de datos.
+
+- Un admin lo crea con `POST /api/devices/printers {name}`. La respuesta trae el token en texto plano (`vpt_...`) **una sola vez**; la API guarda solo su sha256.
+- `GET /api/devices/printers` lista las impresoras con `lastSeenAt` (última conexión) y `revokedAt`.
+- `DELETE /api/devices/printers/<id>` revoca el token y desconecta sus sockets abiertos. Desde ese momento el socket y `/api/print/jobs/*` responden `unauthorized`/401.
+
+El token viaja como `auth: {token}` en el handshake de socket.io (namespace `/realtime`, ruta `/socket.io`) y como `Authorization: Bearer <token>` en `/api/print/jobs/*`.
+
+La base de desarrollo (`pnpm db:dev`) trae un token listo para el restaurante de prueba:
+
+```
+VIPE_PRINTER_TOKEN=vpt_dev-printer-token-2026
+```
 
 ### 🛵 Impresión de domicilios
 
-Los payloads de comanda y factura incluyen un bloque opcional `delivery` (aditivo). Con él, la comanda se imprime como `COMANDA — DOMICILIO` con el cliente y las notas, y la factura muestra CLIENTE / TEL / DIRECCION en lugar de MESA / MESERO, la línea `DOMICILIO` dentro del total y `CAMBIO PARA` en pedidos contra entrega. Los payloads sin `delivery` se imprimen igual que antes. Un listener antiguo ignora ese bloque: la comanda de un domicilio sale como `COMANDA — Mesa None` y la factura no trae la línea `DOMICILIO`, de modo que su `TOTAL SIN PROPINA` no incluye la tarifa aunque `TOTAL A PAGAR` sí. Actualiza el ejecutable de impresión antes de usar domicilios.
+Los payloads de comanda y factura incluyen un bloque opcional `delivery`. Con él, la comanda se imprime como `COMANDA — DOMICILIO` con el cliente y las notas, y la factura muestra CLIENTE / TEL / DIRECCION en lugar de MESA / MESERO, la línea `DOMICILIO` dentro del total y `CAMBIO PARA` en pedidos contra entrega. Los payloads sin `delivery` se imprimen igual que antes.
 
-### 🚩 Características
-
-* Conexión en tiempo real a Supabase (canales de comandas y facturas).
-* Soporte para impresoras USB y de red.
-* Manejo de credenciales en entorno seguro (cifrado en AppData).
-* Autoarranque al iniciar Windows.
-* Compatible con Windows 10/11.
-
-### 📋 Requisitos Previos
+### 📋 Requisitos
 
 * Windows 10 o superior.
 * Python 3.11 o superior (solo para desarrollo).
-* Impresoras compatibles con ESC/POS o de red.
+* Impresoras compatibles con ESC/POS, USB o de red.
 
----
+### 📦 Dependencias
 
-## 🧑‍💻 Dependencias del Sistema Python
+Todas están fijadas con `==` en `pos/requirements.txt`:
 
-Estas son las librerías necesarias para desarrollo y empaquetado del sistema de impresión en Python.
+| Librería | Uso |
+| --- | --- |
+| **python-socketio[asyncio_client]** | Conexión socket.io con la API (`print_job`) |
+| **aiohttp** | Trabajos pendientes y confirmaciones por HTTP |
+| **python-dotenv** | Cargar `pos/.env` en desarrollo |
+| **customtkinter** | Diálogos de configuración |
+| **pystray** | Ícono en la bandeja de Windows |
+| **Pillow** | Imágenes para impresión |
+| **html2text** | HTML a texto plano |
+| **escpos-python** | Impresoras USB y de red ESC/POS |
+| **pywin32** | Cifrado DPAPI de las credenciales (solo Windows) |
+| **pyusb** | Detección de impresoras USB |
+| **pyinstaller** | Empaquetado del `.exe` |
 
-### 📦 Dependencias para Desarrollo
+### ⚙️ Estructura
 
-Instala todas desde `requirements.txt` o individualmente:
+```
+pos/
+├── app.py                 # Punto de entrada: bandeja, configuración, conexión con la API
+├── print_jobs.py          # Manejo de print_job: duplicados, impresión, cuándo confirmar
+├── print_renderer.py      # Bytes ESC/POS de comandas y facturas
+├── print_encoder.py       # Negociación de la página de códigos
+├── printer_auth.py        # VIPE_API_URL y VIPE_PRINTER_TOKEN
+├── dedupe.py              # Caché de trabajos ya impresos
+├── test_*.py              # Pruebas unitarias (sin red)
+├── requirements.txt
+├── vipe_pos_installer.iss # Instalador Inno Setup
+└── vipe-pos.ico
+```
+
+### 🛠️ Desarrollo local
 
 ```bash
-pip install python-dotenv customtkinter pystray Pillow html2text escpos-python pywin32 usb
+pip install -r pos/requirements.txt
 ```
 
-O crea un `requirements.txt` con:
+Crea `pos/.env`:
 
 ```
-python-dotenv
-customtkinter
-pystray
-Pillow
-html2text
-escpos-python
-pywin32
-usb
+VIPE_API_URL=http://localhost:4000
+VIPE_PRINTER_TOKEN=vpt_dev-printer-token-2026
 ```
 
-### 🛠️ Dependencias Específicas Explicadas
-
-| Librería          | Uso Principal                                  |
-| ----------------- | ---------------------------------------------- |
-| **python-dotenv** | Cargar variables desde .env en desarrollo      |
-| **customtkinter** | Interfaces gráficas para capturar credenciales |
-| **pystray**       | Ícono en la bandeja del sistema Windows        |
-| **Pillow**        | Manejo de imágenes para impresión              |
-| **html2text**     | Convertir HTML a texto plano para impresoras   |
-| **escpos-python** | Control de impresoras USB y de red ESC/POS     |
-| **pywin32**       | Cifrado/descifrado con DPAPI (win32crypt)      |
-| **usb**           | Detección de dispositivos USB                  |
-
----
-
-Incluye este bloque debajo de la sección **Requisitos Previos** o **Configuración Inicial** para que esté completamente documentado. ¿Te gustaría que también lo traduzca al inglés si vas a publicarlo internacionalmente?
-
-### ⚙️ Estructura del Proyecto Python
-
-```
-pos-listener/
-├── app.py                    # Punto de entrada
-├── requirements.txt          # Dependencias
-├── vipe_pos_installer.iss    # Script de instalador Inno Setup
-└── assets/
-    └── vipe-pos.ico          # Icono del sistema
-```
-
-### 🛠️ Desarrollo Local
-
-#### 1. Instalar dependencias
+Con la API corriendo (`pnpm db:dev` y `pnpm api:dev`):
 
 ```bash
-pip install -r requirements.txt
+python pos/app.py --dev
 ```
 
-#### 2. Configurar entorno de desarrollo
-
-Crea un archivo `.env`:
-
-```
-SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_KEY=tu-api-key
-ENVIRONMENT=dev
-```
-
-#### 3. Ejecutar en modo desarrollo
+Pruebas (no necesitan impresora, red ni las dependencias de Windows):
 
 ```bash
-python app.py --dev
+python3 -m unittest discover -s pos
 ```
 
-### 🏗️ Generar el Ejecutable (.exe)
-
-#### 1. Instalar PyInstaller
+### 🏗️ Generar el ejecutable (.exe)
 
 ```bash
 pip install pyinstaller pywin32
+pyinstaller --noconfirm --onedir --windowed --icon=vipe-pos.ico --hidden-import=win32crypt --hidden-import=pywintypes app.py
 ```
 
-#### 2. Generar el ejecutable
-
-```bash
-pyinstaller --noconfirm --onedir --windowed --icon=assets/vipe-pos.ico --hidden-import=win32crypt --hidden-import=pywintypes app.py
-```
-
-El ejecutable se creará en `dist/vipe_pos/vipe_pos.exe`.
-
-### 🛠️ Crear Instalador (.exe)
-
-#### 1. Instalar Inno Setup
-
-Descarga desde [https://jrsoftware.org/isinfo.php](https://jrsoftware.org/isinfo.php)
-
-#### 2. Abrir `vipe_pos_installer.iss` y compilar
-
-Esto generará un archivo `VipePOS_Setup.exe`.
+El ejecutable queda en `dist/`. Para el instalador, abre `vipe_pos_installer.iss` en [Inno Setup](https://jrsoftware.org/isinfo.php) y compílalo; genera `VipePOS_Setup.exe`.
 
 ### 🚀 Instalación
 
-1. Ejecuta `VipePOS_Setup.exe`.
-2. El sistema se instalará en `C:\Program Files\Vipe POS`.
-3. Se creará un acceso directo en el menú Inicio, Escritorio y carpeta de inicio (autoarranque).
-4. La primera vez que se ejecute, solicitará las credenciales de Supabase.
-5. Las credenciales se almacenarán cifradas en `%APPDATA%\VipePOS\credentials.dat`.
+1. Ejecuta `VipePOS_Setup.exe`. Se instala en `C:\Program Files\Vipe POS` con acceso directo en el menú Inicio, el escritorio y el inicio de Windows.
+2. En la primera ejecución pide la URL del servidor (`VIPE_API_URL`) y el token de impresora (`VIPE_PRINTER_TOKEN`).
+3. Ambos se guardan cifrados con DPAPI en `%APPDATA%\VipePOS\printer_credentials.dat`.
+
+Para cambiarlos, borra ese archivo y vuelve a abrir el programa.
+
+**Borra `%APPDATA%\VipePOS\credentials.dat`** en cada estación que tenía la versión anterior: guarda la URL y la clave de Supabase y ya no se usa.
+
+### 🚚 Pasos de despliegue
+
+1. **Reinstala cada estación** con el nuevo `VipePOS_Setup.exe`; la versión anterior escucha Supabase y no recibe tickets de la API.
+2. **Un token por estación.** Hasta que exista la pantalla de impresoras del admin (T12), créalo con la API usando la sesión de un admin:
+
+   ```bash
+   curl -X POST https://<servidor>/api/devices/printers \
+     -H 'Content-Type: application/json' -b 'vipe_access=<cookie del admin>' \
+     -d '{"name": "Cocina principal"}'
+   ```
+
+   Copia el `token` de la respuesta (solo se muestra esa vez). Para retirar una estación: `DELETE /api/devices/printers/<id>`.
+3. **Configura la estación** con `VIPE_API_URL` (la URL pública, sin `/api`) y `VIPE_PRINTER_TOKEN` en el diálogo de la primera ejecución.
+4. **Proxy inverso.** Debe enviar a la API `/socket.io/` con el upgrade a WebSocket (`Upgrade` y `Connection`, conservando la barra final) y `/api/print/*` conservando el encabezado `Authorization`.
+5. Borra el `credentials.dat` antiguo (ver arriba).
 
 ### ✅ Comprobación
 
-1. Verifica que el sistema esté corriendo en segundo plano (ícono en la bandeja del sistema).
-2. Realiza una orden desde la app web.
-3. La impresora debería recibir automáticamente la comanda o factura.
-
-### 🛠️ Reconfigurar Credenciales
-
-Si necesitas cambiar las credenciales:
-
-1. Elimina el archivo `%APPDATA%\VipePOS\credentials.dat`.
-2. Vuelve a ejecutar el sistema y se te pedirá ingresarlas nuevamente.
+1. El ícono aparece en la bandeja del sistema.
+2. En `GET /api/devices/printers`, `lastSeenAt` de la impresora se actualiza al conectar.
+3. Envía una orden desde la vista de mesero: la comanda sale en la impresora `comandas`.
 
 ---
-
-¿Quieres que prepare también un ejemplo de `.gitignore` para este proyecto Python?
 
 ## 🚀 Despliegue
 

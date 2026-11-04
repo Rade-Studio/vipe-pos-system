@@ -35,7 +35,7 @@ vi.mock("@/lib/supabase/delivery-service", async () => {
 
 vi.mock("@/lib/supabase/inventory", () => ({ consumeOrderStock: env.consumeOrderStock }))
 
-vi.mock("@/lib/supabase/realtime-service", () => ({ realtimeService: { sendCommand: env.sendCommand } }))
+vi.mock("@/lib/api/print", () => ({ sendCommand: env.sendCommand }))
 
 vi.mock("@/hooks/use-toast", () => ({ toast: env.toast }))
 
@@ -50,6 +50,10 @@ const created = {
     customerName: "Luis",
     customerPhone: "3001234567",
     addressSnapshot: { addressLine: "Calle 1 # 2-3", neighborhood: null, reference: null, label: null },
+    addressLine: "Calle 1 # 2-3",
+    neighborhood: null,
+    addressReference: null,
+    deliveryFee: 0,
     paymentMode: "prepaid",
     cashChangeFor: null,
     notes: null,
@@ -91,6 +95,15 @@ describe("DeliveryOrderForm — sale stock consumption (T12)", () => {
     expect(onSubmitted).toHaveBeenCalledTimes(1)
     expect(env.toast.success).toHaveBeenCalledWith("Domicilio creado y enviado a cocina")
     expect(env.toast.error).not.toHaveBeenCalled()
+    // T8c: the kitchen command goes to the API print queue, once, as a delivery ticket.
+    expect(env.sendCommand).toHaveBeenCalledTimes(1)
+    expect(env.sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table: null,
+        items: [{ name: "Bandeja", quantity: 1 }],
+        delivery: expect.objectContaining({ customerName: "Luis", phone: "3001234567" }),
+      }),
+    )
   })
 
   it("keeps the creation when the stock consumption fails", async () => {
@@ -115,5 +128,6 @@ describe("DeliveryOrderForm — sale stock consumption (T12)", () => {
 
     await waitFor(() => expect(env.toast.error).toHaveBeenCalled())
     expect(env.consumeOrderStock).not.toHaveBeenCalled()
+    expect(env.sendCommand).not.toHaveBeenCalled()
   })
 })
