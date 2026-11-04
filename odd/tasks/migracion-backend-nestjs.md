@@ -1,0 +1,62 @@
+# Feature: migracion-backend-nestjs
+
+Branch `feat/backend-nestjs` (from `origin/dev` 6b119c5, `origin/main` 16de3dd merged in 68231da with no tree change).
+Worktree `../vipe-pos-system-worktrees/backend-nestjs`. Engram mirror: `odd/migracion-backend-nestjs/tasks`.
+Replace Supabase (hosted and self-hosted) with a NestJS API between the Next.js frontend and a plain Postgres,
+keeping realtime, keeping the plpgsql transactional core and RLS, and fixing the structural defects found along the way.
+
+## Specs
+
+- **S1** Migration target: "necesito que me recomiendes el proceso para realizar la migracion de supabase a postgres"
+  -> the system runs on plain Postgres with no Supabase service (no GoTrue, PostgREST, Realtime, Storage, Edge Functions, Kong, Studio).
+- **S2** Middle layer: "supabase es un servicio muy pesado para alojar en una vps y muy costoso para pagar en supabase, entonces necesito algo intermedio entre el frotend y la BD que sea profesional"
+  -> a backend service owns every data access; the browser never holds a database key; the stack fits one VPS: Postgres, API, web, object storage.
+- **S3** No regression, no time pressure: "no importa cuanto demoremos, pero no debemos perder, ni el tiempo real"
+  -> every behavior the POS has today keeps working, and kitchen, waiter, cashier and delivery screens keep receiving live updates for orders, tables and deliveries without reload. Each module migrates completely before the next starts.
+- **S4** Refactor on the way: "de paso refactorizamos lo que se hizo mal desde un principio"
+  -> known defects are fixed by design, not patched: components importing the DB client directly (42 in `components/admin`), `(supabase.rpc as any)`, `NEXT_PUBLIC_*` inlined at build time with a production fallback, business rules split between UI and SQL, staff creation through an Edge Function with service role.
+- **S5** Backend shape: "avancemos con servicio separado de nestjs"
+  -> NestJS runs as its own service and deployable, not inside Next.js.
+
+## Decisions (2026-11-04)
+
+- Separate NestJS service (S5). Web stays at the repository root for now; `apps/api` and `packages/db` join the existing pnpm workspace. Moving web to `apps/web` is a later, optional task.
+- Data access: Drizzle ORM over `pg`. SQL migrations stay plain `.sql` files, versioned in `packages/db`, applied by Drizzle's migrator. The 49 Supabase migrations are squashed into one baseline (schema-only dump minus `auth`, `storage`, `realtime`, `extensions` schemas, anon/authenticated grants and the realtime publication).
+- Transactional core stays in plpgsql: `pay_order`, `split_order`, `undo_split`, `close_register`, `register_summary`, `create_delivery_order`, `set_delivery_status`, every `inventory_*`/`receive_purchase_order`/`produce_preparation`/`apply_inventory_count`/`save_formula` RPC and every guard trigger. The API calls them inside a transaction. Nothing is rewritten in TypeScript unless a pgTAP test proves the SQL wrong.
+- RLS stays as defense in depth. `private.current_restaurant_id()` and `private.current_app_role()` read `current_setting('app.user_id', true)` instead of `auth.uid()`; the API runs `SET LOCAL app.user_id = $1` at the start of every request transaction, connecting as a non-superuser role without `BYPASSRLS`. The 134 policies and the pgTAP suite are kept.
+- Auth: own `users` table (replaces `auth.users`; `profiles.auth_user_id` becomes `profiles.user_id`), password hashing with argon2, access JWT in an httpOnly SameSite cookie set by the API plus refresh rotation. Web and API share one domain behind the reverse proxy.
+- Realtime: `AFTER INSERT/UPDATE/DELETE` triggers on `orders`, `tables`, `order_deliveries` call `pg_notify` with `{table, op, id, restaurant_id}` only (well under the 8 KB limit). A dedicated `pg` client in the API listens, loads the row, and emits through a socket.io gateway to room `restaurant:<id>` with the same `{eventType, new, old}` shape `postgres_changes` delivers today, so `lib/realtime/order-merge.ts` and `table-merge.ts` stay untouched. Socket auth reuses the cookie JWT.
+- Storage: S3-compatible (MinIO on the VPS, or Cloudflare R2). The API issues presigned PUT URLs and stores the object key; public reads go through the bucket URL.
+- Contracts: the API publishes OpenAPI; the web consumes a generated typed client (`openapi-typescript` + `openapi-fetch`). No hand-written response types in web.
+- Tests: pgTAP against plain Postgres in Docker (`postgres:16` + `pgtap`), replacing `supabase test db`; Vitest for web; Jest (Nest default) or Vitest for the API with Testcontainers for integration. CI gets `api-tests` and keeps `db-tests` on the new runner.
+- Delivery stays the user's decision: work-unit commits land on `feat/backend-nestjs` and its chained slices; push, PRs and merges are not performed by the agent.
+
+## Migration order and strangler rule
+
+The web keeps working against Supabase until a module is fully served by the API; the swap happens behind the existing service boundary (`lib/supabase/<module>-service.ts` -> `lib/api/<module>.ts`) one module at a time, and the Supabase path for that module is deleted in the same slice. Order: catalog (read-heavy, low risk) -> tables and orders with realtime (core) -> payments and register -> inventory -> delivery -> staff, profiles, storage -> remove Supabase -> data migration and cut-over.
+
+## Tasks
+
+- [x] T1. Stabilize: cut `feat/backend-nestjs` from `dev`, merge `origin/main` (the `fix/next-security` content was already in dev; merge 68231da adds history only). (S3) Route: inline. Commit: 68231da + this document.
+- [ ] T2. Architecture decision record `docs/arquitectura-backend.md`: target topology, the decisions above with their rationale, module order, cut-over strategy, what is removed from the VPS. (S1, S2, S5) Route: inline. Commit: docs.
+- [ ] T3. Workspace scaffold: `apps/api` NestJS app (health endpoint, config validation, OpenAPI), `packages/db` (Drizzle config, migrator, empty migrations dir), root scripts, CI jobs `api-lint`, `api-typecheck`, `api-tests`. (S2, S5) Route: inline. Risk: item 5 (CI, dependencies).
+- [ ] T4. Plain-Postgres schema baseline in `packages/db`: squashed baseline SQL, `users` table and `profiles.user_id`, tenant helpers reading `app.user_id`, pg_notify triggers removed from scope (T6), `docker-compose` Postgres + pgtap service, pgTAP suite ported and green with `pnpm test:db` on plain Postgres, RED first for the helpers. (S1, S3) Route: worker + verify. Risk: items 1 and 2 (schema format, security guards).
+- [ ] T5. API core: Drizzle connection as non-superuser role, transaction-per-request interceptor with `SET LOCAL app.user_id`, auth module (login, refresh, logout, me), tenant and role guards, error filter, OpenAPI, integration tests with Testcontainers. (S2, S4) Route: worker + verify. Risk: item 2 (auth, permissions).
+- [ ] T6. Realtime: `pg_notify` triggers migration + pgTAP, Nest `LISTEN` service with reconnect, socket.io gateway with cookie auth and `restaurant:<id>` rooms, payload shape test against `order-merge.ts`/`table-merge.ts` fixtures. (S3) Route: worker + verify. Risk: item 4 (concurrency, reconnect).
+- [ ] T7. Catalog module: categories, dishes, promotions, business_config endpoints; generated web client `lib/api/`; swap `dish-service-with-promotions`, `promotion-service`, `business-config-service` and the admin menu/settings pages to the API; delete their Supabase code. (S3, S4) Route: 2 workers (api, web). 
+- [ ] T8. Tables and orders module: orders CRUD with items, tables, `delete_order_with_items`, `check_dishes_stock`, `consume_order_stock`; web swaps `service.ts` order/table paths and `realtime-service.ts` to the socket client; waiter, kitchen, cashier screens verified live. (S3) Route: 2 workers + verify. Risk: item 6 until realtime screens are covered.
+- [ ] T9. Payments and register module: `payment_methods`, `pay_order`, `split_order`, `undo_split`, `register_summary`, `close_register`, cash registers and transactions; swap `payments-service`, `cash-register-service`, `lib/payments` callers. (S3) Route: 2 workers + verify. Risk: item 1 (money ledger).
+- [ ] T10. Inventory module: items, locations, movements, lots, suppliers, purchase orders, production, counts, formulas, overview; swap `lib/supabase/inventory/*` and `inventory-control-service`. (S3) Route: 2 workers.
+- [ ] T11. Delivery module: customers, addresses, couriers, `create_delivery_order`, `set_delivery_status`; swap `delivery-service` and remove `(supabase.rpc as any)`. (S3, S4) Route: 2 workers.
+- [ ] T12. Staff, profiles and storage: staff creation endpoint replacing the `create-staff-account` Edge Function, profiles management, dashboard queries, presigned uploads replacing `storage-service`. (S2, S4) Route: 2 workers. Risk: item 2 (privileged user creation).
+- [ ] T13. Remove Supabase: `@supabase/supabase-js`, `lib/supabase/`, `supabase/`, `types/supabase.ts`, `NEXT_PUBLIC_SUPABASE_*`, runtime `NEXT_PUBLIC_API_URL`; `Dockerfile` per app, `docker-compose.prod.yml` with postgres, api, web, minio; CI without the Supabase CLI. (S1, S2, S4) Route: inline + verify. Risk: items 3 and 5 (env contract, deploy).
+- [ ] T14. Data migration and cut-over: scripts exporting `public` data, `auth.users` -> `users`, storage objects -> bucket; runbook with freeze, dump, load, verification checklist per screen, rollback window; rehearsal on a staging copy. (S1, S3) Route: inline + verify. Risk: item 1 (irreversible data move).
+- [ ] T15. Final docs: README, DOCKER.md, deploy guide for one VPS, remove Supabase references. (S2) Route: inline.
+
+## Log
+
+- L1 (user, 2026-11-04): "Necesito revisar la rama dev y la rama main que tiene cada uno, y necesito que me recomiendes el proceso para realizar la migracion de supabase a postgres"
+- L2 (user, 2026-11-04): "pasa que supabase es un servicio muy pesado para alojar en una vps y muy costoso para pagar en supabase, entonces necesito algo intermedio entre el frotend y la BD que sea profesional, que otra cosa me recomiendes, no importa cuanto demoremos, pero no debemos perder, ni el tiempo real y de paso refactorizamos lo que se hizo mal desde un principio"
+- L3 (user, 2026-11-04): "avancemos con servicio separado de nestjs"
+- L4 (evidence, 2026-11-04): `origin/main` had 2 commits not in `dev` (PR #88 merge, PR #84 `fix/next-security`); `git diff --stat 6b119c5 68231da` is empty, so the content was already in dev. `dev` has 45 commits over `main`: admin dashboard, inventory logistics, 3 migrations, pgTAP, docs (182 files, +21202/-7349).
+- L5 (evidence, 2026-11-04): Supabase coupling on dev: client-only app with anon key; 134 RLS policies on 39 tables, 96 `security definer` functions, 2 tenant helpers on `auth.uid()`; realtime `postgres_changes` on orders, tables, order_deliveries; one storage bucket; one Edge Function `create-staff-account`; ~55 plpgsql functions; 49 migrations, 17 pgTAP files; 42 admin components import the client directly.
