@@ -130,7 +130,7 @@ vi.mock("@/lib/api/payments", () => ({
   payOrder: (input: unknown) => payOrder(input),
   closeRegisterRpc: vi.fn(async () => ({ finalCash: 0, summary: null })),
 }))
-vi.mock("@/lib/supabase/delivery-service", () => ({
+vi.mock("@/lib/api/delivery", () => ({
   listActiveDeliveries: () => listActiveDeliveries(),
 }))
 vi.mock("@/lib/supabase/client", () => {
@@ -159,6 +159,7 @@ vi.mock("@/lib/api/realtime", () => ({
       }
     },
     subscribeToTables: () => () => {},
+    subscribeToDeliveries: () => () => {},
   },
 }))
 vi.mock("@/lib/api/print", () => ({

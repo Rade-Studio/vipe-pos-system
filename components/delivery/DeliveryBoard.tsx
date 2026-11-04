@@ -16,7 +16,7 @@ import {
   DeliveryServiceError,
   type DeliveryServiceErrorKind,
   type DeliveryOrderWithBill,
-} from '@/lib/supabase/delivery-service'
+} from '@/lib/api/delivery'
 import type { DeliveryOrder } from '@/lib/delivery/types'
 import { applyDeliveryStatusPatch } from '@/lib/delivery/realtime'
 import {

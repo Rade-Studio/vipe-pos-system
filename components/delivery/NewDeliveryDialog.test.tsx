@@ -16,11 +16,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const fetchConfig = vi.hoisted(() => vi.fn())
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: { channel: () => ({ on: () => ({ on: () => ({ subscribe: () => ({}) }) }) }), from: () => ({}), rpc: async () => ({ data: null, error: null }) },
-  createSupabaseClient: () => ({}),
-}))
-
 // T7b: the suggested fee is `deliveryDefaultFee` of the shared `GET /config` query.
 vi.mock("@/lib/api/config", () => ({ CONFIG_QUERY_KEY: ["config"], fetchConfig }))
 
@@ -29,10 +24,10 @@ vi.mock("@/lib/api/catalog", () => ({
   fetchDishes: async () => [],
 }))
 
-vi.mock("@/lib/supabase/delivery-service", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/supabase/delivery-service")>(
-    "@/lib/supabase/delivery-service",
-  )
+vi.mock("@/lib/api/realtime", () => ({ realtimeService: { subscribeToDeliveries: () => () => {} } }))
+
+vi.mock("@/lib/api/delivery", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
   return { ...actual, listActiveDeliveries: vi.fn(async () => []), findCustomerByPhone: vi.fn(async () => null) }
 })
 

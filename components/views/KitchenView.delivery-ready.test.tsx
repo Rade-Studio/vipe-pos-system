@@ -20,54 +20,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const harness = vi.hoisted(() => {
   type Handler = (payload: unknown) => void
-  const recorded: Array<{
-    name: string
-    handlers: Array<{ table: string; handler: Handler }>
-    subscribed: boolean
-  }> = []
-
-  const emit = (table: string, payload: unknown) => {
-    for (const channel of recorded) {
-      if (!channel.subscribed) continue
-      for (const entry of channel.handlers) {
-        if (entry.table === table) entry.handler(payload)
-      }
+  // T11: the delivery hook rides `realtimeService.subscribeToDeliveries`.
+  const subscriptions: Array<{ handler: Handler; active: boolean }> = []
+  const emit = (table: string, payload: Record<string, unknown>) => {
+    for (const subscription of subscriptions) {
+      if (subscription.active) subscription.handler({ table, ...payload })
     }
   }
-
-  // `order_items.update(...).eq(...)` and `.in(...)`: thenable, no error.
-  const updated = { error: null, then: (resolve: (v: unknown) => void) => resolve({ error: null }) }
-
-  const supabase = {
-    channel: (name: string) => {
-      const record = { name, handlers: [] as Array<{ table: string; handler: Handler }>, subscribed: false }
-      recorded.push(record)
-      const api = {
-        on: (_type: string, filter: { table: string }, handler: Handler) => {
-          record.handlers.push({ table: filter.table, handler })
-          return api
-        },
-        subscribe: () => {
-          record.subscribed = true
-          return api
-        },
-        __name: name,
-      }
-      return api
-    },
-    removeChannel: () => {},
-    from: () => ({
-      select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }),
-      update: () => ({ eq: () => updated, in: () => updated }),
-    }),
-    rpc: async () => ({ data: null, error: null }),
+  const subscribeToDeliveries = (handler: Handler) => {
+    const subscription = { handler, active: true }
+    subscriptions.push(subscription)
+    return () => {
+      subscription.active = false
+    }
   }
-
-  return { recorded, emit, supabase }
+  return { subscriptions, emit, subscribeToDeliveries }
 })
 
 vi.mock("@/lib/supabase/client", () => ({
-  supabase: harness.supabase,
+  supabase: { auth: { signOut: async () => ({ error: null }) } },
   createSupabaseClient: () => ({}),
 }))
 
@@ -116,10 +87,8 @@ vi.mock("@/lib/api/client", () => {
   }
 })
 
-vi.mock("@/lib/supabase/delivery-service", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/supabase/delivery-service")>(
-    "@/lib/supabase/delivery-service",
-  )
+vi.mock("@/lib/api/delivery", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
   return { ...actual, listActiveDeliveries, setDeliveryStatus }
 })
 
@@ -128,6 +97,7 @@ vi.mock("@/lib/api/realtime", () => ({
     subscribeToKitchen: () => () => {},
     subscribeToOrders: () => () => {},
     subscribeToTables: () => () => {},
+    subscribeToDeliveries: harness.subscribeToDeliveries,
     registerItems: vi.fn(),
     unregisterItem: vi.fn(),
     unregisterOrder: vi.fn(),
@@ -151,7 +121,7 @@ import { useOrderStore } from "@/store/useOrderStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useProfileStore } from "@/store/useProfileStore"
 import { parseOrderDeliveryRow } from "@/lib/delivery/parse"
-import type { DeliveryOrderWithBill } from "@/lib/supabase/delivery-service"
+import type { DeliveryOrderWithBill } from "@/lib/api/delivery"
 import type { Profile } from "@/types"
 
 function wireRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -238,7 +208,7 @@ function statusOf(cache: DeliveryOrderWithBill[], orderId: string): string | und
 }
 
 beforeEach(() => {
-  harness.recorded.length = 0
+  harness.subscriptions.length = 0
   getByStatus.mockReset()
   getById.mockReset()
   updateStatus.mockReset()

@@ -1,26 +1,20 @@
 /**
- * Strict parsers for the delivery wire format.
+ * Strict parser for the `order_deliveries` realtime row.
  *
- * The server returns snake_case + bigint money + nullable
- * timestamps. The UI consumes camelCase + integer money. Every
+ * T11: the API answers camelCase DTOs, so only the realtime payload (a
+ * snake_case row from the socket's `pos_changes`) is parsed here. The row
+ * carries snake_case + bigint money + nullable timestamps; the UI consumes
+ * camelCase + integer money. Every
  * helper in this module is strict: a missing field, a wrong type, a
  * non-integer money value or an out-of-enum status raises rather than
  * silently zeroing.
  *
  * Mirrors `lib/payments/payment-list.ts` and
  * `lib/payments/register-summary.ts`: same fail-fast validators,
- * same bigint-money discipline, same nullable-time semantics. The set
- * is intentionally narrow (a row parser per registry table + the RPC
- * response) so the service has one place to reach for each wire shape.
+ * same bigint-money discipline, same nullable-time semantics.
  */
 
-import type {
-  Courier,
-  Customer,
-  CustomerAddress,
-  DeliveryOrder,
-  PaymentMode,
-} from './types'
+import type { DeliveryOrder, PaymentMode } from './types'
 import { DELIVERY_STATUSES } from './types'
 
 // -----------------------------------------------------------
@@ -63,11 +57,6 @@ function optionalIntegerMoney(value: unknown, field: string): number | null {
   return requireIntegerMoney(value, field)
 }
 
-function requireBoolean(value: unknown, field: string): boolean {
-  if (typeof value !== 'boolean') fail(`${field} must be a boolean`)
-  return value
-}
-
 function requireIsoDate(value: unknown, field: string): string {
   if (typeof value !== 'string' || value === '') {
     fail(`${field} must be an ISO-8601 string`)
@@ -99,11 +88,6 @@ function requirePhone(value: unknown, field: string): string {
     fail(`${field} must match ^[0-9]{7,15}$; got ${JSON.stringify(s)}`)
   }
   return s
-}
-
-function optionalPhone(value: unknown, field: string): string | null {
-  if (value === null || value === undefined) return null
-  return requirePhone(value, field)
 }
 
 function requirePaymentMode(value: unknown, field: string): PaymentMode {
@@ -168,104 +152,3 @@ export function parseOrderDeliveryRow(raw: unknown): DeliveryOrder {
     updatedAt: requireIsoDate(obj.updated_at, 'updated_at'),
   }
 }
-
-// -----------------------------------------------------------
-// parseCustomerRow
-// -----------------------------------------------------------
-
-export function parseCustomerRow(raw: unknown): Customer {
-  const obj = requireObject(raw, 'customer row')
-  return {
-    id: requireUuid(obj.id, 'id'),
-    phone: requirePhone(obj.phone, 'phone'),
-    name: requireString(obj.name, 'name'),
-    notes:
-        typeof obj.notes === 'string' && obj.notes !== '' ? obj.notes : null,
-    createdAt: requireIsoDate(obj.created_at, 'created_at'),
-    updatedAt: requireIsoDate(obj.updated_at, 'updated_at'),
-  }
-}
-
-// -----------------------------------------------------------
-// parseCustomerAddressRow
-// -----------------------------------------------------------
-
-export function parseCustomerAddressRow(raw: unknown): CustomerAddress {
-  const obj = requireObject(raw, 'customer_address row')
-  return {
-    id: requireUuid(obj.id, 'id'),
-    customerId: requireUuid(obj.customer_id, 'customer_id'),
-    label:
-        typeof obj.label === 'string' && obj.label !== '' ? obj.label : null,
-    addressLine: requireString(obj.address_line, 'address_line'),
-    neighborhood:
-        typeof obj.neighborhood === 'string' && obj.neighborhood !== ''
-          ? obj.neighborhood
-          : null,
-    reference:
-        typeof obj.reference === 'string' && obj.reference !== ''
-          ? obj.reference
-          : null,
-    isDefault: requireBoolean(obj.is_default, 'is_default'),
-    createdAt: requireIsoDate(obj.created_at, 'created_at'),
-    updatedAt: requireIsoDate(obj.updated_at, 'updated_at'),
-  }
-}
-
-// -----------------------------------------------------------
-// parseCourierRow
-// -----------------------------------------------------------
-
-export function parseCourierRow(raw: unknown): Courier {
-  const obj = requireObject(raw, 'courier row')
-  return {
-    id: requireUuid(obj.id, 'id'),
-    name: requireString(obj.name, 'name'),
-    phone: optionalPhone(obj.phone, 'phone'),
-    isActive: requireBoolean(obj.is_active, 'is_active'),
-    createdAt: requireIsoDate(obj.created_at, 'created_at'),
-    updatedAt: requireIsoDate(obj.updated_at, 'updated_at'),
-  }
-}
-
-// -----------------------------------------------------------
-// parseCreateDeliveryOrderResult
-// -----------------------------------------------------------
-
-export interface CreateDeliveryOrderWire {
-  order_id: string
-  customer_id: string
-  address_id: string | null
-  delivery: unknown
-}
-
-/**
- * Parse the JSON the `create_delivery_order` RPC returns. The wire
- * shape is `{order_id, customer_id, address_id, delivery}` where
- * `delivery` is a `to_jsonb(order_deliveries)` snapshot. `address_id`
- * is null when the caller passed `{id}` of an existing address or
- * when `save=false` on a fresh address (the migration's default).
- */
-export function parseCreateDeliveryOrderResult(raw: unknown): {
-  orderId: string
-  customerId: string
-  addressId: string | null
-  delivery: DeliveryOrder
-} {
-  const obj = requireObject(raw, 'create_delivery_order response')
-  const delivery = parseOrderDeliveryRow(obj.delivery)
-  return {
-    orderId: requireUuid(obj.order_id, 'order_id'),
-    customerId: requireUuid(obj.customer_id, 'customer_id'),
-    addressId:
-        obj.address_id === null || obj.address_id === undefined
-          ? null
-          : requireUuid(obj.address_id, 'address_id'),
-    delivery,
-  }
-}
-
-// Touch the wire-only type so a future refactor that drops it
-// surfaces as a TS error rather than a silent dead branch.
-export type _CreateDeliveryOrderWire = CreateDeliveryOrderWire
-void ({} as _CreateDeliveryOrderWire)

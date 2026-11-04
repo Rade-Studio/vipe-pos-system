@@ -173,7 +173,7 @@ vi.mock("@/hooks/use-active-deliveries", () => ({
   useActiveDeliveries: () => ({ data: env.deliveries }),
 }))
 
-vi.mock("@/lib/supabase/delivery-service", () => ({
+vi.mock("@/lib/api/delivery", () => ({
   listActiveDeliveries: async () => {
     env.listActiveDeliveriesCalls += 1
     return env.deliveries

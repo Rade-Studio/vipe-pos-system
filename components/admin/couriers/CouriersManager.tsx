@@ -40,7 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { createCourier, listCouriers, updateCourier } from "@/lib/supabase/delivery-service"
+import { createCourier, listCouriers, updateCourier } from "@/lib/api/delivery"
 import { DeliveryServiceError } from "@/lib/delivery/types"
 import type { Courier, DeliveryServiceErrorKind } from "@/lib/delivery/types"
 import {

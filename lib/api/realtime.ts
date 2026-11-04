@@ -60,6 +60,8 @@ const tableListeners = new Set<ChangeCallback>()
 const orderListeners = new Set<ChangeCallback>()
 /** Kitchen subscriptions see orders and order_items events. */
 const kitchenListeners = new Set<ChangeCallback>()
+/** Delivery board subscriptions see order_deliveries events and delivery orders events. */
+const deliveryListeners = new Set<ChangeCallback>()
 const statusListeners = new Set<ConnectionStatusCallback>()
 
 /** Item ids whose next realtime event is this kitchen's own write. */
@@ -75,7 +77,12 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null
 /** Wait before retrying a refused handshake whose session turned out valid. */
 export const REFUSED_HANDSHAKE_RETRY_MS = 2_000
 
-const subscriberCount = () => tableListeners.size + orderListeners.size + kitchenListeners.size
+const subscriberCount = () =>
+  tableListeners.size + orderListeners.size + kitchenListeners.size + deliveryListeners.size
+
+/** `orders.order_type` is on `new` for INSERT/UPDATE and on `old` for DELETE. */
+const isDeliveryOrder = (event: ChangeEvent): boolean =>
+  (event.new?.order_type ?? event.old?.order_type) === "delivery"
 
 function resync(): void {
   for (const queryKey of RESYNC_QUERY_KEYS) {
@@ -93,10 +100,14 @@ function dispatch(event: ChangeEvent): void {
     event.table === "tables"
       ? [tableListeners]
       : event.table === "orders"
-        ? [orderListeners, kitchenListeners]
+        ? isDeliveryOrder(event)
+          ? [orderListeners, kitchenListeners, deliveryListeners]
+          : [orderListeners, kitchenListeners]
         : event.table === "order_items"
           ? [kitchenListeners]
-          : []
+          : event.table === "order_deliveries"
+            ? [deliveryListeners]
+            : []
   // The payload is shared by reference across every consumer: read it, never mutate it.
   for (const listeners of targets) {
     for (const listener of [...listeners]) {
@@ -193,6 +204,13 @@ export const realtimeService = {
 
   /** `orders` changes; INSERT and UPDATE rows carry `order_items`. */
   subscribeToOrders: (callback: ChangeCallback) => listen(orderListeners, callback),
+
+  /**
+   * Delivery board stream (T11): `order_deliveries` changes (full snake_case
+   * rows, merged by `lib/delivery/realtime.ts`) and `orders` changes of
+   * delivery orders only; table orders never reach the board.
+   */
+  subscribeToDeliveries: (callback: ChangeCallback) => listen(deliveryListeners, callback),
 
   /**
    * Kitchen stream (T7 contract, unchanged): every order/item event is queued
@@ -292,6 +310,7 @@ export const realtimeService = {
       ...(tableListeners.size ? ["tables"] : []),
       ...(orderListeners.size ? ["orders"] : []),
       ...(kitchenListeners.size ? ["kitchen"] : []),
+      ...(deliveryListeners.size ? ["deliveries"] : []),
     ]
     return {
       channels: channels.map((id) => ({ id, active: realtimeService.isConnected })),
@@ -338,6 +357,7 @@ export const realtimeService = {
     tableListeners.clear()
     orderListeners.clear()
     kitchenListeners.clear()
+    deliveryListeners.clear()
     statusListeners.clear()
     closeSocketIfUnused()
     realtimeService.knownItems = {}

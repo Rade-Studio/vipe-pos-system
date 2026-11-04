@@ -12,31 +12,42 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
  */
 
 const harness = vi.hoisted(() => {
-  const supabase = {
-    channel: () => ({ on: () => ({ on: () => ({ subscribe: () => ({}) }) }), __name: "delivery" }),
-    removeChannel: () => {},
-    from: () => ({}),
-    rpc: async () => ({ data: null, error: null }),
+  type Handler = (payload: unknown) => void
+  // T11: the delivery hook rides `realtimeService.subscribeToDeliveries`.
+  const subscriptions: Array<{ handler: Handler; active: boolean }> = []
+  const emit = (table: string, payload: Record<string, unknown>) => {
+    for (const subscription of subscriptions) {
+      if (subscription.active) subscription.handler({ table, ...payload })
+    }
   }
-  return { supabase }
+  const subscribeToDeliveries = (handler: Handler) => {
+    const subscription = { handler, active: true }
+    subscriptions.push(subscription)
+    return () => {
+      subscription.active = false
+    }
+  }
+  return { subscriptions, emit, subscribeToDeliveries }
 })
 
 vi.mock("@/lib/supabase/client", () => ({
-  supabase: harness.supabase,
+  supabase: { auth: { signOut: async () => ({ error: null }) } },
   createSupabaseClient: () => ({}),
 }))
 
 const listActiveDeliveries = vi.hoisted(() => vi.fn())
 
-vi.mock("@/lib/supabase/delivery-service", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/supabase/delivery-service")>(
-    "@/lib/supabase/delivery-service",
-  )
+vi.mock("@/lib/api/delivery", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
   return { ...actual, listActiveDeliveries }
 })
 
 const getCurrentRegister = vi.hoisted(() => vi.fn())
 const getOpenRegister = vi.hoisted(() => vi.fn())
+
+vi.mock("@/lib/api/realtime", () => ({
+  realtimeService: { subscribeToDeliveries: harness.subscribeToDeliveries },
+}))
 
 vi.mock("@/lib/api/registers", () => ({ getCurrentRegister, getOpenRegister }))
 

@@ -21,8 +21,8 @@ import {
   activeDeliveriesQueryKey,
   refreshActiveDeliveries,
 } from "@/hooks/use-active-deliveries"
-import { listActiveDeliveries, setDeliveryStatus } from "@/lib/supabase/delivery-service"
-import type { DeliveryOrderWithBill } from "@/lib/supabase/delivery-service"
+import { listActiveDeliveries, setDeliveryStatus } from "@/lib/api/delivery"
+import type { DeliveryOrderWithBill } from "@/lib/api/delivery"
 import { applyDeliveryStatusPatch } from "@/lib/delivery/realtime"
 import {
   hasTable,

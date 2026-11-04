@@ -304,6 +304,81 @@ describe("pos_changes dispatch", () => {
   })
 })
 
+describe("delivery subscription (T11)", () => {
+  it("hands order_deliveries events and delivery orders events to delivery subscribers, nothing else", () => {
+    const seen: unknown[] = []
+    const unsubscribe = realtimeService.subscribeToDeliveries((payload) => seen.push(payload))
+
+    const deliveryRow = change("order_deliveries", "UPDATE", { order_id: "o-1", delivery_status: "ready" })
+    const deliveryOrder = change("orders", "UPDATE", { id: "o-1", order_type: "delivery" })
+    const deletedDeliveryOrder = change("orders", "DELETE", {}, { id: "o-2", order_type: "delivery" })
+    env.serverEmit("pos_changes", deliveryRow)
+    env.serverEmit("pos_changes", deliveryOrder)
+    env.serverEmit("pos_changes", deletedDeliveryOrder)
+    env.serverEmit("pos_changes", change("orders", "UPDATE", { id: "o-3", order_type: "dine_in" }))
+    env.serverEmit("pos_changes", change("order_items", "INSERT", { id: "i-1", order_id: "o-1" }))
+    env.serverEmit("pos_changes", change("tables", "UPDATE", { id: "t-1" }))
+
+    expect(seen).toEqual([deliveryRow, deliveryOrder, deletedDeliveryOrder])
+    expect(env.ioCalls).toHaveLength(1)
+    expect(realtimeService.getChannelsStatus().channels.map((c) => c.id)).toEqual(["deliveries"])
+
+    unsubscribe()
+    expect(env.socket.disconnects).toBe(1)
+    env.serverEmit("pos_changes", deliveryRow)
+    expect(seen).toHaveLength(3)
+  })
+
+  it("fans a delivery orders event out to orders, kitchen and delivery listeners exactly once each", () => {
+    const orders: unknown[] = []
+    const deliveries: unknown[] = []
+    const stopOrders = realtimeService.subscribeToOrders((payload) => orders.push(payload))
+    const stopDeliveries = realtimeService.subscribeToDeliveries((payload) => deliveries.push(payload))
+    const kitchen = subscribeKitchen()
+
+    const deliveryOrder = change("orders", "DELETE", {}, { id: "o-1", order_type: "delivery" })
+    env.serverEmit("pos_changes", deliveryOrder)
+    env.serverEmit("pos_changes", change("order_deliveries", "UPDATE", { order_id: "o-1" }))
+    env.serverEmit("pos_changes", change("orders", "UPDATE", { id: "o-2", order_type: "dine_in" }))
+
+    expect(orders.map((e: any) => [e.table, e.new.id ?? e.old.id])).toEqual([
+      ["orders", "o-1"],
+      ["orders", "o-2"],
+    ])
+    expect(kitchen.deletes).toEqual([deliveryOrder])
+    expect(deliveries.map((e: any) => e.table)).toEqual(["orders", "order_deliveries"])
+
+    stopOrders()
+    kitchen.unsubscribe()
+    expect(env.socket.disconnects).toBe(0)
+    stopDeliveries()
+    expect(env.socket.disconnects).toBe(1)
+  })
+
+  it("invalidates ['active-deliveries'] on resync and on a reconnect, not on the first connect", () => {
+    const stop = realtimeService.subscribeToDeliveries(() => {})
+    env.serverEmit("connect")
+    expect(env.invalidated).toEqual([])
+    env.serverEmit("disconnect", "transport close")
+    env.serverEmit("connect")
+    expect(env.invalidated).toContainEqual(["active-deliveries"])
+    env.invalidated = []
+    env.serverEmit("resync")
+    expect(env.invalidated).toContainEqual(["active-deliveries"])
+    stop()
+  })
+
+  it("shares the one connection with the other subscriptions", () => {
+    const orders = realtimeService.subscribeToOrders(() => {})
+    const deliveries = realtimeService.subscribeToDeliveries(() => {})
+    expect(env.ioCalls).toHaveLength(1)
+    orders()
+    expect(env.socket.disconnects).toBe(0)
+    deliveries()
+    expect(env.socket.disconnects).toBe(1)
+  })
+})
+
 describe("resync and reconnect", () => {
   const KEYS = [["orders"], ["orders", "kitchen"], ["tables"], ["active-deliveries"]]
 

@@ -9,16 +9,16 @@
  * from anywhere in the app re-reads the board in one place (the new-order
  * dialog uses it after a successful `createDeliveryOrder`).
  *
- * Realtime lives in THIS file on purpose: `lib/supabase/realtime-service.ts`
- * is out of surface for this task and the delivery-service adds its own table
- * later, so we subscribe locally to `order_deliveries` (delivery lifecycle
- * moves) and `orders` (the bill half of the join: totals / status).
+ * Realtime (T11): the API socket client (`lib/api/realtime.ts`) hands this
+ * hook `order_deliveries` events (delivery lifecycle moves) and `orders`
+ * events of delivery orders (the bill half of the join: totals / status).
+ * `resync` and every reconnect already invalidate `['active-deliveries']`.
  *
  * T10 (S1/S2) changed three things here:
  *
- *  - ONE channel for the whole app. The board, the cashier panel and the
- *    kitchen all read this hook; the previous per-hook `supabase.channel(...)`
- *    created one channel (and one duplicate fan-out) per consumer. The
+ *  - ONE subscription for the whole app. The board, the cashier panel and the
+ *    kitchen all read this hook; the previous per-hook channel created one
+ *    duplicate fan-out per consumer. The
  *    subscription is refcounted per QueryClient and torn down when the last
  *    consumer unmounts.
  *  - `orders` pushes are filtered to deliveries. The bare `event: '*'`
@@ -41,10 +41,9 @@ import {
   type QueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query'
-import type { RealtimeChannel } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase/client'
-import { listActiveDeliveries } from '@/lib/supabase/delivery-service'
-import type { DeliveryOrderWithBill } from '@/lib/supabase/delivery-service'
+import { listActiveDeliveries } from '@/lib/api/delivery'
+import type { DeliveryOrderWithBill } from '@/lib/api/delivery'
+import { realtimeService, type ChangeEvent } from '@/lib/api/realtime'
 import {
   DELIVERY_REALTIME_DEBOUNCE_MS,
   applyDeliveryRowPatch,
@@ -56,16 +55,17 @@ import {
 export const activeDeliveriesQueryKey: readonly (string | number)[] = ['active-deliveries']
 
 interface DeliverySubscription {
-  channel: RealtimeChannel
-  /** Mounted consumers; the channel is removed when the last one leaves. */
+  /** Ends the socket subscription. */
+  stop: () => void
+  /** Mounted consumers; the subscription ends when the last one leaves. */
   consumers: number
   /** Debounced `invalidateQueries` shared by every consumer of this client. */
   refresh: DebouncedRefresher
 }
 
 /**
- * Keyed by QueryClient so there is exactly one channel per app (one client)
- * and tests can use their own client without leaking subscriptions.
+ * Keyed by QueryClient so there is exactly one subscription per app (one
+ * client) and tests can use their own client without leaking subscriptions.
  */
 const subscriptions = new WeakMap<QueryClient, DeliverySubscription>()
 
@@ -80,41 +80,29 @@ function subscribe(queryClient: QueryClient): DeliverySubscription {
     void queryClient.invalidateQueries({ queryKey: activeDeliveriesQueryKey })
   }, DELIVERY_REALTIME_DEBOUNCE_MS)
 
+  const onChange = (payload: ChangeEvent) => {
+    if (payload.table === 'order_deliveries') {
+      const cached = queryClient.getQueryData<DeliveryOrderWithBill[]>(activeDeliveriesQueryKey) ?? []
+      const outcome = applyDeliveryRowPatch(cached, payload.new)
+      if (outcome.kind === 'patched') {
+        queryClient.setQueryData(activeDeliveriesQueryKey, outcome.rows)
+        return
+      }
+      // `unchanged`: the echo of a write this client already applied.
+      if (outcome.kind === 'needs-refresh') refresh()
+      return
+    }
+    // The push carries no bill numbers we can trust for a join this board
+    // owns, but it does say whether the row is a delivery at all. Table
+    // orders must not re-read the delivery board.
+    if (payload.table === 'orders' && isDeliveryOrderChange(payload)) refresh()
+  }
+
   const subscription: DeliverySubscription = {
-    channel: undefined as unknown as RealtimeChannel,
+    stop: realtimeService.subscribeToDeliveries(onChange),
     consumers: 1,
     refresh,
   }
-
-  subscription.channel = supabase
-    .channel('active-deliveries')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'order_deliveries' },
-      (payload) => {
-        const cached = queryClient.getQueryData<DeliveryOrderWithBill[]>(activeDeliveriesQueryKey) ?? []
-        const outcome = applyDeliveryRowPatch(cached, (payload as { new?: unknown }).new)
-        if (outcome.kind === 'patched') {
-          queryClient.setQueryData(activeDeliveriesQueryKey, outcome.rows)
-          return
-        }
-        // `unchanged`: the echo of a write this client already applied.
-        if (outcome.kind === 'needs-refresh') refresh()
-      },
-    )
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'orders' },
-      (payload) => {
-        // The push carries no bill numbers we can trust for a join this board
-        // owns, but it does say whether the row is a delivery at all. Table
-        // orders must not re-read the delivery board.
-        if (!isDeliveryOrderChange(payload as { eventType?: string; new?: unknown; old?: unknown })) return
-        refresh()
-      },
-    )
-    .subscribe()
-
   subscriptions.set(queryClient, subscription)
   return subscription
 }
@@ -125,7 +113,7 @@ function unsubscribe(queryClient: QueryClient, subscription: DeliverySubscriptio
   subscriptions.delete(queryClient)
   // A push that arrived inside the last window still has to land.
   subscription.refresh.cancel()
-  void supabase.removeChannel(subscription.channel)
+  subscription.stop()
 }
 
 /**
