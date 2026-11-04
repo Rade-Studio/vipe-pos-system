@@ -9,5 +9,6 @@ import { PrinterTokenGuard } from './printer-token.guard';
   imports: [RealtimeModule],
   controllers: [PrintController, PrinterDevicesController],
   providers: [PrintService, PrinterTokenGuard],
+  exports: [PrintService],
 })
 export class PrintModule {}

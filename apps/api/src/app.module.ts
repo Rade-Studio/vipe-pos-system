@@ -5,6 +5,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { EnvModule } from './config/env.module';
 import { DbModule } from './db/db.module';
+import { DeliveryModule } from './delivery/delivery.module';
 import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
@@ -32,6 +33,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     RegistersModule,
     InventoryModule,
     PrintModule,
+    DeliveryModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

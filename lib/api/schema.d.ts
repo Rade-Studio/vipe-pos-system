@@ -1188,6 +1188,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/delivery/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeliveryController_findCustomer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/delivery/couriers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeliveryController_listCouriers"];
+        put?: never;
+        post: operations["DeliveryController_createCourier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/delivery/couriers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["DeliveryController_updateCourier"];
+        trace?: never;
+    };
+    "/api/delivery/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DeliveryController_createOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/delivery/orders/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DeliveryController_setStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/delivery/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeliveryController_listActive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2580,6 +2676,174 @@ export interface components {
             lastSeenAt: string | null;
             /** @description Plaintext token (VIPE_PRINTER_TOKEN). Shown only in this response. */
             token: string;
+        };
+        Customer: {
+            /** Format: uuid */
+            id: string;
+            /** @description 7..15 digits. */
+            phone: string;
+            name: string;
+            notes: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CustomerAddress: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            customerId: string;
+            label: string | null;
+            addressLine: string;
+            neighborhood: string | null;
+            reference: string | null;
+            isDefault: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CustomerWithAddresses: {
+            customer: components["schemas"]["Customer"];
+            /** @description Default address first. */
+            addresses: components["schemas"]["CustomerAddress"][];
+        };
+        Courier: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            phone: string | null;
+            isActive: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateCourierRequest: {
+            /** @description Trimmed. */
+            name: string;
+            /** @description Normalised like the web; blank or null clears it. */
+            phone?: string | null;
+        };
+        UpdateCourierRequest: {
+            name?: string;
+            /** @description Blank or null clears it. */
+            phone?: string | null;
+            isActive?: boolean;
+        };
+        CreateDeliveryCustomer: {
+            /** @description Existing customer; uuid and exclusive with phone, validated by create_delivery_order. */
+            id?: string;
+            /** @description Looked up or registered by phone; 7..15 digits validated by create_delivery_order (not normalised). */
+            phone?: string;
+            /** @description Required for a new customer (1..120 chars, validated by create_delivery_order); renames an existing one when different. */
+            name?: string;
+        };
+        CreateDeliveryAddress: {
+            /** @description Saved address of the customer; uuid and exclusive with addressLine, validated by create_delivery_order. */
+            id?: string;
+            /** @description Required without id; 1..200 chars validated by create_delivery_order. */
+            addressLine?: string;
+            /** @description <= 80 chars validated by create_delivery_order. */
+            neighborhood?: string | null;
+            /** @description <= 200 chars validated by create_delivery_order. */
+            reference?: string | null;
+            /** @description <= 40 chars validated by create_delivery_order. */
+            label?: string | null;
+            /** @description Store the new address in customer_addresses (default false). */
+            save?: boolean;
+        };
+        CreateDeliveryItem: {
+            /** Format: uuid */
+            dishId: string;
+            /** @description Integer; 1..999 validated by create_delivery_order. */
+            quantity: number;
+            comments?: string | null;
+        };
+        CreateDeliveryOrderRequest: {
+            customer: components["schemas"]["CreateDeliveryCustomer"];
+            address: components["schemas"]["CreateDeliveryAddress"];
+            /** @description 1..100 lines validated by create_delivery_order. */
+            items: components["schemas"]["CreateDeliveryItem"][];
+            /** @description Whole COP pesos; >= 0 validated by create_delivery_order. */
+            deliveryFee: number;
+            /** @enum {string} */
+            paymentMode: "prepaid" | "cash_on_delivery";
+            /** @description Only for cash_on_delivery (a value on prepaid is a 422 from the API); >= 0 validated by create_delivery_order. */
+            cashChangeFor?: number | null;
+            /** @description <= 300 chars validated by create_delivery_order. */
+            notes?: string | null;
+        };
+        DeliveryOrder: {
+            /** Format: uuid */
+            orderId: string;
+            /** Format: uuid */
+            customerId: string;
+            customerName: string;
+            customerPhone: string;
+            addressLine: string;
+            neighborhood: string | null;
+            addressReference: string | null;
+            /** @description Whole COP pesos. */
+            deliveryFee: number;
+            /** @enum {string} */
+            paymentMode: "prepaid" | "cash_on_delivery";
+            cashChangeFor: number | null;
+            /** Format: uuid */
+            courierId: string | null;
+            /** @enum {string} */
+            status: "received" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "failed" | "cancelled";
+            failureReason: string | null;
+            notes: string | null;
+            /** Format: date-time */
+            dispatchedAt: string | null;
+            /** Format: date-time */
+            deliveredAt: string | null;
+            /** Format: date-time */
+            failedAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateDeliveryOrderResult: {
+            /** Format: uuid */
+            orderId: string;
+            /** Format: uuid */
+            customerId: string;
+            /**
+             * Format: uuid
+             * @description Only when a new address was saved.
+             */
+            addressId: string | null;
+            delivery: components["schemas"]["DeliveryOrder"];
+            /** @description consume_order_stock of the new order; shortages do not undo it. */
+            consumption: components["schemas"]["ConsumeOrderStockResult"];
+            /** @description Kitchen command job; its id is the command invoiceNumber. */
+            printJob: components["schemas"]["PrintJobCreated"];
+        };
+        SetDeliveryStatusRequest: {
+            /** @enum {string} */
+            action: "start_preparing" | "mark_ready" | "dispatch" | "deliver" | "fail" | "cancel";
+            /**
+             * Format: uuid
+             * @description Required for dispatch.
+             */
+            courierId?: string | null;
+            /** @description Required for fail (1..200 chars). */
+            reason?: string | null;
+        };
+        DeliveryOrderWithBill: {
+            delivery: components["schemas"]["DeliveryOrder"];
+            /** @description subtotal + tax (no delivery fee, no tip). */
+            amountDue: number;
+            subtotal: number;
+            tax: number;
+            /** @description orders.status = paid. */
+            isPaid: boolean;
         };
     };
     responses: never;
@@ -6249,6 +6513,287 @@ export interface operations {
                 content?: never;
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_findCustomer: {
+        parameters: {
+            query: {
+                /** @description Normalised server-side like the web (formatting and a +57 mobile prefix dropped). */
+                phone: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerWithAddresses"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Customer not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_listCouriers: {
+        parameters: {
+            query?: {
+                activeOnly?: "true" | "false";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ordered by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Courier"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_createCourier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCourierRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Courier"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_updateCourier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCourierRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Courier"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_createOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDeliveryOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description create_delivery_order, consume_order_stock and the kitchen command job in one transaction. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateDeliveryOrderResult"];
+                };
+            };
+            /** @description 42501: not admin or delivery_operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description P0002: customer, address or dish not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_setStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDeliveryStatusRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryOrder"];
+                };
+            };
+            /** @description 42501: the role may not perform the action. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description P0002: delivery or courier not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_listActive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Open deliveries plus those delivered or cancelled today (restaurant timezone), newest update first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryOrderWithBill"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

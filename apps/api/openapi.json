@@ -4304,6 +4304,325 @@
           "devices"
         ]
       }
+    },
+    "/api/delivery/customers": {
+      "get": {
+        "operationId": "DeliveryController_findCustomer",
+        "parameters": [
+          {
+            "name": "phone",
+            "required": true,
+            "in": "query",
+            "description": "Normalised server-side like the web (formatting and a +57 mobile prefix dropped).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerWithAddresses"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": "Customer not found."
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/couriers": {
+      "get": {
+        "operationId": "DeliveryController_listCouriers",
+        "parameters": [
+          {
+            "name": "activeOnly",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Courier"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      },
+      "post": {
+        "operationId": "DeliveryController_createCourier",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCourierRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Courier"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/couriers/{id}": {
+      "patch": {
+        "operationId": "DeliveryController_updateCourier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCourierRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Courier"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/orders": {
+      "post": {
+        "operationId": "DeliveryController_createOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeliveryOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "create_delivery_order, consume_order_stock and the kitchen command job in one transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateDeliveryOrderResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "42501: not admin or delivery_operator."
+          },
+          "404": {
+            "description": "P0002: customer, address or dish not found."
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/orders/{id}/status": {
+      "post": {
+        "operationId": "DeliveryController_setStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDeliveryStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "42501: the role may not perform the action."
+          },
+          "404": {
+            "description": "P0002: delivery or courier not found."
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/active": {
+      "get": {
+        "operationId": "DeliveryController_listActive",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Open deliveries plus those delivered or cancelled today (restaurant timezone), newest update first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryOrderWithBill"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
     }
   },
   "info": {
@@ -8787,6 +9106,535 @@
           "revokedAt",
           "lastSeenAt",
           "token"
+        ]
+      },
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "phone": {
+            "type": "string",
+            "description": "7..15 digits."
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "phone",
+          "name",
+          "notes",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CustomerAddress": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "customerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine": {
+            "type": "string"
+          },
+          "neighborhood": {
+            "type": "string",
+            "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "customerId",
+          "label",
+          "addressLine",
+          "neighborhood",
+          "reference",
+          "isDefault",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CustomerWithAddresses": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/Customer"
+          },
+          "addresses": {
+            "description": "Default address first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerAddress"
+            }
+          }
+        },
+        "required": [
+          "customer",
+          "addresses"
+        ]
+      },
+      "Courier": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "phone",
+          "isActive",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateCourierRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Trimmed."
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true,
+            "description": "Normalised like the web; blank or null clears it."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateCourierRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true,
+            "description": "Blank or null clears it."
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateDeliveryCustomer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Existing customer; uuid and exclusive with phone, validated by create_delivery_order."
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Looked up or registered by phone; 7..15 digits validated by create_delivery_order (not normalised)."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Required for a new customer (1..120 chars, validated by create_delivery_order); renames an existing one when different."
+          }
+        }
+      },
+      "CreateDeliveryAddress": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Saved address of the customer; uuid and exclusive with addressLine, validated by create_delivery_order."
+          },
+          "addressLine": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Required without id; 1..200 chars validated by create_delivery_order."
+          },
+          "neighborhood": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000,
+            "description": "<= 80 chars validated by create_delivery_order."
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000,
+            "description": "<= 200 chars validated by create_delivery_order."
+          },
+          "label": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000,
+            "description": "<= 40 chars validated by create_delivery_order."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Store the new address in customer_addresses (default false)."
+          }
+        }
+      },
+      "CreateDeliveryItem": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "Integer; 1..999 validated by create_delivery_order."
+          },
+          "comments": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "dishId",
+          "quantity"
+        ]
+      },
+      "CreateDeliveryOrderRequest": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/CreateDeliveryCustomer"
+          },
+          "address": {
+            "$ref": "#/components/schemas/CreateDeliveryAddress"
+          },
+          "items": {
+            "maxItems": 500,
+            "description": "1..100 lines validated by create_delivery_order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateDeliveryItem"
+            }
+          },
+          "deliveryFee": {
+            "type": "integer",
+            "description": "Whole COP pesos; >= 0 validated by create_delivery_order."
+          },
+          "paymentMode": {
+            "type": "string",
+            "enum": [
+              "prepaid",
+              "cash_on_delivery"
+            ]
+          },
+          "cashChangeFor": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Only for cash_on_delivery (a value on prepaid is a 422 from the API); >= 0 validated by create_delivery_order."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000,
+            "description": "<= 300 chars validated by create_delivery_order."
+          }
+        },
+        "required": [
+          "customer",
+          "address",
+          "items",
+          "deliveryFee",
+          "paymentMode"
+        ]
+      },
+      "DeliveryOrder": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "customerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "customerPhone": {
+            "type": "string"
+          },
+          "addressLine": {
+            "type": "string"
+          },
+          "neighborhood": {
+            "type": "string",
+            "nullable": true
+          },
+          "addressReference": {
+            "type": "string",
+            "nullable": true
+          },
+          "deliveryFee": {
+            "type": "number",
+            "description": "Whole COP pesos."
+          },
+          "paymentMode": {
+            "type": "string",
+            "enum": [
+              "prepaid",
+              "cash_on_delivery"
+            ]
+          },
+          "cashChangeFor": {
+            "type": "number",
+            "nullable": true
+          },
+          "courierId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "received",
+              "preparing",
+              "ready",
+              "out_for_delivery",
+              "delivered",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "failureReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "dispatchedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "deliveredAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "failedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancelledAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "orderId",
+          "customerId",
+          "customerName",
+          "customerPhone",
+          "addressLine",
+          "neighborhood",
+          "addressReference",
+          "deliveryFee",
+          "paymentMode",
+          "cashChangeFor",
+          "courierId",
+          "status",
+          "failureReason",
+          "notes",
+          "dispatchedAt",
+          "deliveredAt",
+          "failedAt",
+          "cancelledAt",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateDeliveryOrderResult": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "customerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "addressId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Only when a new address was saved."
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/DeliveryOrder"
+          },
+          "consumption": {
+            "description": "consume_order_stock of the new order; shortages do not undo it.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ConsumeOrderStockResult"
+              }
+            ]
+          },
+          "printJob": {
+            "description": "Kitchen command job; its id is the command invoiceNumber.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PrintJobCreated"
+              }
+            ]
+          }
+        },
+        "required": [
+          "orderId",
+          "customerId",
+          "addressId",
+          "delivery",
+          "consumption",
+          "printJob"
+        ]
+      },
+      "SetDeliveryStatusRequest": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start_preparing",
+              "mark_ready",
+              "dispatch",
+              "deliver",
+              "fail",
+              "cancel"
+            ]
+          },
+          "courierId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Required for dispatch."
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Required for fail (1..200 chars)."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "DeliveryOrderWithBill": {
+        "type": "object",
+        "properties": {
+          "delivery": {
+            "$ref": "#/components/schemas/DeliveryOrder"
+          },
+          "amountDue": {
+            "type": "number",
+            "description": "subtotal + tax (no delivery fee, no tip)."
+          },
+          "subtotal": {
+            "type": "number"
+          },
+          "tax": {
+            "type": "number"
+          },
+          "isPaid": {
+            "type": "boolean",
+            "description": "orders.status = paid."
+          }
+        },
+        "required": [
+          "delivery",
+          "amountDue",
+          "subtotal",
+          "tax",
+          "isPaid"
         ]
       }
     }

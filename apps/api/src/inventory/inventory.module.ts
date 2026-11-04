@@ -30,5 +30,6 @@ import { StockService } from './stock.service';
     InventoryController,
   ],
   providers: [ItemsService, StockService, PurchasesService, CountsService, FormulasService, SalesService],
+  exports: [SalesService],
 })
 export class InventoryModule {}

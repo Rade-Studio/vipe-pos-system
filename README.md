@@ -360,6 +360,8 @@ Inventario (`/api/inventory`): artículos con stock inicial en la misma transacc
 
 Impresión: `POST /api/print/commands` y `POST /api/print/invoices` (cualquier rol con sesión) encolan el ticket y lo envían a las impresoras del restaurante; `GET /api/print/jobs/pending` y `POST /api/print/jobs/:id/ack` (token de impresora como `Authorization: Bearer`); `GET|POST /api/devices/printers` y `DELETE /api/devices/printers/:id` (admin). Detalle en [Servicio de impresión](#️-servicio-de-impresión-python).
 
+Domicilios (`/api/delivery`): `GET /customers?phone=` busca el cliente por teléfono normalizado (`+57 310…` → `310…`) con sus direcciones (404 si no existe); `GET|POST /couriers` y `PATCH /couriers/:id` administran domiciliarios (escritura solo admin); `POST /orders` crea el domicilio, descuenta inventario y encola la comanda de cocina en una sola transacción y devuelve `consumption` con los faltantes; `POST /orders/:id/status {action, courierId?, reason?}` aplica las transiciones de `set_delivery_status` con el mensaje del servidor y `code`; `GET /active` lista los domicilios abiertos y los cerrados hoy según la zona horaria del restaurante.
+
 Errores: las respuestas 4xx originadas en la base de datos incluyen `code` (SQLSTATE) y, para `P0001` con `DETAIL`, `details`; los 422 de validación no llevan `code`.
 
 Tiempo real: la web abre una sola conexión `socket.io-client` (versión fija `4.8.4`, la
