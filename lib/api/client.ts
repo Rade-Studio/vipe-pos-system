@@ -12,13 +12,35 @@ import type { paths } from "./schema"
  * Every non-2xx answer rejects with an `ApiError`. A 401 on a protected route
  * triggers one silent `POST /api/auth/refresh` (shared by concurrent requests)
  * and one retry; the shell gets `signed_out` only when the refresh is refused
- * (401/403) and the retry is still 401.
+ * (401/403) and the retry is still 401. A refresh that rotated the cookies is
+ * announced with `onSessionRefreshed`, so the realtime socket reconnects with
+ * the new access cookie (its handshake is only checked once).
  */
 
 /** Auth routes answer 401 on their own terms; refreshing them would loop. */
 const NO_REFRESH = new Set(["/api/auth/login", "/api/auth/refresh", "/api/auth/logout"])
 
 type Fetch = (request: Request) => Promise<Response>
+
+const refreshListeners = new Set<() => void>()
+
+/** Called after every refresh that rotated the cookies; returns the unsubscribe. */
+export function onSessionRefreshed(listener: () => void): () => void {
+  refreshListeners.add(listener)
+  return () => {
+    refreshListeners.delete(listener)
+  }
+}
+
+function emitSessionRefreshed(): void {
+  for (const listener of [...refreshListeners]) {
+    try {
+      listener()
+    } catch {
+      // A broken listener must not fail the request that refreshed.
+    }
+  }
+}
 
 export interface ApiClientOptions {
   /** Origin the paths are resolved against; the page's own origin by default. */
@@ -45,6 +67,10 @@ export function createApiClient(options: ApiClientOptions = {}) {
           response.ok ? "ok" : response.status === 401 || response.status === 403 ? "rejected" : "failed",
         (): RefreshOutcome => "failed",
       )
+      .then((outcome) => {
+        if (outcome === "ok") emitSessionRefreshed()
+        return outcome
+      })
       .finally(() => {
         refreshing = null
       })

@@ -8,7 +8,7 @@
  * What it replaces (all of it was inline in `CashierView`, duplicated three
  * times over):
  *
- *  - THREE `orderService.getByStatus([...])` calls (one per status) feeding
+ *  - THREE `getByStatus([...])` calls (one per status) feeding
  *    THREE separate local arrays plus a `by-table` group, all of which had to
  *    be re-synced by hand after every refresh and after every realtime event.
  *    Now the screen issues ONE `getByStatus(CASHIER_ORDER_STATUSES)` call and
@@ -16,17 +16,19 @@
  *    re-buckets the row for free (no refetch, no second array to update).
  *
  *  - a wire-row converter duplicated between the initial load and the realtime
- *    INSERT path (`toCashierOrder`).
+ *    INSERT path. Since T8b both go through the shared `toOrder`
+ *    (lib/api/orders.ts); realtime rows are adapted by `orderDtoFromWire`.
  *
  * Delivery invariants (odd/tasks/domicilios.md S13/S14) are preserved here, not
- * re-implemented: `orderTypeFromRow` keeps the delivery flag on every mapping
+ * re-implemented: the shared mapper keeps the delivery flag on every mapping
  * (so a domicilio is never labelled "Mesa ?") and `groupDineInOrdersByTable`
  * keeps tableless delivery rows OUT of the by-table cards — `DeliveryPaymentsPanel`
  * stays the place where the cashier charges deliveries.
  */
-import { groupDineInOrdersByTable, orderTypeFromRow } from "@/lib/delivery/kitchen"
+import { orderDtoFromWire, toOrder } from "@/lib/api/orders"
+import { groupDineInOrdersByTable } from "@/lib/delivery/kitchen"
 import { mergeOrdersList, wireRowToPartialOrder } from "@/lib/realtime/order-merge"
-import type { Order, OrderBill } from "@/types"
+import type { Order } from "@/types"
 
 /**
  * The statuses the cashier screen lists, asked for in ONE request. Kept as the
@@ -54,8 +56,7 @@ export interface CashierOrderItemRow {
   comments?: string | null
 }
 
-/** The `orders` + embedded `order_items` shape both `getByStatus` and the
- *  realtime `postgres_changes` broadcast deliver. */
+/** The `orders` row + `order_items` the realtime `pos_changes` broadcast delivers. */
 export interface CashierOrderRow {
   id: string
   table_id?: string | null
@@ -79,50 +80,10 @@ function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
-function readItems(rows: CashierOrderItemRow[] | null | undefined) {
-  if (!Array.isArray(rows)) return []
-  // Same fields the old inline converter produced (the views only read
-  // name/price/quantity/comments); the cast keeps the runtime shape identical.
-  return rows.map(
-    (item) =>
-      ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        comments: item.comments || undefined,
-        categoryId: "",
-      }) as unknown as Order["items"][number],
-  )
-}
-
-function readBill(row: CashierOrderRow): OrderBill {
-  return {
-    subtotal: num(row.subtotal),
-    tax: num(row.tax),
-    taxPercentage: num(row.tax_percentage),
-    tip: num(row.tip),
-    tipPercentage: num(row.tip_percentage),
-    total: num(row.total),
-    totalDiscounts: num(row.total_discounts),
-  }
-}
-
-/** Wire row → the app `Order` every cashier list renders. */
-export function toCashierOrder(row: CashierOrderRow): Order {
-  return {
-    id: row.id,
-    tableId: row.table_id ?? "",
-    // S14: keep the delivery flag, otherwise a row with no table renders "Mesa ?".
-    orderType: orderTypeFromRow(row),
-    items: readItems(row.order_items),
-    status: row.status as Order["status"],
-    bill: readBill(row),
-    waiter: row.waiter_id ?? "",
-    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-    isPartialOrder: row.is_partial_order || false,
-    parentOrderId: row.parent_order_id || undefined,
-  }
+/** Wire row -> app `Order`, through the shared mapper. Null without id/status. */
+function orderFromRow(row: unknown): Order | null {
+  const dto = orderDtoFromWire(row)
+  return dto ? toOrder(dto) : null
 }
 
 /* ----------------------------------------------------------------- derives */
@@ -195,17 +156,16 @@ function carriesMoney(row: Record<string, unknown>): boolean {
  */
 function cashierPatchFromRow(row: unknown): Partial<Order> | null {
   const base = wireRowToPartialOrder(row)
-  if (!base) return null
+  const mapped = orderFromRow(row)
+  if (!base || !mapped) return null
   const source = row as Record<string, unknown>
   const patch: Partial<Order> = { ...base }
   // `wireRowToPartialOrder` defaults `tableId` to "" for a row that omits it,
   // which on the cashier screen would drop the card out of the by-table view.
   // Only carry the fields the broadcast actually sent (D7 consequence 2).
   if (!("table_id" in source)) delete patch.tableId
-  const items = Array.isArray(source.order_items) ? readItems(source.order_items as CashierOrderItemRow[]) : null
-  const bill = carriesMoney(source) ? readBill(source as unknown as CashierOrderRow) : null
-  if (items && items.length > 0) patch.items = items
-  if (bill) patch.bill = bill
+  if (Array.isArray(source.order_items) && mapped.items.length > 0) patch.items = mapped.items
+  if (carriesMoney(source)) patch.bill = mapped.bill
   return patch
 }
 
@@ -227,7 +187,8 @@ export function applyCashierOrderEvent(orders: readonly Order[], payload: Cashie
     const row = payload.new as CashierOrderRow | null | undefined
     if (!row || !row.id || !row.status) return prev
     if (!Array.isArray(row.order_items) || row.order_items.length === 0) return prev
-    return mergeOrdersList(prev, { eventType: "INSERT", new: toCashierOrder(row) })
+    const order = orderFromRow(row)
+    return order ? mergeOrdersList(prev, { eventType: "INSERT", new: order }) : prev
   }
 
   if (payload.eventType === "UPDATE") {
@@ -294,7 +255,7 @@ export function billSourceFromOrder(order: Order): CashierBillSource {
 /**
  * Whether a bill source is enough to charge without reading the order again.
  * A realtime INSERT stub (or a caller that passes nothing) has no items, so the
- * dialog still falls back to `orderService.getById` in that case.
+ * dialog still falls back to `GET /orders/:id` in that case.
  */
 export function hasBillableItems(source: CashierBillSource | null | undefined): boolean {
   return !!source && Array.isArray(source.order_items) && source.order_items.length > 0

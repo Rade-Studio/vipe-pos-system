@@ -11,16 +11,21 @@ import { EmptyState } from "@/components/admin/common/EmptyState"
 import { Toolbar } from "@/components/admin/common/Panel"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { tableService } from "@/lib/supabase/service"
+import * as tablesApi from "@/lib/api/tables"
+import { ApiError, conflictMessage } from "@/lib/api/errors"
 import { log } from "@/lib/log"
-import { realtimeService } from "@/lib/supabase/realtime-service"
-import { mergeRowList, type RowChange } from "@/lib/realtime/table-merge"
+import { realtimeService } from "@/lib/api/realtime"
+import { mergeRowList, type RowChange, type TableRow as TableEventRow } from "@/lib/realtime/table-merge"
 import { useToast } from "@/hooks/use-toast"
 import { Filter, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { getStatusLabel } from "@/utils/helpers"
+import type { TableStatus } from "@/types"
+
+/** The panel holds the `pos_changes` row shape, so events merge as they arrive. */
+type PanelTable = TableEventRow & { id: string; number: number; status: string }
 
 export function TableManagementPanel() {
-  const [tables, setTables] = useState<any[]>([])
+  const [tables, setTables] = useState<PanelTable[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
@@ -40,8 +45,8 @@ export function TableManagementPanel() {
     const loadTables = async () => {
       setLoading(true)
       try {
-        const data = await tableService.getAll()
-        setTables(data)
+        const data = await tablesApi.getAll()
+        setTables(data.map((table) => tablesApi.toTableRow(table) as PanelTable))
       } catch (error) {
         log.error("Error al cargar mesas:", { error: String(error) })
         toast({
@@ -58,57 +63,12 @@ export function TableManagementPanel() {
     loadTables()
 
     // Suscribirse a cambios en tiempo real — merge the row in place instead
-    // of reloading the whole panel (A-4, D9). The panel holds raw DB rows
-    // (not the mapped `Table` shape used elsewhere via useTableStore), so it
-    // uses the generic row merger rather than mergeTableList/toTable.
-    //
-    // A postgres_changes payload never carries the joined `profiles`
-    // relation this panel renders (table.profiles?.full_name) — merging the
-    // raw payload row directly would silently drop the waiter's display name
-    // until the next full reload. Fixed with a targeted per-row refetch:
-    // tableService.getById already selects the same `profiles(id, full_name)`
-    // join as the initial getAll() fetch, so re-fetching just the one
-    // changed row keeps the join alive without reintroducing a full-panel
-    // reload or its loading spinner (setLoading is never called here — not
-    // doing so is the entire point of A-4). DELETE needs no fetch: the
-    // payload's `old.id` is enough for mergeRowList to filter the row out.
+    // of reloading the whole panel (A-4, D9). The API listener attaches the
+    // waiter's `waiter_name` to every `tables` event (T8b), so the event row
+    // is already what this panel renders: no per-event read, no spinner.
     const unsubscribe = realtimeService.subscribeToTables((payload) => {
-      log.info("Cambio en mesa recibido en panel de administración:", { payload })
-
-      const change = payload as unknown as RowChange
-
-      if (change.eventType === "DELETE") {
-        setTables((prevTables) => mergeRowList(prevTables, change))
-        return
-      }
-
-      const id = change.new?.id
-      if (typeof id !== "string" || !id) {
-        // No id to enrich — mergeRowList's own D10 contract already treats
-        // an id-less INSERT/UPDATE as a no-op.
-        setTables((prevTables) => mergeRowList(prevTables, change))
-        return
-      }
-
-      tableService
-        .getById(id)
-        .then((enrichedRow) => {
-          setTables((prevTables) =>
-            mergeRowList(prevTables, {
-              eventType: change.eventType,
-              new: enrichedRow as unknown as Record<string, unknown>,
-            }),
-          )
-        })
-        .catch((error) => {
-          // A row missing its waiter name is better than a dropped event —
-          // deliberately fall back to merging the raw payload row so the
-          // table's own fields (status, number, updated_at) still update
-          // even when the enrichment fetch itself fails.
-          log.error("Error al enriquecer mesa desde postgres_changes:", { error: String(error) })
-          setTables((prevTables) => mergeRowList(prevTables, change))
-        })
-    })
+      setTables((prevTables) => mergeRowList(prevTables, payload as unknown as RowChange))
+    }, "admin")
 
     // Limpiar suscripción al desmontar
     return () => {
@@ -141,7 +101,7 @@ export function TableManagementPanel() {
     }
 
     try {
-      await tableService.create({
+      await tablesApi.create({
         number: Number.parseInt(newTableNumber),
         status: "available",
       })
@@ -158,14 +118,14 @@ export function TableManagementPanel() {
       log.error("Error al crear mesa:", { error: String(error) })
       toast({
         title: "Error",
-        description: "No se pudo crear la mesa. Intente nuevamente.",
+        description: conflictMessage(error, "No se pudo crear la mesa. Intente nuevamente."),
         variant: "destructive",
       })
     }
   }
 
   // Abrir diálogo de edición
-  const handleOpenEditDialog = (table: any) => {
+  const handleOpenEditDialog = (table: PanelTable) => {
     setEditTableId(table.id)
     setEditTableNumber(table.number.toString())
     setEditTableStatus(table.status)
@@ -184,9 +144,9 @@ export function TableManagementPanel() {
     }
 
     try {
-      await tableService.update(editTableId, {
+      await tablesApi.update(editTableId, {
         number: Number.parseInt(editTableNumber),
-        status: editTableStatus,
+        status: editTableStatus as TableStatus,
       })
       setShowEditDialog(false)
 
@@ -200,7 +160,7 @@ export function TableManagementPanel() {
       log.error("Error al actualizar mesa:", { error: String(error) })
       toast({
         title: "Error",
-        description: "No se pudo actualizar la mesa. Intente nuevamente.",
+        description: conflictMessage(error, "No se pudo actualizar la mesa. Intente nuevamente."),
         variant: "destructive",
       })
     }
@@ -217,7 +177,7 @@ export function TableManagementPanel() {
     if (!tableToDelete) return
 
     try {
-      await tableService.delete(tableToDelete)
+      await tablesApi.delete(tableToDelete)
       setShowDeleteDialog(false)
       setTableToDelete(null)
 
@@ -225,14 +185,14 @@ export function TableManagementPanel() {
         title: "Mesa eliminada",
         description: "La mesa ha sido eliminada exitosamente.",
       })
-    } catch (error: any) {
+    } catch (error) {
       log.error("Error al eliminar mesa:", { error: String(error) })
 
-      // Mostrar mensaje específico si hay órdenes activas
-      if (error.message && error.message.includes("órdenes activas")) {
+      // 409 `Table has open orders`: the API's own message.
+      if (error instanceof ApiError && error.status === 409) {
         toast({
           title: "No se puede eliminar",
-          description: "No se puede eliminar una mesa con órdenes activas.",
+          description: error.message,
           variant: "destructive",
         })
       } else {
@@ -328,7 +288,7 @@ export function TableManagementPanel() {
                     <StatusBadge status={table.status} />
                   </TableCell>
                   <TableCell className={`${cellClass} text-muted-foreground sm:text-foreground`}>
-                    {table.waiter_id ? table.profiles?.full_name || "Desconocido" : "Sin mesero"}
+                    {table.waiter_id ? table.waiter_name || "Desconocido" : "Sin mesero"}
                   </TableCell>
                   <TableCell className={`${cellClass} text-right text-xs text-muted-foreground sm:text-left md:table-cell sm:hidden`}>
                     {table.updated_at
@@ -430,7 +390,7 @@ export function TableManagementPanel() {
                     <SelectItem value="reserved">Reservada</SelectItem>
                     <SelectItem value="occupied">Ocupada</SelectItem>
                     <SelectItem value="kitchen">En cocina</SelectItem>
-                    <SelectItem value="delivered">Servida</SelectItem>
+                    <SelectItem value="served">Servida</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

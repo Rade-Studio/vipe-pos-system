@@ -119,14 +119,9 @@ export interface RowChange {
  * contract as `mergeTableList`, including the identical `prev` reference on
  * every no-op row.
  *
- * Performs NO enrichment either: a postgres_changes payload carries only the
- * raw table's own columns, never a joined relation. This function has no way
- * to know a caller's initial fetch enriched its rows with a join, so it is
- * the caller's responsibility to supply an already-enriched `new` row when
- * one is needed — `TableManagementPanel` does this via a targeted
- * `tableService.getById(id)` refetch of just the changed row before calling
- * this function, rather than handing it the raw payload directly. See that
- * component's realtime handler for the full rationale.
+ * Performs NO enrichment either. Since T8b the API listener attaches
+ * `waiter_name` to every `tables` event, so `TableManagementPanel` (which
+ * holds rows in this same shape) merges the payload row directly.
  */
 export function mergeRowList<T extends { id: string }>(prev: readonly T[], change: RowChange): T[] {
   const { eventType, new: newRow, old: oldRow } = change

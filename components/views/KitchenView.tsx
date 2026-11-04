@@ -3,9 +3,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, Order } from "@/types"
-import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
-
-type RealtimePayload = RealtimePostgresChangesPayload<any>
 import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
@@ -14,8 +11,8 @@ import { OrderCard } from "@/components/pos/OrderCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
-import { orderService } from "@/lib/supabase/service"
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { getByStatus, serveItems, toOrder, type OrderDto } from "@/lib/api/orders"
+import { realtimeService, type ChangeEvent } from "@/lib/api/realtime"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { Bell, RefreshCw, Wifi, WifiOff, Filter } from "lucide-react"
@@ -38,7 +35,7 @@ import {
   type PlaceFilter,
 } from "@/lib/delivery/kitchen"
 import { DeliveryOrderBanner } from "@/components/kitchen/DeliveryOrderBanner"
-import { kitchenOrderFromRow, kitchenOrdersFromRows, type DbOrderRow } from "@/lib/kitchen/order"
+import { kitchenOrderOf, kitchenOrdersOf } from "@/lib/kitchen/order"
 import {
   addNewItems,
   dropNewItems,
@@ -49,7 +46,6 @@ import {
 import type { KitchenItemBatch } from "@/lib/kitchen/realtime"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { supabase } from "@/lib/supabase/client"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,12 +91,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   // The kitchen queue, and ONLY the kitchen queue: an order that reaches the
   // kitchen with something left to cook. No `delivered` read and no read at all
   // for the tables tab (the shell owns the tables).
-  const fetchKitchenOrders = async () => {
-    const kitchenRows = await orderService.getByStatus("kitchen")
-    return kitchenOrdersFromRows(
-      kitchenRows.filter((order) => order.order_items?.some((item) => item.status === "kitchen")) as DbOrderRow[],
-    )
-  }
+  const fetchKitchenOrders = async () => kitchenOrdersOf((await getByStatus("kitchen")).map(toOrder))
 
   const { data: kitchenOrdersData } = useQuery({
     queryKey: ['orders', 'kitchen'],
@@ -210,7 +201,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   }
 
   // Manejar la eliminación de una orden (evento DELETE, sin lectura)
-  const handleOrderDeleted = (payload: RealtimePayload) => {
+  const handleOrderDeleted = (payload: ChangeEvent) => {
     const orderId = (payload.old as { id?: string } | undefined)?.id
     if (!orderId) return
     log.info("Orden eliminada de cocina:", { orderId })
@@ -223,9 +214,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   // ráfaga de eventos (una orden nueva con cinco items, dos productos
   // entregados a la vez, ...), así que aquí no hay ninguna lectura: solo se
   // parchea esa orden y se ajustan los avisos de "nuevo".
-  const handleItemBatch = (batch: KitchenItemBatch<DbOrderRow>) => {
+  const handleItemBatch = (batch: KitchenItemBatch<Order>) => {
     const { orderId, newItemIds, servedItemIds } = batch
-    const storeOrder = kitchenOrderFromRow(batch.order)
+    const storeOrder = kitchenOrderOf(batch.order)
     const known = useOrderStore.getState().orders.some((order) => order.id === orderId)
 
     // Lo que salió de cocina deja de estar marcado como nuevo.
@@ -428,10 +419,10 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     }
   }
 
-  // Closes an order whose items are all served: dine-in frees its table
-  // for service, delivery moves to ready. Returns the toast text.
+  // The API delivered the order when its last kitchen item was served (and
+  // set its table to served): mirror that locally; a delivery moves to ready.
+  // Returns the toast text.
   const completeOrder = async (order: Order): Promise<string> => {
-    await orderService.updateStatus(order.id, "delivered")
     updateOrderStatus(order.id, "delivered")
     if (hasTable(order)) updateTableStatus(order.tableId, "served")
     const delivery = isDeliveryOrder(order)
@@ -457,20 +448,12 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       // (el parche local de abajo ya la dejó bien).
       realtimeService.markLocalItemChanges([itemId])
 
-      // Actualizar el estado del item a "served" en la base de datos.
-      // Un rechazo (no solo `{ error }`) deja la escritura sin hacer, así que
-      // la marca local se levanta en cualquier fallo; si se quedara, se
-      // tragaría un cambio real posterior de este item.
+      // Servir el item en el servidor. Cualquier fallo deja la escritura sin
+      // hacer, así que la marca local se levanta; si se quedara, se tragaría un
+      // cambio real posterior de este item.
+      let served: OrderDto
       try {
-        const { error } = await supabase
-          .from("order_items")
-          .update({ status: "served", updated_at: new Date().toISOString() })
-          .eq("id", itemId)
-
-        if (error) {
-          log.error("Error al actualizar estado del item:", { error: String(error) })
-          throw error
-        }
+        served = await serveItems(orderId, [itemId])
       } catch (error) {
         realtimeService.unmarkLocalItemChanges([itemId])
         throw error
@@ -489,9 +472,10 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       const order = useOrderStore.getState().orders.find((o) => o.id === orderId)
       if (!order) return
 
-      const remainingItems = order.items.filter((item) => item.id !== itemId)
+      // What the server still has in the kitchen for this order.
+      const remaining = kitchenOrderOf(toOrder(served))
 
-      if (remainingItems.length === 0) {
+      if (!remaining) {
         // Sin items pendientes la orden sale del panel de cocina.
         removeOrder(orderId)
         setNewItems((previous) => dropNewItems(previous, orderId))
@@ -504,7 +488,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
         return
       }
 
-      updateOrder(orderId, { ...order, items: remainingItems })
+      updateOrder(orderId, remaining)
     } catch (error) {
       log.error("Error al marcar el item como entregado:", { error: String(error) })
       toast({
@@ -547,22 +531,22 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       // esta cocina ya aplicó el cambio, así que ninguno vuelve a leer.
       realtimeService.markLocalItemChanges(itemIds)
 
-      // Actualizar todos los items a estado "served" en la base de datos
-      // (mismo criterio: cualquier fallo, incluido un rechazo, levanta las
-      // marcas locales).
+      // Servir todos los items en una sola petición (mismo criterio: cualquier
+      // fallo levanta las marcas locales).
+      let served: OrderDto
       try {
-        const { error } = await supabase
-          .from("order_items")
-          .update({ status: "served", updated_at: new Date().toISOString() })
-          .in("id", itemIds)
-
-        if (error) {
-          log.error("Error al actualizar estado de los items:", { error: String(error) })
-          throw error
-        }
+        served = await serveItems(order.id, itemIds)
       } catch (error) {
         realtimeService.unmarkLocalItemChanges(itemIds)
         throw error
+      }
+
+      // Items that reached the kitchen meanwhile keep the order on the board.
+      const remaining = kitchenOrderOf(toOrder(served))
+      if (remaining) {
+        updateOrder(order.id, remaining)
+        setNewItems((previous) => removeNewItems(previous, order.id, itemIds))
+        return
       }
 
       realtimeService.unregisterOrder(order.id)

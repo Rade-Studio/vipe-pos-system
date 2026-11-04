@@ -14,59 +14,23 @@ import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { useTableStore } from "@/store/useTableStore"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useOrderStore } from "@/store/useOrderStore"
-import { tableService, orderService } from "@/lib/supabase/service"
+import * as tablesApi from "@/lib/api/tables"
+import { getByStatus, toOrder } from "@/lib/api/orders"
 import { fetchSession, profileFromSession, type Session } from "@/lib/api/auth"
 import { viewForRole } from "@/lib/auth/roles"
 import { startupLoadsForRole, startupRole, type ShellLoad } from "@/lib/shell/startup-loads"
 import { onAuthEvent } from "@/lib/shell/auth-events"
 import { log } from "@/lib/log"
 import type { ProfileRole } from "@/types"
-import { orderTypeFromRow } from "@/lib/delivery/kitchen"
 
 /**
  * One call for both statuses: the shell used to issue `getByStatus("kitchen")`
- * and `getByStatus("delivered")` back to back and concatenated them.
+ * and `getByStatus("delivered")` back to back and concatenated them. Mapped by
+ * the shared `toOrder` (T8b).
  */
 async function loadKitchenAndDeliveredOrders() {
-  const dbOrders = await orderService.getByStatus(["kitchen", "delivered"])
-
-  // Convertir las órdenes de la base de datos al formato que espera el store
-  const storeOrders = dbOrders.map((dbOrder) => {
-    const items = dbOrder.order_items.map((item) => ({
-      id: item.dish_id || `item-${item.id}`,
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity,
-      comments: item.comments ?? undefined,
-      categoryId: "",
-      image: "",
-      status: (item.status ?? "kitchen") as "kitchen" | "served",
-      addedAt: item.added_at ? new Date(item.added_at) : undefined,
-    }))
-
-    return {
-      id: dbOrder.id,
-      tableId: dbOrder.table_id ?? "",
-      orderType: orderTypeFromRow(dbOrder),
-      items,
-      status: dbOrder.status as "active" | "kitchen" | "delivered" | "paid" | "cancelled",
-      bill: {
-        subtotal: dbOrder.subtotal,
-        tax: dbOrder.tax,
-        taxPercentage: dbOrder.tax_percentage,
-        tip: dbOrder.tip,
-        tipPercentage: dbOrder.tip_percentage,
-        total: dbOrder.total,
-        totalDiscounts: dbOrder.total_discounts ?? 0,
-      },
-      waiter: dbOrder.waiter_id ?? "",
-      createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
-      isPartialOrder: dbOrder.is_partial_order ?? false,
-      parentOrderId: dbOrder.parent_order_id ?? null,
-    }
-  })
-
-  useOrderStore.getState().setOrders(storeOrders as any)
+  const orders = await getByStatus(["kitchen", "delivered"])
+  useOrderStore.getState().setOrders(orders.map(toOrder))
 }
 
 export default function Home() {
@@ -188,27 +152,19 @@ export default function Home() {
           return loadConfigFromDB({ canWrite: startupRoleValue === "admin" })
 
         case "tables": {
-          const tablesData = await tableService.getAll()
-          setTables(
-            tablesData.map((table) => ({
-              id: table.id,
-              number: table.number,
-              status: table.status as "available" | "reserved" | "occupied" | "kitchen" | "served",
-              waiter: table.waiter_id ?? undefined,
-              restaurantId: table.restaurant_id,
-            })),
-          )
+          const tablesData = await tablesApi.getAll()
+          setTables(tablesData.map(tablesApi.toTable))
           return
         }
 
         case "waiters": {
-          const waitersData = await tableService.getWaiters()
+          const waitersData = await tablesApi.getWaiters()
           setProfiles(
             waitersData.map((w) => ({
               id: w.id,
               name: w.name,
               username: w.username ?? null,
-              role: w.role as ProfileRole,
+              role: "waiter" as ProfileRole,
             })),
           )
           return

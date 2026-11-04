@@ -2,18 +2,7 @@
 import { supabase, createSupabaseClient } from "./client"
 export { supabase, createSupabaseClient }
 
-// Exportar los servicios
-import {
-  waiterService,
-  tableService,
-  orderService,
-} from "./service"
-
-export {
-  waiterService,
-  tableService,
-  orderService,
-}
+// Orders, tables and waiters moved to the API (lib/api/orders.ts, lib/api/tables.ts).
 
 // Exportar el cliente por defecto para mantener compatibilidad
 export default supabase

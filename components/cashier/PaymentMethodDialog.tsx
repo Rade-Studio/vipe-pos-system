@@ -46,7 +46,7 @@ import type {
   PaymentDraftAction,
   PaymentDraftState,
 } from "@/lib/payments/draft"
-import { orderService } from "@/lib/supabase/service"
+import { getById, toOrder } from "@/lib/api/orders"
 import { log } from "@/lib/log"
 import { MethodPicker } from "./payment/MethodPicker"
 import { TenderLinesList } from "./payment/TenderLinesList"
@@ -55,7 +55,7 @@ import { useRegisterSummary } from "@/hooks/use-register-summary"
 import { canGiveChange, registerSummaryQueryKey } from "@/lib/payments/register-summary"
 import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
 import { queryClient } from "@/lib/queryClient"
-import { hasBillableItems, type CashierBillSource } from "@/lib/cashier/orders"
+import { billSourceFromOrder, hasBillableItems, type CashierBillSource } from "@/lib/cashier/orders"
 
 interface PaymentMethodDialogProps {
   open: boolean
@@ -213,7 +213,7 @@ export function PaymentMethodDialog({
     setLoadingOrder(true)
     ;(async () => {
       try {
-        const fetched = await orderService.getById(orderId)
+        const fetched = billSourceFromOrder(toOrder(await getById(orderId)))
         if (cancelled) return
         setLoadedOrder({ orderId, data: fetched as OrderForBill })
       } catch (err) {

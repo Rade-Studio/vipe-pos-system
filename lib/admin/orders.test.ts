@@ -15,45 +15,16 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// `fetchActiveAdminOrders` reads through the browser client; the recording chain
-// keeps the node suite offline and lets the test assert the ONE read it makes.
-const state = vi.hoisted(() => {
-  type Result = { data: unknown; error: unknown }
-  const calls: { table: string; method: string; args: unknown[] }[] = []
-  const results: Record<string, Result> = {}
-
-  const makeChain = (table: string): any => {
-    const chain: any = {}
-    const record =
-      (method: string) =>
-      (...args: unknown[]) => {
-        calls.push({ table, method, args })
-        return chain
-      }
-    chain.select = record("select")
-    chain.in = record("in")
-    chain.eq = record("eq")
-    chain.gte = record("gte")
-    chain.order = record("order")
-    chain.then = (resolve: (value: Result) => unknown) =>
-      Promise.resolve(results[table] ?? { data: [], error: null }).then(resolve)
-    return chain
-  }
-
-  return { calls, results, makeChain }
-})
-
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    from: (table: string) => state.makeChain(table),
-  },
-}))
+// `fetchActiveAdminOrders` reads through the API client (T8b); the mock keeps
+// the node suite offline and lets the test assert the ONE request it makes.
+const api = vi.hoisted(() => ({ GET: vi.fn() }))
+vi.mock("@/lib/api/client", () => ({ api }))
 
 import {
   ADMIN_ACTIVE_STATUSES,
   NEW_ORDER_PULSE_MS,
   adminOrdersQueryKey,
-  adminOrderFromRow,
+  adminOrderFromDto,
   countOrdersByStatus,
   countPaidOrdersOn,
   fetchActiveAdminOrders,
@@ -67,9 +38,48 @@ import {
 import type { Order } from "@/types"
 
 beforeEach(() => {
-  state.calls.length = 0
-  for (const key of Object.keys(state.results)) delete state.results[key]
+  api.GET.mockReset().mockResolvedValue({ data: [] })
 })
+
+/** An API order with the admin includes (table number, waiter name). */
+function dto(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "o-1",
+    tableId: "t-7",
+    waiterId: "w-2",
+    status: "kitchen",
+    orderType: "dine_in",
+    subtotal: 100,
+    tax: 8,
+    taxPercentage: 8,
+    tip: 0,
+    tipPercentage: 0,
+    total: 108,
+    totalDiscounts: 5,
+    isPartialOrder: false,
+    parentOrderId: null,
+    createdAt: "2026-01-01T10:00:00.000Z",
+    updatedAt: null,
+    items: [
+      {
+        id: "i-1",
+        orderId: "o-1",
+        dishId: "d-1",
+        name: "Bandeja",
+        price: 50,
+        quantity: 2,
+        comments: "sin cebolla",
+        status: "kitchen",
+        addedAt: null,
+        createdAt: null,
+        updatedAt: null,
+      },
+    ],
+    tableNumber: 7,
+    waiterName: "Ana",
+    ...overrides,
+  } as any
+}
 
 function order(partial: Partial<Order> & { id: string }): Order {
   return {
@@ -197,33 +207,17 @@ describe("countOrdersByStatus / countPaidOrdersOn", () => {
 })
 
 describe("fetchActiveAdminOrders", () => {
-  it("is ONE read that asks for exactly the statuses the grid lists", async () => {
+  it("is ONE request for exactly the statuses the grid lists, with the table and waiter names", async () => {
     await fetchActiveAdminOrders()
 
-    // One chain = one HTTP request; every recorded call belongs to `orders`.
-    expect(new Set(state.calls.map((call) => call.table))).toEqual(new Set(["orders"]))
-    expect(state.calls.filter((call) => call.method === "select")).toHaveLength(1)
-
-    const inCall = state.calls.find((call) => call.method === "in")
-
-    expect(inCall!.args[0]).toBe("status")
-    expect(inCall!.args[1]).toEqual(["active", "kitchen", "delivered"])
+    expect(api.GET).toHaveBeenCalledTimes(1)
+    expect(api.GET).toHaveBeenCalledWith("/api/orders", {
+      params: { query: { status: "active,kitchen,delivered", include: "table,waiter" } },
+    })
   })
 
   it("maps the rows it reads through the shared mapper", async () => {
-    state.results.orders = {
-      data: [
-        {
-          id: "d-1",
-          table_id: null,
-          order_type: "delivery",
-          status: "kitchen",
-          created_at: "2026-01-01T10:00:00.000Z",
-          order_items: [{ id: "i-1", name: "Bandeja", price: 10, quantity: 1 }],
-        },
-      ],
-      error: null,
-    }
+    api.GET.mockResolvedValueOnce({ data: [dto({ id: "d-1", tableId: null, orderType: "delivery", tableNumber: null })] })
 
     const orders = await fetchActiveAdminOrders()
 
@@ -233,7 +227,7 @@ describe("fetchActiveAdminOrders", () => {
   })
 
   it("raises on a failed read so the screen can keep the previous rows and report it", async () => {
-    state.results.orders = { data: null, error: new Error("boom") }
+    api.GET.mockRejectedValueOnce(new Error("boom"))
 
     await expect(fetchActiveAdminOrders()).rejects.toThrow()
   })
@@ -266,27 +260,9 @@ describe("withoutOrder", () => {
   })
 })
 
-describe("adminOrderFromRow", () => {
-  it("maps one wire row into the app Order shape used by the grid", () => {
-    const mapped = adminOrderFromRow({
-      id: "o-1",
-      table_id: "t-7",
-      status: "kitchen",
-      waiter_id: "w-2",
-      created_at: "2026-01-01T10:00:00.000Z",
-      subtotal: 100,
-      tax: 8,
-      tax_percentage: 8,
-      tip: 0,
-      tip_percentage: 0,
-      total: 108,
-      total_discounts: 5,
-      order_items: [
-        { id: "i-1", name: "Bandeja", price: 50, quantity: 2, comments: "sin cebolla", status: "kitchen" },
-      ],
-      tables: { number: 7 },
-      profiles: { full_name: "Ana" },
-    })
+describe("adminOrderFromDto", () => {
+  it("maps one API order into the app Order shape used by the grid", () => {
+    const mapped = adminOrderFromDto(dto())
 
     expect(mapped.id).toBe("o-1")
     expect(mapped.tableId).toBe("t-7")
@@ -299,7 +275,6 @@ describe("adminOrderFromRow", () => {
       price: 50,
       quantity: 2,
       categoryId: "",
-      image: "",
       comments: "sin cebolla",
       status: "kitchen",
     })
@@ -315,24 +290,18 @@ describe("adminOrderFromRow", () => {
     expect(mapped.createdAt).toBeInstanceOf(Date)
   })
 
-  it("carries order_type so a delivery order is labelled DOMICILIO, never Mesa ? (domicilios S14)", () => {
-    expect(
-      adminOrderFromRow({ id: "d-1", table_id: null, order_type: "delivery", status: "kitchen" }).orderType,
-    ).toBe("delivery")
-    expect(
-      adminOrderFromRow({ id: "d-1", table_id: null, status: "kitchen" }).orderType,
-    ).toBe("dine_in")
+  it("carries orderType so a delivery order is labelled DOMICILIO, never Mesa ? (domicilios S14)", () => {
+    expect(adminOrderFromDto(dto({ tableId: null, orderType: "delivery" })).orderType).toBe("delivery")
+    expect(adminOrderFromDto(dto()).orderType).toBe("dine_in")
   })
 
-  it("falls back to N/A / Desconocido / status kitchen for a sparse row", () => {
-    const mapped = adminOrderFromRow({ id: "o-2", status: "active" })
+  it("falls back to N/A / Desconocido for an order without table or waiter", () => {
+    const mapped = adminOrderFromDto(dto({ tableId: null, waiterId: null, tableNumber: null, waiterName: null, items: [] }))
 
     expect(mapped.tableName).toBe("N/A")
     expect(mapped.waiterName).toBe("Desconocido")
     expect(mapped.items).toEqual([])
-    expect(mapped.bill.total).toBe(0)
     expect(mapped.waiter).toBe("")
-    expect(mapped.createdAt).toBeInstanceOf(Date)
   })
 
   it("asks for exactly the statuses the admin grid lists", () => {

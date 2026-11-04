@@ -20,6 +20,7 @@ describe("next.config rewrites", () => {
     vi.stubEnv("API_PROXY_TARGET", undefined)
     expect(await loadRewrites()).toEqual([
       { source: "/api/:path*", destination: "http://localhost:4000/api/:path*" },
+      { source: "/socket.io/", destination: "http://localhost:4000/socket.io/" },
       { source: "/socket.io/:path*", destination: "http://localhost:4000/socket.io/:path*" },
     ])
   })
@@ -28,8 +29,15 @@ describe("next.config rewrites", () => {
     vi.stubEnv("API_PROXY_TARGET", "http://api:4000/")
     expect(await loadRewrites()).toEqual([
       { source: "/api/:path*", destination: "http://api:4000/api/:path*" },
+      { source: "/socket.io/", destination: "http://api:4000/socket.io/" },
       { source: "/socket.io/:path*", destination: "http://api:4000/socket.io/:path*" },
     ])
+  })
+
+  it("does not redirect /socket.io/ to /socket.io, so the socket handshake reaches the proxy", async () => {
+    vi.resetModules()
+    const { default: config } = await import("../../next.config.mjs")
+    expect(config.skipTrailingSlashRedirect).toBe(true)
   })
 
   it("keeps the existing build settings", async () => {

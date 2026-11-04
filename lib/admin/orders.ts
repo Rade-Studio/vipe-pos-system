@@ -13,8 +13,9 @@
  * that ever rendered inside the window kept `animate-pulse-light` forever.
  *
  * What lives here:
- *   - `fetchActiveAdminOrders` / `adminOrderFromRow`: the single read and the
- *     single mapper (`orderTypeFromRow` keeps the delivery label, odd/tasks/
+ *   - `fetchActiveAdminOrders` / `adminOrderFromDto`: the single read
+ *     (`GET /orders` with the table and waiter names, T8b) over the shared
+ *     `toOrder` mapper, which keeps the delivery label (odd/tasks/
  *     domicilios.md S14).
  *   - `mergeOrderLists`: the store + DB merge, now memoised and reference
  *     stable instead of rebuilt (with a `forEach` push) on every render.
@@ -22,8 +23,7 @@
  *     timestamp the caller controls (the view passes its ticking clock), so it
  *     is a function of DATA, never of "when did this render happen".
  */
-import { orderTypeFromRow } from "@/lib/delivery/kitchen"
-import { supabase } from "@/lib/supabase/client"
+import { getByStatus, toOrder, type OrderDto } from "@/lib/api/orders"
 import type { Order, OrderStatus } from "@/types"
 
 /**
@@ -45,37 +45,12 @@ const GRID_STORE_STATUSES: readonly OrderStatus[] = ["kitchen", "delivered", "pa
 /** An admin order carries the joined table number / waiter name for the card. */
 export type AdminOrder = Order & { tableName?: string | number; waiterName?: string }
 
-/** Wire (`snake_case`) row → the app `Order` the grid renders. */
-export function adminOrderFromRow(row: any): AdminOrder {
+/** API order (with `include=table,waiter`) to the app `Order` the grid renders. */
+export function adminOrderFromDto(dto: OrderDto): AdminOrder {
   return {
-    id: row.id,
-    tableId: row.table_id ?? "",
-    orderType: orderTypeFromRow(row),
-    waiter: row.waiter_id ?? "",
-    status: row.status,
-    items:
-      (row.order_items || []).map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        categoryId: "",
-        image: "",
-        comments: item.comments || "",
-        status: item.status || "kitchen",
-      })) || [],
-    bill: {
-      subtotal: row.subtotal || 0,
-      tax: row.tax || 0,
-      taxPercentage: row.tax_percentage || 0,
-      tip: row.tip || 0,
-      tipPercentage: row.tip_percentage || 0,
-      total: row.total || 0,
-      totalDiscounts: row.total_discounts ?? 0,
-    },
-    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-    tableName: row.tables?.number || "N/A",
-    waiterName: row.profiles?.full_name || "Desconocido",
+    ...toOrder(dto),
+    tableName: dto.tableNumber ?? "N/A",
+    waiterName: dto.waiterName || "Desconocido",
   }
 }
 
@@ -87,20 +62,8 @@ export function adminOrderFromRow(row: any): AdminOrder {
  * `getByStatus` sweep.
  */
 export async function fetchActiveAdminOrders(): Promise<AdminOrder[]> {
-  const { data, error } = await supabase
-    .from("orders")
-    .select(`
-      *,
-      order_items(*),
-      tables(number),
-      profiles(full_name)
-    `)
-    .in("status", [...ADMIN_ACTIVE_STATUSES])
-    .order("created_at", { ascending: false })
-
-  if (error) throw error
-
-  return (data || []).map((row: any) => adminOrderFromRow(row))
+  const rows = await getByStatus(ADMIN_ACTIVE_STATUSES, { include: ["table", "waiter"] })
+  return rows.map(adminOrderFromDto)
 }
 
 /**

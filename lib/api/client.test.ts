@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { createApiClient } from "./client"
-import { ApiError } from "./errors"
+import { createApiClient, onSessionRefreshed } from "./client"
+import { ApiError, conflictMessage } from "./errors"
 import { onAuthEvent } from "@/lib/shell/auth-events"
 
 /**
@@ -66,6 +66,27 @@ describe("api client", () => {
 
     expect(failure).toBeInstanceOf(ApiError)
     expect(failure).toMatchObject({ status: 401, error: "Unauthorized", message: "Invalid credentials" })
+  })
+
+  it("keeps the extra fields of a 409 body (shortages, prices, orderId) on the ApiError", async () => {
+    const body = { statusCode: 409, error: "Conflict", message: "Table has an open order", orderId: "o-9" }
+    const { fetch } = fakeFetch(json(409, body))
+    const api = createApiClient({ baseUrl: "http://localhost:3000", fetch })
+
+    const failure = await api.GET("/api/auth/me").catch((error: unknown) => error)
+
+    expect(failure).toMatchObject({ status: 409, message: "Table has an open order", body })
+  })
+
+  it("tells the realtime client when a silent refresh rotated the cookies", async () => {
+    const refreshed = vi.fn()
+    stops.push(onSessionRefreshed(refreshed))
+    const { fetch } = fakeFetch(unauthorized(), new Response(null, { status: 204 }), json(200, session))
+    const api = createApiClient({ baseUrl: "http://localhost:3000", fetch })
+
+    await api.GET("/api/auth/me")
+
+    expect(refreshed).toHaveBeenCalledTimes(1)
   })
 
   it("maps a body that is not the API error shape to an ApiError with the status text", async () => {
@@ -169,5 +190,11 @@ describe("api client", () => {
     expect(first).toMatchObject({ status: 401 })
     expect(second).toMatchObject({ status: 401 })
     expect(events).toEqual([])
+  })
+
+  it("shows the API message only for a 409 conflict", () => {
+    expect(conflictMessage(new ApiError(409, "Conflict", "Order is paid"), "Error")).toBe("Order is paid")
+    expect(conflictMessage(new ApiError(500, "Internal Server Error", "boom"), "Error")).toBe("Error")
+    expect(conflictMessage(new Error("offline"), "Error")).toBe("Error")
   })
 })

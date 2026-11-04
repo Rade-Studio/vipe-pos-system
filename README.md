@@ -354,6 +354,16 @@ El inicio y cierre de sesión ya pasan por la API. Este stack no necesita variab
 Supabase: sin `NEXT_PUBLIC_SUPABASE_URL` ni la clave anónima, el cliente heredado usa
 valores inertes y los módulos aún no migrados simplemente no devuelven datos.
 
+Tiempo real: la web abre una sola conexión `socket.io-client` (versión fija `4.8.4`, la
+misma del servidor) al namespace `/realtime`, autenticada con la cookie de sesión
+(`lib/api/realtime.ts`). Recibe `pos_changes` (mesas con `waiter_name`, órdenes con
+`order_items`, ítems de orden), y ante `resync` o una reconexión vuelve a leer las
+órdenes, las mesas y los domicilios; tras un refresco de sesión se reconecta. La ruta es
+`/socket.io/` con la barra final: en desarrollo `next.config.mjs` usa
+`skipTrailingSlashRedirect` y una regla explícita para `/socket.io/` (sin ellas Next
+responde 308 o envía `/socket.io` y la API contesta 404); en producción el proxy inverso
+debe conservar la barra y permitir el upgrade a WebSocket.
+
 Contrato tipado: `pnpm --filter @vipe/api openapi` escribe `apps/api/openapi.json` y
 `pnpm web:api-types` genera `lib/api/schema.d.ts` (ambos versionados). CI falla si
 alguno difiere de lo que produce el código.

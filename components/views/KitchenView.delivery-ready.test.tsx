@@ -78,15 +78,43 @@ const getAllTables = vi.hoisted(() => vi.fn())
 const listActiveDeliveries = vi.hoisted(() => vi.fn())
 const setDeliveryStatus = vi.hoisted(() => vi.fn())
 
-vi.mock("@/lib/supabase/service", () => ({
-  orderService: {
-    getByStatus: (status: string | string[]) => getByStatus(status),
-    getById: (id: string) => getById(id),
-    updateStatus: (id: string, status: string) => updateStatus(id, status),
-  },
-  tableService: { getAll: () => getAllTables() },
-  categoryService: { getAllActive: async () => [] },
-}))
+// T8b: the queue and the served write go through the API client.
+vi.mock("@/lib/api/client", () => {
+  const route = async (method: string, path: string, init: any = {}) => {
+    const id = init?.params?.path?.id
+    switch (`${method} ${path}`) {
+      case "GET /api/orders":
+        return { data: await getByStatus(init.params.query.status) }
+      case "GET /api/orders/{id}":
+        return { data: await getById(id) }
+      case "GET /api/tables":
+        return { data: await getAllTables() }
+      case "POST /api/orders/{id}/items/served": {
+        // Like the server: the last kitchen item delivers the order.
+        const order = kitchenOrderRow()
+        return {
+          data: {
+            ...order,
+            status: "delivered",
+            items: order.items.map((line) => ({ ...line, status: "served" })),
+          },
+        }
+      }
+      case "PATCH /api/orders/{id}/status":
+        return { data: await updateStatus(id, init.body.status) }
+      default:
+        throw new Error(`unexpected ${method} ${path}`)
+    }
+  }
+  return {
+    api: {
+      GET: (path: string, init?: unknown) => route("GET", path, init),
+      POST: (path: string, init?: unknown) => route("POST", path, init),
+      PATCH: (path: string, init?: unknown) => route("PATCH", path, init),
+    },
+    onSessionRefreshed: () => () => {},
+  }
+})
 
 vi.mock("@/lib/supabase/delivery-service", async () => {
   const actual = await vi.importActual<typeof import("@/lib/supabase/delivery-service")>(
@@ -95,7 +123,7 @@ vi.mock("@/lib/supabase/delivery-service", async () => {
   return { ...actual, listActiveDeliveries, setDeliveryStatus }
 })
 
-vi.mock("@/lib/supabase/realtime-service", () => ({
+vi.mock("@/lib/api/realtime", () => ({
   realtimeService: {
     subscribeToKitchen: () => () => {},
     subscribeToOrders: () => () => {},
@@ -105,9 +133,11 @@ vi.mock("@/lib/supabase/realtime-service", () => ({
     unregisterOrder: vi.fn(),
     markLocalItemChanges: vi.fn(),
     unmarkLocalItemChanges: vi.fn(),
-    sendCommand: vi.fn(),
-    sendFactura: vi.fn(),
   },
+}))
+
+vi.mock("@/lib/supabase/realtime-service", () => ({
+  realtimeService: { sendCommand: vi.fn(), sendFactura: vi.fn() },
 }))
 
 vi.mock("@/components/layout/Header", () => ({
@@ -163,29 +193,34 @@ function boardRow(overrides: Record<string, unknown> = {}) {
 function kitchenOrderRow() {
   return {
     id: "d-1",
-    table_id: null,
-    order_type: "delivery",
+    tableId: null,
+    orderType: "delivery",
     status: "kitchen",
     subtotal: 19_000,
     tax: 0,
-    tax_percentage: 0,
+    taxPercentage: 0,
     tip: 0,
-    tip_percentage: 0,
+    tipPercentage: 0,
     total: 19_000,
-    total_discounts: 0,
-    waiter_id: "w-1",
-    created_at: "2026-10-07T10:00:00.000Z",
-    is_partial_order: false,
-    parent_order_id: null,
-    order_items: [
+    totalDiscounts: 0,
+    waiterId: "w-1",
+    createdAt: "2026-10-07T10:00:00.000Z",
+    updatedAt: null,
+    isPartialOrder: false,
+    parentOrderId: null,
+    items: [
       {
         id: "oi-1",
+        orderId: "d-1",
+        dishId: null,
         name: "Bandeja paisa",
         price: 19_000,
         quantity: 1,
         comments: null,
         status: "kitchen",
-        added_at: "2026-10-07T10:00:00.000Z",
+        addedAt: "2026-10-07T10:00:00.000Z",
+        createdAt: null,
+        updatedAt: null,
       },
     ],
   }

@@ -103,12 +103,25 @@ const payOrder = vi.fn(async (_input?: unknown) => ({
 }))
 const listActiveDeliveries = vi.fn(async () => [])
 
-vi.mock("@/lib/supabase/service", () => ({
-  orderService: {
-    getByStatus: (statuses: string | string[]) => getByStatus(statuses),
-    getById: (id: string) => getById(id),
-  },
-}))
+// T8b: orders come from the API client. The fixtures stay wire rows; the mock
+// answers with the API shape through the same adapter the realtime path uses.
+vi.mock("@/lib/api/client", () => {
+  return {
+    api: {
+      GET: async (path: string, init: any) => {
+        // Imported lazily: lib/api/orders imports this mocked module.
+        const { orderDtoFromWire } = await import("@/lib/api/orders")
+        if (path === "/api/orders") {
+          const rows = await getByStatus(String(init.params.query.status).split(","))
+          return { data: rows.map((row) => orderDtoFromWire(row)) }
+        }
+        if (path === "/api/orders/{id}") return { data: orderDtoFromWire(await getById(init.params.path.id)) }
+        throw new Error(`unexpected GET ${path}`)
+      },
+    },
+    onSessionRefreshed: () => () => {},
+  }
+})
 vi.mock("@/lib/supabase/cash-register-service", () => ({
   cashRegisterService: { getCurrentRegister: () => getCurrentRegister() },
   default: { getCurrentRegister: () => getCurrentRegister() },
@@ -140,7 +153,7 @@ vi.mock("@/lib/supabase/client", () => {
     },
   }
 })
-vi.mock("@/lib/supabase/realtime-service", () => ({
+vi.mock("@/lib/api/realtime", () => ({
   realtimeService: {
     subscribeToOrders: (cb: (payload: unknown) => void) => {
       ;(globalThis as Record<string, unknown>).__orderCb = cb
@@ -149,8 +162,10 @@ vi.mock("@/lib/supabase/realtime-service", () => ({
       }
     },
     subscribeToTables: () => () => {},
-    sendFactura: vi.fn(),
   },
+}))
+vi.mock("@/lib/supabase/realtime-service", () => ({
+  realtimeService: { sendFactura: vi.fn() },
 }))
 vi.mock("@/utils/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -159,7 +174,7 @@ vi.mock("@/components/layout/Header", () => ({
   Header: ({ title }: { title?: string }) => <h1>{title}</h1>,
 }))
 
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { realtimeService } from "@/lib/api/realtime"
 
 /* -------------------------------------------------------------- fixtures */
 
@@ -228,6 +243,8 @@ describe("cashier mount (S1: load only what the screen needs)", () => {
     const { container } = renderCashier()
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0)
 
+    // The read is in flight before it is released.
+    await waitFor(() => expect(getByStatus).toHaveBeenCalledTimes(1))
     await act(async () => {
       releaseFirstLoad?.()
     })

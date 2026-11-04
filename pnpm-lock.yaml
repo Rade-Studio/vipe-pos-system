@@ -158,6 +158,9 @@ importers:
       recharts:
         specifier: ^2.15.3
         version: 2.15.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      socket.io-client:
+        specifier: 4.8.4
+        version: 4.8.4(supports-color@10.2.2)
       sonner:
         specifier: ^1.7.1
         version: 1.7.1(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -9034,10 +9037,10 @@ snapshots:
     dependencies:
       once: 1.4.0
 
-  engine.io-client@6.6.7(supports-color@7.2.0):
+  engine.io-client@6.6.7(supports-color@10.2.2):
     dependencies:
       '@socket.io/component-emitter': 3.1.2
-      debug: 4.4.3(supports-color@7.2.0)
+      debug: 4.4.3(supports-color@10.2.2)
       engine.io-parser: 5.2.3
       ws: 8.21.3
       xmlhttprequest-ssl: 2.1.2
@@ -10584,8 +10587,8 @@ snapshots:
   socket.io-client@4.8.4(supports-color@10.2.2):
     dependencies:
       '@socket.io/component-emitter': 3.1.2
-      debug: 4.4.3(supports-color@7.2.0)
-      engine.io-client: 6.6.7(supports-color@7.2.0)
+      debug: 4.4.3(supports-color@10.2.2)
+      engine.io-client: 6.6.7(supports-color@10.2.2)
       socket.io-parser: 4.2.7(supports-color@10.2.2)
     transitivePeerDependencies:
       - bufferutil

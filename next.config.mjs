@@ -18,9 +18,15 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // socket.io requests `/socket.io/?EIO=4...`; Next's default 308 to the
+  // slash-less path would never reach the rewrite below.
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${apiProxyTarget}/api/:path*` },
+      // The socket.io handshake is `/socket.io/?EIO=4...`: an empty `:path*`
+      // would drop the trailing slash the API's engine.io requires.
+      { source: '/socket.io/', destination: `${apiProxyTarget}/socket.io/` },
       { source: '/socket.io/:path*', destination: `${apiProxyTarget}/socket.io/:path*` },
     ]
   },

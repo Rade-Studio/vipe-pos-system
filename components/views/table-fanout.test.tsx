@@ -5,9 +5,9 @@ import { useShallow } from "zustand/react/shallow"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 // `CompletedOrdersTable` reaches the real Supabase client transitively
-// (`getOrdersByDate` from `lib/supabase/service`, and `InvoicePrintView`'s
-// `lib/supabase/realtime-service` import, and `useOrderStore`'s
-// `lib/supabase` barrel import) — stubbing the client at its single lowest
+// (`getOrdersByDate` from `lib/supabase/service` and `InvoicePrintView`'s
+// `lib/supabase/realtime-service` import; `useOrderStore` reads through the
+// API client since T8b and needs no stub) — stubbing the client at its single lowest
 // level, the same way `TableManagementPanel.test.tsx` stubs the higher-level
 // modules, lets every one of those resolve without a configured
 // `NEXT_PUBLIC_SUPABASE_*` environment. Neither store action nor

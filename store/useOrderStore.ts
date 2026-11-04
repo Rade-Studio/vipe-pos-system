@@ -1,8 +1,6 @@
 import { create } from "zustand"
-import { v4 as uuidv4 } from "uuid"
 import type { Order } from "@/types"
-import { supabase, tableService, orderService } from "@/lib/supabase"
-import { orderTypeFromRow } from "@/lib/delivery/kitchen"
+import { getByStatus, toOrder } from "@/lib/api/orders"
 
 interface OrderState {
   orders: Order[]
@@ -56,55 +54,17 @@ export const useOrderStore = create<OrderState>((set, get) => ({
 
   setOrders: (orders) => set({ orders }),
 
+  // ONE request for the three open statuses (it used to be three), mapped by
+  // the shared `toOrder`. Orders the store already holds keep their identity.
   loadOrders: async () => {
-    try {
-      const kitchenOrders = await orderService.getByStatus(["kitchen"])
-      const deliveredOrders = await orderService.getByStatus(["delivered"])
-      const activeOrders = await orderService.getByStatus(["active"])
+    const dbOrders = await getByStatus(["kitchen", "delivered", "active"])
+    const existingOrderIds = new Set(get().orders.map((order) => order.id))
+    const newOrders = dbOrders.filter((dbOrder) => !existingOrderIds.has(dbOrder.id)).map(toOrder)
 
-      const dbOrders = [...kitchenOrders, ...deliveredOrders, ...activeOrders]
-      const existingOrderIds = get().orders.map((order) => order.id)
-      const newOrders = dbOrders.filter((dbOrder) => !existingOrderIds.includes(dbOrder.id))
-
-      if (newOrders.length > 0) {
-        const storeOrders = newOrders.map((dbOrder) => {
-          const items = dbOrder.order_items.map((item) => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            comments: item.comments || undefined,
-            categoryId: "",
-          }))
-
-          return {
-            id: dbOrder.id,
-            tableId: dbOrder.table_id || "",
-            orderType: orderTypeFromRow(dbOrder),
-            items,
-            status: dbOrder.status,
-            bill: {
-              subtotal: dbOrder.subtotal,
-              tax: dbOrder.tax,
-              taxPercentage: dbOrder.tax_percentage,
-              tip: dbOrder.tip,
-              tipPercentage: dbOrder.tip_percentage,
-              total: dbOrder.total,
-              totalDiscounts: dbOrder.total_discounts || 0,
-            },
-            waiter: dbOrder.waiter_id || "",
-            createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
-            isPartialOrder: dbOrder.is_partial_order || false,
-            parentOrderId: dbOrder.parent_order_id || undefined,
-          } as unknown as Order
-        })
-
-        set((state) => ({
-          orders: [...state.orders, ...storeOrders],
-        }))
-      }
-    } catch (err) {
-      throw err
+    if (newOrders.length > 0) {
+      set((state) => ({
+        orders: [...state.orders, ...newOrders],
+      }))
     }
   },
 

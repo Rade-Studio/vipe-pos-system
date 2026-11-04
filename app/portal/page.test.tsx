@@ -37,7 +37,11 @@ const env = vi.hoisted(() => {
       this.meStatus = 200
       this.apiGet.mockReset()
       this.apiPost.mockReset()
-      this.apiGet.mockImplementation(async (path: string) => {
+      // T8b: the startup slices for tables, waiters and orders are API reads too.
+      this.apiGet.mockImplementation(async (path: string, init?: any) => {
+        if (path === "/api/tables") return { data: await this.tableGetAll() }
+        if (path === "/api/staff/waiters") return { data: await this.getWaiters() }
+        if (path === "/api/orders") return { data: await this.getByStatus(String(init.params.query.status).split(",")) }
         if (path !== "/api/auth/me") throw new Error(`unexpected GET ${path}`)
         if (this.meStatus === 401) throw new ApiError(401, "Unauthorized", "Missing access token")
         return { data: sessionFor(this.role) }
@@ -73,17 +77,9 @@ vi.mock("@/lib/supabase/client", () => ({
   createSupabaseClient: () => ({}),
 }))
 
-vi.mock("@/lib/api/client", () => ({ api: { GET: env.apiGet, POST: env.apiPost } }))
-
-vi.mock("@/lib/supabase/service", () => ({
-  tableService: {
-    getAll: () => env.tableGetAll(),
-    getWaiters: () => env.getWaiters(),
-  },
-  orderService: {
-    getByStatus: (statuses: string | string[]) => env.getByStatus(statuses),
-  },
-  waiterService: { getAll: async () => [] },
+vi.mock("@/lib/api/client", () => ({
+  api: { GET: env.apiGet, POST: env.apiPost },
+  onSessionRefreshed: () => () => {},
 }))
 
 // T7b: every role reads the config with `GET /config`; nobody seeds keys.
@@ -206,7 +202,7 @@ describe("shell startup loads per role", () => {
     })
   })
 
-  it("admin: every slice, with kitchen+delivered orders in ONE getByStatus call", async () => {
+  it("admin: every slice, with kitchen+delivered orders in ONE GET /orders", async () => {
     env.role = "admin"
     expect(await renderShell("admin-view")).toBe("admin-view")
     expect(issued()).toEqual({
@@ -294,8 +290,8 @@ describe("shell session through the API", () => {
   it("resolves the role from GET /api/auth/me, once, without querying profiles", async () => {
     env.role = "cashier"
     expect(await renderShell("cashier-view")).toBe("cashier-view")
-    expect(env.apiGet).toHaveBeenCalledTimes(1)
-    expect(env.apiGet).toHaveBeenCalledWith("/api/auth/me")
+    // The startup slices are API reads too (T8b); the session is read once.
+    expect(env.apiGet.mock.calls.filter(([path]) => path === "/api/auth/me")).toHaveLength(1)
     expect(env.profileQueries).toBe(0)
     expect(useProfileStore.getState().authProfile).toEqual({
       id: "p-1",
