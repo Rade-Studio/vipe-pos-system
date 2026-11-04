@@ -49,3 +49,37 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+  # -------------------------------
+  # POSTGRES (sin Supabase) + pgTAP
+  # -------------------------------
+  # Destino de la migración a NestJS (odd/tasks/migracion-backend-nestjs.md, T4).
+  # Postgres 16 con pgTAP y pg_prove; el init crea los roles vipe_migrator
+  # (dueño del esquema, aplica migraciones) y vipe_api (rol de la API, sin
+  # BYPASSRLS). `pnpm test:db` lo levanta solo con:
+  #   docker compose up -d --wait db
+  db:
+    build:
+      context: packages/db
+      dockerfile: docker/Dockerfile
+    container_name: vipe-pos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${VIPE_DB_SUPERUSER_PASSWORD:-postgres}
+      POSTGRES_DB: vipe_pos
+      VIPE_MIGRATOR_PASSWORD: ${VIPE_MIGRATOR_PASSWORD:-vipe_migrator}
+      VIPE_API_PASSWORD: ${VIPE_API_PASSWORD:-vipe_api}
+    ports:
+      - "${VIPE_DB_PORT:-5432}:5432"
+    volumes:
+      - vipe_pos_db:/var/lib/postgresql/data
+      - ./packages/db/tests:/opt/vipe/tests:ro
+      - ./packages/db/scripts:/opt/vipe/scripts:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vipe_pos"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  vipe_pos_db:

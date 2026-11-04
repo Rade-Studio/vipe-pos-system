@@ -75,20 +75,27 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
 
   db-tests:
-    # pgTAP suite (RLS, grants, tenant isolation, profile guards) against a
-    # fresh database: `supabase db start` applies every migration and the seed,
-    # without the rest of the local stack.
+    # pgTAP suite (RLS, grants, tenant isolation, guards, RPCs) on plain
+    # Postgres 16 + pgTAP: the compose `db` service, the Drizzle migrations
+    # from packages/db applied as vipe_migrator, then pg_prove. No Supabase CLI.
     # GitHub-hosted runners are ephemeral, so every run starts from an empty volume.
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # docker-compose.yml also declares the web `app` service, whose required
+      # build variables compose interpolates even when only `db` starts.
+      NEXT_PUBLIC_SUPABASE_URL: http://unused.invalid
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: unused
     steps:
       - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
-        with: { version: 2.119.0 }
-      - run: supabase db start
-      - run: supabase test db
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:db
       - if: failure()
-        run: docker logs supabase_db_vipe-pos-system --tail 200 || true
+        run: docker compose logs db --tail 200 || true
 
   pos-deps-check:
     runs-on: ubuntu-latest

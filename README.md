@@ -314,17 +314,32 @@ La API expone `GET /api/health` y la documentación OpenAPI en `/api/docs`.
 ### Pruebas de base de datos
 
 El comportamiento de la base de datos (políticas RLS, permisos, RPCs) se cubre con
-pruebas SQL de pgTAP en `supabase/tests/`, que se ejecutan con la Supabase CLI
-contra la base local (requiere `pnpm supabase start`):
+pruebas SQL de pgTAP en `packages/db/tests/`, que corren sobre Postgres 16 sin
+Supabase: el servicio `db` de `docker-compose.yml` (Postgres + pgTAP), las
+migraciones de `packages/db/migrations/` aplicadas con `pnpm db:migrate` y
+`pg_prove`. Solo requiere Docker; no hace falta `pnpm supabase start`:
 
 ```bash
-pnpm test:db                                  # todos los archivos
-pnpm supabase test db supabase/tests/001_bootstrap.test.sql   # uno solo
+pnpm test:db                                                  # todos los archivos
+pnpm test:db packages/db/tests/010_tenant_isolation.test.sql  # uno solo
 ```
 
+El script recrea en cada ejecución la base desechable `vipe_pos_test` (la base
+de desarrollo `vipe_pos` no se toca), aplica las migraciones como `vipe_migrator`,
+carga `packages/db/tests/seed.sql` y ejecuta los archivos. Si el puerto 5432 está
+ocupado, usa `VIPE_DB_PORT=5433 pnpm test:db`.
+
 Cada archivo es autónomo (`BEGIN; ... SELECT plan(n); ... finish(); ROLLBACK;`), así
-que la base nunca se modifica. Consulta `supabase/tests/README.md` para escribir
-pruebas y suplantar los roles `anon` / `authenticated`.
+que la base nunca se modifica. Para suplantar a un usuario se usa el rol de la API
+y el ajuste `app.user_id`, igual que hará la API en cada transacción:
+
+```sql
+SELECT set_config('app.user_id', '<uuid del usuario>', true);
+SET LOCAL ROLE vipe_api;
+```
+
+Consulta `packages/db/tests/README.md` para escribir pruebas. Las pruebas antiguas
+de `supabase/tests/` siguen ahí hasta que se retire Supabase (T13).
 
 ---
 
