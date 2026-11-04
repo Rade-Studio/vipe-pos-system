@@ -123,7 +123,8 @@ describe('realtime gateway and listener (Testcontainers, vipe_api)', () => {
     expect(update.new).toMatchObject({ id: ORDER_ID, status: 'kitchen' });
     // REPLICA IDENTITY FULL parity: the full previous row.
     expect(update.old).toMatchObject({ id: ORDER_ID, restaurant_id: fixtures.restaurantA, status: 'active', order_type: 'dine_in' });
-    expect(Object.keys(update.old).sort()).toEqual(Object.keys(update.new).sort());
+    // new also carries the order's items (T8a enrichment); old is the bare row.
+    expect(Object.keys(update.old).sort()).toEqual(Object.keys(update.new).filter((key) => key !== 'order_items').sort());
 
     expect(remove.eventType).toBe('DELETE');
     expect(remove.new).toEqual({});

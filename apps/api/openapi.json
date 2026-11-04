@@ -827,6 +827,650 @@
           "config"
         ]
       }
+    },
+    "/api/orders": {
+      "get": {
+        "operationId": "OrdersController_list",
+        "parameters": [
+          {
+            "name": "include",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated: items, table, waiter. Items are always embedded; table adds tableNumber, waiter adds waiterName.",
+            "schema": {}
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated: active, kitchen, delivered, cancelled, paid.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first, at most 500 orders.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Order"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      },
+      "post": {
+        "operationId": "OrdersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order and items in kitchen, bill computed by the database, stock consumed, table in kitchen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, waiter or cashier."
+          },
+          "409": {
+            "description": "Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse) or Table has an open order (TableHasOpenOrderResponse).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/StockShortageResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PriceChangedResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TableHasOpenOrderResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}": {
+      "get": {
+        "operationId": "OrdersController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include",
+            "required": false,
+            "in": "query",
+            "description": "Same as the list.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      },
+      "delete": {
+        "operationId": "OrdersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Order and items deleted (delete_order_with_items); the table is freed when no other open order remains."
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Order is paid."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}/items": {
+      "post": {
+        "operationId": "OrdersController_addItems",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOrderItemsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The order back in kitchen with the new items and the recomputed bill.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Insufficient stock (shortages), Price changed (prices), or Order is closed."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}/status": {
+      "patch": {
+        "operationId": "OrdersController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrderStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "kitchen -> delivered; the table becomes served.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Order is not in kitchen."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}/items/served": {
+      "post": {
+        "operationId": "OrdersController_serve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServeOrderItemsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "When no kitchen item remains the order is delivered and its table served.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Order is closed."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/tables": {
+      "get": {
+        "operationId": "TablesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Ordered by number, with the waiter name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Table"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown waiter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "tables"
+        ]
+      },
+      "post": {
+        "operationId": "TablesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Table"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown waiter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "tables"
+        ]
+      }
+    },
+    "/api/tables/{id}": {
+      "patch": {
+        "operationId": "TablesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Table"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown waiter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "tables"
+        ]
+      },
+      "delete": {
+        "operationId": "TablesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Table has open orders."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown waiter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "tables"
+        ]
+      }
+    },
+    "/api/tables/{id}/assign": {
+      "post": {
+        "operationId": "TablesController_assign",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignTableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The table is occupied by the waiter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Table"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown waiter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "tables"
+        ]
+      }
+    },
+    "/api/tables/{id}/release": {
+      "post": {
+        "operationId": "TablesController_release",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseTableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "available, no waiter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Table"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "kitchen, delivered, served or reserved, unless an admin sends force: true."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown waiter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "tables"
+        ]
+      }
+    },
+    "/api/staff/waiters": {
+      "get": {
+        "operationId": "WaitersController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Active waiters of the restaurant, by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Waiter"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      }
     }
   },
   "info": {
@@ -1405,6 +2049,586 @@
             "minimum": 0
           }
         }
+      },
+      "OrderItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "dishId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "description": "Unit price charged."
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "comments": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "kitchen",
+              "served"
+            ]
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "dishId",
+          "name",
+          "price",
+          "quantity",
+          "comments",
+          "status",
+          "addedAt",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tableId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "waiterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Waiter profile id."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "kitchen",
+              "delivered",
+              "cancelled",
+              "paid"
+            ]
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ]
+          },
+          "subtotal": {
+            "type": "number"
+          },
+          "tax": {
+            "type": "number"
+          },
+          "taxPercentage": {
+            "type": "number"
+          },
+          "tip": {
+            "type": "number"
+          },
+          "tipPercentage": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "totalDiscounts": {
+            "type": "number"
+          },
+          "isPartialOrder": {
+            "type": "boolean"
+          },
+          "parentOrderId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "items": {
+            "description": "Always embedded, oldest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          },
+          "tableNumber": {
+            "type": "number",
+            "nullable": true,
+            "description": "Only with include=table."
+          },
+          "waiterName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Only with include=waiter."
+          }
+        },
+        "required": [
+          "id",
+          "tableId",
+          "waiterId",
+          "status",
+          "orderType",
+          "subtotal",
+          "tax",
+          "taxPercentage",
+          "tip",
+          "tipPercentage",
+          "total",
+          "totalDiscounts",
+          "isPartialOrder",
+          "parentOrderId",
+          "createdAt",
+          "updatedAt",
+          "items"
+        ]
+      },
+      "StockShortage": {
+        "type": "object",
+        "properties": {
+          "ingredientId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "required": {
+            "type": "number"
+          },
+          "available": {
+            "type": "number"
+          },
+          "missing": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "ingredientId",
+          "name",
+          "unit",
+          "required",
+          "available",
+          "missing"
+        ]
+      },
+      "StockShortageResponse": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 409
+          },
+          "error": {
+            "type": "string",
+            "example": "Conflict"
+          },
+          "message": {
+            "type": "string",
+            "example": "Insufficient stock"
+          },
+          "shortages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockShortage"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "shortages"
+        ]
+      },
+      "DishPrice": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "price": {
+            "type": "number",
+            "description": "Current server price (promotions applied)."
+          }
+        },
+        "required": [
+          "dishId",
+          "price"
+        ]
+      },
+      "PriceChangedResponse": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 409
+          },
+          "error": {
+            "type": "string",
+            "example": "Conflict"
+          },
+          "message": {
+            "type": "string",
+            "example": "Price changed"
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DishPrice"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "prices"
+        ]
+      },
+      "TableHasOpenOrderResponse": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 409
+          },
+          "error": {
+            "type": "string",
+            "example": "Conflict"
+          },
+          "message": {
+            "type": "string",
+            "example": "Table has an open order"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "orderId"
+        ]
+      },
+      "OrderItemInput": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 999
+          },
+          "unitPrice": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Price the client showed. The server charges the catalog price (promotions applied, server clock); a different value answers 409 Price changed."
+          },
+          "comments": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "dishId",
+          "quantity"
+        ]
+      },
+      "CreateOrderRequest": {
+        "type": "object",
+        "properties": {
+          "tableId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "waiterId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Defaults to the table's waiter, else the caller."
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "dine_in"
+            ],
+            "default": "dine_in",
+            "description": "Delivery orders are created by the delivery module."
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemInput"
+            }
+          },
+          "tipPercentage": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Defaults to the tip_percentage setting."
+          },
+          "force": {
+            "type": "boolean",
+            "default": false,
+            "description": "Send even when check_dishes_stock reports shortages."
+          }
+        },
+        "required": [
+          "tableId",
+          "items"
+        ]
+      },
+      "AddOrderItemsRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemInput"
+            }
+          },
+          "force": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "UpdateOrderStatusRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "delivered"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "ServeOrderItemsRequest": {
+        "type": "object",
+        "properties": {
+          "itemIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "itemIds"
+        ]
+      },
+      "Table": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "reserved",
+              "occupied",
+              "kitchen",
+              "served"
+            ]
+          },
+          "waiterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Waiter profile id."
+          },
+          "waiterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Set by the server on every write."
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "waiterId",
+          "waiterName",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateTableRequest": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "number",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "reserved",
+              "occupied",
+              "kitchen",
+              "served"
+            ],
+            "default": "available"
+          }
+        },
+        "required": [
+          "number"
+        ]
+      },
+      "UpdateTableRequest": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "number",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "reserved",
+              "occupied",
+              "kitchen",
+              "served"
+            ],
+            "description": "available also clears the waiter unless waiterId is given."
+          },
+          "waiterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
+      },
+      "AssignTableRequest": {
+        "type": "object",
+        "properties": {
+          "waiterId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "waiterId"
+        ]
+      },
+      "ReleaseTableRequest": {
+        "type": "object",
+        "properties": {
+          "force": {
+            "type": "boolean",
+            "default": false,
+            "description": "Admin only: release from kitchen, delivered, served or reserved."
+          }
+        }
+      },
+      "Waiter": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Profile id."
+          },
+          "name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username"
+        ]
       }
     }
   }

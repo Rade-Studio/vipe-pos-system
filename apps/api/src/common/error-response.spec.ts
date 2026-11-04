@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { toErrorResponse } from './error-response';
 
@@ -17,6 +17,16 @@ describe('toErrorResponse', () => {
       statusCode: 403,
       error: 'Forbidden',
       message: 'Insufficient role',
+    });
+  });
+
+  it('keeps the extra fields of an HttpException body object', () => {
+    const shortages = [{ ingredientId: 'i1', missing: 50 }];
+    expect(toErrorResponse(new ConflictException({ message: 'Insufficient stock', shortages }))).toEqual({
+      statusCode: 409,
+      error: 'Conflict',
+      message: 'Insufficient stock',
+      shortages,
     });
   });
 

@@ -19,10 +19,10 @@ export const businessConfig = pgTable("business_config", {
 			name: "business_config_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("business_config_restaurant_id_key_key").on(table.key, table.restaurantId),
-	pgPolicy("business_config_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
-	pgPolicy("business_config_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("business_config_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("business_config_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("business_config_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("business_config_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("business_config_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const cashRegisters = pgTable("cash_registers", {
@@ -42,10 +42,10 @@ export const cashRegisters = pgTable("cash_registers", {
 			foreignColumns: [restaurants.id],
 			name: "cash_registers_restaurant_id_fkey"
 		}),
-	pgPolicy("cash_registers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("cash_registers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("cash_registers_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("cash_registers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("cash_registers_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("cash_registers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("cash_registers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const cashTransactions = pgTable("cash_transactions", {
@@ -72,10 +72,10 @@ export const cashTransactions = pgTable("cash_transactions", {
 			foreignColumns: [restaurants.id],
 			name: "cash_transactions_restaurant_id_fkey"
 		}),
-	pgPolicy("cash_transactions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("cash_transactions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("cash_transactions_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("cash_transactions_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("cash_transactions_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("cash_transactions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("cash_transactions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("cash_transactions_type_check", sql`(type)::text = ANY (ARRAY[('deposit'::character varying)::text, ('withdrawal'::character varying)::text])`),
 ]);
 
@@ -95,10 +95,10 @@ export const categories = pgTable("categories", {
 			foreignColumns: [restaurants.id],
 			name: "categories_restaurant_id_fkey"
 		}),
-	pgPolicy("categories_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("categories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("categories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("categories_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("categories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("categories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("categories_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const couriers = pgTable("couriers", {
@@ -116,9 +116,9 @@ export const couriers = pgTable("couriers", {
 			foreignColumns: [restaurants.id],
 			name: "couriers_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
-	pgPolicy("couriers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
+	pgPolicy("couriers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
 	pgPolicy("couriers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
-	pgPolicy("couriers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	pgPolicy("couriers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("couriers_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 80)`),
 	check("couriers_phone_check", sql`(phone IS NULL) OR (phone ~ '^[0-9]{7,15}$'::text)`),
 ]);
@@ -147,9 +147,9 @@ export const customerAddresses = pgTable("customer_addresses", {
 			foreignColumns: [restaurants.id],
 			name: "customer_addresses_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
-	pgPolicy("customer_addresses_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = ANY (ARRAY['admin'::text, 'cashier'::text, 'delivery_operator'::text])) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = ANY (ARRAY['admin'::text, 'cashier'::text, 'delivery_operator'::text])) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
+	pgPolicy("customer_addresses_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)) AND (( SELECT private.current_app_role() AS current_app_role) = ANY (ARRAY['admin'::text, 'cashier'::text, 'delivery_operator'::text])))` }),
 	pgPolicy("customer_addresses_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("customer_addresses_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("customer_addresses_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("customer_addresses_address_line_check", sql`(length(btrim(address_line)) >= 1) AND (length(btrim(address_line)) <= 200)`),
 	check("customer_addresses_label_check", sql`(label IS NULL) OR (length(label) <= 40)`),
 	check("customer_addresses_neighborhood_check", sql`(neighborhood IS NULL) OR (length(neighborhood) <= 80)`),
@@ -165,16 +165,16 @@ export const customers = pgTable("customers", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	index("idx_customers_restaurant_id_phone").using("btree", table.restaurantId.asc().nullsLast().op("text_ops"), table.phone.asc().nullsLast().op("uuid_ops")),
+	index("idx_customers_restaurant_id_phone").using("btree", table.restaurantId.asc().nullsLast().op("text_ops"), table.phone.asc().nullsLast().op("text_ops")),
 	foreignKey({
 			columns: [table.restaurantId],
 			foreignColumns: [restaurants.id],
 			name: "customers_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("customers_restaurant_id_phone_key").on(table.restaurantId, table.phone),
-	pgPolicy("customers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = ANY (ARRAY['admin'::text, 'cashier'::text, 'delivery_operator'::text])) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = ANY (ARRAY['admin'::text, 'cashier'::text, 'delivery_operator'::text])) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
+	pgPolicy("customers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = ANY (ARRAY['admin'::text, 'cashier'::text, 'delivery_operator'::text])) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
 	pgPolicy("customers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
-	pgPolicy("customers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	pgPolicy("customers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("customers_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 120)`),
 	check("customers_phone_check", sql`phone ~ '^[0-9]{7,15}$'::text`),
 ]);
@@ -204,10 +204,10 @@ export const dishes = pgTable("dishes", {
 			foreignColumns: [restaurants.id],
 			name: "dishes_restaurant_id_fkey"
 		}),
-	pgPolicy("dishes_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("dishes_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("dishes_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("dishes_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("dishes_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("dishes_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("dishes_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const ingredientCategories = pgTable("ingredient_categories", {
@@ -224,10 +224,10 @@ export const ingredientCategories = pgTable("ingredient_categories", {
 			foreignColumns: [restaurants.id],
 			name: "ingredient_categories_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
-	pgPolicy("ingredient_categories_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("ingredient_categories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("ingredient_categories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("ingredient_categories_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("ingredient_categories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("ingredient_categories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("ingredient_categories_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const ingredientTransactions = pgTable("ingredient_transactions", {
@@ -257,10 +257,10 @@ export const ingredientTransactions = pgTable("ingredient_transactions", {
 			foreignColumns: [restaurants.id],
 			name: "ingredient_transactions_restaurant_id_fkey"
 		}),
-	pgPolicy("ingredient_transactions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("ingredient_transactions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("ingredient_transactions_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("ingredient_transactions_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("ingredient_transactions_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("ingredient_transactions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("ingredient_transactions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const ingredientTransactionsOrders = pgTable("ingredient_transactions_orders", {
@@ -282,14 +282,12 @@ export const ingredientTransactionsOrders = pgTable("ingredient_transactions_ord
 			name: "ingredient_transactions_orders_order_id_fkey"
 		}).onDelete("cascade"),
 	unique("ingredient_transactions_order_order_id_ingredient_transacti_key").on(table.orderId, table.ingredientTransactionId),
-	pgPolicy("ingredient_transactions_orders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(EXISTS ( SELECT 1
+	pgPolicy("ingredient_transactions_orders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(EXISTS ( SELECT 1
    FROM orders o
-  WHERE ((o.id = ingredient_transactions_orders.order_id) AND (o.restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))))`, withCheck: sql`(EXISTS ( SELECT 1
-   FROM orders o
-  WHERE ((o.id = ingredient_transactions_orders.order_id) AND (o.restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))))`  }),
-	pgPolicy("ingredient_transactions_orders_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+  WHERE ((o.id = ingredient_transactions_orders.order_id) AND (o.restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))))` }),
 	pgPolicy("ingredient_transactions_orders_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("ingredient_transactions_orders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("ingredient_transactions_orders_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("ingredient_transactions_orders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const ingredients = pgTable("ingredients", {
@@ -332,10 +330,10 @@ export const ingredients = pgTable("ingredients", {
 			name: "ingredients_restaurant_id_fkey"
 		}),
 	unique("ingredients_restaurant_id_sku_key").on(table.restaurantId, table.sku),
-	pgPolicy("ingredients_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
-	pgPolicy("ingredients_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("ingredients_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("ingredients_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("ingredients_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("ingredients_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("ingredients_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("ingredients_kind_check", sql`kind = ANY (ARRAY['raw'::text, 'prep'::text])`),
 	check("ingredients_max_stock_check", sql`(max_stock IS NULL) OR (max_stock >= (0)::numeric)`),
 	check("ingredients_purchase_factor_check", sql`purchase_factor > (0)::numeric`),
@@ -370,8 +368,8 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
 			name: "inventory_count_lines_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("inventory_count_lines_count_ingredient_key").on(table.countId, table.ingredientId),
-	pgPolicy("inventory_count_lines_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
-	pgPolicy("inventory_count_lines_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("inventory_count_lines_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
+	pgPolicy("inventory_count_lines_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("inventory_count_lines_counted_quantity_check", sql`(counted_quantity IS NULL) OR (counted_quantity >= (0)::numeric)`),
 ]);
 
@@ -403,8 +401,8 @@ export const inventoryCounts = pgTable("inventory_counts", {
 			name: "inventory_counts_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("inventory_counts_restaurant_id_number_key").on(table.restaurantId, table.number),
-	pgPolicy("inventory_counts_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
-	pgPolicy("inventory_counts_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("inventory_counts_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
+	pgPolicy("inventory_counts_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("inventory_counts_status_check", sql`status = ANY (ARRAY['open'::text, 'applied'::text, 'cancelled'::text])`),
 ]);
 
@@ -425,9 +423,9 @@ export const inventoryLocations = pgTable("inventory_locations", {
 			name: "inventory_locations_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("inventory_locations_restaurant_id_code_key").on(table.restaurantId, table.code),
-	pgPolicy("inventory_locations_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
+	pgPolicy("inventory_locations_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
 	pgPolicy("inventory_locations_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
-	pgPolicy("inventory_locations_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	pgPolicy("inventory_locations_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("inventory_locations_code_check", sql`code ~ '^[A-Z0-9][A-Z0-9-]{0,31}$'::text`),
 	check("inventory_locations_default_active_check", sql`(NOT is_default) OR is_active`),
 	check("inventory_locations_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 80)`),
@@ -446,7 +444,7 @@ export const inventoryLots = pgTable("inventory_lots", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	index("idx_inventory_lots_fefo").using("btree", table.ingredientId.asc().nullsLast().op("timestamptz_ops"), table.locationId.asc().nullsLast().op("timestamptz_ops"), table.expiresOn.asc().nullsLast().op("date_ops"), table.receivedAt.asc().nullsLast().op("uuid_ops")),
+	index("idx_inventory_lots_fefo").using("btree", table.ingredientId.asc().nullsLast().op("uuid_ops"), table.locationId.asc().nullsLast().op("date_ops"), table.expiresOn.asc().nullsLast().op("date_ops"), table.receivedAt.asc().nullsLast().op("uuid_ops")),
 	index("idx_inventory_lots_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("uq_inventory_lots_general").using("btree", table.ingredientId.asc().nullsLast().op("uuid_ops"), table.locationId.asc().nullsLast().op("uuid_ops")).where(sql`((lot_code IS NULL) AND (expires_on IS NULL))`),
 	foreignKey({
@@ -488,8 +486,8 @@ export const inventoryMovements = pgTable("inventory_movements", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	index("idx_inventory_movements_ingredient_id_created_at").using("btree", table.ingredientId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.desc().nullsFirst().op("uuid_ops")),
-	index("idx_inventory_movements_reference").using("btree", table.referenceType.asc().nullsLast().op("uuid_ops"), table.referenceId.asc().nullsLast().op("text_ops")),
-	index("idx_inventory_movements_restaurant_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+	index("idx_inventory_movements_reference").using("btree", table.referenceType.asc().nullsLast().op("text_ops"), table.referenceId.asc().nullsLast().op("text_ops")),
+	index("idx_inventory_movements_restaurant_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.desc().nullsFirst().op("uuid_ops")),
 	foreignKey({
 			columns: [table.createdBy],
 			foreignColumns: [profiles.id],
@@ -547,7 +545,7 @@ export const orderDeliveries = pgTable("order_deliveries", {
 	notes: text(),
 }, (table) => [
 	index("idx_order_deliveries_restaurant_id_courier_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.courierId.asc().nullsLast().op("uuid_ops")),
-	index("idx_order_deliveries_restaurant_id_delivery_status").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.deliveryStatus.asc().nullsLast().op("text_ops")),
+	index("idx_order_deliveries_restaurant_id_delivery_status").using("btree", table.restaurantId.asc().nullsLast().op("text_ops"), table.deliveryStatus.asc().nullsLast().op("text_ops")),
 	foreignKey({
 			columns: [table.courierId],
 			foreignColumns: [couriers.id],
@@ -568,9 +566,9 @@ export const orderDeliveries = pgTable("order_deliveries", {
 			foreignColumns: [restaurants.id],
 			name: "order_deliveries_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
-	pgPolicy("order_deliveries_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
+	pgPolicy("order_deliveries_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("order_deliveries_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
-	pgPolicy("order_deliveries_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("order_deliveries_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("order_deliveries_failure_reason_check", sql`((delivery_status = 'failed'::text) AND (failure_reason IS NOT NULL) AND ((length(btrim(failure_reason)) >= 1) AND (length(btrim(failure_reason)) <= 200))) OR ((delivery_status <> 'failed'::text) AND ((failure_reason IS NULL) OR (length(failure_reason) <= 200)))`),
 	check("order_deliveries_address_line_check", sql`(length(btrim(address_line)) >= 1) AND (length(btrim(address_line)) <= 200)`),
 	check("order_deliveries_address_reference_check", sql`(address_reference IS NULL) OR (length(address_reference) <= 200)`),
@@ -618,10 +616,10 @@ export const orderItems = pgTable("order_items", {
 			foreignColumns: [restaurants.id],
 			name: "order_items_restaurant_id_fkey"
 		}),
-	pgPolicy("order_items_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("order_items_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("order_items_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("order_items_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("order_items_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("order_items_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("order_items_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const orders = pgTable("orders", {
@@ -669,10 +667,10 @@ export const orders = pgTable("orders", {
 			foreignColumns: [profiles.id],
 			name: "orders_waiter_id_fkey"
 		}).onDelete("set null"),
-	pgPolicy("orders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("orders_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("orders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("orders_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("orders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("orders_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("orders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("orders_order_type_check", sql`order_type = ANY (ARRAY['dine_in'::text, 'delivery'::text])`),
 	check("orders_order_type_table_id_check", sql`(order_type = 'dine_in'::text) OR (table_id IS NULL)`),
 	check("orders_status_check", sql`status = ANY (ARRAY['active'::text, 'kitchen'::text, 'delivered'::text, 'cancelled'::text, 'paid'::text])`),
@@ -696,10 +694,10 @@ export const paymentMethods = pgTable("payment_methods", {
 			name: "payment_methods_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("payment_methods_restaurant_id_code_key").on(table.restaurantId, table.code),
-	pgPolicy("payment_methods_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
-	pgPolicy("payment_methods_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("payment_methods_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("payment_methods_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("payment_methods_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("payment_methods_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("payment_methods_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("payment_methods_code_check", sql`code ~ '^[a-z0-9_]{2,32}$'::text`),
 	check("payment_methods_kind_check", sql`kind = ANY (ARRAY['cash'::text, 'electronic'::text])`),
 	check("payment_methods_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 60)`),
@@ -735,9 +733,9 @@ export const paymentTenders = pgTable("payment_tenders", {
 			name: "payment_tenders_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("payment_tenders_payment_id_line_no_key").on(table.paymentId, table.lineNo),
-	pgPolicy("payment_tenders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
+	pgPolicy("payment_tenders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("payment_tenders_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
-	pgPolicy("payment_tenders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("payment_tenders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("payment_tenders_amount_check", sql`amount > 0`),
 	check("payment_tenders_cash_received_check", sql`((method_kind = 'cash'::text) AND (cash_received IS NOT NULL) AND (cash_received >= amount)) OR ((method_kind = 'electronic'::text) AND (cash_received IS NULL))`),
 	check("payment_tenders_line_no_check", sql`line_no >= 1`),
@@ -791,9 +789,9 @@ export const paymentTransactions = pgTable("payment_transactions", {
 			name: "payment_transactions_waiter_id_fkey"
 		}).onDelete("set null"),
 	unique("payment_transactions_order_id_unique").on(table.orderId),
-	pgPolicy("payment_transactions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
+	pgPolicy("payment_transactions_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("payment_transactions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
-	pgPolicy("payment_transactions_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("payment_transactions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const payments = pgTable("payments", {
@@ -813,7 +811,7 @@ export const payments = pgTable("payments", {
 	idempotencyKey: uuid("idempotency_key").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	index("idx_payments_restaurant_id_cash_register_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.cashRegisterId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("uuid_ops")),
+	index("idx_payments_restaurant_id_cash_register_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.cashRegisterId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
 			columns: [table.cashRegisterId],
 			foreignColumns: [cashRegisters.id],
@@ -836,9 +834,9 @@ export const payments = pgTable("payments", {
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("payments_restaurant_id_idempotency_key_key").on(table.restaurantId, table.idempotencyKey),
 	unique("payments_order_id_key").on(table.orderId),
-	pgPolicy("payments_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
+	pgPolicy("payments_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("payments_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
-	pgPolicy("payments_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("payments_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("payments_amount_due_check", sql`amount_due >= 0`),
 	check("payments_change_given_check", sql`change_given >= 0`),
 	check("payments_tip_amount_check", sql`tip_amount >= 0`),
@@ -916,10 +914,10 @@ export const profiles = pgTable("profiles", {
 	unique("profiles_username_key").on(table.username),
 	unique("profiles_email_key").on(table.email),
 	unique("profiles_user_id_unique").on(table.userId),
-	pgPolicy("profiles_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((user_id = private.current_user_id()) OR ((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("profiles_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("profiles_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("profiles_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("profiles_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("profiles_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("profiles_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const promotionDishes = pgTable("promotion_dishes", {
@@ -947,10 +945,10 @@ export const promotionDishes = pgTable("promotion_dishes", {
 			name: "promotion_dishes_restaurant_id_fkey"
 		}),
 	unique("promotion_dishes_promotion_id_dish_id_key").on(table.promotionId, table.dishId),
-	pgPolicy("promotion_dishes_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("promotion_dishes_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("promotion_dishes_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("promotion_dishes_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("promotion_dishes_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("promotion_dishes_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("promotion_dishes_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const promotions = pgTable("promotions", {
@@ -974,10 +972,10 @@ export const promotions = pgTable("promotions", {
 			foreignColumns: [restaurants.id],
 			name: "promotions_restaurant_id_fkey"
 		}),
-	pgPolicy("promotions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("promotions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("promotions_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("promotions_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("promotions_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("promotions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("promotions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("promotions_discount_type_check", sql`(discount_type)::text = ANY (ARRAY[('percentage'::character varying)::text, ('fixed_amount'::character varying)::text])`),
 ]);
 
@@ -1009,10 +1007,10 @@ export const purchaseOrderLines = pgTable("purchase_order_lines", {
 			name: "purchase_order_lines_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("purchase_order_lines_order_ingredient_key").on(table.purchaseOrderId, table.ingredientId),
-	pgPolicy("purchase_order_lines_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
-	pgPolicy("purchase_order_lines_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("purchase_order_lines_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("purchase_order_lines_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("purchase_order_lines_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("purchase_order_lines_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("purchase_order_lines_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("purchase_order_lines_quantity_check", sql`quantity > (0)::numeric`),
 	check("purchase_order_lines_received_quantity_check", sql`received_quantity >= (0)::numeric`),
 	check("purchase_order_lines_unit_cost_check", sql`unit_cost >= (0)::numeric`),
@@ -1056,10 +1054,10 @@ export const purchaseOrders = pgTable("purchase_orders", {
 			name: "purchase_orders_supplier_id_fkey"
 		}).onDelete("restrict"),
 	unique("purchase_orders_restaurant_id_number_key").on(table.restaurantId, table.number),
-	pgPolicy("purchase_orders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
-	pgPolicy("purchase_orders_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("purchase_orders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("purchase_orders_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("purchase_orders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("purchase_orders_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("purchase_orders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("purchase_orders_payment_status_check", sql`payment_status = ANY (ARRAY['pending'::text, 'paid'::text])`),
 	check("purchase_orders_status_check", sql`status = ANY (ARRAY['draft'::text, 'ordered'::text, 'partially_received'::text, 'received'::text, 'cancelled'::text])`),
 ]);
@@ -1091,10 +1089,10 @@ export const recipeIngredients = pgTable("recipe_ingredients", {
 			name: "recipe_ingredients_restaurant_id_fkey"
 		}),
 	unique("recipe_ingredients_recipe_id_ingredient_id_key").on(table.recipeId, table.ingredientId),
-	pgPolicy("recipe_ingredients_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
-	pgPolicy("recipe_ingredients_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("recipe_ingredients_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("recipe_ingredients_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("recipe_ingredients_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("recipe_ingredients_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("recipe_ingredients_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const recipes = pgTable("recipes", {
@@ -1126,10 +1124,10 @@ export const recipes = pgTable("recipes", {
 		}),
 	unique("recipes_dish_id_key").on(table.dishId),
 	unique("recipes_ingredient_id_key").on(table.ingredientId),
-	pgPolicy("recipes_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
-	pgPolicy("recipes_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("recipes_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("recipes_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("recipes_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("recipes_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("recipes_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("recipes_target_check", sql`num_nonnulls(dish_id, ingredient_id) = 1`),
 	check("recipes_yield_quantity_check", sql`yield_quantity > (0)::numeric`),
 ]);
@@ -1167,9 +1165,9 @@ export const suppliers = pgTable("suppliers", {
 			foreignColumns: [restaurants.id],
 			name: "suppliers_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
-	pgPolicy("suppliers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`, withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
+	pgPolicy("suppliers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
 	pgPolicy("suppliers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
-	pgPolicy("suppliers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	pgPolicy("suppliers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("suppliers_contact_name_check", sql`(contact_name IS NULL) OR (length(contact_name) <= 120)`),
 	check("suppliers_email_check", sql`(email IS NULL) OR (length(email) <= 160)`),
 	check("suppliers_lead_time_days_check", sql`(lead_time_days IS NULL) OR ((lead_time_days >= 0) AND (lead_time_days <= 365))`),
@@ -1199,11 +1197,11 @@ export const tables = pgTable("tables", {
 			foreignColumns: [profiles.id],
 			name: "tables_waiter_id_fkey"
 		}),
-	unique("tables_number_key").on(table.number),
-	pgPolicy("tables_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`, withCheck: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`  }),
-	pgPolicy("tables_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	unique("tables_restaurant_id_number_key").on(table.number, table.restaurantId),
+	pgPolicy("tables_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("tables_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	pgPolicy("tables_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	pgPolicy("tables_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("tables_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 ]);
 
 export const users = pgTable("users", {

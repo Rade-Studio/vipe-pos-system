@@ -5,6 +5,8 @@ export interface ErrorResponse {
   statusCode: number;
   error: string;
   message: string;
+  /** Extra fields an HttpException body carries, e.g. 409 `{shortages}` from POST /orders. */
+  [detail: string]: unknown;
 }
 
 /**
@@ -37,7 +39,10 @@ export function toErrorResponse(exception: unknown): ErrorResponse {
     if (Array.isArray(message)) {
       return body(exception.getStatus(), message.join('; '));
     }
-    return body(exception.getStatus(), typeof message === 'string' ? message : exception.message);
+    return {
+      ...details(response),
+      ...body(exception.getStatus(), typeof message === 'string' ? message : exception.message),
+    };
   }
 
   const pg = findPostgresError(exception);
@@ -49,6 +54,15 @@ export function toErrorResponse(exception: unknown): ErrorResponse {
     return body(mapped.statusCode, mapped.message);
   }
   return body(500, 'Internal server error');
+}
+
+/** Fields of an HttpException body object besides the standard three. */
+function details(response: string | object): Record<string, unknown> {
+  if (typeof response === 'string') {
+    return {};
+  }
+  const { statusCode: _statusCode, error: _error, message: _message, ...rest } = response as Record<string, unknown>;
+  return rest;
 }
 
 /** The `pg` error behind an exception; Drizzle wraps it as `cause`. */

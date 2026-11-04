@@ -319,6 +319,14 @@ Catálogo y configuración (lecturas para cualquier rol autenticado, escrituras 
 - `GET|POST /api/catalog/promotions`, `GET /api/catalog/promotions/active`, `PATCH|DELETE /api/catalog/promotions/:id` (borra también sus platos), `GET|PUT /api/catalog/promotions/:id/dishes` (`PUT {dishIds}` reemplaza el conjunto de forma atómica).
 - `GET /api/config` (todas las claves conocidas con valores por defecto del servidor, tipadas) y `PUT /api/config` (upsert por restaurante y clave en una transacción; devuelve la configuración completa).
 
+Órdenes, mesas y meseros (cada escritura es una sola transacción; la cuenta la calcula la base de datos con `private.recompute_order_bill`, nunca el cliente):
+
+- `GET /api/orders?status=kitchen,delivered&include=table,waiter` (ítems siempre incluidos, más recientes primero, máximo 500) y `GET /api/orders/:id`.
+- `POST /api/orders` `{tableId, waiterId?, items: [{dishId, quantity, unitPrice?, comments?}], tipPercentage?, force?}` (admin, mesero, cajero; solo `dine_in`, los domicilios los crea su módulo): el precio cobrado es siempre el del catálogo con las promociones vigentes (reloj del servidor); `unitPrice` es el precio que mostró el cliente y, si difiere, responde 409 `Price changed` con `{prices}` sin escribir nada. 409 `Table has an open order` con `{orderId}` si la mesa ya tiene una orden abierta. Crea la orden y sus ítems en `kitchen`, verifica stock con `check_dishes_stock` (409 `{shortages}` salvo `force: true`), descuenta con `consume_order_stock` y deja la mesa en `kitchen`. `POST /api/orders/:id/items` `{items, force?}` agrega ítems con las mismas reglas (409 `Order is closed` si está pagada o cancelada).
+- `PATCH /api/orders/:id/status` `{status: 'delivered'}` (solo desde `kitchen`; `paid` y `cancelled` -> 422), `POST /api/orders/:id/items/served` `{itemIds}` (cocina; al servir el último ítem la orden pasa a `delivered` y la mesa a `served`), `DELETE /api/orders/:id` (admin; `delete_order_with_items`; la mesa se libera solo si no le queda otra orden abierta; 409 `Order is paid` para órdenes pagadas).
+- `GET /api/tables` (por número, con `waiterName`), `POST /api/tables`, `PATCH|DELETE /api/tables/:id` (admin; 409 `Table has open orders`; el número es único por restaurante), `POST /api/tables/:id/assign` `{waiterId}` (-> `occupied`) y `POST /api/tables/:id/release` `{force?}` (409 desde `kitchen`, `delivered`, `served` o `reserved`, salvo admin con `force: true`).
+- `GET /api/staff/waiters`: meseros activos del restaurante.
+
 #### Stack local sin Supabase (Postgres + API + web)
 
 ```bash
@@ -378,7 +386,7 @@ Tiempo real: socket.io en el namespace `/realtime` (ruta `/socket.io`), autentic
 | Evento | Payload |
 | --- | --- |
 | `ready` | `{restaurantId}` al quedar suscrito. |
-| `pos_changes` | `{schema: 'public', table, commit_timestamp, eventType: 'INSERT' \| 'UPDATE' \| 'DELETE', new, old, errors: null}`, la forma de `postgres_changes` de Supabase, para `orders`, `tables` y `order_deliveries`. |
+| `pos_changes` | `{schema: 'public', table, commit_timestamp, eventType: 'INSERT' \| 'UPDATE' \| 'DELETE', new, old, errors: null}`, la forma de `postgres_changes` de Supabase, para `orders` (con `new.order_items`), `order_items` (con el `old` completo), `tables` (con `new.waiter_name`) y `order_deliveries`. |
 | `resync` | Sin payload; el listener de Postgres se reconectó y pudo perder cambios: el cliente vuelve a leer el estado. |
 
 ### Pruebas de base de datos

@@ -228,6 +228,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OrdersController_list"];
+        put?: never;
+        post: operations["OrdersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OrdersController_get"];
+        put?: never;
+        post?: never;
+        delete: operations["OrdersController_remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["OrdersController_addItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["OrdersController_updateStatus"];
+        trace?: never;
+    };
+    "/api/orders/{id}/items/served": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["OrdersController_serve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["TablesController_list"];
+        put?: never;
+        post: operations["TablesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["TablesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["TablesController_update"];
+        trace?: never;
+    };
+    "/api/tables/{id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TablesController_assign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TablesController_release"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/waiters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["WaitersController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -414,6 +574,206 @@ export interface components {
             businessNit?: string;
             inventoryControlEnabled?: boolean;
             deliveryDefaultFee?: number;
+        };
+        OrderItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderId: string | null;
+            /** Format: uuid */
+            dishId: string | null;
+            name: string;
+            /** @description Unit price charged. */
+            price: number;
+            quantity: number;
+            comments: string | null;
+            /** @enum {string} */
+            status: "kitchen" | "served";
+            /** Format: date-time */
+            addedAt: string | null;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        Order: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tableId: string | null;
+            /**
+             * Format: uuid
+             * @description Waiter profile id.
+             */
+            waiterId: string | null;
+            /** @enum {string} */
+            status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
+            /** @enum {string} */
+            orderType: "dine_in" | "delivery";
+            subtotal: number;
+            tax: number;
+            taxPercentage: number;
+            tip: number;
+            tipPercentage: number;
+            total: number;
+            totalDiscounts: number;
+            isPartialOrder: boolean;
+            /** Format: uuid */
+            parentOrderId: string | null;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+            /** @description Always embedded, oldest first. */
+            items: components["schemas"]["OrderItem"][];
+            /** @description Only with include=table. */
+            tableNumber?: number | null;
+            /** @description Only with include=waiter. */
+            waiterName?: string | null;
+        };
+        StockShortage: {
+            /** Format: uuid */
+            ingredientId: string;
+            name: string;
+            unit: string;
+            required: number;
+            available: number;
+            missing: number;
+        };
+        StockShortageResponse: {
+            /** @example 409 */
+            statusCode: number;
+            /** @example Conflict */
+            error: string;
+            /** @example Insufficient stock */
+            message: string;
+            shortages: components["schemas"]["StockShortage"][];
+        };
+        DishPrice: {
+            /** Format: uuid */
+            dishId: string;
+            /** @description Current server price (promotions applied). */
+            price: number;
+        };
+        PriceChangedResponse: {
+            /** @example 409 */
+            statusCode: number;
+            /** @example Conflict */
+            error: string;
+            /** @example Price changed */
+            message: string;
+            prices: components["schemas"]["DishPrice"][];
+        };
+        TableHasOpenOrderResponse: {
+            /** @example 409 */
+            statusCode: number;
+            /** @example Conflict */
+            error: string;
+            /** @example Table has an open order */
+            message: string;
+            /** Format: uuid */
+            orderId: string;
+        };
+        OrderItemInput: {
+            /** Format: uuid */
+            dishId: string;
+            quantity: number;
+            /** @description Price the client showed. The server charges the catalog price (promotions applied, server clock); a different value answers 409 Price changed. */
+            unitPrice?: number;
+            comments?: string | null;
+        };
+        CreateOrderRequest: {
+            /** Format: uuid */
+            tableId: string;
+            /**
+             * Format: uuid
+             * @description Defaults to the table's waiter, else the caller.
+             */
+            waiterId?: string;
+            /**
+             * @description Delivery orders are created by the delivery module.
+             * @default dine_in
+             * @enum {string}
+             */
+            orderType: "dine_in";
+            items: components["schemas"]["OrderItemInput"][];
+            /** @description Defaults to the tip_percentage setting. */
+            tipPercentage?: number;
+            /**
+             * @description Send even when check_dishes_stock reports shortages.
+             * @default false
+             */
+            force: boolean;
+        };
+        AddOrderItemsRequest: {
+            items: components["schemas"]["OrderItemInput"][];
+            /** @default false */
+            force: boolean;
+        };
+        UpdateOrderStatusRequest: {
+            /** @enum {string} */
+            status: "delivered";
+        };
+        ServeOrderItemsRequest: {
+            itemIds: string[];
+        };
+        Table: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** @enum {string} */
+            status: "available" | "reserved" | "occupied" | "kitchen" | "served";
+            /**
+             * Format: uuid
+             * @description Waiter profile id.
+             */
+            waiterId: string | null;
+            waiterName: string | null;
+            /** Format: date-time */
+            createdAt: string | null;
+            /**
+             * Format: date-time
+             * @description Set by the server on every write.
+             */
+            updatedAt: string | null;
+        };
+        CreateTableRequest: {
+            number: number;
+            /**
+             * @default available
+             * @enum {string}
+             */
+            status: "available" | "reserved" | "occupied" | "kitchen" | "served";
+        };
+        UpdateTableRequest: {
+            number?: number;
+            /**
+             * @description available also clears the waiter unless waiterId is given.
+             * @enum {string}
+             */
+            status?: "available" | "reserved" | "occupied" | "kitchen" | "served";
+            /** Format: uuid */
+            waiterId?: string | null;
+        };
+        AssignTableRequest: {
+            /** Format: uuid */
+            waiterId: string;
+        };
+        ReleaseTableRequest: {
+            /**
+             * @description Admin only: release from kitchen, delivered, served or reserved.
+             * @default false
+             */
+            force: boolean;
+        };
+        Waiter: {
+            /**
+             * Format: uuid
+             * @description Profile id.
+             */
+            id: string;
+            name: string;
+            username: string | null;
         };
     };
     responses: never;
@@ -1121,6 +1481,546 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    OrdersController_list: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated: items, table, waiter. Items are always embedded; table adds tableNumber, waiter adds waiterName. */
+                include?: unknown;
+                /** @description Comma-separated: active, kitchen, delivered, cancelled, paid. */
+                status?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, at most 500 orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"][];
+                };
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Order and items in kitchen, bill computed by the database, stock consumed, table in kitchen. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Not admin, waiter or cashier. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse) or Table has an open order (TableHasOpenOrderResponse). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockShortageResponse"] | components["schemas"]["PriceChangedResponse"] | components["schemas"]["TableHasOpenOrderResponse"];
+                };
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_get: {
+        parameters: {
+            query?: {
+                /** @description Same as the list. */
+                include?: unknown;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Order and items deleted (delete_order_with_items); the table is freed when no other open order remains. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Order is paid. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_addItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddOrderItemsRequest"];
+            };
+        };
+        responses: {
+            /** @description The order back in kitchen with the new items and the recomputed bill. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Insufficient stock (shortages), Price changed (prices), or Order is closed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_updateStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOrderStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description kitchen -> delivered; the table becomes served. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Order is not in kitchen. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_serve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServeOrderItemsRequest"];
+            };
+        };
+        responses: {
+            /** @description When no kitchen item remains the order is delivered and its table served. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Order is closed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TablesController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ordered by number, with the waiter name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"][];
+                };
+            };
+            /** @description Invalid input, unknown fields or unknown waiter. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TablesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTableRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown waiter. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TablesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Table has open orders. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown waiter. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TablesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTableRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown waiter. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TablesController_assign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignTableRequest"];
+            };
+        };
+        responses: {
+            /** @description The table is occupied by the waiter. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown waiter. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TablesController_release: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReleaseTableRequest"];
+            };
+        };
+        responses: {
+            /** @description available, no waiter. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description kitchen, delivered, served or reserved, unless an admin sends force: true. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown waiter. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WaitersController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active waiters of the restaurant, by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Waiter"][];
+                };
             };
         };
     };

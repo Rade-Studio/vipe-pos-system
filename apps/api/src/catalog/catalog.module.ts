@@ -7,5 +7,6 @@ import { PromotionsService } from './promotions.service';
 @Module({
   controllers: [CategoriesController, DishesController, PromotionsController],
   providers: [CategoriesService, DishesService, PromotionsService],
+  exports: [DishesService],
 })
 export class CatalogModule {}

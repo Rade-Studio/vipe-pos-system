@@ -31,15 +31,16 @@ SELECT is(
   'notify_change is AFTER INSERT OR UPDATE OR DELETE FOR EACH ROW on the three tables'
 );
 
--- 5. No other table notifies: the fan-out whitelist and the triggers agree.
+-- 5. No other table notifies: the fan-out whitelist and the triggers agree
+-- (order_items joined in T8a, 180_order_items_notify).
 SELECT is(
   (SELECT count(*)
      FROM pg_trigger t
      JOIN pg_proc p ON p.oid = t.tgfoid
      JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'private' AND p.proname = 'notify_change')::bigint,
-  3::bigint,
-  'only the three realtime tables use private.notify_change'
+  4::bigint,
+  'only the realtime tables (and order_items since T8a) use private.notify_change'
 );
 
 -- 6. Both payload functions pin search_path to the empty string.

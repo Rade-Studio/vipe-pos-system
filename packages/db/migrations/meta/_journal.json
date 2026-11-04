@@ -50,6 +50,20 @@
       "when": 1793819322993,
       "tag": "0006_fix_payment_rows_guard_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793821989436,
+      "tag": "0007_orders_realtime_api",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793823387543,
+      "tag": "0008_tables_number_per_restaurant",
+      "breakpoints": true
     }
   ]
 }
