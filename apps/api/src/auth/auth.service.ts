@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { sql } from '@vipe/db';
 import { DbClient } from '../db/db-client';
 import { UnitOfWork } from '../db/unit-of-work';
 import { NO_PROFILE_MESSAGE } from './auth-context';
@@ -51,15 +52,15 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
-    if (user.password_algo !== 'argon2id') {
-      await this.client.pool.query('SELECT private.set_password($1, $2, $3)', [
-        user.id,
-        await this.passwords.hash(password),
-        'argon2id',
-      ]);
-    }
-
-    const identity = await this.uow.run(user.id, (db) => loadIdentity(db, user.id));
+    // private.set_password only accepts the caller's own user (0011), so the
+    // bcrypt -> argon2id re-hash runs with app.user_id set to this user.
+    const rehash = user.password_algo !== 'argon2id' ? await this.passwords.hash(password) : undefined;
+    const identity = await this.uow.run(user.id, async (db) => {
+      if (rehash) {
+        await db.execute(sql`SELECT private.set_password(${user.id}, ${rehash}, 'argon2id')`);
+      }
+      return loadIdentity(db, user.id);
+    });
     if (!identity) {
       throw new ForbiddenException(NO_PROFILE_MESSAGE);
     }

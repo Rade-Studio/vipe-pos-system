@@ -14,6 +14,11 @@
 --   3. the tests.auth_users fixture trigger read `role` from raw_user_meta_data, the jsonb a client
 --      controls at signup, so signup was self-service privilege escalation.
 --
+-- Since 0011_staff_helpers vipe_api has no INSERT/UPDATE/DELETE on profiles
+-- at all (staff writes go through gated SECURITY DEFINER helpers, see
+-- 210_staff_helpers), so every direct write below is refused with 42501;
+-- the guard trigger stays as a second layer for the trusted roles.
+--
 -- This file pins the replacement contract:
 --   - any authenticated user may UPDATE its own non-privileged columns;
 --   - role changes require an admin of the same tenant; restaurant_id and
@@ -131,13 +136,12 @@ UPDATE public.profiles
 SELECT set_config('app.user_id', 'aaaaaaaa-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE vipe_api;
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ UPDATE public.profiles
+SELECT throws_ok(
+  $$ UPDATE public.profiles
           SET full_name = 'Waiter A Renamed'
-        WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$),
-  1,
-  'a waiter can update the non-privileged columns of its own row'
+        WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
+  '42501', NULL,
+  'a waiter can update the non-privileged columns of its own row (0011: no direct DML; staff helpers only)'
 );
 
 -- Self-promotion: the row is its own, and WITH CHECK passes because the tenant
@@ -147,7 +151,7 @@ SELECT throws_ok(
        SET role = 'admin'
      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
   '42501',
-  'only an admin of the same tenant may change profiles.role',
+  NULL,
   'a waiter cannot promote itself to admin'
 );
 
@@ -156,7 +160,7 @@ SELECT throws_ok(
        SET restaurant_id = 'bbbbbbbb-0000-4000-8000-000000000002'
      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
   '42501',
-  'profiles.restaurant_id is immutable',
+  NULL,
   'a waiter cannot move its own row to tenant B'
 );
 
@@ -165,17 +169,16 @@ SELECT throws_ok(
        SET user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1'
      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
   '42501',
-  'profiles.user_id is immutable',
+  NULL,
   'a waiter cannot re-point its own row at another auth user'
 );
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ UPDATE public.profiles
+SELECT throws_ok(
+  $$ UPDATE public.profiles
           SET full_name = 'Owned By Waiter'
-        WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a3' $$),
-  0,
-  'a waiter updating a colleague''s row affects zero rows'
+        WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a3' $$,
+  '42501', NULL,
+  'a waiter updating a colleague''s row affects zero rows (0011: no direct DML; staff helpers only)'
 );
 
 SELECT throws_ok(
@@ -185,26 +188,23 @@ SELECT throws_ok(
   'a waiter cannot insert a profile'
 );
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ DELETE FROM public.profiles
-      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a3' $$),
-  0,
-  'a waiter deleting a colleague''s row affects zero rows'
+SELECT throws_ok(
+  $$ DELETE FROM public.profiles
+      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a3' $$,
+  '42501', NULL,
+  'a waiter deleting a colleague''s row affects zero rows (0011: no direct DML; staff helpers only)'
 );
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ UPDATE public.profiles SET full_name = 'By Waiter' WHERE user_id IS NULL $$),
-  0,
-  'a waiter updating an unlinked same-tenant profile affects zero rows'
+SELECT throws_ok(
+  $$ UPDATE public.profiles SET full_name = 'By Waiter' WHERE user_id IS NULL $$,
+  '42501', NULL,
+  'a waiter updating an unlinked same-tenant profile affects zero rows (0011: no direct DML; staff helpers only)'
 );
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ DELETE FROM public.profiles WHERE user_id IS NULL $$),
-  0,
-  'a waiter deleting an unlinked same-tenant profile affects zero rows'
+SELECT throws_ok(
+  $$ DELETE FROM public.profiles WHERE user_id IS NULL $$,
+  '42501', NULL,
+  'a waiter deleting an unlinked same-tenant profile affects zero rows (0011: no direct DML; staff helpers only)'
 );
 
 RESET ROLE;
@@ -251,14 +251,13 @@ SELECT is(
 SELECT set_config('app.user_id', 'aaaaaaaa-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE vipe_api;
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ UPDATE public.profiles
+SELECT throws_ok(
+  $$ UPDATE public.profiles
           SET role = 'cashier',
               full_name = 'Waiter A Reassigned'
-        WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$),
-  1,
-  'an admin can change a colleague''s role and name in its own tenant'
+        WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
+  '42501', NULL,
+  'an admin can change a colleague''s role and name in its own tenant (0011: no direct DML; staff helpers only)'
 );
 
 -- Admin is not omnipotent: the two identity columns stay frozen for every
@@ -268,7 +267,7 @@ SELECT throws_ok(
        SET restaurant_id = 'bbbbbbbb-0000-4000-8000-000000000002'
      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
   '42501',
-  'profiles.restaurant_id is immutable',
+  NULL,
   'an admin cannot move a profile to another tenant'
 );
 SELECT throws_ok(
@@ -276,54 +275,49 @@ SELECT throws_ok(
        SET user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1'
      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
   '42501',
-  'profiles.user_id is immutable',
+  NULL,
   'an admin cannot re-point a profile at another auth user'
 );
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ UPDATE public.profiles
+SELECT throws_ok(
+  $$ UPDATE public.profiles
           SET full_name = 'Admin A Cross Tenant'
-        WHERE user_id = 'bbbbbbbb-0000-4000-8000-0000000000b1' $$),
-  0,
-  'a tenant A admin affects zero rows in tenant B'
+        WHERE user_id = 'bbbbbbbb-0000-4000-8000-0000000000b1' $$,
+  '42501', NULL,
+  'a tenant A admin affects zero rows in tenant B (0011: no direct DML; staff helpers only)'
 );
 
 -- The admin UI (components/admin/staff/WaiterForm.tsx) creates staff rows with
 -- no user_id; that path must keep working.
-SELECT is(
-  pg_temp.probe_exec(
-    $$ INSERT INTO public.profiles (id, restaurant_id, full_name, username, role)
+SELECT throws_ok(
+  $$ INSERT INTO public.profiles (id, restaurant_id, full_name, username, role)
        VALUES ('aaaaaaaa-0000-4000-8000-00000000ff01',
-               'aaaaaaaa-0000-4000-8000-000000000001', 'Guest Waiter', 'guest-waiter', 'waiter') $$),
-  1,
-  'an admin can insert a staff profile with no user_id in its own tenant'
+               'aaaaaaaa-0000-4000-8000-000000000001', 'Guest Waiter', 'guest-waiter', 'waiter') $$,
+  '42501', NULL,
+  'an admin can insert a staff profile with no user_id in its own tenant (0011: no direct DML; staff helpers only)'
 );
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ DELETE FROM public.profiles WHERE id = 'aaaaaaaa-0000-4000-8000-00000000ff01' $$),
-  1,
-  'an admin can delete that profile again'
+SELECT throws_ok(
+  $$ DELETE FROM public.profiles WHERE id = 'aaaaaaaa-0000-4000-8000-00000000ff01' $$,
+  '42501', NULL,
+  'an admin can delete that profile again (0011: no direct DML; staff helpers only)'
 );
 
 -- private.current_app_role() is re-read from profiles on every statement, so a
 -- self-demotion lands at once: RLS stops treating the next statement as an
 -- admin's, and the guard rejects the one row the demoter can still see.
-SELECT is(
-  pg_temp.probe_exec(
-    $$ UPDATE public.profiles SET role = 'waiter'
-      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' $$),
-  1,
-  'an admin can demote itself'
+SELECT throws_ok(
+  $$ UPDATE public.profiles SET role = 'waiter'
+      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' $$,
+  '42501', NULL,
+  'an admin can demote itself (0011: no direct DML; staff helpers only)'
 );
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ UPDATE public.profiles SET role = 'cashier'
-      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$),
-  0,
-  'right after demoting itself, the next statement is filtered as a waiter'
+SELECT throws_ok(
+  $$ UPDATE public.profiles SET role = 'cashier'
+      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
+  '42501', NULL,
+  'right after demoting itself, the next statement is filtered as a waiter (0011: no direct DML; staff helpers only)'
 );
 
 SELECT throws_ok(
@@ -331,7 +325,7 @@ SELECT throws_ok(
        SET role = 'admin'
      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' $$,
   '42501',
-  'only an admin of the same tenant may change profiles.role',
+  NULL,
   'a self-demoted admin cannot promote itself back on the next statement'
 );
 
@@ -340,14 +334,14 @@ RESET ROLE;
 SELECT is(
   (SELECT role FROM public.profiles
     WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2')::text,
-  'cashier'::text,
-  'the admin role change landed'
+  'waiter'::text,
+  'the admin role change did not land (0011: profiles writes go through the staff helpers)'
 );
 SELECT is(
   (SELECT full_name FROM public.profiles
     WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2')::text,
-  'Waiter A Reassigned'::text,
-  'the admin name change landed'
+  'Waiter A'::text,
+  'the admin name change did not land (0011)'
 );
 SELECT is(
   (SELECT restaurant_id FROM public.profiles
@@ -438,14 +432,13 @@ SELECT is(
 SELECT set_config('app.user_id', 'aaaaaaaa-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE vipe_api;
 
-SELECT is(
-  pg_temp.probe_exec(
-    $$ UPDATE public.profiles
+SELECT throws_ok(
+  $$ UPDATE public.profiles
           SET full_name = 'Waiter A Renamed Again',
               role = 'cashier'
-        WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$),
-  1,
-  'a waiter may PATCH its whole row while role keeps its current value'
+        WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
+  '42501', NULL,
+  'a waiter may PATCH its whole row while role keeps its current value (0011: no direct DML; staff helpers only)'
 );
 
 -- (b) The role guard is not a promotion guard: any role change needs an admin,
@@ -455,7 +448,7 @@ SELECT throws_ok(
        SET role = 'kitchen'
      WHERE user_id = 'aaaaaaaa-0000-4000-8000-0000000000a2' $$,
   '42501',
-  'only an admin of the same tenant may change profiles.role',
+  NULL,
   'a waiter cannot change its role to another non-admin role either'
 );
 

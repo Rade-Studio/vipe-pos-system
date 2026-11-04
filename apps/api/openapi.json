@@ -4623,6 +4623,343 @@
           "delivery"
         ]
       }
+    },
+    "/api/staff": {
+      "get": {
+        "operationId": "StaffController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Every profile of the caller's restaurant, by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StaffMember"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      },
+      "post": {
+        "operationId": "StaffController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStaffRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Login and profile created in one transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "409": {
+            "description": "Ya existe una cuenta con ese correo electrónico"
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      }
+    },
+    "/api/staff/{id}": {
+      "patch": {
+        "operationId": "StaffController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStaffRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "404": {
+            "description": "Not a profile of the caller's restaurant."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      },
+      "delete": {
+        "operationId": "StaffController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Login deleted; the profile and its sessions cascade."
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "404": {
+            "description": "Not a profile of the caller's restaurant."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      }
+    },
+    "/api/staff/{id}/password": {
+      "post": {
+        "operationId": "StaffController_setPassword",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStaffPasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Password replaced; the member's open sessions are revoked."
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "404": {
+            "description": "Not a profile of the caller's restaurant."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      }
+    },
+    "/api/dashboard/summary": {
+      "get": {
+        "operationId": "DashboardController_summary",
+        "parameters": [
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "description": "Window of dailySales and popularDishes, 1-366 (default 30).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Invalid days or unknown query fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
+    "/api/storage/uploads": {
+      "post": {
+        "operationId": "StorageController_createUpload",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTicket"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Not an image (SVG included), over 5 MB, unknown kind or fields."
+          },
+          "503": {
+            "description": "Storage is not configured (no S3_* variables)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/api/storage/objects": {
+      "delete": {
+        "operationId": "StorageController_deleteObject",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteObjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Deleted (also when it did not exist)."
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Not under S3_PUBLIC_BASE_URL or not an object of the caller's restaurant."
+          },
+          "503": {
+            "description": "Storage is not configured (no S3_* variables)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "storage"
+        ]
+      }
     }
   },
   "info": {
@@ -9635,6 +9972,283 @@
           "subtotal",
           "tax",
           "isPaid"
+        ]
+      },
+      "StaffMember": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Profile id (the :id of the staff routes)."
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Login identity; null for a legacy profile without login."
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "description": "Login email (profile email for a legacy profile)."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "waiter",
+              "kitchen",
+              "cashier",
+              "delivery_operator"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "fullName",
+          "username",
+          "email",
+          "role",
+          "active",
+          "createdAt"
+        ]
+      },
+      "CreateStaffRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 100,
+            "description": "Trimmed and lower-cased; unique (409)."
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          },
+          "fullName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "waiter",
+              "kitchen",
+              "cashier",
+              "delivery_operator"
+            ]
+          },
+          "username": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 50
+          },
+          "active": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "fullName",
+          "role"
+        ]
+      },
+      "UpdateStaffRequest": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "username": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 50,
+            "description": "Null or blank clears it."
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "waiter",
+              "kitchen",
+              "cashier",
+              "delivery_operator"
+            ]
+          }
+        }
+      },
+      "SetStaffPasswordRequest": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "password"
+        ]
+      },
+      "DailySales": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-11-04",
+            "description": "Calendar day in the restaurant timezone."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Sum of the paid orders created that day."
+          }
+        },
+        "required": [
+          "date",
+          "amount"
+        ]
+      },
+      "PopularDish": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A dish id sold under that name, if any."
+          },
+          "name": {
+            "type": "string",
+            "description": "Item name as sold (the grouping key)."
+          },
+          "count": {
+            "type": "number",
+            "description": "Units sold."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "count"
+        ]
+      },
+      "DashboardSummary": {
+        "type": "object",
+        "properties": {
+          "monthSales": {
+            "type": "number",
+            "description": "Sum of `total` of the paid orders created since the first day of the month (restaurant timezone)."
+          },
+          "kitchenOrders": {
+            "type": "number",
+            "description": "Orders in status `kitchen` right now."
+          },
+          "dailySales": {
+            "description": "Days with paid sales since local midnight `days` days back, oldest first (days without sales are absent).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailySales"
+            }
+          },
+          "popularDishes": {
+            "description": "Paid items in the same window grouped by name, most units first (ties by name), at most 10.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PopularDish"
+            }
+          }
+        },
+        "required": [
+          "monthSales",
+          "kitchenOrders",
+          "dailySales",
+          "popularDishes"
+        ]
+      },
+      "CreateUploadRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "dish"
+            ]
+          },
+          "contentType": {
+            "type": "string",
+            "example": "image/png",
+            "description": "image/* except SVG. The PUT must send this exact Content-Type."
+          },
+          "size": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5242880,
+            "description": "Bytes. The PUT must send exactly this Content-Length."
+          }
+        },
+        "required": [
+          "kind",
+          "contentType",
+          "size"
+        ]
+      },
+      "UploadTicket": {
+        "type": "object",
+        "properties": {
+          "uploadUrl": {
+            "type": "string",
+            "description": "Presigned PUT URL, valid for 5 minutes, bound to the declared Content-Type and size."
+          },
+          "key": {
+            "type": "string",
+            "example": "<restaurantId>/dishes/<uuid>.png"
+          },
+          "publicUrl": {
+            "type": "string",
+            "description": "Public read URL of the object once uploaded; store it as the dish imageUrl."
+          }
+        },
+        "required": [
+          "uploadUrl",
+          "key",
+          "publicUrl"
+        ]
+      },
+      "DeleteObjectRequest": {
+        "type": "object",
+        "properties": {
+          "publicUrl": {
+            "type": "string",
+            "description": "A publicUrl from POST /storage/uploads; must be under S3_PUBLIC_BASE_URL and the caller's restaurant."
+          }
+        },
+        "required": [
+          "publicUrl"
         ]
       }
     }

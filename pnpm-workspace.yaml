@@ -31,3 +31,20 @@ minimumReleaseAgeExclude:
   # Realtime gateway (T6): same Nest release line as core.
   - '@nestjs/websockets@12.3.3'
   - '@nestjs/platform-socket.io@12.3.3'
+  # S3 storage client (T12): @aws-sdk/client-s3 and the presigner, plus the
+  # internal packages of that release that are still inside the age window.
+  - '@aws-sdk/checksums@3.1002.2'
+  - '@aws-sdk/client-s3@3.1162.0'
+  - '@aws-sdk/core@3.980.0'
+  - '@aws-sdk/credential-provider-env@3.972.81'
+  - '@aws-sdk/credential-provider-http@3.972.83'
+  - '@aws-sdk/credential-provider-ini@3.973.26'
+  - '@aws-sdk/credential-provider-login@3.972.88'
+  - '@aws-sdk/credential-provider-node@3.972.93'
+  - '@aws-sdk/credential-provider-process@3.972.81'
+  - '@aws-sdk/credential-provider-sso@3.973.25'
+  - '@aws-sdk/credential-provider-web-identity@3.972.87'
+  - '@aws-sdk/middleware-sdk-s3@3.972.86'
+  - '@aws-sdk/nested-clients@3.998.0'
+  - '@aws-sdk/s3-request-presigner@3.1162.0'
+  - '@aws-sdk/token-providers@3.1162.0'

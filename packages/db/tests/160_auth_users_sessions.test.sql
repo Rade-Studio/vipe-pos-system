@@ -57,6 +57,8 @@ SELECT throws_ok(
   '42501', NULL,
   'vipe_api SELECT * on users is permission denied'
 );
+-- users has RLS since 0011: a caller reads its own row (and its restaurant's).
+SELECT set_config('app.user_id', '16000000-0000-0000-0000-000000000001', true);
 SELECT is(
   (SELECT email::text FROM public.users WHERE id = '16000000-0000-0000-0000-000000000001'),
   'Ana@T160.test',
@@ -93,9 +95,13 @@ SELECT is(
   'find_user_for_login reports inactive users'
 );
 
+-- Since 0011 vipe_api cannot execute the ungated create_user (staff accounts
+-- go through private.create_staff_user, 210); it stays for the migrator.
+RESET ROLE;
+SET LOCAL ROLE vipe_migrator;
 SELECT lives_ok(
   $$ SELECT private.create_user('new@t160.test', 'hash-new') $$,
-  'vipe_api creates a user through private.create_user'
+  'the migrator creates a user through private.create_user'
 );
 SELECT results_eq(
   $$ SELECT password_hash, password_algo FROM private.find_user_for_login('new@t160.test') $$,
@@ -113,6 +119,10 @@ SELECT throws_ok(
   'create_user rejects an unknown password_algo'
 );
 
+-- Since 0011 set_password only accepts the caller's own user (login re-hash).
+RESET ROLE;
+SET LOCAL ROLE vipe_api;
+SELECT set_config('app.user_id', '16000000-0000-0000-0000-000000000002', true);
 SELECT lives_ok(
   $$ SELECT private.set_password('16000000-0000-0000-0000-000000000002', 'hash-rehashed', 'argon2id') $$,
   'vipe_api re-hashes a password through private.set_password'
@@ -122,6 +132,7 @@ SELECT results_eq(
   $$ VALUES ('hash-rehashed', 'argon2id') $$,
   'set_password replaces hash and algorithm'
 );
+SELECT set_config('app.user_id', '16000000-0000-0000-0000-0000000000ff', true);
 SELECT throws_ok(
   $$ SELECT private.set_password('16000000-0000-0000-0000-0000000000ff', 'x', 'argon2id') $$,
   'P0002', NULL,
@@ -227,13 +238,16 @@ SELECT is(
      FROM pg_proc p
      JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'private'
-      AND p.proname IN ('find_user_for_login', 'create_user', 'set_password',
+      AND p.proname IN ('find_user_for_login', 'set_password',
                         'create_session', 'rotate_session', 'revoke_session')
       AND p.prosecdef
       AND has_function_privilege('vipe_api', p.oid, 'EXECUTE')
-      AND NOT has_function_privilege('public', p.oid, 'EXECUTE'))::bigint,
+      AND NOT has_function_privilege('public', p.oid, 'EXECUTE'))::bigint
+    + (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'private' AND p.proname = 'create_user' AND p.prosecdef
+          AND NOT has_function_privilege('vipe_api', p.oid, 'EXECUTE'))::bigint,
   6::bigint,
-  'the six auth helpers are SECURITY DEFINER, executable by vipe_api, not by PUBLIC'
+  'five auth helpers are SECURITY DEFINER and executable by vipe_api, create_user is not (0011)'
 );
 
 SELECT * FROM finish();

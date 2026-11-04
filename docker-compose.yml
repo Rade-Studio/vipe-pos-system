@@ -80,6 +80,45 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+  # -------------------------------
+  # MINIO (almacenamiento S3 para desarrollo)
+  # -------------------------------
+  # Imágenes de platos (odd/tasks/migracion-backend-nestjs.md, T12). Solo para
+  # desarrollo: en producción las variables S3_* de la API apuntan a R2 u otro
+  # servicio compatible con S3. Imagen de Chainguard fijada por digest porque
+  # MinIO ya no publica imágenes comunitarias. API S3 en :9000, consola en :9001.
+  #   docker compose up -d minio minio-init
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:3c60a2a8c4d33409a9bc7a623a7fcbfb4605adc3d89422d2f53b3f673a6e5597
+    container_name: vipe-pos-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${VIPE_MINIO_USER:-vipe-minio}
+      MINIO_ROOT_PASSWORD: ${VIPE_MINIO_PASSWORD:-vipe-minio-secret}
+    ports:
+      - "${VIPE_MINIO_PORT:-9000}:9000"
+      - "${VIPE_MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - vipe_pos_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  # Una sola ejecución: crea el bucket vipe-dev con lectura pública (idempotente).
+  minio-init:
+    image: cgr.dev/chainguard/minio-client@sha256:39768db4c3fa811bc8f2e2a3e0add8ea391648b1c980de179985e1c353dc1805
+    container_name: vipe-pos-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MC_HOST_local: http://${VIPE_MINIO_USER:-vipe-minio}:${VIPE_MINIO_PASSWORD:-vipe-minio-secret}@minio:9000
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mc mb --ignore-existing local/vipe-dev && mc anonymous set download local/vipe-dev"]
+    restart: "no"
 
 volumes:
   vipe_pos_db:
+  vipe_pos_minio:

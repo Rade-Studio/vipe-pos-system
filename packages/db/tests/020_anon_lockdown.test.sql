@@ -256,6 +256,8 @@ SELECT is(
       -- only (160_auth_users_sessions). Printing: no token_hash read, jobs
       -- acknowledged and pruned through SECURITY DEFINER helpers (200_printing).
       AND c.relname NOT IN ('users', 'auth_sessions', 'printer_tokens', 'print_jobs')
+      -- profiles: SELECT only, writes through the staff helpers (210_staff_helpers).
+      AND NOT (c.relname = 'profiles' AND p.priv <> 'SELECT')
       AND NOT has_table_privilege('vipe_api', c.oid, p.priv)
   ),
   0::bigint,

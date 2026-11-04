@@ -1284,6 +1284,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["StaffController_list"];
+        put?: never;
+        post: operations["StaffController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["StaffController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["StaffController_update"];
+        trace?: never;
+    };
+    "/api/staff/{id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["StaffController_setPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DashboardController_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["StorageController_createUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["StorageController_deleteObject"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2844,6 +2940,105 @@ export interface components {
             tax: number;
             /** @description orders.status = paid. */
             isPaid: boolean;
+        };
+        StaffMember: {
+            /**
+             * Format: uuid
+             * @description Profile id (the :id of the staff routes).
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Login identity; null for a legacy profile without login.
+             */
+            userId: string | null;
+            fullName: string;
+            username: string | null;
+            /** @description Login email (profile email for a legacy profile). */
+            email: string | null;
+            /** @enum {string} */
+            role: "admin" | "waiter" | "kitchen" | "cashier" | "delivery_operator";
+            active: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateStaffRequest: {
+            /**
+             * Format: email
+             * @description Trimmed and lower-cased; unique (409).
+             */
+            email: string;
+            password: string;
+            fullName: string;
+            /** @enum {string} */
+            role: "waiter" | "kitchen" | "cashier" | "delivery_operator";
+            username?: string | null;
+            /** @default true */
+            active: boolean;
+        };
+        UpdateStaffRequest: {
+            fullName?: string;
+            /** @description Null or blank clears it. */
+            username?: string | null;
+            active?: boolean;
+            /** @enum {string} */
+            role?: "waiter" | "kitchen" | "cashier" | "delivery_operator";
+        };
+        SetStaffPasswordRequest: {
+            password: string;
+        };
+        DailySales: {
+            /**
+             * @description Calendar day in the restaurant timezone.
+             * @example 2026-11-04
+             */
+            date: string;
+            /** @description Sum of the paid orders created that day. */
+            amount: number;
+        };
+        PopularDish: {
+            /**
+             * Format: uuid
+             * @description A dish id sold under that name, if any.
+             */
+            id: string | null;
+            /** @description Item name as sold (the grouping key). */
+            name: string;
+            /** @description Units sold. */
+            count: number;
+        };
+        DashboardSummary: {
+            /** @description Sum of `total` of the paid orders created since the first day of the month (restaurant timezone). */
+            monthSales: number;
+            /** @description Orders in status `kitchen` right now. */
+            kitchenOrders: number;
+            /** @description Days with paid sales since local midnight `days` days back, oldest first (days without sales are absent). */
+            dailySales: components["schemas"]["DailySales"][];
+            /** @description Paid items in the same window grouped by name, most units first (ties by name), at most 10. */
+            popularDishes: components["schemas"]["PopularDish"][];
+        };
+        CreateUploadRequest: {
+            /** @enum {string} */
+            kind: "dish";
+            /**
+             * @description image/* except SVG. The PUT must send this exact Content-Type.
+             * @example image/png
+             */
+            contentType: string;
+            /** @description Bytes. The PUT must send exactly this Content-Length. */
+            size: number;
+        };
+        UploadTicket: {
+            /** @description Presigned PUT URL, valid for 5 minutes, bound to the declared Content-Type and size. */
+            uploadUrl: string;
+            /** @example <restaurantId>/dishes/<uuid>.png */
+            key: string;
+            /** @description Public read URL of the object once uploaded; store it as the dish imageUrl. */
+            publicUrl: string;
+        };
+        DeleteObjectRequest: {
+            /** @description A publicUrl from POST /storage/uploads; must be under S3_PUBLIC_BASE_URL and the caller's restaurant. */
+            publicUrl: string;
         };
     };
     responses: never;
@@ -6794,6 +6989,340 @@ export interface operations {
             };
             /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every profile of the caller's restaurant, by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffMember"][];
+                };
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStaffRequest"];
+            };
+        };
+        responses: {
+            /** @description Login and profile created in one transaction. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffMember"];
+                };
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una cuenta con ese correo electrónico */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Login deleted; the profile and its sessions cascade. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a profile of the caller's restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStaffRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffMember"];
+                };
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a profile of the caller's restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_setPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetStaffPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password replaced; the member's open sessions are revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a profile of the caller's restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DashboardController_summary: {
+        parameters: {
+            query?: {
+                /** @description Window of dailySales and popularDishes, 1-366 (default 30). */
+                days?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardSummary"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid days or unknown query fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StorageController_createUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUploadRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadTicket"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an image (SVG included), over 5 MB, unknown kind or fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Storage is not configured (no S3_* variables). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StorageController_deleteObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteObjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Deleted (also when it did not exist). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not under S3_PUBLIC_BASE_URL or not an object of the caller's restaurant. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Storage is not configured (no S3_* variables). */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

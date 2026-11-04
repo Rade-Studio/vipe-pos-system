@@ -10,6 +10,7 @@
 --   mesero@vipe.local   waiter
 --   caja@vipe.local     cashier
 --   cocina@vipe.local   kitchen
+--   domicilios@vipe.local delivery_operator
 --
 -- Printer token for the printing service (pos/app.py --dev), documented in
 -- README: VIPE_PRINTER_TOKEN=vpt_dev-printer-token-2026. Only its sha256 is stored.
@@ -33,6 +34,8 @@ INSERT INTO public.users (id, email, password_hash, password_algo, is_active) VA
   ('d0000000-0000-0000-0000-000000000003', 'caja@vipe.local',
    '$argon2id$v=19$m=65536,p=4,t=3$gana0wGt7Bl1cmPanKhinA$KlHg+MbfzpiZZOs0ftzlg2lGgWJk9S0hs90FzKwatp4', 'argon2id', true),
   ('d0000000-0000-0000-0000-000000000004', 'cocina@vipe.local',
+   '$argon2id$v=19$m=65536,p=4,t=3$gana0wGt7Bl1cmPanKhinA$KlHg+MbfzpiZZOs0ftzlg2lGgWJk9S0hs90FzKwatp4', 'argon2id', true),
+  ('d0000000-0000-0000-0000-000000000005', 'domicilios@vipe.local',
    '$argon2id$v=19$m=65536,p=4,t=3$gana0wGt7Bl1cmPanKhinA$KlHg+MbfzpiZZOs0ftzlg2lGgWJk9S0hs90FzKwatp4', 'argon2id', true)
 ON CONFLICT (id) DO UPDATE
   SET password_hash = EXCLUDED.password_hash, password_algo = EXCLUDED.password_algo, is_active = true;
@@ -41,7 +44,8 @@ INSERT INTO public.profiles (id, user_id, full_name, username, email, role, acti
   ('e0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 'Admin Dev', 'admin', 'admin@vipe.local', 'admin', true, 'a0eebc99-0000-0000-0000-000000000000'),
   ('e0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000002', 'Mesero Dev', 'mesero', 'mesero@vipe.local', 'waiter', true, 'a0eebc99-0000-0000-0000-000000000000'),
   ('e0000000-0000-0000-0000-000000000003', 'd0000000-0000-0000-0000-000000000003', 'Caja Dev', 'caja', 'caja@vipe.local', 'cashier', true, 'a0eebc99-0000-0000-0000-000000000000'),
-  ('e0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-000000000004', 'Cocina Dev', 'cocina', 'cocina@vipe.local', 'kitchen', true, 'a0eebc99-0000-0000-0000-000000000000')
+  ('e0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-000000000004', 'Cocina Dev', 'cocina', 'cocina@vipe.local', 'kitchen', true, 'a0eebc99-0000-0000-0000-000000000000'),
+  ('e0000000-0000-0000-0000-000000000005', 'd0000000-0000-0000-0000-000000000005', 'Domicilios Dev', 'domicilios', 'domicilios@vipe.local', 'delivery_operator', true, 'a0eebc99-0000-0000-0000-000000000000')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.categories (id, name, description, icon, active, restaurant_id) VALUES

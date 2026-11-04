@@ -345,6 +345,7 @@ contraseña de desarrollo `vipe-dev-2026` (guardada como hash argon2id):
 | `mesero@vipe.local` | waiter |
 | `caja@vipe.local` | cashier |
 | `cocina@vipe.local` | kitchen |
+| `domicilios@vipe.local` | delivery_operator |
 
 La web llama siempre a su propio origen (`/api/...`), sin URL de API en el build. En
 desarrollo, `next.config.mjs` reenvía `/api/:path*` y `/socket.io/:path*` a
@@ -361,6 +362,10 @@ Inventario (`/api/inventory`): artículos con stock inicial en la misma transacc
 Impresión: `POST /api/print/commands` y `POST /api/print/invoices` (cualquier rol con sesión) encolan el ticket y lo envían a las impresoras del restaurante; `GET /api/print/jobs/pending` y `POST /api/print/jobs/:id/ack` (token de impresora como `Authorization: Bearer`); `GET|POST /api/devices/printers` y `DELETE /api/devices/printers/:id` (admin). Detalle en [Servicio de impresión](#️-servicio-de-impresión-python).
 
 Domicilios (`/api/delivery`): `GET /customers?phone=` busca el cliente por teléfono normalizado (`+57 310…` → `310…`) con sus direcciones (404 si no existe); `GET|POST /couriers` y `PATCH /couriers/:id` administran domiciliarios (escritura solo admin); `POST /orders` crea el domicilio, descuenta inventario y encola la comanda de cocina en una sola transacción y devuelve `consumption` con los faltantes; `POST /orders/:id/status {action, courierId?, reason?}` aplica las transiciones de `set_delivery_status` con el mensaje del servidor y `code`; `GET /active` lista los domicilios abiertos y los cerrados hoy según la zona horaria del restaurante.
+
+Personal (`/api/staff`, solo admin): alta, edición, baja y cambio de contraseña de cuentas de mesero, cocina, cajero y operador de domicilios; las reglas (admin activo del mismo restaurante, nunca un admin ni la propia cuenta, lista de roles permitidos) se aplican dentro de la base de datos. Dashboard: `GET /api/dashboard/summary?days=` calcula ventas del mes, órdenes en cocina, serie diaria y platos más vendidos en la zona horaria del restaurante.
+
+Almacenamiento: la API emite URLs prefirmadas (PUT) hacia un almacenamiento compatible con S3 configurado con `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_BASE_URL` y `S3_FORCE_PATH_STYLE` (ver `apps/api/env.example`); sin esas variables la API arranca y `/api/storage/*` responde 503 `Storage is not configured`. En desarrollo, `docker compose up -d minio minio-init` levanta MinIO (API S3 en `:9000`, consola en `:9001`) y crea el bucket público `vipe-dev`; la imagen es la compilación de Chainguard fijada por digest porque el proyecto original ya no publica imágenes comunitarias. En producción, las variables `S3_*` deben apuntar a Cloudflare R2 u otro almacenamiento compatible con S3.
 
 Errores: las respuestas 4xx originadas en la base de datos incluyen `code` (SQLSTATE) y, para `P0001` con `DETAIL`, `details`; los 422 de validación no llevan `code`.
 

@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { EnvModule } from './config/env.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { DbModule } from './db/db.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { HealthModule } from './health/health.module';
@@ -14,6 +15,8 @@ import { PrintModule } from './print/print.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { RegistersModule } from './registers/registers.module';
 import { SettingsModule } from './settings/settings.module';
+import { StaffModule } from './staff/staff.module';
+import { StorageModule } from './storage/storage.module';
 import { TablesModule } from './tables/tables.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 
@@ -34,6 +37,9 @@ import { TenancyModule } from './tenancy/tenancy.module';
     InventoryModule,
     PrintModule,
     DeliveryModule,
+    StaffModule,
+    DashboardModule,
+    StorageModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

@@ -1215,6 +1215,9 @@ export const users = pgTable("users", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	unique("users_email_key").on(table.email),
+	pgPolicy("users_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((id = ( SELECT private.current_user_id() AS current_user_id)) OR (EXISTS ( SELECT 1
+   FROM profiles p
+  WHERE ((p.user_id = users.id) AND (p.restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))))))` }),
 ]);
 
 export const authSessions = pgTable("auth_sessions", {

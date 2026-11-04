@@ -18,6 +18,7 @@ describe('parseEnv', () => {
       cookieSecure: true,
       accessTokenTtlSeconds: 900,
       refreshTokenTtlSeconds: 2592000,
+      storage: null,
     });
   });
 
@@ -64,5 +65,49 @@ describe('parseEnv', () => {
     expect(env.refreshTokenTtlSeconds).toBe(3600);
     expect(() => parseEnv({ ...valid, ACCESS_TOKEN_TTL_SECONDS: '0' })).toThrow(/ACCESS_TOKEN_TTL_SECONDS/);
     expect(() => parseEnv({ ...valid, REFRESH_TOKEN_TTL_SECONDS: 'abc' })).toThrow(/REFRESH_TOKEN_TTL_SECONDS/);
+  });
+
+  describe('S3 storage', () => {
+    const s3 = {
+      S3_ENDPOINT: 'http://localhost:9000',
+      S3_REGION: 'auto',
+      S3_BUCKET: 'vipe-dev',
+      S3_ACCESS_KEY_ID: 'key',
+      S3_SECRET_ACCESS_KEY: 'secret',
+      S3_PUBLIC_BASE_URL: 'http://localhost:9000/vipe-dev/',
+      S3_FORCE_PATH_STYLE: 'true',
+    };
+
+    it('is null (storage disabled) when no S3 variable is set', () => {
+      expect(parseEnv(valid).storage).toBeNull();
+    });
+
+    it('returns the typed S3 config, public base URL without a trailing slash', () => {
+      expect(parseEnv({ ...valid, ...s3 }).storage).toEqual({
+        endpoint: 'http://localhost:9000',
+        region: 'auto',
+        bucket: 'vipe-dev',
+        accessKeyId: 'key',
+        secretAccessKey: 'secret',
+        publicBaseUrl: 'http://localhost:9000/vipe-dev',
+        forcePathStyle: true,
+      });
+    });
+
+    it('defaults the region to us-east-1, path style to false and allows no endpoint (AWS)', () => {
+      const { S3_ENDPOINT: _e, S3_REGION: _r, S3_FORCE_PATH_STYLE: _f, ...aws } = s3;
+      expect(parseEnv({ ...valid, ...aws }).storage).toMatchObject({ endpoint: undefined, region: 'us-east-1', forcePathStyle: false });
+    });
+
+    it('rejects a partial S3 configuration and names the missing variables', () => {
+      const { S3_SECRET_ACCESS_KEY: _s, S3_PUBLIC_BASE_URL: _p, ...partial } = s3;
+      expect(() => parseEnv({ ...valid, ...partial })).toThrow(/S3_SECRET_ACCESS_KEY.*S3_PUBLIC_BASE_URL/);
+    });
+
+    it('rejects invalid URLs and a non-boolean S3_FORCE_PATH_STYLE', () => {
+      expect(() => parseEnv({ ...valid, ...s3, S3_ENDPOINT: 'localhost:9000' })).toThrow(/S3_ENDPOINT/);
+      expect(() => parseEnv({ ...valid, ...s3, S3_PUBLIC_BASE_URL: 'cdn' })).toThrow(/S3_PUBLIC_BASE_URL/);
+      expect(() => parseEnv({ ...valid, ...s3, S3_FORCE_PATH_STYLE: 'yes' })).toThrow(/S3_FORCE_PATH_STYLE/);
+    });
   });
 });
