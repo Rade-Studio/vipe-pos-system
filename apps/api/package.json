@@ -5,7 +5,7 @@
   "description": "VIPE POS backend API (NestJS)",
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "build": "pnpm --filter @vipe/db build && nest build",
     "start": "node dist/main.js",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -17,6 +17,10 @@
     "@nestjs/core": "12.3.3",
     "@nestjs/platform-express": "12.3.3",
     "@nestjs/swagger": "12.1.0",
+    "@vipe/db": "workspace:*",
+    "argon2": "0.45.1",
+    "bcryptjs": "3.0.3",
+    "jose": "6.2.14",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "zod": "4.6.7"
@@ -25,6 +29,7 @@
     "@nestjs/cli": "12.0.11",
     "@nestjs/testing": "12.3.3",
     "@swc/core": "1.16.21",
+    "@testcontainers/postgresql": "12.2.1",
     "@types/express": "5.0.6",
     "@types/node": "22.0.0",
     "@types/supertest": "7.2.1",
@@ -32,7 +37,7 @@
     "@typescript-eslint/parser": "8.70.0",
     "eslint": "9.39.5",
     "supertest": "7.3.1",
-    "typescript": "^5.0.2",
+    "typescript": "5.9.3",
     "unplugin-swc": "2.0.0",
     "vitest": "5.0.3"
   }

@@ -1,3 +1,4 @@
+import path from 'node:path';
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
@@ -15,8 +16,15 @@ export default defineConfig({
       },
     }),
   ],
+  resolve: {
+    // Specs run against the db package sources; `nest build` uses its dist.
+    alias: { '@vipe/db': path.resolve(__dirname, '../../packages/db/src/index.ts') },
+  },
   test: {
     name: 'api',
+    // Integration specs start a Postgres container and apply every migration.
+    hookTimeout: 180_000,
+    testTimeout: 30_000,
     environment: 'node',
     include: ['src/**/*.spec.ts'],
     globals: false,

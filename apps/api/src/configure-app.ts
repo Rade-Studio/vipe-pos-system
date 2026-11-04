@@ -16,7 +16,7 @@ export function configureApp<T extends INestApplication>(app: T): T {
 
   const document = SwaggerModule.createDocument(
     app,
-    new DocumentBuilder().setTitle('VIPE POS API').setVersion('0.1.0').build(),
+    new DocumentBuilder().setTitle('VIPE POS API').setVersion('0.1.0').addCookieAuth('vipe_access').build(),
   );
   SwaggerModule.setup(`${API_PREFIX}/docs`, app, document);
 

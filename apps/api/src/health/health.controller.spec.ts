@@ -11,6 +11,7 @@ describe('GET /api/health', () => {
   beforeAll(async () => {
     process.env.DATABASE_URL ??= 'postgres://vipe_api:secret@localhost:5432/vipe_pos';
     process.env.WEB_ORIGIN ??= 'http://localhost:3000';
+    process.env.JWT_SECRET ??= 'health-spec-secret-at-least-32-characters';
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = configureApp(moduleRef.createNestApplication());
     await app.init();

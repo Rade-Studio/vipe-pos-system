@@ -302,14 +302,38 @@ Otras verificaciones: `pnpm typecheck` y `pnpm build`.
 
 ```bash
 pnpm api:dev                                   # NestJS en modo watch (lee apps/api/.env, ver apps/api/env.example)
-pnpm api:test                                  # specs de la API (Vitest)
+pnpm api:test                                  # specs de la API (Vitest; las de integración levantan Postgres con Testcontainers, requiere Docker)
 pnpm api:lint && pnpm api:typecheck            # calidad estática
-pnpm api:build                                 # compila a apps/api/dist
+pnpm api:build                                 # compila packages/db/dist y apps/api/dist
 pnpm db:typecheck                              # paquete de base de datos
 pnpm db:migrate                                # aplica packages/db/migrations (requiere DATABASE_URL)
+pnpm --filter @vipe/db schema:pull             # regenera packages/db/src/schema desde una base migrada (requiere DATABASE_URL)
 ```
 
 La API expone `GET /api/health` y la documentación OpenAPI en `/api/docs`.
+
+Variables de entorno (`apps/api/env.example`):
+
+| Variable | Obligatoria | Valor por defecto | Uso |
+| --- | --- | --- | --- |
+| `PORT` | no | `4000` | Puerto HTTP. |
+| `DATABASE_URL` | sí | | Conexión como `vipe_api` (nunca superusuario ni `BYPASSRLS`). |
+| `WEB_ORIGIN` | sí | | Origen de la web autorizado por CORS con credenciales. |
+| `JWT_SECRET` | sí | | Clave HS256 del token de acceso; mínimo 32 caracteres. |
+| `COOKIE_SECURE` | no | `true` | Marca las cookies como `Secure`; `false` solo en desarrollo local por http. |
+| `ACCESS_TOKEN_TTL_SECONDS` | no | `900` | Vida del token y la cookie de acceso. |
+| `REFRESH_TOKEN_TTL_SECONDS` | no | `2592000` | Vida de la sesión de refresco (30 días). |
+
+Autenticación por cookies httpOnly (`SameSite=Lax`): `vipe_access` (JWT de acceso, ruta `/`) y `vipe_refresh` (token opaco de refresco, ruta `/api/auth`). Toda ruta exige `vipe_access` salvo las públicas; cada petición autenticada corre en una transacción con `app.user_id`, de modo que RLS limita los datos al restaurante del usuario.
+
+| Endpoint | Respuesta |
+| --- | --- |
+| `POST /api/auth/login` `{email, password}` | `200 {user: {id, email}, profile: {id, name, role, restaurantId}}` y ambas cookies; `401 Invalid credentials` si el correo no existe, la contraseña es incorrecta o el usuario está inactivo; `403` si el usuario no tiene perfil activo. |
+| `POST /api/auth/refresh` | `204` y cookies rotadas; `401` si falta el token de refresco, venció, fue revocado o ya se usó. |
+| `POST /api/auth/logout` | `204`, revoca la sesión (por la cookie de refresco o, si falta, por la de acceso) y borra ambas cookies. El token de acceso deja de valer de inmediato. |
+| `GET /api/auth/me` | `200` con el mismo cuerpo del login; `401` sin cookie de acceso válida. |
+
+Los errores siempre tienen la forma `{statusCode, error, message}`.
 
 ### Pruebas de base de datos
 

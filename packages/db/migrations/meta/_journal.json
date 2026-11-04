@@ -15,6 +15,20 @@
       "when": 1793814760255,
       "tag": "0001_api_role_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793815288214,
+      "tag": "0002_auth_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793817053522,
+      "tag": "0003_session_revoke_timeouts",
+      "breakpoints": true
     }
   ]
 }

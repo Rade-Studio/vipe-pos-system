@@ -11,8 +11,15 @@ allowBuilds:
   esbuild: true
   unrs-resolver: true
   '@swc/core': true
+  # Native argon2id binding for the API's password hashing (T5).
+  argon2: true
   # Telemetry only; never run its install script.
   '@scarf/scarf': false
+  # Optional native speed-ups pulled by testcontainers (ssh2 for SSH Docker
+  # hosts, protobufjs version check); the JS fallbacks are enough for tests.
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
 
 # pnpm's supply-chain policy delays very recent releases; these were pinned on
 # purpose (see odd/tasks/migracion-backend-nestjs.md, T3).

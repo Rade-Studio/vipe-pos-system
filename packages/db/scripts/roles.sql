@@ -21,5 +21,12 @@ ALTER ROLE vipe_migrator WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATER
 ALTER ROLE vipe_api WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT
   PASSWORD :'api_password';
 
+-- Bound every vipe_api session, including raw SQL outside the API: a hung
+-- statement or an open transaction never holds a connection forever. The API
+-- pool sets the same values per connection (apps/api/src/db/db-client.ts);
+-- vipe_migrator cannot ALTER ROLE, so the role-level setting lives here.
+ALTER ROLE vipe_api SET statement_timeout = '30s';
+ALTER ROLE vipe_api SET idle_in_transaction_session_timeout = '15s';
+
 SELECT format('ALTER DATABASE %I OWNER TO vipe_migrator', :'db_name')
 \gexec

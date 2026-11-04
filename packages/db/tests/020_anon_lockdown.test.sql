@@ -252,10 +252,13 @@ SELECT is(
     CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) AS p(priv)
     WHERE n.nspname = 'public'
       AND c.relkind IN ('r','p')
+      -- Credential tables: column-level SELECT and SECURITY DEFINER writes
+      -- only (160_auth_users_sessions).
+      AND c.relname NOT IN ('users', 'auth_sessions')
       AND NOT has_table_privilege('vipe_api', c.oid, p.priv)
   ),
   0::bigint,
-  'vipe_api keeps SELECT/INSERT/UPDATE/DELETE on every public table'
+  'vipe_api keeps SELECT/INSERT/UPDATE/DELETE on every public table except users and auth_sessions'
 );
 SELECT is(
   (
