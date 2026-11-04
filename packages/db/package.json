@@ -1,0 +1,25 @@
+{
+  "name": "@vipe/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VIPE POS database schema, migrations and Drizzle client",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "migrate": "tsx src/migrate.ts",
+    "generate": "drizzle-kit generate",
+    "studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.0.0",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "tsx": "4.23.15",
+    "typescript": "^5.0.2"
+  }
+}

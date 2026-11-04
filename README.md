@@ -215,8 +215,16 @@ restaurant-pos/
 ├── public/                 # Archivos estáticos
 ├── store/                  # Estado global (Zustand)
 ├── types/                  # Definiciones de tipos TypeScript
-└── utils/                  # Funciones utilitarias
+├── utils/                  # Funciones utilitarias
+├── apps/
+│   └── api/                # Backend NestJS (en migración, ver docs/arquitectura-backend.md)
+└── packages/
+    └── db/                 # Esquema, migraciones SQL y cliente Drizzle
 ```
+
+El repositorio es un workspace de pnpm. La app web vive en la raíz; el backend y la base
+de datos son paquetes propios. La migración desde Supabase hacia este backend se describe en
+[docs/arquitectura-backend.md](docs/arquitectura-backend.md).
 
 ## 🔄 Flujo de Datos
 
@@ -289,6 +297,19 @@ python3 -m unittest pos/test_print_renderer.py
 ```
 
 Otras verificaciones: `pnpm typecheck` y `pnpm build`.
+
+### Backend (apps/api)
+
+```bash
+pnpm api:dev                                   # NestJS en modo watch (lee apps/api/.env, ver apps/api/env.example)
+pnpm api:test                                  # specs de la API (Vitest)
+pnpm api:lint && pnpm api:typecheck            # calidad estática
+pnpm api:build                                 # compila a apps/api/dist
+pnpm db:typecheck                              # paquete de base de datos
+pnpm db:migrate                                # aplica packages/db/migrations (requiere DATABASE_URL)
+```
+
+La API expone `GET /api/health` y la documentación OpenAPI en `/api/docs`.
 
 ### Pruebas de base de datos
 

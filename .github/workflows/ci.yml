@@ -42,6 +42,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
+  api:
+    # NestJS API (apps/api) and database package (packages/db): lint,
+    # typecheck, unit/integration specs and a production build.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm api:lint
+      - run: pnpm api:typecheck
+      - run: pnpm db:typecheck
+      - run: pnpm api:test
+      - run: pnpm api:build
+
   build:
     runs-on: ubuntu-latest
     steps:
