@@ -18,8 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Loader2, Minus, Plus, Search, Trash2 } from 'lucide-react'
-import { categoryService } from '@/lib/supabase/service'
-import { dishServiceWithPromotions } from '@/lib/supabase/dish-service-with-promotions'
+import { fetchCategories, fetchDishes } from '@/lib/api/catalog'
 import {
   findCustomerByPhone,
   createDeliveryOrder,
@@ -80,8 +79,8 @@ interface DeliveryOrderFormProps {
  *   - phone lookup state (`findCustomerByPhone` on blur / Enter)
  *   - the draft reducer (`orderDraftReducer`)
  *   - menu picker (categories + dishes, search box, reuse of
- *     categoryService / dishServiceWithPromotions so promotions apply
- *     on the same shape the waiter menu shows)
+ *     the catalog API with server-side promotion pricing, the same
+ *     prices the waiter menu shows)
  *   - submit gating via single-flight + Spanish toasts per
  *     DeliveryServiceError kind
  *
@@ -123,13 +122,13 @@ export function DeliveryOrderForm({
   // categories for the operator.
   const { data: categories = [], isLoading: loadingCategories } = useQuery({
     queryKey: ['delivery-menu-categories'],
-    queryFn: () => categoryService.getAllActive(),
+    queryFn: () => fetchCategories({ active: true }),
     staleTime: 60_000,
   })
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const { data: dishes = [], isLoading: loadingDishes } = useQuery({
     queryKey: ['delivery-menu-dishes', selectedCategoryId],
-    queryFn: () => dishServiceWithPromotions.getByCategoryWithPromotions(selectedCategoryId!),
+    queryFn: () => fetchDishes({ categoryId: selectedCategoryId!, active: true, pricing: 'promotions' }),
     enabled: selectedCategoryId !== null,
     staleTime: 60_000,
   })

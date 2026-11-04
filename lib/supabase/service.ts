@@ -9,89 +9,6 @@ import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
 // Reutilizar el cliente de Supabase ya inicializado
 export const supabase = clientSupabase
 
-// Servicio para categorías
-export const categoryService = {
-  getAll: async () => {
-    const { data, error } = await supabase.from("categories").select("*").order("name")
-    if (error) throw error
-    return data || []
-  },
-
-  getAllActive: async () => {
-    const { data, error } = await supabase.from("categories").select("*").eq("active", true).order("name")
-    if (error) throw error
-    return data || []
-  },
-
-  getById: async (id: string) => {
-    const { data, error } = await supabase.from("categories").select("*").eq("id", id).single()
-    if (error) throw error
-    return data
-  },
-
-  create: async (category: any) => {
-    const { data, error } = await supabase.from("categories").insert([category]).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  update: async (id: string, category: any) => {
-    const { data, error } = await supabase.from("categories").update(category).eq("id", id).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  delete: async (id: string) => {
-    const { error } = await supabase.from("categories").delete().eq("id", id)
-    if (error) throw error
-    return true
-  },
-}
-
-// Servicio para platos
-export const dishService = {
-  getAll: async () => {
-    const { data, error } = await supabase.from("dishes").select("*").order("name")
-    if (error) throw error
-    return data || []
-  },
-
-  getByCategory: async (categoryId: string) => {
-    const { data, error } = await supabase
-      .from("dishes")
-      .select("*")
-      .eq("category_id", categoryId)
-      .eq("active", true)
-      .order("name")
-    if (error) throw error
-    return data || []
-  },
-
-  getById: async (id: string) => {
-    const { data, error } = await supabase.from("dishes").select("*").eq("id", id).single()
-    if (error) throw error
-    return data
-  },
-
-  create: async (dish: any) => {
-    const { data, error } = await supabase.from("dishes").insert([dish]).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  update: async (id: string, dish: any) => {
-    const { data, error } = await supabase.from("dishes").update(dish).eq("id", id).select()
-    if (error) throw error
-    return data?.[0]
-  },
-
-  delete: async (id: string) => {
-    const { error } = await supabase.from("dishes").delete().eq("id", id)
-    if (error) throw error
-    return true
-  },
-}
-
 // Servicio para mesas
 export const tableService = {
   async getAll() {
@@ -783,8 +700,6 @@ export async function getOrdersByDate(date: Date): Promise<Order[]> {
 
 // Actualizar la exportación de services
 export const services = {
-  categories: categoryService,
-  dishes: dishService,
   waiters: waiterService,
   tables: tableService,
   orders: orderService,

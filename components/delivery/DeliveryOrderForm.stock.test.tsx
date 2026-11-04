@@ -21,14 +21,9 @@ vi.mock("@/lib/supabase/client", () => ({
   createSupabaseClient: () => ({}),
 }))
 
-vi.mock("@/lib/supabase/service", () => ({
-  categoryService: { getAllActive: async () => [{ id: "cat-1", name: "Platos", icon: null }] },
-}))
-
-vi.mock("@/lib/supabase/dish-service-with-promotions", () => ({
-  dishServiceWithPromotions: {
-    getByCategoryWithPromotions: async () => [{ id: "d-1", name: "Bandeja", price: 12000, category_id: "cat-1" }],
-  },
+vi.mock("@/lib/api/catalog", () => ({
+  fetchCategories: async () => [{ id: "cat-1", name: "Platos", icon: "Soup" }],
+  fetchDishes: async () => [{ id: "d-1", name: "Bandeja", price: 12000, categoryId: "cat-1" }],
 }))
 
 vi.mock("@/lib/supabase/delivery-service", async () => {

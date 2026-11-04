@@ -1,15 +1,10 @@
 "use client"
 
 /**
- * Suggested delivery fee, stored in business_config under
- * `delivery_default_fee` (whole pesos). The new-delivery dialog caches it
- * under the same query key (`DEFAULT_FEE_QUERY_KEY`), so invalidating that
- * key after a save is what refreshes the dialog. business_config writes are
- * admin-only (RLS).
- *
- * `getConfigValue` returns null both for a missing key and for a failed
- * read, so the field starts empty instead of showing a value that might
- * not be the stored one.
+ * Suggested delivery fee: `deliveryDefaultFee` (whole pesos, server default 0)
+ * of `GET /config`. The new-delivery dialog reads the same query
+ * (`CONFIG_QUERY_KEY`), so writing the `PUT /config` answer into that cache
+ * after a save is what refreshes the dialog. Config writes are admin-only.
  */
 
 import { useEffect, useMemo, useState } from "react"
@@ -18,12 +13,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { businessConfigService } from "@/lib/supabase/business-config-service"
-import {
-  DEFAULT_FEE_CONFIG_KEY,
-  DEFAULT_FEE_QUERY_KEY as FEE_QUERY_KEY,
-  parseDefaultFeeInput,
-} from "@/lib/delivery/courier-admin"
+import { CONFIG_QUERY_KEY, fetchConfig, saveConfig } from "@/lib/api/config"
+import { parseDefaultFeeInput } from "@/lib/delivery/courier-admin"
 import { createSingleFlight, type SingleFlight } from "@/lib/payments/single-flight"
 import { toast } from "@/utils/toast"
 import { log } from "@/lib/log"
@@ -31,10 +22,8 @@ import { log } from "@/lib/log"
 
 export function DeliveryFeeSetting() {
   const queryClient = useQueryClient()
-  const { data: stored, isLoading } = useQuery<string | null>({
-    queryKey: FEE_QUERY_KEY,
-    queryFn: () => businessConfigService.getConfigValue(DEFAULT_FEE_CONFIG_KEY),
-  })
+  const { data: config, isLoading } = useQuery({ queryKey: CONFIG_QUERY_KEY, queryFn: fetchConfig })
+  const stored = config?.deliveryDefaultFee
 
   const [value, setValue] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -42,7 +31,7 @@ export function DeliveryFeeSetting() {
   const gate: SingleFlight = useMemo(() => createSingleFlight(), [])
 
   useEffect(() => {
-    setValue(stored ?? "")
+    setValue(stored === undefined ? "" : String(stored))
   }, [stored])
 
   const handleSave = async () => {
@@ -55,9 +44,9 @@ export function DeliveryFeeSetting() {
     const run = gate.run(async () => {
       setSaving(true)
       try {
-        await businessConfigService.saveConfigValue(DEFAULT_FEE_CONFIG_KEY, parsed.value)
+        const saved = await saveConfig({ deliveryDefaultFee: parsed.value })
         toast.success("Valor sugerido del domicilio guardado")
-        await queryClient.invalidateQueries({ queryKey: FEE_QUERY_KEY })
+        queryClient.setQueryData(CONFIG_QUERY_KEY, saved)
       } catch (err) {
         log.error("Error al guardar el valor sugerido del domicilio:", { error: String(err) })
         toast.error("No se pudo guardar el valor sugerido del domicilio")

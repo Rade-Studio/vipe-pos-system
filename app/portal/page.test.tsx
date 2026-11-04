@@ -86,17 +86,10 @@ vi.mock("@/lib/supabase/service", () => ({
   waiterService: { getAll: async () => [] },
 }))
 
-vi.mock("@/lib/supabase/business-config-service", () => ({
-  default: {
-    loadConfig: (options?: unknown) => env.loadConfig(options),
-    getAllConfig: vi.fn(),
-    saveMultipleConfig: vi.fn(),
-  },
-  businessConfigService: {
-    loadConfig: (options?: unknown) => env.loadConfig(options),
-    getAllConfig: vi.fn(),
-    saveMultipleConfig: vi.fn(),
-  },
+// T7b: every role reads the config with `GET /config`; nobody seeds keys.
+vi.mock("@/lib/api/config", () => ({
+  fetchConfig: () => env.loadConfig(),
+  saveConfig: vi.fn(),
 }))
 
 vi.mock("@/lib/supabase/cash-register-service", () => ({
@@ -227,17 +220,17 @@ describe("shell startup loads per role", () => {
     expect(env.getByStatus).toHaveBeenCalledWith(["kitchen", "delivered"])
   })
 
-  it("admin may seed the missing config keys; other roles only read", async () => {
+  it("admin and waiter both read the config once through GET /config", async () => {
     env.role = "admin"
     await renderShell("admin-view")
-    expect(env.loadConfig).toHaveBeenCalledWith({ canWrite: true })
+    expect(env.loadConfig).toHaveBeenCalledTimes(1)
 
     // Both shells share the profile store: unmount the admin one first.
     cleanup()
     env.reset()
     env.role = "waiter"
     await renderShell("waiter-view")
-    expect(env.loadConfig).toHaveBeenCalledWith({ canWrite: false })
+    expect(env.loadConfig).toHaveBeenCalledTimes(1)
   })
 
   it("an admin impersonating a role keeps the admin loads", async () => {

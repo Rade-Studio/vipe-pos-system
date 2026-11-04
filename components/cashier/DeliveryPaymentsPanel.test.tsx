@@ -43,12 +43,17 @@ vi.mock("@/lib/supabase/cash-register-service", () => ({
 }))
 
 vi.mock("@/lib/supabase/service", () => ({
-  categoryService: { getAllActive: async () => [] },
   orderService: { getById: () => new Promise(() => {}) },
 }))
 
-vi.mock("@/lib/supabase/dish-service-with-promotions", () => ({
-  dishServiceWithPromotions: { getByCategoryWithPromotions: async () => [] },
+vi.mock("@/lib/api/catalog", () => ({
+  fetchCategories: async () => [],
+  fetchDishes: async () => [],
+}))
+
+vi.mock("@/lib/api/config", () => ({
+  CONFIG_QUERY_KEY: ["config"],
+  fetchConfig: async () => ({ deliveryDefaultFee: 0 }),
 }))
 
 vi.mock("@/lib/supabase/payments-service", async () => {

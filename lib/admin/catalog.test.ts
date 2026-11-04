@@ -51,6 +51,14 @@ vi.mock("@/lib/supabase/client", () => ({
   },
 }))
 
+// T7b: categories, dishes and promotions come from the catalog API.
+const catalogApi = vi.hoisted(() => ({
+  fetchCategories: vi.fn(),
+  fetchDishes: vi.fn(),
+  fetchPromotions: vi.fn(),
+}))
+vi.mock("@/lib/api/catalog", () => catalogApi)
+
 import {
   ADMIN_LIST_STALE_MS,
   ADMIN_STAFF_ROLES,
@@ -59,9 +67,11 @@ import {
   fetchDishes,
   fetchPromotions,
   fetchStaff,
+  invalidateCatalogReaders,
 } from "./catalog"
 
 beforeEach(() => {
+  for (const fn of Object.values(catalogApi)) fn.mockReset().mockResolvedValue([])
   state.calls.length = 0
   for (const key of Object.keys(state.results)) delete state.results[key]
 })
@@ -110,16 +120,21 @@ describe("fetchers", () => {
     }
   })
 
-  it("reads each data set from its own table", async () => {
+  it("reads the whole catalog through the API (no filter: the admin lists show inactive rows too)", async () => {
     await fetchCategories()
     await fetchDishes()
+    await fetchPromotions()
+
+    expect(catalogApi.fetchCategories).toHaveBeenCalledWith()
+    expect(catalogApi.fetchDishes).toHaveBeenCalledWith()
+    expect(catalogApi.fetchPromotions).toHaveBeenCalledWith()
+    expect(state.calls).toEqual([])
+  })
+
+  it("still reads the staff from profiles", async () => {
     await fetchStaff()
 
-    const tables = state.calls.map((call) => call.table)
-
-    expect(tables).toContain("categories")
-    expect(tables).toContain("dishes")
-    expect(tables).toContain("profiles")
+    expect(state.calls.map((call) => call.table)).toContain("profiles")
   })
 
   it("asks for exactly the staff roles the Personal screen manages (never admin)", async () => {
@@ -133,9 +148,24 @@ describe("fetchers", () => {
   })
 
   it("raises instead of swallowing a failed read, so the screen can show its error state", async () => {
-    state.results.categories = { data: null, error: new Error("boom") }
+    catalogApi.fetchCategories.mockRejectedValue(new Error("boom"))
 
-    await expect(fetchCategories()).rejects.toThrow()
+    await expect(fetchCategories()).rejects.toThrow("boom")
+  })
+})
+
+describe("invalidateCatalogReaders", () => {
+  it("refreshes the admin list and the POS and delivery menus", async () => {
+    const invalidateQueries = vi.fn(async (_filters: { queryKey: unknown }) => undefined)
+
+    await invalidateCatalogReaders({ invalidateQueries } as never, catalogKeys.dishes)
+
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters.queryKey)).toEqual([
+      catalogKeys.dishes,
+      ["menu"],
+      ["delivery-menu-categories"],
+      ["delivery-menu-dishes"],
+    ])
   })
 })
 

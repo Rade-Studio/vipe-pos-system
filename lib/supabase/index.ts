@@ -4,16 +4,12 @@ export { supabase, createSupabaseClient }
 
 // Exportar los servicios
 import {
-  categoryService,
-  dishService,
   waiterService,
   tableService,
   orderService,
 } from "./service"
 
 export {
-  categoryService,
-  dishService,
   waiterService,
   tableService,
   orderService,

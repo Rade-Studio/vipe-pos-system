@@ -12,9 +12,9 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Plus, Edit, Trash2, BadgePercent } from "lucide-react"
 import { PromotionForm } from "./PromotionForm"
-import { promotionService, type Promotion } from "@/lib/supabase/promotion-service"
+import { deletePromotion, type PromotionDto as Promotion } from "@/lib/api/catalog"
 import { useToast } from "@/hooks/use-toast"
-import { ADMIN_LIST_STALE_MS, catalogKeys, fetchPromotions } from "@/lib/admin/catalog"
+import { ADMIN_LIST_STALE_MS, catalogKeys, fetchPromotions, invalidateCatalogReaders } from "@/lib/admin/catalog"
 import {
   Dialog,
   DialogContent,
@@ -75,8 +75,9 @@ export function PromotionList() {
     if (!promotionToDelete) return
 
     try {
-      await promotionService.deletePromotion(promotionToDelete.id)
-      queryClient.invalidateQueries({ queryKey: catalogKeys.promotions })
+      await deletePromotion(promotionToDelete.id)
+      // Promoted prices change on the POS and delivery menus too.
+      void invalidateCatalogReaders(queryClient, catalogKeys.promotions)
       toast({
         title: "Promoción eliminada",
         description: "La promoción ha sido eliminada correctamente",
@@ -95,7 +96,7 @@ export function PromotionList() {
   }
 
   const handleFormSubmit = async () => {
-    await queryClient.invalidateQueries({ queryKey: catalogKeys.promotions })
+    await invalidateCatalogReaders(queryClient, catalogKeys.promotions)
     toast({
       title: selectedPromotion ? "Promoción actualizada" : "Promoción creada",
       description: selectedPromotion
@@ -106,8 +107,8 @@ export function PromotionList() {
 
   const isPromotionActive = (promotion: Promotion) => {
     const now = new Date()
-    const startDate = new Date(promotion.start_date)
-    const endDate = new Date(promotion.end_date)
+    const startDate = new Date(promotion.startDate)
+    const endDate = new Date(promotion.endDate)
     return promotion.active && now >= startDate && now <= endDate
   }
 
@@ -151,17 +152,17 @@ export function PromotionList() {
                 <TableRow key={promotion.id}>
                   <TableCell className="font-medium">{promotion.name}</TableCell>
                   <TableCell className="hidden text-muted-foreground md:table-cell">
-                    {promotion.discount_type === "percentage" ? "Porcentaje" : "Monto fijo"}
+                    {promotion.discountType === "percentage" ? "Porcentaje" : "Monto fijo"}
                   </TableCell>
                   <TableCell>
-                    {promotion.discount_type === "percentage"
-                      ? `${promotion.discount_value}%`
-                      : `$${promotion.discount_value}`}
+                    {promotion.discountType === "percentage"
+                      ? `${promotion.discountValue}%`
+                      : `$${promotion.discountValue}`}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
                     <div className="whitespace-nowrap text-xs text-muted-foreground">
-                      <div>Desde: {format(new Date(promotion.start_date), "dd/MM/yyyy", { locale: es })}</div>
-                      <div>Hasta: {format(new Date(promotion.end_date), "dd/MM/yyyy", { locale: es })}</div>
+                      <div>Desde: {format(new Date(promotion.startDate), "dd/MM/yyyy", { locale: es })}</div>
+                      <div>Hasta: {format(new Date(promotion.endDate), "dd/MM/yyyy", { locale: es })}</div>
                     </div>
                   </TableCell>
                   <TableCell>

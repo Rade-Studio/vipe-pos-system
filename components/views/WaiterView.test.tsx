@@ -103,7 +103,11 @@ vi.mock("@/lib/supabase/service", () => ({
     updateStatus: vi.fn(),
   },
   waiterService: { getAll: env.waiterGetAll },
-  categoryService: { getAllActive: env.categories },
+}))
+
+vi.mock("@/lib/api/catalog", () => ({
+  fetchCategories: () => env.categories(),
+  fetchDishes: (filter: { categoryId: string }) => env.dishesByCategory(filter.categoryId),
 }))
 
 vi.mock("@/lib/supabase/inventory-control-service", () => ({
@@ -123,10 +127,6 @@ vi.mock("@/hooks/use-toast", () => {
   toastApi.value = { toast: (...args: unknown[]) => env.toastFn(...args) }
   return { useToast: () => toastApi.value, toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }
 })
-
-vi.mock("@/lib/supabase/dish-service-with-promotions", () => ({
-  dishServiceWithPromotions: { getByCategoryWithPromotions: env.dishesByCategory },
-}))
 
 vi.mock("@/lib/supabase/realtime-service", () => ({
   realtimeService: {
@@ -288,8 +288,8 @@ describe("WaiterView — selecting a table does not rebuild the screen (T6/S2)",
         id: "d-1",
         name: "Bandeja",
         price: 12000,
-        category_id: "cat-1",
-        image_url: "/dish.png",
+        categoryId: "cat-1",
+        imageUrl: "/dish.png",
         originalPrice: null,
         discountAmount: null,
         discountPercentage: null,

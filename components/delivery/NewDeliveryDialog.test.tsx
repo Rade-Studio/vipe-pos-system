@@ -14,25 +14,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
  * typed.
  */
 
-const getConfigValue = vi.hoisted(() => vi.fn())
+const fetchConfig = vi.hoisted(() => vi.fn())
 
 vi.mock("@/lib/supabase/client", () => ({
   supabase: { channel: () => ({ on: () => ({ on: () => ({ subscribe: () => ({}) }) }) }), from: () => ({}), rpc: async () => ({ data: null, error: null }) },
   createSupabaseClient: () => ({}),
 }))
 
-vi.mock("@/lib/supabase/business-config-service", () => ({
-  businessConfigService: { getConfigValue },
-  default: { getConfigValue },
-}))
+// T7b: the suggested fee is `deliveryDefaultFee` of the shared `GET /config` query.
+vi.mock("@/lib/api/config", () => ({ CONFIG_QUERY_KEY: ["config"], fetchConfig }))
 
 vi.mock("@/lib/supabase/service", () => ({
-  categoryService: { getAllActive: async () => [] },
   orderService: { getById: async () => ({}) },
 }))
 
-vi.mock("@/lib/supabase/dish-service-with-promotions", () => ({
-  dishServiceWithPromotions: { getByCategoryWithPromotions: async () => [] },
+vi.mock("@/lib/api/catalog", () => ({
+  fetchCategories: async () => [],
+  fetchDishes: async () => [],
 }))
 
 vi.mock("@/lib/supabase/delivery-service", async () => {
@@ -48,7 +46,8 @@ vi.mock("@/lib/supabase/realtime-service", () => ({
 
 import { NewDeliveryDialog } from "@/components/delivery/NewDeliveryDialog"
 
-let resolveFee: ((value: string | null) => void) | null = null
+let resolveConfig: ((value: { deliveryDefaultFee: number }) => void) | null = null
+const resolveFee = (fee: number) => resolveConfig?.({ deliveryDefaultFee: fee })
 
 function makeClient() {
   return new QueryClient({
@@ -67,12 +66,12 @@ function renderDialog(client: QueryClient) {
 }
 
 beforeEach(() => {
-  getConfigValue.mockReset()
-  resolveFee = null
-  getConfigValue.mockImplementation(
+  fetchConfig.mockReset()
+  resolveConfig = null
+  fetchConfig.mockImplementation(
     () =>
-      new Promise<string | null>((resolve) => {
-        resolveFee = resolve
+      new Promise((resolve) => {
+        resolveConfig = resolve
       }),
   )
 })
@@ -90,12 +89,11 @@ describe("NewDeliveryDialog — no blank form while the suggested fee loads", ()
     expect(screen.getByRole("button", { name: "Crear domicilio" })).toBeInTheDocument()
 
     await act(async () => {
-      resolveFee?.("5000")
+      resolveFee(5000)
     })
 
     await waitFor(() => expect(screen.getByLabelText("Domicilio")).toHaveValue("5000"))
-    expect(getConfigValue).toHaveBeenCalledTimes(1)
-    expect(getConfigValue).toHaveBeenCalledWith("delivery_default_fee")
+    expect(fetchConfig).toHaveBeenCalledTimes(1)
   })
 
   it("keeps a fee the operator typed while the read was in flight", async () => {
@@ -104,7 +102,7 @@ describe("NewDeliveryDialog — no blank form while the suggested fee loads", ()
     fireEvent.change(screen.getByLabelText("Domicilio"), { target: { value: "2500" } })
 
     await act(async () => {
-      resolveFee?.("5000")
+      resolveFee(5000)
     })
 
     await waitFor(() => expect(screen.getByLabelText("Domicilio")).toHaveValue("2500"))
@@ -114,7 +112,7 @@ describe("NewDeliveryDialog — no blank form while the suggested fee loads", ()
     const client = makeClient()
     const first = renderDialog(client)
     await act(async () => {
-      resolveFee?.("5000")
+      resolveFee(5000)
     })
     await waitFor(() => expect(screen.getByLabelText("Domicilio")).toHaveValue("5000"))
     first.unmount()
@@ -122,6 +120,6 @@ describe("NewDeliveryDialog — no blank form while the suggested fee loads", ()
     renderDialog(client)
 
     await waitFor(() => expect(screen.getByLabelText("Domicilio")).toHaveValue("5000"))
-    expect(getConfigValue).toHaveBeenCalledTimes(1)
+    expect(fetchConfig).toHaveBeenCalledTimes(1)
   })
 })

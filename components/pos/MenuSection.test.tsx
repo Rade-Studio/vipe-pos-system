@@ -25,12 +25,9 @@ vi.mock("@/lib/supabase/client", () => ({
   },
 }))
 
-vi.mock("@/lib/supabase/service", () => ({
-  categoryService: { getAllActive: env.getAllActive },
-}))
-
-vi.mock("@/lib/supabase/dish-service-with-promotions", () => ({
-  dishServiceWithPromotions: { getByCategoryWithPromotions: env.getByCategoryWithPromotions },
+vi.mock("@/lib/api/catalog", () => ({
+  fetchCategories: () => env.getAllActive(),
+  fetchDishes: (filter: { categoryId: string }) => env.getByCategoryWithPromotions(filter.categoryId),
 }))
 
 import { MenuSection } from "./MenuSection"
@@ -44,8 +41,8 @@ const dishRow = (id: string, name: string, categoryId: string) => ({
   id,
   name,
   price: 12000,
-  category_id: categoryId,
-  image_url: "/dish.png",
+  categoryId,
+  imageUrl: "/dish.png",
   originalPrice: null,
   discountAmount: null,
   discountPercentage: null,

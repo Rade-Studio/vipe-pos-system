@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
+import { createDish, updateDish, type CategoryDto, type DishDto } from "@/lib/api/catalog"
 import { ImageUpload } from "@/components/ui/image-upload"
 import { Loader2, Trash2, RefreshCw } from "lucide-react"
 import Image from "next/image"
@@ -20,8 +20,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface DishFormProps {
-  dish?: any
-  categories: any[]
+  dish?: DishDto | null
+  categories: CategoryDto[]
   onSuccess: () => void
   isNewDish?: boolean
 }
@@ -72,14 +72,14 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
       previousDishIdRef.current = dish.id
 
       // Guardar la URL original de la imagen para poder eliminarla después
-      if (dish.image_url) {
-        originalImageUrlRef.current = dish.image_url
+      if (dish.imageUrl) {
+        originalImageUrlRef.current = dish.imageUrl
       }
 
       // Asegurarse de que category_id sea un string y exista en las categorías disponibles
       let categoryId = ""
-      if (dish.category_id) {
-        categoryId = String(dish.category_id)
+      if (dish.categoryId) {
+        categoryId = String(dish.categoryId)
         const categoryExists = categories.some((cat) => String(cat.id) === categoryId)
         if (!categoryExists) {
           log.warn(`La categoría con ID ${categoryId} no existe en las opciones disponibles`)
@@ -87,12 +87,12 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
       }
 
       // Verificar si la imagen es accesible
-      if (dish.image_url) {
+      if (dish.imageUrl) {
         storageService
-          .isImageAccessible(dish.image_url)
+          .isImageAccessible(dish.imageUrl)
           .then((isAccessible) => {
             if (!isAccessible) {
-              log.warn("La imagen no es accesible:", { imageUrl: dish.image_url })
+              log.warn("La imagen no es accesible:", { imageUrl: dish.imageUrl })
               setImageError(true)
               // Usar un placeholder en su lugar
               const placeholderUrl = storageService.getPlaceholderUrl(dish.name)
@@ -110,9 +110,9 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
         description: dish.description || "",
         price: dish.price ? dish.price.toString() : "",
         category_id: categoryId,
-        image_url: dish.image_url || "",
+        image_url: dish.imageUrl || "",
         active: dish.active !== undefined ? dish.active : true,
-        allow_comments: dish.allow_comments !== undefined ? dish.allow_comments : false,
+        allow_comments: dish.allowComments !== undefined ? dish.allowComments : false,
       })
     } else {
       // Caso 4: Inicialización inicial sin plato (nuevo plato por defecto)
@@ -210,17 +210,16 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
         throw new Error("El precio debe ser un número válido")
       }
 
+      // camelCase body; empty text and "no category" are stored as null.
       const dishData = {
         name: formData.name,
-        description: formData.description,
+        description: formData.description || null,
         price,
-        category_id: formData.category_id,
-        image_url: formData.image_url,
+        categoryId: formData.category_id || null,
+        imageUrl: formData.image_url || null,
         active: formData.active,
-        allow_comments: formData.allow_comments,
+        allowComments: formData.allow_comments,
       }
-
-      let error
 
       if (dish) {
         // Si la imagen ha cambiado y había una imagen anterior, eliminar la imagen anterior
@@ -234,16 +233,10 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
           }
         }
 
-        // Update existing dish
-        const { error: updateError } = await supabase.from("dishes").update(dishData).eq("id", dish.id)
-        error = updateError
+        await updateDish(dish.id, dishData)
       } else {
-        // Insert new dish
-        const { error: insertError } = await supabase.from("dishes").insert(dishData)
-        error = insertError
+        await createDish(dishData)
       }
-
-      if (error) throw error
 
       toast({
         title: dish ? "Plato actualizado" : "Plato creado",

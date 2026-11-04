@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const toastMock = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
-vi.mock("@/lib/supabase/business-config-service", () => ({ default: {} }))
+vi.mock("@/lib/api/config", () => ({}))
 
 import { useConfigStore } from "@/store/use-config-store"
 import { BusinessSettings } from "./BusinessSettings"

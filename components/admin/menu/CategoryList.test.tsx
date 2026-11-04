@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import type React from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { ApiError } from "@/lib/api/errors"
 import { queryClient } from "@/lib/queryClient"
 
 /**
@@ -16,50 +17,18 @@ import { queryClient } from "@/lib/queryClient"
  * and a mutation invalidates exactly that key.
  */
 
-const state = vi.hoisted(() => {
-  type Result = { data: unknown; error: unknown }
-  const calls: { table: string; method: string; args: unknown[] }[] = []
-  const results: Record<string, Result> = {}
-  const deleted: { table: string; args: unknown[] }[] = []
+const catalog = vi.hoisted(() => ({
+  categories: [] as unknown[],
+  fetchCategories: vi.fn(),
+  deleteCategory: vi.fn(),
+}))
 
-  const makeChain = (table: string): any => {
-    const chain: any = {}
-    const record =
-      (method: string) =>
-      (...args: unknown[]) => {
-        calls.push({ table, method, args })
-        return chain
-      }
-    for (const method of ["select", "in", "eq", "order", "limit", "not"]) {
-      chain[method] = record(method)
-    }
-    chain.delete = (...args: unknown[]) => {
-      calls.push({ table, method: "delete", args })
-      return chain
-    }
-    chain.insert = (...args: unknown[]) => {
-      calls.push({ table, method: "insert", args })
-      return chain
-    }
-    chain.update = (...args: unknown[]) => {
-      calls.push({ table, method: "update", args })
-      return chain
-    }
-    chain.then = (resolve: (value: Result) => unknown) => {
-      if (table === "categories" && chain.__delete) {
-        deleted.push({ table, args: [] })
-      }
-      return Promise.resolve(results[table] ?? { data: [], error: null }).then(resolve)
-    }
-    return chain
-  }
-
-  return { calls, results, deleted, makeChain }
-})
-
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: { from: (table: string) => state.makeChain(table) },
-  createSupabaseClient: () => ({ from: (table: string) => state.makeChain(table) }),
+// T7b: the list reads and deletes through the API module, never Supabase.
+vi.mock("@/lib/api/catalog", () => ({
+  fetchCategories: catalog.fetchCategories,
+  deleteCategory: catalog.deleteCategory,
+  fetchDishes: vi.fn(async () => []),
+  fetchPromotions: vi.fn(async () => []),
 }))
 
 const toastMock = vi.hoisted(() => vi.fn())
@@ -72,22 +41,18 @@ function wrap(ui: React.ReactElement) {
 }
 
 function categorySelects() {
-  return state.calls.filter((call) => call.table === "categories" && call.method === "select")
+  return catalog.fetchCategories.mock.calls
 }
 
 beforeEach(() => {
   queryClient.clear()
-  state.calls.length = 0
-  state.deleted.length = 0
-  for (const key of Object.keys(state.results)) delete state.results[key]
-  state.results.categories = {
-    data: [
-      { id: "c-1", name: "Entradas", description: "Para empezar", icon: "Coffee", active: true },
-      { id: "c-2", name: "Postres", description: null, icon: null, active: false },
-    ],
-    error: null,
-  }
-  state.results.dishes = { data: [], error: null }
+  catalog.fetchCategories.mockReset().mockImplementation(async () => catalog.categories)
+  catalog.deleteCategory.mockReset().mockResolvedValue(undefined)
+  toastMock.mockClear()
+  catalog.categories = [
+    { id: "c-1", name: "Entradas", description: "Para empezar", icon: "Coffee", active: true },
+    { id: "c-2", name: "Postres", description: null, icon: null, active: false },
+  ]
 })
 
 describe("CategoryList — cached list, invalidated by its own mutations", () => {
@@ -116,7 +81,7 @@ describe("CategoryList — cached list, invalidated by its own mutations", () =>
   })
 
   it("still shows the empty state when the list is empty", async () => {
-    state.results.categories = { data: [], error: null }
+    catalog.categories = []
     render(wrap(<CategoryList />))
 
     await waitFor(() => expect(screen.getByText("No hay categorías registradas")).toBeInTheDocument())
@@ -144,14 +109,14 @@ describe("CategoryList — cached list, invalidated by its own mutations", () =>
     })
 
     await waitFor(() => expect(categorySelects()).toHaveLength(2))
-    expect(state.calls.some((call) => call.table === "categories" && call.method === "delete")).toBe(true)
+    expect(catalog.deleteCategory).toHaveBeenCalledWith("c-1")
     expect(toastMock).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Categoría eliminada" }),
     )
   })
 
-  it("still refuses to delete a category that has dishes, and does not invalidate", async () => {
-    state.results.dishes = { data: [{ id: "d-1" }], error: null }
+  it("shows the API's 409 message when the category has dishes, and does not invalidate", async () => {
+    catalog.deleteCategory.mockRejectedValue(new ApiError(409, "Conflict", "Category has dishes"))
     render(wrap(<CategoryList />))
     await waitFor(() => expect(screen.getByText("Entradas")).toBeInTheDocument())
 
@@ -165,9 +130,40 @@ describe("CategoryList — cached list, invalidated by its own mutations", () =>
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Error", variant: "destructive" }),
+        expect.objectContaining({
+          title: "Error",
+          variant: "destructive",
+          description: "No se puede eliminar la categoría porque tiene platos asociados. (Category has dishes)",
+        }),
       ),
     )
+    expect(catalog.deleteCategory).toHaveBeenCalledWith("c-1")
     expect(categorySelects()).toHaveLength(1)
+  })
+
+  it("refreshes the POS and delivery menus after a delete", async () => {
+    const spy = vi.spyOn(queryClient, "invalidateQueries")
+    render(wrap(<CategoryList />))
+    await waitFor(() => expect(screen.getByText("Entradas")).toBeInTheDocument())
+
+    const row = screen.getByText("Entradas").closest("tr") as HTMLElement
+    await act(async () => {
+      fireEvent.click(row.querySelectorAll("button")[1])
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Eliminar" }))
+    })
+
+    await waitFor(() => expect(catalog.deleteCategory).toHaveBeenCalled())
+    const keys = spy.mock.calls.map(([filters]) => filters?.queryKey)
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        ["catalog", "menu", "categories"],
+        ["menu"],
+        ["delivery-menu-categories"],
+        ["delivery-menu-dishes"],
+      ]),
+    )
+    spy.mockRestore()
   })
 })

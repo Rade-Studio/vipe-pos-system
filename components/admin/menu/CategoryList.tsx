@@ -9,9 +9,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/log"
-import { ADMIN_LIST_STALE_MS, catalogKeys, errorMessage, fetchCategories } from "@/lib/admin/catalog"
+import { deleteCategory, type CategoryDto } from "@/lib/api/catalog"
+import { ApiError } from "@/lib/api/errors"
+import {
+  ADMIN_LIST_STALE_MS,
+  catalogKeys,
+  errorMessage,
+  fetchCategories,
+  invalidateCatalogReaders,
+} from "@/lib/admin/catalog"
 import { Edit, Plus, Search, Trash } from "lucide-react"
 import {
   AlertDialog,
@@ -33,7 +40,7 @@ export function CategoryList() {
   const [searchTerm, setSearchTerm] = useState("")
   const [openDialog, setOpenDialog] = useState(false)
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
-  const [selectedCategory, setSelectedCategory] = useState<any>(null)
+  const [selectedCategory, setSelectedCategory] = useState<CategoryDto | null>(null)
 
   // T9 (S1): a cached read. Radix unmounts this sub-tab on every tab switch,
   // so the old `useEffect` + local state re-read the whole list (and blanked it
@@ -44,7 +51,7 @@ export function CategoryList() {
     isLoading,
     isError,
     error,
-  } = useQuery<any[]>({
+  } = useQuery<CategoryDto[]>({
     queryKey: catalogKeys.categories,
     queryFn: fetchCategories,
     staleTime: ADMIN_LIST_STALE_MS,
@@ -60,7 +67,7 @@ export function CategoryList() {
     })
   }, [isError, error, toast])
 
-  const handleEdit = (category: any) => {
+  const handleEdit = (category: CategoryDto) => {
     setSelectedCategory(category)
     setOpenDialog(true)
   }
@@ -69,45 +76,25 @@ export function CategoryList() {
     if (!selectedCategory) return
 
     try {
-      // Ya no necesitamos crear el cliente aquí, ya lo importamos
-
-      // Primero verificar si hay platos asociados a esta categoría
-      const { data: dishes, error: dishesError } = await supabase
-        .from("dishes")
-        .select("id")
-        .eq("category_id", selectedCategory.id)
-        .limit(1)
-
-      if (dishesError) throw dishesError
-
-      if (dishes && dishes.length > 0) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se puede eliminar la categoría porque tiene platos asociados.",
-        })
-        setOpenDeleteDialog(false)
-        return
-      }
-
-      // Si no hay platos, proceder con la eliminación
-      const { error } = await supabase.from("categories").delete().eq("id", selectedCategory.id)
-
-      if (error) throw error
+      // The API refuses with 409 while dishes still reference the category.
+      await deleteCategory(selectedCategory.id)
 
       toast({
         title: "Categoría eliminada",
         description: `La categoría ${selectedCategory.name} ha sido eliminada correctamente.`,
       })
 
-      // Only this list's key: no reload, no blanking.
-      queryClient.invalidateQueries({ queryKey: catalogKeys.categories })
-    } catch (error: any) {
+      // This list's key plus the POS/delivery menus: no reload, no blanking.
+      void invalidateCatalogReaders(queryClient, catalogKeys.categories)
+    } catch (error) {
       log.error("Error deleting category:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
-        description: `Error al eliminar la categoría: ${error.message}`,
+        description:
+          error instanceof ApiError && error.status === 409
+            ? `No se puede eliminar la categoría porque tiene platos asociados. (${error.message})`
+            : `Error al eliminar la categoría: ${errorMessage(error)}`,
       })
     } finally {
       setOpenDeleteDialog(false)
@@ -115,7 +102,7 @@ export function CategoryList() {
     }
   }
 
-  const confirmDelete = (category: any) => {
+  const confirmDelete = (category: CategoryDto) => {
     setSelectedCategory(category)
     setOpenDeleteDialog(true)
   }
@@ -162,7 +149,7 @@ export function CategoryList() {
             <CategoryForm
               category={selectedCategory}
               onSuccess={() => {
-                queryClient.invalidateQueries({ queryKey: catalogKeys.categories })
+                void invalidateCatalogReaders(queryClient, catalogKeys.categories)
                 handleDialogClose()
               }}
             />

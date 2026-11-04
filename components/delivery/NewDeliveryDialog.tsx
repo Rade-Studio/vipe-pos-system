@@ -8,9 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { businessConfigService } from '@/lib/supabase/business-config-service'
-import { DEFAULT_FEE_CONFIG_KEY, DEFAULT_FEE_QUERY_KEY } from '@/lib/delivery/courier-admin'
-import { suggestedFeeFromConfig } from '@/lib/delivery/fee'
+import { CONFIG_QUERY_KEY, fetchConfig } from '@/lib/api/config'
 import { useConfigStore } from '@/store/use-config-store'
 import { refreshActiveDeliveries } from '@/hooks/use-active-deliveries'
 import { DeliveryOrderForm } from './DeliveryOrderForm'
@@ -29,8 +27,9 @@ interface NewDeliveryDialogProps {
  * "Nuevo domicilio" showed an empty panel for one round-trip and no second
  * open was cheaper than the first.
  *
- * Now the value lives in the query cache (shared key with the admin setting,
- * which invalidates it after a save) and the form renders IMMEDIATELY:
+ * Now the value lives in the query cache (T7b: `deliveryDefaultFee` of the
+ * shared `GET /config` query, which the admin setting refreshes after a save)
+ * and the form renders IMMEDIATELY:
  * `DeliveryOrderForm` starts the draft at 0 and seeds the suggestion the
  * moment it arrives, unless the operator already typed a fee.
  *
@@ -41,9 +40,9 @@ export function NewDeliveryDialog({ open, onOpenChange }: NewDeliveryDialogProps
   const queryClient = useQueryClient()
   const { taxPercentage } = useConfigStore()
 
-  const { data: storedFee = null, isLoading: feeLoading } = useQuery<string | null>({
-    queryKey: DEFAULT_FEE_QUERY_KEY,
-    queryFn: () => businessConfigService.getConfigValue(DEFAULT_FEE_CONFIG_KEY),
+  const { data: config, isLoading: feeLoading } = useQuery({
+    queryKey: CONFIG_QUERY_KEY,
+    queryFn: fetchConfig,
     // The suggestion is a config row an admin edits from another screen, which
     // invalidates this key after saving; between those edits it does not
     // change, so a long staleTime is what makes the second open free.
@@ -61,7 +60,7 @@ export function NewDeliveryDialog({ open, onOpenChange }: NewDeliveryDialogProps
         </DialogHeader>
         {open && (
           <DeliveryOrderForm
-            suggestedFee={suggestedFeeFromConfig(storedFee)}
+            suggestedFee={config?.deliveryDefaultFee ?? 0}
             suggestedFeeResolved={!feeLoading}
             taxPct={taxPercentage}
             onSubmitted={() => {

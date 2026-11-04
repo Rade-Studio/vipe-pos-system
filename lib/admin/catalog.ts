@@ -16,8 +16,16 @@
  *     sub-tab inside it costs zero requests and, because the cached rows are
  *     still there, never blanks the list.
  */
+import type { QueryClient } from "@tanstack/react-query"
 import { supabase } from "@/lib/supabase/client"
-import { promotionService, type Promotion } from "@/lib/supabase/promotion-service"
+import {
+  fetchCategories as listCategories,
+  fetchDishes as listDishes,
+  fetchPromotions as listPromotions,
+  type CategoryDto,
+  type DishDto,
+  type PromotionDto,
+} from "@/lib/api/catalog"
 import type { StaffRole } from "@/lib/supabase/staff-service"
 
 /** Roles the Personal sub-tab manages. Admin accounts are provisioned elsewhere. */
@@ -50,22 +58,32 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-export async function fetchCategories(): Promise<any[]> {
-  const { data, error } = await supabase.from("categories").select("*").order("name")
-
-  if (error) throw error
-  return data || []
+/** Every category (active or not), ordered by name. */
+export async function fetchCategories(): Promise<CategoryDto[]> {
+  return listCategories()
 }
 
-export async function fetchDishes(): Promise<any[]> {
-  const { data, error } = await supabase.from("dishes").select("*").order("name")
-
-  if (error) throw error
-  return data || []
+/** Every dish at its list price, ordered by name. */
+export async function fetchDishes(): Promise<DishDto[]> {
+  return listDishes()
 }
 
-export async function fetchPromotions(): Promise<Promotion[]> {
-  return (await promotionService.getAllPromotions()) as Promotion[]
+export async function fetchPromotions(): Promise<PromotionDto[]> {
+  return listPromotions()
+}
+
+/**
+ * After an admin catalog write: refresh the admin list that changed and every
+ * menu the POS and delivery screens cache, so a new dish, a renamed category or
+ * a promotion price shows there without a reload (T7b).
+ */
+export function invalidateCatalogReaders(queryClient: QueryClient, adminKey: readonly unknown[]) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: adminKey }),
+    queryClient.invalidateQueries({ queryKey: ["menu"] }),
+    queryClient.invalidateQueries({ queryKey: ["delivery-menu-categories"] }),
+    queryClient.invalidateQueries({ queryKey: ["delivery-menu-dishes"] }),
+  ])
 }
 
 export async function fetchStaff(): Promise<any[]> {
