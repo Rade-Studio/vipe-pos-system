@@ -30,6 +30,7 @@ keeping realtime, keeping the plpgsql transactional core and RLS, and fixing the
 - Contracts: the API publishes OpenAPI; the web consumes a generated typed client (`openapi-typescript` + `openapi-fetch`). No hand-written response types in web.
 - Tests: pgTAP against plain Postgres in Docker (`postgres:16` + `pgtap`), replacing `supabase test db`; Vitest for web; Jest (Nest default) or Vitest for the API with Testcontainers for integration. CI gets `api-tests` and keeps `db-tests` on the new runner.
 - Delivery stays the user's decision: work-unit commits land on `feat/backend-nestjs` and its chained slices; push, PRs and merges are not performed by the agent.
+- Slice accounting: PRs target `dev`, so review slices (~400 authored lines) are measured against `origin/dev`, not `origin/main`; the 45 dev commits already in this branch are not part of this feature.
 
 ## Migration order and strangler rule
 
@@ -37,7 +38,7 @@ The web keeps working against Supabase until a module is fully served by the API
 
 ## Tasks
 
-- [x] T1. Stabilize: cut `feat/backend-nestjs` from `dev`, merge `origin/main` (the `fix/next-security` content was already in dev; merge 68231da adds history only). (S3) Route: inline. Commit: 68231da + this document.
+- [x] T1. Stabilize: cut `feat/backend-nestjs` from `dev`, merge `origin/main` (the `fix/next-security` content was already in dev; merge 68231da adds history only). (S3) Route: inline. Commit: 68231da, 9cfa480 (this document).
 - [ ] T2. Architecture decision record `docs/arquitectura-backend.md`: target topology, the decisions above with their rationale, module order, cut-over strategy, what is removed from the VPS. (S1, S2, S5) Route: inline. Commit: docs.
 - [ ] T3. Workspace scaffold: `apps/api` NestJS app (health endpoint, config validation, OpenAPI), `packages/db` (Drizzle config, migrator, empty migrations dir), root scripts, CI jobs `api-lint`, `api-typecheck`, `api-tests`. (S2, S5) Route: inline. Risk: item 5 (CI, dependencies).
 - [ ] T4. Plain-Postgres schema baseline in `packages/db`: squashed baseline SQL, `users` table and `profiles.user_id`, tenant helpers reading `app.user_id`, pg_notify triggers removed from scope (T6), `docker-compose` Postgres + pgtap service, pgTAP suite ported and green with `pnpm test:db` on plain Postgres, RED first for the helpers. (S1, S3) Route: worker + verify. Risk: items 1 and 2 (schema format, security guards).
