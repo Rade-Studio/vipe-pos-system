@@ -3,16 +3,18 @@ import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
 import { DishesService } from '../catalog/dishes.service';
 import { UnitOfWork } from '../db/unit-of-work';
+import { paymentJson } from '../payments/payments.mappers';
 import { ConfigService } from '../settings/config.service';
 import {
   type addOrderItemsSchema,
+  type CompletedOrder,
   type createOrderSchema,
   type Order,
   ORDER_LIST_LIMIT,
   type OrderStatus,
   type StockShortage,
 } from './orders.dto';
-import { type OrderRow, toOrder, toShortage } from './orders.mappers';
+import { type CompletedOrderRow, type OrderRow, toCompletedOrder, toOrder, toShortage } from './orders.mappers';
 
 type ItemInput = z.infer<typeof createOrderSchema>['items'][number];
 /** Order statuses that keep a table busy. */
@@ -53,6 +55,33 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
     return toOrder(row, filter);
+  }
+
+  /**
+   * GET /orders/completed: paid orders created on `date` in the restaurant's
+   * timezone, each with its pay_order payment and tenders or, for orders paid
+   * before pay_order, its legacy payment_transactions rows. One query (the web
+   * read one payment_transactions request per order).
+   */
+  async completed(date: string): Promise<CompletedOrder[]> {
+    const rows = await this.rows<CompletedOrderRow>(sql`
+      SELECT to_jsonb(o) AS "order",
+             NULL AS table_number,
+             NULL AS waiter_name,
+             coalesce((SELECT jsonb_agg(to_jsonb(oi) ORDER BY oi.added_at, oi.created_at, oi.id)
+                         FROM public.order_items oi WHERE oi.order_id = o.id), '[]'::jsonb) AS items,
+             (SELECT ${paymentJson} FROM public.payments p WHERE p.order_id = o.id) AS payment,
+             CASE WHEN EXISTS (SELECT 1 FROM public.payments p WHERE p.order_id = o.id) THEN '[]'::jsonb
+                  ELSE coalesce((SELECT jsonb_agg(to_jsonb(pt) ORDER BY pt.timestamp, pt.id)
+                                   FROM public.payment_transactions pt WHERE pt.order_id = o.id), '[]'::jsonb)
+             END AS legacy_transactions
+        FROM public.orders o
+        JOIN public.restaurants r ON r.id = o.restaurant_id
+       WHERE o.status = 'paid'
+         AND o.created_at >= (${date}::date::timestamp AT TIME ZONE r.timezone)
+         AND o.created_at < ((${date}::date + 1)::timestamp AT TIME ZONE r.timezone)
+       ORDER BY o.created_at DESC, o.id`);
+    return rows.map(toCompletedOrder);
   }
 
   /**

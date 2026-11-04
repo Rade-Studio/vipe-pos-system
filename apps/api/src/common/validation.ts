@@ -21,6 +21,24 @@ export const idParamSchema = z.guid();
 /** `?active=true|false`; omitted means no filter. */
 export const booleanQuery = z.enum(['true', 'false']).transform((value) => value === 'true');
 
+/** `a,b,c` query value split on commas, blanks dropped (an empty value is an empty list). */
+const csv = z.string().transform((value) => value.split(',').map((part) => part.trim()).filter(Boolean));
+
+/** `a,b,c` query value, each part one of `values`, at least one. */
+export const csvOf = <T extends string>(values: readonly [T, ...T[]]) => csv.pipe(z.array(z.enum(values)).min(1));
+
+/** `id1,id2` query value of uuids; `?ids=` is an empty list. */
+export const guidListQuery = (max: number) => csv.pipe(z.array(z.guid()).max(max));
+
+/** `?date=YYYY-MM-DD`, a real calendar day. */
+export const dateQuery = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
+  }, 'Invalid date');
+
 /** A timestamptz column read in Drizzle string mode (`2026-01-01 00:00:00+00`) as ISO 8601. */
 export function toIso(value: string): string;
 export function toIso(value: string | null): string | null;

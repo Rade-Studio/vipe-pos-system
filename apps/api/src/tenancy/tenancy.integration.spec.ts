@@ -156,7 +156,7 @@ describe('unit of work and guards (Testcontainers, vipe_api)', () => {
     const cookie = await accessFor(fixtures.waiterA.email);
     const res = await http().post('/api/_test/write-ok').set('Cookie', cookie);
     expect(res.status).toBe(403);
-    expect(res.body).toEqual({ statusCode: 403, error: 'Forbidden', message: 'Permission denied' });
+    expect(res.body).toEqual({ statusCode: 403, error: 'Forbidden', message: 'Permission denied', code: '42501' });
   });
 
   it('rolls back when the handler returns an Observable that errors after the write', async () => {

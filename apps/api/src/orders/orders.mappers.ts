@@ -1,5 +1,6 @@
 import { toIso } from '../common/validation';
-import type { Order, OrderItem, OrderStatus, OrderType, StockShortage } from './orders.dto';
+import { toLegacyTransaction, toPayment } from '../payments/payments.mappers';
+import type { CompletedOrder, Order, OrderItem, OrderStatus, OrderType, StockShortage } from './orders.dto';
 
 type Json = Record<string, unknown>;
 
@@ -59,6 +60,18 @@ export function toOrder(row: OrderRow, include: { withTable?: boolean; withWaite
   }
   return order;
 }
+
+/** A row of OrdersService.completed: an OrderRow plus the payment and the legacy rows as jsonb. */
+export interface CompletedOrderRow extends OrderRow {
+  payment: Json | null;
+  legacy_transactions: Json[];
+}
+
+export const toCompletedOrder = (row: CompletedOrderRow): CompletedOrder => ({
+  ...toOrder(row),
+  payment: row.payment ? toPayment(row.payment) : null,
+  legacyTransactions: row.legacy_transactions.map(toLegacyTransaction),
+});
 
 /** check_dishes_stock shortage (snake_case jsonb) as the 409 body entry. */
 export const toShortage = (row: Json): StockShortage => ({

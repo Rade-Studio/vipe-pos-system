@@ -37,6 +37,7 @@ export const cashRegisters = pgTable("cash_registers", {
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
 }, (table) => [
 	index("idx_cash_registers_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
+	uniqueIndex("one_open_register_per_restaurant").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")).where(sql`((status)::text = 'open'::text)`),
 	foreignKey({
 			columns: [table.restaurantId],
 			foreignColumns: [restaurants.id],

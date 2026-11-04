@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { z } from 'zod';
+import { dateQuery } from '../common/validation';
+import { LegacyPaymentTransaction, Payment } from '../payments/payments.dto';
 
 export const ORDER_STATUSES = ['active', 'kitchen', 'delivered', 'cancelled', 'paid'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
@@ -50,6 +52,9 @@ export const updateOrderStatusSchema = z.strictObject({
   status: z.literal('delivered', { error: 'Only delivered can be set; paid goes through payments' }),
 });
 
+/** GET /orders/completed?date=YYYY-MM-DD (the restaurant's day). */
+export const completedOrdersQuerySchema = z.strictObject({ date: dateQuery });
+
 export const serveOrderItemsSchema = z.strictObject({ itemIds: z.array(z.guid()).min(1).max(MAX_ITEMS) });
 
 export class OrderItem {
@@ -86,6 +91,14 @@ export class Order {
   @ApiProperty({ type: [OrderItem], description: 'Always embedded, oldest first.' }) items!: OrderItem[];
   @ApiPropertyOptional({ type: Number, nullable: true, description: 'Only with include=table.' }) tableNumber?: number | null;
   @ApiPropertyOptional({ type: String, nullable: true, description: 'Only with include=waiter.' }) waiterName?: string | null;
+}
+
+/** A paid order with how it was paid: the pay_order payment, or the legacy rows before pay_order. */
+export class CompletedOrder extends Order {
+  @ApiProperty({ type: Payment, nullable: true, description: 'The payment with its tenders; null for orders paid before pay_order.' })
+  payment!: Payment | null;
+  @ApiProperty({ type: [LegacyPaymentTransaction], description: 'Legacy payment_transactions rows, only when payment is null.' })
+  legacyTransactions!: LegacyPaymentTransaction[];
 }
 
 export class OrderItemInput {

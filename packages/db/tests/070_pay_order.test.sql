@@ -116,6 +116,21 @@ BEGIN
 END;
 $$;
 
+-- One open register per restaurant (migration 0009_one_open_register): the
+-- sections below pay on different drawers of tenant A (c001, c002, c004, c005),
+-- so each section first makes its drawer the tenant's only open one. SECURITY
+-- DEFINER because some switches happen while the session is SET ROLE vipe_api.
+CREATE FUNCTION pg_temp.use_register(p_id uuid)
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+AS $$
+  UPDATE public.cash_registers SET status = 'closed'
+   WHERE status = 'open' AND id <> p_id
+     AND restaurant_id = (SELECT restaurant_id FROM public.cash_registers WHERE id = p_id);
+  UPDATE public.cash_registers SET status = 'open' WHERE id = p_id;
+$$;
+
 -- ============================================
 -- 1. Structure
 -- ============================================
@@ -226,8 +241,9 @@ VALUES
    now(), 10000, 'open'),
   -- High drawer: 200.000 initial, used for the "drawer warning false" case.
   ('aaaaaaaa-0000-4000-8000-00000000c002', 'aaaaaaaa-0000-4000-8000-000000000071',
-   now(), 200000, 'open'),
+   now(), 200000, 'closed'),
   -- Closed register: must reject pay_order with P0001.
+  -- (c002 opens in section 6, see pg_temp.use_register.)
   ('aaaaaaaa-0000-4000-8000-00000000c003', 'aaaaaaaa-0000-4000-8000-000000000071',
    now(), 100000, 'closed'),
   -- Tenant B register (open).
@@ -556,6 +572,7 @@ RESET ROLE;
 -- ============================================
 -- 6. Multi-tender (cash 15000 + Nequi 5000) on order e004
 -- ============================================
+SELECT pg_temp.use_register('aaaaaaaa-0000-4000-8000-00000000c002');
 SELECT set_config('app.user_id', 'aaaaaaaa-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE vipe_api;
 
@@ -1049,7 +1066,8 @@ INSERT INTO public.cash_registers
   (id, restaurant_id, opening_timestamp, initial_cash, status)
 VALUES
   ('aaaaaaaa-0000-4000-8000-00000000c005', 'aaaaaaaa-0000-4000-8000-000000000071',
-   now(), 10000, 'open');
+   now(), 10000, 'closed');
+SELECT pg_temp.use_register('aaaaaaaa-0000-4000-8000-00000000c005');
 -- A second 'paid' order to host a payment on c002, so the drawer warning test
 -- can have a fresh register (c005) with its own payment (f501 -> e017) and
 -- cash_transactions, without colliding with the c001 fixture on e005.
@@ -1132,6 +1150,8 @@ SELECT is(
   1::bigint,
   'drawer warning true: the payment is still recorded (warn-only)');
 
+SELECT pg_temp.use_register('aaaaaaaa-0000-4000-8000-00000000c002');
+
 -- Drawer warning false: high drawer (c002, initial 200000). Pay 10000 in cash
 -- with 10000 received -> change 0, drawer_warning false, drawer_cash_before
 -- reads the initial cash on a never-touched register.
@@ -1176,7 +1196,8 @@ INSERT INTO public.cash_registers
   (id, restaurant_id, opening_timestamp, initial_cash, status)
 VALUES
   ('aaaaaaaa-0000-4000-8000-00000000c004', 'aaaaaaaa-0000-4000-8000-000000000071',
-   now(), 200000, 'open');
+   now(), 200000, 'closed');
+SELECT pg_temp.use_register('aaaaaaaa-0000-4000-8000-00000000c004');
 
 INSERT INTO public.orders
   (id, restaurant_id, table_id, status, subtotal, tax, tax_percentage, tip,
@@ -1226,6 +1247,7 @@ SELECT is(
   'table release: table c201 stays occupied while another open order (e002) remains');
 
 -- Pay order e002 to free the table.
+SELECT pg_temp.use_register('aaaaaaaa-0000-4000-8000-00000000c002');
 SELECT set_config('app.user_id', 'aaaaaaaa-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE vipe_api;
 
@@ -1294,12 +1316,14 @@ SET LOCAL ROLE vipe_api;
 SELECT is(pg_temp.po_run($q$ SELECT public.pay_order('bbbbbbbb-0000-4000-8000-00000000e102'::uuid, 'aaaaaaaa-0000-4000-8000-00000000c002'::uuid, 0::bigint, '[{"payment_method_id":"00000000-0000-4000-8000-000000000000","amount":1,"cash_received":1}]'::jsonb, 'aaaaaaaa-0000-4000-8000-000000000e2a'::uuid) $q$), 'P0002'::text, 'R3-already-paid-no-key: tenant-A cashier on tenant-B paid order sees P0002');
 RESET ROLE;
 
+SELECT pg_temp.use_register('aaaaaaaa-0000-4000-8000-00000000c001');
 -- 22. R3-drawer-formula: c001 drawer_cash_before = 10000 + (10000+53892+7000) + 5000 - 2000 = 73892. Two prior paid orders (e005, e001) + this fixture (e023) = 3 cash tender lines.
 SELECT set_config('app.user_id', 'aaaaaaaa-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE vipe_api;
 SELECT is(pg_temp.po_text($q$ SELECT (public.pay_order('aaaaaaaa-0000-4000-8000-00000000e030'::uuid, 'aaaaaaaa-0000-4000-8000-00000000c001'::uuid, 0::bigint, jsonb_build_array(jsonb_build_object('payment_method_id', (SELECT id FROM public.payment_methods WHERE restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071' AND code = 'cash'), 'amount', 1000::bigint, 'cash_received', 1000::bigint)), 'aaaaaaaa-0000-4000-8000-000000000e30'::uuid))->>'drawer_cash_before' $q$), '83892'::text, 'R3-drawer-formula: initial 10000 + 3 cash tenders (10000+53892+7000) + deposit 5000 - withdrawal 2000 = 83892');
 RESET ROLE;
 
+SELECT pg_temp.use_register('aaaaaaaa-0000-4000-8000-00000000c002');
 -- 23. R3-amount-type-cast: negative amount on 2nd tender -> 22023 with 'tender[2]'.
 SELECT set_config('app.user_id', 'aaaaaaaa-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE vipe_api;

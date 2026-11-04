@@ -19,6 +19,8 @@ import { idParamSchema, parseInput } from '../common/validation';
 import {
   AddOrderItemsRequest,
   addOrderItemsSchema,
+  CompletedOrder,
+  completedOrdersQuerySchema,
   CreateOrderRequest,
   createOrderSchema,
   Order,
@@ -62,6 +64,14 @@ export class OrdersController {
   list(@Query() query: unknown): Promise<Order[]> {
     const { status, include } = parseInput(orderListQuerySchema, query);
     return this.orders.list({ statuses: status, ...includeFilter(include) });
+  }
+
+  /** Declared before :id so `completed` is not read as an order id. */
+  @Get('completed')
+  @ApiQuery({ name: 'date', required: true, description: "YYYY-MM-DD: paid orders created that day in the restaurant's timezone." })
+  @ApiOkResponse({ type: [CompletedOrder], description: 'Newest first, with the payment and tenders or the legacy payment_transactions rows.' })
+  completed(@Query() query: unknown): Promise<CompletedOrder[]> {
+    return this.orders.completed(parseInput(completedOrdersQuerySchema, query).date);
   }
 
   @Get(':id')

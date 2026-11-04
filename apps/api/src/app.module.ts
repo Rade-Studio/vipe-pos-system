@@ -7,7 +7,9 @@ import { EnvModule } from './config/env.module';
 import { DbModule } from './db/db.module';
 import { HealthModule } from './health/health.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { RegistersModule } from './registers/registers.module';
 import { SettingsModule } from './settings/settings.module';
 import { TablesModule } from './tables/tables.module';
 import { TenancyModule } from './tenancy/tenancy.module';
@@ -24,6 +26,8 @@ import { TenancyModule } from './tenancy/tenancy.module';
     SettingsModule,
     OrdersModule,
     TablesModule,
+    PaymentsModule,
+    RegistersModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

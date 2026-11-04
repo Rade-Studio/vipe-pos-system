@@ -64,6 +64,13 @@
       "when": 1793823387543,
       "tag": "0008_tables_number_per_restaurant",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793823843237,
+      "tag": "0009_one_open_register",
+      "breakpoints": true
     }
   ]
 }

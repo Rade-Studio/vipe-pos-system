@@ -273,8 +273,10 @@ VALUES
    now(), 10000.00, 'open'),
   -- High drawer: initial 200000.00 -> round to 200000; used for the
   -- equality-with-pay_order probe on a clean register.
+  -- Inserted closed: one open register per restaurant (migration
+  -- 0009_one_open_register); section 6 makes it the open one.
   ('aaaaaaaa-0000-4000-8000-00000000e002', 'aaaaaaaa-0000-4000-8000-000000000091',
-   now(), 200000.00, 'open'),
+   now(), 200000.00, 'closed'),
   -- Already-closed register of tenant A.
   ('aaaaaaaa-0000-4000-8000-00000000e003', 'aaaaaaaa-0000-4000-8000-000000000091',
    now(), 50000.00, 'closed'),
@@ -625,6 +627,11 @@ SELECT 'aaaaaaaa-0000-4000-8000-00000000f313',
        'aaaaaaaa-0000-4000-8000-00000000f303', 1, m.id, 'cash', 'cash', 10000, 10000
   FROM public.payment_methods m
  WHERE m.restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000091' AND m.code = 'cash';
+
+-- The LOW drawer is done taking payments; the HIGH drawer becomes tenant A's
+-- only open register for the pay_order probe and the close_register sections.
+UPDATE public.cash_registers SET status = 'closed' WHERE id = 'aaaaaaaa-0000-4000-8000-00000000e001';
+UPDATE public.cash_registers SET status = 'open' WHERE id = 'aaaaaaaa-0000-4000-8000-00000000e002';
 
 SELECT set_config('app.user_id', 'aaaaaaaa-0000-4000-8000-0000000000d2', true);
 SET LOCAL ROLE vipe_api;

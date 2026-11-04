@@ -17,7 +17,7 @@ INSERT INTO public.orders (id, status, subtotal, tax, tax_percentage, total, res
          ('17600000-0000-0000-0000-000000000002', 'active', 10, 0, 0, 10, '17600000-0000-0000-0000-0000000000aa');
 INSERT INTO public.cash_registers (id, restaurant_id, opening_timestamp, initial_cash, status)
   VALUES ('17600000-0000-0000-0000-0000000000c1', '17600000-0000-0000-0000-0000000000aa', now(), 0, 'open'),
-         ('17600000-0000-0000-0000-0000000000c2', '17600000-0000-0000-0000-0000000000aa', now(), 0, 'open');
+         ('17600000-0000-0000-0000-0000000000c2', '17600000-0000-0000-0000-0000000000aa', now(), 0, 'closed');
 INSERT INTO public.payment_transactions (id, restaurant_id, order_id, amount, method, cash_received, cash_change, timestamp, cash_register_id)
   VALUES ('17600000-0000-0000-0000-0000000000f1', '17600000-0000-0000-0000-0000000000aa', '17600000-0000-0000-0000-000000000001',
           10, 'Efectivo', 10, 0, now(), '17600000-0000-0000-0000-0000000000c1'),
