@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { LogOut, UserCog } from "lucide-react"
 import type { Profile } from "@/types"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
-import { supabase } from "@/lib/supabase/client"
+import { signOutAndReload } from "@/lib/api/auth"
 import { roleLabel } from "@/lib/auth/roles"
 
 interface HeaderProps {
@@ -20,11 +20,8 @@ interface HeaderProps {
 export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }: HeaderProps) {
   const getRoleLabel = (role: string) => roleLabel(role) ?? role
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    // Hard reload to clear all client state (stores, queries, realtime subs)
-    window.location.href = "/portal"
-  }
+  // Revokes the API session, then a hard reload clears stores, queries and realtime subs.
+  const handleLogout = () => signOutAndReload()
 
   return (
     <header className="flex justify-between items-center mb-6 sticky top-0 z-10 bg-background pb-2 pt-4">

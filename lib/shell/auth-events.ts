@@ -1,25 +1,30 @@
 /**
- * `supabase.auth.onAuthStateChange` fires for far more than a real sign-in:
- * every access-token refresh (`TOKEN_REFRESHED`, roughly every 50 minutes
- * plus whatever the client does on focus) and one `INITIAL_SESSION` that
- * duplicates the explicit `getSession()` the shell already did in the same
- * effect.
- *
- * Reloading the profile on those duplicates re-queried `profiles` and reset
- * `selectedProfile` to the real role, which is what wiped an admin's
- * impersonated view. A `SIGNED_IN` re-announced for the user already loaded is
- * the same duplicate hazard (Supabase re-emits it on some clients), so the
- * rule is: reload when the identity actually changed, or on sign-out. Pure
- * predicate so the rule is unit-tested.
+ * Auth events of the web shell. The API client is the only producer: a 401
+ * whose silent refresh failed emits `signed_out`, and the portal page goes back
+ * to the login. Replaces Supabase's `onAuthStateChange`, so token refreshes no
+ * longer reach the shell at all (they were what reset an admin's impersonated
+ * view).
  */
-export function shouldReloadAuthProfile(
-  event: string,
-  lastUserId: string | null,
-  userId: string | null,
-): boolean {
-  // Signing out always clears the identity.
-  if (event === "SIGNED_OUT") return true
-  // Anything else only matters when the identity changed: a new SIGNED_IN, or
-  // a different user on any other event. Same user, same profile.
-  return userId !== lastUserId
+export type AuthEvent = "signed_out"
+
+type Listener = (event: AuthEvent) => void
+
+const listeners = new Set<Listener>()
+
+/** Subscribe; returns the unsubscribe function. */
+export function onAuthEvent(listener: Listener): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+export function emitAuthEvent(event: AuthEvent): void {
+  for (const listener of [...listeners]) {
+    try {
+      listener(event)
+    } catch {
+      // One broken listener must not keep the others signed in.
+    }
+  }
 }

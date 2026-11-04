@@ -15,11 +15,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-// Allow the client to be created with undefined values here;
-// createClient will throw at runtime with a clear message.
+// Inert placeholders when unset (plain-Postgres dev stack, T7): createClient
+// throws on an empty URL, which turned every page importing a service into a
+// 500. Requests to this host fail quietly; never a real project URL.
 export const supabase = createClient<Database>(
-  supabaseUrl ?? "",
-  supabaseAnonKey ?? "",
+  supabaseUrl || "http://unused.invalid",
+  supabaseAnonKey || "unused",
   {
     auth: {
       autoRefreshToken: true,

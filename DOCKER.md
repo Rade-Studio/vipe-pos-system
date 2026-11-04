@@ -7,6 +7,21 @@
 - [Supabase CLI](https://supabase.com/docs/guides/cli) (se ejecuta vía `pnpm supabase`)
 - pnpm (se instala en el Dockerfile)
 
+### Stack local sin Supabase (servicio `db`)
+
+El backend nuevo usa el servicio `db` de `docker-compose.yml` (Postgres 16 + pgTAP):
+
+```bash
+pnpm db:dev      # docker compose up db, migraciones como vipe_migrator y semilla de desarrollo
+pnpm api:dev     # API NestJS en el puerto 4000
+pnpm dev         # Next en el puerto 3000; reenvía /api y /socket.io a API_PROXY_TARGET
+```
+
+`API_PROXY_TARGET` (por defecto `http://localhost:4000`) es una variable del servidor
+de Next, no `NEXT_PUBLIC_*`. No hace falta definir variables de Supabase para este
+stack. Cuenta de desarrollo: `admin@vipe.local` / `vipe-dev-2026`
+(ver README).
+
 ### La base de datos la levanta la Supabase CLI
 
 El stack de Supabase local (db, kong, auth, storage, realtime, studio) **ya no se

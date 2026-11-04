@@ -11,7 +11,8 @@
     "migrate": "tsx src/migrate.ts",
     "generate": "drizzle-kit generate",
     "studio": "drizzle-kit studio",
-    "schema:pull": "tsx src/pull-schema.ts"
+    "schema:pull": "tsx src/pull-schema.ts",
+    "dev": "bash seed/dev-db.sh"
   },
   "dependencies": {
     "drizzle-orm": "0.45.4",

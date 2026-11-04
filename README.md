@@ -312,6 +312,37 @@ pnpm --filter @vipe/db schema:pull             # regenera packages/db/src/schema
 
 La API expone `GET /api/health` y la documentación OpenAPI en `/api/docs`.
 
+#### Stack local sin Supabase (Postgres + API + web)
+
+```bash
+pnpm db:dev      # levanta el servicio `db` de docker-compose, aplica las migraciones y carga packages/db/seed/dev.sql
+pnpm api:dev     # API en http://localhost:4000 (copiar apps/api/env.example a apps/api/.env)
+pnpm dev         # web en http://localhost:3000; /api y /socket.io se reenvían a la API
+```
+
+`pnpm db:dev` es idempotente: se puede repetir sin duplicar datos. La semilla crea un
+restaurante con categorías, platos y mesas de ejemplo, y estas cuentas, todas con la
+contraseña de desarrollo `vipe-dev-2026` (guardada como hash argon2id):
+
+| Correo | Rol |
+| --- | --- |
+| `admin@vipe.local` | admin |
+| `mesero@vipe.local` | waiter |
+| `caja@vipe.local` | cashier |
+| `cocina@vipe.local` | kitchen |
+
+La web llama siempre a su propio origen (`/api/...`), sin URL de API en el build. En
+desarrollo, `next.config.mjs` reenvía `/api/:path*` y `/socket.io/:path*` a
+`API_PROXY_TARGET` (variable del servidor de Next, por defecto `http://localhost:4000`);
+en producción lo hace el proxy inverso. Así las cookies de sesión son del mismo origen.
+El inicio y cierre de sesión ya pasan por la API. Este stack no necesita variables de
+Supabase: sin `NEXT_PUBLIC_SUPABASE_URL` ni la clave anónima, el cliente heredado usa
+valores inertes y los módulos aún no migrados simplemente no devuelven datos.
+
+Contrato tipado: `pnpm --filter @vipe/api openapi` escribe `apps/api/openapi.json` y
+`pnpm web:api-types` genera `lib/api/schema.d.ts` (ambos versionados). CI falla si
+alguno difiere de lo que produce el código.
+
 Variables de entorno (`apps/api/env.example`):
 
 | Variable | Obligatoria | Valor por defecto | Uso |

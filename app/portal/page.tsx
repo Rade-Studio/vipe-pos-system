@@ -15,12 +15,12 @@ import { useTableStore } from "@/store/useTableStore"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { tableService, orderService } from "@/lib/supabase/service"
-import { supabase } from "@/lib/supabase/client"
+import { fetchSession, profileFromSession, type Session } from "@/lib/api/auth"
 import { viewForRole } from "@/lib/auth/roles"
 import { startupLoadsForRole, startupRole, type ShellLoad } from "@/lib/shell/startup-loads"
-import { shouldReloadAuthProfile } from "@/lib/shell/auth-events"
+import { onAuthEvent } from "@/lib/shell/auth-events"
 import { log } from "@/lib/log"
-import type { Profile, ProfileRole } from "@/types"
+import type { ProfileRole } from "@/types"
 import { orderTypeFromRow } from "@/lib/delivery/kitchen"
 
 /**
@@ -97,79 +97,47 @@ export default function Home() {
   const loadConfigFromDB = useConfigStore((s) => s.loadConfigFromDB)
   const startupKeyRef = useRef<string | null>(null)
 
-  // Cargar el profile del usuario autenticado desde la DB
-  const loadProfileFromAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
-    const { data: me } = await supabase
-      .from("profiles")
-      .select("id, full_name, username, role, restaurant_id, active")
-      .eq("auth_user_id", user.id)
-      .eq("active", true)
-      .maybeSingle()
-    if (!me) return null
-    const profile: Profile = {
-      id: me.id,
-      name: me.full_name || me.username || me.role,
-      full_name: me.full_name,
-      username: me.username,
-      role: me.role as ProfileRole,
-      restaurantId: me.restaurant_id,
-    }
+  // Role and restaurant come from the API session (`me` or the login body).
+  const applySession = (session: Session) => {
+    const profile = profileFromSession(session)
     setAuthProfile(profile)     // identidad real (UUID válido)
     setSelectedProfile(profile) // vista inicial = tu rol real
-    return profile
+    setProfileResolved(true)
+    setIsAuthenticated(true)
   }
 
-  // Verificar estado de autenticación al cargar la página
+  const clearSession = () => {
+    setAuthProfile(null)
+    setSelectedProfile(null)
+    setProfileResolved(true)
+    setIsAuthenticated(false)
+  }
+
+  // Resolve the session once with `GET /api/auth/me`. Token refreshes happen
+  // inside the API client and never reach the shell, so an admin's
+  // impersonated view survives them; only a failed refresh signs out.
   useEffect(() => {
     let cancelled = false
-    let lastUserId: string | null = null
-
-    const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (cancelled) return
-
-      lastUserId = data.session?.user?.id ?? null
-      // Resolve the identity BEFORE flipping `isAuthenticated`, so the startup
-      // effect below runs once with the real role already in the store.
-      if (data.session) {
-        await loadProfileFromAuth()
-      }
-      if (cancelled) return
-      setProfileResolved(true)
-      setIsAuthenticated(!!data.session)
-
-      // Suscribirse a cambios en la autenticación. The cleanup used to be
-      // returned from inside this async function, so React never saw it and the
-      // listener leaked for the life of the page.
-      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-        const userId = session?.user?.id ?? null
-        setIsAuthenticated(!!session)
-        if (!shouldReloadAuthProfile(event, lastUserId, userId)) {
-          // TOKEN_REFRESHED / INITIAL_SESSION duplicate: re-reading the profile
-          // here used to reset an admin's impersonated view.
-          lastUserId = userId
-          return
-        }
-        lastUserId = userId
-        void loadProfileFromAuth()
-      })
-
-      return () => {
-        authListener.subscription.unsubscribe()
-      }
-    }
-
-    // Keep the returned cleanup outside the async function so it always runs.
-    let dispose: (() => void) | undefined
-    checkAuth().then((cleanup) => {
-      dispose = cleanup
+    const stop = onAuthEvent((event) => {
+      if (event === "signed_out" && !cancelled) clearSession()
     })
+
+    fetchSession()
+      .then((session) => {
+        if (cancelled) return
+        // Resolve the identity BEFORE flipping `isAuthenticated`, so the startup
+        // effect below runs once with the real role already in the store.
+        if (session) applySession(session)
+        else clearSession()
+      })
+      .catch((error: unknown) => {
+        log.error("Error al resolver la sesión:", { error: String(error) })
+        if (!cancelled) clearSession()
+      })
 
     return () => {
       cancelled = true
-      dispose?.()
+      stop()
     }
   }, [])
 
@@ -284,7 +252,7 @@ export default function Home() {
 
   // Pantalla de login si no está autenticado
   if (!isAuthenticated) {
-    return <LoginView onLoginSuccess={() => setIsAuthenticated(true)} />
+    return <LoginView onLoginSuccess={applySession} />
   }
 
   // Profile selection screen (admin usa esto para cambiar de rol).

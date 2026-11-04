@@ -1,5 +1,6 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { ApiError } from "@/lib/api/errors"
 
 /**
  * T5 (S1/S2) — the shell is the only component every profile mounts, so every
@@ -9,12 +10,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
  * unsubscribed the auth listener.
  */
 
+const sessionFor = vi.hoisted(() => (role: string, userId = "u-1") => ({
+  user: { id: userId, email: "ana@vipe.local" },
+  profile: { id: "p-1", name: "Ana", role, restaurantId: "rest-1" },
+}))
+
 const env = vi.hoisted(() => {
   return {
     role: "waiter" as string,
     profileQueries: 0,
-    unsubscribeCalls: 0,
-    authListener: null as null | ((event: string, session: unknown) => void),
+    /** 401 = the API has no session for the browser. */
+    meStatus: 200 as 200 | 401,
+    apiGet: vi.fn(),
+    apiPost: vi.fn(),
     tableGetAll: vi.fn(),
     getWaiters: vi.fn(),
     getByStatus: vi.fn(),
@@ -26,8 +34,14 @@ const env = vi.hoisted(() => {
     setOrdersSpy: vi.fn(),
     reset() {
       this.profileQueries = 0
-      this.unsubscribeCalls = 0
-      this.authListener = null
+      this.meStatus = 200
+      this.apiGet.mockReset()
+      this.apiPost.mockReset()
+      this.apiGet.mockImplementation(async (path: string) => {
+        if (path !== "/api/auth/me") throw new Error(`unexpected GET ${path}`)
+        if (this.meStatus === 401) throw new ApiError(401, "Unauthorized", "Missing access token")
+        return { data: sessionFor(this.role) }
+      })
       this.tableGetAll.mockReset()
       this.getWaiters.mockReset()
       this.getByStatus.mockReset()
@@ -47,53 +61,19 @@ const env = vi.hoisted(() => {
   }
 })
 
+// No `auth` key: the shell must not touch Supabase auth any more. `from`
+// counts direct profile queries, which the API's `me` replaced.
 vi.mock("@/lib/supabase/client", () => ({
   supabase: {
-    auth: {
-      getSession: async () => ({ data: { session: { user: { id: "auth-1" } } } }),
-      getUser: async () => ({ data: { user: { id: "auth-1" } } }),
-      onAuthStateChange: (cb: (event: string, session: unknown) => void) => {
-        env.authListener = cb
-        return {
-          data: {
-            subscription: {
-              unsubscribe: () => {
-                env.unsubscribeCalls += 1
-              },
-            },
-          },
-        }
-      },
-    },
     from: (table: string) => {
-      if (table === "profiles") {
-        env.profileQueries += 1
-      }
-      const chain: Record<string, unknown> = {}
-      for (const method of ["select", "eq"]) {
-        chain[method] = () => chain
-      }
-      const row =
-        table === "profiles"
-          ? {
-              id: "p-1",
-              full_name: "Ana",
-              username: "ana",
-              role: env.role,
-              restaurant_id: "rest-1",
-              active: true,
-            }
-          : null
-      // `maybeSingle()` resolves one row (or null), like PostgREST does.
-      chain.maybeSingle = () => chain
-      chain.single = () => chain
-      chain.then = (onfulfilled?: (v: unknown) => unknown, onrejected?: (r: unknown) => unknown) =>
-        Promise.resolve({ data: row, error: null }).then(onfulfilled, onrejected)
-      return chain
+      if (table === "profiles") env.profileQueries += 1
+      throw new Error(`unexpected supabase.from(${table})`)
     },
   },
   createSupabaseClient: () => ({}),
 }))
+
+vi.mock("@/lib/api/client", () => ({ api: { GET: env.apiGet, POST: env.apiPost } }))
 
 vi.mock("@/lib/supabase/service", () => ({
   tableService: {
@@ -128,7 +108,11 @@ vi.mock("@/lib/supabase/cash-register-service", () => ({
 
 vi.mock("@/lib/supabase/payments-service", () => ({ closeRegisterRpc: vi.fn() }))
 
-vi.mock("@/components/auth/LoginView", () => ({ LoginView: () => <div>login-view</div> }))
+vi.mock("@/components/auth/LoginView", () => ({
+  LoginView: ({ onLoginSuccess }: { onLoginSuccess: (session: unknown) => void }) => (
+    <button onClick={() => onLoginSuccess(sessionFor("kitchen", "u-2"))}>login-view</button>
+  ),
+}))
 vi.mock("@/components/profiles/ProfileSelection", () => ({ ProfileSelection: () => <div>profile-picker</div> }))
 vi.mock("@/components/views/WaiterView", () => ({ WaiterView: () => <div>waiter-view</div> }))
 vi.mock("@/components/views/KitchenView", () => ({ KitchenView: () => <div>kitchen-view</div> }))
@@ -139,6 +123,7 @@ vi.mock("@/components/views/DeliveryView", () => ({ DeliveryView: () => <div>del
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useOrderStore } from "@/store/useOrderStore"
+import { emitAuthEvent } from "@/lib/shell/auth-events"
 import Home from "./page"
 
 beforeEach(() => {
@@ -247,6 +232,8 @@ describe("shell startup loads per role", () => {
     await renderShell("admin-view")
     expect(env.loadConfig).toHaveBeenCalledWith({ canWrite: true })
 
+    // Both shells share the profile store: unmount the admin one first.
+    cleanup()
     env.reset()
     env.role = "waiter"
     await renderShell("waiter-view")
@@ -310,49 +297,67 @@ describe("shell startup loads per role", () => {
   })
 })
 
-describe("shell auth listener", () => {
-  it("unsubscribes on unmount (today the cleanup was returned from inside the async function)", async () => {
-    const { unmount } = render(<Home />)
-    await screen.findByText("waiter-view")
-    expect(env.unsubscribeCalls).toBe(0)
-    unmount()
-    expect(env.unsubscribeCalls).toBe(1)
-  })
-
-  it("does not re-query the profile on TOKEN_REFRESHED or on an INITIAL_SESSION duplicate", async () => {
-    await renderShell()
-    expect(env.profileQueries).toBe(1)
-
-    await act(async () => {
-      env.authListener?.("TOKEN_REFRESHED", { user: { id: "auth-1" } })
-      env.authListener?.("INITIAL_SESSION", { user: { id: "auth-1" } })
-      env.authListener?.("SIGNED_IN", { user: { id: "auth-1" } })
+describe("shell session through the API", () => {
+  it("resolves the role from GET /api/auth/me, once, without querying profiles", async () => {
+    env.role = "cashier"
+    expect(await renderShell("cashier-view")).toBe("cashier-view")
+    expect(env.apiGet).toHaveBeenCalledTimes(1)
+    expect(env.apiGet).toHaveBeenCalledWith("/api/auth/me")
+    expect(env.profileQueries).toBe(0)
+    expect(useProfileStore.getState().authProfile).toEqual({
+      id: "p-1",
+      name: "Ana",
+      full_name: "Ana",
+      role: "cashier",
+      restaurantId: "rest-1",
     })
-
-    expect(env.profileQueries).toBe(1)
   })
 
-  it("does not drop the admin's impersonated profile on a token refresh", async () => {
+  it("shows the login on 401 and issues no startup load", async () => {
+    env.meStatus = 401
+    render(<Home />)
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+    expect(issued()).toEqual({
+      config: 0,
+      tables: 0,
+      waiters: 0,
+      orders: 0,
+      currentRegister: 0,
+      allRegisters: 0,
+    })
+    expect(useProfileStore.getState().authProfile).toBeNull()
+  })
+
+  it("a login hands the session to the shell, which renders that role", async () => {
+    env.meStatus = 401
+    render(<Home />)
+    fireEvent.click(await screen.findByText("login-view"))
+    expect(await screen.findByText("kitchen-view")).toBeInTheDocument()
+    expect(useProfileStore.getState().authProfile?.role).toBe("kitchen")
+    expect(env.tableGetAll).toHaveBeenCalledTimes(1)
+  })
+
+  it("goes back to the login when the client reports signed_out", async () => {
     env.role = "admin"
     await renderShell("admin-view")
+
     act(() => {
-      useProfileStore.getState().selectProfile({ id: "waiter-1", name: "Mesero", role: "waiter" })
-    })
-    expect(screen.getByText("waiter-view")).toBeInTheDocument()
-
-    await act(async () => {
-      env.authListener?.("TOKEN_REFRESHED", { user: { id: "auth-1" } })
+      emitAuthEvent("signed_out")
     })
 
-    expect(screen.getByText("waiter-view")).toBeInTheDocument()
-    expect(useProfileStore.getState().selectedProfile?.role).toBe("waiter")
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+    expect(useProfileStore.getState().authProfile).toBeNull()
+    expect(useProfileStore.getState().selectedProfile).toBeNull()
   })
 
-  it("re-queries the profile when a different user signs in", async () => {
-    await renderShell()
-    await act(async () => {
-      env.authListener?.("SIGNED_IN", { user: { id: "auth-2" } })
-    })
-    expect(env.profileQueries).toBe(2)
+  it("stops listening for signed_out after unmount", async () => {
+    const { unmount } = render(<Home />)
+    await screen.findByText("waiter-view")
+    unmount()
+    useProfileStore.setState({ authProfile: { id: "x", name: "x", role: "waiter" } })
+
+    emitAuthEvent("signed_out")
+
+    expect(useProfileStore.getState().authProfile).toEqual({ id: "x", name: "x", role: "waiter" })
   })
 })

@@ -59,6 +59,15 @@ jobs:
       - run: pnpm db:typecheck
       - run: pnpm api:test
       - run: pnpm api:build
+      # Contract drift: the committed OpenAPI document and the web's generated
+      # types must match what the API code produces.
+      - run: pnpm --filter @vipe/api openapi
+      - run: pnpm web:api-types
+      - name: Fail on contract drift
+        run: |
+          git status --porcelain -- apps/api/openapi.json lib/api/schema.d.ts
+          git diff --exit-code -- apps/api/openapi.json lib/api/schema.d.ts
+          test -z "$(git status --porcelain -- apps/api/openapi.json lib/api/schema.d.ts)"
 
   build:
     runs-on: ubuntu-latest

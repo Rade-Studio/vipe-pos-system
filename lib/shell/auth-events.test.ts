@@ -1,41 +1,46 @@
 import { describe, expect, it } from "vitest"
-import { shouldReloadAuthProfile } from "./auth-events"
+import { emitAuthEvent, onAuthEvent } from "./auth-events"
 
 /**
- * T5 (S1): `onAuthStateChange` fires for every token refresh and for the
- * INITIAL_SESSION that duplicates the explicit `getSession()` call in the same
- * effect. Reloading the profile on those duplicates re-queries `profiles` and
- * resets `selectedProfile`, which wipes an admin's impersonated role.
+ * T7 (S2): the API client is the only source of auth events. A failed silent
+ * refresh emits `signed_out`; the shell listens and goes back to the login.
  */
-describe("shouldReloadAuthProfile", () => {
-  it("reloads on the first SIGNED_IN (no user id seen yet)", () => {
-    expect(shouldReloadAuthProfile("SIGNED_IN", null, "u-1")).toBe(true)
+describe("auth event bus", () => {
+  it("delivers signed_out to every listener", () => {
+    const a: string[] = []
+    const b: string[] = []
+    const stopA = onAuthEvent((event) => a.push(event))
+    const stopB = onAuthEvent((event) => b.push(event))
+
+    emitAuthEvent("signed_out")
+
+    expect(a).toEqual(["signed_out"])
+    expect(b).toEqual(["signed_out"])
+    stopA()
+    stopB()
   })
 
-  it("does not reload on a SIGNED_IN duplicate for the same user", () => {
-    expect(shouldReloadAuthProfile("SIGNED_IN", "u-1", "u-1")).toBe(false)
+  it("stops delivering after unsubscribe", () => {
+    const seen: string[] = []
+    const stop = onAuthEvent((event) => seen.push(event))
+    stop()
+
+    emitAuthEvent("signed_out")
+
+    expect(seen).toEqual([])
   })
 
-  it("reloads on SIGNED_IN when the user id changed", () => {
-    expect(shouldReloadAuthProfile("SIGNED_IN", "u-1", "u-2")).toBe(true)
-  })
+  it("a throwing listener does not stop the others", () => {
+    const seen: string[] = []
+    const stopBad = onAuthEvent(() => {
+      throw new Error("boom")
+    })
+    const stopGood = onAuthEvent((event) => seen.push(event))
 
-  it("reloads on SIGNED_OUT so the identity is cleared", () => {
-    expect(shouldReloadAuthProfile("SIGNED_OUT", "u-1", null)).toBe(true)
-    expect(shouldReloadAuthProfile("SIGNED_OUT", null, null)).toBe(true)
-  })
+    emitAuthEvent("signed_out")
 
-  it("never reloads on TOKEN_REFRESHED for the same session", () => {
-    expect(shouldReloadAuthProfile("TOKEN_REFRESHED", "u-1", "u-1")).toBe(false)
-  })
-
-  it("never reloads on the INITIAL_SESSION duplicate of getSession()", () => {
-    expect(shouldReloadAuthProfile("INITIAL_SESSION", "u-1", "u-1")).toBe(false)
-  })
-
-  it("reloads on any other event only when the user id changed", () => {
-    expect(shouldReloadAuthProfile("USER_UPDATED", "u-1", "u-1")).toBe(false)
-    expect(shouldReloadAuthProfile("PASSWORD_RECOVERY", "u-1", "u-1")).toBe(false)
-    expect(shouldReloadAuthProfile("USER_UPDATED", "u-1", "u-2")).toBe(true)
+    expect(seen).toEqual(["signed_out"])
+    stopBad()
+    stopGood()
   })
 })
