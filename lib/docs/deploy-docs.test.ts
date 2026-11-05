@@ -36,6 +36,14 @@ describe("deploy docs", () => {
     expect(guide).toContain("MINIO_CORS_ORIGINS")
   })
 
+  it("tags every image in the image job with a GHCR name only", () => {
+    const ci = read(".github/workflows/ci.yml")
+    const imageJob = ci.slice(ci.indexOf("  docker-build:"), ci.indexOf("  pos-deps-check:"))
+    const tagLines = [...imageJob.matchAll(/tags: \|\n((?:\s{12}\S.*\n)+)/g)].flatMap((m) => m[1].trim().split("\n").map((l) => l.trim()))
+    expect(tagLines.length).toBeGreaterThan(0)
+    for (const tag of tagLines) expect(tag.startsWith("ghcr.io/rade-studio/")).toBe(true)
+  })
+
   it("moves the branch tag only in the deploy job, after every check", () => {
     const ci = read(".github/workflows/ci.yml")
     const imageJob = ci.slice(ci.indexOf("  docker-build:"), ci.indexOf("  pos-deps-check:"))

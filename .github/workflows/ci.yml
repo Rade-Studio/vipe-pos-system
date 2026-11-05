@@ -101,9 +101,10 @@ jobs:
   docker-build:
     # Production images (apps/api/Dockerfile api + migrate targets, root
     # Dockerfile web). Pull requests only build them; a push to `dev` or `main`
-    # also pushes them to GHCR as :<commit sha> and :<branch>, which is what
-    # Coolify pulls (docker-compose.coolify.yml, VIPE_IMAGE_TAG). Nothing is
-    # built on the VPS.
+    # also pushes them to GHCR as :<commit sha>, and the deploy job moves the
+    # branch tag Coolify pulls (docker-compose.coolify.yml, VIPE_IMAGE_TAG).
+    # Every tag here is a GHCR name: a bare local tag would be pushed to Docker
+    # Hub and fail. Nothing is built on the VPS.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -130,7 +131,6 @@ jobs:
           push: ${{ env.PUSH }}
           load: true
           tags: |
-            vipe-api:ci
             ghcr.io/rade-studio/vipe-pos-api:${{ github.sha }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
@@ -152,7 +152,6 @@ jobs:
           push: ${{ env.PUSH }}
           load: true
           tags: |
-            vipe-web:ci
             ghcr.io/rade-studio/vipe-pos-web:${{ github.sha }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
@@ -160,8 +159,10 @@ jobs:
       - name: Image hygiene
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint sh vipe-api:ci -c '! find /app -path "*@vipe/db/*" \( -name "*.test.sql" -o -name dev.sql -o -path "*fixtures*" -o -path "*migration-from-supabase*" \) | grep -q .'
-          for image in vipe-api:ci vipe-web:ci; do
+          api="ghcr.io/rade-studio/vipe-pos-api:$GITHUB_SHA"
+          web="ghcr.io/rade-studio/vipe-pos-web:$GITHUB_SHA"
+          docker run --rm --entrypoint sh "$api" -c '! find /app -path "*@vipe/db/*" \( -name "*.test.sql" -o -name dev.sql -o -path "*fixtures*" -o -path "*migration-from-supabase*" \) | grep -q .'
+          for image in "$api" "$web"; do
             docker run --rm --entrypoint sh "$image" -c '! find /app \( -name ".env*" -o -name "*.pem" \) | grep -q .'
           done
 
