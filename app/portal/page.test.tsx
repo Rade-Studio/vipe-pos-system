@@ -81,10 +81,12 @@ vi.mock("@/lib/api/registers", () => ({
 
 vi.mock("@/lib/api/payments", () => ({ closeRegisterRpc: vi.fn() }))
 
+const loginViewRenders = vi.hoisted(() => vi.fn())
 vi.mock("@/components/auth/LoginView", () => ({
-  LoginView: ({ onLoginSuccess }: { onLoginSuccess: (session: unknown) => void }) => (
-    <button onClick={() => onLoginSuccess(sessionFor("kitchen", "u-2"))}>login-view</button>
-  ),
+  LoginView: ({ onLoginSuccess }: { onLoginSuccess: (session: unknown) => void }) => {
+    loginViewRenders()
+    return <button onClick={() => onLoginSuccess(sessionFor("kitchen", "u-2"))}>login-view</button>
+  },
 }))
 vi.mock("@/components/profiles/ProfileSelection", () => ({ ProfileSelection: () => <div>profile-picker</div> }))
 vi.mock("@/components/views/WaiterView", () => ({ WaiterView: () => <div>waiter-view</div> }))
@@ -101,6 +103,7 @@ import Home from "./page"
 
 beforeEach(() => {
   env.reset()
+  loginViewRenders.mockReset()
   env.role = "waiter"
   useProfileStore.setState({ profiles: [], selectedProfile: null, authProfile: null, showProfileSelection: false })
   useTableStore.setState({ tables: [] })
@@ -334,49 +337,116 @@ describe("shell session through the API", () => {
   })
 })
 
-describe("a late initial session check after a login (D3 smoke)", () => {
-  /** Holds `GET /api/auth/me` open until the test settles it. */
-  function holdInitialCheck() {
-    let settle!: (outcome: "null" | "throw") => void
-    const pending = new Promise<"null" | "throw">((resolve) => {
-      settle = resolve
-    })
-    const base = env.apiGet.getMockImplementation()!
-    env.apiGet.mockImplementation(async (path: string, init?: any) => {
-      if (path !== "/api/auth/me") return base(path, init)
-      const outcome = await pending
-      if (outcome === "throw") throw new Error("network down")
-      throw new ApiError(401, "Unauthorized", "Missing access token")
-    })
-    return settle
-  }
+/** Holds `GET /api/auth/me` open until the test settles it. */
+function holdInitialCheck() {
+  let settle!: (outcome: "session" | "null" | "throw") => void
+  const pending = new Promise<"session" | "null" | "throw">((resolve) => {
+    settle = resolve
+  })
+  const base = env.apiGet.getMockImplementation()!
+  env.apiGet.mockImplementation(async (path: string, init?: any) => {
+    if (path !== "/api/auth/me") return base(path, init)
+    const outcome = await pending
+    if (outcome === "session") return base(path, init)
+    if (outcome === "throw") throw new Error("network down")
+    throw new ApiError(401, "Unauthorized", "Missing access token")
+  })
+  return settle
+}
 
-  it("a stale signed_out and null session never clear the new login", async () => {
-    const settle = holdInitialCheck()
+describe("the loader covers the initial session check", () => {
+  it("shows the loader, never the form, while the check is pending", async () => {
+    holdInitialCheck()
     render(<Home />)
-    fireEvent.click(await screen.findByText("login-view"))
-    expect(await screen.findByText("kitchen-view")).toBeInTheDocument()
-
-    await act(async () => {
-      // The refused refresh of the initial chain, then its null session.
-      emitAuthEvent("signed_out")
-      settle("null")
-    })
-
-    expect(screen.getByText("kitchen-view")).toBeInTheDocument()
+    // Let every mount effect and microtask run: the check is still open.
+    await act(async () => {})
+    expect(screen.getByText("Cargando Sistema POS")).toBeInTheDocument()
     expect(screen.queryByText("login-view")).not.toBeInTheDocument()
-    expect(useProfileStore.getState().authProfile?.role).toBe("kitchen")
+    expect(loginViewRenders).not.toHaveBeenCalled()
   })
 
-  it("a stale failed initial check never clears the new login", async () => {
+  it("shows the form when the check hangs past its time limit", async () => {
+    vi.useFakeTimers()
+    try {
+      holdInitialCheck()
+      render(<Home />)
+      await act(async () => {})
+      expect(screen.getByText("Cargando Sistema POS")).toBeInTheDocument()
+      await act(async () => {
+        vi.advanceTimersByTime(10_000)
+      })
+      expect(screen.getByText("login-view")).toBeInTheDocument()
+      expect(screen.queryByText("Cargando Sistema POS")).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows the form once the check resolves to no session", async () => {
     const settle = holdInitialCheck()
     render(<Home />)
-    fireEvent.click(await screen.findByText("login-view"))
-    await screen.findByText("kitchen-view")
+    await act(async () => {
+      settle("null")
+    })
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+    expect(screen.queryByText("Cargando Sistema POS")).not.toBeInTheDocument()
+  })
 
+  it("shows the form when the check fails", async () => {
+    const settle = holdInitialCheck()
+    render(<Home />)
     await act(async () => {
       settle("throw")
     })
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+  })
+
+  it("goes from the loader straight to the role view, never rendering the form", async () => {
+    env.role = "cashier"
+    const settle = holdInitialCheck()
+    render(<Home />)
+    await act(async () => {})
+    expect(screen.getByText("Cargando Sistema POS")).toBeInTheDocument()
+    await act(async () => {
+      settle("session")
+    })
+    expect(await screen.findByText("cashier-view")).toBeInTheDocument()
+    expect(loginViewRenders).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * D3 smoke, adapted: the form is gated behind the initial check, so a login
+ * can no longer start while that check is pending. These pin that the window
+ * stays closed and that the post-check login and sign-out still behave.
+ */
+describe("a login around the initial session check (D3 smoke)", () => {
+  it("no login can start while the check is pending, and its null result never clears a later login", async () => {
+    const settle = holdInitialCheck()
+    render(<Home />)
+    await act(async () => {
+      // The refused refresh of the initial chain arrives while it is pending.
+      emitAuthEvent("signed_out")
+    })
+    expect(screen.queryByText("login-view")).not.toBeInTheDocument()
+
+    await act(async () => {
+      settle("null")
+    })
+    fireEvent.click(await screen.findByText("login-view"))
+    expect(await screen.findByText("kitchen-view")).toBeInTheDocument()
+    expect(useProfileStore.getState().authProfile?.role).toBe("kitchen")
+  })
+
+  it("a failed initial check offers the form, and the login that follows sticks", async () => {
+    const settle = holdInitialCheck()
+    render(<Home />)
+    await act(async () => {
+      settle("throw")
+    })
+    fireEvent.click(await screen.findByText("login-view"))
+    await screen.findByText("kitchen-view")
+    await act(async () => {})
 
     expect(screen.getByText("kitchen-view")).toBeInTheDocument()
     expect(useProfileStore.getState().authProfile?.role).toBe("kitchen")
@@ -385,11 +455,11 @@ describe("a late initial session check after a login (D3 smoke)", () => {
   it("a genuine signed_out after the login and the settled check returns to the form", async () => {
     const settle = holdInitialCheck()
     render(<Home />)
-    fireEvent.click(await screen.findByText("login-view"))
-    await screen.findByText("kitchen-view")
     await act(async () => {
       settle("null")
     })
+    fireEvent.click(await screen.findByText("login-view"))
+    await screen.findByText("kitchen-view")
 
     act(() => {
       emitAuthEvent("signed_out")

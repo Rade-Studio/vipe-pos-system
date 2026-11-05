@@ -33,6 +33,28 @@ async function loadKitchenAndDeliveredOrders() {
   useOrderStore.getState().setOrders(orders.map(toOrder))
 }
 
+/**
+ * The loader stays up until the first session check settles; past this limit a
+ * hung `/auth/me` counts as a failed check and the login form appears.
+ */
+const INITIAL_CHECK_TIMEOUT_MS = 10_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`session check timed out after ${ms} ms`)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 export default function Home() {
   const selectedProfile = useProfileStore((s) => s.selectedProfile)
   const setSelectedProfile = useProfileStore((s) => s.setSelectedProfile)
@@ -58,6 +80,10 @@ export default function Home() {
   // `profileResolved` separates "we have not asked yet" from "there is no
   // profile row", so the startup loads never run twice for one identity.
   const [profileResolved, setProfileResolved] = useState(false)
+  // The first check is a network round trip (`/auth/me`, maybe a refresh):
+  // keep the loader up until it settles so a signed-in user never sees the
+  // form flash, and no login can start while it is pending.
+  const [initialCheckDone, setInitialCheckDone] = useState(false)
   const loadConfigFromDB = useConfigStore((s) => s.loadConfigFromDB)
   const startupKeyRef = useRef<string | null>(null)
   // Bumped by every login. The initial session check remembers the value it
@@ -97,9 +123,10 @@ export default function Home() {
       clearSession()
     })
 
-    fetchSession()
+    withTimeout(fetchSession(), INITIAL_CHECK_TIMEOUT_MS)
       .finally(() => {
         checkPending = false
+        if (!cancelled) setInitialCheckDone(true)
       })
       .then((session) => {
         if (isStale()) return
@@ -122,6 +149,7 @@ export default function Home() {
   // Cargar la configuración al iniciar la aplicación
   useEffect(() => {
     if (!isAuthenticated) {
+      if (!initialCheckDone) return
       setIsLoading(false)
       // Signing out arms the next sign-in, even for the same role.
       startupKeyRef.current = null
@@ -199,6 +227,7 @@ export default function Home() {
     }
   }, [
     isAuthenticated,
+    initialCheckDone,
     profileResolved,
     authRole,
     loadConfigFromDB,
