@@ -1,7 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { io, type Socket } from 'socket.io-client';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Clock } from '../common/clock';
 import { createOpenApiDocument } from '../configure-app';
 import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
@@ -586,7 +586,9 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       for (const [name, at] of Object.entries(rows)) {
         await db(`SET session_replication_role = replica; UPDATE order_deliveries SET updated_at = '${at}' WHERE order_id = '${ids[name]}'`);
       }
-      const spy = vi.spyOn(app.get(Clock), 'now').mockReturnValue(new Date(nowIso));
+      // Clock is provided per module (delivery, dashboard), so app.get(Clock) can return
+      // an instance DeliveryService never sees; stubbing the prototype covers all of them.
+      const spy = vi.spyOn(Clock.prototype, 'now').mockReturnValue(new Date(nowIso));
       try {
         const listed = (await operatorA().get('/api/delivery/active')).body.map((r: { delivery: { orderId: string } }) => r.delivery.orderId);
         return Object.fromEntries(Object.entries(ids).map(([name, id]) => [name, listed.includes(id)]));
@@ -595,25 +597,43 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       }
     };
 
-    it('at 23:30 Bogota (04:30Z) keeps terminal rows from local midnight (05:00Z, inclusive) on, drops 04:59Z', async () => {
-      expect(
-        await boundary('2026-11-05T04:30:00Z', {
-          midnight: '2026-11-04T05:00:00Z',
-          late: '2026-11-05T04:00:00Z',
-          before: '2026-11-04T04:59:00Z',
-        }),
-      ).toEqual({ midnight: true, late: true, before: false });
-    });
+    // The wall clock must not leak into the boundary: CI once ran at 00:44 Bogota (L38).
+    for (const wall of ['2026-11-05T05:44:00Z', '2026-11-05T04:30:00Z', '2026-11-05T12:00:00Z', '2026-11-05T23:59:00Z']) {
+      describe(`with the real clock at ${wall}`, () => {
+        let realCookie: string;
+        beforeEach(async () => {
+          vi.useFakeTimers({ toFake: ['Date'], now: new Date(wall) });
+          // The access token must be minted under the pinned clock or it may already be expired.
+          realCookie = cookies[d.operatorEmail];
+          const res = await request(app.getHttpServer()).post('/api/auth/login').send({ email: d.operatorEmail, password: PASSWORD });
+          cookies[d.operatorEmail] = cookiePair(setCookies(res).vipe_access);
+        });
+        afterEach(() => {
+          cookies[d.operatorEmail] = realCookie;
+          vi.useRealTimers();
+        });
 
-    it('at 00:30 Bogota (05:30Z) the previous evening is gone and the new day is in', async () => {
-      expect(
-        await boundary('2026-11-04T05:30:00Z', {
-          justBefore: '2026-11-04T04:59:59Z',
-          justAfter: '2026-11-04T05:00:01Z',
-          midnight: '2026-11-04T05:00:00Z',
-        }),
-      ).toEqual({ justBefore: false, justAfter: true, midnight: true });
-    });
+        it('at 23:30 Bogota (04:30Z) keeps terminal rows from local midnight (05:00Z, inclusive) on, drops 04:59Z', async () => {
+          expect(
+            await boundary('2026-11-05T04:30:00Z', {
+              midnight: '2026-11-04T05:00:00Z',
+              late: '2026-11-05T04:00:00Z',
+              before: '2026-11-04T04:59:00Z',
+            }),
+          ).toEqual({ midnight: true, late: true, before: false });
+        });
+
+        it('at 00:30 Bogota (05:30Z) the previous evening is gone and the new day is in', async () => {
+          expect(
+            await boundary('2026-11-04T05:30:00Z', {
+              justBefore: '2026-11-04T04:59:59Z',
+              justAfter: '2026-11-04T05:00:01Z',
+              midnight: '2026-11-04T05:00:00Z',
+            }),
+          ).toEqual({ justBefore: false, justAfter: true, midnight: true });
+        });
+      });
+    }
   });
 
   it('OpenAPI states where each create limit is enforced', () => {
