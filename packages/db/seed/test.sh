@@ -163,6 +163,23 @@ done
 expect_exit 1 "bootstrap: db uuid that only prefixes a running container" \
   bootstrap --target coolify --app-uuid "$a" --db-uuid "${adb%db}" "La Mesa" admin@mesa.example
 expect_stderr "bootstrap: the unknown db uuid is named" "no running database container named ${adb%db}"
+# Exact db container match: among names that only contain the uuid, psql runs
+# in the container named exactly $adb. The stub docker logs every call and
+# fails everything but `ps`.
+stub="$scratch/stub-docker"
+mkdir -p "$stub"
+cat >"$stub/docker" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$scratch/docker.log"
+[[ "\$1" == ps ]] || exit 1
+printf '%s\n' x$adb ${adb}x ${adb}-backup $adb api-$a-1
+STUB
+chmod +x "$stub/docker"
+: >"$scratch/docker.log"
+expect_exit 1 "bootstrap: the stub docker fails the first exec" \
+  env PATH="$stub:$PATH" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$a" --db-uuid "$adb" "R" r@r.co
+expect_eq "bootstrap: the first exec targets exactly the db uuid" "$adb" \
+  "$(awk '$1 == "exec" { print ($2 == "-i" ? $3 : $2); exit }' "$scratch/docker.log")"
 expect_exit 2 "bootstrap: VIPE_COOLIFY_APP_UUID set but empty" \
   env VIPE_COOLIFY_APP_UUID= ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify "La Mesa" admin@mesa.example
 expect_exit 2 "bootstrap: short password" \
@@ -209,6 +226,26 @@ expect_eq "bootstrap: the second admin has the given username" "admin.otra" \
   "$(sql "$adb" postgres "SELECT username FROM public.profiles WHERE email = 'admin@otra.example'")"
 expect_exit 3 "bootstrap: --username already taken" \
   bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" --username admin.otra "Tercera Mesa" tercera@mesa.example
+
+# create-roles.sh: exit codes, and no password on any command line.
+create_roles() { bash "$repo_root/deploy/postgres/create-roles.sh" "$@"; }
+expect_exit 2 "create-roles: no --container" env VIPE_MIGRATOR_PASSWORD=m VIPE_API_PASSWORD=a bash "$repo_root/deploy/postgres/create-roles.sh"
+expect_exit 2 "create-roles: VIPE_MIGRATOR_PASSWORD unset" \
+  env -u VIPE_MIGRATOR_PASSWORD VIPE_API_PASSWORD=a bash "$repo_root/deploy/postgres/create-roles.sh" --container "$adb"
+expect_exit 2 "create-roles: VIPE_API_PASSWORD unset" \
+  env -u VIPE_API_PASSWORD VIPE_MIGRATOR_PASSWORD=m bash "$repo_root/deploy/postgres/create-roles.sh" --container "$adb"
+expect_exit 1 "create-roles: unknown container" \
+  env VIPE_MIGRATOR_PASSWORD=m VIPE_API_PASSWORD=a bash "$repo_root/deploy/postgres/create-roles.sh" --container "nosuch$run_id"
+tricky="q'u\"o\\te-$run_id"
+printf '%s\n' "$tricky" >"$scratch/needles"
+: >"$scratch/ps"
+( while :; do ps -eo args >>"$scratch/ps"; done ) &
+sampler=$!
+VIPE_MIGRATOR_PASSWORD="$tricky" VIPE_API_PASSWORD=test-api-pw expect_exit 0 "create-roles: password with quotes and a backslash" \
+  create_roles --container "$adb"
+kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null || true
+expect_eq "create-roles: ps was sampled during the run" "yes" "$([[ -s "$scratch/ps" ]] && echo yes || echo no)"
+expect_eq "create-roles: no password in any sampled command line" "0" "$(grep -cF -f "$scratch/needles" "$scratch/ps" || true)"
 
 # ---------------------------------------------------------------------------
 # Stack B (POSTGRES_USER=vipeowner): demo, reset, invariants

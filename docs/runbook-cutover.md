@@ -6,6 +6,13 @@ Plan y evidencia: `odd/tasks/migracion-backend-nestjs.md` (T13, T14, T15). Los p
 
 El corte mueve datos de forma **irreversible** hacia la base nueva. En Supabase solo se cambian permisos (2.2: se revoca la escritura a `anon` y `authenticated`, con un archivo para restaurarla); los datos no se tocan y el proyecto queda en solo lectura una semana como respaldo.
 
+> **Producción arranca vacía.** El plan vigente (`odd/tasks/migracion-backend-nestjs.md`, L15) no importa datos de
+> Supabase a producción: se crea la base, se despliega el stack y se registra el primer restaurante con su
+> administrador ([despliegue.md, sección 3.5](despliegue.md#35-primer-restaurante-y-administrador)). En ese caso basta
+> con los prerrequisitos de la base destino (sección 0) y el paso 2.7; se omiten el congelamiento, la exportación, la
+> importación y la verificación de datos (2.1 a 2.6 y 2.8). Este runbook completo queda como procedimiento opcional
+> para una base que sí deba llevar los datos de Supabase.
+
 > **Antes de fusionar la rama.** CI despliega en Coolify en cada push a `dev` (staging) y a `main` (producción) con
 > `COOLIFY_APP_UUID_STAGING` / `COOLIFY_APP_UUID_PRODUCTION`, que hoy apuntan a la web anterior. Seguir el orden de
 > [despliegue.md, sección 3.3](despliegue.md#33-despliegue-desde-ci): la fusión en `main` y el cambio de
@@ -37,28 +44,34 @@ El corte mueve datos de forma **irreversible** hacia la base nueva. En Supabase 
     docker compose -f docker-compose.prod.yml up --build migrate       # aplica packages/db/migrations y termina con código 0
     ```
 
-  - Opción B: crear el recurso Docker Compose de producción en Coolify ([despliegue.md](despliegue.md#31-crear-el-recurso))
-    **sin dominios asignados todavía** (el dominio de producción sigue en la app anterior hasta 2.7) y desplegarlo una vez
-    desde el panel con la rama del corte; `postgres` y `migrate` dejan el esquema listo. Detener `api` y `web` hasta el
-    paso 2.7. Si el panel no permite detener un servicio suelto, usar la CLI en la VPS:
+  - Opción B ([despliegue.md](despliegue.md#31-crear-los-recursos)): primero el recurso **PostgreSQL** de producción en
+    Coolify, con `vipe_migrator` y `vipe_api` creados por `deploy/postgres/create-roles.sh --container <uuid de la base>`
+    y su respaldo diario a S3. Después, el recurso Docker Compose de producción con `DATABASE_HOST` igual al UUID de la
+    base, **sin dominios asignados todavía** (el dominio de producción sigue en la app anterior hasta 2.7), desplegado
+    una vez desde el panel con la rama del corte: `migrate` aplica las migraciones en la base y termina con código 0.
+    Detener `api` y `web` hasta el paso 2.7. Si el panel no permite detener un servicio suelto, usar la CLI en la VPS:
     `docker ps --format '{{.Names}}' | grep -E 'api|web'` y `docker stop <contenedor-api> <contenedor-web>`.
   - `TARGET_DATABASE_URL`: conexión de **superusuario** al destino (la importación usa `session_replication_role`).
-    Ningún compose publica el puerto de Postgres: ejecutar los scripts **en la VPS** y usar la IP interna del
-    contenedor (los scripts corren el cliente con `--network host`):
+    Ninguna de las dos opciones publica el puerto de Postgres: ejecutar los scripts **en la VPS** y usar la IP interna
+    del contenedor (los scripts corren el cliente con `--network host`):
 
     Un contenedor conectado a varias redes tiene una IP por red, así que se pide la IP de una red concreta. Ver sus
     redes con `docker inspect -f '{{json .NetworkSettings.Networks}}' <contenedor>`: en la opción A la red es
-    `vipe-pos_default` (el compose fija `name: vipe-pos`); en la opción B suele llamarse como el UUID del recurso.
+    `vipe-pos_default` (el compose fija `name: vipe-pos`); en la opción B es la red predefinida `coolify`, y el
+    contenedor de la base se llama exactamente como el UUID del recurso de base de datos.
 
     ```bash
-    # Opción A
+    # Opción A: superusuario postgres con POSTGRES_PASSWORD del .env
     PG_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "vipe-pos_default").IPAddress}}' \
       "$(docker compose -f docker-compose.prod.yml ps -q postgres)")
-    # Opción B (Coolify nombra el contenedor y la red con el UUID del recurso)
-    PG_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "<red-del-recurso>").IPAddress}}' <contenedor-postgres>)
-
     echo "$PG_IP"     # debe ser una sola IP
     export TARGET_DATABASE_URL="postgres://postgres:<POSTGRES_PASSWORD>@$PG_IP:5432/vipe_pos"
+
+    # Opción B: el superusuario es el POSTGRES_USER del recurso de base de datos (su contraseña y su base,
+    # POSTGRES_PASSWORD y POSTGRES_DB, están en la configuración del recurso en Coolify)
+    PG_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "coolify").IPAddress}}' <uuid de la base>)
+    echo "$PG_IP"     # debe ser una sola IP
+    export TARGET_DATABASE_URL="postgres://<POSTGRES_USER>:<POSTGRES_PASSWORD>@$PG_IP:5432/<POSTGRES_DB>"
     ```
 
     En ese caso la VPS también necesita Node 24, pnpm y el repositorio con `pnpm install` (para `copy-storage.ts`).
@@ -256,7 +269,7 @@ Opción B, en este orden (dos recursos no pueden reclamar el mismo dominio en el
 
 1. En la app anterior de Coolify (la web sola), quitar el dominio de producción de su campo **Domains** y guardar, o
    detener la app. Anotar el valor exacto que tenía, para la reversión.
-2. En el recurso Docker Compose nuevo, asignar los dominios de [despliegue.md](despliegue.md#31-crear-el-recurso)
+2. En el recurso Docker Compose nuevo, asignar los dominios de [despliegue.md](despliegue.md#31-crear-los-recursos)
    (`api` → `https://<sitio>:4000/api,https://<sitio>:4000/socket.io`, `web` → `https://<sitio>:3000`), con
    *Strip prefixes* desactivado, y redeplegar el recurso (o iniciar `api` y `web` con `docker start` si se detuvieron
    por la CLI; la asignación de dominios requiere redeplegar para que el proxy la tome).
@@ -295,8 +308,9 @@ Cuando la sección 3 esté aprobada, como superusuario en la base nueva:
 # Opción A
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U postgres -d vipe_pos -v ON_ERROR_STOP=1 \
   -c 'DROP SCHEMA import_src CASCADE'
-# Opción B
-docker exec <contenedor-postgres> psql -U postgres -d vipe_pos -v ON_ERROR_STOP=1 -c 'DROP SCHEMA import_src CASCADE'
+# Opción B: el contenedor de la base se llama como su UUID; psql como su POSTGRES_USER en su POSTGRES_DB
+docker exec <uuid de la base> sh -c \
+  'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "DROP SCHEMA import_src CASCADE"'
 ```
 
 `import_src` es la copia de los datos de origen que usa `verify.sql`.
@@ -381,7 +395,7 @@ supa_psql < restaurar-permisos.sql
    # Opción A
    docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U postgres -d vipe_pos -Fc > ~/corte-AAAA-MM-DD/base-nueva.dump
    # Opción B
-   docker exec <contenedor-postgres> pg_dump -U postgres -d vipe_pos -Fc > ~/corte-AAAA-MM-DD/base-nueva.dump
+   docker exec <uuid de la base> sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > ~/corte-AAAA-MM-DD/base-nueva.dump
    ```
 
    Luego liberar el dominio y volver a la app anterior:
@@ -391,7 +405,8 @@ supa_psql < restaurar-permisos.sql
      plataforma con su configuración de antes del corte.
    - Opción B, en orden inverso a 2.7:
      1. En el recurso Docker Compose nuevo, quitar los dominios de `api` y `web` y redeplegar (o detener el recurso;
-        con la CLI: `docker stop <contenedor-api> <contenedor-web>`).
+        con la CLI: `docker stop <contenedor-api> <contenedor-web>`). El recurso de base de datos no se detiene ni se
+        borra: los datos de la base nueva quedan en él.
      2. En la app anterior, volver a poner en **Domains** el valor anotado en 2.7 y redeplegarla (o iniciarla).
      3. Devolver `COOLIFY_APP_UUID_PRODUCTION` al UUID de la app anterior y revertir la fusión en `main` (un commit de
         reversión), para que el próximo push no vuelva a desplegar el stack nuevo.

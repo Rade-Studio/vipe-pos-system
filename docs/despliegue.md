@@ -351,6 +351,11 @@ redepliega; para volver a una versión anterior, desplegar el commit anterior (r
 Git y hacer push, o redeplegar ese commit desde el panel). Las mismas advertencias de 2.5
 sobre migraciones aplican.
 
+No volver a un commit anterior al paso de la base a un recurso aparte (T18): su
+`docker-compose.coolify.yml` trae un servicio `postgres` propio con un volumen vacío, y la
+aplicación arrancaría sobre esa base vacía. Para revertir, conservar el recurso de base de datos y
+redeplegar un commit posterior a ese cambio.
+
 Un despliegue de la aplicación no reinicia la base: es un recurso aparte. Sus respaldos diarios a
 S3 se configuran y se restauran desde la pestaña **Backups** de ese recurso (3.1). Para un respaldo
 manual con `pg_dump` en la VPS, el contenedor de la base se llama exactamente como el UUID del

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
@@ -63,5 +63,19 @@ describe("deploy docs", () => {
     const env = docs.split("\n").filter((line) => line.includes("VIPE_MIGRATOR_PASSWORD=") && line.includes("printf"))
     expect(env.length).toBe(3)
     for (const line of env) expect(line).toContain("DATABASE_HOST=")
+  })
+
+  it("links only to existing despliegue.md anchors", () => {
+    // GitHub's anchor: lowercase, punctuation dropped (accents, `_` and `-` kept), each space a hyphen.
+    const slug = (h: string) => h.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").trim().replace(/ /g, "-")
+    const anchors = new Set(guide.split("\n").filter((l) => /^#{2,4} /.test(l)).map((l) => slug(l.replace(/^#+ /, ""))))
+    const files = [...readdirSync(join(root, "docs")).filter((f) => f.endsWith(".md")).map((f) => `docs/${f}`), "DOCKER.md"]
+    const links = files.flatMap((f) => [...read(f).matchAll(/despliegue\.md#([^)\s]+)/g)].map((m) => m[1]))
+    expect(links.length).toBeGreaterThan(0)
+    for (const a of links) expect(anchors).toContain(a)
+  })
+
+  it("describes the standalone Coolify database in the cut-over runbook", () => {
+    expect(read("docs/runbook-cutover.md")).not.toMatch(/<contenedor-postgres>|`postgres` y `migrate` dejan/)
   })
 })

@@ -48,7 +48,9 @@ target_die() {
 target_find_container() {
   local service="$1" names
   # Coolify names compose containers <service>-<app uuid>-<timestamp>, for
-  # example postgres-zyxpf2vqnowxdolrgne8vxew-20261105T031048.
+  # example api-zyxpf2vqnowxdolrgne8vxew-20261105T031048. The standalone
+  # database container is not one of them: it is named exactly after the
+  # database uuid (target_find_db_container).
   names="$(docker ps --format '{{.Names}}' | grep -E "^${service}-${VIPE_COOLIFY_APP_UUID}(-|$)" || true)"
   if [[ -z "$names" ]]; then
     target_die "no running '${service}' container for Coolify app ${VIPE_COOLIFY_APP_UUID}"
