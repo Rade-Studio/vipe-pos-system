@@ -17,15 +17,6 @@ const env = vi.hoisted(() => ({
   checkStockForDish: vi.fn(),
 }))
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    auth: { signOut: vi.fn() },
-    from: () => {
-      throw new Error("the grid must not read the database directly")
-    },
-  },
-}))
-
 vi.mock("@/lib/api/inventory", () => ({
   // The T6 entry point: one read per category/menu (POST /inventory/dish-availability since T10).
   checkStockForDishes: env.checkStockForDishes,

@@ -37,11 +37,6 @@ const harness = vi.hoisted(() => {
   return { subscriptions, emit, subscribeToDeliveries }
 })
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: { auth: { signOut: async () => ({ error: null }) } },
-  createSupabaseClient: () => ({}),
-}))
-
 const getByStatus = vi.hoisted(() => vi.fn())
 const getById = vi.hoisted(() => vi.fn())
 const updateStatus = vi.hoisted(() => vi.fn())

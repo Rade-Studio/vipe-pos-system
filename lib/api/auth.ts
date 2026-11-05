@@ -1,5 +1,4 @@
 import { toast } from "@/components/ui/use-toast"
-import { supabase } from "@/lib/supabase/client"
 import { api } from "./client"
 import { ApiError } from "./errors"
 import type { components } from "./schema"
@@ -52,7 +51,5 @@ export async function signOutAndReload(): Promise<void> {
     })
     return
   }
-  // Until T13 removes Supabase: drop any session it left in localStorage.
-  await supabase.auth.signOut({ scope: "local" }).catch(() => undefined)
   window.location.href = "/portal"
 }

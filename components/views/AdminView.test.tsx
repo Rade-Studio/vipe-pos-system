@@ -17,51 +17,15 @@ import { queryClient } from "@/lib/queryClient"
  *     pulsing forever.
  */
 
-type Call = { table: string; method: string; args: unknown[] }
-
 const state = vi.hoisted(() => {
-  const calls: Call[] = []
-  const results: Record<string, { data: unknown; error: unknown }> = {}
   type OrderSubscriber = (payload: unknown) => void
   const realtime: { subscribeToOrders: OrderSubscriber | null } = { subscribeToOrders: null }
   /** T8b: the active orders and the delete go through the API client. */
   const apiCalls: { method: string; path: string; init?: any }[] = []
   const api = { orders: [] as unknown[], deleteError: null as unknown }
 
-  const makeChain = (table: string): any => {
-    const chain: any = {}
-    const record =
-      (method: string) =>
-      (...args: unknown[]) => {
-        calls.push({ table, method, args })
-        return chain
-      }
-    for (const method of [
-      "select",
-      "in",
-      "eq",
-      "gte",
-      "lte",
-      "order",
-      "limit",
-      "not",
-      "single",
-      "maybeSingle",
-    ]) {
-      chain[method] = record(method)
-    }
-    chain.then = (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
-      Promise.resolve(results[table] ?? { data: [], error: null }).then(resolve)
-    return chain
-  }
-
-  return { calls, results, realtime, makeChain, apiCalls, api }
+  return { realtime, apiCalls, api }
 })
-
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: { from: (table: string) => state.makeChain(table) },
-  createSupabaseClient: () => ({ from: (table: string) => state.makeChain(table) }),
-}))
 
 vi.mock("@/lib/api/client", () => ({
   api: {
@@ -158,12 +122,10 @@ async function openSection(id: string) {
 beforeEach(() => {
   window.location.hash = ""
   queryClient.clear()
-  state.calls.length = 0
   state.realtime.subscribeToOrders = null
   state.apiCalls.length = 0
   state.api.orders = []
   state.api.deleteError = null
-  for (const key of Object.keys(state.results)) delete state.results[key]
   useOrderStore.setState({ orders: [] })
   useProfileStore.setState({ profiles: [] })
   useTableStore.setState({ tables: [] })
@@ -259,11 +221,7 @@ describe("ActiveOrdersGrid", () => {
 describe("AdminView — requests issued while a tab is open", () => {
   const profile = { id: "p-1", name: "Admin", role: "admin" as const }
 
-  function tableOf(state: Call[]) {
-    return state.map((call) => `${call.table}.${call.method}`)
-  }
-
-  it("reads the dashboard only (one summary + the low-stock alert), and nothing for the closed tabs", async () => {
+  it("reads the dashboard only (one summary + the low-stock alert)", async () => {
     render(wrap(<AdminView profile={profile} onChangeProfile={() => {}} authRole="admin" />))
 
     await waitFor(() => expect(screen.getByText("Ventas del Mes")).toBeInTheDocument())
@@ -274,16 +232,19 @@ describe("AdminView — requests issued while a tab is open", () => {
         { method: "GET", path: "/api/dashboard/summary", init: { params: { query: { days: "30" } } } },
       ]),
     )
-    expect(state.calls.some((call) => call.table === "orders" || call.table === "order_items")).toBe(false)
     // The low-stock alert on the dashboard reads the inventory items through the API (T10).
     await waitFor(() =>
       expect(state.apiCalls.filter((call) => call.path === "/api/inventory/items")).toHaveLength(1),
     )
-    expect(tableOf(state.calls)).not.toContain("ingredients.select")
-    // Nothing for the tabs that are closed.
-    expect(state.calls.some((call) => call.table === "categories")).toBe(false)
-    expect(state.calls.some((call) => call.table === "profiles")).toBe(false)
-    expect(state.calls.some((call) => call.table === "cash_registers")).toBe(false)
+  })
+
+  it("issues no request for the closed tabs", async () => {
+    render(wrap(<AdminView profile={profile} onChangeProfile={() => {}} authRole="admin" />))
+    await waitFor(() => expect(state.apiCalls.some((call) => call.path === "/api/inventory/items")).toBe(true))
+    expect([...new Set(state.apiCalls.map((call) => `${call.method} ${call.path}`))].sort()).toEqual([
+      "GET /api/dashboard/summary",
+      "GET /api/inventory/items",
+    ])
   })
 
   it("reads the active orders when the Órdenes tab is opened, and not before", async () => {
@@ -298,7 +259,6 @@ describe("AdminView — requests issued while a tab is open", () => {
     const reads = state.apiCalls.filter((call) => call.path === "/api/orders")
     expect(reads).toHaveLength(1)
     expect(reads[0].init).toEqual({ params: { query: { status: "active,kitchen,delivered", include: "table,waiter" } } })
-    expect(state.calls.some((call) => call.table === "orders" && call.method === "in")).toBe(false)
   })
 
   it("re-reads the active orders exactly once per refresh click", async () => {
@@ -334,8 +294,6 @@ describe("AdminView — requests issued while a tab is open", () => {
     expect(state.apiCalls.filter((call) => call.method === "DELETE")).toEqual([
       { method: "DELETE", path: "/api/orders/{id}", init: { params: { path: { id: "o-1" } } } },
     ])
-    // No client-side table write: the API frees the table in the same transaction.
-    expect(state.calls.some((call) => call.table === "tables")).toBe(false)
     expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden eliminada" }))
     await waitFor(() => expect(screen.queryByTestId("admin-order-o-1")).toBeNull())
   })

@@ -1,9 +1,8 @@
 /**
  * T8b (S3) — the realtime client over ONE socket.io connection to the API's
- * `/realtime` namespace. It replaces the Supabase channels of
- * `lib/supabase/realtime-service.ts` with the same subscription contracts:
+ * `/realtime` namespace, with these subscription contracts:
  *
- * - `pos_changes` payloads (Supabase-shaped, enriched server-side with
+ * - `pos_changes` payloads (`{eventType, new, old}`, enriched server-side with
  *   `order_items` and `waiter_name`) reach the table, order and kitchen
  *   subscribers, so `table-merge.ts` / `order-merge.ts` consume them unchanged;
  * - `resync` and every reconnect invalidate the order, table and delivery

@@ -17,11 +17,6 @@ db_port="${VIPE_DB_PORT:-5432}"
 migrator_password="${VIPE_MIGRATOR_PASSWORD:-vipe_migrator}"
 api_password="${VIPE_API_PASSWORD:-vipe_api}"
 
-# docker-compose.yml interpolates the whole file, and the `app` service
-# requires the Supabase build variables. The `db` service does not use them.
-export NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-http://unused.invalid}"
-export NEXT_PUBLIC_SUPABASE_ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY:-unused}"
-
 compose() { docker compose "$@"; }
 psql_su() { compose exec -T db psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }
 

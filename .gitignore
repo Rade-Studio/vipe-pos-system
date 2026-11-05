@@ -30,8 +30,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# supabase files
-supabase/.temp
 
 #idea
 .idea

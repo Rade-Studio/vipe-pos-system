@@ -2,14 +2,6 @@ import { act, render, screen, waitFor } from "@testing-library/react"
 import type React from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// `InvoicePrintView` pulls `lib/supabase/realtime-service` (and the stores pull
-// the `lib/supabase` barrel), both of which reach the browser client. Stub it at
-// the lowest level so neither needs a configured environment.
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {},
-  createSupabaseClient: () => ({}),
-}))
-
 const getOrdersByDate = vi.fn()
 vi.mock("@/lib/api/completed-orders", () => ({
   getOrdersByDate: (...args: unknown[]) => getOrdersByDate(...args),

@@ -18,7 +18,6 @@ const sessionFor = vi.hoisted(() => (role: string, userId = "u-1") => ({
 const env = vi.hoisted(() => {
   return {
     role: "waiter" as string,
-    profileQueries: 0,
     /** 401 = the API has no session for the browser. */
     meStatus: 200 as 200 | 401,
     apiGet: vi.fn(),
@@ -33,7 +32,6 @@ const env = vi.hoisted(() => {
     setProfilesSpy: vi.fn(),
     setOrdersSpy: vi.fn(),
     reset() {
-      this.profileQueries = 0
       this.meStatus = 200
       this.apiGet.mockReset()
       this.apiPost.mockReset()
@@ -64,18 +62,6 @@ const env = vi.hoisted(() => {
     },
   }
 })
-
-// No `auth` key: the shell must not touch Supabase auth any more. `from`
-// counts direct profile queries, which the API's `me` replaced.
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    from: (table: string) => {
-      if (table === "profiles") env.profileQueries += 1
-      throw new Error(`unexpected supabase.from(${table})`)
-    },
-  },
-  createSupabaseClient: () => ({}),
-}))
 
 vi.mock("@/lib/api/client", () => ({
   api: { GET: env.apiGet, POST: env.apiPost },
@@ -290,7 +276,6 @@ describe("shell session through the API", () => {
     expect(await renderShell("cashier-view")).toBe("cashier-view")
     // The startup slices are API reads too (T8b); the session is read once.
     expect(env.apiGet.mock.calls.filter(([path]) => path === "/api/auth/me")).toHaveLength(1)
-    expect(env.profileQueries).toBe(0)
     expect(useProfileStore.getState().authProfile).toEqual({
       id: "p-1",
       name: "Ana",

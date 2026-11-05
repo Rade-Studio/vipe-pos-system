@@ -7,10 +7,6 @@ import { queryClient } from "@/lib/queryClient"
 
 const getRegistersByDate = vi.fn()
 const getCashTransactionsByRegisters = vi.fn()
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {},
-  createSupabaseClient: () => ({}),
-}))
 vi.mock("@/lib/api/registers", () => ({
   getRegistersByDate: (...args: unknown[]) => getRegistersByDate(...args),
   getCashTransactionsByRegisters: (...args: unknown[]) => getCashTransactionsByRegisters(...args),

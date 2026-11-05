@@ -9,9 +9,6 @@ vi.mock("@/lib/api/staff", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/staff")>()),
   ...staff,
 }))
-vi.mock("@/lib/supabase", () => {
-  throw new Error("the staff list must not import Supabase")
-})
 const toastMock = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
 

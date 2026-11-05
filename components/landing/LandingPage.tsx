@@ -111,7 +111,7 @@ export function LandingPage() {
       <footer className="border-t border-white/10 px-6 py-10">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-sm text-zinc-500 sm:flex-row">
           <span>© {new Date().getFullYear()} VipePOS · Punto de venta para restaurantes</span>
-          <span>Hecho con Next.js, Supabase y mucho café.</span>
+          <span>Hecho con Next.js, NestJS, PostgreSQL y mucho café.</span>
         </div>
       </footer>
     </div>

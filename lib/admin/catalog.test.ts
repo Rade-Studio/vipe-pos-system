@@ -17,40 +17,6 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// One recording chain for every `supabase.from(...)` in the modules under test
-// (`catalog.ts` reads through the browser client, and so do the services it
-// calls). Node-safe: no client is created and no request leaves.
-const state = vi.hoisted(() => {
-  type Result = { data: unknown; error: unknown }
-  const calls: { table: string; method: string; args: unknown[] }[] = []
-  const results: Record<string, Result> = {}
-
-  const makeChain = (table: string): any => {
-    const chain: any = {}
-    const record =
-      (method: string) =>
-      (...args: unknown[]) => {
-        calls.push({ table, method, args })
-        return chain
-      }
-    chain.select = record("select")
-    chain.in = record("in")
-    chain.eq = record("eq")
-    chain.order = record("order")
-    chain.then = (resolve: (value: Result) => unknown) =>
-      Promise.resolve(results[table] ?? { data: [], error: null }).then(resolve)
-    return chain
-  }
-
-  return { calls, results, makeChain }
-})
-
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    from: (table: string) => state.makeChain(table),
-  },
-}))
-
 // T7b: categories, dishes and promotions come from the catalog API.
 const catalogApi = vi.hoisted(() => ({
   fetchCategories: vi.fn(),
@@ -76,8 +42,6 @@ import {
 
 beforeEach(() => {
   for (const fn of Object.values(catalogApi)) fn.mockReset().mockResolvedValue([])
-  state.calls.length = 0
-  for (const key of Object.keys(state.results)) delete state.results[key]
 })
 
 const ALL_KEYS = [
@@ -132,7 +96,6 @@ describe("fetchers", () => {
     expect(catalogApi.fetchCategories).toHaveBeenCalledWith()
     expect(catalogApi.fetchDishes).toHaveBeenCalledWith()
     expect(catalogApi.fetchPromotions).toHaveBeenCalledWith()
-    expect(state.calls).toEqual([])
   })
 
   it("reads the staff through the API, never from profiles", async () => {
@@ -140,7 +103,6 @@ describe("fetchers", () => {
     await fetchStaff()
 
     expect(staffApi.listStaff).toHaveBeenCalledWith()
-    expect(state.calls).toEqual([])
   })
 
   it("keeps exactly the staff roles the Personal screen manages (never admin)", async () => {

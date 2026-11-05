@@ -7,8 +7,6 @@ import { ApiError } from "@/lib/api/errors"
 const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn() }))
 vi.mock("@/lib/api/client", () => ({ api }))
 vi.mock("@/components/theme/theme-toggle", () => ({ ThemeToggle: () => null }))
-const supabaseSignOut = vi.hoisted(() => vi.fn())
-vi.mock("@/lib/supabase/client", () => ({ supabase: { auth: { signOut: supabaseSignOut } } }))
 const toast = vi.hoisted(() => vi.fn())
 vi.mock("@/components/ui/use-toast", () => ({ toast, useToast: () => ({ toast }) }))
 
@@ -19,8 +17,6 @@ const original = window.location
 beforeEach(() => {
   api.POST.mockReset()
   toast.mockReset()
-  supabaseSignOut.mockReset()
-  supabaseSignOut.mockResolvedValue({ error: null })
   Object.defineProperty(window, "location", { configurable: true, value: { href: "/portal/x" } })
 })
 
@@ -39,7 +35,6 @@ describe("Header sign-out", () => {
 
     await waitFor(() => expect(window.location.href).toBe("/portal"))
     expect(api.POST).toHaveBeenCalledWith("/api/auth/logout")
-    expect(supabaseSignOut).toHaveBeenCalledWith({ scope: "local" })
   })
 
   it("stays and shows the API message when the logout request fails", async () => {
@@ -56,16 +51,6 @@ describe("Header sign-out", () => {
       }),
     )
     expect(window.location.href).toBe("/portal/x")
-  })
-
-  it("leaves even when the local Supabase sign-out fails", async () => {
-    api.POST.mockResolvedValue({ data: undefined })
-    supabaseSignOut.mockRejectedValue(new Error("storage blocked"))
-    render(<Header profile={profile} onChangeProfile={vi.fn()} />)
-
-    fireEvent.click(screen.getByRole("button", { name: /salir|cerrar sesión/i }))
-
-    await waitFor(() => expect(window.location.href).toBe("/portal"))
   })
 
   it("keeps the Cambiar Perfil button for the real admin", () => {

@@ -19,7 +19,6 @@ vi.mock("@/hooks/inventory", () => ({
   useInventoryItems: () => ({ data: h.items, isLoading: false }),
   useSuppliers: () => ({ data: [{ id: "s1", name: "Proveedor Uno" }], isLoading: false }),
 }))
-vi.mock("@/lib/supabase/client", () => ({ supabase: {}, createSupabaseClient: () => ({}) }))
 vi.mock("@/lib/api/dashboard", () => ({
   fetchDashboardSummary: vi.fn(async () => ({ monthSales: 0, kitchenOrders: 0, dailySales: [], popularDishes: [] })),
 }))

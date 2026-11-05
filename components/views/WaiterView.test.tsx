@@ -86,15 +86,6 @@ const env = vi.hoisted(() => ({
   unsubscribes: 0,
 }))
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    auth: { signOut: vi.fn(), getSession: vi.fn(), getUser: vi.fn(), onAuthStateChange: vi.fn() },
-    from: () => {
-      throw new Error("the view must not read the database directly")
-    },
-  },
-}))
-
 // T8b: tables, orders and waiters go through the API client. The fake routes
 // each `METHOD path` to one recorder; a rejected recorder is an API error.
 vi.mock("@/lib/api/client", () => {

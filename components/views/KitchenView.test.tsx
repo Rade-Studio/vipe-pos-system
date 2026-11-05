@@ -80,16 +80,6 @@ const env = vi.hoisted(() => {
   }
 })
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    auth: { signOut: async () => {} },
-    from: () => {
-      throw new Error("the kitchen must not write the database directly")
-    },
-  },
-  createSupabaseClient: () => ({}),
-}))
-
 vi.mock("@/lib/api/client", async () => {
   const { ApiError } = await import("@/lib/api/errors")
   const route = async (method: string, path: string, init: any = {}) => {

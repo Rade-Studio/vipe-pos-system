@@ -6,8 +6,7 @@ import { defineConfig } from 'vitest/config';
 const alias = { '@': path.resolve(__dirname, '.') };
 
 // Two suites with different environments, kept side by side in one runner:
-//   - `node`  : pure-logic suites (lib/**, store/**, components/**/*.test.ts,
-//               supabase/functions/**).
+//   - `node`  : pure-logic suites (lib/**, store/**, components/**/*.test.ts).
 //   - `dom`   : React component suites (*.test.tsx), which need jsdom plus the
 //               Testing Library matchers from vitest.setup.ts.
 // `test.projects` is the Vitest 5 mechanism (the old `workspace` file and
@@ -22,7 +21,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['lib/**/*.test.ts', 'store/**/*.test.ts', 'components/**/*.test.ts', 'supabase/functions/**/*.test.ts'],
+          include: ['lib/**/*.test.ts', 'store/**/*.test.ts', 'components/**/*.test.ts'],
           globals: false,
         },
       },

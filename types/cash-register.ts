@@ -23,20 +23,6 @@ export interface CashTransaction {
   cash_register_id: string
 }
 
-export interface SupabaseTransaction {
-  id: string
-  order_id: string
-  table_id: string
-  waiter_id?: string
-  amount: number
-  tip_amount?: number
-  method: PaymentMethod
-  cash_received?: number
-  cash_change?: number
-  timestamp: string
-  cash_register_id: string
-}
-
 export interface CashRegister {
   id: string
   openingTimestamp: Date

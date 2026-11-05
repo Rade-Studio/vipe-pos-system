@@ -16,15 +16,6 @@ const env = vi.hoisted(() => ({
   getByCategoryWithPromotions: vi.fn(),
 }))
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    auth: { signOut: vi.fn() },
-    from: () => {
-      throw new Error("the menu must not read the database directly")
-    },
-  },
-}))
-
 vi.mock("@/lib/api/catalog", () => ({
   fetchCategories: () => env.getAllActive(),
   fetchDishes: (filter: { categoryId: string }) => env.getByCategoryWithPromotions(filter.categoryId),

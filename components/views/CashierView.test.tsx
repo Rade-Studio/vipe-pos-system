@@ -133,23 +133,6 @@ vi.mock("@/lib/api/payments", () => ({
 vi.mock("@/lib/api/delivery", () => ({
   listActiveDeliveries: () => listActiveDeliveries(),
 }))
-vi.mock("@/lib/supabase/client", () => {
-  const channel = () => {
-    const c: Record<string, unknown> = {}
-    c.on = () => c
-    c.subscribe = () => c
-    c.unsubscribe = () => c
-    return c
-  }
-  return {
-    supabase: {
-      channel,
-      removeChannel: () => {},
-      auth: { signOut: vi.fn(async () => ({})) },
-      from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }) }),
-    },
-  }
-})
 vi.mock("@/lib/api/realtime", () => ({
   realtimeService: {
     subscribeToOrders: (cb: (payload: unknown) => void) => {

@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn() }))
 vi.mock("@/lib/api/client", () => ({ api }))
-const supabaseSignOut = vi.hoisted(() => vi.fn())
-vi.mock("@/lib/supabase/client", () => ({ supabase: { auth: { signOut: supabaseSignOut } } }))
 const toast = vi.hoisted(() => vi.fn())
 vi.mock("@/components/ui/use-toast", () => ({ toast, useToast: () => ({ toast }) }))
 
@@ -17,8 +15,6 @@ const location = { href: "/portal/admin" }
 beforeEach(() => {
   api.POST.mockReset()
   toast.mockReset()
-  supabaseSignOut.mockReset()
-  supabaseSignOut.mockResolvedValue({ error: null })
   location.href = "/portal/admin"
   vi.stubGlobal("window", { location })
 })
@@ -34,7 +30,6 @@ describe("signOutAndLeave", () => {
     await signOutAndLeave()
 
     expect(api.POST).toHaveBeenCalledWith("/api/auth/logout")
-    expect(supabaseSignOut).toHaveBeenCalledWith({ scope: "local" })
     expect(location.href).toBe("/portal")
   })
 

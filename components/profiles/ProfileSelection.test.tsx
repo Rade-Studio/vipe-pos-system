@@ -3,7 +3,6 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { ProfileSelection } from "@/components/profiles/ProfileSelection"
 import { useProfileStore } from "@/store/useProfileStore"
 
-vi.mock("@/lib/supabase/client", () => ({ supabase: {}, createSupabaseClient: () => ({}) }))
 vi.mock("@/components/theme/theme-toggle", () => ({ ThemeToggle: () => null }))
 
 describe("ProfileSelection", () => {

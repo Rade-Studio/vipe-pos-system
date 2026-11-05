@@ -10,7 +10,7 @@ import type { Order, PaymentMethod } from "@/types"
  * The day's paid orders (T9) in ONE request: `GET /orders/completed?date=`
  * embeds each order's payment with its tenders or, for orders paid before
  * `pay_order`, the legacy `payment_transactions` rows. Replaces the per-order
- * reads of `lib/supabase/service.ts`.
+ * reads of the former Supabase orders service.
  */
 
 type CompletedOrderDto = components["schemas"]["CompletedOrder"]
