@@ -200,6 +200,14 @@ volumen y sus respaldos diarios a S3, que un despliegue de la aplicación no rei
 `api` llegan a ella por la red `coolify`, con el UUID del recurso de base de datos como nombre de
 host (`DATABASE_HOST`).
 
+Las imágenes no se construyen en la VPS. GitHub Actions (job `docker-build` de
+`.github/workflows/ci.yml`) construye `migrate`, `api` y `web` en cada push a `dev` o `main` y
+las publica en GHCR como `ghcr.io/rade-studio/vipe-pos-<servicio>`, con el SHA completo del
+commit. La etiqueta de la rama (`dev` o `main`) se mueve a esas imágenes en el paso de despliegue,
+solo cuando todas las comprobaciones pasaron, sin volver a compilar. Coolify solo descarga la etiqueta indicada en
+`VIPE_IMAGE_TAG` (`pull_policy: always`). El motivo es la memoria: compilar en la VPS llenaba su
+swap junto a las demás aplicaciones de producción.
+
 Staging responde solo a los clientes de la red de Tailscale: desde la IP pública, el proxy de
 Coolify devuelve 403 en todas las rutas (`/`, `/api`, `/socket.io`).
 
@@ -234,6 +242,19 @@ Primero la base de datos, una vez por ambiente y antes del primer despliegue de 
    (`0 3 * * *`, por ejemplo) al almacenamiento S3 del servidor, el mismo que usan las otras
    bases de la VPS.
 
+Una sola vez por servidor (no por ambiente), Docker debe iniciar sesión en GHCR para descargar
+las imágenes privadas. Se usa un token de GitHub con el permiso `read:packages`; la contraseña
+llega a `docker login` solo por la entrada estándar y queda en `/root/.docker/config.json`, que es
+la configuración que usa Coolify:
+
+```bash
+# desde un equipo con la CLI gh autenticada
+gh auth refresh -h github.com -s read:packages
+gh auth token | ssh root@<servidor> 'docker login ghcr.io -u <usuario de GitHub> --password-stdin'
+# comprobar en el servidor que la descarga privada funciona
+ssh root@<servidor> 'docker pull ghcr.io/rade-studio/vipe-pos-api:dev'
+```
+
 Después, la aplicación:
 
 1. Nuevo recurso desde el repositorio Git, **Build Pack: Docker Compose**.
@@ -248,7 +269,8 @@ Después, la aplicación:
    El puerto indica a Coolify el puerto interno del contenedor; el público sigue siendo 443.
 4. **Strip prefixes: desactivado** en `api`. La API espera las rutas completas `/api/...` y
    `/socket.io/`.
-5. **Environment**: obligatorias `DATABASE_HOST` (UUID del recurso de base de datos),
+5. **Environment**: obligatorias `VIPE_IMAGE_TAG` (`dev` en staging, `main` en producción),
+   `DATABASE_HOST` (UUID del recurso de base de datos),
    `VIPE_MIGRATOR_PASSWORD`, `VIPE_API_PASSWORD`, `JWT_SECRET` y `WEB_ORIGIN=https://<sitio>`;
    opcionales `DATABASE_PORT` (por defecto `5432`), `POSTGRES_DB`, `COOKIE_SECURE` (dejar `true`),
    `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_SECONDS`. El grupo `S3_*` es obligatorio
@@ -268,7 +290,7 @@ de prueba (nunca los secretos reales en un archivo temporal):
 
 ```bash
 check_env=$(mktemp)
-printf '%s\n' DATABASE_HOST=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
+printf '%s\n' VIPE_IMAGE_TAG=dev DATABASE_HOST=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
   JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com \
   S3_ENDPOINT=https://s3.example.com S3_REGION=us-east-1 S3_BUCKET=vipe-pos-staging S3_ACCESS_KEY_ID=prueba \
   S3_SECRET_ACCESS_KEY=prueba S3_PUBLIC_BASE_URL=https://s3.example.com/vipe-pos-staging S3_FORCE_PATH_STYLE=true > "$check_env"
@@ -315,8 +337,9 @@ estas comprobaciones, crear el primer restaurante y su administrador (sección 3
 ### 3.3 Despliegue desde CI
 
 El job `deploy` de `.github/workflows/ci.yml` corre en cada push a `main` (producción) y a
-`dev` (staging), después de `lint`, `typecheck`, `unit-tests`, `api`, `build`, `db-tests` y
-`pos-deps-check`. Llama a la API de Coolify (`POST /api/v1/deploy`) y espera el resultado.
+`dev` (staging), después de `lint`, `typecheck`, `unit-tests`, `api`, `build`, `db-tests`,
+`docker-build` y `pos-deps-check`; así, cuando Coolify descarga la etiqueta de la rama, las
+imágenes de ese commit ya están en GHCR. Llama a la API de Coolify (`POST /api/v1/deploy`) y espera el resultado.
 Secretos del repositorio:
 
 | Secreto | Uso |
@@ -347,9 +370,10 @@ Los logs y el historial de despliegues están en el panel de cada recurso. El pa
 puede no ofrecer detener un solo servicio de un recurso Docker Compose; en ese caso usar la CLI
 en la VPS (`docker ps --format '{{.Names}}'` para ver los nombres, que llevan el UUID del recurso,
 y `docker stop <contenedor>` / `docker start <contenedor>`). Un push a la rama
-redepliega; para volver a una versión anterior, desplegar el commit anterior (revertir en
-Git y hacer push, o redeplegar ese commit desde el panel). Las mismas advertencias de 2.5
-sobre migraciones aplican.
+redepliega; para volver a una versión anterior sin compilar, cambiar `VIPE_IMAGE_TAG` en el
+recurso al SHA completo de ese commit (las imágenes de cada push quedan en GHCR con su SHA) y
+volver a desplegar desde el panel. Para seguir de nuevo la rama, restaurar `dev` o `main`. También
+se puede revertir en Git y hacer push. Las mismas advertencias de 2.5 sobre migraciones aplican.
 
 No volver a un commit anterior al paso de la base a un recurso aparte (T18): su
 `docker-compose.coolify.yml` trae un servicio `postgres` propio con un volumen vacío, y la

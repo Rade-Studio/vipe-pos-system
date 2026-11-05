@@ -127,7 +127,10 @@ activa **Connect to Predefined Network** para alcanzarlo por la red `coolify`. R
 **Docker Compose Location** `/docker-compose.coolify.yml`, dominios `api` →
 `https://<sitio>:4000/api,https://<sitio>:4000/socket.io` y `web` → `https://<sitio>:3000`,
 **Strip prefixes** desactivado. Staging responde solo a los clientes de la red de Tailscale
-(desde la IP pública, el proxy devuelve 403). Detalle y comprobaciones en
+(desde la IP pública, el proxy devuelve 403). Las imágenes no se construyen en el servidor:
+CI las publica en GHCR (`ghcr.io/rade-studio/vipe-pos-<servicio>`, etiquetas SHA y rama) y
+Coolify descarga la que indique `VIPE_IMAGE_TAG` (`dev` en staging, `main` en producción, o un
+SHA para volver atrás); el servidor inicia sesión en `ghcr.io` una sola vez. Detalle y comprobaciones en
 [docs/despliegue.md](docs/despliegue.md#3-opción-b-coolify-con-docker-composecoolifyyml).
 
 Validación local (Docker Compose rechaza la clave `exclude_from_hc` de Coolify, y cada variable
@@ -135,7 +138,7 @@ obligatoria es `${VAR:?}`, así que hace falta un archivo con valores de prueba)
 
 ```bash
 check_env=$(mktemp)
-printf '%s\n' DATABASE_HOST=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
+printf '%s\n' VIPE_IMAGE_TAG=dev DATABASE_HOST=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
   JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com \
   S3_ENDPOINT=https://s3.example.com S3_REGION=us-east-1 S3_BUCKET=vipe-pos-staging S3_ACCESS_KEY_ID=prueba \
   S3_SECRET_ACCESS_KEY=prueba S3_PUBLIC_BASE_URL=https://s3.example.com/vipe-pos-staging S3_FORCE_PATH_STYLE=true > "$check_env"

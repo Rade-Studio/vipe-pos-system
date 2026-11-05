@@ -36,6 +36,27 @@ describe("deploy docs", () => {
     expect(guide).toContain("MINIO_CORS_ORIGINS")
   })
 
+  it("tags every image in the image job with a GHCR name only", () => {
+    const ci = read(".github/workflows/ci.yml")
+    const imageJob = ci.slice(ci.indexOf("  docker-build:"), ci.indexOf("  pos-deps-check:"))
+    const tagLines = [...imageJob.matchAll(/tags: \|\n((?:\s{12}\S.*\n)+)/g)].flatMap((m) => m[1].trim().split("\n").map((l) => l.trim()))
+    expect(tagLines.length).toBeGreaterThan(0)
+    for (const tag of tagLines) expect(tag.startsWith("ghcr.io/rade-studio/")).toBe(true)
+  })
+
+  it("moves the branch tag only in the deploy job, after every check", () => {
+    const ci = read(".github/workflows/ci.yml")
+    const imageJob = ci.slice(ci.indexOf("  docker-build:"), ci.indexOf("  pos-deps-check:"))
+    const deployJob = ci.slice(ci.indexOf("  deploy:"))
+    expect(imageJob).not.toContain("github.ref_name")
+    expect(deployJob).toContain("docker buildx imagetools create")
+    expect(deployJob).toContain("packages: write")
+    expect(deployJob.indexOf("imagetools create")).toBeLessThan(deployJob.indexOf("Deploy to Coolify"))
+    // A re-run of an older run must not move the branch tag backwards.
+    expect(deployJob.indexOf("is no longer the head of")).toBeGreaterThan(-1)
+    expect(deployJob.indexOf("is no longer the head of")).toBeLessThan(deployJob.indexOf("imagetools create"))
+  })
+
   it("mounts no repository file in the Coolify compose, which Coolify does not ship next to it", () => {
     const compose = read("docker-compose.coolify.yml")
     const repoMounts = compose.split("\n").filter((line) => /^\s*-\s*\.{1,2}\//.test(line))
@@ -63,6 +84,39 @@ describe("deploy docs", () => {
     const env = docs.split("\n").filter((line) => line.includes("VIPE_MIGRATOR_PASSWORD=") && line.includes("printf"))
     expect(env.length).toBe(3)
     for (const line of env) expect(line).toContain("DATABASE_HOST=")
+  })
+
+  it("pulls every Coolify app image from GHCR by VIPE_IMAGE_TAG and builds nothing on the server", () => {
+    const compose = read("docker-compose.coolify.yml")
+    expect(compose).not.toMatch(/^\s*build:/m)
+    for (const service of ["migrate", "api", "web"]) {
+      const block = compose.match(new RegExp(`^  ${service}:\\n((?:    .*\\n|\\n)*)`, "m"))
+      expect(block).not.toBeNull()
+      expect(block![1]).toContain(`    image: ghcr.io/rade-studio/vipe-pos-${service}:\${VIPE_IMAGE_TAG:?}\n`)
+      expect(block![1]).toContain("    pull_policy: always\n")
+    }
+  })
+
+  it("pushes images from CI on dev and main only, and deploys only after the push", () => {
+    const ci = read(".github/workflows/ci.yml")
+    const job = ci.slice(ci.indexOf("\n  docker-build:"), ci.indexOf("\n  pos-deps-check:"))
+    expect(job).toContain("registry: ghcr.io")
+    expect(job).toContain("packages: write")
+    for (const line of job.split("\n").filter((l) => /^\s*push:/.test(l))) {
+      expect(line).toContain("${{ env.PUSH }}")
+    }
+    expect(job).toMatch(/PUSH: \$\{\{ github\.event_name == 'push' && \(github\.ref == 'refs\/heads\/main' \|\| github\.ref == 'refs\/heads\/dev'\) \}\}/)
+    for (const image of ["api", "migrate", "web"]) expect(job).toContain(`ghcr.io/rade-studio/vipe-pos-${image}:`)
+    const needs = ci.match(/\n  deploy:\n(?:    .*\n)*?    needs: \[([^\]]*)\]/)
+    expect(needs).not.toBeNull()
+    expect(needs![1].split(",").map((s) => s.trim())).toContain("docker-build")
+  })
+
+  it("passes VIPE_IMAGE_TAG to every local Coolify validation command", () => {
+    const docs = [guide, read("DOCKER.md"), read("docker-compose.coolify.yml")].join("\n")
+    const env = docs.split("\n").filter((line) => line.includes("VIPE_MIGRATOR_PASSWORD=") && line.includes("printf"))
+    expect(env.length).toBe(3)
+    for (const line of env) expect(line).toContain("VIPE_IMAGE_TAG=")
   })
 
   it("links only to existing despliegue.md anchors", () => {

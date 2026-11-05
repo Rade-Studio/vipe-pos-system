@@ -100,22 +100,38 @@ jobs:
 
   docker-build:
     # Production images (apps/api/Dockerfile api + migrate targets, root
-    # Dockerfile web) still build. Pull requests only; nothing is pushed.
-    if: github.event_name == 'pull_request'
+    # Dockerfile web). Pull requests only build them; a push to `dev` or `main`
+    # also pushes them to GHCR as :<commit sha>, and the deploy job moves the
+    # branch tag Coolify pulls (docker-compose.coolify.yml, VIPE_IMAGE_TAG).
+    # Every tag here is a GHCR name: a bare local tag would be pushed to Docker
+    # Hub and fail. Nothing is built on the VPS.
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build API image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/api/Dockerfile
           target: api
-          push: false
+          push: ${{ env.PUSH }}
           load: true
-          tags: vipe-api:ci
+          tags: |
+            ghcr.io/rade-studio/vipe-pos-api:${{ github.sha }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
       - name: Build migrate image
@@ -124,24 +140,29 @@ jobs:
           context: .
           file: apps/api/Dockerfile
           target: migrate
-          push: false
+          push: ${{ env.PUSH }}
+          tags: |
+            ghcr.io/rade-studio/vipe-pos-migrate:${{ github.sha }}
           cache-from: type=gha,scope=api
       - name: Build web image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
-          push: false
+          push: ${{ env.PUSH }}
           load: true
-          tags: vipe-web:ci
+          tags: |
+            ghcr.io/rade-studio/vipe-pos-web:${{ github.sha }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
       # No test data, seed, migration fixtures, env files or keys in the images.
       - name: Image hygiene
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint sh vipe-api:ci -c '! find /app -path "*@vipe/db/*" \( -name "*.test.sql" -o -name dev.sql -o -path "*fixtures*" -o -path "*migration-from-supabase*" \) | grep -q .'
-          for image in vipe-api:ci vipe-web:ci; do
+          api="ghcr.io/rade-studio/vipe-pos-api:$GITHUB_SHA"
+          web="ghcr.io/rade-studio/vipe-pos-web:$GITHUB_SHA"
+          docker run --rm --entrypoint sh "$api" -c '! find /app -path "*@vipe/db/*" \( -name "*.test.sql" -o -name dev.sql -o -path "*fixtures*" -o -path "*migration-from-supabase*" \) | grep -q .'
+          for image in "$api" "$web"; do
             docker run --rm --entrypoint sh "$image" -c '! find /app \( -name ".env*" -o -name "*.pem" \) | grep -q .'
           done
 
@@ -156,7 +177,9 @@ jobs:
   # ---------------------------------------------------------------------------
   # deploy — ships what landed, never what is proposed: it runs on a push to
   # `dev` (Coolify staging) or `main` (Coolify production) and only after every
-  # job above passed on that same commit. Pull requests never deploy.
+  # job above passed on that same commit, including docker-build, so the
+  # images Coolify pulls for that branch are already in GHCR. Pull requests
+  # never deploy.
   #
   # It asks Coolify to deploy the branch, then follows that deployment until it
   # finishes, so a failed build or a failed healthcheck fails this job instead
@@ -170,7 +193,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy
-    needs: [lint, typecheck, unit-tests, api, build, db-tests, pos-deps-check]
+    needs: [lint, typecheck, unit-tests, api, build, db-tests, docker-build, pos-deps-check]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -179,11 +202,41 @@ jobs:
     permissions:
       contents: read
       deployments: write
+      packages: write
     env:
       TARGET: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
       TARGET_URL: ${{ github.ref == 'refs/heads/main' && 'https://vipepos.radestudio.org' || 'https://vipe-staging.212.56.33.197.sslip.io' }}
 
     steps:
+      # The image job pushes only :<sha>. The branch tag (:dev or :main) that
+      # Coolify pulls moves here, after every check passed, so a failing commit
+      # never becomes the tag a manual redeploy would pull. No rebuild: the
+      # tag is added to the existing manifest.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move the branch tag to this commit's images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # A re-run of an older run must not move the tag back to an older
+          # commit (and deploy it): only the branch head may take the tag.
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::$GITHUB_SHA is no longer the head of $GITHUB_REF_NAME ($head); not moving the tag."
+            exit 1
+          fi
+          for image in vipe-pos-api vipe-pos-migrate vipe-pos-web; do
+            docker buildx imagetools create \
+              -t "ghcr.io/rade-studio/$image:$GITHUB_REF_NAME" \
+              "ghcr.io/rade-studio/$image:$GITHUB_SHA"
+          done
+
       # Bookkeeping only: if GitHub refuses the record, the release still ships.
       - name: Record the deployment on GitHub
         id: record
