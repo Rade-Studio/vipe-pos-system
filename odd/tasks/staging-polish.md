@@ -16,7 +16,7 @@ Follow-ups left by the NestJS migration (odd/tasks/migracion-backend-nestjs.md) 
 - [x] T1. S2 realtime admin card names. Route: worker. Commit: 6ae1b76. RED: AdminView.test.tsx, 3 new tests fail (the admin card never printed a waiter: no "Mesero: Ana"). GREEN: 17/17.
 - [x] T2. S3 "Meseros activos" refresh. Route: worker. Commit: aac430d. RED: WaiterList.test.tsx, 2 new tests fail (profiles stay [Ana] after delete and save). GREEN: 11/11 in components/admin/staff.
 - [x] T3. S4 single Clock provider. Route: worker. Commit: 1510b5f. RED: delivery spec stubbing app.get(Clock) fails 6 boundary tests. GREEN: dashboard + delivery 59/59.
-- [x] T4. S5 + S6 docs. Route: worker. Commit: 6a9201f. Scripts switched to `docker compose`; migration log L43. `pnpm -s vitest run lib/docs` 15/15.
+- [x] T4. S5 + S6 docs. Route: worker. Commit: 6a9201f. Scripts switched to `docker compose`; migration log L45. `pnpm -s vitest run lib/docs` 15/15.
 
 ## Log
 
