@@ -193,7 +193,7 @@ docker compose -f docker-compose.prod.yml up -d --wait api
 ## 3. Opción B: Coolify con `docker-compose.coolify.yml`
 
 Diferencias con la opción A: sin `caddy` (Coolify maneja 80/443 y HTTPS con Traefik), sin
-`minio` (Coolify no aplica perfiles de compose: las imágenes van a R2), sin puertos
+`minio` propio (las imágenes van al MinIO compartido de la VPS, sección 4.3), sin puertos
 publicados, `migrate` con `exclude_from_hc: true` y `WEB_ORIGIN` obligatorio.
 
 ### 3.1 Crear el recurso
@@ -213,8 +213,12 @@ publicados, `migrate` con `exclude_from_hc: true` y `WEB_ORIGIN` obligatorio.
 5. **Environment**: obligatorias `POSTGRES_PASSWORD`, `VIPE_MIGRATOR_PASSWORD`,
    `VIPE_API_PASSWORD`, `JWT_SECRET` y `WEB_ORIGIN=https://<sitio>`; opcionales
    `POSTGRES_USER`, `POSTGRES_DB`, `COOKIE_SECURE` (dejar `true`),
-   `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_SECONDS`, y el grupo `S3_*` de R2
-   (sección 4.1). `SITE_DOMAIN`, `STORAGE_*` y `MINIO_*` no se usan en este archivo.
+   `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_SECONDS`. El grupo `S3_*` es obligatorio
+   y sale del MinIO compartido (sección 4.3): ejecutar
+   `provision-app.sh vipe-pos-<ambiente> vipe-pos-<ambiente>` y pegar el bloque impreso.
+   `SITE_DOMAIN`, `STORAGE_*` y `MINIO_*` no se usan en este archivo.
+6. En el recurso del MinIO compartido, agregar `https://<sitio>` a `MINIO_CORS_ORIGINS` y
+   volver a desplegarlo.
 
 Validación local del archivo (Docker Compose rechaza la clave `exclude_from_hc`, propia de
 Coolify, así que se quita esa línea para validar). Todas las variables obligatorias son
@@ -224,7 +228,9 @@ de prueba (nunca los secretos reales en un archivo temporal):
 ```bash
 check_env=$(mktemp)
 printf '%s\n' POSTGRES_PASSWORD=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
-  JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com > "$check_env"
+  JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com \
+  S3_ENDPOINT=https://s3.example.com S3_REGION=us-east-1 S3_BUCKET=vipe-pos-staging S3_ACCESS_KEY_ID=prueba \
+  S3_SECRET_ACCESS_KEY=prueba S3_PUBLIC_BASE_URL=https://s3.example.com/vipe-pos-staging S3_FORCE_PATH_STYLE=true > "$check_env"
 sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - --env-file "$check_env" config --quiet
 rm -f "$check_env"
 ```
@@ -317,7 +323,7 @@ La API firma subidas (PUT prefirmado) y guarda la URL pública en el plato. Clav
 `/api/storage/*` responde 503 `Storage is not configured`; con el grupo incompleto la API no
 arranca.
 
-### 4.1 Cloudflare R2 (recomendado)
+### 4.1 Cloudflare R2 (opción A, o alternativa al MinIO compartido)
 
 1. Crear el bucket (por ejemplo `vipe-pos`).
 2. Habilitar acceso público de lectura: un dominio propio conectado al bucket o el
@@ -372,6 +378,33 @@ S3_FORCE_PATH_STYLE=true
 Las imágenes de MinIO son las compilaciones de Chainguard fijadas por digest (MinIO dejó de
 publicar imágenes comunitarias). El volumen `minio_data` entra en los respaldos de la VPS;
 `pg_dump` no lo cubre.
+
+### 4.3 Almacenamiento compartido de la VPS (MinIO)
+
+La opción B usa un único MinIO para toda la VPS, desplegado como un recurso Docker Compose
+propio de Coolify (`deploy/shared-storage/docker-compose.yml`), no como parte de VIPE POS. Otras
+aplicaciones de la VPS se conectan al mismo servidor. R2 (sección 4.1) sigue siendo una
+alternativa: basta con cargar su grupo `S3_*` en lugar del de MinIO.
+
+- **Aislamiento.** Cada aplicación y ambiente tiene su bucket (`vipe-pos-staging`,
+  `vipe-pos-production`) y su usuario, con permiso solo para leer, escribir y borrar objetos de
+  ese bucket. Los objetos se leen de forma anónima por su clave; nadie lista un bucket sin
+  credenciales. Las credenciales administradoras no se entregan a ninguna aplicación.
+- **CORS.** MinIO aplica una sola lista de orígenes a todo el servidor:
+  `MINIO_CORS_ORIGINS` (separada por comas) debe incluir `https://<sitio>` de cada aplicación
+  y ambiente conectados; tras cambiarla, volver a desplegar el recurso.
+- **Aprovisionamiento.** En la VPS, con las credenciales administradoras en el entorno:
+
+  ```bash
+  MINIO_NETWORK=<red-del-recurso> S3_PUBLIC_ENDPOINT=https://<s3-dominio> \
+    bash deploy/shared-storage/provision-app.sh vipe-pos-production vipe-pos-production
+  ```
+
+  `provision-app.sh` es idempotente y solo imprime en la salida estándar el bloque `S3_*` para
+  pegar en el recurso de VIPE POS (el secreto se muestra una vez; `--rotate` genera uno nuevo).
+
+Dominios, respaldos del volumen, rotación y la prueba local (`deploy/shared-storage/test.sh`)
+están en [deploy/shared-storage/README.md](../deploy/shared-storage/README.md).
 
 ## 5. Estaciones de impresión
 

@@ -30,4 +30,9 @@ describe("deploy docs", () => {
     expect(ordered).toMatch(/`dev`/)
     expect(ordered).toContain("COOLIFY_APP_UUID_PRODUCTION")
   })
+
+  it("documents the shared VPS MinIO provisioning and its CORS origin list", () => {
+    expect(guide).toContain("provision-app.sh")
+    expect(guide).toContain("MINIO_CORS_ORIGINS")
+  })
 })

@@ -131,7 +131,9 @@ obligatoria es `${VAR:?}`, así que hace falta un archivo con valores de prueba)
 ```bash
 check_env=$(mktemp)
 printf '%s\n' POSTGRES_PASSWORD=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
-  JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com > "$check_env"
+  JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com \
+  S3_ENDPOINT=https://s3.example.com S3_REGION=us-east-1 S3_BUCKET=vipe-pos-staging S3_ACCESS_KEY_ID=prueba \
+  S3_SECRET_ACCESS_KEY=prueba S3_PUBLIC_BASE_URL=https://s3.example.com/vipe-pos-staging S3_FORCE_PATH_STYLE=true > "$check_env"
 sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - --env-file "$check_env" config --quiet
 rm -f "$check_env"
 ```
