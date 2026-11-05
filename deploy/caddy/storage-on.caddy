@@ -1,0 +1,6 @@
+# S3 API of the minio service (profile self-hosted-storage) on its own host,
+# so presigned URLs keep the signed Host header. Selected by STORAGE_SITE=on.
+{$STORAGE_DOMAIN} {
+	import security_headers
+	reverse_proxy minio:9000
+}

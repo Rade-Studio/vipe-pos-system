@@ -5,8 +5,12 @@
   "description": "VIPE POS database schema, migrations and Drizzle client",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "migrations"
+  ],
   "scripts": {
-    "build": "tsc src/index.ts --outDir dist --rootDir src --declaration --module commonjs --moduleResolution node --target ES2022 --esModuleInterop --skipLibCheck --strict --types node",
+    "build": "tsc src/index.ts src/migrate.ts --outDir dist --rootDir src --declaration --module commonjs --moduleResolution node --target ES2022 --esModuleInterop --skipLibCheck --strict --types node",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p migration-from-supabase/tsconfig.json",
     "migrate": "tsx src/migrate.ts",
     "generate": "drizzle-kit generate",

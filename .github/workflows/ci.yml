@@ -30,7 +30,7 @@ jobs:
 
   unit-tests:
     # Vitest suite for pure logic (lib/payments, store). Runs against the
-    # installed dependency graph only, so no Supabase stack is needed.
+    # installed dependency graph only, so no database is needed.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -79,22 +79,14 @@ jobs:
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.DEV_SUPABASE_URL || 'http://localhost:54321' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
 
   db-tests:
     # pgTAP suite (RLS, grants, tenant isolation, guards, RPCs) on plain
     # Postgres 16 + pgTAP: the compose `db` service, the Drizzle migrations
-    # from packages/db applied as vipe_migrator, then pg_prove. No Supabase CLI.
+    # from packages/db applied as vipe_migrator, then pg_prove.
     # GitHub-hosted runners are ephemeral, so every run starts from an empty volume.
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      # docker-compose.yml also declares the web `app` service, whose required
-      # build variables compose interpolates even when only `db` starts.
-      NEXT_PUBLIC_SUPABASE_URL: http://unused.invalid
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: unused
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -105,6 +97,53 @@ jobs:
       - run: pnpm test:db
       - if: failure()
         run: docker compose logs db --tail 200 || true
+
+  docker-build:
+    # Production images (apps/api/Dockerfile api + migrate targets, root
+    # Dockerfile web) still build. Pull requests only; nothing is pushed.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: api
+          push: false
+          load: true
+          tags: vipe-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Build migrate image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: migrate
+          push: false
+          cache-from: type=gha,scope=api
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: vipe-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      # No test data, seed, migration fixtures, env files or keys in the images.
+      - name: Image hygiene
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh vipe-api:ci -c '! find /app -path "*@vipe/db/*" \( -name "*.test.sql" -o -name dev.sql -o -path "*fixtures*" -o -path "*migration-from-supabase*" \) | grep -q .'
+          for image in vipe-api:ci vipe-web:ci; do
+            docker run --rm --entrypoint sh "$image" -c '! find /app \( -name ".env*" -o -name "*.pem" \) | grep -q .'
+          done
 
   pos-deps-check:
     runs-on: ubuntu-latest
@@ -131,7 +170,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy
-    needs: [lint, typecheck, unit-tests, build, db-tests, pos-deps-check]
+    needs: [lint, typecheck, unit-tests, api, build, db-tests, pos-deps-check]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     timeout-minutes: 30

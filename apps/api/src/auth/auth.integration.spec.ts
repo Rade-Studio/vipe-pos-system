@@ -199,4 +199,25 @@ describe('auth endpoints (Testcontainers, vipe_api)', () => {
       expect(later.status).toBe(401);
     });
   });
+  describe('Cache-Control on /api/auth/*', () => {
+    it('answers no-store on login, me, refresh and logout', async () => {
+      const signedIn = await login(fixtures.adminA.email);
+      expect(signedIn.status).toBe(200);
+      expect(signedIn.headers['cache-control']).toBe('no-store');
+      const cookies = setCookies(signedIn);
+
+      const me = await http().get('/api/auth/me').set('Cookie', cookiePair(cookies.vipe_access));
+      expect(me.status).toBe(200);
+      expect(me.headers['cache-control']).toBe('no-store');
+
+      const refreshed = await http().post('/api/auth/refresh').set('Cookie', cookiePair(cookies.vipe_refresh));
+      expect(refreshed.status).toBe(204);
+      expect(refreshed.headers['cache-control']).toBe('no-store');
+      const next = setCookies(refreshed);
+
+      const out = await http().post('/api/auth/logout').set('Cookie', cookiePair(next.vipe_refresh));
+      expect(out.status).toBe(204);
+      expect(out.headers['cache-control']).toBe('no-store');
+    });
+  });
 });

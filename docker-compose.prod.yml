@@ -1,49 +1,236 @@
 # ============================================
-# VIPE POS - Producción con Supabase Externo
+# VIPE POS - Production stack on one VPS (no Supabase)
 # ============================================
-# Uso: docker-compose -f docker-compose.prod.yml up -d --build
+# postgres -> migrate (one-shot) -> api, web <- caddy (HTTPS, :80/:443)
+# Object storage: Cloudflare R2 (or any S3 service) through the S3_* variables;
+# optional self-hosted MinIO with the `self-hosted-storage` profile.
 #
-# Requiere archivo .env con variables de Supabase:
-# - NEXT_PUBLIC_SUPABASE_URL
-# - NEXT_PUBLIC_SUPABASE_ANON_KEY
+# Coolify deploys this file (Docker Compose build pack); the variables come
+# from its environment UI. Manual use:
+#   cp env.production.template .env   # fill in every value
+#   docker compose -f docker-compose.prod.yml up -d --build --wait
+#   docker compose -f docker-compose.prod.yml --profile self-hosted-storage up -d --build --wait
+#   (with STORAGE_SITE=on and STORAGE_DOMAIN set; see env.production.template)
+#
+# Every secret is required (`${VAR:?...}`): the stack does not start with a
+# default password. See env.production.template.
 # ============================================
 
+name: vipe-pos
+
+x-restart: &restart
+  restart: unless-stopped
+
 services:
-  app:
+  # -------------------------------
+  # POSTGRES 16
+  # -------------------------------
+  # The init script (only on an empty volume) creates vipe_migrator (owns the
+  # schema) and vipe_api (runtime role, no BYPASSRLS) from roles.sql.
+  postgres:
+    <<: *restart
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD (superuser)}
+      POSTGRES_DB: ${POSTGRES_DB:-vipe_pos}
+      VIPE_MIGRATOR_PASSWORD: ${VIPE_MIGRATOR_PASSWORD:?define VIPE_MIGRATOR_PASSWORD}
+      VIPE_API_PASSWORD: ${VIPE_API_PASSWORD:?define VIPE_API_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./packages/db/scripts/roles.sql:/opt/vipe/roles.sql:ro
+      - ./deploy/postgres/10-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # -------------------------------
+  # MIGRATE (one-shot, vipe_migrator)
+  # -------------------------------
+  # Applies packages/db/migrations (compiled JavaScript, no tsx) and exits;
+  # api starts only after it exits 0. Safe on every deploy: applied
+  # migrations are skipped.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://vipe_migrator:${VIPE_MIGRATOR_PASSWORD:?define VIPE_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB:-vipe_pos}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # One-shot: "healthy" means the process is running; compose waits for its exit.
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  # -------------------------------
+  # API (NestJS, :4000, internal)
+  # -------------------------------
+  # Variables validated at startup by apps/api/src/config/env.ts.
+  api:
+    <<: *restart
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: api
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgres://vipe_api:${VIPE_API_PASSWORD:?define VIPE_API_PASSWORD}@postgres:5432/${POSTGRES_DB:-vipe_pos}
+      WEB_ORIGIN: ${WEB_ORIGIN:-https://${SITE_DOMAIN:?define SITE_DOMAIN}}
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET (at least 32 characters)}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      # Empty = unset: without S3 the API boots and /api/storage/* answers 503.
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      # Only with the self-hosted-storage profile; lets `up --wait` accept its exit.
+      minio-init:
+        condition: service_completed_successfully
+        required: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # -------------------------------
+  # WEB (Next.js standalone, :3000, internal)
+  # -------------------------------
+  # No runtime configuration: the browser calls its own origin and caddy
+  # routes /api and /socket.io/ to the API.
+  web:
+    <<: *restart
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-    container_name: vipe-pos-app
-    restart: always
-    ports:
-      - "3000:3000"
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # -------------------------------
-  # NGINX como reverse proxy (opcional)
+  # CADDY (reverse proxy + automatic HTTPS)
   # -------------------------------
-  # Descomentar si se necesita nginx
-  # nginx:
-  #   image: nginx:alpine
-  #   container_name: vipe-pos-nginx
-  #   restart: always
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-  #     - ./nginx/ssl:/etc/nginx/ssl:ro
-  #   depends_on:
-  #     - app
+  caddy:
+    <<: *restart
+    image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    # Non-root: the binary carries the file capability cap_net_bind_service, so
+    # it binds 80/443 as uid 1000; every other capability is dropped.
+    user: "1000:1000"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?define SITE_DOMAIN}
+      # on = publish minio at STORAGE_DOMAIN (profile self-hosted-storage only).
+      STORAGE_SITE: ${STORAGE_SITE:-off}
+      STORAGE_DOMAIN: ${STORAGE_DOMAIN:-}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/caddy:/etc/caddy/caddy:ro
+      # The image's /data/caddy and /config/caddy are mode 1777, so the
+      # volumes are writable by uid 1000 (a volume inherits the directory mode).
+      - caddy_data:/data/caddy
+      - caddy_config:/config/caddy
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      # Admin API on localhost:2019 (inside the container only).
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------
+  # MINIO (optional, profile self-hosted-storage)
+  # -------------------------------
+  # Same Chainguard images as docker-compose.yml (pinned by digest; MinIO no
+  # longer publishes community images). Public through caddy at STORAGE_DOMAIN.
+  minio:
+    <<: *restart
+    profiles: [self-hosted-storage]
+    image: cgr.dev/chainguard/minio@sha256:3c60a2a8c4d33409a9bc7a623a7fcbfb4605adc3d89422d2f53b3f673a6e5597
+    # compose interpolates every service, even outside its profile, so the
+    # credentials cannot use `:?`; the entrypoint refuses to start without them
+    # (MinIO would otherwise fall back to its well-known default account).
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        [ -n "$$MINIO_ROOT_USER" ] && [ -n "$$MINIO_ROOT_PASSWORD" ] ||
+        { echo "define MINIO_ROOT_USER and MINIO_ROOT_PASSWORD" >&2; exit 1; };
+        exec minio server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+      # Browser uploads (presigned PUT with Content-Type) and reads come from the web origin.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${WEB_ORIGIN:-https://${SITE_DOMAIN:?define SITE_DOMAIN}}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: creates the bucket; anonymous users may read objects
+  # (s3:GetObject) but not list the bucket. Idempotent.
+  minio-init:
+    profiles: [self-hosted-storage]
+    image: cgr.dev/chainguard/minio-client@sha256:39768db4c3fa811bc8f2e2a3e0add8ea391648b1c980de179985e1c353dc1805
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+      BUCKET: ${S3_BUCKET:-vipe}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb --ignore-existing "local/$$BUCKET" &&
+        printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}' "$$BUCKET" > /tmp/public-read.json &&
+        mc anonymous set-json /tmp/public-read.json "local/$$BUCKET"
+    healthcheck:
+      test: ["CMD", "mc", "--version"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+  minio_data:

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
 import {
   ApiBody,
   ApiCookieAuth,
@@ -16,6 +16,9 @@ import { AuthService } from './auth.service';
 import { ACCESS_COOKIE, clearAuthCookies, readCookie, REFRESH_COOKIE, setAuthCookies } from './cookies';
 import { Public } from './public.decorator';
 
+/** Session answers and cookies must never be stored by a browser or proxy cache. */
+const NO_STORE = ['Cache-Control', 'no-store'] as const;
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -26,6 +29,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  @Header(...NO_STORE)
   @HttpCode(200)
   @ApiBody({ type: LoginRequest })
   @ApiOkResponse({ type: SessionResponse, description: 'Sets the vipe_access and vipe_refresh cookies.' })
@@ -43,6 +47,7 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
+  @Header(...NO_STORE)
   @HttpCode(204)
   @ApiNoContentResponse({ description: 'Rotates the session and sets new vipe_access and vipe_refresh cookies.' })
   @ApiUnauthorizedResponse({ description: 'Refresh cookie missing, expired, revoked or already used.' })
@@ -52,6 +57,7 @@ export class AuthController {
 
   @Public()
   @Post('logout')
+  @Header(...NO_STORE)
   @HttpCode(204)
   @ApiNoContentResponse({
     description: 'Revokes the session of the refresh cookie (or of the access token when no refresh cookie is sent) and clears both cookies.',
@@ -62,6 +68,7 @@ export class AuthController {
   }
 
   @Get('me')
+  @Header(...NO_STORE)
   @ApiCookieAuth()
   @ApiOkResponse({ type: SessionResponse })
   @ApiUnauthorizedResponse({ description: 'No valid access cookie.' })
