@@ -1,0 +1,33 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { describe, expect, it } from "vitest"
+
+const root = join(__dirname, "..", "..")
+const read = (path: string) => readFileSync(join(root, path), "utf8")
+const guide = read("docs/despliegue.md")
+
+describe("deploy docs", () => {
+  it("documents an R2 CORS rule that is valid JSON for browser uploads and reads", () => {
+    const block = guide.match(/```json\n([\s\S]*?)```/)
+    expect(block).not.toBeNull()
+    const rules = JSON.parse(block![1]) as Array<{ AllowedMethods: string[]; AllowedHeaders: string[] }>
+    expect(rules[0].AllowedMethods).toEqual(expect.arrayContaining(["PUT", "GET", "HEAD"]))
+    expect(rules[0].AllowedHeaders).toContain("Content-Type")
+  })
+
+  it("passes an env file to every local Coolify validation command", () => {
+    const lines = [guide, read("DOCKER.md")]
+      .flatMap((doc) => doc.split("\n"))
+      .filter((line) => line.includes("sed '/exclude_from_hc/d'"))
+    expect(lines.length).toBeGreaterThan(0)
+    for (const line of lines) expect(line).toContain("--env-file")
+  })
+
+  it("states the merge order before CI deploys the new stack to staging", () => {
+    const section = guide.slice(guide.indexOf("### 3.3"), guide.indexOf("### 3.4"))
+    const ordered = section.split("\n").filter((line) => /^\d+\. /.test(line)).join("\n")
+    expect(ordered).toContain("COOLIFY_APP_UUID_STAGING")
+    expect(ordered).toMatch(/`dev`/)
+    expect(ordered).toContain("COOLIFY_APP_UUID_PRODUCTION")
+  })
+})

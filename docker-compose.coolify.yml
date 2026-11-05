@@ -30,8 +30,11 @@
 #      (actualización a WebSocket); las pantallas reciben cambios en vivo.
 #
 # `exclude_from_hc` is a Coolify key that plain `docker compose` rejects
-# ("additional properties not allowed"); to validate locally, drop that line:
-#   sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - config
+# ("additional properties not allowed"); to validate locally, drop that line
+# and pass a file with the required variables (test values are enough):
+#   printf '%s\n' POSTGRES_PASSWORD=x VIPE_MIGRATOR_PASSWORD=x VIPE_API_PASSWORD=x \
+#     JWT_SECRET=validation-only-secret-of-32-chars WEB_ORIGIN=https://pos.example.com > /tmp/coolify-check.env
+#   sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - --env-file /tmp/coolify-check.env config --quiet
 # ============================================
 
 services:

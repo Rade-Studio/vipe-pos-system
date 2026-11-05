@@ -4,7 +4,12 @@ Plan y evidencia: `odd/tasks/migracion-backend-nestjs.md` (T13, T14, T15). Los p
 [despliegue.md](despliegue.md): **opción A** (VPS con `docker-compose.prod.yml` y Caddy) u **opción B** (Coolify con
 `docker-compose.coolify.yml`). Donde un paso cambia según la opción, se indican ambas.
 
-El corte mueve datos de forma **irreversible** hacia la base nueva. Supabase no se modifica: queda en solo lectura una semana como respaldo.
+El corte mueve datos de forma **irreversible** hacia la base nueva. En Supabase solo se cambian permisos (2.2: se revoca la escritura a `anon` y `authenticated`, con un archivo para restaurarla); los datos no se tocan y el proyecto queda en solo lectura una semana como respaldo.
+
+> **Antes de fusionar la rama.** CI despliega en Coolify en cada push a `dev` (staging) y a `main` (producción) con
+> `COOLIFY_APP_UUID_STAGING` / `COOLIFY_APP_UUID_PRODUCTION`, que hoy apuntan a la web anterior. Seguir el orden de
+> [despliegue.md, sección 3.3](despliegue.md#33-despliegue-desde-ci): la fusión en `main` y el cambio de
+> `COOLIFY_APP_UUID_PRODUCTION` se hacen **dentro** de esta ventana (paso 2.7), nunca antes.
 
 ## Resumen
 
@@ -32,19 +37,27 @@ El corte mueve datos de forma **irreversible** hacia la base nueva. Supabase no 
     docker compose -f docker-compose.prod.yml up --build migrate       # aplica packages/db/migrations y termina con código 0
     ```
 
-  - Opción B: crear el recurso de Coolify ([despliegue.md](despliegue.md#31-crear-el-recurso)) y desplegarlo una vez;
-    `postgres` y `migrate` dejan el esquema listo. Detener `api` y `web` desde el panel hasta el paso 2.7.
+  - Opción B: crear el recurso Docker Compose de producción en Coolify ([despliegue.md](despliegue.md#31-crear-el-recurso))
+    **sin dominios asignados todavía** (el dominio de producción sigue en la app anterior hasta 2.7) y desplegarlo una vez
+    desde el panel con la rama del corte; `postgres` y `migrate` dejan el esquema listo. Detener `api` y `web` hasta el
+    paso 2.7. Si el panel no permite detener un servicio suelto, usar la CLI en la VPS:
+    `docker ps --format '{{.Names}}' | grep -E 'api|web'` y `docker stop <contenedor-api> <contenedor-web>`.
   - `TARGET_DATABASE_URL`: conexión de **superusuario** al destino (la importación usa `session_replication_role`).
     Ningún compose publica el puerto de Postgres: ejecutar los scripts **en la VPS** y usar la IP interna del
     contenedor (los scripts corren el cliente con `--network host`):
 
+    Un contenedor conectado a varias redes tiene una IP por red, así que se pide la IP de una red concreta. Ver sus
+    redes con `docker inspect -f '{{json .NetworkSettings.Networks}}' <contenedor>`: en la opción A la red es
+    `vipe-pos_default` (el compose fija `name: vipe-pos`); en la opción B suele llamarse como el UUID del recurso.
+
     ```bash
     # Opción A
-    PG_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+    PG_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "vipe-pos_default").IPAddress}}' \
       "$(docker compose -f docker-compose.prod.yml ps -q postgres)")
-    # Opción B (Coolify nombra el contenedor con el UUID del recurso)
-    PG_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <contenedor-postgres>)
+    # Opción B (Coolify nombra el contenedor y la red con el UUID del recurso)
+    PG_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "<red-del-recurso>").IPAddress}}' <contenedor-postgres>)
 
+    echo "$PG_IP"     # debe ser una sola IP
     export TARGET_DATABASE_URL="postgres://postgres:<POSTGRES_PASSWORD>@$PG_IP:5432/vipe_pos"
     ```
 
@@ -90,8 +103,79 @@ Avisar al restaurante: durante la ventana no se toman pedidos ni pagos. Elegir u
 
 ### 2.2 Congelar Supabase
 
-- Poner la app actual en mantenimiento (o detener el despliegue web) para que nadie escriba.
-- Opcional y recomendado: revocar escritura a `anon` y `authenticated` desde el SQL editor de Supabase, para garantizar solo lectura.
+- Poner la app actual en mantenimiento (o detener el despliegue web).
+- **Revocar la escritura en Supabase (obligatorio).** La app anterior habla con Supabase directamente desde el navegador
+  con la anon key: una pestaña que ya estaba abierta sigue escribiendo aunque el despliegue esté en mantenimiento. Lo
+  escrito después del export se pierde. Ejecutar contra `SUPABASE_DB_URL`, en este orden, **antes** de 2.3. Un cliente
+  `psql` en contenedor (la URL viaja por el entorno, no como argumento del proceso del host):
+
+  ```bash
+  cd ~/corte-AAAA-MM-DD
+  supa_psql() { docker run --rm -i --env SUPABASE_DB_URL postgres:17 sh -c 'psql "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 "$@"' psql "$@"; }
+  ```
+
+  1. Guardar los permisos actuales como sentencias `GRANT` que los restauran (archivo `restaurar-permisos.sql`):
+
+     ```bash
+     supa_psql -At > restaurar-permisos.sql <<'SQL'
+     SELECT format('GRANT %s ON TABLE %I.%I TO %I;', privilege_type, table_schema, table_name, grantee)
+       FROM information_schema.role_table_grants
+      WHERE grantee IN ('anon', 'authenticated') AND table_schema = 'public'
+        AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
+     UNION ALL
+     SELECT DISTINCT format('GRANT EXECUTE ON FUNCTION %I.%I(%s) TO %s;', p.nspname, p.proname, p.args,
+            CASE WHEN r.grantee = 'PUBLIC' THEN 'PUBLIC' ELSE quote_ident(r.grantee) END)
+       FROM information_schema.routine_privileges r
+       JOIN (SELECT n.nspname, f.proname, f.proname || '_' || f.oid AS specific_name,
+                    pg_get_function_identity_arguments(f.oid) AS args
+               FROM pg_proc f JOIN pg_namespace n ON n.oid = f.pronamespace) p
+         ON p.nspname = r.specific_schema AND p.specific_name = r.specific_name
+      WHERE r.grantee IN ('anon', 'authenticated', 'PUBLIC') AND r.routine_schema = 'public'
+        AND r.privilege_type = 'EXECUTE';
+     SQL
+     wc -l restaurar-permisos.sql     # debe tener líneas; guardarlo junto al export
+     ```
+
+  2. Revocar (las RPCs como `pay_order` son `SECURITY DEFINER` y las llama `authenticated`, por eso también `EXECUTE`):
+
+     ```bash
+     supa_psql <<'SQL'
+     REVOKE INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+     REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM anon, authenticated;
+     SQL
+     ```
+
+  3. Comprobar que no queda escritura. `EXECUTE` también puede venir de `PUBLIC` (permiso por defecto de Postgres):
+     si la segunda cifra no es 0, ejecutar además `REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;`
+     (el archivo del paso 1 ya incluye los `GRANT ... TO PUBLIC` para restaurarlo) y repetir la comprobación.
+
+     ```bash
+     supa_psql -At <<'SQL'
+     SELECT count(*) FROM pg_tables t, unnest(ARRAY['anon', 'authenticated']) AS role
+      WHERE t.schemaname = 'public'
+        AND has_table_privilege(role, format('%I.%I', t.schemaname, t.tablename), 'INSERT,UPDATE,DELETE');
+     SELECT count(*) FROM pg_proc f JOIN pg_namespace n ON n.oid = f.pronamespace,
+            unnest(ARRAY['anon', 'authenticated']) AS role
+      WHERE n.nspname = 'public' AND has_function_privilege(role, f.oid, 'EXECUTE');
+     SQL
+     # esperado: 0 y 0
+     ```
+
+  4. Guardar los conteos de origen para compararlos antes de 2.7:
+
+     ```bash
+     cat > conteos.sql <<'SQL'
+     SELECT 'orders', count(*) FROM public.orders UNION ALL
+     SELECT 'order_items', count(*) FROM public.order_items UNION ALL
+     SELECT 'payments', count(*) FROM public.payments UNION ALL
+     SELECT 'payment_transactions', count(*) FROM public.payment_transactions UNION ALL
+     SELECT 'cash_transactions', count(*) FROM public.cash_transactions UNION ALL
+     SELECT 'cash_registers', count(*) FROM public.cash_registers UNION ALL
+     SELECT 'order_deliveries', count(*) FROM public.order_deliveries UNION ALL
+     SELECT 'inventory_movements', count(*) FROM public.inventory_movements;
+     SQL
+     supa_psql -At < conteos.sql > conteos-antes.txt
+     ```
 - Consistencia del export: `export.sh` toma **un solo snapshot** (`pg_export_snapshot()` en una sesión que queda abierta, `pg_dump --snapshot` y `SET TRANSACTION SNAPSHOT` para los CSV y los conteos), así que todos los archivos describen el mismo instante aunque alguien escribiera durante el export. Aun así, el congelamiento es obligatorio: lo que se escriba en Supabase **después** del export no llega a la base nueva.
 
 ### 2.3 Exportar (solo lectura)
@@ -141,6 +225,18 @@ S3_PUBLIC_BASE_URL=... bash packages/db/migration-from-supabase/verify.sh
 
 Debe terminar con `verify: all N checks passed`. Cualquier `FAIL` detiene el corte: ir a la sección 4.
 
+Justo antes de 2.7, confirmar que Supabase no recibió escrituras desde el export:
+
+```bash
+cd ~/corte-AAAA-MM-DD
+supa_psql -At < conteos.sql > conteos-despues.txt
+diff conteos-antes.txt conteos-despues.txt && echo "sin cambios"
+```
+
+Si `diff` muestra diferencias, **abortar**: alguien escribió en Supabase después del export (la revocación de 2.2 no se
+aplicó completa). Ir a la sección 4, punto 1, revisar la comprobación de 2.2 y repetir desde 2.3 con
+`--force-empty-target` en 2.5 (todavía no se abrió el servicio).
+
 ### 2.7 Encender el stack nuevo
 
 Antes, el DNS del dominio debe apuntar a la VPS nueva (si cambió de servidor) y las variables `S3_*` del stack deben ser
@@ -156,8 +252,17 @@ docker compose -f docker-compose.prod.yml ps        # postgres, api, web y caddy
 Caddy envía `/api/*` y `/socket.io/*` a la API (con el upgrade a WebSocket y la cabecera `Authorization`) y el resto a la
 web (`deploy/Caddyfile`).
 
-Opción B: iniciar `api` y `web` desde el panel de Coolify (o redeplegar el recurso) con los dominios y *Strip prefixes*
-de [despliegue.md](despliegue.md#31-crear-el-recurso).
+Opción B, en este orden (dos recursos no pueden reclamar el mismo dominio en el proxy de Coolify):
+
+1. En la app anterior de Coolify (la web sola), quitar el dominio de producción de su campo **Domains** y guardar, o
+   detener la app. Anotar el valor exacto que tenía, para la reversión.
+2. En el recurso Docker Compose nuevo, asignar los dominios de [despliegue.md](despliegue.md#31-crear-el-recurso)
+   (`api` → `https://<sitio>:4000/api,https://<sitio>:4000/socket.io`, `web` → `https://<sitio>:3000`), con
+   *Strip prefixes* desactivado, y redeplegar el recurso (o iniciar `api` y `web` con `docker start` si se detuvieron
+   por la CLI; la asignación de dominios requiere redeplegar para que el proxy la tome).
+3. Cambiar el secreto `COOLIFY_APP_UUID_PRODUCTION` al UUID del recurso nuevo y fusionar en `main`
+   ([despliegue.md, sección 3.3](despliegue.md#33-despliegue-desde-ci), paso 5). El job `deploy` vuelve a desplegar el
+   mismo commit en el recurso nuevo.
 
 En ambas opciones, comprobar:
 
@@ -168,16 +273,33 @@ curl -s "https://<sitio>/socket.io/?EIO=4&transport=polling"
 # 0{"sid":...,"upgrades":["websocket"],...}
 ```
 
-y, con una sesión iniciada en el navegador, que `wss://<sitio>/socket.io/?EIO=4&transport=websocket` queda en `101` en la
-pestaña Red. Si algo falla, no abrir el servicio: ir a la sección 4.
+```bash
+curl -sS --http1.1 -o /dev/null -w '%{http_code}\n' --max-time 5 \
+  -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  "https://<sitio>/socket.io/?EIO=4&transport=websocket"
+# 101
+```
+
+y, con una sesión iniciada en el navegador, que las pantallas reciben cambios en vivo. Si algo falla, no abrir el
+servicio: ir a la sección 4.
+
+> **Desde este paso, nunca usar `import.sh --force-empty-target`**: borra todas las filas de la base nueva, incluidos los
+> pedidos y pagos reales hechos después de abrir el servicio.
 
 ### 2.8 Limpiar la base staging interna
 
-Cuando la sección 3 esté aprobada:
+Cuando la sección 3 esté aprobada, como superusuario en la base nueva:
 
-```sql
-DROP SCHEMA import_src CASCADE;  -- copia de los datos de origen usada por verify.sql
+```bash
+# Opción A
+docker compose -f docker-compose.prod.yml exec -T postgres psql -U postgres -d vipe_pos -v ON_ERROR_STOP=1 \
+  -c 'DROP SCHEMA import_src CASCADE'
+# Opción B
+docker exec <contenedor-postgres> psql -U postgres -d vipe_pos -v ON_ERROR_STOP=1 -c 'DROP SCHEMA import_src CASCADE'
 ```
+
+`import_src` es la copia de los datos de origen que usa `verify.sql`.
 
 ## 3. Lista de verificación por rol y pantalla
 
@@ -244,9 +366,15 @@ En cada equipo con impresora:
 
 ## 4. Reversión
 
-Supabase no se tocó durante el corte (solo lecturas), así que volver atrás es redirigir el tráfico.
+En Supabase solo cambiaron permisos (2.2); los datos no se tocaron. Volver atrás es restaurar esos permisos y redirigir
+el tráfico. Restaurar la escritura (en todos los casos de esta sección):
 
-1. **Antes de abrir el servicio** (falla en 2.5-2.6 o en la sección 3): no hay nada que revertir en datos. Mantener la app actual, quitar el modo mantenimiento (y devolver la escritura a `anon`/`authenticated` si se revocó), corregir y repetir el ensayo.
+```bash
+cd ~/corte-AAAA-MM-DD
+supa_psql < restaurar-permisos.sql
+```
+
+1. **Antes de abrir el servicio** (falla en 2.5-2.6, en la comparación de conteos o en la sección 3): no hay nada que revertir en datos. Restaurar los permisos (arriba), mantener la app actual, quitar el modo mantenimiento, corregir y repetir el ensayo. En la opción B, si ya se hizo 2.7, deshacer también los dominios como en el punto 2.
 2. **Después de abrir el servicio**: los pedidos y pagos hechos en la base nueva **no** existen en Supabase. Antes de volver, sacar un respaldo de la base nueva para anotarlos:
 
    ```bash
@@ -261,9 +389,13 @@ Supabase no se tocó durante el corte (solo lecturas), así que volver atrás es
    - Opción A: `docker compose -f docker-compose.prod.yml stop caddy api web` (los datos quedan en el volumen
      `postgres_data`) y apuntar el DNS del dominio de vuelta al despliegue anterior, o volver a desplegarlo en su
      plataforma con su configuración de antes del corte.
-   - Opción B: detener `api` y `web` del recurso Docker Compose en Coolify y volver a desplegar en ese dominio el
-     recurso anterior (la web de antes del corte, con sus variables de Supabase).
-   - Quitar el modo mantenimiento de la app anterior y devolver la escritura a `anon`/`authenticated` si se revocó (2.2).
+   - Opción B, en orden inverso a 2.7:
+     1. En el recurso Docker Compose nuevo, quitar los dominios de `api` y `web` y redeplegar (o detener el recurso;
+        con la CLI: `docker stop <contenedor-api> <contenedor-web>`).
+     2. En la app anterior, volver a poner en **Domains** el valor anotado en 2.7 y redeplegarla (o iniciarla).
+     3. Devolver `COOLIFY_APP_UUID_PRODUCTION` al UUID de la app anterior y revertir la fusión en `main` (un commit de
+        reversión), para que el próximo push no vuelva a desplegar el stack nuevo.
+   - Restaurar los permisos de Supabase (`restaurar-permisos.sql`, arriba) y quitar el modo mantenimiento de la app anterior.
 3. Supabase queda en **solo lectura una semana** como respaldo y referencia. Pasada la semana sin incidentes: borrar el directorio de trabajo del corte, y pausar o eliminar el proyecto de Supabase.
 
 ## Referencia de scripts

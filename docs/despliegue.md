@@ -70,7 +70,8 @@ docker compose -f docker-compose.prod.yml config --quiet
 ### 2.2 Primer arranque
 
 El orden lo imponen los `depends_on` del compose: `postgres` sano → `migrate` termina con
-código 0 → `api` sana → `web` sana → `caddy`. Se puede arrancar todo de una vez:
+código 0 → `api` sana; `web` arranca en paralelo (no depende de `api`), y `caddy` espera a que
+`api` y `web` estén sanas. Se puede arrancar todo de una vez:
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build --wait
@@ -216,10 +217,16 @@ publicados, `migrate` con `exclude_from_hc: true` y `WEB_ORIGIN` obligatorio.
    (sección 4.1). `SITE_DOMAIN`, `STORAGE_*` y `MINIO_*` no se usan en este archivo.
 
 Validación local del archivo (Docker Compose rechaza la clave `exclude_from_hc`, propia de
-Coolify, así que se quita esa línea para validar):
+Coolify, así que se quita esa línea para validar). Todas las variables obligatorias son
+`${VAR:?}`, así que la validación necesita un archivo con ellas; para validar basta con valores
+de prueba (nunca los secretos reales en un archivo temporal):
 
 ```bash
-sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - config --quiet
+check_env=$(mktemp)
+printf '%s\n' POSTGRES_PASSWORD=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
+  JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com > "$check_env"
+sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - --env-file "$check_env" config --quiet
+rm -f "$check_env"
 ```
 
 ### 3.2 Tres comprobaciones después del primer despliegue
@@ -238,9 +245,19 @@ curl -s "https://<sitio>/socket.io/?EIO=4&transport=polling"
 # 0{"sid":...,"upgrades":["websocket"],...}
 ```
 
-c. Iniciar sesión en el navegador y revisar en la pestaña Red que
-`wss://<sitio>/socket.io/?EIO=4&transport=websocket` queda en `101` y que las pantallas
-reciben cambios en vivo.
+```bash
+# c. El proxy acepta el upgrade a WebSocket: debe imprimir 101
+curl -sS --http1.1 -o /dev/null -w '%{http_code}\n' --max-time 5 \
+  -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  "https://<sitio>/socket.io/?EIO=4&transport=websocket"
+# 101
+```
+
+(`curl` termina por `--max-time` después de recibir el `101`; el código impreso es lo que
+cuenta.) Después, iniciar sesión en el navegador y comprobar que las pantallas reciben
+cambios en vivo; en la pestaña Red la conexión `wss://<sitio>/socket.io/...` también aparece en
+`101`.
 
 Si (a) o (b) devuelven la página de la web, el enrutador de Coolify dio prioridad a `/`; si
 devuelven 404 de la API sin el prefijo, *strip prefixes* quedó activo.
@@ -255,16 +272,31 @@ Secretos del repositorio:
 | Secreto | Uso |
 |---|---|
 | `COOLIFY_URL` | URL base de la instancia de Coolify. |
-| `COOLIFY_TOKEN` | Token de API de Coolify con permiso de despliegue. |
+| `COOLIFY_TOKEN` | Token de API de Coolify con los permisos `deploy` y `read` (con solo `deploy`, la consulta del estado del despliegue responde 403 y el job falla). |
 | `COOLIFY_APP_UUID_PRODUCTION` | UUID del recurso de producción (rama `main`). |
 | `COOLIFY_APP_UUID_STAGING` | UUID del recurso de staging (rama `dev`). |
 
 Los UUID deben ser los de los recursos Docker Compose creados en 3.1, no los de un
 despliegue anterior de la web sola.
 
+**Orden obligatorio para entrar con este stack.** Hoy `COOLIFY_APP_UUID_STAGING` y
+`COOLIFY_APP_UUID_PRODUCTION` apuntan a los recursos anteriores (solo la imagen de la web). Si
+se fusiona esta rama en `dev` o `main` antes de cambiarlos, CI despliega la web nueva en el
+recurso viejo: una web **sin API ni base de datos**, en la que fallan el inicio de sesión y
+todas las pantallas. Seguir este orden:
+
+1. Abrir el pull request como borrador: solo corre CI (el job `deploy` no se ejecuta en pull requests).
+2. Crear en Coolify el recurso Docker Compose de staging (sección 3.1) en un subdominio propio (por ejemplo `staging-pos.<dominio>`), desplegar la rama del pull request directamente desde ese recurso y pasar las comprobaciones de 3.2.
+3. Cambiar el secreto `COOLIFY_APP_UUID_STAGING` al UUID del recurso nuevo de staging.
+4. Solo entonces fusionar en `dev`: el job `deploy` despliega en el recurso nuevo de staging.
+5. Para producción: crear el recurso Docker Compose de producción, y cambiar `COOLIFY_APP_UUID_PRODUCTION` al UUID nuevo y fusionar en `main` únicamente dentro de la ventana de corte ([runbook-cutover.md](runbook-cutover.md), sección 2), nunca antes.
+
 ### 3.4 Logs, actualizaciones y respaldos en Coolify
 
-Los logs y el historial de despliegues están en el panel de cada recurso. Un push a la rama
+Los logs y el historial de despliegues están en el panel de cada recurso. El panel de Coolify
+puede no ofrecer detener un solo servicio de un recurso Docker Compose; en ese caso usar la CLI
+en la VPS (`docker ps --format '{{.Names}}'` para ver los nombres, que llevan el UUID del recurso,
+y `docker stop <contenedor>` / `docker start <contenedor>`). Un push a la rama
 redepliega; para volver a una versión anterior, desplegar el commit anterior (revertir en
 Git y hacer push, o redeplegar ese commit desde el panel). Las mismas advertencias de 2.5
 sobre migraciones aplican.

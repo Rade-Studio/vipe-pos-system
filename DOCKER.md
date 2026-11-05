@@ -125,11 +125,19 @@ las imágenes van a R2) y sin puertos publicados. Recurso Docker Compose con
 **Strip prefixes** desactivado. Detalle y comprobaciones en
 [docs/despliegue.md](docs/despliegue.md#3-opción-b-coolify-con-docker-composecoolifyyml).
 
-Validación local (Docker Compose rechaza la clave `exclude_from_hc` de Coolify):
+Validación local (Docker Compose rechaza la clave `exclude_from_hc` de Coolify, y cada variable
+obligatoria es `${VAR:?}`, así que hace falta un archivo con valores de prueba):
 
 ```bash
-sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - config --quiet
+check_env=$(mktemp)
+printf '%s\n' POSTGRES_PASSWORD=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
+  JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com > "$check_env"
+sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - --env-file "$check_env" config --quiet
+rm -f "$check_env"
 ```
+
+Antes de fusionar en `dev` o `main`, seguir el orden de [docs/despliegue.md, sección 3.3](docs/despliegue.md#33-despliegue-desde-ci):
+CI despliega en los recursos de Coolify configurados en `COOLIFY_APP_UUID_STAGING` y `COOLIFY_APP_UUID_PRODUCTION`.
 
 ## Estructura de archivos
 

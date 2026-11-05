@@ -5,8 +5,8 @@
 # Object storage: Cloudflare R2 (or any S3 service) through the S3_* variables;
 # optional self-hosted MinIO with the `self-hosted-storage` profile.
 #
-# Coolify deploys this file (Docker Compose build pack); the variables come
-# from its environment UI. Manual use:
+# For Coolify use docker-compose.coolify.yml instead (no caddy, no minio, no
+# published ports). Manual use on a VPS:
 #   cp env.production.template .env   # fill in every value
 #   docker compose -f docker-compose.prod.yml up -d --build --wait
 #   docker compose -f docker-compose.prod.yml --profile self-hosted-storage up -d --build --wait
