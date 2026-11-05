@@ -45,7 +45,12 @@
 
 services:
   postgres:
-    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+    # The roles init hook is baked into the image: Coolify does not place
+    # repository files next to this compose file, so bind mounts of them
+    # would arrive as empty directories (deploy/postgres/Dockerfile).
+    build:
+      context: .
+      dockerfile: deploy/postgres/Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -55,8 +60,6 @@ services:
       VIPE_API_PASSWORD: ${VIPE_API_PASSWORD:?}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./packages/db/scripts/roles.sql:/opt/vipe/roles.sql:ro
-      - ./deploy/postgres/10-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s

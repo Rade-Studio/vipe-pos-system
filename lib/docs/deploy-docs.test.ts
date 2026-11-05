@@ -35,4 +35,11 @@ describe("deploy docs", () => {
     expect(guide).toContain("provision-app.sh")
     expect(guide).toContain("MINIO_CORS_ORIGINS")
   })
+
+  it("mounts no repository file in the Coolify compose, which Coolify does not ship next to it", () => {
+    const compose = read("docker-compose.coolify.yml")
+    const repoMounts = compose.split("\n").filter((line) => /^\s*-\s*\.{1,2}\//.test(line))
+    expect(repoMounts).toEqual([])
+    expect(compose).toContain("dockerfile: deploy/postgres/Dockerfile")
+  })
 })

@@ -194,7 +194,12 @@ docker compose -f docker-compose.prod.yml up -d --wait api
 
 Diferencias con la opción A: sin `caddy` (Coolify maneja 80/443 y HTTPS con Traefik), sin
 `minio` propio (las imágenes van al MinIO compartido de la VPS, sección 4.3), sin puertos
-publicados, `migrate` con `exclude_from_hc: true` y `WEB_ORIGIN` obligatorio.
+publicados, `migrate` con `exclude_from_hc: true` y `WEB_ORIGIN` obligatorio. Además, `postgres`
+se construye desde `deploy/postgres/Dockerfile`, que incluye `10-roles.sh` y `roles.sql` dentro de
+la imagen: Coolify no coloca los archivos del repositorio junto al compose, así que un montaje
+`./deploy/...` llegaría como un directorio vacío y no se crearían `vipe_migrator` ni `vipe_api`.
+Si un primer despliegue ya inicializó el volumen sin esos roles, hay que borrar el volumen de
+`postgres` (solo si está vacío) y desplegar de nuevo, porque el script de roles corre una sola vez.
 
 ### 3.1 Crear el recurso
 
