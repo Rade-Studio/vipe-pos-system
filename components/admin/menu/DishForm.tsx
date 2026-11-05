@@ -14,7 +14,7 @@ import { createDish, updateDish, type CategoryDto, type DishDto } from "@/lib/ap
 import { ImageUpload } from "@/components/ui/image-upload"
 import { Loader2, Trash2, RefreshCw } from "lucide-react"
 import Image from "next/image"
-import { storageService } from "@/lib/supabase/storage-service"
+import { deleteImage, getPlaceholderUrl, isImageAccessible, isPlaceholderUrl } from "@/lib/api/storage"
 import { log } from "@/lib/log"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -88,15 +88,13 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
 
       // Verificar si la imagen es accesible
       if (dish.imageUrl) {
-        storageService
-          .isImageAccessible(dish.imageUrl)
+        isImageAccessible(dish.imageUrl)
           .then((isAccessible) => {
             if (!isAccessible) {
+              // Display fallback only: `image_url` keeps the stored URL, so a
+              // save never replaces (or deletes) an image it merely could not load.
               log.warn("La imagen no es accesible:", { imageUrl: dish.imageUrl })
               setImageError(true)
-              // Usar un placeholder en su lugar
-              const placeholderUrl = storageService.getPlaceholderUrl(dish.name)
-              setFormData((prev) => ({ ...prev, image_url: placeholderUrl }))
             }
           })
           .catch(() => {
@@ -142,7 +140,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
   }
 
   const handleDeleteImage = async () => {
-    if (!formData.image_url || formData.image_url.includes("placeholder.svg")) {
+    if (!formData.image_url || isPlaceholderUrl(formData.image_url)) {
       // Si no hay imagen o es un placeholder, simplemente limpiar el estado
       setFormData((prev) => ({ ...prev, image_url: "" }))
       setImageError(false)
@@ -154,9 +152,10 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
       log.info("Eliminando imagen:", { imageUrl: formData.image_url })
 
       // Intentar eliminar la imagen del bucket
-      await storageService.deleteImage(formData.image_url)
+      await deleteImage(formData.image_url)
 
       // Limpiar la URL de la imagen en el estado
+      if (formData.image_url === originalImageUrlRef.current) originalImageUrlRef.current = ""
       setFormData((prev) => ({ ...prev, image_url: "" }))
       setImageError(false)
 
@@ -180,24 +179,18 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
     }
   }
 
-  const handleChangeImage = async () => {
-    // Si hay una imagen actual, eliminarla primero
-    if (formData.image_url && !formData.image_url.includes("placeholder.svg")) {
-      await handleDeleteImage()
-    } else {
-      // Si no hay imagen o es un placeholder, simplemente limpiar el estado
-      setFormData((prev) => ({ ...prev, image_url: "" }))
-      setImageError(false)
-    }
+  // Opens the uploader without deleting anything: the current object is only
+  // deleted after a save that stores a new successful upload in its place.
+  const handleChangeImage = () => {
+    setFormData((prev) => ({ ...prev, image_url: "" }))
+    setImageError(false)
   }
 
   const handleImageError = () => {
     log.warn("Error al cargar la imagen:", { imageUrl: formData.image_url })
     setImageError(true)
 
-    // Si hay un error al cargar la imagen, usar un placeholder
-    const placeholderUrl = storageService.getPlaceholderUrl(formData.name)
-    setFormData((prev) => ({ ...prev, image_url: placeholderUrl }))
+    // Display fallback only (see the `Image` src); `image_url` is untouched.
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -222,18 +215,25 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
       }
 
       if (dish) {
-        // Si la imagen ha cambiado y había una imagen anterior, eliminar la imagen anterior
-        if (originalImageUrlRef.current && originalImageUrlRef.current !== formData.image_url) {
+        await updateDish(dish.id, dishData)
+
+        // Only once the dish points at a new successful upload, delete the
+        // object it replaced. A failed update keeps the old image.
+        const replaced = originalImageUrlRef.current
+        if (
+          replaced &&
+          !isPlaceholderUrl(replaced) &&
+          formData.image_url &&
+          !isPlaceholderUrl(formData.image_url) &&
+          formData.image_url !== replaced
+        ) {
           try {
-            await storageService.deleteImage(originalImageUrlRef.current)
-            log.info("Imagen anterior eliminada:", { originalUrl: originalImageUrlRef.current })
+            await deleteImage(replaced)
+            originalImageUrlRef.current = formData.image_url
           } catch (deleteError) {
             log.error("Error al eliminar imagen anterior:", { deleteError: String(deleteError) })
-            // No interrumpir el flujo principal si falla la eliminación
           }
         }
-
-        await updateDish(dish.id, dishData)
       } else {
         await createDish(dishData)
       }
@@ -369,7 +369,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
                 <div className="relative">
                   <div className="relative aspect-[4/3] w-full">
                     <Image
-                      src={formData.image_url || "/placeholder.svg"}
+                      src={imageError ? getPlaceholderUrl(formData.name) : formData.image_url}
                       alt={formData.name || "Vista previa"}
                       fill
                       className="object-cover rounded-t-lg"
@@ -394,6 +394,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
                             className="h-8 w-8 rounded-full shadow-md"
                             onClick={handleDeleteImage}
                             disabled={deletingImage}
+                            aria-label="Eliminar imagen"
                           >
                             {deletingImage ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -418,6 +419,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
                             className="h-8 w-8 rounded-full bg-gray-200/90 hover:bg-gray-300 shadow-md dark:bg-gray-700 dark:hover:bg-gray-600"
                             onClick={handleChangeImage}
                             disabled={deletingImage}
+                            aria-label="Cambiar imagen"
                           >
                             {deletingImage ? (
                               <Loader2 className="h-4 w-4 animate-spin" />

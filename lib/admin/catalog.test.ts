@@ -59,6 +59,10 @@ const catalogApi = vi.hoisted(() => ({
 }))
 vi.mock("@/lib/api/catalog", () => catalogApi)
 
+// T12: the staff list comes from `GET /api/staff`.
+const staffApi = vi.hoisted(() => ({ listStaff: vi.fn() }))
+vi.mock("@/lib/api/staff", () => staffApi)
+
 import {
   ADMIN_LIST_STALE_MS,
   ADMIN_STAFF_ROLES,
@@ -131,20 +135,22 @@ describe("fetchers", () => {
     expect(state.calls).toEqual([])
   })
 
-  it("still reads the staff from profiles", async () => {
+  it("reads the staff through the API, never from profiles", async () => {
+    staffApi.listStaff.mockResolvedValue([])
     await fetchStaff()
 
-    expect(state.calls.map((call) => call.table)).toContain("profiles")
+    expect(staffApi.listStaff).toHaveBeenCalledWith()
+    expect(state.calls).toEqual([])
   })
 
-  it("asks for exactly the staff roles the Personal screen manages (never admin)", async () => {
-    await fetchStaff()
+  it("keeps exactly the staff roles the Personal screen manages (never admin)", async () => {
+    const roles = ["admin", ...ADMIN_STAFF_ROLES]
+    staffApi.listStaff.mockResolvedValue(roles.map((role) => ({ id: role, role })))
 
-    const inCall = state.calls.find((call) => call.method === "in")
+    const staff = await fetchStaff()
 
-    expect(inCall!.args[0]).toBe("role")
-    expect(inCall!.args[1]).toEqual([...ADMIN_STAFF_ROLES])
-    expect(inCall!.args[1]).not.toContain("admin")
+    expect(staff.map((member) => member.role)).toEqual([...ADMIN_STAFF_ROLES])
+    expect(ADMIN_STAFF_ROLES).not.toContain("admin")
   })
 
   it("raises instead of swallowing a failed read, so the screen can show its error state", async () => {

@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Loader2, Upload, X } from "lucide-react"
 import Image from "next/image"
 import { useToast } from "@/hooks/use-toast"
-import { storageService } from "@/lib/supabase/storage-service"
+import { STORAGE_MESSAGES, deleteImage, getPlaceholderUrl, uploadImage as uploadToStorage, validateImage, type ImageFolder } from "@/lib/api/storage"
 import { log } from "@/lib/log"
 
 interface ImageUploadProps {
   value: string
   onChange: (url: string) => void
-  bucketName?: string
+  /** Storage folder of the upload (the API `kind`). */
+  bucketName?: ImageFolder
   maxWidth?: number
   maxHeight?: number
 }
@@ -42,10 +43,8 @@ export function ImageUpload({
     setImageError(false)
 
     try {
-      log.info("Iniciando carga de imagen usando StorageService...")
-
-      // Usar el servicio para subir la imagen
-      const imageUrl = await storageService.uploadImage(file, bucketName)
+      // Presigned PUT through the API; the bytes go straight to the bucket.
+      const imageUrl = await uploadToStorage(file, bucketName)
 
       log.info("URL de imagen obtenida:", { imageUrl })
 
@@ -59,16 +58,11 @@ export function ImageUpload({
     } catch (error: any) {
       log.error("Error completo al subir imagen:", { error: String(error) })
 
-      // Usar un placeholder en caso de error
-      const placeholderUrl = storageService.getPlaceholderUrl(file.name.split(".")[0])
-      setPreview(placeholderUrl)
-      onChange(placeholderUrl)
-      setImageError(true)
-
+      // The value stays as it was: a placeholder is never stored as the image.
       toast({
         variant: "destructive",
         title: "Error al subir la imagen",
-        description: "Se usará una imagen de placeholder. " + (error.message || "Ocurrió un error al subir la imagen"),
+        description: error.message || "Ocurrió un error al subir la imagen",
       })
     } finally {
       setIsUploading(false)
@@ -81,22 +75,13 @@ export function ImageUpload({
 
     log.info("Archivo seleccionado:", { name: file.name, type: file.type, size: file.size })
 
-    // Check file type
-    if (!file.type.startsWith("image/")) {
+    // Same checks as the API (image/* except SVG, 5 MB): a bad file costs no request.
+    const invalid = validateImage(file)
+    if (invalid) {
       toast({
         variant: "destructive",
-        title: "Tipo de archivo no válido",
-        description: "Por favor, selecciona una imagen (JPG, PNG, GIF)",
-      })
-      return
-    }
-
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        variant: "destructive",
-        title: "Archivo demasiado grande",
-        description: "El tamaño máximo permitido es 5MB",
+        title: invalid === STORAGE_MESSAGES.size ? "Archivo demasiado grande" : "Tipo de archivo no válido",
+        description: invalid,
       })
       return
     }
@@ -105,10 +90,10 @@ export function ImageUpload({
   }
 
   const handleRemoveImage = () => {
-    if (preview && !imageError) {
+    if (preview) {
       try {
-        // Intentar eliminar la imagen del storage
-        storageService.deleteImage(preview).catch((err) => {
+        // Placeholder URLs are never sent (deleteImage skips them).
+        deleteImage(preview).catch((err) => {
           log.error("Error al eliminar imagen:", { err: String(err) })
         })
       } catch (e) {
@@ -125,12 +110,7 @@ export function ImageUpload({
     log.warn("Error al cargar la imagen:", { preview })
     setImageError(true)
 
-    // Si hay un error al cargar la imagen, usar un placeholder
-    if (preview) {
-      const placeholderUrl = storageService.getPlaceholderUrl()
-      setPreview(placeholderUrl)
-      onChange(placeholderUrl)
-    }
+    // Display fallback only (see `src` below); the value keeps the real URL.
   }
 
   return (
@@ -139,7 +119,7 @@ export function ImageUpload({
         <div className="relative rounded-md overflow-hidden border border-gray-200 dark:border-gray-800">
           <div className="aspect-video relative">
             <Image
-              src={preview || "/placeholder.svg"}
+              src={imageError || !preview ? getPlaceholderUrl() : preview}
               alt="Preview"
               fill
               className="object-cover"

@@ -14,16 +14,7 @@
  */
 import { describe, expect, it } from "vitest"
 
-import {
-  DAILY_SALES_DAYS,
-  DASHBOARD_STALE_MS,
-  POPULAR_DISHES_DAYS,
-  POPULAR_DISHES_LIMIT,
-  dashboardDailySalesKey,
-  dashboardKitchenOrdersKey,
-  dashboardMonthSalesKey,
-  dashboardPopularDishesKey,
-} from "./dashboard"
+import { DASHBOARD_DAYS, DASHBOARD_STALE_MS, dashboardSummaryKey } from "./dashboard"
 import { daysAgoIso, localDayKey, monthStartIso } from "./dates"
 
 describe("monthStartIso", () => {
@@ -65,42 +56,19 @@ describe("daysAgoIso", () => {
   })
 })
 
-describe("dashboard query keys", () => {
-  it("differentiates every read so two panels never share a slot", () => {
-    const keys = [
-      dashboardMonthSalesKey(monthStartIso(new Date())),
-      dashboardKitchenOrdersKey(),
-      dashboardDailySalesKey(DAILY_SALES_DAYS),
-      dashboardPopularDishesKey(POPULAR_DISHES_DAYS, POPULAR_DISHES_LIMIT),
-    ]
-    const serialized = keys.map((key) => JSON.stringify(key))
-
-    expect(new Set(serialized).size).toBe(keys.length)
-    for (const key of keys) {
-      expect(key.every((part) => typeof part === "string" || typeof part === "number")).toBe(true)
-    }
+describe("dashboard query key", () => {
+  it("is one serializable slot for the whole summary (T12: one request)", () => {
+    const key = dashboardSummaryKey(DASHBOARD_DAYS)
+    expect(key.every((part) => typeof part === "string")).toBe(true)
+    expect(key).toEqual(dashboardSummaryKey(DASHBOARD_DAYS))
   })
 
-  it("keys the month-sales read by the month boundary", () => {
-    expect(dashboardMonthSalesKey("2026-01-01T00:00:00.000Z")).not.toBe(
-      dashboardMonthSalesKey("2026-02-01T00:00:00.000Z"),
-    )
+  it("keys the summary by its window, so a different period is a different read", () => {
+    expect(dashboardSummaryKey(30)).not.toEqual(dashboardSummaryKey(7))
   })
 
-  it("keys the two windowed reads by their window, so a different period is a different read", () => {
-    expect(dashboardDailySalesKey(30)).not.toBe(dashboardDailySalesKey(7))
-    expect(dashboardPopularDishesKey(30, 10)).not.toBe(dashboardPopularDishesKey(90, 10))
-    expect(dashboardPopularDishesKey(30, 10)).not.toBe(dashboardPopularDishesKey(30, 5))
-  })
-
-  it("bounds popular dishes by a window and a limit by default", () => {
-    // "every paid item ever" is the audit's over-fetch: the old read had
-    // neither a date filter nor a limit on the rows it pulled.
-    expect(POPULAR_DISHES_DAYS).toBeGreaterThan(0)
-    expect(POPULAR_DISHES_LIMIT).toBeGreaterThan(0)
-  })
-
-  it("caches dashboard reads long enough that a tab switch reuses them", () => {
+  it("bounds the window and caches it long enough that a tab switch reuses it", () => {
+    expect(DASHBOARD_DAYS).toBeGreaterThan(0)
     expect(DASHBOARD_STALE_MS).toBeGreaterThan(0)
   })
 })

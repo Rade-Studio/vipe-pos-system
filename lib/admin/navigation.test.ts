@@ -42,6 +42,7 @@ describe("admin navigation registry", () => {
       "Métodos de pago",
       "Domicilios",
       "Personal",
+      "Impresoras",
     ])
   })
 

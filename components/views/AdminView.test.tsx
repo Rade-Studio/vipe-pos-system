@@ -68,6 +68,8 @@ vi.mock("@/lib/api/client", () => ({
     GET: async (path: string, init?: any) => {
       state.apiCalls.push({ method: "GET", path, init })
       if (path === "/api/orders") return { data: state.api.orders }
+      if (path === "/api/dashboard/summary")
+        return { data: { monthSales: 0, kitchenOrders: 0, dailySales: [], popularDishes: [] } }
       throw new Error(`unexpected GET ${path}`)
     },
     DELETE: async (path: string, init?: any) => {
@@ -261,19 +263,18 @@ describe("AdminView — requests issued while a tab is open", () => {
     return state.map((call) => `${call.table}.${call.method}`)
   }
 
-  it("reads the dashboard only (four parallel reads + the low-stock alert), and nothing for the closed tabs", async () => {
+  it("reads the dashboard only (one summary + the low-stock alert), and nothing for the closed tabs", async () => {
     render(wrap(<AdminView profile={profile} onChangeProfile={() => {}} authRole="admin" />))
 
     await waitFor(() => expect(screen.getByText("Ventas del Mes")).toBeInTheDocument())
 
-    // The dashboard's four reads.
-    // Ventas del mes + Cocina: one `status` read each (Ventas del Mes and the
-    // 30-day series both filter `paid`), and no `tables` / `profiles` read.
-    const ordersReads = state.calls.filter(
-      (call) => call.table === "orders" && call.method === "eq" && call.args[0] === "status",
+    // T12: the four sales widgets share ONE server-side summary; no direct table reads.
+    await waitFor(() =>
+      expect(state.apiCalls.filter((call) => call.path === "/api/dashboard/summary")).toEqual([
+        { method: "GET", path: "/api/dashboard/summary", init: { params: { query: { days: "30" } } } },
+      ]),
     )
-    expect(ordersReads.map((call) => call.args[1]).sort()).toEqual(["kitchen", "paid", "paid"])
-    expect(tableOf(state.calls)).toContain("order_items.select")
+    expect(state.calls.some((call) => call.table === "orders" || call.table === "order_items")).toBe(false)
     // The low-stock alert on the dashboard reads the inventory items through the API (T10).
     await waitFor(() =>
       expect(state.apiCalls.filter((call) => call.path === "/api/inventory/items")).toHaveLength(1),
@@ -313,8 +314,10 @@ describe("AdminView — requests issued while a tab is open", () => {
 
     // One click = ONE request on the active statuses (no store `loadOrders` behind it).
     await waitFor(() => expect(state.apiCalls.filter((call) => call.path === "/api/orders")).toHaveLength(2))
-    // Besides the dashboard's single low-stock read, nothing else is requested.
-    expect(state.apiCalls.filter((call) => call.path !== "/api/inventory/items")).toHaveLength(2)
+    // Besides the dashboard's summary and low-stock reads, nothing else is requested.
+    expect(
+      state.apiCalls.filter((call) => call.path !== "/api/inventory/items" && call.path !== "/api/dashboard/summary"),
+    ).toHaveLength(2)
     expect(state.apiCalls.filter((call) => call.path === "/api/inventory/items")).toHaveLength(1)
     // The manual refresh still reports what it loaded.
     expect(toastMock).toHaveBeenCalledWith(

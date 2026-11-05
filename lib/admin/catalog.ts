@@ -17,7 +17,6 @@
  *     still there, never blanks the list.
  */
 import type { QueryClient } from "@tanstack/react-query"
-import { supabase } from "@/lib/supabase/client"
 import {
   fetchCategories as listCategories,
   fetchDishes as listDishes,
@@ -26,7 +25,7 @@ import {
   type DishDto,
   type PromotionDto,
 } from "@/lib/api/catalog"
-import type { StaffRole } from "@/lib/supabase/staff-service"
+import { listStaff, type StaffMember, type StaffRole } from "@/lib/api/staff"
 
 /** Roles the Personal sub-tab manages. Admin accounts are provisioned elsewhere. */
 export const ADMIN_STAFF_ROLES: readonly StaffRole[] = [
@@ -86,13 +85,11 @@ export function invalidateCatalogReaders(queryClient: QueryClient, adminKey: rea
   ])
 }
 
-export async function fetchStaff(): Promise<any[]> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .in("role", [...ADMIN_STAFF_ROLES])
-    .order("full_name")
-
-  if (error) throw error
-  return data || []
+/**
+ * The members the Personal sub-tab manages, by name. `GET /staff` also lists
+ * the admins, which are provisioned elsewhere and never shown here.
+ */
+export async function fetchStaff(): Promise<StaffMember[]> {
+  const members = await listStaff()
+  return members.filter((member) => (ADMIN_STAFF_ROLES as readonly string[]).includes(member.role))
 }

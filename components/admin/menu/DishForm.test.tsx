@@ -5,14 +5,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const catalog = vi.hoisted(() => ({ createDish: vi.fn(), updateDish: vi.fn() }))
 vi.mock("@/lib/api/catalog", () => catalog)
-vi.mock("@/lib/supabase/storage-service", () => ({
-  storageService: {
-    isImageAccessible: vi.fn(async () => true),
-    getPlaceholderUrl: () => "/placeholder.svg",
-    deleteImage: vi.fn(async () => undefined),
-  },
+const storage = vi.hoisted(() => ({
+  isImageAccessible: vi.fn(async () => true),
+  getPlaceholderUrl: () => "/placeholder.svg",
+  isPlaceholderUrl: (url: string) => url.includes("placeholder.svg"),
+  deleteImage: vi.fn(async () => undefined),
 }))
-vi.mock("@/components/ui/image-upload", () => ({ ImageUpload: () => null }))
+vi.mock("@/lib/api/storage", () => storage)
+// The uploader stub reports a new public URL when its button is clicked.
+vi.mock("@/components/ui/image-upload", () => ({
+  ImageUpload: ({ onChange }: { onChange: (url: string) => void }) => (
+    <button type="button" onClick={() => onChange("http://bucket/r-1/dishes/b.png")}>
+      stub-upload
+    </button>
+  ),
+}))
 vi.mock("next/image", () => ({ default: () => null }))
 const toastMock = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
@@ -44,7 +51,19 @@ beforeEach(() => {
   catalog.createDish.mockReset().mockResolvedValue({ id: "d-2" })
   catalog.updateDish.mockReset().mockResolvedValue(dish)
   toastMock.mockClear()
+  storage.deleteImage.mockClear()
+  storage.isImageAccessible.mockReset().mockResolvedValue(true)
 })
+
+/** "Cambiar imagen" opens the uploader, which then reports a new successful upload. */
+async function replaceImage() {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Cambiar imagen" }))
+  })
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "stub-upload" }))
+  })
+}
 
 describe("DishForm", () => {
   it("updates an existing dish with the camelCase body", async () => {
@@ -106,5 +125,80 @@ describe("DishForm", () => {
         expect.objectContaining({ description: "Error al guardar el plato: Unknown category" }),
       ),
     )
+  })
+
+  it("deletes a stored image through the storage API, never a placeholder (T12)", async () => {
+    render(<DishForm dish={dish} categories={categories} onSuccess={vi.fn()} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Eliminar imagen" }))
+    })
+    expect(storage.deleteImage).toHaveBeenCalledWith("https://img/d-1.png")
+
+    storage.deleteImage.mockClear()
+    render(<DishForm dish={{ ...dish, id: "d-9", imageUrl: "/placeholder.svg?query=x" }} categories={categories} onSuccess={vi.fn()} />)
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Eliminar imagen" }).at(-1)!)
+    })
+    expect(storage.deleteImage).not.toHaveBeenCalled()
+  })
+
+  const bucketDish = { ...dish, imageUrl: "http://bucket/r-1/dishes/a.png" }
+
+  it("keeps an unreachable image and never deletes it on save (item 1)", async () => {
+    storage.isImageAccessible.mockResolvedValue(false)
+    const onSuccess = vi.fn()
+    render(<DishForm dish={bucketDish} categories={categories} onSuccess={onSuccess} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+    await waitFor(() => expect(storage.isImageAccessible).toHaveBeenCalled())
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "9900" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+    })
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(storage.deleteImage).not.toHaveBeenCalled()
+    expect(catalog.updateDish).toHaveBeenCalledWith(
+      "d-1",
+      expect.objectContaining({ price: 9900, imageUrl: "http://bucket/r-1/dishes/a.png" }),
+    )
+  })
+
+  it("deletes the replaced image only after the update succeeds (item 2)", async () => {
+    const order: string[] = []
+    storage.deleteImage.mockImplementation(async () => {
+      order.push("delete")
+      return undefined
+    })
+    catalog.updateDish.mockImplementation(async () => {
+      order.push("update")
+      return dish
+    })
+    const onSuccess = vi.fn()
+    render(<DishForm dish={bucketDish} categories={categories} onSuccess={onSuccess} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+    await replaceImage()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+    })
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(order).toEqual(["update", "delete"])
+    expect(storage.deleteImage).toHaveBeenCalledWith("http://bucket/r-1/dishes/a.png")
+    expect(catalog.updateDish).toHaveBeenCalledWith("d-1", expect.objectContaining({ imageUrl: "http://bucket/r-1/dishes/b.png" }))
+  })
+
+  it("keeps the old image when the update fails (item 2)", async () => {
+    catalog.updateDish.mockRejectedValue(new Error("boom"))
+    const onSuccess = vi.fn()
+    render(<DishForm dish={bucketDish} categories={categories} onSuccess={onSuccess} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+    await replaceImage()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+    })
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" })))
+    expect(storage.deleteImage).not.toHaveBeenCalled()
   })
 })
