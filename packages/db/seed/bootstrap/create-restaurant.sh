@@ -14,15 +14,14 @@
 #
 # --username is the admin's profile username, unique across the database;
 # it defaults to the part of the email before the @ (1..50 characters, no
-# spaces).
+# spaces). An empty --username exits 2.
 #
 # Targets (seed/bootstrap/target.sh): local is the dev stack of
 # docker-compose.yml, database $VIPE_DB_NAME (default vipe_pos); coolify runs
 # psql and node with `docker exec` in the containers of the Coolify app given
 # by --app-uuid or VIPE_COOLIFY_APP_UUID (required, no default).
 #
-# Exit codes (of this script; `pnpm db:create-restaurant` reports any failure
-# as 1):
+# Exit codes (`pnpm db:create-restaurant` passes them through unchanged):
 #   0  restaurant and admin created
 #   1  any other failure (nothing is written: one transaction)
 #   2  invalid usage, name, email, username, password or app uuid
@@ -41,13 +40,14 @@ usage() {
 target=local
 admin_name=Administrador
 username=
+username_given=false
 positional=()
 while (($#)); do
   case "$1" in
     --target) [[ $# -ge 2 ]] || usage; target="$2"; shift 2 ;;
     --app-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_APP_UUID="$2"; shift 2 ;;
     --admin-name) [[ $# -ge 2 ]] || usage; admin_name="$2"; shift 2 ;;
-    --username) [[ $# -ge 2 ]] || usage; username="$2"; shift 2 ;;
+    --username) [[ $# -ge 2 ]] || usage; username="$2"; username_given=true; shift 2 ;;
     -h | --help) usage ;;
     --*) echo "error: unknown option $1" >&2; usage ;;
     *) positional+=("$1"); shift ;;
@@ -69,7 +69,10 @@ if [[ -z "$admin_name" || ${#admin_name} -gt 100 ]] || ! no_control "$admin_name
   target_die "the admin name must have 1..100 characters on one line" 2
 fi
 admin_email="$(printf '%s' "$admin_email" | tr '[:upper:]' '[:lower:]')"
-if [[ -z "$username" ]]; then
+if [[ "$username_given" == true && -z "$username" ]]; then
+  target_die "--username is empty; omit it to use the part of the email before the @" 2
+fi
+if [[ "$username_given" == false ]]; then
   username="${admin_email%%@*}"
   username_hint=" (taken from the email; choose another with --username)"
 else

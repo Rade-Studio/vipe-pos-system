@@ -23,7 +23,7 @@
 # by --app-uuid or VIPE_COOLIFY_APP_UUID (required, no default: a missing
 # uuid must never load the demo into another app's database).
 #
-# Exit codes (of this script; `pnpm db:demo` reports any failure as 1):
+# Exit codes (`pnpm db:demo` passes them through unchanged):
 #   0  demo loaded
 #   1  any other failure (nothing is written: one transaction)
 #   2  invalid usage, DEMO_PASSWORD or app uuid

@@ -124,7 +124,8 @@ las imágenes van a R2) y sin puertos publicados. `postgres` se construye desde
 Coolify no coloca los archivos del repositorio junto al compose. Recurso Docker Compose con
 **Docker Compose Location** `/docker-compose.coolify.yml`, dominios `api` →
 `https://<sitio>:4000/api,https://<sitio>:4000/socket.io` y `web` → `https://<sitio>:3000`,
-**Strip prefixes** desactivado. Detalle y comprobaciones en
+**Strip prefixes** desactivado. Staging responde solo a los clientes de la red de Tailscale
+(desde la IP pública, el proxy devuelve 403). Detalle y comprobaciones en
 [docs/despliegue.md](docs/despliegue.md#3-opción-b-coolify-con-docker-composecoolifyyml).
 
 Validación local (Docker Compose rechaza la clave `exclude_from_hc` de Coolify, y cada variable

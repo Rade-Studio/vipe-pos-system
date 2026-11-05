@@ -455,6 +455,86 @@ describe("the loader covers the initial session check", () => {
     expect(await screen.findByText("cashier-view")).toBeInTheDocument()
     expect(loginViewRenders).not.toHaveBeenCalled()
   })
+
+  // Verifier probes of 056c386: the late result of a timed-out check never
+  // undoes a later login, and a genuine signed_out still reaches the form.
+  async function loginAfterTimeoutThenSettle(outcome: "null" | "throw" | "session", strict: boolean) {
+    vi.useFakeTimers()
+    try {
+      const settle = holdInitialCheck()
+      render(strict ? <StrictMode><Home /></StrictMode> : <Home />)
+      await act(async () => {})
+      await act(async () => {
+        vi.advanceTimersByTime(10_000)
+      })
+      fireEvent.click(screen.getByText("login-view"))
+      await act(async () => {})
+      await act(async () => {
+        settle(outcome)
+      })
+      await act(async () => {})
+      expect(screen.getByText("kitchen-view")).toBeInTheDocument()
+      await act(async () => {
+        emitAuthEvent("signed_out")
+      })
+      expect(screen.getByText("login-view")).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+
+  for (const outcome of ["null", "throw", "session"] as const) {
+    it(`P1: a login after the timeout survives a late "${outcome}" check, then signs out`, async () => {
+      await loginAfterTimeoutThenSettle(outcome, false)
+    })
+
+    it(`P2: the same under StrictMode with a late "${outcome}" check`, async () => {
+      await loginAfterTimeoutThenSettle(outcome, true)
+    })
+  }
+
+  it("P3: a StrictMode admin session is restored, then signed_out shows the form", async () => {
+    env.role = "admin"
+    render(
+      <StrictMode>
+        <Home />
+      </StrictMode>,
+    )
+    await screen.findByText("admin-view")
+    await act(async () => {
+      emitAuthEvent("signed_out")
+    })
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+  })
+
+  it("P4: a cashier session restored with tables pending, then signed_out shows the form", async () => {
+    env.role = "cashier"
+    env.tableGetAll.mockImplementation(() => new Promise(() => {}))
+    render(<Home />)
+    await screen.findByText("cashier-view")
+    await act(async () => {
+      emitAuthEvent("signed_out")
+    })
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+  })
+
+  it("P6: after a timeout with no login, a late signed_out keeps the form", async () => {
+    vi.useFakeTimers()
+    try {
+      holdInitialCheck()
+      render(<Home />)
+      await act(async () => {})
+      await act(async () => {
+        vi.advanceTimersByTime(10_000)
+      })
+      await act(async () => {
+        emitAuthEvent("signed_out")
+      })
+      expect(screen.getByText("login-view")).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 /**

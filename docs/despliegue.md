@@ -208,6 +208,9 @@ desplegar para que corra `migrate`:
 docker exec <contenedor-postgres> sh /docker-entrypoint-initdb.d/10-roles.sh
 ```
 
+Staging responde solo a los clientes de la red de Tailscale: desde la IP pública, el proxy de
+Coolify devuelve 403 en todas las rutas (`/`, `/api`, `/socket.io`).
+
 ### 3.1 Crear el recurso
 
 1. Nuevo recurso desde el repositorio Git, **Build Pack: Docker Compose**.
@@ -307,7 +310,7 @@ recurso viejo: una web **sin API ni base de datos**, en la que fallan el inicio 
 todas las pantallas. Seguir este orden:
 
 1. Abrir el pull request como borrador: solo corre CI (el job `deploy` no se ejecuta en pull requests).
-2. Crear en Coolify el recurso Docker Compose de staging (sección 3.1) en un subdominio propio (por ejemplo `staging-pos.<dominio>`), desplegar la rama del pull request directamente desde ese recurso y pasar las comprobaciones de 3.2.
+2. Crear en Coolify el recurso Docker Compose de staging (sección 3.1) en un subdominio propio (por ejemplo `staging-pos.<dominio>`), accesible solo desde la red de Tailscale, desplegar la rama del pull request directamente desde ese recurso y pasar las comprobaciones de 3.2.
 3. Cambiar el secreto `COOLIFY_APP_UUID_STAGING` al UUID del recurso nuevo de staging.
 4. Solo entonces fusionar en `dev`: el job `deploy` despliega en el recurso nuevo de staging.
 5. Para producción: crear el recurso Docker Compose de producción, y cambiar `COOLIFY_APP_UUID_PRODUCTION` al UUID nuevo y fusionar en `main` únicamente dentro de la ventana de corte ([runbook-cutover.md](runbook-cutover.md), sección 2), nunca antes.
@@ -335,7 +338,8 @@ La prueba de restauración es la de 2.6.
 
 `packages/db/seed/bootstrap/create-restaurant.sh` crea un restaurante y su primer usuario
 administrador en una sola transacción. Después, ese administrador inicia sesión en
-`https://<sitio>/portal` y crea el personal desde **Personal**.
+`https://<sitio>/portal` y crea el personal desde **Personal**. En staging, el portal responde
+solo a los clientes de la red de Tailscale.
 
 - Argumentos: el nombre del restaurante y el correo del administrador; `--admin-name` para el
   nombre que se muestra (por defecto `Administrador`) y `--username` para el usuario del perfil
@@ -350,7 +354,7 @@ administrador en una sola transacción. Después, ese administrador inicia sesi�
   ese nombre (sin distinguir mayúsculas), un usuario con ese correo o un perfil con ese usuario,
   también si otro proceso lo creó mientras corría (no se cambia nada); `1` cualquier otro error,
   incluido un fallo de `psql` o de `docker` (no queda nada a medias). `pnpm db:create-restaurant`
-  informa cualquier fallo como `1`; para distinguir `2` y `3`, ejecutar el script con `bash`.
+  devuelve los mismos códigos. Un `--username` vacío termina con código `2`.
 
 En el servidor el script corre en el host y usa `docker exec`: `psql` en el contenedor
 `postgres` y `node` en el contenedor `api` del recurso. Encuentra los contenedores por el nombre
@@ -439,13 +443,12 @@ unset DEMO_PASSWORD
   código `2`. La contraseña se pasa a `node` por la entrada estándar y a `psql` solo llega el hash.
 - `--reset` falla con código `1`, antes de borrar, si una tabla de `public` con columna
   `restaurant_id` no está en la lista de `reset.sql`; la tabla nueva se agrega a esa lista.
-- Los códigos son los del script ejecutado con `bash`; `pnpm db:demo` informa cualquier fallo como
-  `1`.
+- `pnpm db:demo` devuelve los mismos códigos que el script ejecutado con `bash`.
 - El UUID se indica siempre, con `--app-uuid` o `VIPE_COOLIFY_APP_UUID`; si el recurso de staging
   cambia, se usa el nuevo.
 
-En local, `bash packages/db/seed/demo/demo-db.sh` (o con `--reset`; `pnpm db:demo` hace lo mismo
-pero informa cualquier fallo como `1`) carga la demo en la base `vipe_demo` del
+En local, `bash packages/db/seed/demo/demo-db.sh` (o con `--reset`; `pnpm db:demo` hace lo mismo,
+con los mismos códigos de salida) carga la demo en la base `vipe_demo` del
 stack de desarrollo (`VIPE_DEMO_DB` para otra), creándola y migrándola si falta, de modo que
 `vipe_pos` conserva la semilla de desarrollo. Para verla, arrancar la API con
 `DATABASE_URL=postgres://vipe_api:vipe_api@localhost:5432/vipe_demo`.

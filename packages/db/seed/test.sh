@@ -11,8 +11,9 @@
 # A with POSTGRES_USER=postgres (bootstrap matrix) and B with
 # POSTGRES_USER=vipeowner, as a Coolify app may define it (demo, reset and the
 # demo's invariants). Migrations run from the host with `pnpm db:migrate`.
-# Containers, image and scratch directory are removed on exit. Not wired into
-# CI. Exit 0 when every check passes, 1 otherwise.
+# Containers (with their anonymous volumes), image and scratch directory are
+# removed on exit, and a volume left behind fails the run. Not wired into CI.
+# Exit 0 when every check passes, 1 otherwise.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -25,9 +26,23 @@ passed=0
 failed=0
 
 cleanup() {
-  if ((${#containers[@]})); then docker rm -f "${containers[@]}" >/dev/null 2>&1 || true; fi
+  local status=$? volumes=() leaked=() v
+  if ((${#containers[@]})); then
+    # The postgres image declares a data volume: record the names before removal.
+    mapfile -t volumes < <(docker inspect -f '{{range .Mounts}}{{if .Name}}{{println .Name}}{{end}}{{end}}' \
+      "${containers[@]}" 2>/dev/null | sed '/^$/d')
+    docker rm -fv "${containers[@]}" >/dev/null 2>&1 || true
+  fi
   docker image rm -f "$image" >/dev/null 2>&1 || true
   rm -rf "$scratch"
+  for v in "${volumes[@]}"; do
+    docker volume inspect "$v" >/dev/null 2>&1 && leaked+=("$v")
+  done
+  if ((${#leaked[@]})); then
+    echo "FAIL volumes left behind by the run: ${leaked[*]}" >&2
+    exit 1
+  fi
+  exit "$status"
 }
 trap cleanup EXIT
 
@@ -122,6 +137,12 @@ expect_exit 2 "bootstrap: short password" \
   env ADMIN_PASSWORD=short bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$a" "La Mesa" admin@mesa.example
 expect_exit 2 "bootstrap: --username with a space" \
   bootstrap --target coolify --app-uuid "$a" --username "la mesa" "La Mesa" admin@mesa.example
+expect_exit 2 "bootstrap: --username empty" bootstrap --target coolify --app-uuid "$a" --username "" "La Mesa" admin@mesa.example
+expect_stderr "bootstrap: the empty username names --username" "--username"
+for bad in "" VBPB 'x;id' '../x'; do
+  expect_exit 2 "bootstrap: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$bad" "La Mesa" admin@mesa.example
+  expect_exit 2 "demo: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target coolify --app-uuid "$bad"
+done
 expect_eq "bootstrap: rejected input wrote nothing" "0/0/0" "$(fingerprint_a)"
 
 expect_exit 0 "bootstrap: create La Mesa (app uuid from VIPE_COOLIFY_APP_UUID)" \
@@ -187,6 +208,28 @@ expect_eq "demo: order_items.updated_at >= created_at" "0" \
   "$(q "SELECT count(*) FROM public.order_items WHERE updated_at < created_at")"
 expect_eq "demo: nothing in the future" "0" \
   "$(q "SELECT (SELECT count(*) FROM public.payments WHERE created_at > now()) + (SELECT count(*) FROM public.orders WHERE created_at > now())")"
+# Every tenant row belongs to the demo restaurant (none outside it, none NULL).
+expect_eq "demo: every tenant row has the demo restaurant_id" "0" "$(q "
+CREATE FUNCTION pg_temp.rows_outside_demo() RETURNS bigint LANGUAGE plpgsql AS \$\$
+DECLARE
+  v_demo uuid := (SELECT id FROM public.restaurants);
+  v_table text;
+  v_rows bigint;
+  v_total bigint := 0;
+BEGIN
+  FOR v_table IN
+    SELECT c.table_name FROM information_schema.columns c
+      JOIN information_schema.tables t USING (table_schema, table_name)
+     WHERE c.table_schema = 'public' AND c.column_name = 'restaurant_id' AND t.table_type = 'BASE TABLE'
+  LOOP
+    EXECUTE format('SELECT count(*) FROM public.%I WHERE restaurant_id IS DISTINCT FROM \$1', v_table)
+      INTO v_rows USING v_demo;
+    v_total := v_total + v_rows;
+  END LOOP;
+  RETURN v_total;
+END
+\$\$;
+SELECT pg_temp.rows_outside_demo();")"
 
 before="$(fingerprint_b)"
 expect_exit 3 "demo: re-run without --reset" demo --target coolify --app-uuid "$b"
@@ -196,12 +239,16 @@ expect_exit 0 "demo: --reset (2nd)" demo --reset --target coolify --app-uuid "$b
 expect_eq "demo: still exactly one restaurant after two resets" "1" "$(q "SELECT count(*) FROM public.restaurants")"
 
 # A tenant table reset.sql does not cover fails the reset before any delete.
+# A trigger proves that no DELETE runs before the guard fires.
 q "CREATE TABLE public.zz_new_tenant_table (id serial PRIMARY KEY, restaurant_id uuid)" >/dev/null
+q "CREATE FUNCTION public.zz_delete_reached() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'DELETE REACHED'; END \$\$;
+  CREATE TRIGGER zz_delete_reached BEFORE DELETE ON public.payment_tenders FOR EACH STATEMENT EXECUTE FUNCTION public.zz_delete_reached();" >/dev/null
 before="$(fingerprint_b)"
 expect_exit 1 "demo: --reset with an uncovered tenant table" demo --reset --target coolify --app-uuid "$b"
 expect_stderr "demo: the reset names the uncovered table" "zz_new_tenant_table"
+expect_eq "demo: the guard fired before any delete" "absent" "$(grep -qF 'DELETE REACHED' "$scratch/err" && echo reached || echo absent)"
 expect_eq "demo: the failed reset changed nothing" "$before" "$(fingerprint_b)"
-q "DROP TABLE public.zz_new_tenant_table" >/dev/null
+q "DROP TRIGGER zz_delete_reached ON public.payment_tenders; DROP FUNCTION public.zz_delete_reached(); DROP TABLE public.zz_new_tenant_table" >/dev/null
 
 # The verifier's reproduction: bootstrap next to the demo (its admin is
 # `admin`), then the demo refuses to reset a database with a real tenant.
