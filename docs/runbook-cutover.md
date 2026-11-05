@@ -1,7 +1,8 @@
 # Runbook: corte de Supabase a Postgres + API NestJS
 
-Borrador de T14 (`odd/tasks/migracion-backend-nestjs.md`). Se finaliza en T15 con los archivos de despliegue de T13.
-Los pasos marcados **«completar en T13»** dependen del `docker-compose.prod.yml` y del proxy de producción, que todavía no existen.
+Plan y evidencia: `odd/tasks/migracion-backend-nestjs.md` (T13, T14, T15). Los pasos de despliegue siguen
+[despliegue.md](despliegue.md): **opción A** (VPS con `docker-compose.prod.yml` y Caddy) u **opción B** (Coolify con
+`docker-compose.coolify.yml`). Donde un paso cambia según la opción, se indican ambas.
 
 El corte mueve datos de forma **irreversible** hacia la base nueva. Supabase no se modifica: queda en solo lectura una semana como respaldo.
 
@@ -23,10 +24,32 @@ El corte mueve datos de forma **irreversible** hacia la base nueva. Supabase no 
   - `SUPABASE_DB_URL`: conexión del **session pooler** (Settings → Database → Connection string → Session pooler), con la forma `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`. La conexión directa `db.<ref>.supabase.co` solo resuelve por IPv6: úsela únicamente desde un equipo con IPv6. No sirve el transaction pooler (puerto 6543), porque el export mantiene una sesión abierta con un snapshot. El export solo lee.
   - Las cadenas de conexión deben ser URL `postgres://` o `postgresql://` (no se aceptan cadenas `host=... password=...`). Si la contraseña tiene `@`, `:` o `/`, codifíquelos como `%40`, `%3A` y `%2F`. Los scripts nunca pasan la contraseña como argumento de un proceso.
   - `SUPABASE_PUBLIC_STORAGE_URL`: `https://<ref>.supabase.co/storage/v1/object/public`.
-- Base destino ya creada con roles y migraciones (**completar en T13**: servicio `postgres` + `migrate` del compose de producción):
+- Base destino ya creada con roles y migraciones, **sin** la API ni la web en marcha (así nadie escribe antes de la importación):
+  - Opción A, en la VPS con el `.env` completo ([despliegue.md](despliegue.md#21-archivo-de-entorno)):
+
+    ```bash
+    docker compose -f docker-compose.prod.yml up -d --wait postgres    # crea vipe_migrator y vipe_api con el volumen vacío
+    docker compose -f docker-compose.prod.yml up --build migrate       # aplica packages/db/migrations y termina con código 0
+    ```
+
+  - Opción B: crear el recurso de Coolify ([despliegue.md](despliegue.md#31-crear-el-recurso)) y desplegarlo una vez;
+    `postgres` y `migrate` dejan el esquema listo. Detener `api` y `web` desde el panel hasta el paso 2.7.
   - `TARGET_DATABASE_URL`: conexión de **superusuario** al destino (la importación usa `session_replication_role`).
-  - `roles.sql` aplicado y `pnpm db:migrate` ejecutado como `vipe_migrator`.
-- Almacenamiento S3 (R2 recomendado o MinIO propio) con bucket de lectura pública y las variables de la API: `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_BASE_URL`, `S3_FORCE_PATH_STYLE`.
+    Ningún compose publica el puerto de Postgres: ejecutar los scripts **en la VPS** y usar la IP interna del
+    contenedor (los scripts corren el cliente con `--network host`):
+
+    ```bash
+    # Opción A
+    PG_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+      "$(docker compose -f docker-compose.prod.yml ps -q postgres)")
+    # Opción B (Coolify nombra el contenedor con el UUID del recurso)
+    PG_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <contenedor-postgres>)
+
+    export TARGET_DATABASE_URL="postgres://postgres:<POSTGRES_PASSWORD>@$PG_IP:5432/vipe_pos"
+    ```
+
+    En ese caso la VPS también necesita Node 24, pnpm y el repositorio con `pnpm install` (para `copy-storage.ts`).
+- Almacenamiento S3 (R2 recomendado o MinIO propio, ver [despliegue.md](despliegue.md#4-almacenamiento-de-imágenes)) con bucket de lectura pública, la regla CORS para el origen de la web y las variables de la API: `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_BASE_URL`, `S3_FORCE_PATH_STYLE`.
 - Un directorio de trabajo nuevo y privado, por ejemplo `~/corte-AAAA-MM-DD/`. **Contiene hashes de contraseñas**: no subirlo a ningún lado y borrarlo al cerrar la semana de respaldo.
 - Lista de estaciones de impresión (equipo, restaurante, persona en sitio) para reinstalarlas (ver 3.6).
 - Confirmar que el ensayo automático pasa en el commit que se va a desplegar:
@@ -120,7 +143,33 @@ Debe terminar con `verify: all N checks passed`. Cualquier `FAIL` detiene el cor
 
 ### 2.7 Encender el stack nuevo
 
-**Completar en T13**: `docker compose -f docker-compose.prod.yml up -d api web caddy`, healthchecks en verde, proxy apuntando `/api/*` y `/socket.io/*` a la API (con upgrade WebSocket) y el resto a la web.
+Antes, el DNS del dominio debe apuntar a la VPS nueva (si cambió de servidor) y las variables `S3_*` del stack deben ser
+las mismas usadas en 2.4.
+
+Opción A:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build --wait api web caddy
+docker compose -f docker-compose.prod.yml ps        # postgres, api, web y caddy "healthy"; migrate "exited (0)"
+```
+
+Caddy envía `/api/*` y `/socket.io/*` a la API (con el upgrade a WebSocket y la cabecera `Authorization`) y el resto a la
+web (`deploy/Caddyfile`).
+
+Opción B: iniciar `api` y `web` desde el panel de Coolify (o redeplegar el recurso) con los dominios y *Strip prefixes*
+de [despliegue.md](despliegue.md#31-crear-el-recurso).
+
+En ambas opciones, comprobar:
+
+```bash
+curl -s https://<sitio>/api/health
+# {"status":"ok","service":"vipe-pos-api"}
+curl -s "https://<sitio>/socket.io/?EIO=4&transport=polling"
+# 0{"sid":...,"upgrades":["websocket"],...}
+```
+
+y, con una sesión iniciada en el navegador, que `wss://<sitio>/socket.io/?EIO=4&transport=websocket` queda en `101` en la
+pestaña Red. Si algo falla, no abrir el servicio: ir a la sección 4.
 
 ### 2.8 Limpiar la base staging interna
 
@@ -139,9 +188,12 @@ Usar un usuario real de cada rol. Marcar cada punto. Los usuarios importados con
 - [ ] Login con su contraseña de siempre.
 - [ ] Panel: ventas del mes y platos populares coinciden con el último reporte de Supabase.
 - [ ] Menú: platos con imagen se ven (URL bajo `S3_PUBLIC_BASE_URL`); subir una imagen nueva funciona.
+- [ ] Personal: crear una cuenta de prueba, iniciar sesión con ella y eliminarla.
 - [ ] Personal: lista completa; asignar contraseña a los usuarios reportados como `user_without_password` (pueden entrar enseguida). Los `user_banned` solo se reactivan con el `UPDATE` del reporte.
 - [ ] Inventario: existencias, lotes y movimientos iguales; crear un insumo sin SKU genera el siguiente (`MP-000N`) sin chocar.
 - [ ] Compras: crear una orden de compra genera el siguiente número.
+- [ ] Órdenes y Mesas: la orden de prueba aparece con su mesa y mesero; crear y editar una mesa.
+- [ ] Configuración: impuestos, propinas, métodos de pago y valor del domicilio conservan sus valores.
 - [ ] Impresoras: crear un token por estación (ver 3.6).
 
 ### 3.2 Mesero
@@ -149,10 +201,14 @@ Usar un usuario real de cada rol. Marcar cada punto. Los usuarios importados con
 - [ ] Login, ver mesas con su estado.
 - [ ] Crear un pedido de prueba: llega a cocina **en vivo** sin recargar.
 - [ ] Agregar ítems a un pedido abierto.
+- [ ] En un segundo navegador (otro mesero o el admin) la mesa cambia de estado sin recargar.
+- [ ] Liberar una mesa sin pedido; una mesa con pedido en cocina no se puede liberar.
 
 ### 3.3 Cocina
 
 - [ ] El pedido de prueba aparece en vivo; marcar ítems como servidos actualiza la mesa en la pantalla del mesero sin recargar.
+- [ ] El domicilio de prueba (3.5) aparece con la etiqueta **DOMICILIO**; al servir el último producto pasa a «listo» en el tablero de domicilios.
+- [ ] La comanda sale en la impresora de comandas (3.6).
 
 ### 3.4 Caja
 
@@ -165,6 +221,8 @@ Usar un usuario real de cada rol. Marcar cada punto. Los usuarios importados con
 
 - [ ] Buscar un cliente existente por teléfono: trae sus direcciones.
 - [ ] Crear un domicilio de prueba y avanzarlo de estado; el tablero se actualiza en vivo.
+- [ ] Despachar con un repartidor activo y entregar.
+- [ ] Registrar el pago con una caja abierta (desde el tablero o desde «Domicilios por cobrar» en Caja); el total incluye el valor del domicilio.
 
 ### 3.6 Estaciones de impresión (T8c)
 
@@ -175,7 +233,8 @@ En cada equipo con impresora:
 3. Borrar el archivo de credenciales anterior `%APPDATA%\VipePOS\credentials.dat`.
 4. Primer arranque: ingresar `VIPE_API_URL` (dominio de producción) y `VIPE_PRINTER_TOKEN`; quedan cifrados en `%APPDATA%\VipePOS\printer_credentials.dat`.
 5. Probar: una comanda desde el mesero y una factura desde caja salen en la impresora correcta, y solo en la de su restaurante.
-6. Requisito de proxy (**completar en T13**): `/socket.io/` con upgrade WebSocket y `/api/print/*` reenviando el header `Authorization`.
+6. Requisito de proxy: `/socket.io/` con upgrade WebSocket (conservando la barra final) y `/api/print/*` reenviando el header `Authorization`. La opción A lo cumple con `deploy/Caddyfile`; en la opción B lo confirman las comprobaciones de 2.7.
+7. En la pantalla Impresoras, la estación muestra su última conexión.
 
 ### 3.7 Datos
 
@@ -188,7 +247,23 @@ En cada equipo con impresora:
 Supabase no se tocó durante el corte (solo lecturas), así que volver atrás es redirigir el tráfico.
 
 1. **Antes de abrir el servicio** (falla en 2.5-2.6 o en la sección 3): no hay nada que revertir en datos. Mantener la app actual, quitar el modo mantenimiento (y devolver la escritura a `anon`/`authenticated` si se revocó), corregir y repetir el ensayo.
-2. **Después de abrir el servicio**: apuntar el proxy de vuelta a la app anterior (**completar en T13** con el comando exacto). Los pedidos y pagos hechos en la base nueva **no** existen en Supabase: anotarlos a partir de la base nueva antes de volver.
+2. **Después de abrir el servicio**: los pedidos y pagos hechos en la base nueva **no** existen en Supabase. Antes de volver, sacar un respaldo de la base nueva para anotarlos:
+
+   ```bash
+   # Opción A
+   docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U postgres -d vipe_pos -Fc > ~/corte-AAAA-MM-DD/base-nueva.dump
+   # Opción B
+   docker exec <contenedor-postgres> pg_dump -U postgres -d vipe_pos -Fc > ~/corte-AAAA-MM-DD/base-nueva.dump
+   ```
+
+   Luego liberar el dominio y volver a la app anterior:
+
+   - Opción A: `docker compose -f docker-compose.prod.yml stop caddy api web` (los datos quedan en el volumen
+     `postgres_data`) y apuntar el DNS del dominio de vuelta al despliegue anterior, o volver a desplegarlo en su
+     plataforma con su configuración de antes del corte.
+   - Opción B: detener `api` y `web` del recurso Docker Compose en Coolify y volver a desplegar en ese dominio el
+     recurso anterior (la web de antes del corte, con sus variables de Supabase).
+   - Quitar el modo mantenimiento de la app anterior y devolver la escritura a `anon`/`authenticated` si se revocó (2.2).
 3. Supabase queda en **solo lectura una semana** como respaldo y referencia. Pasada la semana sin incidentes: borrar el directorio de trabajo del corte, y pausar o eliminar el proyecto de Supabase.
 
 ## Referencia de scripts
@@ -202,6 +277,6 @@ Todos en `packages/db/migration-from-supabase/`.
 | `import.sh <dir> [--force-empty-target]` | `TARGET_DATABASE_URL` (superusuario) | Carga en `import_src` y ejecuta `import.sql` en una transacción. Rechaza un destino con datos. |
 | `verify.sh` | `TARGET_DATABASE_URL`, `S3_PUBLIC_BASE_URL` | Ejecuta `verify.sql`; código distinto de 0 ante cualquier diferencia. |
 | `rehearse.sh` (`pnpm db:rehearse-migration`) | opcional `REHEARSAL_PORT_BASE` (55400) | Ensayo completo con contenedores desechables. |
-| `scripts/build-source-schema.sh` | — | Regenera `fixtures/source-schema.sql` desde `supabase/migrations` (solo útil antes de T13). |
+| `scripts/build-source-schema.sh` | opcional `VIPE_SOURCE_COMMIT`, `VIPE_SOURCE_SCHEMA_OUT` | Regenera `fixtures/source-schema.sql` desde `supabase/migrations` leído de Git en ese commit (el directorio ya no existe en la rama). |
 
 Contraseña de los usuarios del fixture: `vipe-rehearsal-2026` (datos sintéticos, no reales).

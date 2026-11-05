@@ -4,6 +4,19 @@ Registro de decisión de arquitectura (ADR). Describe el estado de partida, la t
 objetivo, las decisiones tomadas y el orden de migración. El plan de tareas vive en
 `odd/tasks/migracion-backend-nestjs.md`.
 
+## Estado
+
+La migración está **implementada en la rama `feat/backend-nestjs`** y todavía no se ha
+fusionado en `dev` ni en `main`. La web ya no depende de Supabase: dependencias, cliente,
+directorio `supabase/` y variables se retiraron (T13b). Pendientes antes del corte real: el
+ensayo contra una copia real de producción ([runbook-cutover.md](runbook-cutover.md),
+sección 1) y las comprobaciones en vivo del primer despliegue en Coolify
+([despliegue.md](despliegue.md#32-tres-comprobaciones-después-del-primer-despliegue)). La lista
+completa de pendientes está en [despliegue.md](despliegue.md#7-limitaciones-conocidas).
+
+Las secciones siguientes conservan el registro de decisión original; donde la
+implementación cambió algo, se indica con una nota **Implementación**.
+
 ## 1. Contexto y problema
 
 VIPE POS es una aplicación Next.js que habla **directamente** con Supabase desde el
@@ -68,6 +81,9 @@ Una VPS con Docker Compose o Coolify y cuatro servicios:
 ```
 
 - **web**: Next.js solo como frontend. Conoce únicamente `NEXT_PUBLIC_API_URL` en runtime.
+  **Implementación:** ni siquiera eso. La web llama a su propio origen (`/api`, `/socket.io/`)
+  y no tiene variables de build ni de runtime; en desarrollo `next.config.mjs` reenvía esas
+  rutas a `API_PROXY_TARGET`.
 - **api**: NestJS. Dueño de todo acceso a datos, autenticación, autorización, tiempo real
   y URLs firmadas de almacenamiento.
 - **Postgres 16**: base de datos plana con la extensión `pgtap` para tests. Sin los
@@ -76,6 +92,10 @@ Una VPS con Docker Compose o Coolify y cuatro servicios:
 
 Web y API comparten dominio detrás del proxy, lo que permite cookies de sesión
 `httpOnly` sin CORS complicado.
+
+**Implementación:** MinIO quedó como opción; el almacenamiento por defecto en producción es
+Cloudflare R2 (sección 4.9). El proxy es Caddy en una VPS con Docker o Traefik en Coolify
+(sección 4.10).
 
 ## 4. Decisiones
 
@@ -121,7 +141,15 @@ Triggers `AFTER INSERT OR UPDATE OR DELETE FOR EACH ROW` llamados `notify_change
 `pg_notify('pos_changes', private.change_payload(...))`. El payload nunca lleva la fila
 nueva: `{table, op, id, restaurant_id}` más, en UPDATE y DELETE, `old` con la fila
 anterior completa, porque las tres tablas son `REPLICA IDENTITY FULL` y la web ya lee
-`old` (por ejemplo `old.order_type` en un DELETE). En `order_deliveries` el `id` del
+`old` (por ejemplo `old.order_type` en un DELETE).
+
+**Implementación:** la migración `0007_orders_realtime_api.sql` añade el mismo trigger en
+`order_items` (que la cocina necesita) y la incluye en `private.realtime_row`. Como un trigger
+siempre tiene `OLD`, los eventos de `order_items` llevan el `old` completo (la cocina lee
+`old.status`). El listener enriquece en el servidor: los eventos de `orders` llevan
+`new.order_items` y los de `tables` llevan `new.waiter_name`, lo que elimina dos patrones N+1
+del cliente. La web (`lib/api/realtime.ts`) vuelve a leer órdenes, mesas y domicilios ante
+`resync` y ante cada reconexión del socket. En `order_deliveries` el `id` del
 payload es su llave `order_id`. NOTIFY rechaza payloads de 8000 bytes o más: si con `old`
 el payload supera 7000 bytes, `old` se reduce a las columnas llave (`id` u `order_id`,
 `restaurant_id`, `order_type` si existe) y se marca `old_truncated: true`. Un cambio
@@ -175,6 +203,10 @@ fila cargada y descarta el aviso si no coincide; en DELETE descarta el aviso si
 
 #### Impresión
 
+**Implementación:** cola durable `print_jobs` (migración `0010_printing.sql`), descrita a
+continuación tal como quedó; los tokens se administran desde la pantalla
+Configuración > Impresoras.
+
 Antes, la web enviaba comandas y facturas por broadcast de Supabase a canales globales
 (`room_commands`, `room_bills`). Cada impresora recibía los tickets de todos los
 restaurantes, y un ticket enviado con el servicio apagado se perdía. Ahora:
@@ -220,12 +252,43 @@ La API publica OpenAPI. El frontend consume un cliente tipado generado con
 - **Vitest** para web, como hoy.
 - **Tests de integración de la API** con Testcontainers levantando Postgres real.
 - CI añade `api-lint`, `api-typecheck`, `api-tests` y adapta `db-tests` al nuevo runner.
+  **Implementación:** un solo job `api` (lint, typecheck, build, pruebas y verificación de que
+  `openapi.json` y `lib/api/schema.d.ts` no cambian), `db-tests` sobre el servicio `db` de
+  `docker-compose.yml`, y `docker-build` en pull requests con una verificación de higiene de
+  las imágenes. El job `deploy` espera a `api`.
 
 ### 4.8 Estructura del repositorio
 
 El workspace pnpm ya existe. Se añaden `apps/api` y `packages/db`. La app web permanece en
 la raíz durante la migración para no mover 180 archivos mientras se cambia su backend;
 moverla a `apps/web` es una tarea opcional posterior.
+
+### 4.9 Almacenamiento
+
+**Implementación (T12).** La API emite URLs prefirmadas de PUT, ligadas al tipo de contenido y
+al tamaño (`image/*` salvo SVG, máximo 5 MB). Las claves son
+`<restaurantId>/dishes/<uuid>.<ext>`; la web guarda la URL pública en `imageUrl`, y
+`DELETE /api/storage/objects` solo borra claves bajo el prefijo del restaurante y bajo
+`S3_PUBLIC_BASE_URL`. La API solo usa S3 estándar (direcciones por ruta con
+`S3_FORCE_PATH_STYLE`), así que sirve cualquier servicio compatible. Las imágenes oficiales de
+MinIO ya no se pueden descargar: desarrollo y pruebas usan las compilaciones de Chainguard
+fijadas por digest, y producción usa Cloudflare R2 por defecto, o MinIO en la misma VPS con un
+perfil de compose. El bucket de producción necesita CORS desde el origen de la web.
+
+### 4.10 Despliegue: VPS con Caddy o Coolify
+
+**Implementación (T13a).** Coolify usa su propio proxy (Traefik) en 80/443, no aplica los
+`profiles` de compose ni archivos de override, y necesita `exclude_from_hc: true` en servicios
+de una sola ejecución. Por eso hay dos archivos:
+
+- `docker-compose.prod.yml` para una VPS con Docker: `postgres`, `migrate` (una sola ejecución
+  como `vipe_migrator`), `api`, `web`, `caddy` y MinIO opcional con el perfil
+  `self-hosted-storage`.
+- `docker-compose.coolify.yml` para Coolify: sin `caddy`, sin `minio` y sin puertos
+  publicados; dominios `api` → `https://<sitio>:4000/api` y `https://<sitio>:4000/socket.io`,
+  `web` → `https://<sitio>:3000`, *Strip prefixes* desactivado.
+
+Guía paso a paso: [despliegue.md](despliegue.md).
 
 ## 5. Estrategia de migración: strangler
 
@@ -263,8 +326,19 @@ Orden, de menor a mayor riesgo y de mayor a menor valor de validación:
 Las contraseñas no se migran en claro: GoTrue guarda bcrypt y la API acepta bcrypt como
 formato heredado y re-hashea a argon2 en el siguiente login exitoso.
 
+**Implementación (T14).** Las herramientas viven en `packages/db/migration-from-supabase/`:
+`export.sh` (solo lectura, un único snapshot), `copy-storage.ts` (copia reanudable de imágenes
+con claves por restaurante), `import.sh` + `import.sql` (una transacción, rechaza un destino con
+datos, regla de una caja abierta por restaurante, contadores) y `verify.sh` (conteos, sumas de
+dinero y huérfanos entre origen y destino). `pnpm db:rehearse-migration` ensaya todo el
+recorrido con contenedores desechables. Los pasos exactos están en
+[runbook-cutover.md](runbook-cutover.md).
+
 ## 7. Lo que sale de la VPS
 
 Kong, GoTrue, PostgREST, Supabase Realtime, Supabase Storage, Studio, pg-meta, Logflare,
 Vector, imgproxy y el Edge Runtime. Entran NestJS y MinIO. De diez contenedores auxiliares
 a dos servicios propios.
+
+**Implementación:** con R2 como almacenamiento, la VPS ejecuta `postgres`, `api`, `web` y el
+proxy (más `migrate`, que termina en cada despliegue).

@@ -52,7 +52,10 @@ VIPE_PRINTER_TOKEN=vpt_dev-printer-token-2026
 ```
 
 The token above is the one `pnpm db:dev` seeds. For a real restaurant an admin
-creates a token with `POST /api/devices/printers` (shown once).
+creates one token per station in **Administración > Configuración > Impresoras**
+(the token is shown once; the same screen revokes it). The API equivalent is
+`POST /api/devices/printers {name}`. Production setup, including the reverse-proxy
+requirements for `/socket.io/` and `/api/print/*`, is in `docs/despliegue.md`.
 
 > **Production**: the first run asks for the API URL and the printer token and
 > stores both DPAPI-encrypted in `%APPDATA%\VipePOS\printer_credentials.dat`.

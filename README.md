@@ -1,14 +1,14 @@
-﻿# Restaurant POS System
+# Restaurant POS System
 
 ![Restaurant POS Logo](/public/vipe-pos.png)
 
 ## 🍽️ Descripción General
 
-Un sistema completo de punto de venta (POS) para restaurantes, diseñado para optimizar las operaciones diarias desde la toma de órdenes hasta la gestión administrativa. Esta aplicación web proporciona interfaces específicas para meseros, cocina, cajeros y administradores, con funcionalidades adaptadas a cada rol.
+Un sistema completo de punto de venta (POS) para restaurantes, diseñado para optimizar las operaciones diarias desde la toma de órdenes hasta la gestión administrativa. Esta aplicación web proporciona interfaces específicas para meseros, cocina, cajeros, operadores de domicilios y administradores, con funcionalidades adaptadas a cada rol.
 
 ## ✨ Características Principales
 
-- **Multi-rol**: Interfaces específicas para meseros, cocina, cajeros y administradores
+- **Multi-rol**: Interfaces específicas para meseros, cocina, cajeros, domicilios y administradores
 - **Gestión de mesas**: Asignación de mesas, estados y seguimiento de órdenes
 - **Menú digital**: Categorías, platos, precios y descripciones
 - **Carrito de compras**: Selección de productos, modificación de cantidades y comentarios
@@ -18,87 +18,85 @@ Un sistema completo de punto de venta (POS) para restaurantes, diseñado para op
 - **Inventario**: Artículos con SKU, fórmulas y preparaciones por lotes, bodegas, compras, conteos y mermas (ver [docs/inventario.md](docs/inventario.md))
 - **Reportes**: Ventas, productos populares, transacciones y más
 - **Domicilios**: Pedidos a domicilio con registro de clientes por teléfono, repartidores, tablero de estados y cobro anticipado o contra entrega (ver [docs/delivery-module.md](docs/delivery-module.md))
-- **Impresión**: Tickets de cocina y facturas para clientes
+- **Impresión**: Tickets de cocina y facturas para clientes, con cola durable por restaurante
 - **Promociones**: Configuración y aplicación de descuentos y ofertas
 - **Configuración de negocio**: Personalización de impuestos, propinas y datos del negocio
+- **Tiempo real**: Mesas, órdenes y domicilios se actualizan en todas las pantallas sin recargar
 - **Diseño responsive**: Adaptado para dispositivos móviles y de escritorio
 
 ## 🛠️ Tecnologías Utilizadas
 
-- **Frontend**: Next.js, React, TypeScript, Tailwind CSS
-- **Backend**: Supabase (PostgreSQL)
-- **Estado**: Zustand
-- **Gráficos**: Shadcn
-- **Autenticación**: Supabase Auth
-- **Almacenamiento**: Supabase Storage
-- **Tiempo real**: Supabase Realtime
+- **Frontend**: Next.js, React, TypeScript, Tailwind CSS, Shadcn, Zustand y TanStack Query
+- **Backend**: API NestJS (`apps/api`) con contrato OpenAPI y cliente tipado generado (`openapi-fetch`)
+- **Base de datos**: PostgreSQL 16 con Drizzle ORM y migraciones SQL (`packages/db`); políticas RLS y RPCs plpgsql para las operaciones transaccionales
+- **Autenticación**: propia de la API (argon2id, JWT de acceso y sesión de refresco en cookies httpOnly)
+- **Tiempo real**: `LISTEN/NOTIFY` de Postgres reenviado por socket.io
+- **Almacenamiento**: compatible con S3 (Cloudflare R2 o MinIO) con URLs prefirmadas
+- **Impresión**: servicio de Windows en Python (`pos/`)
+
+> **Migración.** El proyecto funcionó sobre Supabase hasta esta migración; las decisiones, la topología y el estado están en [docs/arquitectura-backend.md](docs/arquitectura-backend.md).
 
 ## 📋 Requisitos Previos
 
-- Node.js (v18 o superior)
-- npm o yarn
-- Cuenta en Supabase
+- Node.js 24 y pnpm (la versión que usan las imágenes es pnpm 11)
+- Docker con el plugin Docker Compose v2 (base de datos local, pruebas de base de datos, pruebas de integración de la API y almacenamiento local)
+- Python 3.11 o superior solo para desarrollar el servicio de impresión
 
 ## 🚀 Configuración Inicial
 
-### 1. Clonar el repositorio
+El repositorio es un workspace de pnpm: la web vive en la raíz, la API en `apps/api` y el esquema de base de datos en `packages/db`.
+
+### 1. Clonar el repositorio e instalar dependencias
 
 ```bash
 git clone https://github.com/tu-usuario/restaurant-pos.git
 cd restaurant-pos
+pnpm install
 ```
 
-### 2. Instalar dependencias
+### 2. Base de datos local
 
 ```bash
-npm install
-# o
-yarn install
+pnpm db:dev
 ```
 
-### 3. Configurar variables de entorno
+Levanta el servicio `db` de `docker-compose.yml` (Postgres 16 con pgTAP), aplica las migraciones de `packages/db/migrations/` como `vipe_migrator` y carga `packages/db/seed/dev.sql`. Es idempotente: se puede repetir sin duplicar datos. Si el puerto 5432 está ocupado, usa `VIPE_DB_PORT=5433` (y ajusta `DATABASE_URL` en `apps/api/.env`).
 
-Crea un archivo `.env` en la raíz del proyecto con las siguientes variables:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=tu_url_de_supabase
-NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_clave_anonima_de_supabase
-SUPABASE_SERVICE_ROLE_KEY=tu_clave_de_servicio_de_supabase
-```
-
-### 4. Configurar la base de datos
-
-La base de datos local se levanta con la [Supabase CLI](https://supabase.com/docs/guides/cli).
-Todo el esquema vive en un único directorio versionado, `supabase/migrations/`:
+### 3. Almacenamiento de imágenes (opcional)
 
 ```bash
-pnpm supabase start        # levanta db, auth, storage, realtime y studio
-pnpm supabase db reset     # aplica las migraciones y carga supabase/seed.sql
+docker compose up -d minio minio-init
 ```
 
-`pnpm supabase status` muestra la URL local y las claves (`API_URL`,
-`ANON_KEY`, `SERVICE_ROLE_KEY`) para pegarlas en el `.env` de la sección anterior.
+MinIO local (API S3 en `:9000`, consola en `:9001`) con el bucket público `vipe-dev`. Sin él todo funciona salvo la subida de imágenes de platos (`/api/storage/*` responde 503).
 
-### Fresh stack
-
-Para borrar la base local y reconstruirla desde cero (migraciones + datos de ejemplo):
+### 4. API
 
 ```bash
-pnpm supabase db reset
+cp apps/api/env.example apps/api/.env
+pnpm api:dev
 ```
 
-**Warning:** `supabase db reset` destruye los datos locales (perfiles, mesas, comandas).
-Para detener los contenedores: `pnpm supabase stop` (agrega `--no-backup` para borrar también los datos locales).
+API NestJS en `http://localhost:4000`, documentación OpenAPI en `http://localhost:4000/api/docs`. `apps/api/env.example` ya apunta a la base y al MinIO locales.
 
-### 5. Iniciar el servidor de desarrollo
+### 5. Web
 
 ```bash
-npm run dev
-# o
-yarn dev
+pnpm dev
 ```
 
-La landing page pública estará disponible en `http://localhost:3000` y el portal del sistema (login y vistas por rol) en `http://localhost:3000/portal`.
+La landing page pública queda en `http://localhost:3000` y el portal del sistema (login y vistas por rol) en `http://localhost:3000/portal`. Ingresa con una de las [cuentas de desarrollo](#cuentas-locales-de-desarrollo).
+
+La web llama siempre a su propio origen (`/api/...`), sin URL de API en el build. En desarrollo, `next.config.mjs` reenvía `/api/:path*` y `/socket.io/` a `API_PROXY_TARGET` (variable del servidor de Next, por defecto `http://localhost:4000`; ver `.env.example`); en producción lo hace el proxy inverso. Así las cookies de sesión son del mismo origen.
+
+### Reiniciar la base local
+
+`pnpm db:dev` no borra datos. Para empezar de cero, elimina el contenedor y su volumen y vuelve a ejecutarlo:
+
+```bash
+docker compose down -v      # borra también el volumen de MinIO local
+pnpm db:dev
+```
 
 ## 📱 Guía de Uso
 
@@ -112,20 +110,19 @@ El sistema se usa desde `/portal`: tras iniciar sesión, se mostrará una pantal
 - **Operador de domicilios**: Para tomar pedidos a domicilio, despacharlos y cerrarlos
 - **Administrador**: Para configuración y reportes
 
-El rol lo define la sesión de Supabase de la cuenta: los perfiles no tienen contraseña propia.
+El rol lo define la cuenta con la que se inició sesión (lo resuelve la API en cada petición): los perfiles no tienen contraseña propia.
 
 #### Cuentas locales de desarrollo
 
-`supabase/seed.sql` (cargado por `pnpm supabase db reset`) crea estas cuentas. Son **solo para desarrollo local**; no las uses en producción.
+`pnpm db:dev` carga `packages/db/seed/dev.sql`, que crea estas cuentas, todas con la contraseña `vipe-dev-2026` (guardada como hash argon2id). Son **solo para desarrollo local**; la semilla nunca se carga en producción.
 
-| Correo | Contraseña | Rol |
-|--------|------------|-----|
-| `admin@restaurant.com` | `admin123` | Administrador |
-| `carlos@restaurant.com` | `carlos123` | Cajero |
-| `maria@restaurant.com` | `maria123` | Mesero |
-| `deiby@restaurant.com` | `deiby123` | Mesero |
-| `tester@restaurant.com` | `tester123` | Mesero |
-| `domicilios@restaurant.com` | `domicilios123` | Operador de domicilios |
+| Correo | Rol |
+|--------|-----|
+| `admin@vipe.local` | Administrador |
+| `mesero@vipe.local` | Mesero |
+| `caja@vipe.local` | Cajero |
+| `cocina@vipe.local` | Cocina |
+| `domicilios@vipe.local` | Operador de domicilios |
 
 ### Vista de Mesero
 
@@ -183,14 +180,18 @@ El panel de administración es un dashboard con barra lateral (plegable en escri
 | General | Resumen, Órdenes, Mesas, Caja |
 | Catálogo | Menú (categorías, platos, promociones), Fórmulas |
 | Inventario | Resumen, Artículos, Movimientos, Compras, Producción, Conteos, Bodegas |
-| Configuración | Negocio, Impuestos y propinas, Inventario, Métodos de pago, Domicilios, Personal |
+| Configuración | Negocio, Impuestos y propinas, Inventario, Métodos de pago, Domicilios, Personal, Impresoras |
 
 La guía de inventario y fórmulas está en [docs/inventario.md](docs/inventario.md).
 
 En Configuración también hay dos apartados relacionados con domicilios:
 
 - **Repartidores**: crea, edita y activa/desactiva repartidores (nombre y teléfono; no inician sesión) y define el valor sugerido del domicilio
-- **Personal**: crea cuentas de acceso (correo, contraseña y rol: mesero, cocina, cajero u operador de domicilios) mediante la Edge Function `create-staff-account`. Solo la puede invocar un administrador, el restaurante se toma del administrador que la invoca y no permite crear cuentas de rol administrador. Ver [docs/delivery-module.md](docs/delivery-module.md#alta-de-cuentas-de-personal) y [DOCKER.md](DOCKER.md) para servirla o desplegarla
+- **Personal**: crea, edita, desactiva y elimina cuentas de acceso (correo, contraseña y rol: mesero, cocina, cajero u operador de domicilios) y cambia contraseñas, con `/api/staff`. Solo un administrador activo puede hacerlo, el restaurante es el del administrador, no se pueden crear ni modificar cuentas de administrador ni la propia; estas reglas se aplican dentro de la base de datos. Cambiar la contraseña o desactivar una cuenta cierra sus sesiones abiertas. Ver [docs/delivery-module.md](docs/delivery-module.md#alta-de-cuentas-de-personal)
+
+Y uno para las estaciones de impresión:
+
+- **Impresoras**: crea un token por estación de impresión (se muestra una sola vez), lista la última conexión de cada una y revoca tokens. Ver [Servicio de impresión](#️-servicio-de-impresión-python)
 
 ## 📁 Estructura del Proyecto
 
@@ -210,28 +211,30 @@ restaurant-pos/
 │   ├── ui/                 # Componentes de UI reutilizables
 │   └── views/              # Vistas principales por rol
 ├── hooks/                  # Hooks personalizados
-├── lib/                    # Utilidades y servicios
-│   └── supabase/           # Servicios de Supabase
+├── lib/                    # Utilidades y lógica de la web
+│   ├── api/                # Cliente tipado de la API, servicios por módulo y socket de tiempo real
+│   └── realtime/           # Merge de eventos de tiempo real (órdenes y mesas)
 ├── public/                 # Archivos estáticos
 ├── store/                  # Estado global (Zustand)
 ├── types/                  # Definiciones de tipos TypeScript
 ├── utils/                  # Funciones utilitarias
 ├── apps/
-│   └── api/                # Backend NestJS (en migración, ver docs/arquitectura-backend.md)
-└── packages/
-    └── db/                 # Esquema, migraciones SQL y cliente Drizzle
+│   └── api/                # API NestJS (Dockerfile con targets api y migrate)
+├── packages/
+│   └── db/                 # Migraciones SQL, roles, semilla, pruebas pgTAP, cliente Drizzle
+│       └── migration-from-supabase/  # Herramientas del corte de datos (runbook)
+├── pos/                    # Servicio de impresión en Python (Windows)
+├── deploy/                 # Caddyfile e init de roles de producción
+└── docs/                   # Arquitectura, despliegue, runbook y guías de módulos
 ```
-
-El repositorio es un workspace de pnpm. La app web vive en la raíz; el backend y la base
-de datos son paquetes propios. La migración desde Supabase hacia este backend se describe en
-[docs/arquitectura-backend.md](docs/arquitectura-backend.md).
 
 ## 🔄 Flujo de Datos
 
-1. **Autenticación**: Sesión de Supabase; el rol de la cuenta define a qué perfil accede
-2. **Estado Global**: Almacenamiento de configuración, estado de caja, y datos del POS
-3. **Servicios de Supabase**: Comunicación con la base de datos para CRUD y operaciones complejas
-4. **Tiempo Real**: Actualización en tiempo real de órdenes, mesas y estados
+1. **Autenticación**: `POST /api/auth/login` deja las cookies de sesión; la API resuelve el perfil, el rol y el restaurante en cada petición
+2. **Acceso a datos**: la web usa los servicios de `lib/api/` sobre el cliente tipado; la API abre una transacción por petición con `app.user_id`, y las políticas RLS limitan los datos al restaurante del usuario
+3. **Reglas de negocio**: precios, cuentas, pagos, inventario y estados se calculan en la API y en las RPCs de Postgres, nunca en el navegador
+4. **Tiempo Real**: los triggers de Postgres avisan con `pg_notify`; la API reenvía el cambio por socket.io a las pantallas del mismo restaurante
+5. **Estado Global**: Zustand y TanStack Query guardan configuración, estado de caja y datos del POS en la web
 
 ## 📊 Modelos de Datos
 
@@ -276,151 +279,27 @@ Personaliza la información que aparece en las facturas:
 
 ## 🧪 Pruebas
 
-```bash
-npm run test
-# o
-yarn test
-```
+| Comando | Qué cubre | Requiere |
+|---|---|---|
+| `pnpm test` | Web: lógica, hooks y componentes (Vitest) | — |
+| `pnpm test:watch` | Lo mismo, en modo interactivo | — |
+| `pnpm typecheck` | Tipos de la web | — |
+| `pnpm lint` | ESLint de la web | — |
+| `pnpm api:test` | API: specs unitarias y de integración (Vitest; las de integración levantan Postgres y MinIO con Testcontainers) | Docker |
+| `pnpm api:lint`, `pnpm api:typecheck`, `pnpm api:build` | Calidad estática y compilación de la API | — |
+| `pnpm db:typecheck` | Paquete de base de datos y herramientas de migración | — |
+| `pnpm test:db` | Base de datos: RLS, permisos, RPCs y triggers (pgTAP sobre Postgres 16) | Docker |
+| `pnpm db:rehearse-migration` | Ensayo completo de la migración de datos con contenedores desechables | Docker |
+| `python3 -m unittest discover -s pos` | Servicio de impresión (sin impresora ni red) | Python 3.11 |
 
-La lógica pura de TypeScript (`lib/payments`, `store`) se prueba con Vitest en
-entorno Node, sin navegador:
-
-```bash
-pnpm test                                      # una pasada
-pnpm test:watch                                # modo interactivo
-```
-
-Pruebas de la capa de impresión en Python (desde la raíz del repositorio):
-
-```bash
-python3 -m unittest pos/test_print_renderer.py
-```
-
-Otras verificaciones: `pnpm typecheck` y `pnpm build`.
-
-### Backend (apps/api)
-
-```bash
-pnpm api:dev                                   # NestJS en modo watch (lee apps/api/.env, ver apps/api/env.example)
-pnpm api:test                                  # specs de la API (Vitest; las de integración levantan Postgres con Testcontainers, requiere Docker)
-pnpm api:lint && pnpm api:typecheck            # calidad estática
-pnpm api:build                                 # compila packages/db/dist y apps/api/dist
-pnpm db:typecheck                              # paquete de base de datos
-pnpm db:migrate                                # aplica packages/db/migrations (requiere DATABASE_URL)
-pnpm --filter @vipe/db schema:pull             # regenera packages/db/src/schema desde una base migrada (requiere DATABASE_URL)
-```
-
-La API expone `GET /api/health` y la documentación OpenAPI en `/api/docs`.
-
-Catálogo y configuración (lecturas para cualquier rol autenticado, escrituras solo `admin`; DTOs en camelCase, campos desconocidos -> 422):
-
-- `GET|POST /api/catalog/categories` (`?active=true`), `PATCH|DELETE /api/catalog/categories/:id` (409 `Category has dishes` si tiene platos).
-- `GET|POST /api/catalog/dishes` (`?categoryId=&active=true&pricing=promotions`: aplica la mejor promoción vigente con el reloj del servidor), `PATCH|DELETE /api/catalog/dishes/:id`.
-- `GET|POST /api/catalog/promotions`, `GET /api/catalog/promotions/active`, `PATCH|DELETE /api/catalog/promotions/:id` (borra también sus platos), `GET|PUT /api/catalog/promotions/:id/dishes` (`PUT {dishIds}` reemplaza el conjunto de forma atómica).
-- `GET /api/config` (todas las claves conocidas con valores por defecto del servidor, tipadas) y `PUT /api/config` (upsert por restaurante y clave en una transacción; devuelve la configuración completa).
-
-Órdenes, mesas y meseros (cada escritura es una sola transacción; la cuenta la calcula la base de datos con `private.recompute_order_bill`, nunca el cliente):
-
-- `GET /api/orders?status=kitchen,delivered&include=table,waiter` (ítems siempre incluidos, más recientes primero, máximo 500) y `GET /api/orders/:id`.
-- `POST /api/orders` `{tableId, waiterId?, items: [{dishId, quantity, unitPrice?, comments?}], tipPercentage?, force?}` (admin, mesero, cajero; solo `dine_in`, los domicilios los crea su módulo): el precio cobrado es siempre el del catálogo con las promociones vigentes (reloj del servidor); `unitPrice` es el precio que mostró el cliente y, si difiere, responde 409 `Price changed` con `{prices}` sin escribir nada. 409 `Table has an open order` con `{orderId}` si la mesa ya tiene una orden abierta. Crea la orden y sus ítems en `kitchen`, verifica stock con `check_dishes_stock` (409 `{shortages}` salvo `force: true`), descuenta con `consume_order_stock` y deja la mesa en `kitchen`. `POST /api/orders/:id/items` `{items, force?}` agrega ítems con las mismas reglas (409 `Order is closed` si está pagada o cancelada).
-- `PATCH /api/orders/:id/status` `{status: 'delivered'}` (solo desde `kitchen`; `paid` y `cancelled` -> 422), `POST /api/orders/:id/items/served` `{itemIds}` (cocina; al servir el último ítem la orden pasa a `delivered` y la mesa a `served`), `DELETE /api/orders/:id` (admin; `delete_order_with_items`; la mesa se libera solo si no le queda otra orden abierta; 409 `Order is paid` para órdenes pagadas).
-- `GET /api/tables` (por número, con `waiterName`), `POST /api/tables`, `PATCH|DELETE /api/tables/:id` (admin; 409 `Table has open orders`; el número es único por restaurante), `POST /api/tables/:id/assign` `{waiterId}` (-> `occupied`) y `POST /api/tables/:id/release` `{force?}` (409 desde `kitchen`, `delivered`, `served` o `reserved`, salvo admin con `force: true`).
-- `GET /api/staff/waiters`: meseros activos del restaurante.
-
-#### Stack local sin Supabase (Postgres + API + web)
-
-```bash
-pnpm db:dev      # levanta el servicio `db` de docker-compose, aplica las migraciones y carga packages/db/seed/dev.sql
-pnpm api:dev     # API en http://localhost:4000 (copiar apps/api/env.example a apps/api/.env)
-pnpm dev         # web en http://localhost:3000; /api y /socket.io se reenvían a la API
-```
-
-`pnpm db:dev` es idempotente: se puede repetir sin duplicar datos. La semilla crea un
-restaurante con categorías, platos y mesas de ejemplo, y estas cuentas, todas con la
-contraseña de desarrollo `vipe-dev-2026` (guardada como hash argon2id):
-
-| Correo | Rol |
-| --- | --- |
-| `admin@vipe.local` | admin |
-| `mesero@vipe.local` | waiter |
-| `caja@vipe.local` | cashier |
-| `cocina@vipe.local` | kitchen |
-| `domicilios@vipe.local` | delivery_operator |
-
-La web llama siempre a su propio origen (`/api/...`), sin URL de API en el build. En
-desarrollo, `next.config.mjs` reenvía `/api/:path*` y `/socket.io/:path*` a
-`API_PROXY_TARGET` (variable del servidor de Next, por defecto `http://localhost:4000`);
-en producción lo hace el proxy inverso. Así las cookies de sesión son del mismo origen.
-El inicio y cierre de sesión ya pasan por la API. Este stack no necesita variables de
-Supabase: sin `NEXT_PUBLIC_SUPABASE_URL` ni la clave anónima, el cliente heredado usa
-valores inertes y los módulos aún no migrados simplemente no devuelven datos.
-
-Pagos y caja: `/api/payments` (métodos de pago con código y orden calculados en el servidor, cobro con `pay_order`, división de cuentas) y `/api/registers` (apertura con hora del servidor, una sola caja abierta por restaurante, resumen y cierre con `register_summary`/`close_register`, movimientos de efectivo). Las fechas de caja y de órdenes completadas (`?date=AAAA-MM-DD`) usan la zona horaria del restaurante (columna `restaurants.timezone`, por defecto `America/Bogota`).
-
-Inventario (`/api/inventory`): artículos con stock inicial en la misma transacción, categorías, bodegas, proveedores, lotes FEFO, movimientos paginados (fechas `from`/`to` en la zona horaria del restaurante), ajustes y traslados, órdenes de compra con diff de líneas atómico y recepción con estado de pago, producción, conteos, fórmulas con costo unitario calculado en el servidor y resumen. Disponibilidad de platos: `POST /api/inventory/dish-availability` aplica la regla de `check_dishes_stock` (saldo de la bodega principal; control de inventario desactivado = todo disponible).
-
-Impresión: `POST /api/print/commands` y `POST /api/print/invoices` (cualquier rol con sesión) encolan el ticket y lo envían a las impresoras del restaurante; `GET /api/print/jobs/pending` y `POST /api/print/jobs/:id/ack` (token de impresora como `Authorization: Bearer`); `GET|POST /api/devices/printers` y `DELETE /api/devices/printers/:id` (admin). Detalle en [Servicio de impresión](#️-servicio-de-impresión-python).
-
-Domicilios (`/api/delivery`): `GET /customers?phone=` busca el cliente por teléfono normalizado (`+57 310…` → `310…`) con sus direcciones (404 si no existe); `GET|POST /couriers` y `PATCH /couriers/:id` administran domiciliarios (escritura solo admin); `POST /orders` crea el domicilio, descuenta inventario y encola la comanda de cocina en una sola transacción y devuelve `consumption` con los faltantes; `POST /orders/:id/status {action, courierId?, reason?}` aplica las transiciones de `set_delivery_status` con el mensaje del servidor y `code`; `GET /active` lista los domicilios abiertos y los cerrados hoy según la zona horaria del restaurante.
-
-Personal (`/api/staff`, solo admin): alta, edición, baja y cambio de contraseña de cuentas de mesero, cocina, cajero y operador de domicilios; las reglas (admin activo del mismo restaurante, nunca un admin ni la propia cuenta, lista de roles permitidos) se aplican dentro de la base de datos. Dashboard: `GET /api/dashboard/summary?days=` calcula ventas del mes, órdenes en cocina, serie diaria y platos más vendidos en la zona horaria del restaurante.
-
-Almacenamiento: la API emite URLs prefirmadas (PUT) hacia un almacenamiento compatible con S3 configurado con `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_BASE_URL` y `S3_FORCE_PATH_STYLE` (ver `apps/api/env.example`); sin esas variables la API arranca y `/api/storage/*` responde 503 `Storage is not configured`. En desarrollo, `docker compose up -d minio minio-init` levanta MinIO (API S3 en `:9000`, consola en `:9001`) y crea el bucket público `vipe-dev`; la imagen es la compilación de Chainguard fijada por digest porque el proyecto original ya no publica imágenes comunitarias. En producción, las variables `S3_*` deben apuntar a Cloudflare R2 u otro almacenamiento compatible con S3.
-
-Errores: las respuestas 4xx originadas en la base de datos incluyen `code` (SQLSTATE) y, para `P0001` con `DETAIL`, `details`; los 422 de validación no llevan `code`.
-
-Tiempo real: la web abre una sola conexión `socket.io-client` (versión fija `4.8.4`, la
-misma del servidor) al namespace `/realtime`, autenticada con la cookie de sesión
-(`lib/api/realtime.ts`). Recibe `pos_changes` (mesas con `waiter_name`, órdenes con
-`order_items`, ítems de orden), y ante `resync` o una reconexión vuelve a leer las
-órdenes, las mesas y los domicilios; tras un refresco de sesión se reconecta. La ruta es
-`/socket.io/` con la barra final: en desarrollo `next.config.mjs` usa
-`skipTrailingSlashRedirect` y una regla explícita para `/socket.io/` (sin ellas Next
-responde 308 o envía `/socket.io` y la API contesta 404); en producción el proxy inverso
-debe conservar la barra y permitir el upgrade a WebSocket.
-
-Contrato tipado: `pnpm --filter @vipe/api openapi` escribe `apps/api/openapi.json` y
-`pnpm web:api-types` genera `lib/api/schema.d.ts` (ambos versionados). CI falla si
-alguno difiere de lo que produce el código.
-
-Variables de entorno (`apps/api/env.example`):
-
-| Variable | Obligatoria | Valor por defecto | Uso |
-| --- | --- | --- | --- |
-| `PORT` | no | `4000` | Puerto HTTP. |
-| `DATABASE_URL` | sí | | Conexión como `vipe_api` (nunca superusuario ni `BYPASSRLS`). |
-| `WEB_ORIGIN` | sí | | Origen de la web autorizado por CORS con credenciales. |
-| `JWT_SECRET` | sí | | Clave HS256 del token de acceso; mínimo 32 caracteres. |
-| `COOKIE_SECURE` | no | `true` | Marca las cookies como `Secure`; `false` solo en desarrollo local por http. |
-| `ACCESS_TOKEN_TTL_SECONDS` | no | `900` | Vida del token y la cookie de acceso. |
-| `REFRESH_TOKEN_TTL_SECONDS` | no | `2592000` | Vida de la sesión de refresco (30 días). |
-
-Autenticación por cookies httpOnly (`SameSite=Lax`): `vipe_access` (JWT de acceso, ruta `/`) y `vipe_refresh` (token opaco de refresco, ruta `/api/auth`). Toda ruta exige `vipe_access` salvo las públicas; cada petición autenticada corre en una transacción con `app.user_id`, de modo que RLS limita los datos al restaurante del usuario.
-
-| Endpoint | Respuesta |
-| --- | --- |
-| `POST /api/auth/login` `{email, password}` | `200 {user: {id, email}, profile: {id, name, role, restaurantId}}` y ambas cookies; `401 Invalid credentials` si el correo no existe, la contraseña es incorrecta o el usuario está inactivo; `403` si el usuario no tiene perfil activo. |
-| `POST /api/auth/refresh` | `204` y cookies rotadas; `401` si falta el token de refresco, venció, fue revocado o ya se usó. |
-| `POST /api/auth/logout` | `204`, revoca la sesión (por la cookie de refresco o, si falta, por la de acceso) y borra ambas cookies. El token de acceso deja de valer de inmediato. |
-| `GET /api/auth/me` | `200` con el mismo cuerpo del login; `401` sin cookie de acceso válida. |
-
-Los errores siempre tienen la forma `{statusCode, error, message}`.
-
-Tiempo real: socket.io en el namespace `/realtime` (ruta `/socket.io`), autenticado con la misma cookie `vipe_access` del handshake; sin cookie válida, sesión viva y perfil activo la conexión falla con `connect_error` `unauthorized`. Un `Origin` de navegador distinto de `WEB_ORIGIN` también se rechaza. Cada socket entra a la sala `restaurant:<id>` de su restaurante y recibe:
-
-| Evento | Payload |
-| --- | --- |
-| `ready` | `{restaurantId}` al quedar suscrito. |
-| `pos_changes` | `{schema: 'public', table, commit_timestamp, eventType: 'INSERT' \| 'UPDATE' \| 'DELETE', new, old, errors: null}`, la forma de `postgres_changes` de Supabase, para `orders` (con `new.order_items`), `order_items` (con el `old` completo), `tables` (con `new.waiter_name`) y `order_deliveries`. |
-| `resync` | Sin payload; el listener de Postgres se reconectó y pudo perder cambios: el cliente vuelve a leer el estado. |
+Otras verificaciones: `pnpm build` (web).
 
 ### Pruebas de base de datos
 
 El comportamiento de la base de datos (políticas RLS, permisos, RPCs) se cubre con
-pruebas SQL de pgTAP en `packages/db/tests/`, que corren sobre Postgres 16 sin
-Supabase: el servicio `db` de `docker-compose.yml` (Postgres + pgTAP), las
-migraciones de `packages/db/migrations/` aplicadas con `pnpm db:migrate` y
-`pg_prove`. Solo requiere Docker; no hace falta `pnpm supabase start`:
+pruebas SQL de pgTAP en `packages/db/tests/`, que corren sobre el servicio `db` de
+`docker-compose.yml` (Postgres 16 + pgTAP), con las migraciones de
+`packages/db/migrations/` aplicadas y `pg_prove`:
 
 ```bash
 pnpm test:db                                                  # todos los archivos
@@ -434,21 +313,132 @@ ocupado, usa `VIPE_DB_PORT=5433 pnpm test:db`.
 
 Cada archivo es autónomo (`BEGIN; ... SELECT plan(n); ... finish(); ROLLBACK;`), así
 que la base nunca se modifica. Para suplantar a un usuario se usa el rol de la API
-y el ajuste `app.user_id`, igual que hará la API en cada transacción:
+y el ajuste `app.user_id`, igual que hace la API en cada transacción:
 
 ```sql
 SELECT set_config('app.user_id', '<uuid del usuario>', true);
 SET LOCAL ROLE vipe_api;
 ```
 
-Consulta `packages/db/tests/README.md` para escribir pruebas. Las pruebas antiguas
-de `supabase/tests/` siguen ahí hasta que se retire Supabase (T13).
+Consulta `packages/db/tests/README.md` para escribir pruebas.
+
+### Base de datos y contrato
+
+```bash
+pnpm db:migrate                                # aplica packages/db/migrations (requiere DATABASE_URL de vipe_migrator)
+pnpm --filter @vipe/db schema:pull             # regenera packages/db/src/schema desde una base migrada (requiere DATABASE_URL)
+pnpm --filter @vipe/api openapi                # escribe apps/api/openapi.json
+pnpm web:api-types                             # genera lib/api/schema.d.ts desde openapi.json
+```
+
+`apps/api/openapi.json` y `lib/api/schema.d.ts` están versionados; CI falla si alguno
+difiere de lo que produce el código.
+
+---
+
+## 🔌 API (apps/api)
+
+La API expone `GET /api/health` y la documentación OpenAPI en `/api/docs`. Todas las rutas viven bajo `/api`; el tiempo real, en `/socket.io/`.
+
+### Autenticación
+
+Cookies httpOnly (`SameSite=Lax`): `vipe_access` (JWT de acceso, ruta `/`) y `vipe_refresh` (token opaco de refresco, ruta `/api/auth`). Toda ruta exige `vipe_access` salvo las públicas; cada petición autenticada corre en una transacción con `app.user_id`, de modo que RLS limita los datos al restaurante del usuario.
+
+| Endpoint | Respuesta |
+| --- | --- |
+| `POST /api/auth/login` `{email, password}` | `200 {user: {id, email}, profile: {id, name, role, restaurantId}}` y ambas cookies; `401 Invalid credentials` si el correo no existe, la contraseña es incorrecta o el usuario está inactivo; `403` si el usuario no tiene perfil activo. |
+| `POST /api/auth/refresh` | `204` y cookies rotadas; `401` si falta el token de refresco, venció, fue revocado o ya se usó. |
+| `POST /api/auth/logout` | `204`, revoca la sesión (por la cookie de refresco o, si falta, por la de acceso) y borra ambas cookies. El token de acceso deja de valer de inmediato. |
+| `GET /api/auth/me` | `200` con el mismo cuerpo del login; `401` sin cookie de acceso válida. |
+
+Los errores siempre tienen la forma `{statusCode, error, message}`. Las respuestas 4xx originadas en la base de datos incluyen `code` (SQLSTATE) y, para `P0001` con `DETAIL`, `details`; los 422 de validación no llevan `code`.
+
+### Tiempo real
+
+Socket.io en el namespace `/realtime` (ruta `/socket.io`), autenticado con la misma cookie `vipe_access` del handshake; sin cookie válida, sesión viva y perfil activo la conexión falla con `connect_error` `unauthorized`. Un `Origin` de navegador distinto de `WEB_ORIGIN` también se rechaza. Cada socket entra a la sala `restaurant:<id>` de su restaurante y recibe:
+
+| Evento | Payload |
+| --- | --- |
+| `ready` | `{restaurantId}` al quedar suscrito. |
+| `pos_changes` | `{schema: 'public', table, commit_timestamp, eventType: 'INSERT' \| 'UPDATE' \| 'DELETE', new, old, errors: null}`, la forma `RealtimePostgresChangesPayload` que consumen `lib/realtime/order-merge.ts` y `table-merge.ts`, para `orders` (con `new.order_items`), `order_items` (con el `old` completo), `tables` (con `new.waiter_name`) y `order_deliveries`. |
+| `resync` | Sin payload; el listener de Postgres se reconectó y pudo perder cambios: el cliente vuelve a leer el estado. |
+
+La web abre una sola conexión `socket.io-client` (versión fija `4.8.4`, la
+misma del servidor) al namespace `/realtime`, autenticada con la cookie de sesión
+(`lib/api/realtime.ts`). Recibe `pos_changes` (mesas con `waiter_name`, órdenes con
+`order_items`, ítems de orden), y ante `resync` o una reconexión vuelve a leer las
+órdenes, las mesas y los domicilios; tras un refresco de sesión se reconecta. La ruta es
+`/socket.io/` con la barra final: en desarrollo `next.config.mjs` usa
+`skipTrailingSlashRedirect` y una regla explícita para `/socket.io/` (sin ellas Next
+responde 308 o envía `/socket.io` y la API contesta 404); en producción el proxy inverso
+debe conservar la barra y permitir el upgrade a WebSocket.
+
+### Catálogo y configuración
+
+Lecturas para cualquier rol autenticado, escrituras solo `admin`; DTOs en camelCase, campos desconocidos -> 422.
+
+- `GET|POST /api/catalog/categories` (`?active=true`), `PATCH|DELETE /api/catalog/categories/:id` (409 `Category has dishes` si tiene platos).
+- `GET|POST /api/catalog/dishes` (`?categoryId=&active=true&pricing=promotions`: aplica la mejor promoción vigente con el reloj del servidor), `PATCH|DELETE /api/catalog/dishes/:id`.
+- `GET|POST /api/catalog/promotions`, `GET /api/catalog/promotions/active`, `PATCH|DELETE /api/catalog/promotions/:id` (borra también sus platos), `GET|PUT /api/catalog/promotions/:id/dishes` (`PUT {dishIds}` reemplaza el conjunto de forma atómica).
+- `GET /api/config` (todas las claves conocidas con valores por defecto del servidor, tipadas) y `PUT /api/config` (upsert por restaurante y clave en una transacción; devuelve la configuración completa).
+
+### Órdenes, mesas y meseros
+
+Cada escritura es una sola transacción; la cuenta la calcula la base de datos con `private.recompute_order_bill`, nunca el cliente.
+
+- `GET /api/orders?status=kitchen,delivered&include=table,waiter` (ítems siempre incluidos, más recientes primero, máximo 500) y `GET /api/orders/:id`.
+- `POST /api/orders` `{tableId, waiterId?, items: [{dishId, quantity, unitPrice?, comments?}], tipPercentage?, force?}` (admin, mesero, cajero; solo `dine_in`, los domicilios los crea su módulo): el precio cobrado es siempre el del catálogo con las promociones vigentes (reloj del servidor); `unitPrice` es el precio que mostró el cliente y, si difiere, responde 409 `Price changed` con `{prices}` sin escribir nada. 409 `Table has an open order` con `{orderId}` si la mesa ya tiene una orden abierta. Crea la orden y sus ítems en `kitchen`, verifica stock con `check_dishes_stock` (409 `{shortages}` salvo `force: true`), descuenta con `consume_order_stock` y deja la mesa en `kitchen`. `POST /api/orders/:id/items` `{items, force?}` agrega ítems con las mismas reglas (409 `Order is closed` si está pagada o cancelada).
+- `PATCH /api/orders/:id/status` `{status: 'delivered'}` (solo desde `kitchen`; `paid` y `cancelled` -> 422), `POST /api/orders/:id/items/served` `{itemIds}` (cocina; al servir el último ítem la orden pasa a `delivered` y la mesa a `served`), `DELETE /api/orders/:id` (admin; `delete_order_with_items`; la mesa se libera solo si no le queda otra orden abierta; 409 `Order is paid` para órdenes pagadas).
+- `GET /api/tables` (por número, con `waiterName`), `POST /api/tables`, `PATCH|DELETE /api/tables/:id` (admin; 409 `Table has open orders`; el número es único por restaurante), `POST /api/tables/:id/assign` `{waiterId}` (-> `occupied`) y `POST /api/tables/:id/release` `{force?}` (409 desde `kitchen`, `delivered`, `served` o `reserved`, salvo admin con `force: true`).
+- `GET /api/staff/waiters`: meseros activos del restaurante.
+
+### Pagos y caja
+
+`/api/payments` (métodos de pago con código y orden calculados en el servidor, cobro con `pay_order`, división de cuentas) y `/api/registers` (apertura con hora del servidor, una sola caja abierta por restaurante, resumen y cierre con `register_summary`/`close_register`, movimientos de efectivo). Las fechas de caja y de órdenes completadas (`?date=AAAA-MM-DD`) usan la zona horaria del restaurante (columna `restaurants.timezone`, por defecto `America/Bogota`).
+
+### Inventario
+
+`/api/inventory`: artículos con stock inicial en la misma transacción, categorías, bodegas, proveedores, lotes FEFO, movimientos paginados (fechas `from`/`to` en la zona horaria del restaurante), ajustes y traslados, órdenes de compra con diff de líneas atómico y recepción con estado de pago, producción, conteos, fórmulas con costo unitario calculado en el servidor y resumen. Disponibilidad de platos: `POST /api/inventory/dish-availability` aplica la regla de `check_dishes_stock` (saldo de la bodega principal; control de inventario desactivado = todo disponible).
+
+### Domicilios
+
+`/api/delivery`: `GET /customers?phone=` busca el cliente por teléfono normalizado (`+57 310…` → `310…`) con sus direcciones (404 si no existe); `GET|POST /couriers` y `PATCH /couriers/:id` administran domiciliarios (escritura solo admin); `POST /orders` crea el domicilio, descuenta inventario y encola la comanda de cocina en una sola transacción y devuelve `consumption` con los faltantes; `POST /orders/:id/status {action, courierId?, reason?}` aplica las transiciones de `set_delivery_status` con el mensaje del servidor y `code`; `GET /active` lista los domicilios abiertos y los cerrados hoy según la zona horaria del restaurante.
+
+### Personal y dashboard
+
+`/api/staff` (solo admin): alta, edición, baja y cambio de contraseña de cuentas de mesero, cocina, cajero y operador de domicilios; las reglas (admin activo del mismo restaurante, nunca un admin ni la propia cuenta, lista de roles permitidos) se aplican dentro de la base de datos. Dashboard: `GET /api/dashboard/summary?days=` calcula ventas del mes, órdenes en cocina, serie diaria y platos más vendidos en la zona horaria del restaurante.
+
+### Almacenamiento
+
+La API emite URLs prefirmadas (PUT) hacia un almacenamiento compatible con S3 configurado con `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_BASE_URL` y `S3_FORCE_PATH_STYLE` (ver `apps/api/env.example`); sin esas variables la API arranca y `/api/storage/*` responde 503 `Storage is not configured`. En desarrollo, `docker compose up -d minio minio-init` levanta MinIO (API S3 en `:9000`, consola en `:9001`) y crea el bucket público `vipe-dev`; la imagen es la compilación de Chainguard fijada por digest porque el proyecto original ya no publica imágenes comunitarias. En producción, las variables `S3_*` deben apuntar a Cloudflare R2 u otro almacenamiento compatible con S3, con la regla CORS de [docs/despliegue.md](docs/despliegue.md#4-almacenamiento-de-imágenes). `POST /api/storage/uploads {kind: 'dish', contentType, size}` acepta `image/*` salvo SVG hasta 5 MB y devuelve `{uploadUrl, key, publicUrl}` con la clave `<restaurantId>/dishes/<uuid>.<ext>`; `DELETE /api/storage/objects {publicUrl}` solo borra objetos bajo el prefijo del restaurante.
+
+### Impresión
+
+`POST /api/print/commands` y `POST /api/print/invoices` (cualquier rol con sesión) encolan el ticket y lo envían a las impresoras del restaurante; `GET /api/print/jobs/pending` y `POST /api/print/jobs/:id/ack` (token de impresora como `Authorization: Bearer`); `GET|POST /api/devices/printers` y `DELETE /api/devices/printers/:id` (admin). Detalle en [Servicio de impresión](#️-servicio-de-impresión-python).
+
+### Variables de entorno
+
+Desarrollo: `apps/api/env.example`. Producción: las arma el compose a partir de `env.production.template` (ver [docs/despliegue.md](docs/despliegue.md)).
+
+| Variable | Obligatoria | Valor por defecto | Uso |
+| --- | --- | --- | --- |
+| `PORT` | no | `4000` | Puerto HTTP. |
+| `DATABASE_URL` | sí | | Conexión como `vipe_api` (nunca superusuario ni `BYPASSRLS`). |
+| `WEB_ORIGIN` | sí | | Origen de la web autorizado por CORS con credenciales. |
+| `JWT_SECRET` | sí | | Clave HS256 del token de acceso; mínimo 32 caracteres. |
+| `COOKIE_SECURE` | no | `true` | Marca las cookies como `Secure`; `false` solo en desarrollo local por http. |
+| `ACCESS_TOKEN_TTL_SECONDS` | no | `900` | Vida del token y la cookie de acceso. |
+| `REFRESH_TOKEN_TTL_SECONDS` | no | `2592000` | Vida de la sesión de refresco (30 días). |
+| `S3_ENDPOINT` | no | | Endpoint S3 (MinIO local, R2 en producción); vacío para AWS S3. |
+| `S3_REGION` | no | `us-east-1` | Región; R2 usa `auto`. |
+| `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_BASE_URL` | no | | Bucket, credenciales y URL pública de lectura. Todas vacías = `/api/storage/*` responde 503; incompletas = la API no arranca. |
+| `S3_FORCE_PATH_STYLE` | no | `false` | `true` para direcciones `<endpoint>/<bucket>/<clave>` (MinIO). |
 
 ---
 
 ## 🖨️ Servicio de impresión (Python)
 
-`pos/app.py` es un servicio de Windows (ícono en la bandeja) que imprime comandas y facturas en impresoras térmicas ESC/POS, USB o de red. Se conecta a la API de VIPE, no a Supabase.
+`pos/app.py` es un servicio de Windows (ícono en la bandeja) que imprime comandas y facturas en impresoras térmicas ESC/POS, USB o de red. Se conecta a la API de VIPE.
 
 ### Cómo llega un ticket a la impresora
 
@@ -474,7 +464,7 @@ El servicio descarta duplicados por id de trabajo, así que un ticket que llega 
 
 El servicio se autentica con un token de impresora ligado a un restaurante. No usa cookies ni claves de base de datos.
 
-- Un admin lo crea con `POST /api/devices/printers {name}`. La respuesta trae el token en texto plano (`vpt_...`) **una sola vez**; la API guarda solo su sha256.
+- Un admin lo crea en **Configuración > Impresoras** (o con `POST /api/devices/printers {name}`). La respuesta trae el token en texto plano (`vpt_...`) **una sola vez**; la API guarda solo su sha256.
 - `GET /api/devices/printers` lista las impresoras con `lastSeenAt` (última conexión) y `revokedAt`.
 - `DELETE /api/devices/printers/<id>` revoca el token y desconecta sus sockets abiertos. Desde ese momento el socket y `/api/print/jobs/*` responden `unauthorized`/401.
 
@@ -572,20 +562,12 @@ El ejecutable queda en `dist/`. Para el instalador, abre `vipe_pos_installer.iss
 
 Para cambiarlos, borra ese archivo y vuelve a abrir el programa.
 
-**Borra `%APPDATA%\VipePOS\credentials.dat`** en cada estación que tenía la versión anterior: guarda la URL y la clave de Supabase y ya no se usa.
+**Borra `%APPDATA%\VipePOS\credentials.dat`** en cada estación que tenía la versión anterior: guarda la configuración de la versión anterior y ya no se usa.
 
 ### 🚚 Pasos de despliegue
 
-1. **Reinstala cada estación** con el nuevo `VipePOS_Setup.exe`; la versión anterior escucha Supabase y no recibe tickets de la API.
-2. **Un token por estación.** Hasta que exista la pantalla de impresoras del admin (T12), créalo con la API usando la sesión de un admin:
-
-   ```bash
-   curl -X POST https://<servidor>/api/devices/printers \
-     -H 'Content-Type: application/json' -b 'vipe_access=<cookie del admin>' \
-     -d '{"name": "Cocina principal"}'
-   ```
-
-   Copia el `token` de la respuesta (solo se muestra esa vez). Para retirar una estación: `DELETE /api/devices/printers/<id>`.
+1. **Reinstala cada estación** con el nuevo `VipePOS_Setup.exe`; la versión anterior no se conecta a la API y no recibe tickets.
+2. **Un token por estación.** Un admin lo crea en **Administración > Configuración > Impresoras** y lo copia (solo se muestra esa vez). Desde la misma pantalla se revoca al retirar la estación. También se puede usar la API con la sesión de un admin (`POST /api/devices/printers {name}`, `DELETE /api/devices/printers/<id>`).
 3. **Configura la estación** con `VIPE_API_URL` (la URL pública, sin `/api`) y `VIPE_PRINTER_TOKEN` en el diálogo de la primera ejecución.
 4. **Proxy inverso.** Debe enviar a la API `/socket.io/` con el upgrade a WebSocket (`Upgrade` y `Connection`, conservando la barra final) y `/api/print/*` conservando el encabezado `Authorization`.
 5. Borra el `credentials.dat` antiguo (ver arriba).
@@ -593,30 +575,25 @@ Para cambiarlos, borra ese archivo y vuelve a abrir el programa.
 ### ✅ Comprobación
 
 1. El ícono aparece en la bandeja del sistema.
-2. En `GET /api/devices/printers`, `lastSeenAt` de la impresora se actualiza al conectar.
+2. En la pantalla Impresoras (o `GET /api/devices/printers`), la última conexión de la estación se actualiza al conectar.
 3. Envía una orden desde la vista de mesero: la comanda sale en la impresora `comandas`.
 
 ---
 
 ## 🚀 Despliegue
 
-La aplicación se despliega en Railway con el `Dockerfile` del repositorio (configurado en `railway.json`). Supabase sigue siendo la base de datos.
+Producción es una sola VPS con Postgres, la API, la web y un proxy inverso con HTTPS; las imágenes van a Cloudflare R2 (o MinIO en la misma VPS).
+
+- [docs/despliegue.md](docs/despliegue.md): requisitos, opción A con `docker-compose.prod.yml` y Caddy, opción B con Coolify (`docker-compose.coolify.yml`), almacenamiento, estaciones de impresión, seguridad, respaldos y limitaciones conocidas.
+- [docs/runbook-cutover.md](docs/runbook-cutover.md): corte de datos desde el sistema anterior, verificación por rol y reversión.
+- [DOCKER.md](DOCKER.md): los tres archivos de compose.
 
 | Ambiente | Rama | Despliegue |
 |----------|------|------------|
-| `production` | `main` | Automático en cada push a `main` |
-| `staging` | `dev` | Automático en cada push a `dev` |
+| `production` | `main` | Job `deploy` de CI hacia Coolify en cada push a `main` |
+| `staging` | `dev` | Job `deploy` de CI hacia Coolify en cada push a `dev` |
 
-Cada ambiente necesita estas variables en el servicio `web` de Railway. Se usan en el build, así que un cambio requiere redesplegar:
-
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-
-Para construir localmente:
-
-```bash
-pnpm build
-```
+La web no tiene variables de build ni de runtime: el navegador llama a su propio origen. Las variables de producción están en `env.production.template`.
 
 ## 🤝 Contribución
 

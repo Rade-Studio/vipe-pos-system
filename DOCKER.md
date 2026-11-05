@@ -1,181 +1,153 @@
 # Docker - VIPE POS System
 
-## Desarrollo Local
+Tres archivos de compose, uno por entorno:
+
+| Archivo | Entorno | Servicios |
+|---|---|---|
+| `docker-compose.yml` | Desarrollo local | `db`, `minio`, `minio-init`, `app` (opcional) |
+| `docker-compose.prod.yml` | Producción en una VPS con Docker | `postgres`, `migrate`, `api`, `web`, `caddy`; `minio` y `minio-init` con perfil |
+| `docker-compose.coolify.yml` | Producción en Coolify | `postgres`, `migrate`, `api`, `web` |
+
+La guía completa de producción está en [docs/despliegue.md](docs/despliegue.md).
+
+## Desarrollo local (`docker-compose.yml`)
 
 ### Requisitos
-- Docker y Docker Compose instalados
-- [Supabase CLI](https://supabase.com/docs/guides/cli) (se ejecuta vía `pnpm supabase`)
-- pnpm (se instala en el Dockerfile)
 
-### Stack local sin Supabase (servicio `db`)
+- Docker y el plugin Docker Compose v2.
+- Node 24 y pnpm para la API y la web fuera de contenedores.
 
-El backend nuevo usa el servicio `db` de `docker-compose.yml` (Postgres 16 + pgTAP):
+### Base de datos (`db`)
+
+Postgres 16 con pgTAP y `pg_prove`, construido desde `packages/db/docker/Dockerfile`. Al
+crear el volumen, el init crea los roles `vipe_migrator` (dueño del esquema) y `vipe_api`
+(rol de la API, sin `BYPASSRLS`). Puerto `VIPE_DB_PORT` (por defecto 5432).
 
 ```bash
-pnpm db:dev      # docker compose up db, migraciones como vipe_migrator y semilla de desarrollo
-pnpm api:dev     # API NestJS en el puerto 4000
-pnpm dev         # Next en el puerto 3000; reenvía /api y /socket.io a API_PROXY_TARGET
+pnpm db:dev      # levanta db, aplica las migraciones como vipe_migrator y carga packages/db/seed/dev.sql
+pnpm test:db     # pruebas pgTAP sobre la base desechable vipe_pos_test
 ```
 
-`API_PROXY_TARGET` (por defecto `http://localhost:4000`) es una variable del servidor
-de Next, no `NEXT_PUBLIC_*`. No hace falta definir variables de Supabase para este
-stack. Cuenta de desarrollo: `admin@vipe.local` / `vipe-dev-2026`
-(ver README).
+Las contraseñas de desarrollo (`postgres`, `vipe_migrator`, `vipe_api`) son valores por
+defecto del compose de desarrollo; nunca se usan en producción.
 
-### La base de datos la levanta la Supabase CLI
+### Almacenamiento (`minio`, `minio-init`)
 
-El stack de Supabase local (db, kong, auth, storage, realtime, studio) **ya no se
-levanta con Docker Compose**: lo administra la Supabase CLI y expone sus servicios en
-los puertos `4432x` del host.
+Opcional. MinIO para las imágenes de platos (API S3 en `:9000`, consola en `:9001`);
+`minio-init` crea el bucket público `vipe-dev`. Son compilaciones de Chainguard fijadas por
+digest, porque MinIO ya no publica imágenes comunitarias.
 
 ```bash
-# 1. Levantar Supabase (db, auth, storage, realtime, studio)
-pnpm supabase start
-
-# 2. Ver URL y claves para pegarlas en el .env de la raíz
-pnpm supabase status
-#    NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:44321
-#    NEXT_PUBLIC_SUPABASE_ANON_KEY=<ANON_KEY que imprime `supabase status`>
-
-# 3. (Opcional) Rebuild de la base: aplica supabase/migrations/ + supabase/seed.sql
-pnpm supabase db reset
-
-# 4. Pruebas SQL de pgTAP contra la base local
-pnpm test:db
+docker compose up -d minio minio-init
 ```
 
-### Edge Function `create-staff-account`
+`apps/api/env.example` ya trae las variables `S3_*` para este MinIO. Sin él, la API arranca
+igual y `/api/storage/*` responde 503.
 
-La creación de cuentas de personal desde la app usa la Edge Function `supabase/functions/create-staff-account`. Para probarla en local:
+### API y web
+
+Corren fuera de compose:
 
 ```bash
-pnpm supabase start
-pnpm supabase functions serve    # sirve las funciones con la configuración de supabase/config.toml
+cp apps/api/env.example apps/api/.env
+pnpm api:dev     # API NestJS en http://localhost:4000
+pnpm dev         # web en http://localhost:3000; reenvía /api y /socket.io/ a API_PROXY_TARGET
 ```
 
-`supabase/config.toml` define `[functions.create-staff-account] verify_jwt = true`, por lo que cada petición debe llevar el JWT de un administrador.
+`API_PROXY_TARGET` (por defecto `http://localhost:4000`) es una variable del servidor de
+Next, no `NEXT_PUBLIC_*`.
 
-> `supabase db reset` destruye los datos locales (perfiles, mesas, comandas).
-> Para detener los contenedores: `pnpm supabase stop` (agrega `--no-backup` para
-> borrar también los datos locales).
+### Web en contenedor (`app`, opcional)
 
-### App Next.js en Docker
-
-`docker-compose.yml` solo levanta la app. Toma `NEXT_PUBLIC_SUPABASE_URL` y
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` del entorno o del `.env` de la raíz (localmente los
-de `pnpm supabase status`), y se pasan como build args porque Next.js las inlinea
-en build time.
+Construye la imagen de producción de la web (`Dockerfile`) y la publica en
+`http://localhost:3003` (portal en `/portal`). Next fija las reescrituras `/api` y
+`/socket.io` al construir la imagen con el build arg `API_PROXY_TARGET`, que por defecto es
+la API del host (`http://host.docker.internal:4000`).
 
 ```bash
-# Landing en http://localhost:3003 y portal del sistema en http://localhost:3003/portal
-# (puerto del host 3003 -> 3000 del contenedor)
-docker compose up -d --build
+docker compose up -d --build app
 docker compose logs -f app
 docker compose down
 
-# Atajos equivalentes
+# atajos (binario docker-compose)
 pnpm docker:dev:build
 pnpm docker:dev:down
 ```
 
-Los servicios de Supabase local siguen accesibles en el host:
+Para recarga en caliente usar `pnpm dev`.
 
 | Servicio | URL |
-|----------|-----|
-| Landing page (contenedor) | http://localhost:3003 |
-| Portal del sistema (login) | http://localhost:3003/portal |
-| Supabase API (URL local) | http://127.0.0.1:44321 |
-| Supabase Studio | http://127.0.0.1:54323 |
+|---|---|
+| Web en contenedor | http://localhost:3003 |
+| Web con `pnpm dev` | http://localhost:3000 |
+| API | http://localhost:4000 (OpenAPI en `/api/docs`) |
+| MinIO (S3 / consola) | http://localhost:9000 / http://localhost:9001 |
 
-Usa `pnpm supabase status` para ver las URLs y claves vigentes.
+## Producción en una VPS (`docker-compose.prod.yml`)
 
----
+```
+postgres -> migrate (una sola vez) -> api, web <- caddy (HTTPS, :80/:443)
+```
 
-## Producción
-
-### Requisitos
-- Docker y Docker Compose instalados
-- Una instancia de **Supabase Cloud** o **Supabase Self-hosted** activa
-- URL y Anon Key de tu proyecto Supabase
-
-### Configuración
+| Servicio | Imagen | Función |
+|---|---|---|
+| `postgres` | `postgres:16-alpine` (digest fijo) | Base de datos; `deploy/postgres/10-roles.sh` crea los roles con el volumen vacío. |
+| `migrate` | `apps/api/Dockerfile`, target `migrate` | Aplica `packages/db/migrations` como `vipe_migrator` y termina. |
+| `api` | `apps/api/Dockerfile`, target `api` | NestJS en `:4000` interno, como `vipe_api`. |
+| `web` | `Dockerfile` | Next.js standalone en `:3000` interno, sin variables. |
+| `caddy` | `caddy:2.10-alpine` (digest fijo) | HTTPS automático para `SITE_DOMAIN`; `/api/*` y `/socket.io/*` a la API, el resto a la web (`deploy/Caddyfile`). |
+| `minio`, `minio-init` | Chainguard (perfil `self-hosted-storage`) | Almacenamiento en la misma VPS en lugar de R2. |
 
 ```bash
-# 1. Copiar archivo de variables de producción
-cp env.production.template .env
-
-# 2. Editar .env con los datos de tu Supabase:
-#    - NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
-#    - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+cp env.production.template .env      # completar cada valor
+docker compose -f docker-compose.prod.yml config --quiet
+docker compose -f docker-compose.prod.yml up -d --build --wait
+docker compose -f docker-compose.prod.yml logs -f api
 ```
 
-### Iniciar en producción
+Cada secreto es obligatorio (`${VAR:?}`): el stack no arranca con contraseñas por defecto.
+
+**Perfil `self-hosted-storage` y `STORAGE_SITE`.** Con el perfil arrancan `minio` y
+`minio-init`. `STORAGE_SITE` elige qué archivo importa Caddy: `off` (por defecto,
+`deploy/caddy/storage-off.caddy`, vacío) o `on` (`deploy/caddy/storage-on.caddy`, publica
+MinIO en `STORAGE_DOMAIN`, que pasa a ser obligatorio).
 
 ```bash
-# Build y start
-pnpm docker:prod
-
-# Detener
-pnpm docker:prod:down
-
-# Ver logs
-pnpm docker:prod:logs
+docker compose -f docker-compose.prod.yml --profile self-hosted-storage up -d --build --wait
 ```
 
-### Con Nginx (opcional)
+## Producción en Coolify (`docker-compose.coolify.yml`)
 
-Descomentar la sección `nginx` en `docker-compose.prod.yml` y crear la configuración:
+Sin `caddy` (el proxy de Coolify maneja 80/443), sin `minio` (Coolify no aplica perfiles;
+las imágenes van a R2) y sin puertos publicados. Recurso Docker Compose con
+**Docker Compose Location** `/docker-compose.coolify.yml`, dominios `api` →
+`https://<sitio>:4000/api,https://<sitio>:4000/socket.io` y `web` → `https://<sitio>:3000`,
+**Strip prefixes** desactivado. Detalle y comprobaciones en
+[docs/despliegue.md](docs/despliegue.md#3-opción-b-coolify-con-docker-composecoolifyyml).
 
-```nginx
-# nginx/nginx.conf
-server {
-    listen 80;
-    server_name tu-dominio.com;
-
-    location / {
-        proxy_pass http://app:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
----
-
-### Edge Function y migraciones en producción
+Validación local (Docker Compose rechaza la clave `exclude_from_hc` de Coolify):
 
 ```bash
-# Aplicar migraciones pendientes (incluye el esquema de domicilios)
-pnpm supabase db push
-
-# Desplegar la función de alta de personal
-pnpm supabase functions deploy create-staff-account --project-ref <ref>
+sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - config --quiet
 ```
-
-`SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta la plataforma en la función; no hay que configurarlos como secretos. `verify_jwt` se toma de `supabase/config.toml`.
 
 ## Estructura de archivos
 
 ```
-├── docker-compose.yml        # Desarrollo (solo App; la DB usa la Supabase CLI)
-├── docker-compose.prod.yml   # Producción (solo App)
-├── Dockerfile                # Multi-stage build
-├── env.production.template   # Template variables producción
-└── supabase/
-    ├── migrations/           # Migraciones SQL (fuente de verdad del esquema)
-    ├── tests/                # Pruebas pgTAP (pnpm test:db)
-    ├── config.toml           # Configuración local de la Supabase CLI
-    └── seed.sql              # Datos iniciales
+├── docker-compose.yml           # Desarrollo: db, minio, minio-init, app
+├── docker-compose.prod.yml      # VPS: postgres, migrate, api, web, caddy (+ minio con perfil)
+├── docker-compose.coolify.yml   # Coolify: postgres, migrate, api, web
+├── Dockerfile                   # Imagen de la web (Next.js standalone)
+├── apps/api/Dockerfile          # Imágenes de la API (target api) y de migrate (target migrate)
+├── env.production.template      # Variables de producción
+├── deploy/
+│   ├── Caddyfile                # Proxy inverso y cabeceras de seguridad
+│   ├── caddy/                   # storage-on.caddy / storage-off.caddy (STORAGE_SITE)
+│   └── postgres/10-roles.sh     # Init de roles de producción
+└── packages/db/
+    ├── docker/Dockerfile        # Postgres 16 + pgTAP de desarrollo y pruebas
+    ├── migrations/              # Migraciones SQL (fuente de verdad del esquema)
+    ├── scripts/roles.sql        # Roles vipe_migrator y vipe_api
+    ├── seed/dev.sql             # Datos de desarrollo (pnpm db:dev)
+    └── tests/                   # Pruebas pgTAP (pnpm test:db)
 ```
-
-## Notas importantes
-
-1. **Esquema**: todo el esquema vive en `supabase/migrations/` y lo aplica la Supabase CLI
-2. **Seed de datos**: lo carga automáticamente `pnpm supabase db reset`
-3. **Build args**: `NEXT_PUBLIC_SUPABASE_*` se inlinean en build time; si faltan, el contenedor
-   no arranca y Docker Compose indica cuáles definir
-4. **Producción**: no incluye Supabase local; depende completamente de tu instancia de Supabase externa
