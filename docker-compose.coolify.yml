@@ -9,6 +9,19 @@
 # con sus propios respaldos, que un despliegue de la aplicación no reinicia.
 # Para un VPS sin Coolify usar docker-compose.prod.yml.
 #
+# Imágenes: GitHub Actions construye migrate, api y web y las publica en GHCR
+# (ghcr.io/rade-studio/vipe-pos-<servicio>) con el SHA completo del commit; el
+# job de despliegue mueve la etiqueta de la rama (dev o main) a esas imágenes
+# cuando todas las comprobaciones pasaron. En el servidor no se ejecuta ningún
+# docker build: Coolify solo descarga las imágenes (pull_policy: always).
+#   - El servidor inicia sesión en ghcr.io una sola vez, como root, con un
+#     token con permiso read:packages (ver docs/despliegue.md, sección 3.1).
+#   - VIPE_IMAGE_TAG se define en cada recurso: dev en staging, main en
+#     producción.
+#   - Volver atrás: poner VIPE_IMAGE_TAG en el SHA completo de un commit
+#     anterior y volver a desplegar; para seguir la rama de nuevo, restaurar
+#     dev o main.
+#
 # Base de datos (una vez por ambiente, antes del primer despliegue):
 #   0a. En el mismo proyecto y ambiente, crear un recurso PostgreSQL 16. Su UUID
 #       es el nombre del contenedor en la red `coolify` y va en DATABASE_HOST.
@@ -30,6 +43,7 @@
 #      completos).
 #   4. Environment: cargar las variables marcadas como obligatorias (${VAR:?}).
 #      DATABASE_HOST es el UUID del recurso PostgreSQL (paso 0a).
+#      VIPE_IMAGE_TAG es dev en staging y main en producción.
 #      WEB_ORIGIN es https://<sitio>. El grupo S3_* sale del MinIO compartido:
 #        bash deploy/shared-storage/provision-app.sh vipe-pos-<ambiente> vipe-pos-<ambiente>
 #      (<ambiente> = staging o production) y pegar aquí el bloque impreso.
@@ -51,7 +65,7 @@
 # `exclude_from_hc` is a Coolify key that plain `docker compose` rejects
 # ("additional properties not allowed"); to validate locally, drop that line
 # and pass a file with the required variables (test values are enough):
-#   printf '%s\n' DATABASE_HOST=x VIPE_MIGRATOR_PASSWORD=x VIPE_API_PASSWORD=x \
+#   printf '%s\n' VIPE_IMAGE_TAG=dev DATABASE_HOST=x VIPE_MIGRATOR_PASSWORD=x VIPE_API_PASSWORD=x \
 #     JWT_SECRET=validation-only-secret-of-32-chars WEB_ORIGIN=https://pos.example.com \
 #     S3_ENDPOINT=https://s3.example.com S3_REGION=us-east-1 S3_BUCKET=vipe-pos-staging S3_ACCESS_KEY_ID=x \
 #     S3_SECRET_ACCESS_KEY=x S3_PUBLIC_BASE_URL=https://s3.example.com/vipe-pos-staging S3_FORCE_PATH_STYLE=true > /tmp/coolify-check.env
@@ -61,20 +75,16 @@
 services:
   # One-shot: applies packages/db/migrations as vipe_migrator and exits.
   migrate:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-      target: migrate
+    image: ghcr.io/rade-studio/vipe-pos-migrate:${VIPE_IMAGE_TAG:?}
+    pull_policy: always
     restart: "no"
     exclude_from_hc: true
     environment:
       DATABASE_URL: postgres://vipe_migrator:${VIPE_MIGRATOR_PASSWORD:?}@${DATABASE_HOST:?}:${DATABASE_PORT:-5432}/${POSTGRES_DB:-vipe_pos}
 
   api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-      target: api
+    image: ghcr.io/rade-studio/vipe-pos-api:${VIPE_IMAGE_TAG:?}
+    pull_policy: always
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -104,9 +114,8 @@ services:
       start_period: 20s
 
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/rade-studio/vipe-pos-web:${VIPE_IMAGE_TAG:?}
+    pull_policy: always
     restart: unless-stopped
     environment:
       NODE_ENV: production
