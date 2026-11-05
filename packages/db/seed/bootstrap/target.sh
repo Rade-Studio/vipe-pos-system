@@ -63,7 +63,9 @@ target_init() {
     local)
       # A named Coolify app means the operator meant the server: never fall
       # back to the local database because --target coolify was omitted.
-      [[ -z "${VIPE_COOLIFY_APP_UUID:-}" ]] \
+      # --app-uuid "" counts too: `--app-uuid "$UUID"` with UUID unset is the
+      # same mistake (VIPE_COOLIFY_APP_UUID_GIVEN is set by the flag parsers).
+      [[ -z "${VIPE_COOLIFY_APP_UUID:-}" && -z "${VIPE_COOLIFY_APP_UUID_GIVEN:-}" ]] \
         || target_die "a Coolify app uuid was given (--app-uuid or VIPE_COOLIFY_APP_UUID) but the target is local; pass --target coolify, or unset it for the local stack" 2
       : "${TARGET_DB:?TARGET_DB must be set for the local target}"
       [[ "$TARGET_DB" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || target_die "invalid database name '$TARGET_DB'" 2

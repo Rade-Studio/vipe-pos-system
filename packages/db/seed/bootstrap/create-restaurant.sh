@@ -21,7 +21,8 @@
 # psql and node with `docker exec` in the containers of the Coolify app given
 # by --app-uuid or VIPE_COOLIFY_APP_UUID (required, no default).
 #
-# Exit codes (`pnpm db:create-restaurant` passes them through unchanged):
+# Exit codes (`pnpm db:create-restaurant` passes them through with pnpm 11; other pnpm
+# versions may report any failure as 1):
 #   0  restaurant and admin created
 #   1  any other failure (nothing is written: one transaction)
 #   2  invalid usage, name, email, username, password or app uuid
@@ -45,7 +46,7 @@ positional=()
 while (($#)); do
   case "$1" in
     --target) [[ $# -ge 2 ]] || usage; target="$2"; shift 2 ;;
-    --app-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_APP_UUID="$2"; shift 2 ;;
+    --app-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_APP_UUID="$2"; VIPE_COOLIFY_APP_UUID_GIVEN=1; shift 2 ;;
     --admin-name) [[ $# -ge 2 ]] || usage; admin_name="$2"; shift 2 ;;
     --username) [[ $# -ge 2 ]] || usage; username="$2"; username_given=true; shift 2 ;;
     -h | --help) usage ;;

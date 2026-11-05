@@ -130,6 +130,15 @@ expect_exit 2 "demo: --app-uuid without --target coolify" \
 expect_stderr "demo: the refusal names --target coolify" "--target coolify"
 expect_exit 2 "bootstrap: VIPE_COOLIFY_APP_UUID set for the local target" \
   env PATH="$nodocker:$PATH" VIPE_COOLIFY_APP_UUID="$a" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" "La Mesa" admin@mesa.example
+# `--app-uuid "$UUID"` with the variable unset and --target coolify forgotten.
+expect_exit 2 "bootstrap: empty --app-uuid without --target coolify" \
+  env -u VIPE_COOLIFY_APP_UUID PATH="$nodocker:$PATH" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --app-uuid "" "La Mesa" admin@mesa.example
+expect_exit 2 "demo: empty --app-uuid without --target coolify" \
+  env -u VIPE_COOLIFY_APP_UUID PATH="$nodocker:$PATH" DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target local --app-uuid ""
+expect_exit 2 "demo: VIPE_COOLIFY_APP_UUID set for the local target" \
+  env PATH="$nodocker:$PATH" VIPE_COOLIFY_APP_UUID="$a" DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target local
+expect_exit 2 "bootstrap: --username empty after the positionals" \
+  env PATH="$nodocker:$PATH" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$a" "La Mesa" admin@mesa.example --username ""
 expect_eq "refused local runs never called docker" "absent" "$([[ -e "$nodocker/called" ]] && echo called || echo absent)"
 expect_exit 2 "bootstrap: VIPE_COOLIFY_APP_UUID set but empty" \
   env VIPE_COOLIFY_APP_UUID= ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify "La Mesa" admin@mesa.example

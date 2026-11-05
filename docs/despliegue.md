@@ -443,7 +443,8 @@ unset DEMO_PASSWORD
   código `2`. La contraseña se pasa a `node` por la entrada estándar y a `psql` solo llega el hash.
 - `--reset` falla con código `1`, antes de borrar, si una tabla de `public` con columna
   `restaurant_id` no está en la lista de `reset.sql`; la tabla nueva se agrega a esa lista.
-- `pnpm db:demo` devuelve los mismos códigos que el script ejecutado con `bash`.
+- Con `pnpm` 11 (la versión de las imágenes), `pnpm db:demo` devuelve los mismos códigos que el script
+  ejecutado con `bash`; otras versiones pueden devolver `1` para cualquier fallo.
 - El UUID se indica siempre, con `--app-uuid` o `VIPE_COOLIFY_APP_UUID`; si el recurso de staging
   cambia, se usa el nuevo.
 

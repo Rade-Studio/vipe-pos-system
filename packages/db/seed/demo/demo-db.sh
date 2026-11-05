@@ -23,7 +23,8 @@
 # by --app-uuid or VIPE_COOLIFY_APP_UUID (required, no default: a missing
 # uuid must never load the demo into another app's database).
 #
-# Exit codes (`pnpm db:demo` passes them through unchanged):
+# Exit codes (`pnpm db:demo` passes them through with pnpm 11; other pnpm
+# versions may report any failure as 1):
 #   0  demo loaded
 #   1  any other failure (nothing is written: one transaction)
 #   2  invalid usage, DEMO_PASSWORD or app uuid
@@ -46,7 +47,7 @@ while (($#)); do
   case "$1" in
     --reset) reset=true; shift ;;
     --target) [[ $# -ge 2 ]] || usage; target="$2"; shift 2 ;;
-    --app-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_APP_UUID="$2"; shift 2 ;;
+    --app-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_APP_UUID="$2"; VIPE_COOLIFY_APP_UUID_GIVEN=1; shift 2 ;;
     -h | --help) usage ;;
     *) echo "error: unknown argument $1" >&2; usage ;;
   esac
