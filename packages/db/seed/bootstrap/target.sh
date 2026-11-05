@@ -7,13 +7,16 @@
 #            database is $TARGET_DB on that server; target_prepare creates it
 #            when missing, aligns the roles and applies the migrations, the
 #            same steps as seed/dev-db.sh.
-#   coolify  the Coolify Docker Compose app on the server: psql in its
-#            `postgres` container (POSTGRES_USER / POSTGRES_DB of that
-#            container) and node in its `api` container, both through
-#            `docker exec`. Containers are found by compose service name plus
-#            the Coolify app uuid: --app-uuid or $VIPE_COOLIFY_APP_UUID, with
-#            no default, so a run never lands on another app's database by
-#            omission. An app uuid with the local target exits 2.
+#   coolify  the Coolify app on the server and its standalone PostgreSQL
+#            resource: psql in the database container (POSTGRES_USER /
+#            POSTGRES_DB of that container) and node in the app's `api`
+#            container, both through `docker exec`. The database container
+#            is named exactly after the database resource uuid: --db-uuid or
+#            $VIPE_COOLIFY_DB_UUID. The api container is found by compose
+#            service name plus the Coolify app uuid: --app-uuid or
+#            $VIPE_COOLIFY_APP_UUID. Neither has a default, so a run never
+#            lands on another app's database by omission. Either uuid with
+#            the local target exits 2.
 #            Migrations are the `migrate` service's job there, so
 #            target_prepare only checks that the schema exists.
 #
@@ -56,17 +59,33 @@ target_find_container() {
   printf '%s\n' "$names"
 }
 
+# Exactly one running container named $VIPE_COOLIFY_DB_UUID (a standalone
+# Coolify database is named after its resource uuid).
+target_find_db_container() {
+  local names
+  names="$(docker ps --filter "name=^${VIPE_COOLIFY_DB_UUID}\$" --format '{{.Names}}' | grep -Fx "$VIPE_COOLIFY_DB_UUID" || true)"
+  if [[ -z "$names" ]]; then
+    target_die "no running database container named ${VIPE_COOLIFY_DB_UUID}"
+  fi
+  if [[ "$(printf '%s\n' "$names" | wc -l)" -ne 1 ]]; then
+    target_die "more than one database container named ${VIPE_COOLIFY_DB_UUID}"
+  fi
+  printf '%s\n' "$names"
+}
+
 # target_init <local|coolify>
 target_init() {
   TARGET="$1"
   case "$TARGET" in
     local)
-      # A named Coolify app means the operator meant the server: never fall
-      # back to the local database because --target coolify was omitted.
-      # --app-uuid "" counts too: `--app-uuid "$UUID"` with UUID unset is the
-      # same mistake (VIPE_COOLIFY_APP_UUID_GIVEN is set by the flag parsers).
+      # A named Coolify app or database means the operator meant the server:
+      # never fall back to the local database because --target coolify was
+      # omitted. --app-uuid "" counts too: `--app-uuid "$UUID"` with UUID
+      # unset is the same mistake (the *_GIVEN flags are set by the parsers).
       [[ -z "${VIPE_COOLIFY_APP_UUID:-}" && -z "${VIPE_COOLIFY_APP_UUID_GIVEN:-}" ]] \
         || target_die "a Coolify app uuid was given (--app-uuid or VIPE_COOLIFY_APP_UUID) but the target is local; pass --target coolify, or unset it for the local stack" 2
+      [[ -z "${VIPE_COOLIFY_DB_UUID:-}" && -z "${VIPE_COOLIFY_DB_UUID_GIVEN:-}" ]] \
+        || target_die "a Coolify database uuid was given (--db-uuid or VIPE_COOLIFY_DB_UUID) but the target is local; pass --target coolify, or unset it for the local stack" 2
       : "${TARGET_DB:?TARGET_DB must be set for the local target}"
       [[ "$TARGET_DB" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || target_die "invalid database name '$TARGET_DB'" 2
       ;;
@@ -75,8 +94,12 @@ target_init() {
         || target_die "--target coolify needs the Coolify app uuid: pass --app-uuid <uuid> or set VIPE_COOLIFY_APP_UUID" 2
       [[ "$VIPE_COOLIFY_APP_UUID" =~ ^[a-z0-9]+$ ]] \
         || target_die "invalid Coolify app uuid '$VIPE_COOLIFY_APP_UUID' (lowercase letters and digits)" 2
+      [[ -n "${VIPE_COOLIFY_DB_UUID:-}" ]] \
+        || target_die "--target coolify needs the Coolify database uuid: pass --db-uuid <uuid> or set VIPE_COOLIFY_DB_UUID" 2
+      [[ "$VIPE_COOLIFY_DB_UUID" =~ ^[a-z0-9]+$ ]] \
+        || target_die "invalid Coolify database uuid '$VIPE_COOLIFY_DB_UUID' (lowercase letters and digits)" 2
       command -v docker >/dev/null || target_die "docker is required for the coolify target"
-      TARGET_PG_CONTAINER="$(target_find_container postgres)"
+      TARGET_PG_CONTAINER="$(target_find_db_container)"
       TARGET_API_CONTAINER="$(target_find_container api)"
       ;;
     *)

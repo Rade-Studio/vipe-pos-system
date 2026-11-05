@@ -40,7 +40,6 @@ describe("deploy docs", () => {
     const compose = read("docker-compose.coolify.yml")
     const repoMounts = compose.split("\n").filter((line) => /^\s*-\s*\.{1,2}\//.test(line))
     expect(repoMounts).toEqual([])
-    expect(compose).toContain("dockerfile: deploy/postgres/Dockerfile")
   })
 
   it("mounts no repository path in long or quoted form in the Coolify compose either", () => {
@@ -50,14 +49,19 @@ describe("deploy docs", () => {
     expect(repoMounts).toEqual([])
   })
 
-  it("builds the Coolify postgres from the pinned image of docker-compose.prod.yml", () => {
-    const dockerfile = read("deploy/postgres/Dockerfile")
-    const from = dockerfile.match(/^FROM\s+(\S+)/m)?.[1] ?? ""
-    const image = from.replace(/^\$\{(\w+)\}$/, (_, name: string) =>
-      dockerfile.match(new RegExp(`^ARG ${name}=(\\S+)`, "m"))?.[1] ?? "",
-    )
-    const pinned = read("docker-compose.prod.yml").match(/^\s*image:\s*(postgres:\S+)/m)?.[1]
-    expect(pinned).toMatch(/@sha256:[0-9a-f]{64}$/)
-    expect(image).toBe(pinned)
+  it("keeps Postgres out of the Coolify compose and reaches it through DATABASE_HOST", () => {
+    const compose = read("docker-compose.coolify.yml")
+    expect(compose).not.toMatch(/^  postgres:/m)
+    expect(compose).not.toContain("postgres_data")
+    const urls = compose.split("\n").filter((line) => /^\s*DATABASE_URL:/.test(line))
+    expect(urls).toHaveLength(2)
+    for (const url of urls) expect(url).toContain("@${DATABASE_HOST:?}:${DATABASE_PORT:-5432}/")
+  })
+
+  it("passes DATABASE_HOST to every local Coolify validation command", () => {
+    const docs = [guide, read("DOCKER.md"), read("docker-compose.coolify.yml")].join("\n")
+    const env = docs.split("\n").filter((line) => line.includes("VIPE_MIGRATOR_PASSWORD=") && line.includes("printf"))
+    expect(env.length).toBe(3)
+    for (const line of env) expect(line).toContain("DATABASE_HOST=")
   })
 })

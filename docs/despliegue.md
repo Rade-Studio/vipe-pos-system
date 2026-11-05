@@ -194,24 +194,47 @@ docker compose -f docker-compose.prod.yml up -d --wait api
 
 Diferencias con la opción A: sin `caddy` (Coolify maneja 80/443 y HTTPS con Traefik), sin
 `minio` propio (las imágenes van al MinIO compartido de la VPS, sección 4.3), sin puertos
-publicados, `migrate` con `exclude_from_hc: true` y `WEB_ORIGIN` obligatorio. Además, `postgres`
-se construye desde `deploy/postgres/Dockerfile`, que incluye `10-roles.sh` y `roles.sql` dentro de
-la imagen: Coolify no coloca los archivos del repositorio junto al compose, así que un montaje
-`./deploy/...` llegaría como un directorio vacío y no se crearían `vipe_migrator` ni `vipe_api`.
-Si un primer despliegue ya inicializó el volumen sin esos roles, hay que borrar el volumen de
-`postgres` (solo si está vacío) y desplegar de nuevo, porque el script de roles corre una sola vez.
-Si el volumen ya tiene datos, no se borra: se ejecuta `roles.sql` como superusuario, igual que en
-2.2, con el script que la imagen ya incluye y las contraseñas del contenedor, y después se vuelve a
-desplegar para que corra `migrate`:
-
-```bash
-docker exec <contenedor-postgres> sh /docker-entrypoint-initdb.d/10-roles.sh
-```
+publicados, `migrate` con `exclude_from_hc: true` y `WEB_ORIGIN` obligatorio. Además, el compose
+no incluye `postgres`: la base es un recurso PostgreSQL de Coolify aparte (3.1), con su propio
+volumen y sus respaldos diarios a S3, que un despliegue de la aplicación no reinicia. `migrate` y
+`api` llegan a ella por la red `coolify`, con el UUID del recurso de base de datos como nombre de
+host (`DATABASE_HOST`).
 
 Staging responde solo a los clientes de la red de Tailscale: desde la IP pública, el proxy de
 Coolify devuelve 403 en todas las rutas (`/`, `/api`, `/socket.io`).
 
-### 3.1 Crear el recurso
+### 3.1 Crear los recursos
+
+Primero la base de datos, una vez por ambiente y antes del primer despliegue de la aplicación:
+
+1. En el mismo proyecto y ambiente de Coolify, crear un recurso **PostgreSQL** (versión 16). Su
+   UUID es el nombre de su contenedor en la red `coolify`: ese valor va en `DATABASE_HOST` y en
+   `--db-uuid` (3.5 y 3.6). `POSTGRES_DB` del recurso debe coincidir con el de la aplicación (por
+   defecto `vipe_pos`).
+2. En el servidor, crear `vipe_migrator` y `vipe_api` con `deploy/postgres/create-roles.sh`, que
+   ejecuta `packages/db/scripts/roles.sql` dentro del contenedor como su `POSTGRES_USER` y entrega
+   la base a `vipe_migrator`. Las contraseñas son las mismas que se cargan en la aplicación
+   (paso 5 de la lista siguiente) y llegan a `psql` solo por la entrada estándar. Se puede repetir:
+   una segunda ejecución solo actualiza contraseñas y parámetros.
+
+   ```bash
+   # desde un equipo con el repositorio
+   tar -c deploy/postgres/create-roles.sh packages/db/scripts/roles.sql \
+     | ssh root@<servidor> 'mkdir -p /root/vipe-roles && tar -x -C /root/vipe-roles'
+   ssh root@<servidor>
+   # en el servidor
+   read -r -s -p 'VIPE_MIGRATOR_PASSWORD: ' VIPE_MIGRATOR_PASSWORD; echo; export VIPE_MIGRATOR_PASSWORD
+   read -r -s -p 'VIPE_API_PASSWORD: ' VIPE_API_PASSWORD; echo; export VIPE_API_PASSWORD
+   bash /root/vipe-roles/deploy/postgres/create-roles.sh --container <uuid de la base>
+   unset VIPE_MIGRATOR_PASSWORD VIPE_API_PASSWORD
+   ```
+
+   Sin `--container` o sin alguna de las dos contraseñas termina con código `2`.
+3. En la pestaña **Backups** del recurso de base de datos, programar un respaldo diario
+   (`0 3 * * *`, por ejemplo) al almacenamiento S3 del servidor, el mismo que usan las otras
+   bases de la VPS.
+
+Después, la aplicación:
 
 1. Nuevo recurso desde el repositorio Git, **Build Pack: Docker Compose**.
 2. **Docker Compose Location**: `/docker-compose.coolify.yml`.
@@ -225,15 +248,18 @@ Coolify devuelve 403 en todas las rutas (`/`, `/api`, `/socket.io`).
    El puerto indica a Coolify el puerto interno del contenedor; el público sigue siendo 443.
 4. **Strip prefixes: desactivado** en `api`. La API espera las rutas completas `/api/...` y
    `/socket.io/`.
-5. **Environment**: obligatorias `POSTGRES_PASSWORD`, `VIPE_MIGRATOR_PASSWORD`,
-   `VIPE_API_PASSWORD`, `JWT_SECRET` y `WEB_ORIGIN=https://<sitio>`; opcionales
-   `POSTGRES_USER`, `POSTGRES_DB`, `COOKIE_SECURE` (dejar `true`),
+5. **Environment**: obligatorias `DATABASE_HOST` (UUID del recurso de base de datos),
+   `VIPE_MIGRATOR_PASSWORD`, `VIPE_API_PASSWORD`, `JWT_SECRET` y `WEB_ORIGIN=https://<sitio>`;
+   opcionales `DATABASE_PORT` (por defecto `5432`), `POSTGRES_DB`, `COOKIE_SECURE` (dejar `true`),
    `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_SECONDS`. El grupo `S3_*` es obligatorio
    y sale del MinIO compartido (sección 4.3): ejecutar
    `provision-app.sh vipe-pos-<ambiente> vipe-pos-<ambiente>` y pegar el bloque impreso.
-   `SITE_DOMAIN`, `STORAGE_*` y `MINIO_*` no se usan en este archivo.
+   `POSTGRES_PASSWORD`, `POSTGRES_USER`, `SITE_DOMAIN`, `STORAGE_*` y `MINIO_*` no se usan en
+   este archivo.
 6. En el recurso del MinIO compartido, agregar `https://<sitio>` a `MINIO_CORS_ORIGINS` y
    volver a desplegarlo.
+7. Activar **Connect to Predefined Network** en el recurso de la aplicación, para que `migrate` y
+   `api` resuelvan `DATABASE_HOST` en la red `coolify`.
 
 Validación local del archivo (Docker Compose rechaza la clave `exclude_from_hc`, propia de
 Coolify, así que se quita esa línea para validar). Todas las variables obligatorias son
@@ -242,7 +268,7 @@ de prueba (nunca los secretos reales en un archivo temporal):
 
 ```bash
 check_env=$(mktemp)
-printf '%s\n' POSTGRES_PASSWORD=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
+printf '%s\n' DATABASE_HOST=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
   JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com \
   S3_ENDPOINT=https://s3.example.com S3_REGION=us-east-1 S3_BUCKET=vipe-pos-staging S3_ACCESS_KEY_ID=prueba \
   S3_SECRET_ACCESS_KEY=prueba S3_PUBLIC_BASE_URL=https://s3.example.com/vipe-pos-staging S3_FORCE_PATH_STYLE=true > "$check_env"
@@ -310,10 +336,10 @@ recurso viejo: una web **sin API ni base de datos**, en la que fallan el inicio 
 todas las pantallas. Seguir este orden:
 
 1. Abrir el pull request como borrador: solo corre CI (el job `deploy` no se ejecuta en pull requests).
-2. Crear en Coolify el recurso Docker Compose de staging (sección 3.1) en un subdominio propio (por ejemplo `staging-pos.<dominio>`), accesible solo desde la red de Tailscale, desplegar la rama del pull request directamente desde ese recurso y pasar las comprobaciones de 3.2.
+2. Crear en Coolify la base de datos y el recurso Docker Compose de staging (sección 3.1) en un subdominio propio (por ejemplo `staging-pos.<dominio>`), accesible solo desde la red de Tailscale, desplegar la rama del pull request directamente desde ese recurso y pasar las comprobaciones de 3.2.
 3. Cambiar el secreto `COOLIFY_APP_UUID_STAGING` al UUID del recurso nuevo de staging.
 4. Solo entonces fusionar en `dev`: el job `deploy` despliega en el recurso nuevo de staging.
-5. Para producción: crear el recurso Docker Compose de producción, y cambiar `COOLIFY_APP_UUID_PRODUCTION` al UUID nuevo y fusionar en `main` únicamente dentro de la ventana de corte ([runbook-cutover.md](runbook-cutover.md), sección 2), nunca antes.
+5. Para producción: crear la base de datos y el recurso Docker Compose de producción, y cambiar `COOLIFY_APP_UUID_PRODUCTION` al UUID nuevo y fusionar en `main` únicamente dentro de la ventana de corte ([runbook-cutover.md](runbook-cutover.md), sección 2), nunca antes.
 
 ### 3.4 Logs, actualizaciones y respaldos en Coolify
 
@@ -325,11 +351,13 @@ redepliega; para volver a una versión anterior, desplegar el commit anterior (r
 Git y hacer push, o redeplegar ese commit desde el panel). Las mismas advertencias de 2.5
 sobre migraciones aplican.
 
-Respaldos con `pg_dump` en la VPS: Coolify nombra los contenedores con el UUID del recurso.
+Un despliegue de la aplicación no reinicia la base: es un recurso aparte. Sus respaldos diarios a
+S3 se configuran y se restauran desde la pestaña **Backups** de ese recurso (3.1). Para un respaldo
+manual con `pg_dump` en la VPS, el contenedor de la base se llama exactamente como el UUID del
+recurso:
 
 ```bash
-docker ps --format '{{.Names}}' | grep postgres
-docker exec <contenedor-postgres> pg_dump -U postgres -d vipe_pos -Fc > vipe_pos-$(date +%F).dump
+docker exec <uuid de la base> sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > vipe_pos-$(date +%F).dump
 ```
 
 La prueba de restauración es la de 2.6.
@@ -356,14 +384,16 @@ solo a los clientes de la red de Tailscale.
   incluido un fallo de `psql` o de `docker` (no queda nada a medias). `pnpm db:create-restaurant`
   devuelve los mismos códigos. Un `--username` vacío termina con código `2`.
 
-En el servidor el script corre en el host y usa `docker exec`: `psql` en el contenedor
-`postgres` y `node` en el contenedor `api` del recurso. Encuentra los contenedores por el nombre
-que les da Coolify, `<servicio>-<uuid del recurso>-<fecha>`. El UUID es obligatorio con
-`--target coolify`, con `--app-uuid <uuid>` o con la variable `VIPE_COOLIFY_APP_UUID`; no hay valor
-por defecto, para que una variable olvidada no escriba en el recurso equivocado (sin UUID, código
-`2`). A la inversa, un UUID sin `--target coolify` también termina con código `2` antes de tocar
-ninguna base, en vez de escribir en la base local. El recurso de staging es `zyxpf2vqnowxdolrgne8vxew`. Las escrituras corren como
-`vipe_migrator` (`SET LOCAL ROLE`), sea cual sea el `POSTGRES_USER` del contenedor. Basta con
+En el servidor el script corre en el host y usa `docker exec`: `psql` en el contenedor de la base
+de datos y `node` en el contenedor `api` de la aplicación. El contenedor de la base se llama
+exactamente como el UUID del recurso PostgreSQL; el de `api`, como lo nombra Coolify,
+`api-<uuid de la aplicación>-<fecha>`. Con `--target coolify` los dos UUID son obligatorios:
+`--db-uuid <uuid>` (o `VIPE_COOLIFY_DB_UUID`) y `--app-uuid <uuid>` (o `VIPE_COOLIFY_APP_UUID`). No
+hay valores por defecto, para que una variable olvidada no escriba en el recurso equivocado (sin
+UUID o con un UUID inválido, código `2`). A la inversa, cualquiera de los dos UUID sin
+`--target coolify` también termina con código `2` antes de tocar ninguna base, en vez de escribir
+en la base local. Las escrituras corren como `vipe_migrator` (`SET LOCAL ROLE`), sea cual sea el
+`POSTGRES_USER` del contenedor. Basta con
 copiar los scripts al servidor; no hace falta el repositorio:
 
 ```bash
@@ -372,7 +402,7 @@ scp -r packages/db/seed/bootstrap root@<servidor>:/root/vipe-seed/
 ssh root@<servidor>
 # en el servidor: pide la contraseña sin mostrarla
 bash /root/vipe-seed/bootstrap/create-restaurant.sh --target coolify \
-  --app-uuid <uuid del recurso de producción> \
+  --app-uuid <uuid de la aplicación de producción> --db-uuid <uuid de la base de producción> \
   --admin-name "<nombre del administrador>" "<nombre del restaurante>" <correo del administrador>
 ```
 
@@ -385,8 +415,8 @@ bash packages/db/seed/bootstrap/create-restaurant.sh "<nombre del restaurante>" 
 ```
 
 `pnpm db:test-seeds` prueba el contrato de este script y el de la demo (3.6) contra contenedores
-desechables que imitan un recurso de Coolify, uno de ellos con `POSTGRES_USER=vipeowner`; no corre
-en CI.
+desechables que imitan una aplicación de Coolify y su base de datos, una de ellas con
+`POSTGRES_USER=vipeowner`; no corre en CI.
 
 La opción A (`docker-compose.prod.yml`) no tiene destino propio en el script: ahí se puede
 ejecutar `create-restaurant.sql` con `psql` como superusuario, siguiendo el encabezado del
@@ -428,8 +458,10 @@ scp -r packages/db/seed/bootstrap packages/db/seed/demo root@<servidor>:/root/vi
 ssh root@<servidor>
 # en el servidor
 read -r -s -p 'Contraseña de las cuentas demo: ' DEMO_PASSWORD; echo; export DEMO_PASSWORD
-bash /root/vipe-seed/demo/demo-db.sh --target coolify --app-uuid zyxpf2vqnowxdolrgne8vxew           # base vacía
-bash /root/vipe-seed/demo/demo-db.sh --target coolify --app-uuid zyxpf2vqnowxdolrgne8vxew --reset   # reemplazar la demo
+bash /root/vipe-seed/demo/demo-db.sh --target coolify \
+  --app-uuid <uuid de la aplicación de staging> --db-uuid <uuid de la base de staging>           # base vacía
+bash /root/vipe-seed/demo/demo-db.sh --target coolify \
+  --app-uuid <uuid de la aplicación de staging> --db-uuid <uuid de la base de staging> --reset   # reemplazar la demo
 unset DEMO_PASSWORD
 ```
 
@@ -439,14 +471,14 @@ unset DEMO_PASSWORD
   `demo_seed` en `business_config`) y todo lo que depende de ellos, y vuelve a cargar, en una sola
   transacción. Si existe algún restaurante que no es de la demo, se niega con código `3` antes de
   borrar.
-- `DEMO_PASSWORD` vacía o de menos de 12 caracteres, o `--target coolify` sin UUID del recurso:
-  código `2`. La contraseña se pasa a `node` por la entrada estándar y a `psql` solo llega el hash.
+- `DEMO_PASSWORD` vacía o de menos de 12 caracteres, o `--target coolify` sin alguno de los dos
+  UUID: código `2`. La contraseña se pasa a `node` por la entrada estándar y a `psql` solo llega el hash.
 - `--reset` falla con código `1`, antes de borrar, si una tabla de `public` con columna
   `restaurant_id` no está en la lista de `reset.sql`; la tabla nueva se agrega a esa lista.
 - Con `pnpm` 11 (la versión de las imágenes), `pnpm db:demo` devuelve los mismos códigos que el script
   ejecutado con `bash`; otras versiones pueden devolver `1` para cualquier fallo.
-- El UUID se indica siempre, con `--app-uuid` o `VIPE_COOLIFY_APP_UUID`; si el recurso de staging
-  cambia, se usa el nuevo.
+- Los UUID se indican siempre, con `--app-uuid` y `--db-uuid` (o `VIPE_COOLIFY_APP_UUID` y
+  `VIPE_COOLIFY_DB_UUID`); si un recurso de staging cambia, se usa el nuevo.
 
 En local, `bash packages/db/seed/demo/demo-db.sh` (o con `--reset`; `pnpm db:demo` hace lo mismo,
 con los mismos códigos de salida) carga la demo en la base `vipe_demo` del

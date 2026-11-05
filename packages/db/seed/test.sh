@@ -5,21 +5,23 @@
 #   pnpm --filter @vipe/db test:seeds      (or: bash packages/db/seed/test.sh)
 #
 # Runs both scripts with --target coolify against throwaway stand-ins of a
-# Coolify app: a `postgres-<uuid>-test` container built from
-# deploy/postgres/Dockerfile and an `api-<uuid>-test` node container that
-# reads the repository (read-only) for the API's argon2 dependency. Two stacks:
-# A with POSTGRES_USER=postgres (bootstrap matrix) and B with
-# POSTGRES_USER=vipeowner, as a Coolify app may define it (demo, reset and the
-# demo's invariants). Migrations run from the host with `pnpm db:migrate`.
-# Containers (with their anonymous volumes), image and scratch directory are
-# removed on exit, and a volume left behind fails the run. Not wired into CI.
+# Coolify app and its standalone database: a postgres container named
+# `<db uuid>` (the pinned image of docker-compose.prod.yml, roles created by
+# deploy/postgres/create-roles.sh) and an `api-<app uuid>-test` node container
+# that reads the repository (read-only) for the API's argon2 dependency. Two
+# stacks: A with POSTGRES_USER=postgres (bootstrap matrix) and B with
+# POSTGRES_USER=vipeowner, as a Coolify database may define it (demo, reset
+# and the demo's invariants). Migrations run from the host with
+# `pnpm db:migrate`. Containers (with their anonymous volumes) and scratch
+# directory are removed on exit, and a volume left behind fails the run. Not
+# wired into CI.
 # Exit 0 when every check passes, 1 otherwise.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 seed_dir="$repo_root/packages/db/seed"
 run_id="seedtest$(date +%s)$$"
-image="vipe-seed-test-postgres:$run_id"
+image="$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(postgres:[^[:space:]]*\).*/\1/p' "$repo_root/docker-compose.prod.yml" | head -n1)"
 scratch="$(mktemp -d)"
 containers=()
 passed=0
@@ -33,7 +35,6 @@ cleanup() {
       "${containers[@]}" 2>/dev/null | sed '/^$/d')
     docker rm -fv "${containers[@]}" >/dev/null 2>&1 || true
   fi
-  docker image rm -f "$image" >/dev/null 2>&1 || true
   rm -rf "$scratch"
   for v in "${volumes[@]}"; do
     docker volume inspect "$v" >/dev/null 2>&1 && leaked+=("$v")
@@ -71,13 +72,13 @@ expect_eq() {
   if [[ "$2" == "$3" ]]; then ok "$1"; else echo "     | expected '$2', got '$3'" >"$scratch/err"; not_ok "$1"; fi
 }
 
-# start_stack <app uuid> <POSTGRES_USER>: postgres + api stand-ins, migrated.
+# start_stack <app uuid> <db uuid> <POSTGRES_USER>: database + api stand-ins,
+# roles created, migrated.
 start_stack() {
-  local uuid="$1" user="$2" pg="postgres-$1-test" api="api-$1-test" port i
+  local pg="$2" user="$3" api="api-$1-test" port i
   containers+=("$pg" "$api")
   docker run -d --name "$pg" -p 127.0.0.1::5432 \
     -e POSTGRES_USER="$user" -e POSTGRES_PASSWORD=test-owner-pw -e POSTGRES_DB=vipe_pos \
-    -e VIPE_MIGRATOR_PASSWORD=test-migrator-pw -e VIPE_API_PASSWORD=test-api-pw \
     "$image" >/dev/null
   docker run -d --name "$api" -v "$repo_root:$repo_root:ro" -w "$repo_root/apps/api" \
     node:24-alpine sleep infinity >/dev/null
@@ -87,31 +88,33 @@ start_stack() {
     [[ $i == 60 ]] && { echo "postgres stand-in $pg did not start" >&2; exit 1; }
     sleep 1
   done
+  VIPE_MIGRATOR_PASSWORD=test-migrator-pw VIPE_API_PASSWORD=test-api-pw \
+    bash "$repo_root/deploy/postgres/create-roles.sh" --container "$pg" >/dev/null
   port="$(docker port "$pg" 5432/tcp | head -n1 | sed 's/.*://')"
   (cd "$repo_root" && DATABASE_URL="postgres://vipe_migrator:test-migrator-pw@127.0.0.1:${port}/vipe_pos" \
     pnpm --silent db:migrate >/dev/null)
 }
 
-# sql <app uuid> <POSTGRES_USER> <query>: one unaligned value per line.
-sql() { docker exec -i "postgres-$1-test" psql -X -q -v ON_ERROR_STOP=1 -U "$2" -d vipe_pos -At -c "$3"; }
+# sql <db uuid> <POSTGRES_USER> <query>: one unaligned value per line.
+sql() { docker exec -i "$1" psql -X -q -v ON_ERROR_STOP=1 -U "$2" -d vipe_pos -At -c "$3"; }
 
 bootstrap() { ADMIN_PASSWORD="${ADMIN_PASSWORD-bootstrap-pass-2026}" bash "$seed_dir/bootstrap/create-restaurant.sh" "$@"; }
 demo() { DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" "$@"; }
 
-for script in "$seed_dir"/test.sh "$seed_dir"/bootstrap/*.sh "$seed_dir"/demo/*.sh; do
+for script in "$seed_dir"/test.sh "$seed_dir"/bootstrap/*.sh "$seed_dir"/demo/*.sh "$repo_root"/deploy/postgres/*.sh; do
   bash -n "$script"
 done
 
-echo "building the postgres stand-in image..."
-docker build -q -f "$repo_root/deploy/postgres/Dockerfile" -t "$image" "$repo_root" >/dev/null
+[[ "$image" == postgres:*@sha256:* ]] || { echo "no pinned postgres image in docker-compose.prod.yml" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Stack A (POSTGRES_USER=postgres): bootstrap matrix
 # ---------------------------------------------------------------------------
 a="${run_id}a"
-echo "stack A ($a, POSTGRES_USER=postgres)"
-start_stack "$a" postgres
-fingerprint_a() { sql "$a" postgres "SELECT (SELECT count(*) FROM public.restaurants) || '/' || (SELECT count(*) FROM public.users) || '/' || (SELECT count(*) FROM public.profiles)"; }
+adb="${a}db"
+echo "stack A ($a, database $adb, POSTGRES_USER=postgres)"
+start_stack "$a" "$adb" postgres
+fingerprint_a() { sql "$adb" postgres "SELECT (SELECT count(*) FROM public.restaurants) || '/' || (SELECT count(*) FROM public.users) || '/' || (SELECT count(*) FROM public.profiles)"; }
 
 expect_exit 2 "bootstrap: --target coolify without an app uuid" \
   env -u VIPE_COOLIFY_APP_UUID ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify "La Mesa" admin@mesa.example
@@ -138,67 +141,88 @@ expect_exit 2 "demo: empty --app-uuid without --target coolify" \
 expect_exit 2 "demo: VIPE_COOLIFY_APP_UUID set for the local target" \
   env PATH="$nodocker:$PATH" VIPE_COOLIFY_APP_UUID="$a" DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target local
 expect_exit 2 "bootstrap: --username empty after the positionals" \
-  env PATH="$nodocker:$PATH" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$a" "La Mesa" admin@mesa.example --username ""
+  env PATH="$nodocker:$PATH" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$a" --db-uuid "$adb" "La Mesa" admin@mesa.example --username ""
+expect_exit 2 "bootstrap: --db-uuid without --target coolify" \
+  env -u VIPE_COOLIFY_APP_UUID PATH="$nodocker:$PATH" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --db-uuid "$adb" "La Mesa" admin@mesa.example
+expect_stderr "bootstrap: the db uuid refusal names --target coolify" "--target coolify"
+expect_exit 2 "demo: VIPE_COOLIFY_DB_UUID set for the local target" \
+  env -u VIPE_COOLIFY_APP_UUID PATH="$nodocker:$PATH" VIPE_COOLIFY_DB_UUID="$adb" DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target local
+expect_exit 2 "demo: empty --db-uuid without --target coolify" \
+  env -u VIPE_COOLIFY_APP_UUID -u VIPE_COOLIFY_DB_UUID PATH="$nodocker:$PATH" DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --db-uuid ""
 expect_eq "refused local runs never called docker" "absent" "$([[ -e "$nodocker/called" ]] && echo called || echo absent)"
+expect_exit 2 "bootstrap: --target coolify without a db uuid" \
+  env -u VIPE_COOLIFY_DB_UUID ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$a" "La Mesa" admin@mesa.example
+expect_stderr "bootstrap: the missing db uuid names --db-uuid" "--db-uuid"
+expect_exit 2 "demo: --target coolify without a db uuid" \
+  env -u VIPE_COOLIFY_DB_UUID DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target coolify --app-uuid "$a"
+for bad in "" VBPB 'x;id' '../x' "^$adb"; do
+  expect_exit 2 "bootstrap: db uuid [$bad]" env -u VIPE_COOLIFY_DB_UUID ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$a" --db-uuid "$bad" "La Mesa" admin@mesa.example
+  expect_exit 2 "demo: db uuid [$bad]" env -u VIPE_COOLIFY_DB_UUID DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target coolify --app-uuid "$a" --db-uuid "$bad"
+done
+# A prefix of the database name is not the database: the name must match exactly.
+expect_exit 1 "bootstrap: db uuid that only prefixes a running container" \
+  bootstrap --target coolify --app-uuid "$a" --db-uuid "${adb%db}" "La Mesa" admin@mesa.example
+expect_stderr "bootstrap: the unknown db uuid is named" "no running database container named ${adb%db}"
 expect_exit 2 "bootstrap: VIPE_COOLIFY_APP_UUID set but empty" \
   env VIPE_COOLIFY_APP_UUID= ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify "La Mesa" admin@mesa.example
 expect_exit 2 "bootstrap: short password" \
-  env ADMIN_PASSWORD=short bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$a" "La Mesa" admin@mesa.example
+  env ADMIN_PASSWORD=short bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$a" --db-uuid "$adb" "La Mesa" admin@mesa.example
 expect_exit 2 "bootstrap: --username with a space" \
-  bootstrap --target coolify --app-uuid "$a" --username "la mesa" "La Mesa" admin@mesa.example
-expect_exit 2 "bootstrap: --username empty" bootstrap --target coolify --app-uuid "$a" --username "" "La Mesa" admin@mesa.example
+  bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" --username "la mesa" "La Mesa" admin@mesa.example
+expect_exit 2 "bootstrap: --username empty" bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" --username "" "La Mesa" admin@mesa.example
 expect_stderr "bootstrap: the empty username names --username" "--username"
 for bad in "" VBPB 'x;id' '../x'; do
-  expect_exit 2 "bootstrap: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$bad" "La Mesa" admin@mesa.example
-  expect_exit 2 "demo: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target coolify --app-uuid "$bad"
+  expect_exit 2 "bootstrap: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$bad" --db-uuid "$adb" "La Mesa" admin@mesa.example
+  expect_exit 2 "demo: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target coolify --app-uuid "$bad" --db-uuid "$adb"
 done
 expect_eq "bootstrap: rejected input wrote nothing" "0/0/0" "$(fingerprint_a)"
 
-expect_exit 0 "bootstrap: create La Mesa (app uuid from VIPE_COOLIFY_APP_UUID)" \
-  env VIPE_COOLIFY_APP_UUID="$a" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify "La Mesa" Admin@Mesa.example
+expect_exit 0 "bootstrap: create La Mesa (uuids from VIPE_COOLIFY_APP_UUID and VIPE_COOLIFY_DB_UUID)" \
+  env VIPE_COOLIFY_APP_UUID="$a" VIPE_COOLIFY_DB_UUID="$adb" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify "La Mesa" Admin@Mesa.example
 expect_eq "bootstrap: one restaurant, admin profile with the email's local part" "La Mesa|admin@mesa.example|admin|admin" \
-  "$(sql "$a" postgres "SELECT r.name || '|' || p.email || '|' || p.username || '|' || p.role FROM public.restaurants r JOIN public.profiles p ON p.restaurant_id = r.id")"
+  "$(sql "$adb" postgres "SELECT r.name || '|' || p.email || '|' || p.username || '|' || p.role FROM public.restaurants r JOIN public.profiles p ON p.restaurant_id = r.id")"
 expect_eq "bootstrap: the admin password is an argon2id hash" "t" \
-  "$(sql "$a" postgres "SELECT bool_and(password_hash LIKE '\$argon2id\$%') FROM public.users")"
+  "$(sql "$adb" postgres "SELECT bool_and(password_hash LIKE '\$argon2id\$%') FROM public.users")"
 
-expect_exit 3 "bootstrap: duplicate name in another case" bootstrap --target coolify --app-uuid "$a" "  la MESA " otra@mesa.example
-expect_exit 3 "bootstrap: duplicate email" bootstrap --target coolify --app-uuid "$a" "Otra Mesa" ADMIN@mesa.example
-expect_exit 3 "bootstrap: taken username (email local part)" bootstrap --target coolify --app-uuid "$a" "Otra Mesa" admin@otra.example
+expect_exit 3 "bootstrap: duplicate name in another case" bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" "  la MESA " otra@mesa.example
+expect_exit 3 "bootstrap: duplicate email" bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" "Otra Mesa" ADMIN@mesa.example
+expect_exit 3 "bootstrap: taken username (email local part)" bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" "Otra Mesa" admin@otra.example
 expect_stderr "bootstrap: the taken username suggests --username" "--username"
 expect_eq "bootstrap: refused runs wrote nothing" "1/1/1" "$(fingerprint_a)"
 
 # A unique violation inside the transaction (a concurrent run created the
 # same row between the checks and the insert) is exit 3, not 1.
-sql "$a" postgres "CREATE FUNCTION public.zz_race() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE unique_violation USING MESSAGE = 'duplicate key value violates unique constraint \"restaurants_slug_key\"'; END \$\$;
+sql "$adb" postgres "CREATE FUNCTION public.zz_race() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE unique_violation USING MESSAGE = 'duplicate key value violates unique constraint \"restaurants_slug_key\"'; END \$\$;
   CREATE TRIGGER zz_race BEFORE INSERT ON public.restaurants FOR EACH ROW EXECUTE FUNCTION public.zz_race();" >/dev/null
-expect_exit 3 "bootstrap: unique violation during the insert (race)" bootstrap --target coolify --app-uuid "$a" "Mesa Race" race@mesa.example
-sql "$a" postgres "DROP TRIGGER zz_race ON public.restaurants; DROP FUNCTION public.zz_race();" >/dev/null
+expect_exit 3 "bootstrap: unique violation during the insert (race)" bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" "Mesa Race" race@mesa.example
+sql "$adb" postgres "DROP TRIGGER zz_race ON public.restaurants; DROP FUNCTION public.zz_race();" >/dev/null
 expect_eq "bootstrap: the race wrote nothing" "1/1/1" "$(fingerprint_a)"
 
 # A psql error in the up-front checks is a failure (1), never "exists" (3).
-sql "$a" postgres "ALTER TABLE public.users RENAME TO zz_users" >/dev/null
-expect_exit 1 "bootstrap: database error in the checks" bootstrap --target coolify --app-uuid "$a" "Mesa Error" error@mesa.example
-sql "$a" postgres "ALTER TABLE public.zz_users RENAME TO users" >/dev/null
+sql "$adb" postgres "ALTER TABLE public.users RENAME TO zz_users" >/dev/null
+expect_exit 1 "bootstrap: database error in the checks" bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" "Mesa Error" error@mesa.example
+sql "$adb" postgres "ALTER TABLE public.zz_users RENAME TO users" >/dev/null
 
 expect_exit 0 "bootstrap: --username for a taken local part" \
-  bootstrap --target coolify --app-uuid "$a" --username admin.otra "Otra Mesa" admin@otra.example
+  bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" --username admin.otra "Otra Mesa" admin@otra.example
 expect_eq "bootstrap: the second admin has the given username" "admin.otra" \
-  "$(sql "$a" postgres "SELECT username FROM public.profiles WHERE email = 'admin@otra.example'")"
+  "$(sql "$adb" postgres "SELECT username FROM public.profiles WHERE email = 'admin@otra.example'")"
 expect_exit 3 "bootstrap: --username already taken" \
-  bootstrap --target coolify --app-uuid "$a" --username admin.otra "Tercera Mesa" tercera@mesa.example
+  bootstrap --target coolify --app-uuid "$a" --db-uuid "$adb" --username admin.otra "Tercera Mesa" tercera@mesa.example
 
 # ---------------------------------------------------------------------------
 # Stack B (POSTGRES_USER=vipeowner): demo, reset, invariants
 # ---------------------------------------------------------------------------
 b="${run_id}b"
-echo "stack B ($b, POSTGRES_USER=vipeowner)"
-start_stack "$b" vipeowner
-q() { sql "$b" vipeowner "$1"; }
+bdb="${b}db"
+echo "stack B ($b, database $bdb, POSTGRES_USER=vipeowner)"
+start_stack "$b" "$bdb" vipeowner
+q() { sql "$bdb" vipeowner "$1"; }
 # Restaurant ids included: a reset re-creates the demo with a new id.
 fingerprint_b() { q "SELECT (SELECT string_agg(id::text, ',' ORDER BY id) FROM public.restaurants) || '/' || (SELECT count(*) FROM public.orders) || '/' || (SELECT count(*) FROM public.payments) || '/' || (SELECT count(*) FROM public.users)"; }
 
 expect_exit 2 "demo: --target coolify without an app uuid" env -u VIPE_COOLIFY_APP_UUID DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target coolify
-expect_exit 0 "demo: load on an empty database" demo --target coolify --app-uuid "$b"
+expect_exit 0 "demo: load on an empty database" demo --target coolify --app-uuid "$b" --db-uuid "$bdb"
 expect_eq "demo: one demo restaurant" "Casa Guadua" "$(q "SELECT string_agg(name, ',') FROM public.restaurants")"
 expect_eq "demo: preparations with production batches" "t" \
   "$(q "SELECT (SELECT count(*) FROM public.ingredients WHERE kind = 'prep') >= 3 AND (SELECT count(*) FROM public.production_batches) >= 3")"
@@ -241,10 +265,10 @@ END
 SELECT pg_temp.rows_outside_demo();")"
 
 before="$(fingerprint_b)"
-expect_exit 3 "demo: re-run without --reset" demo --target coolify --app-uuid "$b"
+expect_exit 3 "demo: re-run without --reset" demo --target coolify --app-uuid "$b" --db-uuid "$bdb"
 expect_eq "demo: the refused re-run changed nothing" "$before" "$(fingerprint_b)"
-expect_exit 0 "demo: --reset (1st)" demo --reset --target coolify --app-uuid "$b"
-expect_exit 0 "demo: --reset (2nd)" demo --reset --target coolify --app-uuid "$b"
+expect_exit 0 "demo: --reset (1st)" demo --reset --target coolify --app-uuid "$b" --db-uuid "$bdb"
+expect_exit 0 "demo: --reset (2nd)" demo --reset --target coolify --app-uuid "$b" --db-uuid "$bdb"
 expect_eq "demo: still exactly one restaurant after two resets" "1" "$(q "SELECT count(*) FROM public.restaurants")"
 
 # A tenant table reset.sql does not cover fails the reset before any delete.
@@ -253,7 +277,7 @@ q "CREATE TABLE public.zz_new_tenant_table (id serial PRIMARY KEY, restaurant_id
 q "CREATE FUNCTION public.zz_delete_reached() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'DELETE REACHED'; END \$\$;
   CREATE TRIGGER zz_delete_reached BEFORE DELETE ON public.payment_tenders FOR EACH STATEMENT EXECUTE FUNCTION public.zz_delete_reached();" >/dev/null
 before="$(fingerprint_b)"
-expect_exit 1 "demo: --reset with an uncovered tenant table" demo --reset --target coolify --app-uuid "$b"
+expect_exit 1 "demo: --reset with an uncovered tenant table" demo --reset --target coolify --app-uuid "$b" --db-uuid "$bdb"
 expect_stderr "demo: the reset names the uncovered table" "zz_new_tenant_table"
 expect_eq "demo: the guard fired before any delete" "absent" "$(grep -qF 'DELETE REACHED' "$scratch/err" && echo reached || echo absent)"
 expect_eq "demo: the failed reset changed nothing" "$before" "$(fingerprint_b)"
@@ -261,10 +285,10 @@ q "DROP TRIGGER zz_delete_reached ON public.payment_tenders; DROP FUNCTION publi
 
 # The verifier's reproduction: bootstrap next to the demo (its admin is
 # `admin`), then the demo refuses to reset a database with a real tenant.
-expect_exit 3 "bootstrap next to the demo: taken username" bootstrap --target coolify --app-uuid "$b" "La Otra Mesa" admin@otra.example
-expect_exit 0 "bootstrap next to the demo: --username" bootstrap --target coolify --app-uuid "$b" --username admin.otra "La Otra Mesa" admin@otra.example
+expect_exit 3 "bootstrap next to the demo: taken username" bootstrap --target coolify --app-uuid "$b" --db-uuid "$bdb" "La Otra Mesa" admin@otra.example
+expect_exit 0 "bootstrap next to the demo: --username" bootstrap --target coolify --app-uuid "$b" --db-uuid "$bdb" --username admin.otra "La Otra Mesa" admin@otra.example
 before="$(fingerprint_b)"
-expect_exit 3 "demo: --reset with a non-demo restaurant" demo --reset --target coolify --app-uuid "$b"
+expect_exit 3 "demo: --reset with a non-demo restaurant" demo --reset --target coolify --app-uuid "$b" --db-uuid "$bdb"
 expect_eq "demo: the refused reset changed nothing" "$before" "$(fingerprint_b)"
 
 echo "seed contract: $passed passed, $failed failed"

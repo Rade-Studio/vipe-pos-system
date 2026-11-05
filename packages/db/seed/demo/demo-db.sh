@@ -4,7 +4,7 @@
 # T16, L31): staff for every role, menu, tables, inventory and preparations,
 # 30 days of history and live orders.
 #
-#   DEMO_PASSWORD=... demo-db.sh [--reset] [--target local|coolify] [--app-uuid <uuid>]
+#   DEMO_PASSWORD=... demo-db.sh [--reset] [--target local|coolify] [--app-uuid <uuid>] [--db-uuid <uuid>]
 #
 # DEMO_PASSWORD (12+ characters) is the password of every demo account
 # (<role>@demo.vipe.pos, listed in docs/despliegue.md). It is hashed with
@@ -19,7 +19,8 @@
 # Targets (seed/bootstrap/target.sh): local is the dev stack of
 # docker-compose.yml, database $VIPE_DEMO_DB (default vipe_demo, created and
 # migrated when missing, so the dev database keeps its own seed); coolify runs
-# psql and node with `docker exec` in the containers of the Coolify app given
+# psql with `docker exec` in the Coolify database given by --db-uuid or
+# VIPE_COOLIFY_DB_UUID and node in the api container of the Coolify app given
 # by --app-uuid or VIPE_COOLIFY_APP_UUID (required, no default: a missing
 # uuid must never load the demo into another app's database).
 #
@@ -27,7 +28,7 @@
 # versions may report any failure as 1):
 #   0  demo loaded
 #   1  any other failure (nothing is written: one transaction)
-#   2  invalid usage, DEMO_PASSWORD or app uuid
+#   2  invalid usage, DEMO_PASSWORD or uuid
 #   3  the target already has restaurants (without --reset), or has
 #      restaurants the demo seed did not create
 set -euo pipefail
@@ -48,6 +49,7 @@ while (($#)); do
     --reset) reset=true; shift ;;
     --target) [[ $# -ge 2 ]] || usage; target="$2"; shift 2 ;;
     --app-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_APP_UUID="$2"; VIPE_COOLIFY_APP_UUID_GIVEN=1; shift 2 ;;
+    --db-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_DB_UUID="$2"; VIPE_COOLIFY_DB_UUID_GIVEN=1; shift 2 ;;
     -h | --help) usage ;;
     *) echo "error: unknown argument $1" >&2; usage ;;
   esac
