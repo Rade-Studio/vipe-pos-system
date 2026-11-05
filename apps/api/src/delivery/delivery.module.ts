@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { Clock } from '../common/clock';
 import { InventoryModule } from '../inventory/inventory.module';
 import { PrintModule } from '../print/print.module';
 import { DeliveryController } from './delivery.controller';
@@ -9,6 +8,6 @@ import { DeliveryService } from './delivery.service';
 @Module({
   imports: [InventoryModule, PrintModule],
   controllers: [DeliveryController],
-  providers: [DeliveryService, Clock],
+  providers: [DeliveryService],
 })
 export class DeliveryModule {}
