@@ -6,7 +6,7 @@ import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { useProfileStore } from "@/store/useProfileStore"
-import type { Profile, Dish, Table, Order, OrderItem, OrderStatus, OrderItemStatus, CommandPayload } from "@/types"
+import type { Profile, Dish, Order, CommandPayload } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { MenuSection } from "@/components/pos/MenuSection"
@@ -16,17 +16,30 @@ import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintView"
 import type { PrintableKitchenOrder } from "@/types"
-import { tableService, orderService } from "@/lib/supabase/service"
+import * as tablesApi from "@/lib/api/tables"
+import {
+  addItemsToOrder,
+  create as createOrder,
+  getByStatus,
+  orderConflictOf,
+  orderDtoFromWire,
+  orderItemsFromCart,
+  toOrder,
+  type DishPrice,
+  type OrderDto,
+} from "@/lib/api/orders"
+import { conflictMessage } from "@/lib/api/errors"
+import { realtimeService } from "@/lib/api/realtime"
+import { sendCommand } from "@/lib/api/print"
 import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
-import { realtimeService } from "@/lib/supabase/realtime-service"
-import { queryClient } from "@/lib/queryClient"
 import type { TableChange } from "@/lib/realtime/table-merge"
+import { createLocalChangeRegistry } from "@/lib/kitchen/realtime"
+import { mergeOrdersList } from "@/lib/realtime/order-merge"
 import { mergeOrdersForWaiter, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { useWaiters } from "@/hooks/use-waiters"
 import { useConfigStore } from "@/store/use-config-store"
-import { checkDishesStock, consumeOrderStock } from "@/lib/supabase/inventory"
 import { invalidationsFor } from "@/hooks/inventory/invalidations"
 import {
   Dialog,
@@ -41,7 +54,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 // Importar el nuevo componente CompactOrderCard
 import { CompactOrderCard } from "@/components/pos/CompactOrderCard"
-import { orderTypeFromRow, ordersForWaiter } from "@/lib/delivery/kitchen"
+import { ordersForWaiter } from "@/lib/delivery/kitchen"
 // Importar el hook para detectar dispositivos móviles
 import { useIsMobile } from "@/hooks/use-mobile"
 import {animated, useSpring} from "@react-spring/web"
@@ -53,15 +66,6 @@ interface WaiterViewProps {
   profile: Profile
   onChangeProfile: () => void
   authRole?: string
-}
-
-// Función para normalizar IDs de platos
-const normalizeDishId = (id: string): string => {
-  // Si el ID contiene un guión, tomar solo la primera parte (hasta 36 caracteres)
-  if (id.length > 36 && id.includes("-")) {
-    return id.substring(0, 36)
-  }
-  return id
 }
 
 // S5: the shared wire→app mapping (`wireRowToPartialOrder`) turns the
@@ -107,7 +111,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const menuSectionRef = useRef<HTMLDivElement>(null)
   const tablesSubscriptionRef = useRef<(() => void) | null>(null)
   const ordersSubscriptionRef = useRef<(() => void) | null>(null)
-  const localChangesRef = useRef<Set<string>>(new Set()) // Para rastrear cambios locales
+  // Table ids whose next realtime event is this screen's own write. Marked
+  // BEFORE the write (the echo can beat the response) and expiring, so a mark
+  // whose echo never comes cannot swallow a later real change.
+  const [localTableChanges] = useState(createLocalChangeRegistry)
   // T6/S2: the realtime handlers need to know which table is selected, but they
   // must NOT be re-created when the selection changes — that used to tear down
   // and rebuild both channels on every table click. The ref is the read path;
@@ -116,7 +123,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
   // Hooks
   const { toast } = useToast()
-  const { tipPercentage, taxPercentage, inventoryControlEnabled } = useConfigStore()
+  const { inventoryControlEnabled } = useConfigStore()
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
   // T6/S1: the waiter directory is one shared query (also read by
@@ -127,63 +134,20 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // Query functions for React Query
   const fetchTables = async () => {
     try {
-      const data = await tableService.getAll()
+      const data = await tablesApi.getAll()
       log.info("[WaiterView] tables fetched:", { count: data.length })
-      return data.map((table) => ({
-        id: table.id,
-        number: table.number,
-        status: table.status as any,
-        waiter: table.waiter_id || undefined,
-        waiter_name: table.waiter_name || undefined,
-        // D4: hydrated rows must carry updated_at too, or the out-of-order
-        // guard starts at 0 for every row until its first realtime UPDATE.
-        updated_at: table.updated_at ? new Date(table.updated_at) : undefined,
-      })) as Table[]
+      // `updated_at` comes from the server, so the out-of-order guard of
+      // `mergeTableList` compares server clocks only.
+      return data.map(tablesApi.toTable)
     } catch (err: any) {
       log.error("[WaiterView] fetchTables ERROR:", { error: err?.message ?? err })
       throw err
     }
   }
 
-  const fetchOrders = async () => {
-    const activeOrdersData = await orderService.getByStatus(["active", "kitchen", "delivered"])
-    const mapped = activeOrdersData.map((order) => {
-      const items = order.order_items.map((item) => ({
-        id: item.id,
-        dishId: item.dish_id || `item-${item.id}`,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        comments: item.comments || undefined,
-        categoryId: "",
-        image: "/placeholder.svg?height=50&width=50",
-        status: (item.status ?? "kitchen") as OrderItemStatus,
-      }))
-
-      return {
-        id: order.id,
-        tableId: order.table_id ?? "",
-        orderType: orderTypeFromRow(order),
-        items,
-        status: order.status as OrderStatus,
-        bill: {
-          subtotal: order.subtotal || 0,
-          tax: order.tax || 0,
-          taxPercentage: order.tax_percentage || 0,
-          tip: order.tip || 0,
-          tipPercentage: order.tip_percentage || 0,
-          total: order.total || 0,
-          totalDiscounts: order.total_discounts ?? 0,
-        },
-        waiter: order.waiter_id ?? "",
-        createdAt: order.created_at ? new Date(order.created_at) : new Date(),
-        isPartialOrder: order.is_partial_order || false,
-        parentOrderId: order.parent_order_id ?? undefined,
-      } as unknown as Order
-    })
-    // Delivery orders belong to the delivery operator, not to the waiters.
-    return ordersForWaiter(mapped)
-  }
+  // ONE request for the three open statuses, mapped by the shared `toOrder`.
+  // Delivery orders belong to the delivery operator, not to the waiters.
+  const fetchOrders = async () => ordersForWaiter((await getByStatus(["active", "kitchen", "delivered"])).map(toOrder))
 
   // React Query hooks for tables and orders
   const { data: tablesData = [] } = useQuery({
@@ -206,7 +170,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const clearCart = useCartStore((s) => s.clearCart)
   const getCartByTable = useCartStore((s) => s.getCartByTable)
   const getCartTotal = useCartStore((s) => s.getCartTotal)
-  const calculateOrderBill = useCartStore((s) => s.calculateOrderBill)
   const addOrder = useOrderStore((s) => s.addOrder)
   // Subscribe directly to cartItems so this view re-renders on cart changes
   const cartItemsMap = useCartStore((s) => s.cartItems)
@@ -259,10 +222,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     const unsubscribeTables = realtimeService.subscribeToTables((payload) => {
       // Verificar si este cambio fue originado por este cliente
       const tableId = (payload.new as any)?.id || (payload.old as any)?.id
-      if (tableId && localChangesRef.current.has(tableId)) {
-        localChangesRef.current.delete(tableId) // Limpiar el registro
-        return
-      }
+      if (tableId && localTableChanges.consume(tableId)) return
 
       // Route through the single owner's patch action instead of a local
       // useState updater (S3, D1). No dual write remains — the store is the
@@ -284,20 +244,18 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
     // Suscripción a cambios en órdenes
     const unsubscribeOrders = realtimeService.subscribeToOrders((payload) => {
-      // Verificar si este cambio fue originado por este cliente
-      const orderId = (payload.new as any)?.id || (payload.old as any)?.id
-      if (orderId && localChangesRef.current.has(orderId)) {
-        localChangesRef.current.delete(orderId) // Limpiar el registro
-        return
-      }
-
+      // Orders are not echo-suppressed: the API sends an INSERT and UPDATEs
+      // per write, and merging them is idempotent.
       // S5: payload-application replaces the per-event invalidateQueries.
-      // D7 consequence 2: only carry fields the broadcast actually sent —
-      // undefined subtrees (items/bill/waiter in the cache) are preserved by
-      // mergeOrdersList's no-op-on-id-miss contract.
+      // D7 consequence 2: an UPDATE only carries the fields the broadcast
+      // sent — undefined subtrees (items/bill/waiter in the cache) are
+      // preserved by mergeOrdersList's no-op-on-id-miss contract. An INSERT
+      // arrives with its `order_items` (API enrichment), so the new card is
+      // the full order from the shared mapper.
+      const inserted = payload.eventType === "INSERT" ? orderDtoFromWire(payload.new) : null
       const conv: OrderChange = {
         eventType: payload.eventType,
-        new: payload.new ? wireRowToPartialOrder(payload.new) : null,
+        new: inserted ? toOrder(inserted) : payload.new ? wireRowToPartialOrder(payload.new) : null,
         old: (payload.old as any)?.id ? { id: (payload.old as any).id } : null,
       }
       // S13 through the realtime path: a domicilio never reaches the waiter's
@@ -421,10 +379,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           if (table && table.status === "occupied") {
 
             // Registrar este cambio como local
-            localChangesRef.current.add(tableId)
+            localTableChanges.mark([tableId])
 
             // Actualizar en base de datos
-            await tableService.releaseTable(tableId)
+            await tablesApi.releaseTable(tableId)
 
             // Actualizar directamente en el store (single owner, S3 — no
             // local `tables` copy left to echo the write into).
@@ -433,7 +391,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         } catch (err) {
           toast({
             title: "Error",
-            description: "No se pudo verificar/liberar la mesa. Intente nuevamente.",
+            description: conflictMessage(err, "No se pudo verificar/liberar la mesa. Intente nuevamente."),
             variant: "destructive",
           })
         }
@@ -462,11 +420,12 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
         if (table && table.status !== "occupied" && table.status !== "kitchen" && table.status !== "served") {
           // Registrar este cambio como local
-          localChangesRef.current.add(tableId)
+          localTableChanges.mark([tableId])
 
-          // Actualizar en base de datos
-          tableService
-            .updateTableStatus(tableId, "occupied")
+          // Actualizar en base de datos: the floor action that occupies a table
+          // keeps its waiter (setting a status directly is admin-only).
+          tablesApi
+            .assignWaiter(tableId, currentWaiter)
             .then(() => {
               // Actualizar directamente en el store (single owner, S3).
               useTableStore.getState().updateTableStatus(tableId, "occupied")
@@ -486,8 +445,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           // Usar authProfile.id (UUID real de la DB) en vez de profile.id
           // (que es "waiter-1" mock cuando admin está impersonando).
           const realWaiterId = authProfile?.id ?? profile.id
-          localChangesRef.current.add(tableId)
-          tableService.assignWaiter(tableId, realWaiterId, "occupied")
+          localTableChanges.mark([tableId])
+          tablesApi.assignWaiter(tableId, realWaiterId)
             .then(() => {
               useTableStore.getState().assignWaiterToTable(tableId, realWaiterId)
               setActiveTable(tableId)
@@ -522,10 +481,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           setLoading(false)
 
           // Registrar este cambio como local
-          localChangesRef.current.add(selectedTableForWaiter)
+          localTableChanges.mark([selectedTableForWaiter])
 
           // Actualizar en base de datos
-          await tableService.assignWaiter(selectedTableForWaiter, waiterId, "occupied")
+          await tablesApi.assignWaiter(selectedTableForWaiter, waiterId)
 
           // Actualizar directamente en el store (single owner, S3). No local
           // `tables` copy is echoed — `waiter_name` was write-only on that
@@ -563,10 +522,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           setLoading(false)
 
           // Registrar este cambio como local
-          localChangesRef.current.add(selectedTableForWaiter)
+          localTableChanges.mark([selectedTableForWaiter])
 
           // Actualizar en base de datos
-          await tableService.assignWaiter(selectedTableForWaiter, waiterId, "occupied")
+          await tablesApi.assignWaiter(selectedTableForWaiter, waiterId)
 
           // Actualizar directamente en el store (single owner, S3).
           useTableStore.getState().assignWaiterToTable(selectedTableForWaiter, waiterId)
@@ -619,10 +578,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         }
 
         // Registrar este cambio como local
-        localChangesRef.current.add(tableId)
+        localTableChanges.mark([tableId])
 
-        // Actualizar en base de datos
-        await tableService.releaseTable(tableId)
+        // Actualizar en base de datos (the API refuses the same statuses)
+        await tablesApi.releaseTable(tableId)
 
         // Actualizar directamente en el store (single owner, S3).
         useTableStore.getState().releaseTable(tableId)
@@ -644,7 +603,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       } catch (err) {
         toast({
           title: "Error",
-          description: "No se pudo liberar la mesa. Intente nuevamente.",
+          description: conflictMessage(err, "No se pudo liberar la mesa. Intente nuevamente."),
           variant: "destructive",
         })
       }
@@ -695,131 +654,52 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     clearCart(activeTable)
   }, [activeTable, clearCart])
 
-  // Verificar stock antes de enviar a cocina (check_dishes_stock: una sola
-  // lectura en el servidor, misma cantidad por plato agregada)
-  const checkStockBeforeSending = useCallback(async () => {
-    if (!inventoryControlEnabled || forceSubmit || forceSubmitRef.current) {
-      return true
+  // The API checked and consumed the stock with the order (T8b). The grid's
+  // stock read is cached (staleTime 30 s), so a dish this order just sold out
+  // would keep showing "Agregar": invalidate the stock reads (grid and
+  // inventory). Not awaited: it is a read and must not delay "Orden enviada".
+  const refreshStockAfterSending = useCallback(() => {
+    if (!inventoryControlEnabled) return
+    for (const queryKey of invalidationsFor({ type: "consumeOrder" })) {
+      void queryClient.invalidateQueries({ queryKey }).catch(() => undefined)
     }
+  }, [inventoryControlEnabled, queryClient])
 
-    try {
-      const quantityByDish = new Map<string, number>()
-      for (const item of cartItems) {
-        const dishId = normalizeDishId(item.id)
-        quantityByDish.set(dishId, (quantityByDish.get(dishId) ?? 0) + item.quantity)
-      }
-
-      const stockCheck = await checkDishesStock(
-        [...quantityByDish].map(([dishId, quantity]) => ({ dishId, quantity })),
-      )
-
-      if (!stockCheck.ok) {
-        setStockDetailWarning({
-          // The RPC reports short ingredients (nested preparations included),
-          // not which dishes use them, so no dish list is derivable here.
-          dishesWithoutStock: [],
-          missingIngredients: stockCheck.shortages.map((shortage) => ({
-            name: shortage.name,
-            required: shortage.required,
-            available: shortage.available,
-            unit: shortage.unit,
-          })),
-        })
-        setShowStockDetailWarning(true)
-        return false
-      }
-
-      return true
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo verificar el stock de ingredientes. Intente nuevamente.",
-        variant: "destructive",
-      })
-      return false
-    }
-  }, [inventoryControlEnabled, forceSubmit, cartItems, toast])
-
-  // Descontar el stock de la orden en el servidor (consume_order_stock lee los
-  // order_items y omite los ya descontados, así que sirve también al agregar
-  // productos a una orden existente)
-  const reduceStockAfterSending = useCallback(
-    async (orderId: string) => {
-      if (!inventoryControlEnabled) {
-        return
-      }
-
-      try {
-        await consumeOrderStock(orderId)
-
-        // T6 advisory: la lectura de stock del grid está cacheada (staleTime
-        // 30 s), así que un plato que esta orden acaba de agotarse seguiría
-        // mostrando "Agregar". Invalidate el stock (grid e inventario) para que
-        // el siguiente render vea el stock real. No se espera: es una lectura y
-        // no debe retrasar el "Orden enviada".
-        for (const queryKey of invalidationsFor({ type: "consumeOrder" })) {
-          void queryClient.invalidateQueries({ queryKey }).catch(() => undefined)
-        }
-      } catch (error) {
-        toast({
-          title: "Advertencia",
-          description: "La orden se envió correctamente, pero hubo un error al actualizar el inventario.",
-          variant: "destructive",
-        })
-      }
+  // A 409 `Price changed`: reprice the cart lines with the server's prices and
+  // reload the menu, so the waiter sees the real total before sending again.
+  const repriceCart = useCallback(
+    (tableId: string, prices: readonly DishPrice[]) => {
+      const priceByDish = new Map(prices.map((entry) => [entry.dishId, entry.price]))
+      useCartStore.setState((state) => ({
+        cartItems: {
+          ...state.cartItems,
+          [tableId]: (state.cartItems[tableId] ?? []).map((item) => {
+            const price = priceByDish.get(dishIdFromCartItemId(item.id) ?? "")
+            return price === undefined || price === item.price ? item : { ...item, price }
+          }),
+        },
+      }))
+      void queryClient.invalidateQueries({ queryKey: ["menu"] }).catch(() => undefined)
     },
-    [inventoryControlEnabled, toast, queryClient],
+    [queryClient],
   )
 
   // Verificar si ya existe una orden activa para la mesa
   const checkExistingOrder = useCallback(
-    async (tableId: string) => {
-      try {
-        const tableOrders = activeOrders.filter((order) => order.tableId === tableId && (order.status === "kitchen" || order.status === "delivered"))
-        return tableOrders.length > 0 ? tableOrders[0] : null
-      } catch (error) {
-        return null
-      }
-    },
+    (tableId: string) =>
+      activeOrders.find(
+        (order) => order.tableId === tableId && (order.status === "kitchen" || order.status === "delivered"),
+      ) ?? null,
     [activeOrders],
   )
 
-  // Agregar nuevos productos a una orden existente
-  const addItemsToExistingOrder = useCallback(async (orderId: string, items: any[]) => {
-    try {
-      const orderItems = items.map((item) => ({
-        order_id: orderId,
-        dish_id: dishIdFromCartItemId(item.id),
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        comments: item.comments || null,
-        status: "kitchen",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }))
-
-      const { data: insertedItems, error: itemsError } = await orderService.addItemsToOrder(orderId, orderItems)
-
-      if (itemsError) {
-        throw itemsError
-      }
-
-      await orderService.recalculateOrderTotals(orderId)
-      await orderService.updateStatus(orderId, "kitchen")
-      return true
-    } catch (error) {
-      throw error
-    }
-  }, [])
-
-  // Enviar a cocina
+  // Enviar a cocina. The API prices the lines, checks and consumes the stock,
+  // computes the bill and moves the table to the kitchen, in one transaction.
   const handleSendToKitchen = useCallback(async () => {
     if (!activeTable || cartItems.length === 0) return
 
-    const stockOk = await checkStockBeforeSending()
-    if (!stockOk) return
-
+    // "Enviar de todos modos" re-runs the send from a timeout: the ref carries it.
+    const force = forceSubmit || forceSubmitRef.current
     forceSubmitRef.current = false
     if (forceSubmit) {
       setForceSubmit(false)
@@ -835,175 +715,127 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       }
 
       const waiterId = table.waiter || profile.id
-      const existingOrder = await checkExistingOrder(activeTable)
+      const items = orderItemsFromCart(cartItems)
+      const existingOrder = checkExistingOrder(activeTable)
 
-      if (existingOrder) {
-        // Registrar este cambio como local
-        localChangesRef.current.add(existingOrder.id)
+      // The API moves the table to the kitchen in the same transaction: mark
+      // it before the request, its echo may arrive before the response.
+      const marksTable = table.status !== "kitchen"
+      if (marksTable) localTableChanges.mark([activeTable])
 
-        await addItemsToExistingOrder(existingOrder.id, cartItems)
-        await reduceStockAfterSending(existingOrder.id)
-
-        if (table.status !== "kitchen") {
-          // Registrar este cambio como local
-          localChangesRef.current.add(activeTable)
-
-          // Actualizar en base de datos
-          await tableService.updateTableStatus(activeTable, "kitchen")
-
-          // Actualizar directamente en el store (single owner, S3).
-          useTableStore.getState().updateTableStatus(activeTable, "kitchen")
+      let created = null as OrderDto | null
+      let added = null as OrderDto | null
+      try {
+        if (existingOrder) {
+          added = await addItemsToOrder(existingOrder.id, items, { force })
+        } else {
+          try {
+            created = await createOrder(
+              force
+                ? { tableId: activeTable, orderType: "dine_in", items, force: true }
+                : { tableId: activeTable, orderType: "dine_in", items },
+            )
+          } catch (error) {
+            // Another terminal opened an order on this table first: the cart
+            // goes to that order instead of failing.
+            const conflict = orderConflictOf(error)
+            if (conflict?.kind !== "openOrder") throw error
+            added = await addItemsToOrder(conflict.orderId, items, { force })
+          }
         }
+      } catch (error) {
+        // No write happened, so no echo will consume the mark.
+        if (marksTable) localTableChanges.unmark([activeTable])
+        throw error
+      }
 
-        const orderNumber = `${Math.floor(Math.random() * 9000) + 1000}`
+      // The API moved the table to the kitchen; mirror it in the store.
+      if (marksTable) useTableStore.getState().updateTableStatus(activeTable, "kitchen")
+      refreshStockAfterSending()
 
-        const kitchenOrder: CommandPayload = {
-          invoiceNumber: orderNumber,
-          table: table.number,
-          waiter: waiters.find((p) => p.id === waiterId)?.name || "Mesero",
-          items: cartItems,
-        }
+      const orderNumber = `${Math.floor(Math.random() * 9000) + 1000}`
+      const kitchenOrder: CommandPayload = {
+        invoiceNumber: orderNumber,
+        table: table.number,
+        waiter: waiters.find((p) => p.id === waiterId)?.name || "Mesero",
+        items: cartItems,
+      }
 
-        realtimeService.sendCommand(kitchenOrder)
-        // setKitchenOrderData(kitchenOrder)
-        // setShowKitchenOrder(true)
-        clearCart(activeTable)
+      // The created order reaches the list through its realtime INSERT; an
+      // order that received items is upserted (it may not be listed yet).
+      if (created) {
+        addOrder(toOrder(created))
+      } else if (added) {
+        const updated = toOrder(added)
+        queryClient.setQueryData<Order[]>(["orders"], (prev: Order[] = []) =>
+          prev.some((order) => order.id === updated.id)
+            ? mergeOrdersList(prev, { eventType: "UPDATE", new: updated })
+            : [...prev, updated],
+        )
+      }
 
-        toast({
-          title: "Productos adicionales enviados",
-          description: `Los nuevos productos para la mesa ${table.number} han sido enviados a cocina.`,
-        })
+      void sendCommand(kitchenOrder)
+      clearCart(activeTable)
 
-        setActiveTable(null)
+      toast(
+        created
+          ? { title: "Orden enviada", description: `La orden #${orderNumber} ha sido enviada a cocina.` }
+          : {
+              title: "Productos adicionales enviados",
+              description: `Los nuevos productos para la mesa ${table.number} han sido enviados a cocina.`,
+            },
+      )
 
-        // Si estamos en móvil, ocultar el carrito
-        if (isMobile) {
-          setShowMobileCart(false)
-        }
-      } else {
-        // Asegurarse de que hay un mesero asignado
-        if (!waiterId) {
-          // Registrar este cambio como local
-          localChangesRef.current.add(activeTable)
+      setActiveTable(null)
 
-          // Actualizar en base de datos
-          await tableService.assignWaiter(activeTable, profile.id, "occupied")
-
-          // Actualizar directamente en el store (single owner, S3).
-          useTableStore.getState().assignWaiterToTable(activeTable, profile.id)
-        }
-
-        // Calcular totales usando la función del store
-        const bill = calculateOrderBill(cartItems, tipPercentage, taxPercentage)
-
-        // Crear la orden en la base de datos
-        const newOrder = await orderService.create({
-          table_id: activeTable,
-          waiter_id: waiterId,
-          items: cartItems,
-          subtotal: bill.subtotal,
-          tax: bill.tax,
-          tax_percentage: bill.taxPercentage,
-          tip: bill.tip,
-          tip_percentage: bill.tipPercentage,
-          total: bill.total,
-          status: "kitchen", // Estado inicial: activo
-        })
-
-        // Registrar este cambio como local
-        localChangesRef.current.add(newOrder.id)
-
-        await reduceStockAfterSending(newOrder.id)
-
-        // Registrar este cambio como local
-        localChangesRef.current.add(activeTable)
-
-        // Actualizar en base de datos
-        await tableService.updateTableStatus(activeTable, "kitchen")
-
-        // Actualizar directamente en el store (single owner, S3).
-        useTableStore.getState().updateTableStatus(activeTable, "kitchen")
-
-        // Agregar la orden al store
-        const orderItems: OrderItem[] = cartItems.map((ci) => ({
-          id: ci.id,
-          name: ci.name,
-          price: ci.price,
-          quantity: ci.quantity,
-          categoryId: ci.categoryId,
-          image: ci.image,
-          comments: ci.comments,
-          status: "kitchen",
-          addedAt: new Date(),
-        }))
-        const storeOrder: Order = {
-          id: newOrder.id,
-          tableId: activeTable,
-          items: orderItems,
-          status: "kitchen",
-          bill,
-          waiter: waiterId,
-          createdAt: new Date(),
-          isPartialOrder: false,
-          parentOrderId: undefined,
-        }
-
-        addOrder(storeOrder)
-
-        // Actualizar el estado local de órdenes activas
-        setActiveOrders((prev) => [...prev, storeOrder])
-
-        const orderNumber = `${Math.floor(Math.random() * 9000) + 1000}`
-
-        const kitchenOrder: CommandPayload = {
-          invoiceNumber: orderNumber,
-          table: table.number,
-          waiter: waiters.find((p) => p.id === waiterId)?.name || "Mesero",
-          items: cartItems,
-        }
-
-        realtimeService.sendCommand(kitchenOrder)
-        // setKitchenOrderData(kitchenOrder)
-        // setShowKitchenOrder(true)
-        clearCart(activeTable)
-
-        toast({
-          title: "Orden enviada",
-          description: `La orden #${orderNumber} ha sido enviada a cocina.`,
-        })
-
-        setActiveTable(null)
-
-        // Si estamos en móvil, ocultar el carrito
-        if (isMobile) {
-          setShowMobileCart(false)
-        }
+      // Si estamos en móvil, ocultar el carrito
+      if (isMobile) {
+        setShowMobileCart(false)
       }
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo enviar la orden a cocina. Intente nuevamente.",
-        variant: "destructive",
-      })
+      const conflict = orderConflictOf(error)
+      if (conflict?.kind === "shortage") {
+        setStockDetailWarning({
+          // The server reports short ingredients (nested preparations
+          // included), not which dishes use them.
+          dishesWithoutStock: [],
+          missingIngredients: conflict.shortages.map((shortage) => ({
+            name: shortage.name,
+            required: shortage.required,
+            available: shortage.available,
+            unit: shortage.unit,
+          })),
+        })
+        setShowStockDetailWarning(true)
+      } else if (conflict?.kind === "priceChanged") {
+        repriceCart(activeTable, conflict.prices)
+        toast({
+          title: "Precios actualizados",
+          description: "Algunos precios cambiaron. Revise el carrito y envíe de nuevo.",
+          variant: "destructive",
+        })
+      } else {
+        log.error("Error al enviar la orden a cocina:", { error: String(error) })
+        toast({
+          title: "Error",
+          description: "No se pudo enviar la orden a cocina. Intente nuevamente.",
+          variant: "destructive",
+        })
+      }
     } finally {
       setSendingToKitchen(false)
     }
   }, [
     activeTable,
     cartItems,
-    checkStockBeforeSending,
+    forceSubmit,
     tables,
     profile.id,
-    profile.name,
     checkExistingOrder,
-    addItemsToExistingOrder,
-    reduceStockAfterSending,
-    tableService,
+    refreshStockAfterSending,
+    repriceCart,
     waiters,
     clearCart,
-    calculateOrderBill,
-    tipPercentage,
-    taxPercentage,
     addOrder,
     toast,
     isMobile,

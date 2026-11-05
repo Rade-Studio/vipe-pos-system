@@ -2,7 +2,7 @@
  * Shared types for the home-delivery module.
  *
  * Pure data: no Supabase, no DOM, no zustand. The client UI, the
- * optimistic state and the delivery-service all speak these shapes.
+ * optimistic state and `lib/api/delivery` all speak these shapes.
  *
  * Money is whole Colombian pesos (COP): no cents exist, so any
  * non-integer amount is a parsing or arithmetic bug and the compute
@@ -10,7 +10,7 @@
  *
  * Mirrors `lib/payments/types.ts` style and naming. The `kind`
  * namespace (`PaymentServiceError`/`DeliveryServiceError` etc.) is
- * intentionally reused: the supabase-js error-code -> kind contract
+ * intentionally reused: the API error-code (SQLSTATE) -> kind contract
  * (42501 / P0002 / P0001 / 22023) is identical for the two services,
  * and a single error class with a clear `name` keeps every consumer
  * honest about where the failure came from.
@@ -196,14 +196,6 @@ export interface CreateDeliveryOrderInput {
   notes?: string | null
 }
 
-export interface CreateDeliveryOrderResult {
-  orderId: string
-  customerId: string
-  /** NULL when the address was not saved or when the caller passed {id}. */
-  addressId: string | null
-  delivery: DeliveryOrder
-}
-
 /**
  * `camelCase` mirror of the set_delivery_status args. `courierId` is
  * required for `dispatch`; `reason` is required for `fail`.
@@ -221,7 +213,7 @@ export interface SetDeliveryStatusInput {
 
 /**
  * Typed error codes for the delivery service. The set is identical to
- * PaymentServiceErrorKind (supabase-js error-code -> kind contract is
+ * PaymentServiceErrorKind (API error-code (SQLSTATE) -> kind contract is
  * shared across every service in this codebase: 42501 / P0002 /
  * P0001 / 22023 / 23505 / 23514 / unknown). Keeping a separate
  * DeliveryServiceError class with the same kinds keeps call sites
@@ -237,7 +229,7 @@ export type DeliveryServiceErrorKind =
 export interface DeliveryServiceErrorInit {
   kind: DeliveryServiceErrorKind
   message: string
-  /** Raw supabase-js error for callers that need the original shape. */
+  /** Original error (ApiError from lib/api) for callers that need its shape. */
   cause?: unknown
 }
 

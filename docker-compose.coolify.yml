@@ -1,0 +1,134 @@
+# ============================================
+# VIPE POS - Despliegue en Coolify (sin Caddy, sin MinIO propio, sin puertos publicados)
+# ============================================
+# El proxy de Coolify (Traefik) maneja los puertos 80/443 y el HTTPS, así que
+# este archivo no incluye caddy. Tampoco incluye minio: las imágenes van al
+# MinIO compartido de la VPS, un recurso de Coolify aparte
+# (deploy/shared-storage/, ver docs/despliegue.md sección 4.3).
+# Para un VPS sin Coolify usar docker-compose.prod.yml.
+#
+# Configuración del recurso en Coolify (Docker Compose):
+#   1. Build Pack: Docker Compose. Docker Compose Location: /docker-compose.coolify.yml
+#   2. Domains por servicio (reemplazar <sitio> por el dominio del POS):
+#        api -> https://<sitio>:4000/api,https://<sitio>:4000/socket.io
+#        web -> https://<sitio>:3000
+#      El puerto después del dominio indica a Coolify el puerto interno del
+#      contenedor; el público sigue siendo 443.
+#   3. Strip prefixes: DESACTIVADO en api (la API espera /api y /socket.io/
+#      completos).
+#   4. Environment: cargar las variables marcadas como obligatorias (${VAR:?}).
+#      WEB_ORIGIN es https://<sitio>. El grupo S3_* sale del MinIO compartido:
+#        bash deploy/shared-storage/provision-app.sh vipe-pos-<ambiente> vipe-pos-<ambiente>
+#      (<ambiente> = staging o production) y pegar aquí el bloque impreso.
+#   5. En el recurso del MinIO compartido, agregar https://<sitio> a
+#      MINIO_CORS_ORIGINS y volver a desplegarlo.
+#
+# Comprobaciones después del primer despliegue:
+#   a. curl -s https://<sitio>/api/health
+#      -> {"status":"ok","service":"vipe-pos-api"}: el prefijo /api llega a la API.
+#   b. curl -s "https://<sitio>/socket.io/?EIO=4&transport=polling"
+#      -> 0{"sid":...,"upgrades":["websocket"],...}: la barra final se mantiene
+#      (sin ella la API responde 404 "Cannot GET /socket.io").
+#   c. Iniciar sesión en el navegador y revisar en la pestaña Red que la
+#      conexión wss://<sitio>/socket.io/?EIO=4&transport=websocket queda en 101
+#      (actualización a WebSocket); las pantallas reciben cambios en vivo.
+#
+# `exclude_from_hc` is a Coolify key that plain `docker compose` rejects
+# ("additional properties not allowed"); to validate locally, drop that line
+# and pass a file with the required variables (test values are enough):
+#   printf '%s\n' POSTGRES_PASSWORD=x VIPE_MIGRATOR_PASSWORD=x VIPE_API_PASSWORD=x \
+#     JWT_SECRET=validation-only-secret-of-32-chars WEB_ORIGIN=https://pos.example.com \
+#     S3_ENDPOINT=https://s3.example.com S3_REGION=us-east-1 S3_BUCKET=vipe-pos-staging S3_ACCESS_KEY_ID=x \
+#     S3_SECRET_ACCESS_KEY=x S3_PUBLIC_BASE_URL=https://s3.example.com/vipe-pos-staging S3_FORCE_PATH_STYLE=true > /tmp/coolify-check.env
+#   sed '/exclude_from_hc/d' docker-compose.coolify.yml | docker compose -f - --env-file /tmp/coolify-check.env config --quiet
+# ============================================
+
+services:
+  postgres:
+    # The roles init hook is baked into the image: Coolify does not place
+    # repository files next to this compose file, so bind mounts of them
+    # would arrive as empty directories (deploy/postgres/Dockerfile).
+    build:
+      context: .
+      dockerfile: deploy/postgres/Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:-vipe_pos}
+      VIPE_MIGRATOR_PASSWORD: ${VIPE_MIGRATOR_PASSWORD:?}
+      VIPE_API_PASSWORD: ${VIPE_API_PASSWORD:?}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # One-shot: applies packages/db/migrations as vipe_migrator and exits.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    restart: "no"
+    exclude_from_hc: true
+    environment:
+      DATABASE_URL: postgres://vipe_migrator:${VIPE_MIGRATOR_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-vipe_pos}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgres://vipe_api:${VIPE_API_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-vipe_pos}
+      WEB_ORIGIN: ${WEB_ORIGIN:?}
+      JWT_SECRET: ${JWT_SECRET:?}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      # Shared VPS MinIO (deploy/shared-storage/provision-app.sh prints this block).
+      S3_ENDPOINT: ${S3_ENDPOINT:?}
+      S3_REGION: ${S3_REGION:?}
+      S3_BUCKET: ${S3_BUCKET:?}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:?}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:?}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  postgres_data:

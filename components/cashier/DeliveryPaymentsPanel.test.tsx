@@ -12,49 +12,52 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
  */
 
 const harness = vi.hoisted(() => {
-  const supabase = {
-    channel: () => ({ on: () => ({ on: () => ({ subscribe: () => ({}) }) }), __name: "delivery" }),
-    removeChannel: () => {},
-    from: () => ({}),
-    rpc: async () => ({ data: null, error: null }),
+  type Handler = (payload: unknown) => void
+  // T11: the delivery hook rides `realtimeService.subscribeToDeliveries`.
+  const subscriptions: Array<{ handler: Handler; active: boolean }> = []
+  const emit = (table: string, payload: Record<string, unknown>) => {
+    for (const subscription of subscriptions) {
+      if (subscription.active) subscription.handler({ table, ...payload })
+    }
   }
-  return { supabase }
+  const subscribeToDeliveries = (handler: Handler) => {
+    const subscription = { handler, active: true }
+    subscriptions.push(subscription)
+    return () => {
+      subscription.active = false
+    }
+  }
+  return { subscriptions, emit, subscribeToDeliveries }
 })
-
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: harness.supabase,
-  createSupabaseClient: () => ({}),
-}))
 
 const listActiveDeliveries = vi.hoisted(() => vi.fn())
 
-vi.mock("@/lib/supabase/delivery-service", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/supabase/delivery-service")>(
-    "@/lib/supabase/delivery-service",
-  )
+vi.mock("@/lib/api/delivery", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
   return { ...actual, listActiveDeliveries }
 })
 
 const getCurrentRegister = vi.hoisted(() => vi.fn())
 const getOpenRegister = vi.hoisted(() => vi.fn())
 
-vi.mock("@/lib/supabase/cash-register-service", () => ({
-  cashRegisterService: { getCurrentRegister, getOpenRegister },
+vi.mock("@/lib/api/realtime", () => ({
+  realtimeService: { subscribeToDeliveries: harness.subscribeToDeliveries },
 }))
 
-vi.mock("@/lib/supabase/service", () => ({
-  categoryService: { getAllActive: async () => [] },
-  orderService: { getById: () => new Promise(() => {}) },
+vi.mock("@/lib/api/registers", () => ({ getCurrentRegister, getOpenRegister }))
+
+vi.mock("@/lib/api/catalog", () => ({
+  fetchCategories: async () => [],
+  fetchDishes: async () => [],
 }))
 
-vi.mock("@/lib/supabase/dish-service-with-promotions", () => ({
-  dishServiceWithPromotions: { getByCategoryWithPromotions: async () => [] },
+vi.mock("@/lib/api/config", () => ({
+  CONFIG_QUERY_KEY: ["config"],
+  fetchConfig: async () => ({ deliveryDefaultFee: 0 }),
 }))
 
-vi.mock("@/lib/supabase/payments-service", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/supabase/payments-service")>(
-    "@/lib/supabase/payments-service",
-  )
+vi.mock("@/lib/api/payments", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/payments")>("@/lib/api/payments")
   return { ...actual, listPaymentMethods: async () => [], payOrder: async () => ({}) }
 })
 

@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useFormulas, useInventoryItems } from "@/hooks/inventory"
 import { ADMIN_LIST_STALE_MS, catalogKeys, fetchDishes } from "@/lib/admin/catalog"
 import { formulaCost, type FormulaItem, type PrepFormula } from "@/lib/inventory/formula"
-import type { FormulaIndex, InventoryItem } from "@/lib/supabase/inventory/types"
+import type { FormulaIndex, InventoryItem } from "@/lib/api/inventory/types"
 
 export interface DishRow {
   id: string
@@ -49,10 +49,13 @@ export function prepFormulaMap(index: FormulaIndex): Map<string, PrepFormula> {
 }
 
 /**
- * Items keyed by id, with each preparation's cost replaced by its formula's
- * live cost per unit (raw materials keep their stored cost).
+ * Items keyed by id, costed for the editor. Every item keeps its stored
+ * `cost` (for a preparation, the weighted average production and receipts
+ * keep), which is what `save_formula` and the server `Formula.unitCost` use;
+ * only the drafts open in the editor (`drafts`) are costed live, as a
+ * preview, over their children (drafts first, then stored costs).
  */
-export function costedItems(items: FormulaItem[], prepFormulas: Map<string, PrepFormula>): Map<string, FormulaItem> {
+export function costedItems(items: FormulaItem[], drafts: Map<string, PrepFormula>): Map<string, FormulaItem> {
   const base = new Map(items.map((item) => [item.id, item]))
   const result = new Map<string, FormulaItem>()
   const resolving = new Set<string>()
@@ -62,19 +65,19 @@ export function costedItems(items: FormulaItem[], prepFormulas: Map<string, Prep
     if (cached) return cached
     const item = base.get(id)
     if (!item) return undefined
-    const formula = item.kind === "prep" ? prepFormulas.get(id) : undefined
-    if (!formula || formula.lines.length === 0 || resolving.has(id)) {
+    const draft = item.kind === "prep" ? drafts.get(id) : undefined
+    if (!draft || draft.lines.length === 0 || resolving.has(id)) {
       result.set(id, item)
       return item
     }
     resolving.add(id)
     const lineItems = new Map<string, FormulaItem>()
-    for (const line of formula.lines) {
+    for (const line of draft.lines) {
       const child = resolve(line.ingredientId)
       if (child) lineItems.set(child.id, child)
     }
     resolving.delete(id)
-    const costed = { ...item, cost: formulaCost(formula.lines, lineItems, formula.yieldQuantity).perUnit }
+    const costed = { ...item, cost: formulaCost(draft.lines, lineItems, draft.yieldQuantity).perUnit }
     result.set(id, costed)
     return costed
   }

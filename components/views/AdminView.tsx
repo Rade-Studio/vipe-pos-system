@@ -4,11 +4,12 @@ import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Order, Profile } from "@/types"
 import { useOrderStore } from "@/store/useOrderStore"
-import { orderService, tableService } from "@/lib/supabase/service"
+import { deleteOrder } from "@/lib/api/orders"
+import { conflictMessage } from "@/lib/api/errors"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
-import { realtimeService } from "@/lib/supabase/realtime-service"
-import { hasTable, isDeliveryOrder, orderTypeFromRow } from "@/lib/delivery/kitchen"
+import { realtimeService } from "@/lib/api/realtime"
+import { isDeliveryOrder, orderTypeFromRow } from "@/lib/delivery/kitchen"
 import { mergeOrdersList, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
 import { AdminShell } from "@/components/admin/shell/AdminShell"
 import { OverviewPage } from "@/components/admin/admin-pages/OverviewPage"
@@ -32,6 +33,7 @@ import {
   PaymentMethodsSettings,
   StaffSettings,
 } from "@/components/admin/settings/ManagedSettings"
+import { PrintersPage } from "@/components/admin/settings/PrintersPage"
 import { useHashSection } from "@/hooks/use-hash-section"
 import { getAdminSection, isAdminSectionId, type AdminSectionId } from "@/lib/admin/navigation"
 import {
@@ -136,8 +138,9 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
       const order = combinedActiveOrders.find((candidate) => candidate.id === orderId)
       if (!order) return
 
-      // Eliminar la orden de la base de datos
-      await orderService.deleteOrder(orderId)
+      // Eliminar la orden: the API deletes it with its items and frees the
+      // table when no other open order remains, in one transaction.
+      await deleteOrder(orderId)
 
       // Actualizar la lista que se está pintando (la del query, en su cache).
       // The store copy, if there is one, is dropped by the same patch.
@@ -148,14 +151,6 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
       useOrderStore.setState((state) => ({
         orders: withoutOrder(state.orders, orderId),
       }))
-
-      // Delivery orders have no table to release.
-      if (hasTable(order)) {
-        await tableService.update(order.tableId, {
-          status: "available",
-          waiter_id: null,
-        } as any)
-      }
 
       // Mantener este toast ya que es una acción importante iniciada por el usuario
       toast({
@@ -168,7 +163,7 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
       // Mantener este toast ya que es un error importante
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Error desconocido",
+        description: conflictMessage(error, "No se pudo eliminar la orden. Intente nuevamente."),
         variant: "destructive",
       })
     }
@@ -332,6 +327,8 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         return <DeliverySettings />
       case "settings/staff":
         return <StaffSettings />
+      case "settings/printers":
+        return <PrintersPage />
       default: {
         const unreachable: never = id
         return unreachable

@@ -23,10 +23,13 @@ import {
   deriveCashierViews,
   hasBillableItems,
   isCashierStatus,
-  toCashierOrder,
 } from "./orders"
 import type { CashierOrderRow } from "./orders"
+import { orderDtoFromWire, toOrder } from "@/lib/api/orders"
 import type { Order } from "@/types"
+
+/** The shared mapper the load and the realtime INSERT both use (T8b). */
+const toCashierOrder = (wire: CashierOrderRow): Order => toOrder(orderDtoFromWire(wire)!)
 
 const items = [
   { id: "oi-1", name: "Bandeja", price: 20_000, quantity: 2, comments: null },
@@ -74,7 +77,7 @@ describe("cashierOrderStatuses (S1: one getByStatus call)", () => {
   })
 })
 
-describe("toCashierOrder (one converter for the load AND the realtime INSERT)", () => {
+describe("shared toOrder over a wire row (one converter for the load AND the realtime INSERT)", () => {
   it("maps the wire row into the app Order the views render", () => {
     const mapped = toCashierOrder(row())
     expect(mapped.id).toBe("o-1")

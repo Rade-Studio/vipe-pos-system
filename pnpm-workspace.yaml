@@ -2,9 +2,49 @@
 # pnpm v11+ requires buildAllow in this file, not .npmrc or package.json
 packages:
   - '.'
+  - 'apps/*'
+  - 'packages/*'
 
 allowBuilds:
   sharp: true
   '@parcel/watcher': true
   esbuild: true
   unrs-resolver: true
+  '@swc/core': true
+  # Native argon2id binding for the API's password hashing (T5).
+  argon2: true
+  # Telemetry only; never run its install script.
+  '@scarf/scarf': false
+  # Optional native speed-ups pulled by testcontainers (ssh2 for SSH Docker
+  # hosts, protobufjs version check); the JS fallbacks are enough for tests.
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
+
+# pnpm's supply-chain policy delays very recent releases; these were pinned on
+# purpose (see odd/tasks/migracion-backend-nestjs.md, T3).
+minimumReleaseAgeExclude:
+  - '@nestjs/common@12.3.3'
+  - '@nestjs/core@12.3.3'
+  - '@nestjs/platform-express@12.3.3'
+  - '@nestjs/testing@12.3.3'
+  # Realtime gateway (T6): same Nest release line as core.
+  - '@nestjs/websockets@12.3.3'
+  - '@nestjs/platform-socket.io@12.3.3'
+  # S3 storage client (T12): @aws-sdk/client-s3 and the presigner, plus the
+  # internal packages of that release that are still inside the age window.
+  - '@aws-sdk/checksums@3.1002.2'
+  - '@aws-sdk/client-s3@3.1162.0'
+  - '@aws-sdk/core@3.980.0'
+  - '@aws-sdk/credential-provider-env@3.972.81'
+  - '@aws-sdk/credential-provider-http@3.972.83'
+  - '@aws-sdk/credential-provider-ini@3.973.26'
+  - '@aws-sdk/credential-provider-login@3.972.88'
+  - '@aws-sdk/credential-provider-node@3.972.93'
+  - '@aws-sdk/credential-provider-process@3.972.81'
+  - '@aws-sdk/credential-provider-sso@3.973.25'
+  - '@aws-sdk/credential-provider-web-identity@3.972.87'
+  - '@aws-sdk/middleware-sdk-s3@3.972.86'
+  - '@aws-sdk/nested-clients@3.998.0'
+  - '@aws-sdk/s3-request-presigner@3.1162.0'
+  - '@aws-sdk/token-providers@3.1162.0'

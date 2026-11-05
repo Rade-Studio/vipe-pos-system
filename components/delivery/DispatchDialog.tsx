@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { AlertTriangle } from 'lucide-react'
-import { listCouriers } from '@/lib/supabase/delivery-service'
+import { listCouriers } from '@/lib/api/delivery'
 
 interface DispatchDialogProps {
   open: boolean

@@ -18,14 +18,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Loader2, Minus, Plus, Search, Trash2 } from 'lucide-react'
-import { categoryService } from '@/lib/supabase/service'
-import { dishServiceWithPromotions } from '@/lib/supabase/dish-service-with-promotions'
+import { fetchCategories, fetchDishes } from '@/lib/api/catalog'
 import {
   findCustomerByPhone,
   createDeliveryOrder,
   DeliveryServiceError,
   type DeliveryServiceErrorKind,
-} from '@/lib/supabase/delivery-service'
+} from '@/lib/api/delivery'
 import { normalizePhone } from '@/lib/delivery/phone'
 import { formatAddress } from '@/lib/delivery/address'
 import {
@@ -38,10 +37,6 @@ import {
   type OrderDraftAction,
 } from '@/lib/delivery/order-draft'
 import { createSingleFlight } from '@/lib/payments/single-flight'
-import { buildDeliveryKitchenCommand, newKitchenOrderNumber } from '@/lib/delivery/print'
-import { realtimeService } from '@/lib/supabase/realtime-service'
-import { consumeOrderStock } from '@/lib/supabase/inventory'
-import { useProfileStore } from '@/store/useProfileStore'
 import { toast } from '@/hooks/use-toast'
 
 const DELIVERY_SERVICE_ERROR_TOAST: Record<DeliveryServiceErrorKind, string> = {
@@ -50,6 +45,11 @@ const DELIVERY_SERVICE_ERROR_TOAST: Record<DeliveryServiceErrorKind, string> = {
   rejected: '', // server message is shown directly
   'invalid-input': '', // server message is shown directly
   unknown: 'Ocurrió un error al crear el domicilio. Intenta de nuevo.',
+}
+
+/** Same wording as the inventory shortage messages (`lib/inventory/errors.ts`). */
+function formatShortages(shortages: ReadonlyArray<{ name: string; unit: string; missing: number }>): string {
+  return shortages.map((s) => `${s.name} (faltan ${s.missing}${s.unit ? ` ${s.unit}` : ''})`).join(', ')
 }
 
 function deliveryErrorMessage(err: unknown): string {
@@ -80,8 +80,8 @@ interface DeliveryOrderFormProps {
  *   - phone lookup state (`findCustomerByPhone` on blur / Enter)
  *   - the draft reducer (`orderDraftReducer`)
  *   - menu picker (categories + dishes, search box, reuse of
- *     categoryService / dishServiceWithPromotions so promotions apply
- *     on the same shape the waiter menu shows)
+ *     the catalog API with server-side promotion pricing, the same
+ *     prices the waiter menu shows)
  *   - submit gating via single-flight + Spanish toasts per
  *     DeliveryServiceError kind
  *
@@ -98,8 +98,6 @@ export function DeliveryOrderForm({
   // Once the operator types a fee, a suggestion that arrives later (or a
   // re-suggested value) must not overwrite what they typed.
   const feeTouched = useRef(false)
-  // Shown on the kitchen ticket as the waiter (WaiterView does the same with its profile).
-  const operatorName = useProfileStore((s) => s.authProfile?.name) ?? ''
   const [phoneLookupError, setPhoneLookupError] = useState<string | null>(null)
   // One gate per form instance; the state flag only drives the button.
   const [submitGate] = useState(createSingleFlight)
@@ -123,13 +121,13 @@ export function DeliveryOrderForm({
   // categories for the operator.
   const { data: categories = [], isLoading: loadingCategories } = useQuery({
     queryKey: ['delivery-menu-categories'],
-    queryFn: () => categoryService.getAllActive(),
+    queryFn: () => fetchCategories({ active: true }),
     staleTime: 60_000,
   })
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const { data: dishes = [], isLoading: loadingDishes } = useQuery({
     queryKey: ['delivery-menu-dishes', selectedCategoryId],
-    queryFn: () => dishServiceWithPromotions.getByCategoryWithPromotions(selectedCategoryId!),
+    queryFn: () => fetchDishes({ categoryId: selectedCategoryId!, active: true, pricing: 'promotions' }),
     enabled: selectedCategoryId !== null,
     staleTime: 60_000,
   })
@@ -231,27 +229,18 @@ export function DeliveryOrderForm({
       setSubmitting(true)
       try {
         const input = toCreateInput(draft)
+        // One request: the server creates the order, consumes its stock and
+        // enqueues the kitchen command in one transaction (T11). A shortage
+        // keeps the order; any other failure rolls all three back.
         const created = await createDeliveryOrder(input)
-        // Reached only when the create succeeded: the kitchen command goes
-        // out exactly once per submitted order, never on a failed create.
-        try {
-          realtimeService.sendCommand(
-            buildDeliveryKitchenCommand({
-              delivery: created.delivery,
-              lines: draft.cartLines,
-              waiter: operatorName,
-              invoiceNumber: newKitchenOrderNumber(),
-            }),
+        const shortages = created.consumption.shortages
+        if (shortages.length > 0) {
+          toast.warning(
+            `El domicilio se creó y se envió a cocina, pero hay stock insuficiente: ${formatShortages(shortages)}.`,
           )
-        } catch {
-          toast.warning('El domicilio se creó, pero no se pudo enviar la comanda a cocina')
+        } else {
+          toast.success('Domicilio creado y enviado a cocina')
         }
-        // Sale stock is consumed server-side (no-op when inventory control is
-        // off). Not awaited: a failure must not undo or delay the creation.
-        void consumeOrderStock(created.orderId).catch(() => {
-          toast.warning('El domicilio se creó, pero hubo un error al actualizar el inventario.')
-        })
-        toast.success('Domicilio creado y enviado a cocina')
         onSubmitted()
       } catch (err) {
         toast.error(deliveryErrorMessage(err))

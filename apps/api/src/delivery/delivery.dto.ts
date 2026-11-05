@@ -1,0 +1,243 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { z } from 'zod';
+import { booleanQuery } from '../common/validation';
+import { ConsumeOrderStockResult } from '../inventory/inventory.dto';
+import { PrintJobCreated } from '../print/print.dto';
+import { normalizePhone } from './phone';
+
+export const DELIVERY_STATUSES = ['received', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'failed', 'cancelled'] as const;
+export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
+export const DELIVERY_ACTIONS = ['start_preparing', 'mark_ready', 'dispatch', 'deliver', 'fail', 'cancel'] as const;
+export const PAYMENT_MODES = ['prepaid', 'cash_on_delivery'] as const;
+export type PaymentMode = (typeof PAYMENT_MODES)[number];
+
+const PHONE_MESSAGE = 'Phone must have 7 to 15 digits';
+/**
+ * Rule for POST /delivery/orders: zod only checks the shape with generous
+ * caps (TEXT_MAX, MAX_LINES) above the RPC limits; create_delivery_order
+ * enforces the real limits (1..100 lines, quantity 1..999, fee >= 0, notes
+ * <= 300, address lengths) so its message and SQLSTATE stay authoritative.
+ */
+const TEXT_MAX = 1000;
+const MAX_LINES = 500;
+const BY_RPC = 'validated by create_delivery_order';
+
+/** A phone normalised with the web's rule, or a 422. */
+const toPhone = (value: string, ctx: z.RefinementCtx): string => {
+  const normalized = normalizePhone(value);
+  if (normalized === null) {
+    ctx.addIssue({ code: 'custom', message: PHONE_MESSAGE });
+    return z.NEVER;
+  }
+  return normalized;
+};
+const phone = z.string().max(100).transform(toPhone);
+/** Courier phone: blank or null clears it, otherwise normalised. */
+const optionalPhone = z
+  .string()
+  .max(100)
+  .transform((value, ctx) => (value.trim() === '' ? null : toPhone(value, ctx)))
+  .nullable();
+
+export const customerQuerySchema = z.strictObject({ phone });
+
+export const courierListQuerySchema = z.strictObject({ activeOnly: booleanQuery.optional() });
+
+const courierName = z.string().trim().min(1).max(80);
+
+export const createCourierSchema = z.strictObject({ name: courierName, phone: optionalPhone.optional() });
+
+export const updateCourierSchema = z
+  .strictObject({ name: courierName.optional(), phone: optionalPhone.optional(), isActive: z.boolean().optional() })
+  .refine((patch) => Object.values(patch).some((value) => value !== undefined), 'Patch must not be empty');
+
+/**
+ * Body of POST /delivery/orders, the web's CreateDeliveryOrderInput. Only the
+ * shape is checked here; every business rule (customer id xor phone, lengths,
+ * ranges, tenant) is create_delivery_order's, so its message and SQLSTATE reach
+ * the client. The one exception: the web dropped cashChangeFor client-side for
+ * prepaid orders before mapping it to null, so the API refuses it instead of
+ * silently discarding it.
+ */
+export const createDeliveryOrderSchema = z
+  .strictObject({
+    customer: z.strictObject({
+      id: z.string().max(100).optional(),
+      phone: z.string().max(100).optional(),
+      name: z.string().max(TEXT_MAX).optional(),
+    }),
+    address: z.strictObject({
+      id: z.string().max(100).optional(),
+      addressLine: z.string().max(TEXT_MAX).optional(),
+      neighborhood: z.string().max(TEXT_MAX).nullable().optional(),
+      reference: z.string().max(TEXT_MAX).nullable().optional(),
+      label: z.string().max(TEXT_MAX).nullable().optional(),
+      save: z.boolean().optional(),
+    }),
+    items: z
+      .array(
+        z.strictObject({
+          dishId: z.guid(),
+          quantity: z.number().int(),
+          comments: z.string().max(TEXT_MAX).nullable().optional(),
+        }),
+      )
+      .max(MAX_LINES),
+    deliveryFee: z.number().int(),
+    paymentMode: z.enum(PAYMENT_MODES),
+    cashChangeFor: z.number().int().nullable().optional(),
+    notes: z.string().max(TEXT_MAX).nullable().optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.paymentMode === 'prepaid' && input.cashChangeFor != null) {
+      ctx.addIssue({ code: 'custom', path: ['cashChangeFor'], message: 'Must be null when paymentMode is prepaid' });
+    }
+  });
+export type CreateDeliveryOrderInput = z.infer<typeof createDeliveryOrderSchema>;
+
+/** `action` is not an enum here: set_delivery_status answers an unknown one with 22023 and its message. */
+export const setDeliveryStatusSchema = z.strictObject({
+  action: z.string().min(1).max(40),
+  courierId: z.guid().nullable().optional(),
+  reason: z.string().max(TEXT_MAX).nullable().optional(),
+});
+
+export class Customer {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: '7..15 digits.' }) phone!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
+export class CustomerAddress {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) customerId!: string;
+  @ApiProperty({ type: String, nullable: true }) label!: string | null;
+  @ApiProperty() addressLine!: string;
+  @ApiProperty({ type: String, nullable: true }) neighborhood!: string | null;
+  @ApiProperty({ type: String, nullable: true }) reference!: string | null;
+  @ApiProperty() isDefault!: boolean;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
+export class CustomerWithAddresses {
+  @ApiProperty({ type: Customer }) customer!: Customer;
+  @ApiProperty({ type: [CustomerAddress], description: 'Default address first.' }) addresses!: CustomerAddress[];
+}
+
+export class Courier {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) phone!: string | null;
+  @ApiProperty() isActive!: boolean;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
+export class CreateCourierRequest {
+  @ApiProperty({ minLength: 1, maxLength: 80, description: 'Trimmed.' }) name!: string;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Normalised like the web; blank or null clears it.' })
+  phone?: string | null;
+}
+
+export class UpdateCourierRequest {
+  @ApiPropertyOptional({ minLength: 1, maxLength: 80 }) name?: string;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Blank or null clears it.' }) phone?: string | null;
+  @ApiPropertyOptional() isActive?: boolean;
+}
+
+/** The order_deliveries row in camelCase (lib/delivery/types.ts DeliveryOrder). */
+export class DeliveryOrder {
+  @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({ format: 'uuid' }) customerId!: string;
+  @ApiProperty() customerName!: string;
+  @ApiProperty() customerPhone!: string;
+  @ApiProperty() addressLine!: string;
+  @ApiProperty({ type: String, nullable: true }) neighborhood!: string | null;
+  @ApiProperty({ type: String, nullable: true }) addressReference!: string | null;
+  @ApiProperty({ description: 'Whole COP pesos.' }) deliveryFee!: number;
+  @ApiProperty({ enum: PAYMENT_MODES }) paymentMode!: PaymentMode;
+  @ApiProperty({ type: Number, nullable: true }) cashChangeFor!: number | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) courierId!: string | null;
+  @ApiProperty({ enum: DELIVERY_STATUSES }) status!: DeliveryStatus;
+  @ApiProperty({ type: String, nullable: true }) failureReason!: string | null;
+  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) dispatchedAt!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) deliveredAt!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) failedAt!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) cancelledAt!: string | null;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
+class CreateDeliveryCustomer {
+  @ApiPropertyOptional({ maxLength: 100, description: `Existing customer; uuid and exclusive with phone, ${BY_RPC}.` }) id?: string;
+  @ApiPropertyOptional({ maxLength: 100, description: `Looked up or registered by phone; 7..15 digits ${BY_RPC} (not normalised).` })
+  phone?: string;
+  @ApiPropertyOptional({ maxLength: TEXT_MAX, description: `Required for a new customer (1..120 chars, ${BY_RPC}); renames an existing one when different.` })
+  name?: string;
+}
+
+class CreateDeliveryAddress {
+  @ApiPropertyOptional({ maxLength: 100, description: `Saved address of the customer; uuid and exclusive with addressLine, ${BY_RPC}.` })
+  id?: string;
+  @ApiPropertyOptional({ maxLength: TEXT_MAX, description: `Required without id; 1..200 chars ${BY_RPC}.` }) addressLine?: string;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: TEXT_MAX, description: `<= 80 chars ${BY_RPC}.` })
+  neighborhood?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: TEXT_MAX, description: `<= 200 chars ${BY_RPC}.` })
+  reference?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: TEXT_MAX, description: `<= 40 chars ${BY_RPC}.` })
+  label?: string | null;
+  @ApiPropertyOptional({ description: 'Store the new address in customer_addresses (default false).' }) save?: boolean;
+}
+
+class CreateDeliveryItem {
+  @ApiProperty({ format: 'uuid' }) dishId!: string;
+  @ApiProperty({ type: 'integer', description: `Integer; 1..999 ${BY_RPC}.` }) quantity!: number;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: TEXT_MAX }) comments?: string | null;
+}
+
+export class CreateDeliveryOrderRequest {
+  @ApiProperty({ type: CreateDeliveryCustomer }) customer!: CreateDeliveryCustomer;
+  @ApiProperty({ type: CreateDeliveryAddress }) address!: CreateDeliveryAddress;
+  @ApiProperty({ type: [CreateDeliveryItem], maxItems: MAX_LINES, description: `1..100 lines ${BY_RPC}.` }) items!: CreateDeliveryItem[];
+  @ApiProperty({ type: 'integer', description: `Whole COP pesos; >= 0 ${BY_RPC}.` }) deliveryFee!: number;
+  @ApiProperty({ enum: PAYMENT_MODES }) paymentMode!: PaymentMode;
+  @ApiPropertyOptional({
+    type: 'integer',
+    nullable: true,
+    description: `Only for cash_on_delivery (a value on prepaid is a 422 from the API); >= 0 ${BY_RPC}.`,
+  })
+  cashChangeFor?: number | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: TEXT_MAX, description: `<= 300 chars ${BY_RPC}.` }) notes?: string | null;
+}
+
+export class CreateDeliveryOrderResult {
+  @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({ format: 'uuid' }) customerId!: string;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Only when a new address was saved.' })
+  addressId!: string | null;
+  @ApiProperty({ type: DeliveryOrder }) delivery!: DeliveryOrder;
+  @ApiProperty({ type: ConsumeOrderStockResult, description: 'consume_order_stock of the new order; shortages do not undo it.' })
+  consumption!: ConsumeOrderStockResult;
+  @ApiProperty({ type: PrintJobCreated, description: 'Kitchen command job; its id is the command invoiceNumber.' })
+  printJob!: PrintJobCreated;
+}
+
+export class SetDeliveryStatusRequest {
+  @ApiProperty({ enum: DELIVERY_ACTIONS }) action!: string;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Required for dispatch.' }) courierId?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Required for fail (1..200 chars).' }) reason?: string | null;
+}
+
+/** One row of the operator board (DeliveryOrderWithBill). */
+export class DeliveryOrderWithBill {
+  @ApiProperty({ type: DeliveryOrder }) delivery!: DeliveryOrder;
+  @ApiProperty({ description: 'subtotal + tax (no delivery fee, no tip).' }) amountDue!: number;
+  @ApiProperty() subtotal!: number;
+  @ApiProperty() tax!: number;
+  @ApiProperty({ description: 'orders.status = paid.' }) isPaid!: boolean;
+}

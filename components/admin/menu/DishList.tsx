@@ -9,14 +9,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/log"
+import { deleteDish, type CategoryDto, type DishDto } from "@/lib/api/catalog"
 import {
   ADMIN_LIST_STALE_MS,
   catalogKeys,
   errorMessage,
   fetchCategories,
   fetchDishes,
+  invalidateCatalogReaders,
 } from "@/lib/admin/catalog"
 import { Edit, Plus, Search, Trash, BookOpen } from "lucide-react"
 import {
@@ -42,17 +43,17 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
   const [searchTerm, setSearchTerm] = useState("")
   const [openDialog, setOpenDialog] = useState(false)
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
-  const [selectedDish, setSelectedDish] = useState<any>(null)
+  const [selectedDish, setSelectedDish] = useState<DishDto | null>(null)
 
   // T9 (S1): two cached reads. `categories` is the SAME slot `CategoryList`
   // reads, so visiting the Menú tab fetches it once for both lists instead of
   // once per list per visit.
-  const { data: dishes = [], isLoading, isError, error } = useQuery<any[]>({
+  const { data: dishes = [], isLoading, isError, error } = useQuery<DishDto[]>({
     queryKey: catalogKeys.dishes,
     queryFn: fetchDishes,
     staleTime: ADMIN_LIST_STALE_MS,
   })
-  const { data: categories = [] } = useQuery<any[]>({
+  const { data: categories = [] } = useQuery<CategoryDto[]>({
     queryKey: catalogKeys.categories,
     queryFn: fetchCategories,
     staleTime: ADMIN_LIST_STALE_MS,
@@ -68,7 +69,7 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
     })
   }, [isError, error, toast])
 
-  const handleEdit = (dish: any) => {
+  const handleEdit = (dish: DishDto) => {
     setSelectedDish(dish)
     setOpenDialog(true)
   }
@@ -77,9 +78,7 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
     if (!selectedDish) return
 
     try {
-      const { error } = await supabase.from("dishes").delete().eq("id", selectedDish.id)
-
-      if (error) throw error
+      await deleteDish(selectedDish.id)
 
       toast({
         title: "Plato eliminado",
@@ -87,13 +86,13 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
       })
 
       // A recipe change can touch a dish's cost/availability too.
-      queryClient.invalidateQueries({ queryKey: catalogKeys.dishes })
-    } catch (error: any) {
+      void invalidateCatalogReaders(queryClient, catalogKeys.dishes)
+    } catch (error) {
       log.error("Error deleting dish:", { error: String(error) })
       toast({
         variant: "destructive",
         title: "Error",
-        description: `Error al eliminar el plato: ${error.message}`,
+        description: `Error al eliminar el plato: ${errorMessage(error)}`,
       })
     } finally {
       setOpenDeleteDialog(false)
@@ -101,7 +100,7 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
     }
   }
 
-  const confirmDelete = (dish: any) => {
+  const confirmDelete = (dish: DishDto) => {
     setSelectedDish(dish)
     setOpenDeleteDialog(true)
   }
@@ -123,7 +122,7 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
     initialItemsPerPage: 10,
   })
 
-  const getCategoryName = (categoryId: string) => {
+  const getCategoryName = (categoryId: string | null) => {
     const category = categories.find((cat) => cat.id === categoryId)
     return category ? category.name : "-"
   }
@@ -153,7 +152,7 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
               dish={selectedDish}
               categories={categories}
               onSuccess={() => {
-                queryClient.invalidateQueries({ queryKey: catalogKeys.dishes })
+                void invalidateCatalogReaders(queryClient, catalogKeys.dishes)
                 handleDialogClose()
               }}
             />
@@ -197,7 +196,7 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
                     <TableRow key={dish.id}>
                       <TableCell className="font-medium">{dish.name}</TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
-                        {getCategoryName(dish.category_id)}
+                        {getCategoryName(dish.categoryId)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{formatCurrency(dish.price)}</TableCell>
                       <TableCell>

@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { WaiterForm } from "./WaiterForm"
-import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { ADMIN_LIST_STALE_MS, catalogKeys, fetchStaff } from "@/lib/admin/catalog"
 import { Badge } from "@/components/ui/badge"
@@ -25,17 +24,10 @@ import {
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
 import { roleLabel } from "@/lib/auth/roles"
-import type { StaffRole } from "@/lib/supabase/staff-service"
+import { StaffServiceError, deleteStaff, type StaffMember } from "@/lib/api/staff"
+import { WAITERS_QUERY_KEY } from "@/hooks/use-waiters"
 
-interface Waiter {
-  id: string
-  full_name: string
-  username: string
-  email: string | null
-  auth_user_id: string | null
-  active: boolean
-  role: StaffRole
-}
+type Waiter = StaffMember
 
 export function WaiterList() {
   const { toast } = useToast()
@@ -69,6 +61,12 @@ export function WaiterList() {
     })
   }, [isError, error, toast])
 
+  // The waiter pickers (`['waiters']`) read the same people.
+  const invalidateStaffReaders = () => {
+    queryClient.invalidateQueries({ queryKey: catalogKeys.staff })
+    queryClient.invalidateQueries({ queryKey: WAITERS_QUERY_KEY })
+  }
+
   const handleAddWaiter = () => {
     setSelectedWaiter(undefined)
     setIsFormOpen(true)
@@ -88,11 +86,10 @@ export function WaiterList() {
     if (!waiterToDelete) return
 
     try {
-      const { error } = await supabase.from("profiles").delete().eq("id", waiterToDelete.id)
+      // Deletes the login; the profile and its sessions cascade on the server.
+      await deleteStaff(waiterToDelete.id)
 
-      if (error) throw error
-
-      queryClient.invalidateQueries({ queryKey: catalogKeys.staff })
+      invalidateStaffReaders()
       toast({
         title: "Integrante eliminado",
         description: "El integrante del personal ha sido eliminado correctamente",
@@ -101,7 +98,10 @@ export function WaiterList() {
       log.error("Error deleting staff member:", { error: String(error) })
       toast({
         title: "Error",
-        description: "No se pudo eliminar el integrante del personal",
+        description:
+          error instanceof StaffServiceError && error.kind !== "unknown"
+            ? error.message
+            : "No se pudo eliminar el integrante del personal",
         variant: "destructive",
       })
     } finally {
@@ -112,8 +112,7 @@ export function WaiterList() {
 
   const handleFormSuccess = () => {
     setIsFormOpen(false)
-    // The Edge Function created the account; only this list has to re-read.
-    queryClient.invalidateQueries({ queryKey: catalogKeys.staff })
+    invalidateStaffReaders()
   }
 
   return (
@@ -205,7 +204,7 @@ export function WaiterList() {
               <TableRow key={waiter.id}>
                 <TableCell className="font-medium">
                   <div className="flex flex-col">
-                    <span>{waiter.full_name}</span>
+                    <span>{waiter.fullName}</span>
                     <span className="text-xs font-normal text-muted-foreground md:hidden">{waiter.username}</span>
                   </div>
                 </TableCell>
@@ -213,7 +212,7 @@ export function WaiterList() {
                 <TableCell className="hidden lg:table-cell">{waiter.email || "-"}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{roleLabel(waiter.role) ?? waiter.role}</Badge>
-                  {waiter.auth_user_id === null && (
+                  {waiter.userId === null && (
                     <Badge variant="secondary" className="ml-2">
                       Sin acceso
                     </Badge>
@@ -255,7 +254,7 @@ export function WaiterList() {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción eliminará permanentemente a {waiterToDelete?.full_name}.
+              Esta acción eliminará permanentemente a {waiterToDelete?.fullName}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

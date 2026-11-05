@@ -89,7 +89,7 @@ export type Order = {
   /**
    * Ledger payment row attached by `getOrdersByDate` so the admin
    * reprint can build a tender list without a second round-trip.
-   * Lives here (and not in `lib/supabase/service.ts`) so every
+   * Lives here (and not in `lib/api/completed-orders.ts`) so every
    * consumer that reads `Order` from the store gets the same shape.
    */
   ledgerPayment?: import("@/lib/payments/payment-list").PaymentRow

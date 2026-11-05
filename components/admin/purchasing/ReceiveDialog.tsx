@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { useInventoryItems, useReceivePurchaseOrder, useSetPurchaseOrderPaymentStatus } from "@/hooks/inventory"
 import { formatQuantity } from "@/lib/inventory/units"
-import type { PaymentStatus, PurchaseOrder, PurchaseOrderStatus, ReceiveLineInput } from "@/lib/supabase/inventory/types"
+import type { PaymentStatus, PurchaseOrder, PurchaseOrderStatus, ReceiveLineInput } from "@/lib/api/inventory/types"
 import { PurchaseStatusBadge, poNumber } from "./purchase-ui"
 
 export interface ReceiveRow {
@@ -109,7 +109,8 @@ export function ReceiveDialog({ order, onOpenChange }: { order: PurchaseOrder | 
     setErrors(found)
     if (Object.keys(found).length > 0) return
     try {
-      const r = await receive.mutateAsync({ purchaseOrderId: order.id, lines: toReceiveLines(rows) })
+      // The payment status is applied in the receive's own transaction.
+      const r = await receive.mutateAsync({ purchaseOrderId: order.id, lines: toReceiveLines(rows), paymentStatus: payment })
       setResult(r?.status ?? "received")
       toast({ title: "Mercancía recibida" })
     } catch (e) {
@@ -117,6 +118,7 @@ export function ReceiveDialog({ order, onOpenChange }: { order: PurchaseOrder | 
     }
   }
 
+  /** After the receipt: the payment status is its own write (POST payment-status). */
   async function togglePaid(paid: boolean) {
     if (!order) return
     const next: PaymentStatus = paid ? "paid" : "pending"
@@ -146,9 +148,9 @@ export function ReceiveDialog({ order, onOpenChange }: { order: PurchaseOrder | 
               <PurchaseStatusBadge status={result} />
             </div>
             <div className="flex items-center justify-between rounded-lg border p-3">
-              <Label htmlFor="receive-paid">Orden pagada</Label>
+              <Label htmlFor="received-paid">Orden pagada</Label>
               <Switch
-                id="receive-paid"
+                id="received-paid"
                 checked={payment === "paid"}
                 disabled={setPayment.isPending}
                 onCheckedChange={(v) => void togglePaid(v)}
@@ -232,6 +234,15 @@ export function ReceiveDialog({ order, onOpenChange }: { order: PurchaseOrder | 
                 </li>
               ))}
             </ul>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <Label htmlFor="receive-paid">Orden pagada</Label>
+              <Switch
+                id="receive-paid"
+                checked={payment === "paid"}
+                disabled={receive.isPending}
+                onCheckedChange={(v) => setPaymentState(v ? "paid" : "pending")}
+              />
+            </div>
             <FieldError message={errors[""]} />
           </div>
         )}

@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactElement } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { InventoryItem, InventoryOverview } from "@/lib/supabase/inventory/types"
+import type { InventoryItem, InventoryOverview } from "@/lib/api/inventory/types"
 
 const h = vi.hoisted(() => ({
   overview: undefined as unknown,
@@ -19,14 +19,8 @@ vi.mock("@/hooks/inventory", () => ({
   useInventoryItems: () => ({ data: h.items, isLoading: false }),
   useSuppliers: () => ({ data: [{ id: "s1", name: "Proveedor Uno" }], isLoading: false }),
 }))
-vi.mock("@/lib/supabase/client", () => ({ supabase: {}, createSupabaseClient: () => ({}) }))
-vi.mock("@/lib/supabase/dashboard-service", () => ({
-  dashboardService: {
-    getMonthSales: vi.fn(async () => 0),
-    countOrdersByStatus: vi.fn(async () => 0),
-    getDailySales: vi.fn(async () => []),
-    getPopularDishes: vi.fn(async () => []),
-  },
+vi.mock("@/lib/api/dashboard", () => ({
+  fetchDashboardSummary: vi.fn(async () => ({ monthSales: 0, kitchenOrders: 0, dailySales: [], popularDishes: [] })),
 }))
 vi.mock("@/components/admin/SalesChart", () => ({ SalesChart: () => null }))
 vi.mock("@/components/admin/PopularDishesChart", () => ({ PopularDishesChart: () => null }))

@@ -2,8 +2,11 @@
 # Pinned runtime dependencies for the VipePOS Windows printer listener.
 #
 # Version rationale:
-#   realtime==2.0.2       — supabase/realtime-py; import is "from realtime import AsyncRealtimeClient"
-#                           (NOT the bare "realtime" PyPI package which is a different library).
+#   python-socketio[asyncio_client]==5.11.4
+#                         — socket.io client for the API namespace /realtime (print_job events);
+#                           the asyncio_client extra pulls aiohttp.
+#   aiohttp==3.10.10      — HTTP for GET /api/print/jobs/pending and POST .../ack; pinned
+#                           because app.py imports it directly.
 #   customtkinter==5.2.2  — CTk 5.x has breaking changes from 4.x; pin to avoid surprise.
 #   pystray==0.19.5       — system-tray icon; 0.19.x is stable for Python 3.11.
 #   Pillow==10.4.0        — image processing for ESC/POS rasterization.
@@ -15,11 +18,10 @@
 #                           distribution".
 #   pyusb==1.0.2          — PyUSB; libusb1 backend for USB printer discovery.
 #   python-dotenv==1.0.1  — loads .env in dev mode; 1.x is stable.
-#   tenacity==8.2.3       — backoff decorator for reconnect loop (Q5-B improvement).
 #   pyinstaller==6.10.0   — bundles app.py into a Windows .exe.
 #
 # Install:  pip install -r pos/requirements.txt
-# Verify:   python -c "import customtkinter, pystray, PIL, html2text, escpos, win32crypt, usb, realtime, dotenv, tenacity"
+# Verify:   python -c "import customtkinter, pystray, PIL, html2text, escpos, win32crypt, usb, socketio, aiohttp, dotenv"
 
 customtkinter==5.2.2
 pystray==0.19.5
@@ -29,5 +31,6 @@ escpos-python==1.0.2
 pywin32==306; sys_platform == "win32"
 pyusb==1.0.2
 python-dotenv==1.0.1
-tenacity==8.2.3
+python-socketio[asyncio_client]==5.11.4
+aiohttp==3.10.10
 pyinstaller==6.10.0

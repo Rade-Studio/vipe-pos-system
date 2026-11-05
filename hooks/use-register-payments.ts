@@ -19,7 +19,7 @@
  */
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { listRegisterPayments } from '@/lib/supabase/payments-service'
+import { listRegisterPayments } from '@/lib/api/payments'
 import type { PaymentRow } from '@/lib/payments/payment-list'
 
 export function registerPaymentsQueryKey(

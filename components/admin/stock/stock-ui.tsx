@@ -3,7 +3,7 @@
 import { forwardRef, type SelectHTMLAttributes } from "react"
 import { Badge } from "@/components/ui/badge"
 import { expiryStatus, stockStatus } from "@/lib/inventory/stock"
-import type { InventoryItem, ItemKind, MovementType } from "@/lib/supabase/inventory/types"
+import type { InventoryItem, ItemKind, MovementType } from "@/lib/api/inventory/types"
 import { cn } from "@/lib/utils"
 
 export const KIND_LABEL: Record<ItemKind, string> = { raw: "Materia prima", prep: "Preparación" }

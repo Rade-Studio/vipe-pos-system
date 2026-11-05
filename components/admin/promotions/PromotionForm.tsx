@@ -16,10 +16,16 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { CalendarIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Promotion } from "@/lib/supabase/promotion-service"
 import { log } from "@/lib/log"
-import { promotionService } from "@/lib/supabase/promotion-service"
-import { dishService } from "@/lib/supabase"
+import {
+  createPromotion,
+  fetchDishes,
+  fetchPromotionDishes,
+  setPromotionDishes,
+  updatePromotion,
+  type DishDto,
+  type PromotionDto,
+} from "@/lib/api/catalog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {toast} from "@/components/ui/use-toast";
@@ -27,24 +33,31 @@ import {toast} from "@/components/ui/use-toast";
 interface PromotionFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  promotion: Promotion | null
+  promotion: PromotionDto | null
   onSubmit: () => Promise<void> // Cambiado para no recibir parámetros
 }
 
+/** Form state; `discountValue` is null while the field is empty. */
+type PromotionDraft = Omit<PromotionDto, "id" | "createdAt" | "updatedAt" | "discountValue"> & {
+  discountValue: number | null
+}
+
+const emptyDraft = (): PromotionDraft => ({
+  name: "",
+  description: "",
+  discountType: "percentage",
+  discountValue: null,
+  startDate: new Date().toISOString(),
+  endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
+  active: true,
+})
+
 export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: PromotionFormProps) {
   const [loading, setLoading] = useState(false)
-  const [dishes, setDishes] = useState<any[]>([])
+  const [dishes, setDishes] = useState<DishDto[]>([])
   const [selectedDishes, setSelectedDishes] = useState<string[]>([])
   const [dishSearch, setDishSearch] = useState("")
-  const [formData, setFormData] = useState<Omit<Promotion, "id" | "created_at" | "updated_at">>({
-    name: "",
-    description: "",
-    discount_type: "percentage",
-    discount_value: null,
-    start_date: new Date().toISOString(),
-    end_date: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
-    active: true,
-  })
+  const [formData, setFormData] = useState<PromotionDraft>(emptyDraft)
 
   useEffect(() => {
     if (open) {
@@ -53,10 +66,10 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
         setFormData({
           name: promotion.name,
           description: promotion.description || "",
-          discount_type: promotion.discount_type,
-          discount_value: promotion.discount_value,
-          start_date: promotion.start_date,
-          end_date: promotion.end_date,
+          discountType: promotion.discountType,
+          discountValue: promotion.discountValue,
+          startDate: promotion.startDate,
+          endDate: promotion.endDate,
           active: promotion.active,
         })
         loadPromotionDishes(promotion.id)
@@ -68,7 +81,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
 
   const loadDishes = async () => {
     try {
-      const dishesData = await dishService.getAll()
+      const dishesData = await fetchDishes()
       setDishes(dishesData)
     } catch (error) {
       log.error("Error loading dishes:", { error: String(error) })
@@ -77,8 +90,8 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
 
   const loadPromotionDishes = async (promotionId: string) => {
     try {
-      const dishIds = await promotionService.getPromotionDishes(promotionId)
-      setSelectedDishes(dishIds.map((dish: any) => dish.id))
+      const assigned = await fetchPromotionDishes(promotionId)
+      setSelectedDishes(assigned.map((dish) => dish.id))
     } catch (error) {
       toast({
         title: "Error",
@@ -89,15 +102,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
   }
 
   const resetForm = () => {
-    setFormData({
-      name: "",
-      description: "",
-      discount_type: "percentage",
-      discount_value: null,
-      start_date: new Date().toISOString(),
-      end_date: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
-      active: true,
-    })
+    setFormData(emptyDraft())
     setSelectedDishes([])
     setDishSearch("")
   }
@@ -122,10 +127,10 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
   }
 
   const handleDiscountTypeChange = (value: "percentage" | "fixed_amount") => {
-    setFormData((prev) => ({ ...prev, discount_type: value }))
+    setFormData((prev) => ({ ...prev, discountType: value }))
   }
 
-  const handleDateChange = (field: "start_date" | "end_date", date: Date | undefined) => {
+  const handleDateChange = (field: "startDate" | "endDate", date: Date | undefined) => {
     if (date) {
       setFormData((prev) => ({ ...prev, [field]: date.toISOString() }))
     }
@@ -149,37 +154,30 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (formData.discountValue == null || formData.discountValue <= 0) {
+      toast({
+        title: "Error",
+        description: "El valor del descuento debe ser mayor que 0",
+        variant: "destructive",
+      })
+      return
+    }
     setLoading(true)
 
     try {
-      // Guardar la promoción
-      if (promotion) {
-        // Actualizar promoción existente
-        await promotionService.updatePromotion(promotion.id, formData)
-
-        // Obtener los platos actuales
-        const currentDishes = await promotionService.getPromotionDishes(promotion.id)
-
-        // Platos a eliminar
-        const dishesToRemove = currentDishes.filter((dish: any) => !selectedDishes.includes(dish.id))
-        if (dishesToRemove.length > 0) {
-          await promotionService.removePromotionDishes(promotion.id, dishesToRemove.map((dish: any) => dish.id))
-        }
-
-        // Platos a añadir
-        const dishesToAdd = selectedDishes.filter((id) => !currentDishes.some((d: any) => d.id === id))
-        if (dishesToAdd.length > 0) {
-          await promotionService.assignDishesToPromotion(promotion.id, dishesToAdd)
-        }
-      } else {
-        // Crear nueva promoción
-        const savedPromotion = await promotionService.createPromotion(formData)
-
-        // Asignar platos a la nueva promoción
-        if (selectedDishes.length > 0) {
-          await promotionService.assignDishesToPromotion(savedPromotion.id, selectedDishes)
-        }
+      const body = {
+        name: formData.name,
+        description: formData.description ? formData.description : null,
+        discountType: formData.discountType,
+        discountValue: formData.discountValue,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        active: formData.active,
       }
+      const saved = promotion ? await updatePromotion(promotion.id, body) : await createPromotion(body)
+
+      // The final set, replaced atomically by the server (T7b).
+      await setPromotionDishes(saved.id, selectedDishes)
 
       // Notificar al componente padre que se ha completado la operación
       await onSubmit()
@@ -189,6 +187,11 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
       resetForm()
     } catch (error) {
       log.error("Error saving promotion:", { error: String(error) })
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo guardar la promoción.",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
@@ -233,7 +236,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
               <div className="space-y-2">
                 <Label>Tipo de descuento</Label>
                 <RadioGroup
-                  value={formData.discount_type}
+                  value={formData.discountType}
                   onValueChange={(value) => handleDiscountTypeChange(value as "percentage" | "fixed_amount")}
                   className="flex flex-col space-y-1"
                 >
@@ -254,26 +257,26 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
 
               <div className="space-y-2">
                 <Label htmlFor="discount_value">
-                  {formData.discount_type === "percentage" ? "Porcentaje de descuento" : "Monto de descuento"}
+                  {formData.discountType === "percentage" ? "Porcentaje de descuento" : "Monto de descuento"}
                 </Label>
                 <div className="relative">
-                  {formData.discount_type === "fixed_amount" && (
+                  {formData.discountType === "fixed_amount" && (
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
                   )}
                   <Input
                     id="discount_value"
-                    name="discount_value"
+                    name="discountValue"
                     type="number"
-                    value={formData.discount_value ?? ""}
+                    value={formData.discountValue ?? ""}
                     onChange={handleNumberChange}
                     min={0}
-                    max={formData.discount_type === "percentage" ? 100 : undefined}
-                    step={formData.discount_type === "percentage" ? 1 : 0.01}
-                    className={formData.discount_type === "fixed_amount" ? "pl-7" : ""}
-                    placeholder={formData.discount_type === "percentage" ? "Ej: 15" : "Ej: 5.99"}
+                    max={formData.discountType === "percentage" ? 100 : undefined}
+                    step={formData.discountType === "percentage" ? 1 : 0.01}
+                    className={formData.discountType === "fixed_amount" ? "pl-7" : ""}
+                    placeholder={formData.discountType === "percentage" ? "Ej: 15" : "Ej: 5.99"}
                     required
                   />
-                  {formData.discount_type === "percentage" && (
+                  {formData.discountType === "percentage" && (
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
                   )}
                 </div>
@@ -289,12 +292,12 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !formData.start_date && "text-muted-foreground",
+                        !formData.startDate && "text-muted-foreground",
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {formData.start_date ? (
-                        format(new Date(formData.start_date), "PPP", { locale: es })
+                      {formData.startDate ? (
+                        format(new Date(formData.startDate), "PPP", { locale: es })
                       ) : (
                         <span>Seleccionar fecha</span>
                       )}
@@ -303,8 +306,8 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
                   <PopoverContent className="w-auto p-0">
                     <Calendar
                       mode="single"
-                      selected={formData.start_date ? new Date(formData.start_date) : undefined}
-                      onSelect={(date) => handleDateChange("start_date", date)}
+                      selected={formData.startDate ? new Date(formData.startDate) : undefined}
+                      onSelect={(date) => handleDateChange("startDate", date)}
                       initialFocus
                     />
                   </PopoverContent>
@@ -319,12 +322,12 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !formData.end_date && "text-muted-foreground",
+                        !formData.endDate && "text-muted-foreground",
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {formData.end_date ? (
-                        format(new Date(formData.end_date), "PPP", { locale: es })
+                      {formData.endDate ? (
+                        format(new Date(formData.endDate), "PPP", { locale: es })
                       ) : (
                         <span>Seleccionar fecha</span>
                       )}
@@ -333,8 +336,8 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
                   <PopoverContent className="w-auto p-0">
                     <Calendar
                       mode="single"
-                      selected={formData.end_date ? new Date(formData.end_date) : undefined}
-                      onSelect={(date) => handleDateChange("end_date", date)}
+                      selected={formData.endDate ? new Date(formData.endDate) : undefined}
+                      onSelect={(date) => handleDateChange("endDate", date)}
                       initialFocus
                     />
                   </PopoverContent>

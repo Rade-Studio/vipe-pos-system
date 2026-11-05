@@ -1,0 +1,57 @@
+# ============================================
+# Almacenamiento compartido de la VPS (MinIO) - recurso propio de Coolify
+# ============================================
+# Este archivo NO forma parte de VIPE POS: es un recurso Docker Compose
+# independiente que comparten todas las aplicaciones de la VPS. Cada
+# aplicación recibe su propio bucket y su propio usuario con
+# deploy/shared-storage/provision-app.sh (ver README.md en esta carpeta).
+#
+# Configuración del recurso en Coolify (Docker Compose):
+#   1. Build Pack: Docker Compose. Docker Compose Location:
+#      /deploy/shared-storage/docker-compose.yml
+#   2. Domains del servicio minio: solo la API S3.
+#        https://<s3-dominio>:9000      API S3 (navegadores y URLs prefirmadas)
+#      El puerto después del dominio indica a Coolify el puerto interno; el
+#      público sigue siendo 443. El DNS del dominio apunta a la VPS.
+#      La consola web (9001) NO se publica: un dominio público expondría una
+#      página de inicio de sesión del administrador. Se accede por un túnel SSH
+#      sobre Tailscale:
+#        ssh -L 9001:<ip-del-contenedor>:9001 root@100.103.73.111
+#      y luego http://localhost:9001.
+#   3. Strip prefixes: DESACTIVADO (la API S3 firma la ruta completa).
+#   4. Environment:
+#        MINIO_ROOT_USER      usuario administrador (solo para provision-app.sh)
+#        MINIO_ROOT_PASSWORD  secreto largo: openssl rand -hex 32
+#        MINIO_CORS_ORIGINS   lista separada por comas con el origen de cada
+#                             aplicación conectada, por ejemplo
+#                             https://pos.example.com,https://staging.pos.example.com
+#      Al conectar una aplicación nueva, agregar su origen y volver a desplegar.
+#   5. Respaldos: el volumen minio_data contiene todos los buckets. Respaldarlo
+#      con la copia de volúmenes del servidor o con `mc mirror` (README.md).
+#
+# Sin puertos publicados: solo el proxy de Coolify llega al contenedor.
+# ============================================
+
+services:
+  minio:
+    # Chainguard image (MinIO no longer publishes community images), pinned by
+    # the same digest as docker-compose.prod.yml.
+    image: cgr.dev/chainguard/minio@sha256:3c60a2a8c4d33409a9bc7a623a7fcbfb4605adc3d89422d2f53b3f673a6e5597
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      # Server-wide: MinIO applies one CORS origin list to every bucket.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_CORS_ORIGINS:?}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  minio_data:

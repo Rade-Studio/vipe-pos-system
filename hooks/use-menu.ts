@@ -10,14 +10,13 @@
  * previous dishes on screen while the next ones load.
  *
  * The stock check is keyed by the exact set of dishes on screen, so one batched
- * read serves a whole category (see `inventoryControlService.checkStockForDishes`).
+ * read serves a whole category (see `checkStockForDishes`, `POST /inventory/dish-availability`).
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 
-import inventoryControlService from "@/lib/supabase/inventory-control-service"
-import { categoryService } from "@/lib/supabase/service"
-import { dishServiceWithPromotions } from "@/lib/supabase/dish-service-with-promotions"
+import { checkStockForDishes } from "@/lib/api/inventory"
+import { fetchCategories, fetchDishes } from "@/lib/api/catalog"
 import type { Category, Dish } from "@/types"
 
 export const menuCategoriesKey = ["menu", "categories"] as const
@@ -25,31 +24,24 @@ export const menuDishesKey = (categoryId: string) => ["menu", "dishes", category
 /** Order-independent, so the same dish set always hits the same cache entry. */
 export const dishStockKey = (dishIds: readonly string[]) => ["menu", "stock", [...dishIds].sort()] as const
 
-export const fetchMenuCategories = async (): Promise<Category[]> => {
-  const data = await categoryService.getAllActive()
-  return data.map((category) => ({
-    id: category.id,
-    name: category.name,
-    // Asumiendo que el icono se guarda como string
-    icon: category.icon || null,
-  })) as unknown as Category[]
-}
+const DISH_PLACEHOLDER = "/placeholder.svg?height=80&width=80"
 
+// The category icon is a Lucide name the selector resolves; `Category.icon` is
+// typed as an element, as it was before the API.
+export const fetchMenuCategories = async (): Promise<Category[]> =>
+  (await fetchCategories({ active: true })) as unknown as Category[]
+
+/**
+ * Active dishes of a category with the promotion pricing the server applies
+ * (T7b): `price` is already the promoted price and the promotion fields come
+ * from the API. Only the image placeholder is added for the grid.
+ */
 export const fetchMenuDishes = async (categoryId: string): Promise<Dish[]> => {
-  const data = await dishServiceWithPromotions.getByCategoryWithPromotions(categoryId)
-
-  return data.map((dish: any) => ({
-    id: dish.id,
-    name: dish.name,
-    price: dish.price,
-    categoryId: dish.category_id ?? "",
-    image: dish.image_url || "/placeholder.svg?height=80&width=80",
-    // Añadir campos de promoción si existen
-    originalPrice: dish.originalPrice ?? null,
-    discountAmount: dish.discountAmount ?? null,
-    discountPercentage: dish.discountPercentage ?? null,
-    promotionId: dish.promotionId ?? null,
-    promotionName: dish.promotionName ?? null,
+  const dishes = await fetchDishes({ categoryId, active: true, pricing: "promotions" })
+  return dishes.map((dish) => ({
+    ...dish,
+    categoryId: dish.categoryId ?? "",
+    image: dish.imageUrl || DISH_PLACEHOLDER,
   })) as unknown as Dish[]
 }
 
@@ -78,7 +70,7 @@ export function useMenuDishes(categoryId: string | null) {
 export function useDishStockStatus(dishIds: readonly string[], enabled: boolean) {
   return useQuery<Map<string, boolean>>({
     queryKey: dishStockKey(dishIds),
-    queryFn: () => inventoryControlService.checkStockForDishes([...dishIds]),
+    queryFn: () => checkStockForDishes([...dishIds]),
     enabled: enabled && dishIds.length > 0,
   })
 }

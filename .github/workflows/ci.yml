@@ -30,7 +30,7 @@ jobs:
 
   unit-tests:
     # Vitest suite for pure logic (lib/payments, store). Runs against the
-    # installed dependency graph only, so no Supabase stack is needed.
+    # installed dependency graph only, so no database is needed.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -42,6 +42,33 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
+  api:
+    # NestJS API (apps/api) and database package (packages/db): lint,
+    # typecheck, unit/integration specs and a production build.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm api:lint
+      - run: pnpm api:typecheck
+      - run: pnpm db:typecheck
+      - run: pnpm api:test
+      - run: pnpm api:build
+      # Contract drift: the committed OpenAPI document and the web's generated
+      # types must match what the API code produces.
+      - run: pnpm --filter @vipe/api openapi
+      - run: pnpm web:api-types
+      - name: Fail on contract drift
+        run: |
+          git status --porcelain -- apps/api/openapi.json lib/api/schema.d.ts
+          git diff --exit-code -- apps/api/openapi.json lib/api/schema.d.ts
+          test -z "$(git status --porcelain -- apps/api/openapi.json lib/api/schema.d.ts)"
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -52,25 +79,71 @@ jobs:
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.DEV_SUPABASE_URL || 'http://localhost:54321' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
 
   db-tests:
-    # pgTAP suite (RLS, grants, tenant isolation, profile guards) against a
-    # fresh database: `supabase db start` applies every migration and the seed,
-    # without the rest of the local stack.
+    # pgTAP suite (RLS, grants, tenant isolation, guards, RPCs) on plain
+    # Postgres 16 + pgTAP: the compose `db` service, the Drizzle migrations
+    # from packages/db applied as vipe_migrator, then pg_prove.
     # GitHub-hosted runners are ephemeral, so every run starts from an empty volume.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
-        with: { version: 2.119.0 }
-      - run: supabase db start
-      - run: supabase test db
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:db
       - if: failure()
-        run: docker logs supabase_db_vipe-pos-system --tail 200 || true
+        run: docker compose logs db --tail 200 || true
+
+  docker-build:
+    # Production images (apps/api/Dockerfile api + migrate targets, root
+    # Dockerfile web) still build. Pull requests only; nothing is pushed.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: api
+          push: false
+          load: true
+          tags: vipe-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Build migrate image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: migrate
+          push: false
+          cache-from: type=gha,scope=api
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: vipe-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      # No test data, seed, migration fixtures, env files or keys in the images.
+      - name: Image hygiene
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh vipe-api:ci -c '! find /app -path "*@vipe/db/*" \( -name "*.test.sql" -o -name dev.sql -o -path "*fixtures*" -o -path "*migration-from-supabase*" \) | grep -q .'
+          for image in vipe-api:ci vipe-web:ci; do
+            docker run --rm --entrypoint sh "$image" -c '! find /app \( -name ".env*" -o -name "*.pem" \) | grep -q .'
+          done
 
   pos-deps-check:
     runs-on: ubuntu-latest
@@ -97,7 +170,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy
-    needs: [lint, typecheck, unit-tests, build, db-tests, pos-deps-check]
+    needs: [lint, typecheck, unit-tests, api, build, db-tests, pos-deps-check]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     timeout-minutes: 30

@@ -1,7 +1,6 @@
-import { supabase } from "@/lib/supabase/client"
+import { signOutAndReload } from "@/lib/api/auth"
 
-/** Same sign-out as the shared Header: a hard reload clears stores, queries and realtime subscriptions. */
+/** Same sign-out as the shared Header: revoke the API session, then a hard reload. */
 export async function signOutAndLeave() {
-  await supabase.auth.signOut()
-  window.location.href = "/portal"
+  await signOutAndReload()
 }

@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import businessConfigService from "@/lib/supabase/business-config-service"
+import { fetchConfig, saveConfig } from "@/lib/api/config"
 import { log } from "@/lib/log"
 
 type ConfigState = {
@@ -41,21 +41,23 @@ type ConfigState = {
   isLoading: boolean
   error: string | null
 
-  // Acciones para sincronización con la base de datos
+  // Acciones para sincronización con la base de datos. `options` is ignored
+  // since T7b (`GET /config` never writes); kept for the portal's call site.
   loadConfigFromDB: (options?: { canWrite?: boolean }) => Promise<void>
   saveConfigToDB: () => Promise<void>
 }
 
 export const useConfigStore = create<ConfigState>()(
     (set, get) => ({
-      // Valores por defecto
+      // Placeholders until `GET /config` answers: the server defaults, so the
+      // first render matches what the API returns for an empty config.
       tipPercentage: 10,
-      taxPercentage: 8,
+      taxPercentage: 10,
       inventoryControlEnabled: false,
-      businessName: "Restaurante Demo",
-      businessAddress: "Calle Principal #123, Ciudad",
+      businessName: "Mi Restaurante",
+      businessAddress: "Dirección del Restaurante",
       businessPhone: "123-456-7890",
-      businessNIT: "900.123.456-7",
+      businessNIT: "123456789",
       isLoading: false,
       error: null,
       priceSuggestion: 300,
@@ -72,30 +74,23 @@ export const useConfigStore = create<ConfigState>()(
           businessPhone: info.phone ?? state.businessPhone,
           businessNIT: info.nit ?? state.businessNIT,
         })),
-      // Cargar configuración desde la base de datos
-      //
-      // `canWrite` mirrors the `business_config` RLS: only an admin may insert
-      // the missing default keys (`business_config_insert_policy` in
-      // supabase/migrations/20261005150000_tenant_scope_remaining_tables.sql).
-      // Every other role passes `{ canWrite: false }` and only reads, instead
-      // of firing 8 inserts RLS was always going to reject.
-      loadConfigFromDB: async ({ canWrite = true }: { canWrite?: boolean } = {}) => {
+      // Cargar configuración: `GET /config` returns every key with the server
+      // defaults filled, so no role seeds missing keys any more.
+      loadConfigFromDB: async () => {
         try {
           set({ isLoading: true, error: null })
 
-          // Una sola lectura de `business_config`; se insertan únicamente las
-          // claves que falten y solo si el rol puede escribirlas.
-          const config = await businessConfigService.loadConfig({ canWrite })
+          const config = await fetchConfig()
 
           set({
-            tipPercentage: config.tip_percentage,
-            taxPercentage: config.tax_percentage,
-            priceSuggestion: config.price_suggestion,
-            inventoryControlEnabled: config.inventory_control_enabled,
-            businessName: config.business_name,
-            businessAddress: config.business_address,
-            businessPhone: config.business_phone,
-            businessNIT: config.business_nit,
+            tipPercentage: config.tipPercentage,
+            taxPercentage: config.taxPercentage,
+            priceSuggestion: config.priceSuggestion,
+            inventoryControlEnabled: config.inventoryControlEnabled,
+            businessName: config.businessName,
+            businessAddress: config.businessAddress,
+            businessPhone: config.businessPhone,
+            businessNIT: config.businessNit,
             isLoading: false,
           })
 
@@ -113,18 +108,17 @@ export const useConfigStore = create<ConfigState>()(
           set({ isLoading: true, error: null })
           const state = get()
 
-          const configToSave = {
-            tip_percentage: state.tipPercentage,
-            tax_percentage: state.taxPercentage,
-            price_suggestion: state.priceSuggestion,
-            inventory_control_enabled: state.inventoryControlEnabled,
-            business_name: state.businessName,
-            business_address: state.businessAddress,
-            business_phone: state.businessPhone,
-            business_nit: state.businessNIT,
-          }
-
-          await businessConfigService.saveMultipleConfig(configToSave)
+          // One `PUT /config`: the server upserts every key in one transaction.
+          await saveConfig({
+            tipPercentage: state.tipPercentage,
+            taxPercentage: state.taxPercentage,
+            priceSuggestion: state.priceSuggestion,
+            inventoryControlEnabled: state.inventoryControlEnabled,
+            businessName: state.businessName,
+            businessAddress: state.businessAddress,
+            businessPhone: state.businessPhone,
+            businessNit: state.businessNIT,
+          })
 
           set({ isLoading: false })
 

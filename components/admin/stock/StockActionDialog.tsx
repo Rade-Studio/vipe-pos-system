@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { useAdjustStock, useInventoryLocations, useTransferStock } from "@/hooks/inventory"
 import { formatQuantity, parseQuantityInput } from "@/lib/inventory/units"
-import type { InventoryItem, Lot } from "@/lib/supabase/inventory/types"
+import type { InventoryItem, Lot } from "@/lib/api/inventory/types"
 import { cn } from "@/lib/utils"
 import { FieldError, NativeSelect } from "./stock-ui"
 

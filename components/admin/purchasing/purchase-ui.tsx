@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge"
-import type { PaymentStatus, PurchaseOrderStatus } from "@/lib/supabase/inventory/types"
+import type { PaymentStatus, PurchaseOrderStatus } from "@/lib/api/inventory/types"
 
 export const PO_STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
   draft: "Borrador",

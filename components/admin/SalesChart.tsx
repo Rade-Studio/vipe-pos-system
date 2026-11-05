@@ -5,6 +5,13 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Toolti
 import { Panel } from "@/components/admin/common/Panel"
 import { Skeleton } from "@/components/ui/skeleton"
 
+const axisAmount = new Intl.NumberFormat("es-CO", { notation: "compact", maximumFractionDigits: 1 })
+
+/** Y-axis tick: "3,5 M" instead of a 7-digit amount the axis would clip. */
+export function formatAxisAmount(value: number): string {
+  return axisAmount.format(value)
+}
+
 interface SalesChartProps {
   data: DailySales[]
   isLoading?: boolean
@@ -34,8 +41,8 @@ export function SalesChart({ data, isLoading = false, className }: SalesChartPro
               fontSize={12}
               tickLine={false}
               axisLine={false}
-              width={56}
-              tickFormatter={(value) => `${value}`}
+              width={64}
+              tickFormatter={formatAxisAmount}
             />
             <Tooltip
               cursor={{ fill: "hsl(var(--muted))" }}

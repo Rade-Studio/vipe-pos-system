@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Loader2, Lock, Mail, Music, Utensils, Coffee } from "lucide-react"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
-import { supabase } from "@/lib/supabase/client"
+import { login, type Session } from "@/lib/api/auth"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
 interface LoginViewProps {
-  onLoginSuccess: () => void
+  /** Called with the session the API returned; the cookies are already set. */
+  onLoginSuccess: (session: Session) => void
 }
 
 export function LoginView({ onLoginSuccess }: LoginViewProps) {
@@ -47,21 +48,14 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
     setIsLoading(true)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        throw error
-      }
+      const session = await login(email, password)
 
       toast({
         title: "Inicio de sesión exitoso",
         description: "Bienvenido al sistema VibePOS",
       })
 
-      onLoginSuccess()
+      onLoginSuccess(session)
     } catch (error: any) {
       toast({
         title: "Error al iniciar sesión",

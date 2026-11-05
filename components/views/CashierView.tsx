@@ -25,22 +25,21 @@ import { PartialPaymentDialog } from "@/components/cashier/PartialPaymentDialog"
 import { toast } from "@/utils/toast"
 import { TransactionsList } from "@/components/cashier/TransactionsList"
 import { Skeleton } from "@/components/ui/skeleton"
-import { realtimeService } from "@/lib/supabase/realtime-service"
-import { orderService } from "@/lib/supabase/service"
+import { realtimeService } from "@/lib/api/realtime"
+import { getByStatus, toOrder } from "@/lib/api/orders"
 import { queryClient } from "@/lib/queryClient"
 import { log } from "@/lib/log"
 import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
 import { createSingleFlight } from "@/lib/payments/single-flight"
-import { PaymentServiceError, splitOrder, undoSplit } from "@/lib/supabase/payments-service"
+import { splitOrder, undoSplit } from "@/lib/api/payments"
+import { PaymentServiceError } from "@/lib/payments/types"
 import {
   CASHIER_ORDER_STATUSES,
   applyCashierOrderEvent,
   billSourceFromOrder,
   cashierOrdersQueryKey,
   deriveCashierViews,
-  toCashierOrder,
 } from "@/lib/cashier/orders"
-import type { CashierOrderRow } from "@/lib/cashier/orders"
 import { DeliveryPaymentsPanel } from "@/components/cashier/DeliveryPaymentsPanel"
 
 /** Stable empty reference so the query's default value never re-allocates. */
@@ -76,10 +75,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   // ONE request for the three statuses the cashier lists (S1). It used to be
   // three `getByStatus` calls, one per status, feeding three arrays plus a
   // by-table group that every refresh had to re-sync.
-  const fetchCashierOrders = async (): Promise<Order[]> => {
-    const rows = (await orderService.getByStatus([...CASHIER_ORDER_STATUSES])) as CashierOrderRow[]
-    return rows.map(toCashierOrder)
-  }
+  const fetchCashierOrders = async (): Promise<Order[]> => (await getByStatus(CASHIER_ORDER_STATUSES)).map(toOrder)
 
   const { data: orders = NO_ORDERS, isLoading, isFetching } = useQuery<Order[]>({
     queryKey: cashierOrdersQueryKey,

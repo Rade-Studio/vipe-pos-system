@@ -18,7 +18,7 @@
  */
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { getRegisterSummary } from '@/lib/supabase/payments-service'
+import { getRegisterSummary } from '@/lib/api/payments'
 import type { RegisterSummary } from '@/lib/payments/register-summary'
 import { registerSummaryQueryKey } from '@/lib/payments/register-summary'
 

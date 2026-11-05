@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 import ctypes
+from concurrent.futures import ThreadPoolExecutor
 
 from datetime import datetime
 from pathlib import Path
@@ -17,12 +18,11 @@ import html2text
 from escpos.printer import Usb, Network
 from PIL import Image
 import pystray
-from realtime import AsyncRealtimeClient  # Asegúrate de que este import funcione
+import aiohttp
+import socketio
 
-from printer_auth import resolve_token, is_token_configured
-from dedupe import recently_printed
-from print_encoder import negotiate_encoding, encode_for_printer
-import print_renderer
+from printer_auth import resolve_api_url, resolve_token
+from print_jobs import PendingPoller, PrintJobHandler, drain_pending
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +94,15 @@ def styled_toplevel(title: str):
 # ------------------------
 # CONFIG / CREDENCIALES
 # ------------------------
+# The printing service talks to the VIPE API: VIPE_API_URL (for example
+# https://pos.example.com) and VIPE_PRINTER_TOKEN (created by an admin in
+# POST /api/devices/printers, shown once). In production both are stored
+# encrypted with DPAPI in %APPDATA%/VipePOS/printer_credentials.dat and asked
+# for on the first run.
 CONFIG_DIR  = None
 CONFIG_FILE = None
-SUPABASE_URL = None
-SUPABASE_KEY = None
+API_URL = None
+PRINTER_TOKEN = None
 
 def encrypt_blob(plaintext: str) -> bytes:
     if sys.platform != "win32":
@@ -113,49 +118,39 @@ def decrypt_blob(blob: bytes) -> str:
     return data.decode("utf-8")
 
 def load_credentials():
-    """Carga URL y KEY Supabase cifradas."""
-    global CONFIG_DIR, CONFIG_FILE
+    """Carga la URL de la API y el token de impresora cifrados."""
     if not CONFIG_FILE or not CONFIG_FILE.exists():
         return None, None
     blob = CONFIG_FILE.read_bytes()
-    url, key = decrypt_blob(blob).split("|",1)
-    return url, key
+    url, token = decrypt_blob(blob).split("|",1)
+    return url, token
 
-def save_credentials(url: str, key: str):
-    """Guarda URL y KEY Supabase cifradas."""
+def save_credentials(url: str, token: str):
+    """Guarda la URL de la API y el token de impresora cifrados."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    blob = encrypt_blob(f"{url}|{key}")
+    blob = encrypt_blob(f"{url}|{token}")
     CONFIG_FILE.write_bytes(blob)
 
-def ask_supabase_url():
-    dlg = styled_toplevel("Configurar Supabase URL")
-    ThemedLabel(dlg, text="URL Supabase:").pack(padx=20, pady=(20,5), anchor="w")
-    entry = ThemedEntry(dlg, width=300); entry.pack(padx=20, pady=(0,20))
+def ask_text(title: str, label: str, secret: bool = False):
+    dlg = styled_toplevel(title)
+    ThemedLabel(dlg, text=label).pack(padx=20, pady=(20,5), anchor="w")
+    entry = ThemedEntry(dlg, width=300, show="*" if secret else ""); entry.pack(padx=20, pady=(0,20))
     btn_frame = ThemedFrame(dlg); btn_frame.pack(pady=(0,20))
-    result = {"url": None}
+    result = {"value": None}
     ThemedButton(btn_frame, text="Guardar", width=120,
-                 command=lambda: (result.update(url=entry.get().strip()), dlg.destroy())
+                 command=lambda: (result.update(value=entry.get().strip()), dlg.destroy())
     ).grid(row=0, column=0, padx=10)
     ThemedButton(btn_frame, text="Cancelar", width=120,
                  command=dlg.destroy
     ).grid(row=0, column=1, padx=10)
     center_window(dlg); dlg.grab_set(); dlg.wait_window()
-    return result["url"]
+    return result["value"]
 
-def ask_supabase_key():
-    dlg = styled_toplevel("Configurar Supabase Key")
-    ThemedLabel(dlg, text="API Key Supabase:").pack(padx=20, pady=(20,5), anchor="w")
-    entry = ThemedEntry(dlg, width=300, show="*"); entry.pack(padx=20, pady=(0,20))
-    btn_frame = ThemedFrame(dlg); btn_frame.pack(pady=(0,20))
-    result = {"key": None}
-    ThemedButton(btn_frame, text="Guardar", width=120,
-                 command=lambda: (result.update(key=entry.get().strip()), dlg.destroy())
-    ).grid(row=0, column=0, padx=10)
-    ThemedButton(btn_frame, text="Cancelar", width=120,
-                 command=dlg.destroy
-    ).grid(row=0, column=1, padx=10)
-    center_window(dlg); dlg.grab_set(); dlg.wait_window()
-    return result["key"]
+def ask_api_url():
+    return ask_text("Configurar servidor VIPE", "URL del servidor (VIPE_API_URL):")
+
+def ask_printer_token():
+    return ask_text("Configurar token de impresora", "Token de impresora (VIPE_PRINTER_TOKEN):", secret=True)
 
 # Detectar entorno y cargar credenciales
 ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
@@ -166,39 +161,21 @@ if ENVIRONMENT == "dev":
     from dotenv import load_dotenv
     print("Environment: development (loading .env)")
     load_dotenv(Path(__file__).parent / ".env")
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        raise RuntimeError("SUPABASE_URL or SUPABASE_KEY missing from .env")
+    API_URL = resolve_api_url()
+    PRINTER_TOKEN = resolve_token()
 else:
     print("Environment: production (AppData encrypted)")
     CONFIG_DIR  = Path(os.getenv("APPDATA", os.path.expanduser("~"))) / "VipePOS"
-    CONFIG_FILE = CONFIG_DIR / "credentials.dat"
-    SUPABASE_URL, SUPABASE_KEY = load_credentials()
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        SUPABASE_URL = ask_supabase_url()
-        SUPABASE_KEY = ask_supabase_key()
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            raise RuntimeError("Supabase credentials required")
-        save_credentials(SUPABASE_URL, SUPABASE_KEY)
+    CONFIG_FILE = CONFIG_DIR / "printer_credentials.dat"
+    API_URL, PRINTER_TOKEN = load_credentials()
+    if not API_URL or not PRINTER_TOKEN:
+        API_URL = ask_api_url()
+        PRINTER_TOKEN = ask_printer_token()
+        if not API_URL or not PRINTER_TOKEN:
+            raise RuntimeError("VIPE_API_URL and VIPE_PRINTER_TOKEN are required")
+        save_credentials(API_URL, PRINTER_TOKEN)
 
-# Printer listener token — service-role JWT scoped to print topic (Q5-A).
-# In dev mode, falls back to SUPABASE_KEY so the listener can still connect
-# against a permissive local stack. In production, a valid VIPE_PRINTER_TOKEN
-# must be provided via the environment.
-if ENVIRONMENT == "dev":
-    # Dev: token is optional; silently use the anon key so local testing works.
-    _printer_token = os.getenv("VIPE_PRINTER_TOKEN", "").strip()
-    PRINTER_TOKEN = _printer_token if _printer_token else SUPABASE_KEY
-    if not _printer_token:
-        print("Warning: VIPE_PRINTER_TOKEN not set in .env; using SUPABASE_KEY for Realtime auth (dev only)")
-else:
-    # Production: token is required.
-    PRINTER_TOKEN = resolve_token()
-    print("Printer auth: service-role token resolved from environment")
-
-# ← Aquí definimos REALTIME_URL YA, tras cargar SUPABASE_URL
-REALTIME_URL = f"{SUPABASE_URL.replace('https','wss')}/realtime/v1"
+API_URL = API_URL.rstrip("/")
 
 # ------------------------
 # PERSISTENCIA DE IMPRESORAS
@@ -458,33 +435,114 @@ def iniciar_icono_tray():
     icon.run()
 
 # ------------------------
-# SUSCRIPCIONES SUPABASE
+# CONEXIÓN CON LA API (socket.io)
 # ------------------------
-async def iniciar_suscripciones():
-    while True:
-        try:
-            # Auth: service-role token scoped to print topic (Q5-A).
-            # The anon key path (SUPABASE_KEY) is rejected when ANONYMOUS_USERS_ENABLED=false.
-            socket = AsyncRealtimeClient(
-                REALTIME_URL,
-                params={"apikey": PRINTER_TOKEN},
-                headers={"Authorization": f"Bearer {PRINTER_TOKEN}"},
-            )
-            ch1 = socket.channel("room_commands")
-            ch1.on_broadcast("new_command", handle_comanda)
-            ch2 = socket.channel("room_bills")
-            ch2.on_broadcast("new_invoice", handle_factura)
+# The API sends `print_job {id, kind, payload}` to the printers of this
+# token's restaurant only (room printers:<restaurantId>, namespace /realtime).
+# Jobs are durable: on every (re)connect the pending ones are fetched, and each
+# printed job is acknowledged, so tickets sent while this PC was off still print.
+# While connected, pending jobs are fetched again every 60 s (failed prints are
+# retried) and paged with ?after=<id> so old failing jobs never hide new ones.
+REALTIME_NAMESPACE = "/realtime"
 
-            await ch1.subscribe(
-                lambda s, e: logger.info("Comandas subscribed") if s == "SUBSCRIBED" else logger.error("Comandas error: %s", e)
-            )
-            await ch2.subscribe(
-                lambda s, e: logger.info("Facturas subscribed") if s == "SUBSCRIBED" else logger.error("Facturas error: %s", e)
-            )
-            while True:
-                await asyncio.sleep(1)
-        except Exception as e:
-            logger.error("Realtime connection error: %s", e)
+job_handler = PrintJobHandler(get_printer=printer_manager.get_printer)
+# One printing thread: jobs print in order and the dedupe sees one at a time.
+print_executor = ThreadPoolExecutor(max_workers=1)
+background_tasks = set()
+fetch_lock = asyncio.Lock()
+
+def api_headers():
+    return {"Authorization": f"Bearer {PRINTER_TOKEN}"}
+
+async def process_job(session, job):
+    loop = asyncio.get_running_loop()
+    should_ack = await loop.run_in_executor(print_executor, job_handler.handle, job)
+    if not should_ack:
+        return
+    try:
+        async with session.post(f"{API_URL}/api/print/jobs/{job['id']}/ack", headers=api_headers()) as res:
+            if res.status not in (204, 404):
+                logger.warning("Ack of %s answered %s", job["id"], res.status)
+    except Exception as exc:
+        # The job stays pending; the next connection prints-or-skips and acks it.
+        logger.warning("Ack of %s failed: %s", job["id"], exc)
+
+async def fetch_page(session, after):
+    params = {"after": after} if after else None
+    try:
+        async with session.get(f"{API_URL}/api/print/jobs/pending", headers=api_headers(), params=params) as res:
+            if res.status != 200:
+                logger.error("Pending jobs answered %s", res.status)
+                return None
+            return await res.json()
+    except Exception as exc:
+        logger.error("Pending jobs fetch failed: %s", exc)
+        return None
+
+async def fetch_pending(session, poller):
+    # One drain at a time; a failed print is retried on the next poll.
+    if fetch_lock.locked():
+        return
+    async with fetch_lock:
+        poller.fetched()
+        await drain_pending(lambda after: fetch_page(session, after), lambda job: process_job(session, job))
+
+def spawn(coro):
+    # asyncio keeps only weak references to tasks: hold them until done.
+    task = asyncio.create_task(coro)
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
+    return task
+
+async def poll_pending(sio, session, poller):
+    while True:
+        await asyncio.sleep(max(1, poller.seconds_until_due()))
+        if sio.connected and poller.due():
+            await fetch_pending(session, poller)
+
+async def iniciar_suscripciones():
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+        sio = socketio.AsyncClient(reconnection=True, reconnection_delay=1, reconnection_delay_max=30)
+        poller = PendingPoller()
+
+        @sio.on("connect", namespace=REALTIME_NAMESPACE)
+        async def on_connect():
+            logger.info("Connected to %s", API_URL)
+            spawn(fetch_pending(session, poller))
+
+        @sio.on("ready", namespace=REALTIME_NAMESPACE)
+        async def on_ready(data):
+            logger.info("Printing for restaurant %s", (data or {}).get("restaurantId"))
+
+        @sio.on("print_job", namespace=REALTIME_NAMESPACE)
+        async def on_print_job(job):
+            await process_job(session, job)
+
+        @sio.on("connect_error", namespace=REALTIME_NAMESPACE)
+        async def on_connect_error(data):
+            # "unauthorized": unknown or revoked VIPE_PRINTER_TOKEN.
+            logger.error("Connection refused: %s", data)
+
+        @sio.on("disconnect", namespace=REALTIME_NAMESPACE)
+        async def on_disconnect(*_args):
+            logger.warning("Disconnected from %s", API_URL)
+
+        spawn(poll_pending(sio, session, poller))
+
+        while True:
+            try:
+                await sio.connect(
+                    API_URL,
+                    namespaces=[REALTIME_NAMESPACE],
+                    auth={"token": PRINTER_TOKEN},
+                    transports=["websocket"],
+                    wait_timeout=10,
+                )
+                # Returns once the client gives up reconnecting (for example the
+                # server dropped a revoked token); start over after a pause.
+                await sio.wait()
+            except Exception as exc:
+                logger.error("API connection error: %s", exc)
             await asyncio.sleep(5)
 
 # ------------------------
@@ -515,75 +573,6 @@ def imprimir_pos(printer_type, text, barcode=None, img_path=None):
         pr.cut()
     except Exception as e:
         print("Error imprimir POS:", e)
-
-# invoiceNumber: string;
-# items: any[];
-# waiter: string;
-def handle_comanda(payload):
-    data = payload.get("payload", {})
-    invoice_number = data.get("invoiceNumber")
-    items = data.get("items")
-    waiter = data.get("waiter")
-    table = data.get("table")
-
-    if not invoice_number or not items or not waiter:
-        return
-
-    # Deduplication: skip if this invoice was printed within the TTL window.
-    if not recently_printed.should_print(invoice_number):
-        logger.info("Duplicate comanda skipped: %s", invoice_number)
-        return
-
-    pr = printer_manager.get_printer('comandas')
-    if not pr:
-        logger.warning("Comandas printer not configured")
-        return
-
-    try:
-        encoding = negotiate_encoding(pr)
-        order = {
-            "invoiceNumber": invoice_number,
-            "table": table,
-            "waiter": waiter,
-            "items": items,
-            "delivery": data.get("delivery"),
-        }
-        raw_bytes = print_renderer.build_comanda_bytes(order, encoding=encoding)
-        pr._raw(raw_bytes)
-        logger.info("Comanda printed: %s", invoice_number)
-    except Exception as exc:
-        logger.error("Failed to print comanda %s: %s", invoice_number, exc)
-
-
-def handle_factura(payload):
-    data = payload.get("payload", {})
-    invoice_number = data.get("invoiceNumber")
-    invoice = data.get("invoice", {})
-    display_items = data.get("displayItems", [])
-
-    if not invoice_number:
-        return
-
-    # Deduplication: skip if this invoice was printed within the TTL window.
-    if not recently_printed.should_print(invoice_number):
-        logger.info("Duplicate factura skipped: %s", invoice_number)
-        return
-
-    pr = printer_manager.get_printer('facturas')
-    if not pr:
-        logger.warning("Facturas printer not configured")
-        return
-
-    try:
-        encoding = negotiate_encoding(pr)
-        raw_bytes = print_renderer.build_invoice_bytes(
-            invoice_number, invoice, display_items, encoding=encoding
-        )
-        pr._raw(raw_bytes)
-        logger.info("Factura printed: %s", invoice_number)
-    except Exception as exc:
-        logger.error("Failed to print factura %s: %s", invoice_number, exc)
-
 
 def generate_comanda_text(order_number: str, table: str, waiter: str, items: list[dict], date = None) -> str:
     """Genera el texto a imprimir para una comanda"""
@@ -708,7 +697,7 @@ if __name__ == "__main__":
     # Para que Windows muestre nuestro ícono en la barra de tareas
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("com.miempresa.vipepos")
 
-    # Iniciar Supabase en hilo
+    # Iniciar la conexión con la API en hilo
     loop = asyncio.new_event_loop()
     threading.Thread(target=loop.run_until_complete,
                      args=(iniciar_suscripciones(),),

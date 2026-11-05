@@ -17,23 +17,12 @@ const env = vi.hoisted(() => ({
   checkStockForDish: vi.fn(),
 }))
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    auth: { signOut: vi.fn() },
-    from: () => {
-      throw new Error("the grid must not read the database directly")
-    },
-  },
-}))
-
-vi.mock("@/lib/supabase/inventory-control-service", () => ({
-  default: {
-    // The T6 entry point: one read per category/menu.
-    checkStockForDishes: env.checkStockForDishes,
-    // Kept as a spy: if the grid still used the per-dish path, the suite would
-    // see N calls instead of one.
-    checkStockForDish: env.checkStockForDish,
-  },
+vi.mock("@/lib/api/inventory", () => ({
+  // The T6 entry point: one read per category/menu (POST /inventory/dish-availability since T10).
+  checkStockForDishes: env.checkStockForDishes,
+  // Kept as a spy: if the grid still used the per-dish path, the suite would
+  // see N calls instead of one.
+  checkStockForDish: env.checkStockForDish,
 }))
 
 import { DishGrid } from "./DishGrid"

@@ -18,9 +18,9 @@ import { useEffect } from "react"
 import { mergeOrdersList, mergeOrdersForWaiter, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
 import type { Order } from "@/types"
 
-// Stub the realtime-service module so the harness's `subscribeToOrders` call
+// Stub the API realtime client (lib/api/realtime) so the harness's `subscribeToOrders` call
 // returns a captured callback we can fire from the test body.
-vi.mock("@/lib/supabase/realtime-service", () => {
+vi.mock("@/lib/api/realtime", () => {
   return {
     realtimeService: {
       subscribeToTables: vi.fn(() => () => {}),
@@ -34,7 +34,7 @@ vi.mock("@/lib/supabase/realtime-service", () => {
   }
 })
 
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { realtimeService } from "@/lib/api/realtime"
 
 /**
  * Mirror of the WaiterView / AdminView S5 payload-application pattern.

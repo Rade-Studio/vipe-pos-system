@@ -36,7 +36,7 @@ import {
 } from "@/lib/inventory/formula"
 import { isLevelDirty, type EditorAction, type EditorLevel } from "@/lib/inventory/formula-editor"
 import { formatQuantity } from "@/lib/inventory/units"
-import type { InventoryItem } from "@/lib/supabase/inventory/types"
+import type { InventoryItem } from "@/lib/api/inventory/types"
 import { FormulaLineRow } from "./FormulaLineRow"
 
 export interface CopySource {

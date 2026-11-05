@@ -1,6 +1,13 @@
+import { ApiError } from '@/lib/api/errors'
+
 /**
- * Maps a Supabase/PostgREST error from the inventory RPCs and tables to a
- * user-facing Spanish error (odd/tasks/admin-dashboard-inventario.md, T5).
+ * Maps an inventory API error to a user-facing Spanish error
+ * (odd/tasks/admin-dashboard-inventario.md, T5; API body since T10).
+ *
+ * The API error body carries the SQLSTATE as `code`, the RPC message verbatim
+ * (`fn_name: ...`) and the P0001 DETAIL as `details`. A request the API
+ * rejects before reaching the database (validation 422, role 403, missing row
+ * 404) has no `code`; its HTTP status picks the equivalent SQLSTATE.
  *
  * SQLSTATEs follow the migration convention: 22023 bad input, P0002 missing
  * or another tenant's row, 42501 role, P0001 business rule. A P0001 raised for
@@ -78,7 +85,22 @@ const formatShortages = (shortages: InventoryShortage[], serverMessage: string):
   return tail ? `Stock insuficiente: ${tail}` : 'Stock insuficiente.'
 }
 
+/** SQLSTATE equivalent of an API answer without `code`. */
+const STATUS_CODES: Record<number, string> = { 422: '22023', 404: 'P0002', 403: '42501' }
+
+const fromApiError = (error: ApiError): ErrorLike => {
+  const { code, details } = error.body
+  return {
+    code: typeof code === 'string' && code ? code : STATUS_CODES[error.status],
+    message: error.message,
+    details,
+  }
+}
+
 const invalidInputMessage = (message: string): string => {
+  if (/lineId must be a line of this purchase order/.test(message)) {
+    return 'La orden cambió mientras la editabas: ciérrala, ábrela de nuevo y repite el cambio.'
+  }
   if (/appears twice/.test(message)) return 'Un ingrediente está repetido en la fórmula.'
   if (/cannot use itself|formula cycle/.test(message)) return CYCLE_MESSAGE
   return 'Datos inválidos: revisa los valores ingresados.'
@@ -96,7 +118,7 @@ const businessRuleMessage = (message: string): string => {
 
 export function toInventoryError(error: unknown): InventoryError {
   if (error instanceof InventoryError) return error
-  const e = (error && typeof error === 'object' ? error : {}) as ErrorLike
+  const e = error instanceof ApiError ? fromApiError(error) : ((error && typeof error === 'object' ? error : {}) as ErrorLike)
   const code = typeof e.code === 'string' && e.code ? e.code : 'unknown'
   const message = typeof e.message === 'string' ? e.message : ''
 

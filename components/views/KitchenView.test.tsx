@@ -10,6 +10,11 @@
  *
  * These tests pin the observable behaviour through the view's public surface:
  * requests issued, queue content, board content and toasts.
+ *
+ * T8b: the queue is `GET /orders?status=kitchen` and serving is
+ * `POST /orders/:id/items/served` (the server delivers the order and serves
+ * its table when the last kitchen item goes); the view never writes the
+ * database directly.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, render, screen, waitFor } from "@testing-library/react"
@@ -19,7 +24,7 @@ import type { Profile } from "@/types"
 type Row = Record<string, unknown>
 type Batch = {
   orderId: string
-  order: Row
+  order: unknown
   newItemIds: string[]
   servedItemIds: string[]
   isNewOrder: boolean
@@ -27,14 +32,14 @@ type Batch = {
 
 const env = vi.hoisted(() => {
   return {
-    /** One entry per `orderService.getByStatus` call. */
+    /** One entry per `GET /orders` call (its `status` query). */
     statusReads: [] as unknown[],
     /** Queue returned per status; a function lets a test change it over time. */
     kitchenRows: [] as Row[],
     /** When set, `getByStatus` waits on this promise. */
     pendingRead: null as null | { resolve: (rows: Row[]) => void; promise: Promise<Row[]> },
     orderUpdates: [] as { orderId: string; status: string }[],
-    itemWrites: [] as { ids: string[]; values: Row }[],
+    itemWrites: [] as { orderId: string; ids: string[] }[],
     failItemWrite: false,
     throwItemWrite: false,
     registerItems: [] as { orderId: string; itemIds: string[] }[],
@@ -75,62 +80,50 @@ const env = vi.hoisted(() => {
   }
 })
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    auth: { signOut: async () => {} },
-    from: (table: string) => {
-      const state: { ids: string[]; values: Row } = { ids: [], values: {} }
-      const chain: Record<string, unknown> = {}
-      chain.update = (values: Row) => {
-        state.values = values
-        return chain
-      }
-      chain.eq = (_column: string, value: string) => {
-        state.ids = [value]
-        return chain
-      }
-      chain.in = (_column: string, values: string[]) => {
-        state.ids = values
-        return chain
-      }
-      chain.select = () => chain
-      chain.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => {
-        env.itemWrites.push({ ids: state.ids, values: state.values })
-        // A rejected write (transport failure), not the `{ error }` shape.
-        if (env.throwItemWrite) {
-          reject(new Error("network down"))
-          return
+vi.mock("@/lib/api/client", async () => {
+  const { ApiError } = await import("@/lib/api/errors")
+  const route = async (method: string, path: string, init: any = {}) => {
+    const id = init?.params?.path?.id
+    switch (`${method} ${path}`) {
+      case "GET /api/orders": {
+        env.statusReads.push(init.params.query.status)
+        if (env.pendingRead) {
+          const rows = await env.pendingRead.promise
+          env.pendingRead = null
+          return { data: rows }
         }
-        const error = env.failItemWrite ? { message: "boom" } : null
-        resolve({ error })
+        return { data: env.kitchenRows }
       }
-      return chain
-    },
-  },
-  createSupabaseClient: () => ({}),
-}))
-
-vi.mock("@/lib/supabase/service", () => ({
-  orderService: {
-    getByStatus: async (statuses: string | string[]) => {
-      env.statusReads.push(statuses)
-      if (env.pendingRead) {
-        const rows = await env.pendingRead.promise
-        env.pendingRead = null
-        return rows
+      case "POST /api/orders/{id}/items/served": {
+        const ids: string[] = init.body.itemIds
+        env.itemWrites.push({ orderId: id, ids })
+        if (env.throwItemWrite) throw new Error("network down")
+        if (env.failItemWrite) throw new ApiError(409, "Conflict", "Order is closed")
+        // Like the server: the items are served and, with no kitchen item
+        // left, the order is delivered.
+        const order = env.kitchenRows.find((candidate) => candidate.id === id) as any
+        const items = (order?.items ?? []).map((line: any) => (ids.includes(line.id) ? { ...line, status: "served" } : line))
+        const status = items.some((line: any) => line.status === "kitchen") ? "kitchen" : "delivered"
+        return { data: { ...order, items, status } }
       }
-      return env.kitchenRows
+      case "PATCH /api/orders/{id}/status":
+        env.orderUpdates.push({ orderId: id, status: init.body.status })
+        return { data: { id } }
+      default:
+        throw new Error(`unexpected ${method} ${path}`)
+    }
+  }
+  return {
+    api: {
+      GET: (path: string, init?: unknown) => route("GET", path, init),
+      POST: (path: string, init?: unknown) => route("POST", path, init),
+      PATCH: (path: string, init?: unknown) => route("PATCH", path, init),
     },
-    getById: async () => null,
-    updateStatus: async (orderId: string, status: string) => {
-      env.orderUpdates.push({ orderId, status })
-      return { id: orderId }
-    },
-  },
-  tableService: { getAll: async () => [] },
-}))
+    onSessionRefreshed: () => () => {},
+  }
+})
 
-vi.mock("@/lib/supabase/realtime-service", () => ({
+vi.mock("@/lib/api/realtime", () => ({
   realtimeService: {
     knownItems: {} as Record<string, Set<string>>,
     subscribeToKitchen: (
@@ -170,7 +163,7 @@ vi.mock("@/hooks/use-active-deliveries", () => ({
   useActiveDeliveries: () => ({ data: env.deliveries }),
 }))
 
-vi.mock("@/lib/supabase/delivery-service", () => ({
+vi.mock("@/lib/api/delivery", () => ({
   listActiveDeliveries: async () => {
     env.listActiveDeliveriesCalls += 1
     return env.deliveries
@@ -196,6 +189,7 @@ vi.mock("@/lib/log", () => ({
 }))
 
 import { KitchenView } from "@/components/views/KitchenView"
+import { toOrder } from "@/lib/api/orders"
 import { useOrderStore } from "@/store/useOrderStore"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
@@ -209,39 +203,43 @@ const profile: Profile = {
 function item(id: string, status: "kitchen" | "served" = "kitchen", minute = 0) {
   return {
     id,
-    order_id: "o-1",
-    dish_id: null,
+    orderId: "o-1",
+    dishId: null,
     name: id.toUpperCase(),
     price: 100,
     quantity: 1,
     comments: null,
     status,
-    created_at: `2026-10-07T11:0${minute}:00.000Z`,
-    updated_at: `2026-10-07T11:0${minute}:00.000Z`,
+    addedAt: `2026-10-07T11:0${minute}:00.000Z`,
+    createdAt: `2026-10-07T11:0${minute}:00.000Z`,
+    updatedAt: `2026-10-07T11:0${minute}:00.000Z`,
   }
 }
 
 function row(id: string, options: { items?: Row[]; orderType?: "dine_in" | "delivery"; tableId?: string | null } = {}): Row {
   return {
     id,
-    table_id: options.tableId === undefined ? `table-${id}` : options.tableId,
-    order_type: options.orderType ?? "dine_in",
-    waiter_id: "w-1",
+    tableId: options.tableId === undefined ? `table-${id}` : options.tableId,
+    orderType: options.orderType ?? "dine_in",
+    waiterId: "w-1",
     status: "kitchen",
     subtotal: 100,
     tax: 0,
-    tax_percentage: 0,
+    taxPercentage: 0,
     tip: 0,
-    tip_percentage: 0,
+    tipPercentage: 0,
     total: 100,
-    total_discounts: 0,
-    is_partial_order: false,
-    parent_order_id: null,
-    created_at: "2026-10-07T11:00:00.000Z",
-    updated_at: "2026-10-07T11:00:00.000Z",
-    order_items: options.items ?? [item(`${id}-i-1`)],
+    totalDiscounts: 0,
+    isPartialOrder: false,
+    parentOrderId: null,
+    createdAt: "2026-10-07T11:00:00.000Z",
+    updatedAt: "2026-10-07T11:00:00.000Z",
+    items: options.items ?? [item(`${id}-i-1`)],
   }
 }
+
+/** A realtime batch carries the order already mapped by the shared `toOrder`. */
+const mapped = (r: Row) => toOrder(r as never)
 
 function renderKitchen() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -381,7 +379,7 @@ describe("kitchen board realtime batches", () => {
     act(() => {
       env.onBatch?.({
         orderId: "o-9",
-        order: row("o-9", { items }),
+        order: mapped(row("o-9", { items })),
         newItemIds: items.map((i) => i.id as string),
         servedItemIds: [],
         isNewOrder: true,
@@ -406,7 +404,7 @@ describe("kitchen board realtime batches", () => {
     act(() => {
       env.onBatch?.({
         orderId: "o-9",
-        order: row("o-9", { items: [{ ...item("o-9-i-1"), name: "Combo" }] }),
+        order: mapped(row("o-9", { items: [{ ...item("o-9-i-1"), name: "Combo" }] })),
         newItemIds: [],
         servedItemIds: [],
         isNewOrder: false,
@@ -426,7 +424,7 @@ describe("kitchen board realtime batches", () => {
     act(() => {
       env.onBatch?.({
         orderId: "o-1",
-        order: row("o-1", { items: [item("o-1-i-1"), { ...item("o-1-i-2"), name: "Postrezo" }] }),
+        order: mapped(row("o-1", { items: [item("o-1-i-1"), { ...item("o-1-i-2"), name: "Postrezo" }] })),
         newItemIds: ["o-1-i-2"],
         servedItemIds: [],
         isNewOrder: false,
@@ -447,7 +445,7 @@ describe("kitchen board realtime batches", () => {
     act(() => {
       env.onBatch?.({
         orderId: "o-1",
-        order: row("o-1", { items: [item("o-1-i-1", "served")] }),
+        order: mapped(row("o-1", { items: [item("o-1-i-1", "served")] })),
         newItemIds: [],
         servedItemIds: ["o-1-i-1"],
         isNewOrder: false,
@@ -474,7 +472,21 @@ describe("kitchen board realtime batches", () => {
 })
 
 describe("kitchen board local writes", () => {
-  it("serves an item with one write, patches only that order and reads nothing", async () => {
+  it("keeps the order on the board with what the server still has in the kitchen", async () => {
+    env.kitchenRows = [row("o-1", { items: [item("o-1-i-1", "kitchen", 0), { ...item("o-1-i-2", "kitchen", 1), name: "Bebida" }] })]
+    renderKitchen()
+    expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getAllByRole("button", { name: "Entregar" })[0].click()
+    })
+
+    expect(env.itemWrites).toEqual([{ orderId: "o-1", ids: ["o-1-i-1"] }])
+    expect(storeOrder("o-1")?.items.map((line) => line.id)).toEqual(["o-1-i-2"])
+    expect(env.orderUpdates).toEqual([])
+  })
+
+  it("serves an item through the API, patches only that order and reads nothing", async () => {
     env.kitchenRows = [row("o-1"), row("o-2")]
     renderKitchen()
     expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
@@ -486,16 +498,16 @@ describe("kitchen board local writes", () => {
       buttons[1].click()
     })
 
-    expect(env.itemWrites).toHaveLength(1)
-    expect(env.itemWrites[0].ids).toEqual(["o-2-i-1"])
-    expect(env.itemWrites[0].values.status).toBe("served")
+    expect(env.itemWrites).toEqual([{ orderId: "o-2", ids: ["o-2-i-1"] }])
     // The write is announced as ours, so its echo costs no read.
     expect(env.markedLocal).toEqual([["o-2-i-1"]])
     expect(env.statusReads).toEqual(["kitchen"])
     // The served order is gone and the other one kept its identity.
     expect(storeOrder("o-2")).toBeUndefined()
     expect(storeOrder("o-1")).toBe(untouched)
-    expect(env.orderUpdates).toEqual([{ orderId: "o-2", status: "delivered" }])
+    // The server delivered the order with its last item: no second write.
+    expect(env.orderUpdates).toEqual([])
+    expect(useTableStore.getState().tables.find((table) => table.id === "table-o-2")?.status).toBe("served")
     expect(screen.queryByText("O-2-I-1")).toBeNull()
   })
 
@@ -577,11 +589,10 @@ describe("kitchen board local writes", () => {
       confirm.click()
     })
 
-    expect(env.itemWrites).toHaveLength(1)
-    expect(env.itemWrites[0].ids).toEqual(["o-1-i-1", "o-1-i-2"])
-    expect(env.itemWrites[0].values.status).toBe("served")
+    expect(env.itemWrites).toEqual([{ orderId: "o-1", ids: ["o-1-i-1", "o-1-i-2"] }])
     expect(env.markedLocal).toEqual([["o-1-i-1", "o-1-i-2"]])
     expect(storeOrder("o-1")).toBeUndefined()
+    expect(env.orderUpdates).toEqual([])
   })
 
   it("keeps the DOMICILIO banner and marks the delivery ready without re-reading the deliveries", async () => {

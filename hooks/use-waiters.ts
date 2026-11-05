@@ -9,18 +9,25 @@
  * both the waiter and the kitchen screen). Both now read this query, keyed
  * `['waiters']`, so the list is fetched once per session of the app and is
  * shared by every consumer — including KitchenView's waiter picker, which needs
- * no change of its own.
+ * no change of its own. Since T8b it reads `GET /staff/waiters` (active waiters,
+ * by name).
  */
 
 import { useQuery } from "@tanstack/react-query"
 
-import { mapWaiterRowsToProfiles } from "@/lib/menu/waiters"
-import { waiterService } from "@/lib/supabase/service"
+import { getWaiters } from "@/lib/api/tables"
 import type { Profile } from "@/types"
 
 export const WAITERS_QUERY_KEY = ["waiters"] as const
 
-export const fetchWaiters = async (): Promise<Profile[]> => mapWaiterRowsToProfiles(await waiterService.getAll())
+export const fetchWaiters = async (): Promise<Profile[]> =>
+  (await getWaiters()).map((waiter) => ({
+    id: waiter.id,
+    name: waiter.name,
+    full_name: waiter.name,
+    username: waiter.username,
+    role: "waiter",
+  }))
 
 export function useWaiters() {
   return useQuery<Profile[]>({

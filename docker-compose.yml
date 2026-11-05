@@ -1,19 +1,19 @@
 # ============================================
 # VIPE POS - App Next.js en Docker (desarrollo)
 # ============================================
-# La base de datos local NO se levanta con Docker Compose: la gestiona la
-# Supabase CLI (pnpm supabase start / db reset), que expone sus servicios en
-# los puertos 4432x del host.
+# Stack local sin Supabase: Postgres (`db`), MinIO (`minio`, `minio-init`) y
+# la app web. La API NestJS corre fuera de Compose (`pnpm api:dev`, puerto 4000).
+# Con `pnpm dev` la web la alcanza por el proxy `/api` (API_PROXY_TARGET, por
+# defecto http://localhost:4000). La app en contenedor (`app`) fija ese destino
+# al construir la imagen; por defecto apunta a la API del host
+# (http://host.docker.internal:4000).
 #
 # Uso:
-#   # 1. Levantar Supabase y copiar URL/anon key al .env de la raíz:
-#   pnpm supabase start
-#   pnpm supabase status
-#   # 2. Verificar que .env contiene:
-#   #    NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:44321
-#   #    NEXT_PUBLIC_SUPABASE_ANON_KEY=<ANON_KEY de `pnpm supabase status`>
-#   # 3. Levantar la app:
-#   docker compose up -d  (o: pnpm docker:dev)
+#   # 1. Base de datos con migraciones y datos de prueba:
+#   pnpm db:dev
+#   # 2. API y web en modo desarrollo:
+#   pnpm api:dev
+#   pnpm dev
 # ============================================
 
 services:
@@ -24,28 +24,92 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      # IMPORTANTE: NEXT_PUBLIC_* se inlinean al build time en Next.js, no son
-      # runtime. Sin estos args, el cliente usa el fallback xyzcompany.supabase.co
-      # definido en lib/supabase/client.ts y la app apunta a producción.
-      # Los valores vienen del entorno o del .env de la raíz; en local salen de
-      # `pnpm supabase status`.
       args:
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?define NEXT_PUBLIC_SUPABASE_URL en el entorno o .env - ver pnpm supabase status}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?define NEXT_PUBLIC_SUPABASE_ANON_KEY en el entorno o .env - ver pnpm supabase status}
+        # Next fija las reescrituras /api y /socket.io al construir la imagen.
+        API_PROXY_TARGET: ${API_PROXY_TARGET:-http://host.docker.internal:4000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     container_name: vipe-pos-app
     restart: unless-stopped
     environment:
       NODE_ENV: development
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?define NEXT_PUBLIC_SUPABASE_URL en el entorno o .env - ver pnpm supabase status}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?define NEXT_PUBLIC_SUPABASE_ANON_KEY en el entorno o .env - ver pnpm supabase status}
     ports:
       - "3003:3000"
     # Sin bind-mount: la imagen standalone ya contiene build + node_modules minimal.
     # Volúmenes anónimos como /app/node_modules o /app/.next enmascaran el build
-    # de la imagen y rompen `npm start` / healthcheck (next / curl not found).
-    # Para dev con hot-reload: usar un Dockerfile dev o bind-mounts selectivos.
+    # de la imagen y rompen el arranque. El healthcheck es el HEALTHCHECK de la
+    # imagen (node + fetch); la imagen no incluye curl.
+    # Para dev con hot-reload: usar `pnpm dev` fuera de Compose.
+  # -------------------------------
+  # POSTGRES (sin Supabase) + pgTAP
+  # -------------------------------
+  # Destino de la migración a NestJS (odd/tasks/migracion-backend-nestjs.md, T4).
+  # Postgres 16 con pgTAP y pg_prove; el init crea los roles vipe_migrator
+  # (dueño del esquema, aplica migraciones) y vipe_api (rol de la API, sin
+  # BYPASSRLS). `pnpm test:db` lo levanta solo con:
+  #   docker compose up -d --wait db
+  db:
+    build:
+      context: packages/db
+      dockerfile: docker/Dockerfile
+    container_name: vipe-pos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${VIPE_DB_SUPERUSER_PASSWORD:-postgres}
+      POSTGRES_DB: vipe_pos
+      VIPE_MIGRATOR_PASSWORD: ${VIPE_MIGRATOR_PASSWORD:-vipe_migrator}
+      VIPE_API_PASSWORD: ${VIPE_API_PASSWORD:-vipe_api}
+    ports:
+      - "${VIPE_DB_PORT:-5432}:5432"
+    volumes:
+      - vipe_pos_db:/var/lib/postgresql/data
+      - ./packages/db/tests:/opt/vipe/tests:ro
+      - ./packages/db/scripts:/opt/vipe/scripts:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vipe_pos"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  # -------------------------------
+  # MINIO (almacenamiento S3 para desarrollo)
+  # -------------------------------
+  # Imágenes de platos (odd/tasks/migracion-backend-nestjs.md, T12). Solo para
+  # desarrollo: en producción las variables S3_* de la API apuntan a R2 u otro
+  # servicio compatible con S3. Imagen de Chainguard fijada por digest porque
+  # MinIO ya no publica imágenes comunitarias. API S3 en :9000, consola en :9001.
+  #   docker compose up -d minio minio-init
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:3c60a2a8c4d33409a9bc7a623a7fcbfb4605adc3d89422d2f53b3f673a6e5597
+    container_name: vipe-pos-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${VIPE_MINIO_USER:-vipe-minio}
+      MINIO_ROOT_PASSWORD: ${VIPE_MINIO_PASSWORD:-vipe-minio-secret}
+    ports:
+      - "${VIPE_MINIO_PORT:-9000}:9000"
+      - "${VIPE_MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - vipe_pos_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  # Una sola ejecución: crea el bucket vipe-dev con lectura pública (idempotente).
+  minio-init:
+    image: cgr.dev/chainguard/minio-client@sha256:39768db4c3fa811bc8f2e2a3e0add8ea391648b1c980de179985e1c353dc1805
+    container_name: vipe-pos-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MC_HOST_local: http://${VIPE_MINIO_USER:-vipe-minio}:${VIPE_MINIO_PASSWORD:-vipe-minio-secret}@minio:9000
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mc mb --ignore-existing local/vipe-dev && mc anonymous set download local/vipe-dev"]
+    restart: "no"
+
+volumes:
+  vipe_pos_db:
+  vipe_pos_minio:

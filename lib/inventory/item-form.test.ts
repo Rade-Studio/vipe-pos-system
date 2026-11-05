@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import type { InventoryItem } from "@/lib/supabase/inventory/types"
+import type { InventoryItem } from "@/lib/api/inventory/types"
 import {
   emptyItemForm,
   fromItem,

@@ -111,7 +111,8 @@ export interface Bill {
 }
 
 // -----------------------------------------------------------
-// Server wire format (snake_case, what we send to pay_order)
+// Tender lines from `buildPayOrderTenders` (snake_case; `lib/api/payments`
+// sends them camelCase to `POST /payments`)
 // -----------------------------------------------------------
 
 export interface PayOrderTenderLine {
@@ -173,16 +174,16 @@ export interface UndoSplitResult {
 // -----------------------------------------------------------
 
 export type PaymentServiceErrorKind =
-  | 'not-authorized' // supabase-js error.code === '42501'
+  | 'not-authorized' // API error `code` '42501'
   | 'not-found' // 'P0002' (the only SQLSTATE that does not leak another tenant)
-  | 'rejected' // 'P0001' business rule violation; server message explains
-  | 'invalid-input' // '22023' invalid_parameter_value
-  | 'unknown' // anything else
+  | 'rejected' // 'P0001'/'23505', or a 409 without code; server message explains
+  | 'invalid-input' // '22023'/'23514', or a 422 without code (API validation)
+  | 'unknown' // anything else (see `paymentErrorOf` in lib/api/payments)
 
 export interface PaymentServiceErrorInit {
   kind: PaymentServiceErrorKind
   message: string
-  /** Raw supabase-js error for callers that need the original shape. */
+  /** The original error (usually an `ApiError`) for callers that need it. */
   cause?: unknown
 }
 

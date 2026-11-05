@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { useCreateSupplier, useSuppliers, useUpdateSupplier } from "@/hooks/inventory"
-import type { Supplier, SupplierInput } from "@/lib/supabase/inventory/types"
+import type { Supplier, SupplierInput } from "@/lib/api/inventory/types"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 

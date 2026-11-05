@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/utils/helpers"
-import { cashRegisterService } from "@/lib/supabase/cash-register-service"
+import * as cashRegisterService from "@/lib/api/registers"
 import { log } from "@/lib/log"
 import { Search, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -22,7 +22,7 @@ import { cashTransactionsQueryKey, registersByDateQueryKey, sortedRegisterIds } 
 import { useRegisterPayments } from "@/hooks/use-register-payments"
 import { totalsByMethod, methodLabel, toCsvRows, csvEscape } from "@/lib/payments/payment-list"
 import type { PaymentRow } from "@/lib/payments/payment-list"
-import { listPaymentMethods } from "@/lib/supabase/payments-service"
+import { listPaymentMethods } from "@/lib/api/payments"
 import type { PaymentMethodOption } from "@/lib/payments/types"
 
 interface TransactionsByDateListProps {

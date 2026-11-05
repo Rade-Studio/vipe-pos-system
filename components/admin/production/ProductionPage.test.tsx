@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { InventoryError } from "@/lib/inventory/errors"
-import type { InventoryItem } from "@/lib/supabase/inventory/types"
+import type { InventoryItem } from "@/lib/api/inventory/types"
 
 const h = vi.hoisted(() => ({
   toast: vi.fn(),

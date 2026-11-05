@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { InventoryItem, InventoryLocation, PurchaseOrder, Supplier } from "@/lib/supabase/inventory/types"
+import type { InventoryItem, InventoryLocation, PurchaseOrder, Supplier } from "@/lib/api/inventory/types"
 
 const h = vi.hoisted(() => {
   const mutation = () => ({ mutateAsync: vi.fn(), isPending: false })
@@ -12,14 +12,12 @@ const h = vi.hoisted(() => {
     locations: [] as unknown[],
     orders: [] as unknown[],
     order: undefined as unknown,
+    orderFetching: false,
     createPurchaseOrder: mutation(),
     updatePurchaseOrder: mutation(),
     setStatus: mutation(),
     setPayment: mutation(),
     deletePurchaseOrder: mutation(),
-    addLine: mutation(),
-    updateLine: mutation(),
-    removeLine: mutation(),
     receive: mutation(),
     createSupplier: mutation(),
     updateSupplier: mutation(),
@@ -34,15 +32,12 @@ vi.mock("@/hooks/inventory", () => {
     useSuppliers: () => q(h.suppliers),
     useInventoryLocations: () => q(h.locations),
     usePurchaseOrders: () => q(h.orders),
-    usePurchaseOrder: (id: string | null) => q(id ? h.order : undefined),
+    usePurchaseOrder: (id: string | null) => ({ ...q(id ? h.order : undefined), isFetching: Boolean(id) && h.orderFetching }),
     useCreatePurchaseOrder: () => h.createPurchaseOrder,
     useUpdatePurchaseOrder: () => h.updatePurchaseOrder,
     useSetPurchaseOrderStatus: () => h.setStatus,
     useSetPurchaseOrderPaymentStatus: () => h.setPayment,
     useDeletePurchaseOrder: () => h.deletePurchaseOrder,
-    useAddPurchaseOrderLine: () => h.addLine,
-    useUpdatePurchaseOrderLine: () => h.updateLine,
-    useRemovePurchaseOrderLine: () => h.removeLine,
     useReceivePurchaseOrder: () => h.receive,
     useCreateSupplier: () => h.createSupplier,
     useUpdateSupplier: () => h.updateSupplier,
@@ -130,15 +125,13 @@ beforeEach(() => {
   h.locations = locations
   h.orders = []
   h.order = undefined
+  h.orderFetching = false
   for (const m of [
     h.createPurchaseOrder,
     h.updatePurchaseOrder,
     h.setStatus,
     h.setPayment,
     h.deletePurchaseOrder,
-    h.addLine,
-    h.updateLine,
-    h.removeLine,
     h.receive,
     h.createSupplier,
     h.updateSupplier,
@@ -238,12 +231,73 @@ describe("order editor", () => {
     fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
     expect(await screen.findByRole("textbox", { name: "Cantidad Leche" })).toHaveValue("2")
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /Enviar/ })))
+    expect(h.updatePurchaseOrder.mutateAsync).toHaveBeenCalledTimes(1)
     expect(h.updatePurchaseOrder.mutateAsync).toHaveBeenCalledWith({
       id: "po1",
-      patch: { supplierId: "s1", locationId: "l1", expectedOn: null, notes: null },
+      input: {
+        supplierId: "s1",
+        locationId: "l1",
+        expectedOn: null,
+        notes: null,
+        lines: [{ lineId: "L1", itemId: "milk", quantity: 24, unitCost: 3000 }],
+      },
     })
-    expect(h.addLine.mutateAsync).not.toHaveBeenCalled()
     expect(h.setStatus.mutateAsync).toHaveBeenCalledWith({ id: "po1", status: "ordered" })
+    expect(h.updatePurchaseOrder.mutateAsync.mock.invocationCallOrder[0]).toBeLessThan(h.setStatus.mutateAsync.mock.invocationCallOrder[0])
+  })
+
+  it("saves a removed and an added line in the same single PUT", async () => {
+    h.items = [milk, makeItem({ id: "cheese", name: "Queso", sku: "MP-0003" })]
+    h.orders = [draftOrder()]
+    h.order = draftOrder()
+    render(<PurchasesPage description="" />)
+    fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
+    await screen.findByRole("textbox", { name: "Cantidad Leche" })
+    fireEvent.click(screen.getByRole("button", { name: "Quitar Leche" }))
+    await typeAndEnter("Queso")
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Guardar borrador" })))
+    expect(h.updatePurchaseOrder.mutateAsync).toHaveBeenCalledTimes(1)
+    const [{ input }] = h.updatePurchaseOrder.mutateAsync.mock.calls[0]
+    expect(input.lines).toEqual([{ itemId: "cheese", quantity: expect.any(Number), unitCost: expect.any(Number) }])
+  })
+
+  it("after a stale-line failure, reopening waits for the refetch and shows the fresh lines", async () => {
+    h.orders = [draftOrder()]
+    h.order = draftOrder()
+    h.updatePurchaseOrder.mutateAsync.mockRejectedValue(new Error("La orden cambió mientras la editabas"))
+    const view = render(<PurchasesPage description="" />)
+    fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
+    await screen.findByRole("textbox", { name: "Cantidad Leche" })
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Guardar borrador" })))
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Cantidad Leche" })).not.toBeInTheDocument())
+
+    // Reopen: the cache still holds the stale lines while the refetch runs.
+    h.orderFetching = true
+    fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
+    expect(screen.queryByRole("textbox", { name: "Cantidad Leche" })).not.toBeInTheDocument()
+
+    h.items = [milk, makeItem({ id: "cheese", name: "Queso", sku: "MP-0003" })]
+    h.order = draftOrder({
+      lines: [{ id: "L9", itemId: "cheese", itemName: "Queso", sku: "MP-0003", unit: "kg", quantity: 1, unitCost: 10, receivedQuantity: 0, pendingQuantity: 1, total: 10 }],
+    })
+    h.orderFetching = false
+    view.rerender(<PurchasesPage description="" />)
+    expect(await screen.findByRole("textbox", { name: "Cantidad Queso" })).toBeInTheDocument()
+    expect(screen.queryByRole("textbox", { name: "Cantidad Leche" })).not.toBeInTheDocument()
+  })
+
+  it("shows the API message when a line went stale, without re-adding it", async () => {
+    h.orders = [draftOrder()]
+    h.order = draftOrder()
+    h.updatePurchaseOrder.mutateAsync.mockRejectedValue(new Error("La orden cambió mientras la editabas"))
+    render(<PurchasesPage description="" />)
+    fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
+    await screen.findByRole("textbox", { name: "Cantidad Leche" })
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Guardar borrador" })))
+    expect(h.updatePurchaseOrder.mutateAsync).toHaveBeenCalledTimes(1)
+    expect(h.createPurchaseOrder.mutateAsync).not.toHaveBeenCalled()
+    expect(h.toast).toHaveBeenCalledWith(expect.objectContaining({ description: "La orden cambió mientras la editabas", variant: "destructive" }))
   })
 
   it("creates a supplier inline and selects it", async () => {
@@ -285,20 +339,40 @@ describe("ReceiveDialog", () => {
     expect(h.receive.mutateAsync).not.toHaveBeenCalled()
   })
 
-  it("sends only rows with quantity > 0, then shows the new status and toggles payment", async () => {
+  it("sends only rows with quantity > 0 and the payment status in one receive, then shows the new status", async () => {
     render(<ReceiveDialog order={order} onOpenChange={() => {}} />)
     fireEvent.change(screen.getByLabelText("Recibir Leche"), { target: { value: "0" } })
     fireEvent.change(screen.getByLabelText("Lote Queso"), { target: { value: "Q-1" } })
     fireEvent.change(screen.getByLabelText("Vencimiento Queso"), { target: { value: "2026-11-30" } })
     fireEvent.change(screen.getByLabelText("Costo unitario Queso"), { target: { value: "21000" } })
+    fireEvent.click(screen.getByRole("switch", { name: "Orden pagada" }))
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Confirmar recepción" })))
+    expect(h.receive.mutateAsync).toHaveBeenCalledTimes(1)
     expect(h.receive.mutateAsync).toHaveBeenCalledWith({
       purchaseOrderId: "po1",
       lines: [{ lineId: "L2", quantity: 3, unitCost: 21000, lotCode: "Q-1", expiresOn: "2026-11-30" }],
+      paymentStatus: "paid",
     })
+    expect(h.setPayment.mutateAsync).not.toHaveBeenCalled()
     expect(screen.getByText("Recibida parcial")).toBeInTheDocument()
-    await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Orden pagada" })))
+  })
+
+  it("toggles the payment status again on the result screen through POST payment-status", async () => {
+    render(<ReceiveDialog order={order} onOpenChange={() => {}} />)
+    fireEvent.change(screen.getByLabelText("Lote Queso"), { target: { value: "Q-1" } })
+    fireEvent.change(screen.getByLabelText("Vencimiento Queso"), { target: { value: "2026-11-30" } })
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Confirmar recepción" })))
+    expect(h.receive.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ paymentStatus: "pending" }))
+    const paid = screen.getByRole("switch", { name: "Orden pagada" })
+    expect(paid).not.toBeChecked()
+    await act(async () => fireEvent.click(paid))
     expect(h.setPayment.mutateAsync).toHaveBeenCalledWith({ id: "po1", paymentStatus: "paid" })
+    expect(screen.getByRole("switch", { name: "Orden pagada" })).toBeChecked()
+
+    h.setPayment.mutateAsync.mockRejectedValueOnce(new Error("Permission denied"))
+    await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Orden pagada" })))
+    expect(h.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "No se pudo actualizar el pago", variant: "destructive" }))
+    expect(screen.getByRole("switch", { name: "Orden pagada" })).toBeChecked()
   })
 
   it("Recibir todo restores every pending quantity and rejects over-receipt", async () => {

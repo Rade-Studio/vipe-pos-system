@@ -103,44 +103,37 @@ const payOrder = vi.fn(async (_input?: unknown) => ({
 }))
 const listActiveDeliveries = vi.fn(async () => [])
 
-vi.mock("@/lib/supabase/service", () => ({
-  orderService: {
-    getByStatus: (statuses: string | string[]) => getByStatus(statuses),
-    getById: (id: string) => getById(id),
-  },
-}))
-vi.mock("@/lib/supabase/cash-register-service", () => ({
-  cashRegisterService: { getCurrentRegister: () => getCurrentRegister() },
-  default: { getCurrentRegister: () => getCurrentRegister() },
-}))
-vi.mock("@/lib/supabase/payments-service", () => ({
+// T8b: orders come from the API client. The fixtures stay wire rows; the mock
+// answers with the API shape through the same adapter the realtime path uses.
+vi.mock("@/lib/api/client", () => {
+  return {
+    api: {
+      GET: async (path: string, init: any) => {
+        // Imported lazily: lib/api/orders imports this mocked module.
+        const { orderDtoFromWire } = await import("@/lib/api/orders")
+        if (path === "/api/orders") {
+          const rows = await getByStatus(String(init.params.query.status).split(","))
+          return { data: rows.map((row) => orderDtoFromWire(row)) }
+        }
+        if (path === "/api/orders/{id}") return { data: orderDtoFromWire(await getById(init.params.path.id)) }
+        throw new Error(`unexpected GET ${path}`)
+      },
+    },
+    onSessionRefreshed: () => () => {},
+  }
+})
+vi.mock("@/lib/api/registers", () => ({ getCurrentRegister: () => getCurrentRegister() }))
+vi.mock("@/lib/api/payments", () => ({
   listPaymentMethods: () => listPaymentMethods(),
   getRegisterSummary: () => getRegisterSummary(),
   listRegisterPayments: () => listRegisterPayments(),
   payOrder: (input: unknown) => payOrder(input),
   closeRegisterRpc: vi.fn(async () => ({ finalCash: 0, summary: null })),
 }))
-vi.mock("@/lib/supabase/delivery-service", () => ({
+vi.mock("@/lib/api/delivery", () => ({
   listActiveDeliveries: () => listActiveDeliveries(),
 }))
-vi.mock("@/lib/supabase/client", () => {
-  const channel = () => {
-    const c: Record<string, unknown> = {}
-    c.on = () => c
-    c.subscribe = () => c
-    c.unsubscribe = () => c
-    return c
-  }
-  return {
-    supabase: {
-      channel,
-      removeChannel: () => {},
-      auth: { signOut: vi.fn(async () => ({})) },
-      from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }) }),
-    },
-  }
-})
-vi.mock("@/lib/supabase/realtime-service", () => ({
+vi.mock("@/lib/api/realtime", () => ({
   realtimeService: {
     subscribeToOrders: (cb: (payload: unknown) => void) => {
       ;(globalThis as Record<string, unknown>).__orderCb = cb
@@ -149,8 +142,12 @@ vi.mock("@/lib/supabase/realtime-service", () => ({
       }
     },
     subscribeToTables: () => () => {},
-    sendFactura: vi.fn(),
+    subscribeToDeliveries: () => () => {},
   },
+}))
+vi.mock("@/lib/api/print", () => ({
+  sendCommand: vi.fn(),
+  sendFactura: vi.fn(),
 }))
 vi.mock("@/utils/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -159,7 +156,9 @@ vi.mock("@/components/layout/Header", () => ({
   Header: ({ title }: { title?: string }) => <h1>{title}</h1>,
 }))
 
-import { realtimeService } from "@/lib/supabase/realtime-service"
+import { realtimeService } from "@/lib/api/realtime"
+import { toast } from "@/utils/toast"
+import { PaymentServiceError } from "@/lib/payments/types"
 
 /* -------------------------------------------------------------- fixtures */
 
@@ -228,6 +227,8 @@ describe("cashier mount (S1: load only what the screen needs)", () => {
     const { container } = renderCashier()
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0)
 
+    // The read is in flight before it is released.
+    await waitFor(() => expect(getByStatus).toHaveBeenCalledTimes(1))
     await act(async () => {
       releaseFirstLoad?.()
     })
@@ -468,5 +469,64 @@ describe("regression guard", () => {
     expect(getById).toHaveBeenCalledWith("d-1")
     // The delivery fee is added to the amount due by the same dialog.
     expect(screen.getAllByText("Domicilio").length).toBeGreaterThanOrEqual(2)
+  })
+})
+describe("payment toasts (T9 PRESERVE: driven by the API result and the error kind)", () => {
+  /** Same as `payTheOrderInCash` without closing the invoice (absent on errors). */
+  async function submitCashPayment() {
+    fireEvent.click(screen.getByRole("button", { name: "Pago Total" }))
+    await screen.findByRole("heading", { name: "Cobrar orden" })
+    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar" }))
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+  }
+
+  beforeEach(() => {
+    vi.mocked(toast.success).mockClear()
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(toast.warning).mockClear()
+  })
+
+  it("alreadyPaid and drawerWarning keep their toasts", async () => {
+    payOrder.mockImplementationOnce(async () => ({
+      paymentId: "pay-1",
+      status: "already_paid" as never,
+      amountDue: 47_600,
+      tipAmount: 0,
+      totalCharged: 47_600,
+      changeGiven: 0,
+      drawerWarning: true,
+      drawerCashBefore: 0,
+      alreadyPaid: true,
+      tenders: [{ methodCode: "cash", amount: 47_600, cashReceived: 47_600 }],
+    }))
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    await submitCashPayment()
+
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("Esta orden ya estaba pagada. Mostrando factura."),
+    )
+    expect(toast.warning).toHaveBeenCalledWith(
+      "La caja no tenía efectivo suficiente para el cambio; registra el ingreso de efectivo",
+    )
+  })
+
+  it.each([
+    ["rejected", "Register is closed", "Register is closed"],
+    ["invalid-input", "tenders: Too small", "tenders: Too small"],
+    ["not-authorized", "permission denied", "No tienes permiso para cobrar"],
+    ["unknown", "boom", "Ocurrió un error al procesar el pago. Intenta de nuevo."],
+  ] as const)("kind %s toasts %j", async (kind, message, shown) => {
+    payOrder.mockImplementationOnce(async () => {
+      throw new PaymentServiceError({ kind, message })
+    })
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    await submitCashPayment()
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(shown))
   })
 })

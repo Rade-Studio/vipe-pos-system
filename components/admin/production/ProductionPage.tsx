@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast"
 import { formulaCost, maxProducible, type FormulaItem } from "@/lib/inventory/formula"
 import { formatQuantity } from "@/lib/inventory/units"
 import type { InventoryShortage } from "@/lib/inventory/errors"
-import type { Formula, InventoryItem, ProductionBatch } from "@/lib/supabase/inventory/types"
+import type { Formula, InventoryItem, ProductionBatch } from "@/lib/api/inventory/types"
 import { cn } from "@/lib/utils"
 import { productionPlan, toFormulaItem } from "./production-plan"
 

@@ -20,7 +20,7 @@ import { defaultQuantity } from "@/components/admin/inventory-shared"
 import { useCreatePreparation, useSaveFormula } from "@/hooks/inventory"
 import { useToast } from "@/hooks/use-toast"
 import { toInventoryError } from "@/lib/inventory/errors"
-import { formulaCost, priceMetrics, type FormulaItem } from "@/lib/inventory/formula"
+import { priceMetrics, type FormulaItem, type PrepFormula } from "@/lib/inventory/formula"
 import {
   anyLevelDirty,
   currentLevel,
@@ -30,7 +30,7 @@ import {
   openTargetIds,
   type EditorTarget,
 } from "@/lib/inventory/formula-editor"
-import type { InventoryItem } from "@/lib/supabase/inventory/types"
+import type { InventoryItem } from "@/lib/api/inventory/types"
 import { useConfigStore } from "@/store/use-config-store"
 import { CreatePreparationDialog } from "./CreatePreparationDialog"
 import { FormulaEditor, type CopySource } from "./FormulaEditor"
@@ -81,20 +81,23 @@ export function FormulasPage({ description, onNavigate }: FormulasPageProps) {
     return [...loadedItems, ...createdItems.filter((item) => !known.has(item.id))].filter((item) => item.isActive !== false)
   }, [loadedItems, createdItems])
 
-  // Saved prep formulas, overridden by the drafts open in the stack.
-  const prepFormulas = useMemo(() => {
-    const map = prepFormulaMap(formulas)
+  // The prep drafts open in the stack: the only formulas costed live (preview).
+  const drafts = useMemo(() => {
+    const map = new Map<string, PrepFormula>()
     for (const open of state.stack) {
       if (open.target.type === "prep") map.set(open.target.id, { yieldQuantity: open.yieldQuantity, lines: open.lines })
     }
     return map
-  }, [formulas, state.stack])
+  }, [state.stack])
 
-  const itemsById = useMemo(() => costedItems(items as FormulaItem[], prepFormulas), [items, prepFormulas])
-  const savedItemsById = useMemo(
-    () => costedItems(items as FormulaItem[], prepFormulaMap(formulas)),
-    [items, formulas],
-  )
+  // Saved prep formulas, overridden by the drafts (sub-formula trees).
+  const prepFormulas = useMemo(() => {
+    const map = prepFormulaMap(formulas)
+    for (const [id, draft] of drafts) map.set(id, draft)
+    return map
+  }, [formulas, drafts])
+
+  const itemsById = useMemo(() => costedItems(items as FormulaItem[], drafts), [items, drafts])
 
   const dishPrice = useMemo(() => new Map(dishes.map((dish) => [dish.id, dish.price])), [dishes])
 
@@ -107,7 +110,7 @@ export function FormulasPage({ description, onNavigate }: FormulasPageProps) {
         .map((dish) => {
           const formula = formulas.byDish[dish.id]
           if (!formula) return { id: dish.id, type: "dish", name: dish.name, cost: null, marginPct: null, dirty: dirtyRoot === dish.id }
-          const cost = formulaCost(formula.lines, savedItemsById, formula.yieldQuantity).perUnit
+          const cost = formula.unitCost
           return {
             id: dish.id,
             type: "dish",
@@ -125,11 +128,11 @@ export function FormulasPage({ description, onNavigate }: FormulasPageProps) {
         type: "prep",
         name: item.name,
         unit: item.unit,
-        cost: formulas.byPrep[item.id] ? savedItemsById.get(item.id)?.cost ?? 0 : null,
+        cost: formulas.byPrep[item.id]?.unitCost ?? null,
         marginPct: null,
         dirty: dirtyRoot === item.id,
       }))
-  }, [tab, search, dishes, items, formulas, savedItemsById, priceSuggestion, root])
+  }, [tab, search, dishes, items, formulas, priceSuggestion, root])
 
   const counts = useMemo(
     () => ({ dish: dishes.length, prep: items.filter((item) => item.kind === "prep").length }),

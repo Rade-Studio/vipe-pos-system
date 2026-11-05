@@ -11,8 +11,8 @@ import type {
 } from './types'
 
 // -----------------------------------------------------------
-// Test catalog (mirrors the shape lib/supabase/payments-service
-// returns). Cash + two electronic + one inactive (filtered out).
+// Test catalog (mirrors the shape `listPaymentMethods` in
+// lib/api/payments returns). Cash + two electronic + one inactive (filtered out).
 // -----------------------------------------------------------
 const CASH: PaymentMethodOption = {
   id: 'cash-id',

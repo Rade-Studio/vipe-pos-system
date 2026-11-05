@@ -14,59 +14,45 @@ import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { useTableStore } from "@/store/useTableStore"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useOrderStore } from "@/store/useOrderStore"
-import { tableService, orderService } from "@/lib/supabase/service"
-import { supabase } from "@/lib/supabase/client"
+import * as tablesApi from "@/lib/api/tables"
+import { getByStatus, toOrder } from "@/lib/api/orders"
+import { fetchSession, profileFromSession, type Session } from "@/lib/api/auth"
 import { viewForRole } from "@/lib/auth/roles"
 import { startupLoadsForRole, startupRole, type ShellLoad } from "@/lib/shell/startup-loads"
-import { shouldReloadAuthProfile } from "@/lib/shell/auth-events"
+import { onAuthEvent } from "@/lib/shell/auth-events"
 import { log } from "@/lib/log"
-import type { Profile, ProfileRole } from "@/types"
-import { orderTypeFromRow } from "@/lib/delivery/kitchen"
+import type { ProfileRole } from "@/types"
 
 /**
  * One call for both statuses: the shell used to issue `getByStatus("kitchen")`
- * and `getByStatus("delivered")` back to back and concatenated them.
+ * and `getByStatus("delivered")` back to back and concatenated them. Mapped by
+ * the shared `toOrder` (T8b).
  */
 async function loadKitchenAndDeliveredOrders() {
-  const dbOrders = await orderService.getByStatus(["kitchen", "delivered"])
+  const orders = await getByStatus(["kitchen", "delivered"])
+  useOrderStore.getState().setOrders(orders.map(toOrder))
+}
 
-  // Convertir las órdenes de la base de datos al formato que espera el store
-  const storeOrders = dbOrders.map((dbOrder) => {
-    const items = dbOrder.order_items.map((item) => ({
-      id: item.dish_id || `item-${item.id}`,
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity,
-      comments: item.comments ?? undefined,
-      categoryId: "",
-      image: "",
-      status: (item.status ?? "kitchen") as "kitchen" | "served",
-      addedAt: item.added_at ? new Date(item.added_at) : undefined,
-    }))
+/**
+ * The loader stays up until the first session check settles; past this limit a
+ * hung `/auth/me` counts as a failed check and the login form appears.
+ */
+const INITIAL_CHECK_TIMEOUT_MS = 10_000
 
-    return {
-      id: dbOrder.id,
-      tableId: dbOrder.table_id ?? "",
-      orderType: orderTypeFromRow(dbOrder),
-      items,
-      status: dbOrder.status as "active" | "kitchen" | "delivered" | "paid" | "cancelled",
-      bill: {
-        subtotal: dbOrder.subtotal,
-        tax: dbOrder.tax,
-        taxPercentage: dbOrder.tax_percentage,
-        tip: dbOrder.tip,
-        tipPercentage: dbOrder.tip_percentage,
-        total: dbOrder.total,
-        totalDiscounts: dbOrder.total_discounts ?? 0,
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`session check timed out after ${ms} ms`)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
       },
-      waiter: dbOrder.waiter_id ?? "",
-      createdAt: dbOrder.created_at ? new Date(dbOrder.created_at) : new Date(),
-      isPartialOrder: dbOrder.is_partial_order ?? false,
-      parentOrderId: dbOrder.parent_order_id ?? null,
-    }
+      (error: unknown) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
   })
-
-  useOrderStore.getState().setOrders(storeOrders as any)
 }
 
 export default function Home() {
@@ -94,88 +80,91 @@ export default function Home() {
   // `profileResolved` separates "we have not asked yet" from "there is no
   // profile row", so the startup loads never run twice for one identity.
   const [profileResolved, setProfileResolved] = useState(false)
+  // The first check is a network round trip (`/auth/me`, maybe a refresh):
+  // keep the loader up until it settles so a signed-in user never sees the
+  // form flash, and no login can start while it is pending.
+  const [initialCheckDone, setInitialCheckDone] = useState(false)
   const loadConfigFromDB = useConfigStore((s) => s.loadConfigFromDB)
   const startupKeyRef = useRef<string | null>(null)
+  // Bumped by every login. The initial session check remembers the value it
+  // started with, so its late null, error or `signed_out` (D3 smoke) never
+  // wipes a session the user created while it was still pending.
+  const loginSeqRef = useRef(0)
 
-  // Cargar el profile del usuario autenticado desde la DB
-  const loadProfileFromAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
-    const { data: me } = await supabase
-      .from("profiles")
-      .select("id, full_name, username, role, restaurant_id, active")
-      .eq("auth_user_id", user.id)
-      .eq("active", true)
-      .maybeSingle()
-    if (!me) return null
-    const profile: Profile = {
-      id: me.id,
-      name: me.full_name || me.username || me.role,
-      full_name: me.full_name,
-      username: me.username,
-      role: me.role as ProfileRole,
-      restaurantId: me.restaurant_id,
-    }
+  // Role and restaurant come from the API session (`me` or the login body).
+  const applySession = (session: Session) => {
+    const profile = profileFromSession(session)
     setAuthProfile(profile)     // identidad real (UUID válido)
     setSelectedProfile(profile) // vista inicial = tu rol real
-    return profile
+    setProfileResolved(true)
+    setIsAuthenticated(true)
   }
 
-  // Verificar estado de autenticación al cargar la página
+  const clearSession = () => {
+    setAuthProfile(null)
+    setSelectedProfile(null)
+    setProfileResolved(true)
+    setIsAuthenticated(false)
+  }
+
+  // Resolve the session once with `GET /api/auth/me`. Token refreshes happen
+  // inside the API client and never reach the shell, so an admin's
+  // impersonated view survives them; only a failed refresh signs out.
   useEffect(() => {
     let cancelled = false
-    let lastUserId: string | null = null
-
-    const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (cancelled) return
-
-      lastUserId = data.session?.user?.id ?? null
-      // Resolve the identity BEFORE flipping `isAuthenticated`, so the startup
-      // effect below runs once with the real role already in the store.
-      if (data.session) {
-        await loadProfileFromAuth()
-      }
-      if (cancelled) return
-      setProfileResolved(true)
-      setIsAuthenticated(!!data.session)
-
-      // Suscribirse a cambios en la autenticación. The cleanup used to be
-      // returned from inside this async function, so React never saw it and the
-      // listener leaked for the life of the page.
-      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-        const userId = session?.user?.id ?? null
-        setIsAuthenticated(!!session)
-        if (!shouldReloadAuthProfile(event, lastUserId, userId)) {
-          // TOKEN_REFRESHED / INITIAL_SESSION duplicate: re-reading the profile
-          // here used to reset an admin's impersonated view.
-          lastUserId = userId
-          return
-        }
-        lastUserId = userId
-        void loadProfileFromAuth()
-      })
-
-      return () => {
-        authListener.subscription.unsubscribe()
-      }
-    }
-
-    // Keep the returned cleanup outside the async function so it always runs.
-    let dispose: (() => void) | undefined
-    checkAuth().then((cleanup) => {
-      dispose = cleanup
+    let checkPending = true
+    const startSeq = loginSeqRef.current
+    const isStale = () => cancelled || loginSeqRef.current !== startSeq
+    const stop = onAuthEvent((event) => {
+      if (event !== "signed_out" || cancelled) return
+      // While the initial check is in flight, its refused refresh belongs to
+      // the pre-login cookies; once it settles, every refusal is genuine.
+      if (checkPending && isStale()) return
+      clearSession()
     })
+
+    // The chain stays "pending" until the real request settles, not the timeout:
+    // a hung check's refused refresh, arriving after a login made once the form
+    // appeared, still belongs to the pre-login cookies.
+    const check = fetchSession()
+    check.then(
+      () => {
+        checkPending = false
+      },
+      () => {
+        checkPending = false
+      },
+    )
+
+    withTimeout(check, INITIAL_CHECK_TIMEOUT_MS)
+      .finally(() => {
+        if (!cancelled) setInitialCheckDone(true)
+      })
+      .then((session) => {
+        if (isStale()) return
+        // Resolve the identity BEFORE flipping `isAuthenticated`, so the startup
+        // effect below runs once with the real role already in the store.
+        if (session) {
+          applySession(session)
+          // As on dev, the role view shows while the startup loads run.
+          setIsLoading(false)
+        } else clearSession()
+      })
+      .catch((error: unknown) => {
+        log.error("Error al resolver la sesión:", { error: String(error) })
+        if (!isStale()) clearSession()
+      })
 
     return () => {
       cancelled = true
-      dispose?.()
+      stop()
     }
   }, [])
 
   // Cargar la configuración al iniciar la aplicación
   useEffect(() => {
     if (!isAuthenticated) {
+      if (!initialCheckDone) return
       setIsLoading(false)
       // Signing out arms the next sign-in, even for the same role.
       startupKeyRef.current = null
@@ -220,27 +209,19 @@ export default function Home() {
           return loadConfigFromDB({ canWrite: startupRoleValue === "admin" })
 
         case "tables": {
-          const tablesData = await tableService.getAll()
-          setTables(
-            tablesData.map((table) => ({
-              id: table.id,
-              number: table.number,
-              status: table.status as "available" | "reserved" | "occupied" | "kitchen" | "served",
-              waiter: table.waiter_id ?? undefined,
-              restaurantId: table.restaurant_id,
-            })),
-          )
+          const tablesData = await tablesApi.getAll()
+          setTables(tablesData.map(tablesApi.toTable))
           return
         }
 
         case "waiters": {
-          const waitersData = await tableService.getWaiters()
+          const waitersData = await tablesApi.getWaiters()
           setProfiles(
             waitersData.map((w) => ({
               id: w.id,
               name: w.name,
               username: w.username ?? null,
-              role: w.role as ProfileRole,
+              role: "waiter" as ProfileRole,
             })),
           )
           return
@@ -261,6 +242,7 @@ export default function Home() {
     }
   }, [
     isAuthenticated,
+    initialCheckDone,
     profileResolved,
     authRole,
     loadConfigFromDB,
@@ -284,7 +266,14 @@ export default function Home() {
 
   // Pantalla de login si no está autenticado
   if (!isAuthenticated) {
-    return <LoginView onLoginSuccess={() => setIsAuthenticated(true)} />
+    return (
+      <LoginView
+        onLoginSuccess={(session) => {
+          loginSeqRef.current += 1
+          applySession(session)
+        }}
+      />
+    )
   }
 
   // Profile selection screen (admin usa esto para cambiar de rol).

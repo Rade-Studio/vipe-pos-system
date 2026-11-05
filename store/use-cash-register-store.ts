@@ -5,16 +5,21 @@ import type {
   PaymentTransaction,
   CashTransaction,
 } from "@/types/cash-register"
-import { cashRegisterService } from "@/lib/supabase/cash-register-service"
+import * as cashRegisterService from "@/lib/api/registers"
 import { log } from "@/lib/log"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
-import { closeRegisterRpc } from "@/lib/supabase/payments-service"
+import { closeRegisterRpc } from "@/lib/api/payments"
 
 type CashRegisterState = {
   currentRegister: CashRegister | null
   registers: CashRegister[]
 
   // Acciones de apertura y cierre
+  /**
+   * Resolves true once the server opened the register. Rejects with the
+   * `PaymentServiceError` of the API (409 `A register is already open`): the
+   * server owns the one-open-register rule, so the dialog shows its message.
+   */
   openRegister: (initialCash: number) => Promise<boolean>
   /**
    * Server-driven close. Returns the `RegisterSummary` the
@@ -167,24 +172,14 @@ export const useCashRegisterStore = create<CashRegisterState>()(
       },
 
       openRegister: async (initialCash: number) => {
-        try {
-          // Verificar si ya hay una caja abierta
-          if (get().currentRegister?.status === "open") {
-            return false
-          }
+        const newRegister = await cashRegisterService.openRegister(initialCash)
 
-          const newRegister = await cashRegisterService.openRegister(initialCash)
+        set((state) => ({
+          currentRegister: newRegister,
+          registers: [...state.registers.filter((r) => r.id !== newRegister.id), newRegister],
+        }))
 
-          set((state) => ({
-            currentRegister: newRegister,
-            registers: [...state.registers.filter((r) => r.id !== newRegister.id), newRegister],
-          }))
-
-          return true
-        } catch (error) {
-          log.error("Error al abrir la caja:", { error: String(error) })
-          return false
-        }
+        return true
       },
 
       /**
@@ -206,7 +201,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
           const closedRegister: CashRegister = {
             ...currentRegister,
             status: "closed",
-            closingTimestamp: new Date(),
+            closingTimestamp: result.closingTimestamp,
             finalCash: result.finalCash,
           }
 
@@ -237,7 +232,6 @@ export const useCashRegisterStore = create<CashRegisterState>()(
         }
 
         try {
-          // Agregar transacción de efectivo a Supabase
           const cashTransaction = await cashRegisterService.addCashTransaction(
             currentRegister.id,
             amount,
@@ -266,7 +260,6 @@ export const useCashRegisterStore = create<CashRegisterState>()(
       // Nueva función para agregar transacciones de efectivo (ingresos o retiros)
       addCashTransaction: async (registerId, amount, type, description) => {
         try {
-          // Agregar transacción de efectivo a Supabase
           const cashTransaction = await cashRegisterService.addCashTransaction(registerId, amount, type, description)
 
           // Obtener el registro actual

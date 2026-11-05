@@ -19,18 +19,13 @@ const service = vi.hoisted(() => ({
   addCashTransaction: vi.fn(),
 }))
 
-vi.mock("@/lib/supabase/cash-register-service", () => ({
-  cashRegisterService: service,
-}))
+vi.mock("@/lib/api/registers", () => service)
 
-// The store reaches the browser client through payments-service (closeRegister
-// RPC); nothing in this suite exercises it, but the import must not throw.
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: { rpc: vi.fn() },
-  createSupabaseClient: () => ({}),
-}))
+const payments = vi.hoisted(() => ({ closeRegisterRpc: vi.fn() }))
+vi.mock("@/lib/api/payments", () => payments)
 
 import { useCashRegisterStore } from "./use-cash-register-store"
+import { PaymentServiceError } from "@/lib/payments/types"
 
 const register = {
   id: "r-1",
@@ -145,5 +140,51 @@ describe("loadAllRegisters", () => {
     expect(snapshots).toHaveLength(1)
     expect(snapshots.every((s) => s.isLoading !== true)).toBe(true)
     expect(useCashRegisterStore.getState().registers.map((r) => r.id)).toEqual(["r-1"])
+  })
+})
+describe("openRegister (T9: the server owns the one-open-register rule)", () => {
+  it("asks the API even with an open register in the store, and rejects with the 409 message", async () => {
+    useCashRegisterStore.setState({ currentRegister: register, registers: [register] })
+    service.openRegister.mockRejectedValue(
+      new PaymentServiceError({ kind: "rejected", message: "A register is already open" }),
+    )
+
+    await expect(useCashRegisterStore.getState().openRegister(1000)).rejects.toMatchObject({
+      kind: "rejected",
+      message: "A register is already open",
+    })
+
+    expect(service.openRegister).toHaveBeenCalledWith(1000)
+    expect(useCashRegisterStore.getState().currentRegister).toBe(register)
+  })
+
+  it("stores the opened register and resolves true (PRESERVE)", async () => {
+    service.openRegister.mockResolvedValue(register)
+
+    await expect(useCashRegisterStore.getState().openRegister(100)).resolves.toBe(true)
+
+    expect(useCashRegisterStore.getState().currentRegister?.id).toBe("r-1")
+  })
+})
+
+describe("closeRegister (T9: the server clock)", () => {
+  it("keeps the server closingTimestamp and finalCash", async () => {
+    useCashRegisterStore.setState({ currentRegister: register, registers: [register] })
+    const closedAt = new Date("2026-11-04T23:10:00.000Z")
+    const summary = { expectedCashAfterTips: 60000 }
+    payments.closeRegisterRpc.mockResolvedValue({
+      status: "closed",
+      cashRegisterId: "r-1",
+      finalCash: 60000,
+      closingTimestamp: closedAt,
+      summary,
+    })
+
+    await expect(useCashRegisterStore.getState().closeRegister()).resolves.toBe(summary)
+
+    expect(payments.closeRegisterRpc).toHaveBeenCalledWith("r-1")
+    const state = useCashRegisterStore.getState()
+    expect(state.currentRegister).toBeNull()
+    expect(state.registers[0]).toMatchObject({ status: "closed", finalCash: 60000, closingTimestamp: closedAt })
   })
 })

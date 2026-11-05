@@ -20,65 +20,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 type Handler = (payload: unknown) => void
 
+/**
+ * T11: the hook rides the API socket client (`lib/api/realtime.ts`). The fake
+ * stands in for `realtimeService.subscribeToDeliveries`, which already filters
+ * to `order_deliveries` and delivery `orders` events.
+ */
 const harness = vi.hoisted(() => {
-  const recorded: Array<{
-    name: string
-    tables: string[]
-    handlers: Array<{ table: string; handler: Handler }>
-    subscribed: boolean
-  }> = []
-  const removed: string[] = []
-
-  const emit = (table: string, payload: unknown) => {
-    for (const channel of recorded) {
-      if (!channel.subscribed) continue
-      for (const entry of channel.handlers) {
-        if (entry.table === table) entry.handler(payload)
-      }
+  const subscriptions: Array<{ handler: Handler; active: boolean }> = []
+  const emit = (table: string, payload: Record<string, unknown>) => {
+    for (const subscription of subscriptions) {
+      if (subscription.active) subscription.handler({ table, ...payload })
     }
   }
-
-  const supabase = {
-    channel: (name: string) => {
-      const record = { name, tables: [] as string[], handlers: [] as Array<{ table: string; handler: Handler }>, subscribed: false }
-      recorded.push(record)
-      const api = {
-        on: (_type: string, filter: { table: string }, handler: Handler) => {
-          record.tables.push(filter.table)
-          record.handlers.push({ table: filter.table, handler })
-          return api
-        },
-        subscribe: () => {
-          record.subscribed = true
-          return api
-        },
-        __name: name,
+  const realtimeService = {
+    subscribeToDeliveries: (handler: Handler) => {
+      const subscription = { handler, active: true }
+      subscriptions.push(subscription)
+      return () => {
+        subscription.active = false
       }
-      return api
     },
-    removeChannel: (channel: { __name?: string }) => {
-      removed.push(channel.__name ?? "?")
-    },
-    from: () => ({
-      select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }),
-    }),
-    rpc: async () => ({ data: null, error: null }),
   }
-
-  return { recorded, removed, emit, supabase }
+  return { subscriptions, emit, realtimeService }
 })
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: harness.supabase,
-  createSupabaseClient: () => ({}),
-}))
+vi.mock("@/lib/api/realtime", () => ({ realtimeService: harness.realtimeService }))
 
 const listActiveDeliveries = vi.hoisted(() => vi.fn())
 
-vi.mock("@/lib/supabase/delivery-service", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/supabase/delivery-service")>(
-    "@/lib/supabase/delivery-service",
-  )
+vi.mock("@/lib/api/delivery", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
   return { ...actual, listActiveDeliveries }
 })
 
@@ -143,8 +114,7 @@ function renderWith(client: QueryClient, ui: React.ReactNode) {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 beforeEach(() => {
-  harness.recorded.length = 0
-  harness.removed.length = 0
+  harness.subscriptions.length = 0
   listActiveDeliveries.mockReset()
   listActiveDeliveries.mockResolvedValue([row()])
 })
@@ -154,7 +124,7 @@ afterEach(() => {
 })
 
 describe("useActiveDeliveries — realtime fan-out", () => {
-  it("opens ONE channel for every consumer (board + cashier panel + kitchen)", async () => {
+  it("opens ONE socket subscription for every consumer (board + cashier panel + kitchen)", async () => {
     const client = makeClient()
     renderWith(
       client,
@@ -167,8 +137,7 @@ describe("useActiveDeliveries — realtime fan-out", () => {
 
     await waitFor(() => expect(screen.getByTestId("board")).toHaveTextContent("d-1:received"))
 
-    expect(harness.recorded).toHaveLength(1)
-    expect(harness.recorded[0]!.tables).toEqual(["order_deliveries", "orders"])
+    expect(harness.subscriptions).toHaveLength(1)
   })
 
   it("ignores `orders` pushes from table (dine-in) orders", async () => {
@@ -230,7 +199,7 @@ describe("useActiveDeliveries — realtime fan-out", () => {
     expect(listActiveDeliveries).toHaveBeenCalledTimes(2)
   })
 
-  it("tears the shared channel down when the last consumer unmounts", async () => {
+  it("tears the shared subscription down when the last consumer unmounts", async () => {
     const client = makeClient()
     const view = renderWith(
       client,
@@ -240,10 +209,26 @@ describe("useActiveDeliveries — realtime fan-out", () => {
       </>,
     )
     await waitFor(() => expect(screen.getByTestId("board")).toHaveTextContent("d-1:received"))
-    expect(harness.removed).toHaveLength(0)
+    expect(harness.subscriptions.map((s) => s.active)).toEqual([true])
 
     view.unmount()
 
-    expect(harness.removed).toEqual([harness.recorded[0]!.name])
+    expect(harness.subscriptions.map((s) => s.active)).toEqual([false])
+  })
+
+  it("keeps the subscription while one consumer remains and opens a new one after a full teardown", async () => {
+    const client = makeClient()
+    const panel = renderWith(client, <Consumer label="panel" />)
+    const board = renderWith(client, <Consumer label="board" />)
+    await waitFor(() => expect(screen.getByTestId("board")).toHaveTextContent("d-1:received"))
+
+    panel.unmount()
+    expect(harness.subscriptions.map((s) => s.active)).toEqual([true])
+    board.unmount()
+    expect(harness.subscriptions.map((s) => s.active)).toEqual([false])
+
+    renderWith(client, <Consumer label="again" />)
+    await waitFor(() => expect(screen.getByTestId("again")).toHaveTextContent("d-1:received"))
+    expect(harness.subscriptions.map((s) => s.active)).toEqual([false, true])
   })
 })

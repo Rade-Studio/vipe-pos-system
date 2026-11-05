@@ -11,21 +11,17 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import {
-  useAddPurchaseOrderLine,
   useCreatePurchaseOrder,
   useDeletePurchaseOrder,
   useInventoryItems,
   useInventoryLocations,
   usePurchaseOrder,
-  useRemovePurchaseOrderLine,
   useSetPurchaseOrderStatus,
   useSuppliers,
   useUpdatePurchaseOrder,
-  useUpdatePurchaseOrderLine,
 } from "@/hooks/inventory"
 import { formatQuantity } from "@/lib/inventory/units"
 import {
-  diffDraftLines,
   draftFromOrder,
   draftTotal,
   emptyDraft,
@@ -36,13 +32,14 @@ import {
   lineTotal,
   purchaseDraftReducer,
   toCreateInput,
+  toUpdateInput,
   usesPurchaseUnit,
   validateDraft,
   type DraftErrors,
   type DraftLine,
   type PurchaseDraft,
 } from "@/lib/inventory/purchase-draft"
-import type { PurchaseOrder } from "@/lib/supabase/inventory/types"
+import type { PurchaseOrder } from "@/lib/api/inventory/types"
 import { PurchaseStatusBadge, poNumber } from "./purchase-ui"
 import { SupplierDialog } from "./SuppliersView"
 
@@ -147,9 +144,6 @@ export function PurchaseOrderSheet({
   const order = usePurchaseOrder(open ? orderId : null)
   const create = useCreatePurchaseOrder()
   const update = useUpdatePurchaseOrder()
-  const addLine = useAddPurchaseOrderLine()
-  const updateLine = useUpdatePurchaseOrderLine()
-  const removeLine = useRemovePurchaseOrderLine()
   const setStatus = useSetPurchaseOrderStatus()
   const remove = useDeletePurchaseOrder()
   const { toast } = useToast()
@@ -179,7 +173,9 @@ export function PurchaseOrderSheet({
     const key = orderId ?? "new"
     if (loadedRef.current === key) return
     if (orderId) {
-      if (!order.data || !items.data) return
+      // Never from a cached copy that is being refetched (e.g. after a
+      // stale-line failure): it would bring the stale lineIds back.
+      if (!order.data || !items.data || order.isFetching) return
       dispatch({ type: "reset", draft: draftFromOrder(order.data, items.data) })
     } else {
       dispatch({ type: "reset", draft: initialDraft ?? emptyDraft(defaultLocationId) })
@@ -187,7 +183,7 @@ export function PurchaseOrderSheet({
     loadedRef.current = key
     setErrors(null)
     setConfirmDelete(false)
-  }, [open, orderId, order.data, items.data, defaultLocationId, initialDraft])
+  }, [open, orderId, order.data, order.isFetching, items.data, defaultLocationId, initialDraft])
 
   useEffect(() => {
     if (!orderId && open && !draft.locationId && defaultLocationId) {
@@ -217,15 +213,9 @@ export function PurchaseOrderSheet({
       return created.id
     }
     if (!current) return null
-    const input = toCreateInput(draft)
-    await update.mutateAsync({
-      id: orderId,
-      patch: { supplierId: input.supplierId, locationId: input.locationId, expectedOn: input.expectedOn, notes: input.notes },
-    })
-    const diff = diffDraftLines(current, draft)
-    for (const lineId of diff.remove) await removeLine.mutateAsync(lineId)
-    for (const line of diff.update) await updateLine.mutateAsync(line)
-    for (const line of diff.add) await addLine.mutateAsync({ purchaseOrderId: orderId, line })
+    // Header and the whole line set in one PUT; a line removed elsewhere
+    // meanwhile answers 422 and nothing is saved.
+    await update.mutateAsync({ id: orderId, input: toUpdateInput(draft) })
     return orderId
   }
 
@@ -266,7 +256,7 @@ export function PurchaseOrderSheet({
     })
 
   const title = orderId ? (current ? `Orden ${poNumber(current.number)}` : "Orden de compra") : "Nueva orden de compra"
-  const loading = Boolean(orderId) && (order.isLoading || !current)
+  const loading = Boolean(orderId) && (order.isLoading || !current || loadedRef.current !== orderId)
   const cancellable = current && (current.status === "draft" || current.status === "ordered")
 
   return (

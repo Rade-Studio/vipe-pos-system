@@ -40,8 +40,8 @@ export const DELIVERY_REALTIME_DEBOUNCE_MS = 150
 
 /**
  * The board row shape (structurally `DeliveryOrderWithBill` from
- * `lib/supabase/delivery-service`, declared here so this module stays free of
- * any Supabase import).
+ * `lib/api/delivery`, declared here so this module stays free of
+ * any client import).
  */
 export interface DeliveryBoardRow {
   delivery: DeliveryOrder

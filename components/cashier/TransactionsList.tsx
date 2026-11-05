@@ -18,7 +18,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useRegisterPayments } from "@/hooks/use-register-payments"
 import { totalsByMethod, methodLabel, toCsvRows, csvEscape } from "@/lib/payments/payment-list"
 import type { PaymentRow } from "@/lib/payments/payment-list"
-import { listPaymentMethods } from "@/lib/supabase/payments-service"
+import { listPaymentMethods } from "@/lib/api/payments"
 import type { PaymentMethodOption } from "@/lib/payments/types"
 import type { PaymentTransaction } from "@/types/cash-register"
 

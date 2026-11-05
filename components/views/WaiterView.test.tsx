@@ -19,7 +19,10 @@ import type { Profile } from "@/types"
  * S13 (a domicilio never reaches the waiter lists).
  */
 
+const STOCK_DISH = "d1d1d1d1-0000-4000-8000-000000000001"
+
 const env = vi.hoisted(() => ({
+  addItems: vi.fn(),
   tableGetAll: vi.fn(),
   orderGetByStatus: vi.fn(),
   waiterGetAll: vi.fn(),
@@ -41,6 +44,7 @@ const env = vi.hoisted(() => ({
   tableCallbacks: [] as ((payload: unknown) => void)[],
   orderCallbacks: [] as ((payload: unknown) => void)[],
   reset() {
+    this.addItems.mockReset()
     this.tableGetAll.mockReset()
     this.orderGetByStatus.mockReset()
     this.waiterGetAll.mockReset()
@@ -65,54 +69,68 @@ const env = vi.hoisted(() => ({
     this.waiterGetAll.mockResolvedValue([])
     this.categories.mockResolvedValue([])
     this.dishesByCategory.mockResolvedValue([])
-    this.assignWaiter.mockResolvedValue(undefined)
-    this.updateTableStatus.mockResolvedValue(undefined)
-    this.releaseTable.mockResolvedValue(undefined)
-    this.orderCreate.mockResolvedValue({ id: "o-new" })
+    // The table DTO the floor actions answer with.
+    const table = { id: "t-1", number: 1, status: "occupied", waiterId: "w-1", waiterName: null, createdAt: null, updatedAt: null }
+    this.assignWaiter.mockResolvedValue(table)
+    this.updateTableStatus.mockResolvedValue(table)
+    this.releaseTable.mockResolvedValue({ ...table, status: "available", waiterId: null })
+    this.orderCreate.mockImplementation(async () => orderDto("o-new", "t-1"))
+    this.addItems.mockImplementation(async (id: string) => orderDto(id, "t-1"))
     this.checkDishesStock.mockResolvedValue({ ok: true, enabled: true, shortages: [] })
     this.consumeOrderStock.mockResolvedValue({ orderId: "o-new", enabled: true, consumedItems: 1, totalCost: 0, shortages: [] })
     this.checkStockForDishes.mockImplementation(async () =>
-      new Map(env.stockSoldOut ? [["d-1", false]] : [["d-1", true]]),
+      new Map(env.stockSoldOut ? [[STOCK_DISH, false]] : [[STOCK_DISH, true]]),
     )
   },
   /** Unsubscribes handed back by the realtime service, in order. */
   unsubscribes: 0,
 }))
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    auth: { signOut: vi.fn(), getSession: vi.fn(), getUser: vi.fn(), onAuthStateChange: vi.fn() },
-    from: () => {
-      throw new Error("the view must not read the database directly")
+// T8b: tables, orders and waiters go through the API client. The fake routes
+// each `METHOD path` to one recorder; a rejected recorder is an API error.
+vi.mock("@/lib/api/client", () => {
+  const route = async (method: string, path: string, init: any = {}) => {
+    const id = init?.params?.path?.id
+    const body = init?.body
+    switch (`${method} ${path}`) {
+      case "GET /api/tables":
+        return { data: await env.tableGetAll() }
+      case "GET /api/orders":
+        return { data: await env.orderGetByStatus(init.params.query) }
+      case "GET /api/staff/waiters":
+        return { data: await env.waiterGetAll() }
+      case "POST /api/tables/{id}/assign":
+        return { data: await env.assignWaiter(id, body.waiterId) }
+      case "POST /api/tables/{id}/release":
+        return { data: await env.releaseTable(id, body) }
+      case "PATCH /api/tables/{id}":
+        return { data: await env.updateTableStatus(id, body) }
+      case "POST /api/orders":
+        return { data: await env.orderCreate(body) }
+      case "POST /api/orders/{id}/items":
+        return { data: await env.addItems(id, body) }
+      default:
+        throw new Error(`unexpected ${method} ${path}`)
+    }
+  }
+  return {
+    api: {
+      GET: (path: string, init?: unknown) => route("GET", path, init),
+      POST: (path: string, init?: unknown) => route("POST", path, init),
+      PATCH: (path: string, init?: unknown) => route("PATCH", path, init),
+      DELETE: (path: string, init?: unknown) => route("DELETE", path, init),
     },
-  },
+    onSessionRefreshed: () => () => {},
+  }
+})
+
+vi.mock("@/lib/api/catalog", () => ({
+  fetchCategories: () => env.categories(),
+  fetchDishes: (filter: { categoryId: string }) => env.dishesByCategory(filter.categoryId),
 }))
 
-vi.mock("@/lib/supabase/service", () => ({
-  tableService: {
-    getAll: env.tableGetAll,
-    assignWaiter: env.assignWaiter,
-    updateTableStatus: env.updateTableStatus,
-    releaseTable: env.releaseTable,
-  },
-  orderService: {
-    getByStatus: env.orderGetByStatus,
-    create: env.orderCreate,
-    addItemsToOrder: vi.fn(),
-    recalculateOrderTotals: vi.fn(),
-    updateStatus: vi.fn(),
-  },
-  waiterService: { getAll: env.waiterGetAll },
-  categoryService: { getAllActive: env.categories },
-}))
-
-vi.mock("@/lib/supabase/inventory-control-service", () => ({
-  default: {
-    checkStockForDishes: env.checkStockForDishes,
-  },
-}))
-
-vi.mock("@/lib/supabase/inventory", () => ({
+vi.mock("@/lib/api/inventory", () => ({
+  checkStockForDishes: env.checkStockForDishes,
   checkDishesStock: env.checkDishesStock,
   consumeOrderStock: env.consumeOrderStock,
 }))
@@ -124,11 +142,9 @@ vi.mock("@/hooks/use-toast", () => {
   return { useToast: () => toastApi.value, toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }
 })
 
-vi.mock("@/lib/supabase/dish-service-with-promotions", () => ({
-  dishServiceWithPromotions: { getByCategoryWithPromotions: env.dishesByCategory },
-}))
+vi.mock("@/lib/api/print", () => ({ sendCommand: env.sendCommand }))
 
-vi.mock("@/lib/supabase/realtime-service", () => ({
+vi.mock("@/lib/api/realtime", () => ({
   realtimeService: {
     subscribeToTables: (cb: (payload: unknown) => void) => {
       env.tableCallbacks.push(cb)
@@ -144,13 +160,13 @@ vi.mock("@/lib/supabase/realtime-service", () => ({
         env.unsubscribes += 1
       }
     },
-    sendCommand: env.sendCommand,
   },
 }))
 
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
 
 import { WaiterView } from "./WaiterView"
+import { ApiError } from "@/lib/api/errors"
 
 // jsdom has no layout: WaiterView scrolls the menu into view after a table is
 // picked, which jsdom does not implement.
@@ -159,35 +175,40 @@ Element.prototype.scrollIntoView = vi.fn()
 const waiterProfile: Profile = { id: "w-1", name: "Ana", full_name: "Ana Gómez", role: "waiter" }
 const adminProfile: Profile = { id: "admin-1", name: "Jefe", full_name: "Jefe", role: "admin" }
 
-const waiterRows = [{ id: "w-1", full_name: "Ana Gómez", username: "ana", role: "waiter" }]
+const waiterRows = [{ id: "w-1", name: "Ana Gómez", username: "ana" }]
 
 const tableRow = (id: string, number: number, status = "available", waiterId: string | null = null) => ({
   id,
   number,
   status,
-  waiter_id: waiterId,
-  waiter_name: null,
-  updated_at: "2026-10-07T00:00:00.000Z",
+  waiterId,
+  waiterName: null,
+  createdAt: null,
+  updatedAt: "2026-10-07T00:00:00.000Z",
 })
 
-const orderRow = (id: string, tableId: string | null, orderType: "dine_in" | "delivery" | null = "dine_in") => ({
-  id,
-  table_id: tableId,
-  order_type: orderType,
-  status: "kitchen",
-  subtotal: 100,
-  tax: 0,
-  tax_percentage: 0,
-  tip: 0,
-  tip_percentage: 0,
-  total: 100,
-  total_discounts: 0,
-  waiter_id: "w-1",
-  is_partial_order: false,
-  parent_order_id: null,
-  created_at: "2026-10-07T00:00:00.000Z",
-  order_items: [],
-})
+function orderDto(id: string, tableId: string | null, orderType: "dine_in" | "delivery" = "dine_in") {
+  return {
+    id,
+    tableId,
+    orderType,
+    status: "kitchen",
+    subtotal: 100,
+    tax: 0,
+    taxPercentage: 0,
+    tip: 0,
+    tipPercentage: 0,
+    total: 100,
+    totalDiscounts: 0,
+    waiterId: "w-1",
+    isPartialOrder: false,
+    parentOrderId: null,
+    createdAt: "2026-10-07T00:00:00.000Z",
+    updatedAt: null,
+    items: [],
+  }
+}
+const orderRow = orderDto
 
 function renderView(profile: Profile = waiterProfile) {
   return render(
@@ -288,8 +309,8 @@ describe("WaiterView — selecting a table does not rebuild the screen (T6/S2)",
         id: "d-1",
         name: "Bandeja",
         price: 12000,
-        category_id: "cat-1",
-        image_url: "/dish.png",
+        categoryId: "cat-1",
+        imageUrl: "/dish.png",
         originalPrice: null,
         discountAmount: null,
         discountPercentage: null,
@@ -328,7 +349,7 @@ describe("WaiterView — selecting a table does not rebuild the screen (T6/S2)",
     await flush()
 
     expect(env.assignWaiter).toHaveBeenCalledTimes(1)
-    expect(env.assignWaiter).toHaveBeenCalledWith("t-1", "w-1", "occupied")
+    expect(env.assignWaiter).toHaveBeenCalledWith("t-1", "w-1")
   })
 })
 
@@ -441,8 +462,9 @@ describe("WaiterView — existing behavior (preserve)", () => {
  * `['menu','stock', ...]` prefix, so the next render shows the new stock.
  */
 describe("WaiterView — stock cache after sending to the kitchen (T6 advisory)", () => {
+  // The order lines carry the dish uuid the server prices.
   const dishRow = {
-    id: "d-1",
+    id: "d1d1d1d1-0000-4000-8000-000000000001",
     name: "Bandeja",
     price: 12000,
     category_id: "cat-1",
@@ -459,10 +481,10 @@ describe("WaiterView — stock cache after sending to the kitchen (T6 advisory)"
     env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
     env.categories.mockResolvedValue([{ id: "cat-1", name: "Platos", icon: null }])
     env.dishesByCategory.mockResolvedValue([dishRow])
-    // Sending the order is what makes the dish sell out.
-    env.consumeOrderStock.mockImplementation(async () => {
+    // Sending the order (the API consumes the stock) is what makes the dish sell out.
+    env.orderCreate.mockImplementation(async () => {
       env.stockSoldOut = true
-      return { orderId: "o-new", enabled: true, consumedItems: 1, totalCost: 0, shortages: [] }
+      return orderDto("o-new", "t-1")
     })
   })
 
@@ -515,26 +537,37 @@ describe("WaiterView — stock cache after sending to the kitchen (T6 advisory)"
   })
 })
 /**
- * T12 (S3, S5) — the pre-send check and the sale deduction moved to the atomic
- * RPCs (`check_dishes_stock`, `consume_order_stock`). Non-admin roles can no
- * longer write ingredients, so the old client-side deduction silently failed.
+ * T8b (S3, S4) — the order goes through `POST /orders`: the server prices
+ * every line, checks and consumes the stock and moves the table, so the waiter
+ * no longer calls `check_dishes_stock` / `consume_order_stock`. The screen acts
+ * on the API's 409 bodies: a shortage opens the existing warning and "Enviar de
+ * todos modos" resends with `force: true`; a changed price reprices the cart and
+ * reloads the menu without resending; an open order on the table receives the
+ * cart as added items.
  */
-describe("WaiterView — stock check and consumption through the RPCs (T12)", () => {
+describe("WaiterView — sending through the API (T8b)", () => {
   const DISH = "11111111-1111-1111-1111-111111111111"
   const OTHER = "22222222-2222-2222-2222-222222222222"
-  const line = (id: string, quantity: number) => ({
+  const line = (id: string, quantity: number, price = 12000) => ({
     id,
     name: id.startsWith(OTHER) ? "Sopa" : "Bandeja",
-    price: 12000,
+    price,
     quantity,
     categoryId: "cat-1",
     image: "/dish.png",
   })
+  const items = [
+    { dishId: DISH, quantity: 1, unitPrice: 12000, comments: null },
+    { dishId: DISH, quantity: 2, unitPrice: 12000, comments: null },
+    { dishId: OTHER, quantity: 1, unitPrice: 12000, comments: null },
+  ]
+  const conflict = (message: string, extra: Record<string, unknown>) =>
+    new ApiError(409, "Conflict", message, { statusCode: 409, error: "Conflict", message, ...extra })
+  const shortage = { ingredientId: "g-1", name: "Arroz", unit: "g", required: 300, available: 120, missing: 180 }
 
   beforeEach(() => {
     useConfigStore.setState({ inventoryControlEnabled: true })
     env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
-    // Same dish twice (the second line carries a cart suffix) plus another dish.
     useCartStore.setState({
       cartItems: { "t-1": [line(DISH, 1), line(`${DISH}-extra`, 2), line(OTHER, 1)] },
     })
@@ -557,38 +590,30 @@ describe("WaiterView — stock check and consumption through the RPCs (T12)", ()
     await flush()
   }
 
-  const shortage = { itemId: "i-1", name: "Arroz", unit: "g", required: 300, available: 120, missing: 180 }
-
-  it("checks the aggregated cart, sends on ok and consumes the new order once", async () => {
+  it("creates a dine-in order with the table, the shown prices and no client stock RPCs", async () => {
     await send()
 
-    expect(env.checkDishesStock).toHaveBeenCalledTimes(1)
-    expect(env.checkDishesStock).toHaveBeenCalledWith([
-      { dishId: DISH, quantity: 3 },
-      { dishId: OTHER, quantity: 1 },
-    ])
     expect(env.orderCreate).toHaveBeenCalledTimes(1)
-    expect(env.consumeOrderStock).toHaveBeenCalledTimes(1)
-    expect(env.consumeOrderStock).toHaveBeenCalledWith("o-new")
+    expect(env.orderCreate).toHaveBeenCalledWith({ tableId: "t-1", orderType: "dine_in", items })
+    expect(env.checkDishesStock).not.toHaveBeenCalled()
+    expect(env.consumeOrderStock).not.toHaveBeenCalled()
+    expect(env.updateTableStatus).not.toHaveBeenCalled()
+    expect(env.sendCommand).toHaveBeenCalledTimes(1)
     expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden enviada" }))
+    expect(useOrderStore.getState().orders.map((order) => order.id)).toEqual(["o-new"])
+    expect(useCartStore.getState().cartItems["t-1"]).toEqual([])
   })
 
-  it("shows the shortage warning and does not send", async () => {
-    env.checkDishesStock.mockResolvedValue({ ok: false, enabled: true, shortages: [shortage] })
+  it("shows the shortage warning from the 409 body and resends with force", async () => {
+    env.orderCreate.mockRejectedValueOnce(conflict("Insufficient stock", { shortages: [shortage] }))
     await send()
 
     expect(screen.getByText("Advertencia de Inventario")).toBeInTheDocument()
     expect(screen.getByText("Arroz")).toBeInTheDocument()
     expect(screen.getByText("120 g")).toBeInTheDocument()
     expect(screen.getByText("300 g")).toBeInTheDocument()
-    expect(env.orderCreate).not.toHaveBeenCalled()
-    expect(env.consumeOrderStock).not.toHaveBeenCalled()
     expect(env.sendCommand).not.toHaveBeenCalled()
-  })
-
-  it("sends anyway without checking again and still consumes the order", async () => {
-    env.checkDishesStock.mockResolvedValue({ ok: false, enabled: true, shortages: [shortage] })
-    await send()
+    expect(env.toastFn).not.toHaveBeenCalledWith(expect.objectContaining({ title: "Error" }))
 
     await act(async () => {
       screen.getByRole("button", { name: "Enviar de todos modos" }).click()
@@ -596,34 +621,195 @@ describe("WaiterView — stock check and consumption through the RPCs (T12)", ()
     })
     await flush()
 
-    expect(env.checkDishesStock).toHaveBeenCalledTimes(1)
-    expect(env.orderCreate).toHaveBeenCalledTimes(1)
-    expect(env.consumeOrderStock).toHaveBeenCalledTimes(1)
-    expect(env.consumeOrderStock).toHaveBeenCalledWith("o-new")
-  })
-
-  it("neither checks nor consumes when inventory control is off", async () => {
-    useConfigStore.setState({ inventoryControlEnabled: false })
-    await send()
-
-    expect(env.orderCreate).toHaveBeenCalledTimes(1)
-    expect(env.checkDishesStock).not.toHaveBeenCalled()
-    expect(env.consumeOrderStock).not.toHaveBeenCalled()
-  })
-
-  it("reports the order as sent with a warning when the consumption fails", async () => {
-    env.consumeOrderStock.mockRejectedValue(new Error("boom"))
-    await send()
-
-    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+    expect(env.orderCreate).toHaveBeenCalledTimes(2)
+    expect(env.orderCreate).toHaveBeenLastCalledWith({ tableId: "t-1", orderType: "dine_in", items, force: true })
     expect(env.sendCommand).toHaveBeenCalledTimes(1)
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden enviada" }))
+  })
+
+  it("on a changed price reprices the cart, reloads the menu and does not resend", async () => {
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
+    env.orderCreate.mockRejectedValueOnce(
+      conflict("Price changed", { prices: [{ dishId: DISH, price: 15000 }, { dishId: OTHER, price: 12000 }] }),
+    )
+    await send()
+
+    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+    expect(env.sendCommand).not.toHaveBeenCalled()
     expect(env.toastFn).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "Advertencia",
-        description: "La orden se envió correctamente, pero hubo un error al actualizar el inventario.",
+        title: "Precios actualizados",
+        description: "Algunos precios cambiaron. Revise el carrito y envíe de nuevo.",
       }),
     )
-    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden enviada" }))
-    expect(env.toastFn).not.toHaveBeenCalledWith(expect.objectContaining({ title: "Error" }))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["menu"] })
+    expect(useCartStore.getState().cartItems["t-1"].map((item) => item.price)).toEqual([15000, 15000, 12000])
+    invalidateSpy.mockRestore()
+  })
+
+  it("adds the cart to the table's open order when the API reports one", async () => {
+    env.orderCreate.mockRejectedValueOnce(conflict("Table has an open order", { orderId: "o-9" }))
+    await send()
+
+    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+    expect(env.addItems).toHaveBeenCalledTimes(1)
+    expect(env.addItems).toHaveBeenCalledWith("o-9", { items })
+    expect(env.sendCommand).toHaveBeenCalledTimes(1)
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Productos adicionales enviados" }))
+  })
+
+  it("adds to the order it already lists for the table without creating another", async () => {
+    env.orderGetByStatus.mockResolvedValue([orderDto("o-1", "t-1")])
+    await send()
+
+    expect(env.orderCreate).not.toHaveBeenCalled()
+    expect(env.addItems).toHaveBeenCalledWith("o-1", { items })
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Productos adicionales enviados" }))
+  })
+
+  it("reads the open orders in ONE request for the three statuses", async () => {
+    renderView()
+    await flush()
+
+    expect(env.orderGetByStatus).toHaveBeenCalledWith({ status: "active,kitchen,delivered" })
+  })
+
+  it("releases a table through the API and shows the API refusal", async () => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
+    useCartStore.setState({ cartItems: {} })
+    env.releaseTable.mockRejectedValueOnce(
+      new ApiError(409, "Conflict", "Table cannot be released while kitchen"),
+    )
+    renderView()
+    await flush()
+
+    // Selecting another table releases the empty, occupied one.
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1"), tableRow("t-2", 2, "occupied", "w-1")])
+    useTableStore.setState({
+      tables: [
+        { id: "t-1", number: 1, status: "occupied", waiter: "w-1" },
+        { id: "t-2", number: 2, status: "occupied", waiter: "w-1" },
+      ],
+    })
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 2").click()
+    })
+    await flush()
+
+    expect(env.releaseTable).toHaveBeenCalledWith("t-1", {})
+    expect(env.toastFn).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Error", description: "Table cannot be released while kitchen" }),
+    )
+  })
+})
+
+/**
+ * T8b correction — the server's echoes can beat the HTTP response. A mark set
+ * after the response is never consumed by its echo, and swallows the next real
+ * change instead; orders are not marked at all (merging them is idempotent).
+ */
+describe("echo that beats the POST /orders response", () => {
+  const DISH = "11111111-1111-1111-1111-111111111111"
+  const tableEvent = (status: string, updatedAt: string) => ({
+    eventType: "UPDATE",
+    new: { id: "t-1", number: 1, status, waiter_id: "w-1", waiter_name: null, updated_at: updatedAt },
+    old: { id: "t-1" },
+  })
+  const orderEvent = (eventType: string, status: string) => ({
+    eventType,
+    new: {
+      id: "o-new",
+      table_id: "t-1",
+      waiter_id: "w-1",
+      status,
+      order_type: "dine_in",
+      total: 100,
+      created_at: "2026-10-07T00:00:00.000Z",
+      order_items: [{ id: "i-1", order_id: "o-new", dish_id: DISH, name: "Bandeja", price: 12000, quantity: 1, status: "kitchen" }],
+    },
+    old: eventType === "INSERT" ? {} : { id: "o-new" },
+  })
+  const fire = async (callbacks: ((payload: unknown) => void)[], payload: unknown) => {
+    for (const cb of callbacks) await cb(payload)
+  }
+
+  beforeEach(() => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
+    useCartStore.setState({
+      cartItems: { "t-1": [{ id: DISH, name: "Bandeja", price: 12000, quantity: 1, categoryId: "cat-1", image: "" }] },
+    })
+  })
+
+  async function send() {
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await act(async () => {
+      screen.getByRole("button", { name: /Enviar/ }).click()
+    })
+    await flush()
+  }
+
+  it("applies the kitchen's served after the table echo arrived before the response", async () => {
+    env.orderCreate.mockImplementation(async () => {
+      await fire(env.tableCallbacks, tableEvent("kitchen", "2026-10-07T00:01:00.000Z"))
+      return orderDto("o-new", "t-1")
+    })
+    await send()
+    expect(useTableStore.getState().tables.find((t) => t.id === "t-1")?.status).toBe("kitchen")
+
+    await act(async () => {
+      await fire(env.tableCallbacks, tableEvent("served", "2026-10-07T00:02:00.000Z"))
+    })
+    await flush()
+
+    expect(useTableStore.getState().tables.find((t) => t.id === "t-1")?.status).toBe("served")
+  })
+
+  it("forgets the table mark when the send fails", async () => {
+    env.orderCreate.mockRejectedValue(new Error("boom"))
+    await send()
+
+    await act(async () => {
+      await fire(env.tableCallbacks, tableEvent("served", "2026-10-07T00:02:00.000Z"))
+    })
+    await flush()
+
+    expect(useTableStore.getState().tables.find((t) => t.id === "t-1")?.status).toBe("served")
+  })
+
+  it("keeps the delivered UPDATE that follows the order's INSERT and UPDATE", async () => {
+    env.orderCreate.mockImplementation(async () => {
+      await fire(env.orderCallbacks, orderEvent("INSERT", "kitchen"))
+      await fire(env.orderCallbacks, orderEvent("UPDATE", "kitchen"))
+      return orderDto("o-new", "t-1")
+    })
+    await send()
+
+    await act(async () => {
+      await fire(env.orderCallbacks, orderEvent("UPDATE", "delivered"))
+    })
+    await flush()
+
+    const cached = queryClient.getQueryData(["orders"]) as { id: string; status: string }[]
+    expect(cached.filter((order) => order.id === "o-new").map((order) => order.status)).toEqual(["delivered"])
+  })
+
+  it("lists the open order the cart went into after a Table has an open order", async () => {
+    env.orderCreate.mockRejectedValueOnce(
+      new ApiError(409, "Conflict", "Table has an open order", { message: "Table has an open order", orderId: "o-9" }),
+    )
+    await send()
+
+    const cached = queryClient.getQueryData(["orders"]) as { id: string }[]
+    expect(cached.map((order) => order.id)).toContain("o-9")
   })
 })

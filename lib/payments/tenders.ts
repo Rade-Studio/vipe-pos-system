@@ -189,7 +189,7 @@ export function computePaymentState(input: ComputePaymentStateInput): PaymentSta
  * Throws when the state is not submittable. The caller's flow should be:
  *   const state = computePaymentState(...)
  *   if (!state.canSubmit) show issues
- *   else supabase.rpc('pay_order', { p_tenders: buildPayOrderTenders(state), ... })
+ *   else payOrder({ tenders: buildPayOrderTenders(state), ... })  // POST /api/payments
  */
 export function buildPayOrderTenders(state: PaymentState): PayOrderTenderLine[] {
   if (!state.canSubmit) {

@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The build compiles against @vipe/db's dist (built first by `pnpm build`),
+    // so the db sources stay out of this program and dist keeps its layout.
+    "paths": {}
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/**/*.spec.ts", "src/testing/**", "vitest.config.ts"]
+}

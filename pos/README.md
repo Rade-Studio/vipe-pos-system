@@ -1,6 +1,6 @@
 # VipePOS Printer Listener
 
-Windows-only Python app that listens for kitchen commandas and invoices via Supabase Realtime and prints them on ESC/POS thermal printers.
+Windows-only Python app that receives kitchen commandas and invoices from the VIPE API (socket.io `print_job` events plus a pending-jobs fetch on every connect) and prints them on ESC/POS thermal printers. The main README section "Servicio de impresión" describes the flow.
 
 ---
 
@@ -39,7 +39,7 @@ pip install -r requirements.txt
 Verify the install:
 
 ```powershell
-python -c "import customtkinter, pystray, PIL, html2text, escpos, win32crypt, usb, realtime, dotenv, tenacity"
+python -c "import customtkinter, pystray, PIL, html2text, escpos, win32crypt, usb, socketio, aiohttp, dotenv"
 ```
 
 ### 4. Configure environment variables
@@ -47,14 +47,18 @@ python -c "import customtkinter, pystray, PIL, html2text, escpos, win32crypt, us
 Create `pos/.env` (for `--dev` mode):
 
 ```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-anon-key-for-local-dev
-VIPE_PRINTER_TOKEN=your-service-role-jwt-token
-ENVIRONMENT=dev
+VIPE_API_URL=http://localhost:4000
+VIPE_PRINTER_TOKEN=vpt_dev-printer-token-2026
 ```
 
-> **Production**: `VIPE_PRINTER_TOKEN` must be set as a system environment variable.
-> The listener resolves it via `os.getenv("VIPE_PRINTER_TOKEN")`.
+The token above is the one `pnpm db:dev` seeds. For a real restaurant an admin
+creates one token per station in **Administración > Configuración > Impresoras**
+(the token is shown once; the same screen revokes it). The API equivalent is
+`POST /api/devices/printers {name}`. Production setup, including the reverse-proxy
+requirements for `/socket.io/` and `/api/print/*`, is in `docs/despliegue.md`.
+
+> **Production**: the first run asks for the API URL and the printer token and
+> stores both DPAPI-encrypted in `%APPDATA%\VipePOS\printer_credentials.dat`.
 
 ### 5. Connect printers
 
@@ -139,20 +143,22 @@ Key `--hidden-import` flags:
 
 | Variable             | Required | Description                                           |
 |----------------------|----------|-------------------------------------------------------|
-| `VIPE_PRINTER_TOKEN` | Yes (prod) | Service-role JWT for Realtime auth. Dev: optional; falls back to `SUPABASE_KEY`. |
-| `SUPABASE_URL`       | Yes      | e.g. `https://xyz.supabase.co`                        |
-| `SUPABASE_KEY`       | Yes (dev) | Anon key for local dev (when `VIPE_PRINTER_TOKEN` not set) |
+| `VIPE_API_URL`       | Yes (dev) | API base URL, e.g. `http://localhost:4000`. Production: first-run dialog. |
+| `VIPE_PRINTER_TOKEN` | Yes (dev) | Printer token (`vpt_...`) bound to one restaurant. Production: first-run dialog. |
 | `ENVIRONMENT`        | No       | `production` (default) or `dev`. `--dev` flag overrides. |
 
 ---
 
 ## Architecture Notes
 
-- **Auth**: The listener uses a service-role token (`VIPE_PRINTER_TOKEN`) instead of the anon key.
-  `ANONYMOUS_USERS_ENABLED: "false"` in docker-compose rejects anon-key connections.
-  Token rotation every 24 h is the follow-up to this slice (Q5-A).
-- **Deduplication**: `pos/dedupe.py` maintains an LRU cache (max 256 entries, TTL 30 s) keyed by
-  `invoiceNumber`. Duplicate broadcasts within the TTL window are silently skipped.
+- **Auth**: a printer token sent as `auth: {token}` in the socket.io handshake (namespace
+  `/realtime`) and as `Authorization: Bearer` on `/api/print/jobs/*`. The API joins the socket
+  to `printers:<restaurantId>` only; a revoked token is refused and its sockets dropped.
+- **Durable jobs**: `pos/print_jobs.py` prints each job and tells `app.py` whether to ack it
+  (`POST /api/print/jobs/<id>/ack`, idempotent). Without a configured printer or on a printer
+  error the job stays pending and is retried on the next connect.
+- **Deduplication**: by job id (one-day cache in `pos/dedupe.py`), so a job delivered by the
+  socket and by the pending fetch prints once, while a reprint (a new job) prints again.
 - **Encoding**: `pos/print_encoder.py` negotiates UTF-8 at startup; falls back to CP1252
   for legacy firmware (code pages 437, 850, 858).
 - **Shared renderer**: `pos/print_renderer.py` produces the same ESC/POS byte stream as the

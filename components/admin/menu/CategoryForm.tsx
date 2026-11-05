@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
-import { supabase } from "@/lib/supabase"
+import { createCategory, updateCategory, type CategoryDto } from "@/lib/api/catalog"
 import { ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -22,14 +22,14 @@ import * as LucideIcons from "lucide-react"
 const categorySchema = z.object({
   name: z.string().min(1, { message: "El nombre es obligatorio" }),
   description: z.string().optional(),
-  icon: z.string().optional(),
+  icon: z.string().min(1, { message: "Selecciona un icono" }),
   active: z.boolean().default(true),
 })
 
 type CategoryFormValues = z.infer<typeof categorySchema>
 
 interface CategoryFormProps {
-  category?: any
+  category?: CategoryDto | null
   onSuccess?: () => void
 }
 
@@ -122,6 +122,16 @@ const kitchenIcons = [
 // Filtrar solo los iconos que existen en Lucide
 const validIcons = kitchenIcons.filter((icon) => Boolean((LucideIcons as any)[icon]))
 
+/** The icon is validated as required above; an empty description is stored as null. */
+function categoryBody(data: CategoryFormValues) {
+  return {
+    name: data.name,
+    description: data.description ? data.description : null,
+    icon: data.icon,
+    active: data.active,
+  }
+}
+
 export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
@@ -162,9 +172,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
     try {
       if (category) {
         // Actualizar categoría existente
-        const { error } = await supabase.from("categories").update(data as any).eq("id", category.id)
-
-        if (error) throw error
+        await updateCategory(category.id, categoryBody(data))
 
         toast({
           title: "Categoría actualizada",
@@ -172,9 +180,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
         })
       } else {
         // Crear nueva categoría
-        const { error } = await supabase.from("categories").insert([data as any])
-
-        if (error) throw error
+        await createCategory(categoryBody(data))
 
         toast({
           title: "Categoría creada",

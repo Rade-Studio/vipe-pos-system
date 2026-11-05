@@ -1,7 +1,8 @@
 # Módulo de domicilios
 
-> Resumen para revisión. Migraciones: `20261007100000_delivery_schema.sql` (esquema) y
-> `20261007110000_delivery_rpcs.sql` (RPCs). Plan y evidencia: `odd/tasks/domicilios.md`.
+> Resumen para revisión. Esquema y RPCs en la línea base `packages/db/migrations/0000_baseline.sql`.
+> Endpoints en `/api/delivery` (`apps/api/src/delivery`); cliente web en `lib/api/delivery.ts`.
+> Plan y evidencia: `odd/tasks/domicilios.md` (esquema y RPCs) y `odd/tasks/migracion-backend-nestjs.md` (T11, API).
 
 ## Modelo de datos
 
@@ -57,16 +58,26 @@ La comanda (`CommandPayload`) y la factura (`PrintableInvoice`) llevan un bloque
 
 - Comanda: `COMANDA — DOMICILIO`, `Cliente:` y notas.
 - Factura: `CLIENTE`/`TEL`/`DIRECCION` en lugar de MESA/MESERO, línea `DOMICILIO` dentro del total sin propina y `CAMBIO PARA` si aplica.
-- El renderizador TypeScript y `pos/print_renderer.py` tienen paridad; sin `delivery`, la salida es la de siempre. `handle_comanda` reenvía `data.get("delivery")` al renderizador (`pos/app.py`).
+- El renderizador TypeScript y `pos/print_renderer.py` tienen paridad; sin `delivery`, la salida es la de siempre. El servicio de impresión recibe el bloque dentro del `payload` del trabajo `print_job` (`pos/print_jobs.py`).
 
 ## Alta de cuentas de personal
 
-Edge Function `create-staff-account` (`verify_jwt = true`):
+Endpoints `/api/staff` (solo admin), en una transacción cada uno y con las reglas dentro de
+la base de datos (funciones `SECURITY DEFINER` de `0011_staff_helpers.sql`):
 
-1. Exige un JWT de un administrador activo (401 sin sesión, 403 en otro caso).
-2. El restaurante sale siempre del perfil de quien llama; los roles permitidos son `waiter`, `kitchen`, `cashier` y `delivery_operator` (`admin` responde 400).
-3. Crea el usuario **bloqueado** (`ban_duration`), aplica rol, restaurante y nombre al perfil creado por `handle_new_user`, lo lee de vuelta y solo entonces lo desbloquea.
-4. Si un paso posterior falla, borra el usuario (si el borrado falla, queda bloqueado). Correo repetido → 409.
+1. `POST /api/staff {email, password, fullName, role, username?, active?}` crea el usuario y su
+   perfil en una sola llamada. Solo lo puede hacer un administrador activo; el restaurante es
+   siempre el de quien llama.
+2. Roles permitidos: `waiter`, `kitchen`, `cashier` y `delivery_operator`; otro rol responde 422
+   `El rol no es válido`. Nunca se crean, editan ni borran administradores, ni la propia cuenta.
+3. `PATCH /api/staff/:id` acepta solo `fullName`, `username`, `active` y `role`;
+   `POST /api/staff/:id/password {password}` cambia la contraseña y cierra las sesiones de esa
+   cuenta; `DELETE /api/staff/:id` borra el usuario (422 `El integrante tiene mesas asignadas`
+   si tiene mesas).
+4. Correo repetido → 409 `Ya existe una cuenta con ese correo electrónico`; nombre de usuario
+   repetido → 409 `Ya existe un integrante con ese nombre de usuario`.
+
+El operador de domicilios usa esta misma alta con `role: delivery_operator`.
 
 ## Limitaciones conocidas
 
@@ -74,7 +85,6 @@ Edge Function `create-staff-account` (`verify_jwt = true`):
 - El store de caja puede mostrar la caja cerrada tras iniciar sesión; `pay_order` responde con su propio mensaje.
 - `create_delivery_order` toma los precios del menú sin promociones (hoy se aplican a nivel de pedido).
 - Los PIN de perfil no se cargan desde la base de datos (preexistente para todos los roles).
-- Edge Function: si la lectura del perfil de quien llama falla, responde 403 en lugar de 500; el borrado de reversión no informa su error.
-- La comanda se emite por broadcast sin persistencia: si el listener está desconectado, no se reimprime.
+- La comanda de `POST /api/delivery/orders` se encola en `print_jobs` en la misma transacción y se imprime al reconectar la estación; los trabajos con más de 7 días se borran al arrancar la API y las comandas con más de 12 horas se confirman sin imprimir.
 - El valor sugerido del domicilio se edita en Configuración > Repartidores (`BusinessConfigForm` no está montado).
 - Fuera de alcance: integración con WhatsApp (se apoyará en el registro de clientes) y zonas con tarifa propia.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDeliveryKitchenCommand, buildDeliveryPrintInfo, newKitchenOrderNumber } from './print'
+import { buildDeliveryPrintInfo } from './print'
 import type { DeliveryOrder } from './types'
 
 function deliveryOrder(overrides: Partial<DeliveryOrder> = {}): DeliveryOrder {
@@ -53,46 +53,5 @@ describe('buildDeliveryPrintInfo', () => {
   it('drops cashChangeFor for prepaid orders even if set', () => {
     const info = buildDeliveryPrintInfo(deliveryOrder({ paymentMode: 'prepaid', cashChangeFor: 20000 }))
     expect('cashChangeFor' in info).toBe(false)
-  })
-})
-
-describe('buildDeliveryKitchenCommand', () => {
-  const lines = [
-    { name: 'Arepa', quantity: 2, comments: 'sin queso' },
-    { name: 'Jugo', quantity: 1, comments: null },
-  ]
-
-  it('builds a table-less command with the operator as waiter', () => {
-    const cmd = buildDeliveryKitchenCommand({
-      delivery: deliveryOrder(),
-      lines,
-      waiter: 'Luis',
-      invoiceNumber: '4321',
-    })
-    expect(cmd.invoiceNumber).toBe('4321')
-    expect(cmd.waiter).toBe('Luis')
-    expect(cmd.table).toBeNull()
-    expect(cmd.delivery?.customerName).toBe('Ana Perez')
-    expect(cmd.items).toEqual([
-      { name: 'Arepa', quantity: 2, comments: 'sin queso' },
-      { name: 'Jugo', quantity: 1 },
-    ])
-  })
-
-  it('falls back to a non-empty waiter so the listener does not drop it', () => {
-    const cmd = buildDeliveryKitchenCommand({
-      delivery: deliveryOrder(),
-      lines,
-      waiter: '  ',
-      invoiceNumber: '4321',
-    })
-    expect(cmd.waiter).toBe('Domicilios')
-  })
-})
-
-describe('newKitchenOrderNumber', () => {
-  it('matches the WaiterView 4-digit format', () => {
-    expect(newKitchenOrderNumber(() => 0)).toBe('1000')
-    expect(newKitchenOrderNumber(() => 0.9999)).toBe('9999')
   })
 })

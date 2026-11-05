@@ -3,10 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
- * T12 (S3, S5) — delivery orders created through `create_delivery_order`
- * never deducted stock. After a successful creation the form asks the server
- * to consume the order (`consume_order_stock`); a failure of that call must
- * not undo or obstruct the creation.
+ * T11 (S3, S4) — the delivery creation is ONE request: `POST /delivery/orders`
+ * runs `create_delivery_order`, `consume_order_stock` and the kitchen command
+ * in one server transaction. The form no longer sends the command or consumes
+ * stock itself; a stock shortage keeps the order and comes back in
+ * `consumption.shortages`, which the form reports as a warning.
  */
 
 const env = vi.hoisted(() => ({
@@ -16,35 +17,24 @@ const env = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }))
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: { from: () => ({}), rpc: async () => ({ data: null, error: null }) },
-  createSupabaseClient: () => ({}),
+vi.mock("@/lib/api/catalog", () => ({
+  fetchCategories: async () => [{ id: "cat-1", name: "Platos", icon: "Soup" }],
+  fetchDishes: async () => [{ id: "d-1", name: "Bandeja", price: 12000, categoryId: "cat-1" }],
 }))
 
-vi.mock("@/lib/supabase/service", () => ({
-  categoryService: { getAllActive: async () => [{ id: "cat-1", name: "Platos", icon: null }] },
-}))
-
-vi.mock("@/lib/supabase/dish-service-with-promotions", () => ({
-  dishServiceWithPromotions: {
-    getByCategoryWithPromotions: async () => [{ id: "d-1", name: "Bandeja", price: 12000, category_id: "cat-1" }],
-  },
-}))
-
-vi.mock("@/lib/supabase/delivery-service", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/supabase/delivery-service")>(
-    "@/lib/supabase/delivery-service",
-  )
+vi.mock("@/lib/api/delivery", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
   return { ...actual, findCustomerByPhone: vi.fn(async () => null), createDeliveryOrder: env.createDeliveryOrder }
 })
 
-vi.mock("@/lib/supabase/inventory", () => ({ consumeOrderStock: env.consumeOrderStock }))
+vi.mock("@/lib/api/inventory", () => ({ consumeOrderStock: env.consumeOrderStock }))
 
-vi.mock("@/lib/supabase/realtime-service", () => ({ realtimeService: { sendCommand: env.sendCommand } }))
+vi.mock("@/lib/api/print", () => ({ sendCommand: env.sendCommand }))
 
 vi.mock("@/hooks/use-toast", () => ({ toast: env.toast }))
 
 import { DeliveryOrderForm } from "@/components/delivery/DeliveryOrderForm"
+import { DeliveryServiceError } from "@/lib/api/delivery"
 
 const created = {
   orderId: "o-del-1",
@@ -55,10 +45,16 @@ const created = {
     customerName: "Luis",
     customerPhone: "3001234567",
     addressSnapshot: { addressLine: "Calle 1 # 2-3", neighborhood: null, reference: null, label: null },
+    addressLine: "Calle 1 # 2-3",
+    neighborhood: null,
+    addressReference: null,
+    deliveryFee: 0,
     paymentMode: "prepaid",
     cashChangeFor: null,
     notes: null,
   },
+  consumption: { orderId: "o-del-1", enabled: true, consumedItems: 1, totalCost: 0, shortages: [] },
+  printJob: { id: "p-1", kind: "command", createdAt: "2026-11-04T12:00:00.000Z" },
 }
 
 async function fillAndSubmit(onSubmitted: () => void) {
@@ -82,43 +78,88 @@ async function fillAndSubmit(onSubmitted: () => void) {
 beforeEach(() => {
   vi.clearAllMocks()
   env.createDeliveryOrder.mockResolvedValue(created)
-  env.consumeOrderStock.mockResolvedValue({ orderId: "o-del-1", enabled: true, consumedItems: 1, totalCost: 0, shortages: [] })
 })
 
-describe("DeliveryOrderForm — sale stock consumption (T12)", () => {
-  it("consumes the stock of the new order once after a successful creation", async () => {
+describe("DeliveryOrderForm — one transactional create (T11)", () => {
+  it("sends one create with the draft and nothing else: no client command, no client stock consumption", async () => {
     const onSubmitted = vi.fn()
     await fillAndSubmit(onSubmitted)
 
-    await waitFor(() => expect(env.consumeOrderStock).toHaveBeenCalledTimes(1))
-    expect(env.consumeOrderStock).toHaveBeenCalledWith("o-del-1")
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledTimes(1))
     expect(env.createDeliveryOrder).toHaveBeenCalledTimes(1)
-    expect(onSubmitted).toHaveBeenCalledTimes(1)
+    expect(env.createDeliveryOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: { phone: "3001234567", name: "Luis" },
+        address: expect.objectContaining({ addressLine: "Calle 1 # 2-3" }),
+        items: [expect.objectContaining({ dishId: "d-1", quantity: 1 })],
+      }),
+    )
+    expect(env.sendCommand).not.toHaveBeenCalled()
+    expect(env.consumeOrderStock).not.toHaveBeenCalled()
     expect(env.toast.success).toHaveBeenCalledWith("Domicilio creado y enviado a cocina")
+    expect(env.toast.warning).not.toHaveBeenCalled()
     expect(env.toast.error).not.toHaveBeenCalled()
   })
 
-  it("keeps the creation when the stock consumption fails", async () => {
-    env.consumeOrderStock.mockRejectedValue(new Error("boom"))
+  it("keeps the creation and warns with the shortages the server reported", async () => {
+    env.createDeliveryOrder.mockResolvedValue({
+      ...created,
+      consumption: {
+        ...created.consumption,
+        shortages: [
+          { itemId: "i-1", name: "Arroz", unit: "g", missing: 250 },
+          { itemId: "i-2", name: "Huevo", unit: "", missing: 2 },
+        ],
+      },
+    })
+    const onSubmitted = vi.fn()
+    await fillAndSubmit(onSubmitted)
+
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledTimes(1))
+    expect(env.toast.warning).toHaveBeenCalledWith(
+      "El domicilio se creó y se envió a cocina, pero hay stock insuficiente: Arroz (faltan 250 g), Huevo (faltan 2).",
+    )
+    expect(env.toast.success).not.toHaveBeenCalled()
+    expect(env.toast.error).not.toHaveBeenCalled()
+    expect(env.sendCommand).not.toHaveBeenCalled()
+    expect(env.consumeOrderStock).not.toHaveBeenCalled()
+  })
+
+  it("shows the error and keeps the form open when the creation fails", async () => {
+    env.createDeliveryOrder.mockRejectedValue(new Error("nope"))
+    const onSubmitted = vi.fn()
+    await fillAndSubmit(onSubmitted)
+
+    await waitFor(() => expect(env.toast.error).toHaveBeenCalled())
+    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(env.consumeOrderStock).not.toHaveBeenCalled()
+    expect(env.sendCommand).not.toHaveBeenCalled()
+  })
+
+  it("shows the generic message for an unknown rollback (500) and keeps the form open", async () => {
+    env.createDeliveryOrder.mockRejectedValue(
+      new DeliveryServiceError({ kind: "unknown", message: "Internal server error" }),
+    )
     const onSubmitted = vi.fn()
     await fillAndSubmit(onSubmitted)
 
     await waitFor(() =>
-      expect(env.toast.warning).toHaveBeenCalledWith(
-        "El domicilio se creó, pero hubo un error al actualizar el inventario.",
-      ),
+      expect(env.toast.error).toHaveBeenCalledWith("Ocurrió un error al crear el domicilio. Intenta de nuevo."),
     )
-    expect(env.createDeliveryOrder).toHaveBeenCalledTimes(1)
-    expect(onSubmitted).toHaveBeenCalledTimes(1)
-    expect(env.toast.success).toHaveBeenCalledWith("Domicilio creado y enviado a cocina")
-    expect(env.toast.error).not.toHaveBeenCalled()
+    expect(env.toast.success).not.toHaveBeenCalled()
+    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Crear domicilio" })).toBeInTheDocument()
   })
 
-  it("does not consume stock when the creation fails", async () => {
-    env.createDeliveryOrder.mockRejectedValue(new Error("nope"))
-    await fillAndSubmit(vi.fn())
+  it("shows the server message verbatim for a rejected rollback (P0001) and keeps the form open", async () => {
+    const message = "create_delivery_order: dish d-1 is not available"
+    env.createDeliveryOrder.mockRejectedValue(new DeliveryServiceError({ kind: "rejected", message }))
+    const onSubmitted = vi.fn()
+    await fillAndSubmit(onSubmitted)
 
-    await waitFor(() => expect(env.toast.error).toHaveBeenCalled())
-    expect(env.consumeOrderStock).not.toHaveBeenCalled()
+    await waitFor(() => expect(env.toast.error).toHaveBeenCalledWith(message))
+    expect(env.toast.success).not.toHaveBeenCalled()
+    expect(onSubmitted).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Crear domicilio" })).toBeInTheDocument()
   })
 })

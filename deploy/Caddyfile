@@ -1,0 +1,39 @@
+# VIPE POS - reverse proxy (docker-compose.prod.yml, service caddy).
+#
+# Automatic HTTPS for SITE_DOMAIN (Let's Encrypt / ZeroSSL). For `localhost`
+# (local rehearsal) Caddy issues the certificate from its internal CA instead
+# (the same as `tls internal`); clients use `curl -k` or trust Caddy's root.
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	import security_headers
+
+	# API: HTTP routes and the socket.io endpoint (web realtime and printer
+	# stations). The path is forwarded unchanged: engine.io only answers on
+	# `/socket.io/` with the trailing slash. reverse_proxy passes the WebSocket
+	# upgrade and the Authorization header (printers call /api/print/*) as is.
+	# No Cache-Control is set here: the API decides it (no-store on /api/auth/*).
+	@api path /api/* /socket.io/*
+	handle @api {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
+
+# Self-hosted object storage: deploy/caddy/storage-on.caddy publishes the
+# minio service at STORAGE_DOMAIN when STORAGE_SITE=on (profile
+# self-hosted-storage); the default `off` imports an empty site list.
+import caddy/storage-{$STORAGE_SITE:off}.caddy

@@ -1,10 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-vi.mock("@/lib/supabase/client", () => ({
-  supabase: { auth: { signOut: vi.fn() }, from: vi.fn() },
-}))
-
 import { useHashSection } from "@/hooks/use-hash-section"
 import { ADMIN_NAV_GROUPS, sectionsInGroup } from "@/lib/admin/navigation"
 import { AdminShell } from "./AdminShell"

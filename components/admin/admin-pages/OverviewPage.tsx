@@ -19,19 +19,10 @@ import { Panel } from "@/components/admin/common/Panel"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/utils/helpers"
-import { dashboardService } from "@/lib/supabase/dashboard-service"
+import { fetchDashboardSummary } from "@/lib/api/dashboard"
 import { countOrdersByStatus, countPaidOrdersOn, type AdminOrder } from "@/lib/admin/orders"
-import {
-  DAILY_SALES_DAYS,
-  DASHBOARD_STALE_MS,
-  POPULAR_DISHES_DAYS,
-  POPULAR_DISHES_LIMIT,
-  dashboardDailySalesKey,
-  dashboardKitchenOrdersKey,
-  dashboardMonthSalesKey,
-  dashboardPopularDishesKey,
-} from "@/lib/admin/dashboard"
-import { daysAgoIso, monthStartIso, startOfLocalDayMs } from "@/lib/admin/dates"
+import { DASHBOARD_DAYS, DASHBOARD_STALE_MS, dashboardSummaryKey } from "@/lib/admin/dashboard"
+import { startOfLocalDayMs } from "@/lib/admin/dates"
 
 /** Stable empty arrays: `useQuery` defaults must not be a new identity per render. */
 const EMPTY_DAILY_SALES: never[] = []
@@ -107,36 +98,26 @@ function InventoryAlertsPanel({ onNavigate }: { onNavigate?: (sectionId: string)
 }
 
 /**
- * Resumen. Mounted only while the section is open, so its four dashboard reads
- * (T9, S1) never run for a section nobody is looking at; each one is cached and
- * shows its own skeleton instead of blanking the page.
+ * Resumen. Mounted only while the section is open, so its dashboard read
+ * never runs for a section nobody is looking at; it is cached and shows
+ * skeletons instead of blanking the page, and an error banner instead of zeros.
  */
 export function OverviewPage({ description, activeOrders, onNavigate }: OverviewPageProps) {
   // The tables / waiters numbers are NOT read here: the shell already loaded
-  // both for the admin (lib/shell/startup-loads.ts).
-  const monthStart = monthStartIso(new Date())
-  const popularDishesSince = daysAgoIso(new Date(), POPULAR_DISHES_DAYS)
-
-  const { data: monthSales = 0, isLoading: isLoadingMonthSales } = useQuery({
-    queryKey: dashboardMonthSalesKey(monthStart),
-    queryFn: () => dashboardService.getMonthSales(monthStart),
+  // both for the admin (lib/shell/startup-loads.ts). The four sales widgets
+  // share ONE server-side summary (T12).
+  const {
+    data: summary,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: dashboardSummaryKey(DASHBOARD_DAYS),
+    queryFn: () => fetchDashboardSummary(DASHBOARD_DAYS),
     staleTime: DASHBOARD_STALE_MS,
   })
-  const { data: kitchenOrdersCount = 0, isLoading: isLoadingKitchenOrders } = useQuery({
-    queryKey: dashboardKitchenOrdersKey(),
-    queryFn: () => dashboardService.countOrdersByStatus("kitchen"),
-    staleTime: DASHBOARD_STALE_MS,
-  })
-  const { data: dailySales = EMPTY_DAILY_SALES, isLoading: isLoadingDailySales } = useQuery({
-    queryKey: dashboardDailySalesKey(DAILY_SALES_DAYS),
-    queryFn: () => dashboardService.getDailySales(DAILY_SALES_DAYS),
-    staleTime: DASHBOARD_STALE_MS,
-  })
-  const { data: popularDishes = EMPTY_POPULAR_DISHES, isLoading: isLoadingPopularDishes } = useQuery({
-    queryKey: dashboardPopularDishesKey(POPULAR_DISHES_DAYS, POPULAR_DISHES_LIMIT),
-    queryFn: () => dashboardService.getPopularDishes(POPULAR_DISHES_LIMIT, popularDishesSince),
-    staleTime: DASHBOARD_STALE_MS,
-  })
+  const dailySales = summary?.dailySales ?? EMPTY_DAILY_SALES
+  const popularDishes = summary?.popularDishes ?? EMPTY_POPULAR_DISHES
 
   // D6 Rule B: render-path counts project to primitives, never to the full
   // `tables` array — see design.md D6.
@@ -175,17 +156,29 @@ export function OverviewPage({ description, activeOrders, onNavigate }: Overview
     <div className="flex flex-col gap-6">
       <PageHeader title="Resumen" description={description} />
 
+      {isError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-destructive/50 px-4 py-3 text-sm text-destructive"
+        >
+          <span>No se pudo cargar el resumen</span>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Reintentar
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Ventas del Mes"
           icon={DollarSign}
-          value={<StatValue isLoading={isLoadingMonthSales}>{formatCurrency(monthSales)}</StatValue>}
+          value={<StatValue isLoading={isLoading}>{summary ? formatCurrency(summary.monthSales) : "—"}</StatValue>}
           hint={new Date().toLocaleDateString("es-ES", { month: "long", year: "numeric" })}
         />
         <StatCard
           title="Órdenes en Cocina"
           icon={ChefHat}
-          value={<StatValue isLoading={isLoadingKitchenOrders}>{kitchenOrdersCount}</StatValue>}
+          value={<StatValue isLoading={isLoading}>{summary ? summary.kitchenOrders : "—"}</StatValue>}
           hint="Pendientes de preparación"
         />
         <StatCard
@@ -203,8 +196,8 @@ export function OverviewPage({ description, activeOrders, onNavigate }: Overview
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <SalesChart data={dailySales} isLoading={isLoadingDailySales} className="lg:col-span-2" />
-        <PopularDishesChart data={popularDishes} isLoading={isLoadingPopularDishes} />
+        <SalesChart data={dailySales} isLoading={isLoading} className="lg:col-span-2" />
+        <PopularDishesChart data={popularDishes} isLoading={isLoading} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
