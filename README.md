@@ -124,6 +124,11 @@ El rol lo define la cuenta con la que se inició sesión (lo resuelve la API en 
 | `cocina@vipe.local` | Cocina |
 | `domicilios@vipe.local` | Operador de domicilios |
 
+#### Datos de demostración y primer restaurante
+
+- `DEMO_PASSWORD=<12+ caracteres> pnpm db:demo` carga en la base `vipe_demo` un restaurante ficticio ("Casa Guadua") con personal de todos los roles (`@demo.vipe.pos`), menú, mesas, inventario, 30 días de historia y actividad en vivo; `--reset` lo reemplaza. Es la demostración de staging; ver [docs/despliegue.md](docs/despliegue.md), sección 3.6.
+- `pnpm db:create-restaurant "<nombre>" <correo>` crea un restaurante y su primer administrador en una base sin registro (producción arranca vacía); la contraseña se lee de `ADMIN_PASSWORD` o de la entrada estándar. Ver la sección 3.5 de la misma guía.
+
 ### Vista de Mesero
 
 1. Selecciona una mesa disponible

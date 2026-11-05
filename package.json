@@ -28,6 +28,8 @@
     "db:typecheck": "pnpm --filter @vipe/db typecheck",
     "db:migrate": "pnpm --filter @vipe/db migrate",
     "db:dev": "pnpm --filter @vipe/db dev",
+    "db:demo": "pnpm --filter @vipe/db demo",
+    "db:create-restaurant": "pnpm --filter @vipe/db create-restaurant",
     "db:rehearse-migration": "pnpm --filter @vipe/db rehearse-migration",
     "web:api-types": "openapi-typescript apps/api/openapi.json -o lib/api/schema.d.ts",
     "docker:dev": "docker-compose up -d",
