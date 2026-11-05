@@ -392,4 +392,4 @@ Source map: explorer report 2026-11-04 (services `lib/supabase/service.ts:13-92`
   - Smoke after the fix: 33 OK pages, kitchen 537 ms, waiter 309 ms, logout OK.
   - The old compose volume zyxpf2vqnowxdolrgne8vxew_postgres-data (78 MB, unused) was removed.
   - VPS swap 4048 of 4095 MiB after the builds; B1 still pending.
-- L43 (evidence, 2026-11-05): the L35 seed/test advisories are closed in code (odd/tasks/staging-polish.md L2, S6). An empty --username exits 2 (packages/db/seed/bootstrap/create-restaurant.sh:17,76, pinned by packages/db/seed/test.sh:143,189); test.sh removes containers with their anonymous volumes (`docker rm -fv`, test.sh:36); Tailscale-only staging is documented in docs/despliegue.md section 3 and DOCKER.md:129.
+- L45 (evidence, 2026-11-05): the L35 seed/test advisories are closed in code (odd/tasks/staging-polish.md L2, S6). An empty --username exits 2 (packages/db/seed/bootstrap/create-restaurant.sh:17,76, pinned by packages/db/seed/test.sh:143,189); test.sh removes containers with their anonymous volumes (`docker rm -fv`, test.sh:36); Tailscale-only staging is documented in docs/despliegue.md section 3 and DOCKER.md:129.
