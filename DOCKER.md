@@ -6,7 +6,7 @@ Tres archivos de compose, uno por entorno:
 |---|---|---|
 | `docker-compose.yml` | Desarrollo local | `db`, `minio`, `minio-init`, `app` (opcional) |
 | `docker-compose.prod.yml` | Producción en una VPS con Docker | `postgres`, `migrate`, `api`, `web`, `caddy`; `minio` y `minio-init` con perfil |
-| `docker-compose.coolify.yml` | Producción en Coolify | `postgres`, `migrate`, `api`, `web` |
+| `docker-compose.coolify.yml` | Producción en Coolify | `migrate`, `api`, `web` (la base es un recurso PostgreSQL de Coolify aparte) |
 
 La guía completa de producción está en [docs/despliegue.md](docs/despliegue.md).
 
@@ -119,9 +119,11 @@ docker compose -f docker-compose.prod.yml --profile self-hosted-storage up -d --
 ## Producción en Coolify (`docker-compose.coolify.yml`)
 
 Sin `caddy` (el proxy de Coolify maneja 80/443), sin `minio` (Coolify no aplica perfiles;
-las imágenes van a R2) y sin puertos publicados. `postgres` se construye desde
-`deploy/postgres/Dockerfile`, que incluye `10-roles.sh` y `roles.sql` en la imagen, porque
-Coolify no coloca los archivos del repositorio junto al compose. Recurso Docker Compose con
+las imágenes van a R2) y sin puertos publicados. Tampoco incluye `postgres`: la base es un
+recurso PostgreSQL de Coolify aparte, con respaldo diario a S3, que un despliegue de la
+aplicación no reinicia. Sus roles se crean una vez con `deploy/postgres/create-roles.sh
+--container <uuid de la base>`; `DATABASE_HOST` es el UUID de ese recurso y la aplicación
+activa **Connect to Predefined Network** para alcanzarlo por la red `coolify`. Recurso Docker Compose con
 **Docker Compose Location** `/docker-compose.coolify.yml`, dominios `api` →
 `https://<sitio>:4000/api,https://<sitio>:4000/socket.io` y `web` → `https://<sitio>:3000`,
 **Strip prefixes** desactivado. Staging responde solo a los clientes de la red de Tailscale
@@ -133,7 +135,7 @@ obligatoria es `${VAR:?}`, así que hace falta un archivo con valores de prueba)
 
 ```bash
 check_env=$(mktemp)
-printf '%s\n' POSTGRES_PASSWORD=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
+printf '%s\n' DATABASE_HOST=prueba VIPE_MIGRATOR_PASSWORD=prueba VIPE_API_PASSWORD=prueba \
   JWT_SECRET=prueba-de-validacion-de-32-caracteres WEB_ORIGIN=https://pos.example.com \
   S3_ENDPOINT=https://s3.example.com S3_REGION=us-east-1 S3_BUCKET=vipe-pos-staging S3_ACCESS_KEY_ID=prueba \
   S3_SECRET_ACCESS_KEY=prueba S3_PUBLIC_BASE_URL=https://s3.example.com/vipe-pos-staging S3_FORCE_PATH_STYLE=true > "$check_env"
@@ -149,7 +151,7 @@ CI despliega en los recursos de Coolify configurados en `COOLIFY_APP_UUID_STAGIN
 ```
 ├── docker-compose.yml           # Desarrollo: db, minio, minio-init, app
 ├── docker-compose.prod.yml      # VPS: postgres, migrate, api, web, caddy (+ minio con perfil)
-├── docker-compose.coolify.yml   # Coolify: postgres, migrate, api, web
+├── docker-compose.coolify.yml   # Coolify: migrate, api, web (base PostgreSQL aparte)
 ├── Dockerfile                   # Imagen de la web (Next.js standalone)
 ├── apps/api/Dockerfile          # Imágenes de la API (target api) y de migrate (target migrate)
 ├── env.production.template      # Variables de producción
@@ -157,8 +159,8 @@ CI despliega en los recursos de Coolify configurados en `COOLIFY_APP_UUID_STAGIN
 │   ├── Caddyfile                # Proxy inverso y cabeceras de seguridad
 │   ├── caddy/                   # storage-on.caddy / storage-off.caddy (STORAGE_SITE)
 │   └── postgres/
-│       ├── 10-roles.sh          # Init de roles de producción
-│       └── Dockerfile           # Postgres de Coolify con 10-roles.sh y roles.sql incluidos
+│       ├── 10-roles.sh          # Init de roles de producción (docker-compose.prod.yml)
+│       └── create-roles.sh      # Roles en la base PostgreSQL de Coolify (una vez por ambiente)
 └── packages/db/
     ├── docker/Dockerfile        # Postgres 16 + pgTAP de desarrollo y pruebas
     ├── migrations/              # Migraciones SQL (fuente de verdad del esquema)

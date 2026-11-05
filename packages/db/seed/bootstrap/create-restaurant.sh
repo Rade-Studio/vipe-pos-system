@@ -2,7 +2,7 @@
 # Creates one restaurant and its first admin user on a database that has none
 # (odd/tasks/migracion-backend-nestjs.md, T17): the app has no signup screen.
 #
-#   create-restaurant.sh [--target local|coolify] [--app-uuid <uuid>] \
+#   create-restaurant.sh [--target local|coolify] [--app-uuid <uuid>] [--db-uuid <uuid>] \
 #     [--admin-name "<full name>"] [--username <login name>] \
 #     "<restaurant name>" <admin email>
 #
@@ -18,14 +18,15 @@
 #
 # Targets (seed/bootstrap/target.sh): local is the dev stack of
 # docker-compose.yml, database $VIPE_DB_NAME (default vipe_pos); coolify runs
-# psql and node with `docker exec` in the containers of the Coolify app given
+# psql with `docker exec` in the Coolify database given by --db-uuid or
+# VIPE_COOLIFY_DB_UUID and node in the api container of the Coolify app given
 # by --app-uuid or VIPE_COOLIFY_APP_UUID (required, no default).
 #
 # Exit codes (`pnpm db:create-restaurant` passes them through with pnpm 11; other pnpm
 # versions may report any failure as 1):
 #   0  restaurant and admin created
 #   1  any other failure (nothing is written: one transaction)
-#   2  invalid usage, name, email, username, password or app uuid
+#   2  invalid usage, name, email, username, password or uuid
 #   3  a restaurant with that name, a user with that email or a profile with
 #      that username already exists, including one created concurrently
 set -euo pipefail
@@ -47,6 +48,7 @@ while (($#)); do
   case "$1" in
     --target) [[ $# -ge 2 ]] || usage; target="$2"; shift 2 ;;
     --app-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_APP_UUID="$2"; VIPE_COOLIFY_APP_UUID_GIVEN=1; shift 2 ;;
+    --db-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_DB_UUID="$2"; VIPE_COOLIFY_DB_UUID_GIVEN=1; shift 2 ;;
     --admin-name) [[ $# -ge 2 ]] || usage; admin_name="$2"; shift 2 ;;
     --username) [[ $# -ge 2 ]] || usage; username="$2"; username_given=true; shift 2 ;;
     -h | --help) usage ;;
