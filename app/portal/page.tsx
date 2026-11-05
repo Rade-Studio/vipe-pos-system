@@ -60,6 +60,10 @@ export default function Home() {
   const [profileResolved, setProfileResolved] = useState(false)
   const loadConfigFromDB = useConfigStore((s) => s.loadConfigFromDB)
   const startupKeyRef = useRef<string | null>(null)
+  // Bumped by every login. The initial session check remembers the value it
+  // started with, so its late null, error or `signed_out` (D3 smoke) never
+  // wipes a session the user created while it was still pending.
+  const loginSeqRef = useRef(0)
 
   // Role and restaurant come from the API session (`me` or the login body).
   const applySession = (session: Session) => {
@@ -82,13 +86,23 @@ export default function Home() {
   // impersonated view survives them; only a failed refresh signs out.
   useEffect(() => {
     let cancelled = false
+    let checkPending = true
+    const startSeq = loginSeqRef.current
+    const isStale = () => cancelled || loginSeqRef.current !== startSeq
     const stop = onAuthEvent((event) => {
-      if (event === "signed_out" && !cancelled) clearSession()
+      if (event !== "signed_out" || cancelled) return
+      // While the initial check is in flight, its refused refresh belongs to
+      // the pre-login cookies; once it settles, every refusal is genuine.
+      if (checkPending && isStale()) return
+      clearSession()
     })
 
     fetchSession()
+      .finally(() => {
+        checkPending = false
+      })
       .then((session) => {
-        if (cancelled) return
+        if (isStale()) return
         // Resolve the identity BEFORE flipping `isAuthenticated`, so the startup
         // effect below runs once with the real role already in the store.
         if (session) applySession(session)
@@ -96,7 +110,7 @@ export default function Home() {
       })
       .catch((error: unknown) => {
         log.error("Error al resolver la sesión:", { error: String(error) })
-        if (!cancelled) clearSession()
+        if (!isStale()) clearSession()
       })
 
     return () => {
@@ -208,7 +222,14 @@ export default function Home() {
 
   // Pantalla de login si no está autenticado
   if (!isAuthenticated) {
-    return <LoginView onLoginSuccess={applySession} />
+    return (
+      <LoginView
+        onLoginSuccess={(session) => {
+          loginSeqRef.current += 1
+          applySession(session)
+        }}
+      />
+    )
   }
 
   // Profile selection screen (admin usa esto para cambiar de rol).

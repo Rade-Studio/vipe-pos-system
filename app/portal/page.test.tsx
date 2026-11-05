@@ -333,3 +333,69 @@ describe("shell session through the API", () => {
     expect(useProfileStore.getState().authProfile).toEqual({ id: "x", name: "x", role: "waiter" })
   })
 })
+
+describe("a late initial session check after a login (D3 smoke)", () => {
+  /** Holds `GET /api/auth/me` open until the test settles it. */
+  function holdInitialCheck() {
+    let settle!: (outcome: "null" | "throw") => void
+    const pending = new Promise<"null" | "throw">((resolve) => {
+      settle = resolve
+    })
+    const base = env.apiGet.getMockImplementation()!
+    env.apiGet.mockImplementation(async (path: string, init?: any) => {
+      if (path !== "/api/auth/me") return base(path, init)
+      const outcome = await pending
+      if (outcome === "throw") throw new Error("network down")
+      throw new ApiError(401, "Unauthorized", "Missing access token")
+    })
+    return settle
+  }
+
+  it("a stale signed_out and null session never clear the new login", async () => {
+    const settle = holdInitialCheck()
+    render(<Home />)
+    fireEvent.click(await screen.findByText("login-view"))
+    expect(await screen.findByText("kitchen-view")).toBeInTheDocument()
+
+    await act(async () => {
+      // The refused refresh of the initial chain, then its null session.
+      emitAuthEvent("signed_out")
+      settle("null")
+    })
+
+    expect(screen.getByText("kitchen-view")).toBeInTheDocument()
+    expect(screen.queryByText("login-view")).not.toBeInTheDocument()
+    expect(useProfileStore.getState().authProfile?.role).toBe("kitchen")
+  })
+
+  it("a stale failed initial check never clears the new login", async () => {
+    const settle = holdInitialCheck()
+    render(<Home />)
+    fireEvent.click(await screen.findByText("login-view"))
+    await screen.findByText("kitchen-view")
+
+    await act(async () => {
+      settle("throw")
+    })
+
+    expect(screen.getByText("kitchen-view")).toBeInTheDocument()
+    expect(useProfileStore.getState().authProfile?.role).toBe("kitchen")
+  })
+
+  it("a genuine signed_out after the login and the settled check returns to the form", async () => {
+    const settle = holdInitialCheck()
+    render(<Home />)
+    fireEvent.click(await screen.findByText("login-view"))
+    await screen.findByText("kitchen-view")
+    await act(async () => {
+      settle("null")
+    })
+
+    act(() => {
+      emitAuthEvent("signed_out")
+    })
+
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+    expect(useProfileStore.getState().authProfile).toBeNull()
+  })
+})
