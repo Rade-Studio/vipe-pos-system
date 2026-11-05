@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Order, Profile } from "@/types"
 import { useOrderStore } from "@/store/useOrderStore"
+import { useProfileStore } from "@/store/useProfileStore"
+import { useTableStore } from "@/store/useTableStore"
 import { deleteOrder, orderDtoFromWire } from "@/lib/api/orders"
 import { conflictMessage } from "@/lib/api/errors"
 import { log } from "@/lib/log"
@@ -221,7 +223,18 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
           // through the shared mapper (`order_items` attached by the API
           // listener, `items: []` when absent), as in WaiterView. A partial
           // row here has no `items` and crashes OrderCard.
-          const inserted = payload.eventType === "INSERT" ? orderDtoFromWire(payload.new) : null
+          // The listener attaches no table number or waiter name, so the
+          // INSERT takes them from the shell stores the admin loaded at
+          // startup, and the card is named at once (odd/tasks/
+          // staging-polish.md S2) instead of "N/A" / "Desconocido".
+          const wire = payload.eventType === "INSERT" ? orderDtoFromWire(payload.new) : null
+          const inserted = wire
+            ? {
+                ...wire,
+                tableNumber: wire.tableId ? (useTableStore.getState().getTableById(wire.tableId)?.number ?? null) : null,
+                waiterName: useProfileStore.getState().profiles.find((p) => p.id === wire.waiterId)?.name ?? null,
+              }
+            : null
           const conv: OrderChange = {
             eventType: payload.eventType,
             new: inserted
