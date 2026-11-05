@@ -123,17 +123,32 @@ export default function Home() {
       clearSession()
     })
 
-    withTimeout(fetchSession(), INITIAL_CHECK_TIMEOUT_MS)
-      .finally(() => {
+    // The chain stays "pending" until the real request settles, not the timeout:
+    // a hung check's refused refresh, arriving after a login made once the form
+    // appeared, still belongs to the pre-login cookies.
+    const check = fetchSession()
+    check.then(
+      () => {
         checkPending = false
+      },
+      () => {
+        checkPending = false
+      },
+    )
+
+    withTimeout(check, INITIAL_CHECK_TIMEOUT_MS)
+      .finally(() => {
         if (!cancelled) setInitialCheckDone(true)
       })
       .then((session) => {
         if (isStale()) return
         // Resolve the identity BEFORE flipping `isAuthenticated`, so the startup
         // effect below runs once with the real role already in the store.
-        if (session) applySession(session)
-        else clearSession()
+        if (session) {
+          applySession(session)
+          // As on dev, the role view shows while the startup loads run.
+          setIsLoading(false)
+        } else clearSession()
       })
       .catch((error: unknown) => {
         log.error("Error al resolver la sesión:", { error: String(error) })

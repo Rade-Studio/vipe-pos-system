@@ -1,3 +1,4 @@
+import { StrictMode } from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@/lib/api/errors"
@@ -355,6 +356,47 @@ function holdInitialCheck() {
 }
 
 describe("the loader covers the initial session check", () => {
+  // F1 / S3: the hung chain's refused refresh still belongs to the pre-login cookies.
+  it("a login after the check timed out survives that check's late signed_out", async () => {
+    vi.useFakeTimers()
+    try {
+      holdInitialCheck()
+      render(<Home />)
+      await act(async () => {})
+      await act(async () => {
+        vi.advanceTimersByTime(10_000)
+      })
+      fireEvent.click(screen.getByText("login-view"))
+      await act(async () => {})
+      await act(async () => {
+        emitAuthEvent("signed_out")
+      })
+      expect(screen.getByText("kitchen-view")).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("StrictMode restores the session and runs the loads once", async () => {
+    env.role = "cashier"
+    render(
+      <StrictMode>
+        <Home />
+      </StrictMode>,
+    )
+    await screen.findByText("cashier-view")
+    await act(async () => {})
+    expect(issued()).toEqual({ config: 1, tables: 1, waiters: 1, orders: 0, currentRegister: 0, allRegisters: 0 })
+  })
+
+  // F2 / S3: as on dev, a restored session shows its view while startup loads run.
+  it("a restored session shows the role view while a startup load is pending", async () => {
+    env.role = "cashier"
+    env.tableGetAll.mockImplementation(() => new Promise(() => {}))
+    render(<Home />)
+    expect(await screen.findByText("cashier-view")).toBeInTheDocument()
+  })
+
   it("shows the loader, never the form, while the check is pending", async () => {
     holdInitialCheck()
     render(<Home />)
