@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Order, Profile } from "@/types"
 import { useOrderStore } from "@/store/useOrderStore"
-import { deleteOrder } from "@/lib/api/orders"
+import { deleteOrder, orderDtoFromWire } from "@/lib/api/orders"
 import { conflictMessage } from "@/lib/api/errors"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
@@ -37,6 +37,7 @@ import { PrintersPage } from "@/components/admin/settings/PrintersPage"
 import { useHashSection } from "@/hooks/use-hash-section"
 import { getAdminSection, isAdminSectionId, type AdminSectionId } from "@/lib/admin/navigation"
 import {
+  adminOrderFromDto,
   adminOrdersQueryKey,
   fetchActiveAdminOrders,
   gridOrdersFromStore,
@@ -216,9 +217,18 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
           // mapper, so a domicilio arriving by realtime lands in the cache
           // with its delivery flag instead of being labelled "Mesa ?"
           // (odd/tasks/domicilios.md S14).
+          // An INSERT appends a NEW card, so it must be a full order: it goes
+          // through the shared mapper (`order_items` attached by the API
+          // listener, `items: []` when absent), as in WaiterView. A partial
+          // row here has no `items` and crashes OrderCard.
+          const inserted = payload.eventType === "INSERT" ? orderDtoFromWire(payload.new) : null
           const conv: OrderChange = {
             eventType: payload.eventType,
-            new: payload.new ? wireRowToPartialOrder(payload.new) : null,
+            new: inserted
+              ? adminOrderFromDto(inserted)
+              : payload.new
+                ? wireRowToPartialOrder(payload.new)
+                : null,
             old: (payload.old as any)?.id ? { id: (payload.old as any).id } : null,
           }
           queryClient.setQueryData<Order[]>(adminOrdersQueryKey, (prev: Order[] | undefined) =>

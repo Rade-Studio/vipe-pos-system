@@ -313,6 +313,92 @@ describe("AdminView — requests issued while a tab is open", () => {
   })
 })
 
+describe("AdminView — realtime on the Órdenes tab (S3)", () => {
+  const profile = { id: "p-1", name: "Admin", role: "admin" as const }
+
+  /** An `orders` row as the API listener emits it: snake_case, `order_items` attached. */
+  function insertedRow(id: string) {
+    return {
+      id,
+      restaurant_id: "r-1",
+      table_id: "t-2",
+      waiter_id: "w-1",
+      status: "kitchen",
+      order_type: "dine_in",
+      subtotal: 12000,
+      tax: 0,
+      tax_percentage: 0,
+      tip: 0,
+      tip_percentage: 0,
+      total: 12000,
+      total_discounts: 0,
+      is_partial_order: false,
+      parent_order_id: null,
+      created_at: "2026-01-01T10:05:00.000Z",
+      updated_at: "2026-01-01T10:05:00.000Z",
+      order_items: [
+        {
+          id: "i-1",
+          order_id: id,
+          dish_id: "d-1",
+          name: "Bandeja paisa",
+          price: 12000,
+          quantity: 1,
+          comments: null,
+          status: "kitchen",
+          added_at: "2026-01-01T10:05:00.000Z",
+          created_at: "2026-01-01T10:05:00.000Z",
+          updated_at: null,
+        },
+      ],
+    }
+  }
+
+  async function openOrdersWith(dtos: unknown[]) {
+    state.api.orders = dtos
+    render(wrap(<AdminView profile={profile} onChangeProfile={() => {}} authRole="admin" />))
+    await openSection("orders")
+    await screen.findByTestId("admin-order-o-1")
+  }
+
+  async function emit(payload: unknown) {
+    await act(async () => {
+      state.realtime.subscribeToOrders?.(payload)
+    })
+  }
+
+  it("renders an order INSERTed by realtime with its items instead of crashing the screen", async () => {
+    await openOrdersWith([activeOrderDto("o-1")])
+
+    await emit({ eventType: "INSERT", new: insertedRow("o-2"), old: {} })
+
+    const card = await screen.findByTestId("admin-order-o-2")
+    expect(card).toHaveTextContent("Bandeja paisa")
+    expect(screen.getByTestId("admin-order-o-1")).toBeInTheDocument()
+  })
+
+  it("keeps the screen up when an INSERT row arrives without order_items", async () => {
+    await openOrdersWith([activeOrderDto("o-1")])
+    const bare: Record<string, unknown> = insertedRow("o-2")
+    delete bare.order_items
+
+    await emit({ eventType: "INSERT", new: bare, old: {} })
+
+    expect(await screen.findByTestId("admin-order-o-2")).toBeInTheDocument()
+    expect(screen.getByTestId("admin-order-o-1")).toBeInTheDocument()
+  })
+
+  it("a status-only UPDATE keeps the order's items (previous behaviour)", async () => {
+    await openOrdersWith([
+      { ...activeOrderDto("o-1"), items: [{ ...insertedRow("o-1").order_items[0], orderId: "o-1", dishId: "d-1", addedAt: null, createdAt: null, updatedAt: null }] },
+    ])
+
+    await emit({ eventType: "UPDATE", new: { id: "o-1", status: "delivered" }, old: { id: "o-1" } })
+
+    expect(screen.getByTestId("admin-order-o-1")).toHaveTextContent("Bandeja paisa")
+  })
+})
+
 function activeOrderDto(id: string) {
   return {
     id,
