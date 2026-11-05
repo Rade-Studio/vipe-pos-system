@@ -52,6 +52,9 @@ describe("deploy docs", () => {
     expect(deployJob).toContain("docker buildx imagetools create")
     expect(deployJob).toContain("packages: write")
     expect(deployJob.indexOf("imagetools create")).toBeLessThan(deployJob.indexOf("Deploy to Coolify"))
+    // A re-run of an older run must not move the branch tag backwards.
+    expect(deployJob.indexOf("is no longer the head of")).toBeGreaterThan(-1)
+    expect(deployJob.indexOf("is no longer the head of")).toBeLessThan(deployJob.indexOf("imagetools create"))
   })
 
   it("mounts no repository file in the Coolify compose, which Coolify does not ship next to it", () => {

@@ -220,8 +220,17 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Move the branch tag to this commit's images
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # A re-run of an older run must not move the tag back to an older
+          # commit (and deploy it): only the branch head may take the tag.
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::$GITHUB_SHA is no longer the head of $GITHUB_REF_NAME ($head); not moving the tag."
+            exit 1
+          fi
           for image in vipe-pos-api vipe-pos-migrate vipe-pos-web; do
             docker buildx imagetools create \
               -t "ghcr.io/rade-studio/$image:$GITHUB_REF_NAME" \
