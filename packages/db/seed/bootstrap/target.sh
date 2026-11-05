@@ -13,7 +13,8 @@
 #            `docker exec`. Containers are found by compose service name plus
 #            the Coolify app uuid: --app-uuid or $VIPE_COOLIFY_APP_UUID, with
 #            no default, so a run never lands on another app's database by
-#            omission. Migrations are the `migrate` service's job there, so
+#            omission. An app uuid with the local target exits 2.
+#            Migrations are the `migrate` service's job there, so
 #            target_prepare only checks that the schema exists.
 #
 # Writes run as vipe_migrator, the schema owner: callers put
@@ -60,6 +61,10 @@ target_init() {
   TARGET="$1"
   case "$TARGET" in
     local)
+      # A named Coolify app means the operator meant the server: never fall
+      # back to the local database because --target coolify was omitted.
+      [[ -z "${VIPE_COOLIFY_APP_UUID:-}" ]] \
+        || target_die "a Coolify app uuid was given (--app-uuid or VIPE_COOLIFY_APP_UUID) but the target is local; pass --target coolify, or unset it for the local stack" 2
       : "${TARGET_DB:?TARGET_DB must be set for the local target}"
       [[ "$TARGET_DB" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || target_die "invalid database name '$TARGET_DB'" 2
       ;;

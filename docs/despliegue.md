@@ -357,7 +357,8 @@ En el servidor el script corre en el host y usa `docker exec`: `psql` en el cont
 que les da Coolify, `<servicio>-<uuid del recurso>-<fecha>`. El UUID es obligatorio con
 `--target coolify`, con `--app-uuid <uuid>` o con la variable `VIPE_COOLIFY_APP_UUID`; no hay valor
 por defecto, para que una variable olvidada no escriba en el recurso equivocado (sin UUID, código
-`2`). El recurso de staging es `zyxpf2vqnowxdolrgne8vxew`. Las escrituras corren como
+`2`). A la inversa, un UUID sin `--target coolify` también termina con código `2` antes de tocar
+ninguna base, en vez de escribir en la base local. El recurso de staging es `zyxpf2vqnowxdolrgne8vxew`. Las escrituras corren como
 `vipe_migrator` (`SET LOCAL ROLE`), sea cual sea el `POSTGRES_USER` del contenedor. Basta con
 copiar los scripts al servidor; no hace falta el repositorio:
 

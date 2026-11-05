@@ -101,6 +101,21 @@ fingerprint_a() { sql "$a" postgres "SELECT (SELECT count(*) FROM public.restaur
 expect_exit 2 "bootstrap: --target coolify without an app uuid" \
   env -u VIPE_COOLIFY_APP_UUID ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify "La Mesa" admin@mesa.example
 expect_stderr "bootstrap: the missing app uuid names --app-uuid" "--app-uuid"
+# An app uuid without --target coolify must stop before any database: a stub
+# docker records any call, so the refusal is proven to touch nothing.
+nodocker="$scratch/nodocker"
+mkdir -p "$nodocker"
+printf '#!/bin/sh\ntouch "%s/called"\nexit 1\n' "$nodocker" >"$nodocker/docker"
+chmod +x "$nodocker/docker"
+expect_exit 2 "bootstrap: --app-uuid without --target coolify" \
+  env PATH="$nodocker:$PATH" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --app-uuid "$a" "La Mesa" admin@mesa.example
+expect_stderr "bootstrap: the refusal names --target coolify" "--target coolify"
+expect_exit 2 "demo: --app-uuid without --target coolify" \
+  env PATH="$nodocker:$PATH" DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --app-uuid "$a"
+expect_stderr "demo: the refusal names --target coolify" "--target coolify"
+expect_exit 2 "bootstrap: VIPE_COOLIFY_APP_UUID set for the local target" \
+  env PATH="$nodocker:$PATH" VIPE_COOLIFY_APP_UUID="$a" ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" "La Mesa" admin@mesa.example
+expect_eq "refused local runs never called docker" "absent" "$([[ -e "$nodocker/called" ]] && echo called || echo absent)"
 expect_exit 2 "bootstrap: VIPE_COOLIFY_APP_UUID set but empty" \
   env VIPE_COOLIFY_APP_UUID= ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify "La Mesa" admin@mesa.example
 expect_exit 2 "bootstrap: short password" \
