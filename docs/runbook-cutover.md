@@ -92,6 +92,16 @@ El corte mueve datos de forma **irreversible** hacia la base nueva. En Supabase 
 
 Objetivo: correr exactamente los mismos comandos del corte sobre datos reales, sin tocar producción.
 
+Atajo local: `pnpm db:rehearse-real` corre los pasos 2.3 a 2.6 (export, copia de imágenes, import y verify) contra el Supabase real que indique `SUPABASE_DB_URL`, pero el destino es siempre un Postgres y un MinIO desechables en la máquina del operador. No acepta `TARGET_DATABASE_URL`, así que no puede escribir en Coolify ni en producción, y el origen solo se lee (`export.sh` abre cada sesión en solo lectura). Lo ejecuta quien tiene la contraseña:
+
+```bash
+SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres' \
+  pnpm db:rehearse-real
+```
+
+Imprime los conteos del origen, el reporte de imágenes por estado, el reporte de import y `verify: all N checks passed`, y guarda el log en `/tmp/vipe-rehearse-real-<id>.log` solo si no contiene la credencial. El directorio de export (con hashes reales) se borra siempre al salir. `REHEARSAL_KEEP=1` deja el destino vivo para inspeccionarlo. Sirve para encontrar desvíos de esquema y datos antes del ensayo completo; no reemplaza la sección 3 contra staging.
+
+
 1. Crear una copia de la base de Supabase (backup restaurado en un proyecto o Postgres de staging). Ese es el `SUPABASE_DB_URL` del ensayo.
 2. Levantar un destino de staging vacío con roles y migraciones, y un bucket S3 de staging.
 3. Ejecutar los pasos 2.3 a 2.7 contra staging.
@@ -424,6 +434,7 @@ Todos en `packages/db/migration-from-supabase/`.
 | `import.sh <dir> [--force-empty-target]` | `TARGET_DATABASE_URL` (superusuario) | Carga en `import_src` y ejecuta `import.sql` en una transacción. Rechaza un destino con datos. |
 | `verify.sh` | `TARGET_DATABASE_URL`, `S3_PUBLIC_BASE_URL` | Ejecuta `verify.sql`; código distinto de 0 ante cualquier diferencia. |
 | `rehearse.sh` (`pnpm db:rehearse-migration`) | opcional `REHEARSAL_PORT_BASE` (55400) | Ensayo completo con contenedores desechables. |
+| `rehearse-real.sh` (`pnpm db:rehearse-real`) | `SUPABASE_DB_URL`; opcionales `SUPABASE_PUBLIC_STORAGE_URL`, `REHEARSAL_PORT_BASE` (55500), `REHEARSAL_LOG`, `REHEARSAL_KEEP=1` | Export, copia, import y verify de un Supabase real hacia un Postgres y un MinIO desechables. Rechaza `TARGET_DATABASE_URL`. |
 | `scripts/build-source-schema.sh` | opcional `VIPE_SOURCE_COMMIT`, `VIPE_SOURCE_SCHEMA_OUT` | Regenera `fixtures/source-schema.sql` desde `supabase/migrations` leído de Git en ese commit (el directorio ya no existe en la rama). |
 
 Contraseña de los usuarios del fixture: `vipe-rehearsal-2026` (datos sintéticos, no reales).
