@@ -7,14 +7,16 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc src/index.ts --outDir dist --rootDir src --declaration --module commonjs --moduleResolution node --target ES2022 --esModuleInterop --skipLibCheck --strict --types node",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p migration-from-supabase/tsconfig.json",
     "migrate": "tsx src/migrate.ts",
     "generate": "drizzle-kit generate",
     "studio": "drizzle-kit studio",
     "schema:pull": "tsx src/pull-schema.ts",
-    "dev": "bash seed/dev-db.sh"
+    "dev": "bash seed/dev-db.sh",
+    "rehearse-migration": "bash migration-from-supabase/rehearse.sh"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1162.0",
     "drizzle-orm": "0.45.4",
     "pg": "8.23.1"
   },
