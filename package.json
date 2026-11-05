@@ -33,6 +33,7 @@
     "db:test-seeds": "pnpm --filter @vipe/db test:seeds",
     "db:rehearse-migration": "pnpm --filter @vipe/db rehearse-migration",
     "db:rehearse-real": "pnpm --filter @vipe/db rehearse-real",
+    "db:test-rehearse-real": "pnpm --filter @vipe/db rehearse-real-test",
     "web:api-types": "openapi-typescript apps/api/openapi.json -o lib/api/schema.d.ts",
     "docker:dev": "docker-compose up -d",
     "docker:dev:build": "docker-compose up -d --build",

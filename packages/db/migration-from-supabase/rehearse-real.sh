@@ -38,6 +38,12 @@ TARGET_IMAGE="postgres:16"
 
 src_user="$(bash -c 'source "$1"; parse_pg_url "$SUPABASE_DB_URL"; printf %s "$pg_user"' _ "$TOOLKIT_DIR/lib.sh")"
 src_password="$(bash -c 'source "$1"; parse_pg_url "$SUPABASE_DB_URL"; printf %s "$pg_password"' _ "$TOOLKIT_DIR/lib.sh")"
+# The password as written in the URL (percent-encoded), checked in the log too.
+src_userinfo="${SUPABASE_DB_URL#*://}" src_password_raw=""
+if [[ "$src_userinfo" == *@* ]]; then
+  src_userinfo="${src_userinfo%@*}"
+  [[ "$src_userinfo" == *:* ]] && src_password_raw="${src_userinfo#*:}"
+fi
 if [ -z "${SUPABASE_PUBLIC_STORAGE_URL:-}" ]; then
   ref="${src_user#postgres.}"
   [ "$ref" != "$src_user" ] && [ -n "$ref" ] \
@@ -58,27 +64,44 @@ export POSTGRES_PASSWORD="$password"
 minio_user="rehearsal" minio_password="rehearsal-$hex"
 bucket="vipe-rehearse-real"
 
+# Original stderr: cleanup writes here, because Ctrl-C also kills the tee below.
+exec 3>&2
+export PG_TOOL_TRACE="$work/pg-tool-argv.log"
+
+# Runs on every exit, including Ctrl-C: the real hashes go first, before any
+# output (stdout may be a dead pipe), and nothing here may stop it half-way.
 cleanup() {
   local status=$?
+  trap '' INT TERM PIPE
+  set +e
+  rm -rf "$work/export"
+  exec >&3 2>&3
+  clog() {
+    printf '%s: %s\n' "$TOOL_NAME" "$*" 2>/dev/null
+    [ -f "$work/rehearsal.log" ] && printf '%s: %s\n' "$TOOL_NAME" "$*" >> "$work/rehearsal.log"
+  }
+  sleep 1 # let tee flush what it already read
   if [ "${REHEARSAL_KEEP:-}" = 1 ]; then
-    log "kept $tgt_c (127.0.0.1:$tgt_port, postgres/$password) and $minio_c; remove them with: docker rm -f $tgt_c $minio_c"
+    clog "kept $tgt_c (127.0.0.1:$tgt_port, postgres/$password) and $minio_c; remove them with: docker rm -f $tgt_c $minio_c"
   else
-    docker rm -f "$tgt_c" "$minio_c" >/dev/null 2>&1 || true
+    docker rm -f "$tgt_c" "$minio_c" >/dev/null 2>&1
   fi
-  if [ "$status" -eq 0 ]; then log "PASS"; else log "FAIL (exit $status)"; fi
-  sleep 1
-  if [ -n "$src_password" ] && { grep -qF -- "$src_password" "$work/rehearsal.log" || grep -qF -- "$src_password" "$PG_TOOL_TRACE"; }; then
-    log "ERROR: the source credential appears in the log or a client command line; no log was kept"
+  if [ "$status" -eq 0 ]; then clog "PASS"; else clog "FAIL (exit $status)"; fi
+  local files=() secrets=()
+  for f in "$work/rehearsal.log" "$PG_TOOL_TRACE"; do [ -f "$f" ] && files+=("$f"); done
+  for s in "$src_password" "$src_password_raw"; do [ -n "$s" ] && secrets+=("$s"); done
+  # Patterns through a file descriptor (printf is a builtin): never in a process argument.
+  if [ "${#secrets[@]}" -gt 0 ] && [ "${#files[@]}" -gt 0 ] && grep -qF -f <(printf '%s\n' "${secrets[@]}") "${files[@]}"; then
+    clog "ERROR: the source credential appears in the log or a client command line; no log was kept"
     status=1
-  else
-    cp "$work/rehearsal.log" "$out_log" && log "log: $out_log"
+  elif [ -f "$work/rehearsal.log" ]; then
+    cp "$work/rehearsal.log" "$out_log" && clog "log: $out_log"
   fi
   rm -rf "$work"
   exit "$status"
 }
 trap cleanup EXIT
 exec > >(tee "$work/rehearsal.log") 2>&1
-export PG_TOOL_TRACE="$work/pg-tool-argv.log"
 : > "$PG_TOOL_TRACE"
 trap 'exit 130' INT TERM
 
@@ -107,7 +130,9 @@ su_exec "$tgt_c" -d postgres -v migrator_password="$password" -v api_password="$
 
 step "MinIO: public-read bucket $bucket"
 mc() { docker run --rm --network host -e MC_HOST_local="http://$minio_user:$minio_password@127.0.0.1:$minio_port" --entrypoint /bin/sh "$MC_IMAGE" -c "$1"; }
-for _ in $(seq 1 30); do mc 'mc ready local' >/dev/null 2>&1 && break; sleep 1; done
+minio_ready=0
+for _ in $(seq 1 30); do if mc 'mc ready local' >/dev/null 2>&1; then minio_ready=1; break; fi; sleep 1; done
+[ "$minio_ready" = 1 ] || die "MinIO ($minio_c) did not become ready after 30 tries"
 mc "mc mb --ignore-existing local/$bucket >/dev/null && mc anonymous set download local/$bucket >/dev/null"
 
 export TARGET_DATABASE_URL="postgres://postgres:$password@127.0.0.1:$tgt_port/vipe_pos"

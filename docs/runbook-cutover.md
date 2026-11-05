@@ -99,7 +99,7 @@ SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.su
   pnpm db:rehearse-real
 ```
 
-Imprime los conteos del origen, el reporte de imágenes por estado, el reporte de import y `verify: all N checks passed`, y guarda el log en `/tmp/vipe-rehearse-real-<id>.log` solo si no contiene la credencial. El directorio de export (con hashes reales) se borra siempre al salir. `REHEARSAL_KEEP=1` deja el destino vivo para inspeccionarlo. Sirve para encontrar desvíos de esquema y datos antes del ensayo completo; no reemplaza la sección 3 contra staging.
+Imprime los conteos del origen, el reporte de imágenes por estado, el reporte de import y `verify: all N checks passed`, y guarda el log en `/tmp/vipe-rehearse-real-<id>.log` solo si no contiene la credencial. El directorio de export (con hashes reales) se borra siempre al salir. `REHEARSAL_KEEP=1` deja el destino vivo para inspeccionarlo; esos contenedores guardan los hashes reales de las contraseñas, así que hay que borrarlos con `docker rm -f` al terminar. Ctrl-C también borra el export y los contenedores y sale con 130. `pnpm db:test-rehearse-real` prueba el script con el fixture como origen (no corre en CI). Sirve para encontrar desvíos de esquema y datos antes del ensayo completo; no reemplaza la sección 3 contra staging.
 
 
 1. Crear una copia de la base de Supabase (backup restaurado en un proyecto o Postgres de staging). Ese es el `SUPABASE_DB_URL` del ensayo.
