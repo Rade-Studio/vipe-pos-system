@@ -218,11 +218,29 @@ docker run --rm --network "$id-net" -e MC_HOST_root --entrypoint /bin/sh "$MC_IM
   -c 'mc stat root/app-z-staging' >/dev/null 2>&1 && rc=0 || rc=$?
 check "unreadable user info creates no bucket" 1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
 
+# Fail closed with credentials that could change state: all S3 and admin
+# rights except admin:GetUser.
+export LIMPOL='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:*"],"Resource":["arn:aws:s3:::*"]},{"Effect":"Allow","Action":["admin:*"]},{"Effect":"Deny","Action":["admin:GetUser"]}]}'
+lim_secret=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n'); export LIM_SECRET=$lim_secret
+docker run --rm -i --network "$id-net" -e MC_HOST_root -e LIMPOL -e LIM_SECRET --entrypoint /bin/sh "$MC_IMAGE" -c \
+  'printf "%s" "$LIMPOL" > /tmp/l.json && mc admin policy create root lim /tmp/l.json >/dev/null && printf "lim\n%s\n" "$LIM_SECRET" | mc admin user add root >/dev/null && mc admin policy attach root lim --user lim >/dev/null' && rc=0 || rc=$?
+check "limited admin created" 0 "$rc"
+MC_HOST_l="http://lim:$lim_secret@minio:9000" docker run --rm -i --network "$id-net" -e MC_HOST_l --entrypoint /bin/sh "$MC_IMAGE" \
+  -c 'mc mb l/lim-probe >/dev/null && mc rb l/lim-probe >/dev/null' && rc=0 || rc=$?
+check "limited admin can create buckets" 0 "$rc"
+MINIO_ROOT_USER=lim MINIO_ROOT_PASSWORD="$lim_secret" \
+  bash "$here/provision-app.sh" app-l-staging app-l >/dev/null 2>"$scratch/l.log" && rc=0 || rc=$?
+check "no GetUser right exits 1" 1 "$rc"
+check "no GetUser right is reported" 1 "$(grep -c 'cannot read user app-l: AccessDenied' "$scratch/l.log" || true)"
+left=$(docker run --rm --network "$id-net" -e MC_HOST_root --entrypoint /bin/sh "$MC_IMAGE" -c \
+  'mc stat root/app-l-staging >/dev/null 2>&1 && echo bucket; mc admin policy info root app-app-l-staging >/dev/null 2>&1 && echo policy; mc admin user info root app-l >/dev/null 2>&1 && echo user; mc admin policy info root app-app-z-staging >/dev/null 2>&1 && echo zpolicy; mc admin user info root app-z >/dev/null 2>&1 && echo zuser; true')
+check "fail-closed runs create no bucket, policy or user" "" "$left"
+
 # Root passwords with URL-reserved, quote, space and non-ASCII characters.
-sp_pw="p@ss:w/rd%41&x+y?z#q é ñ✓ $(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')"
+sp_pw="p@ss:w/rd%41&x+y?z#q 'sq' \"dq\" back\\slash é ñ✓ $(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')"
 printf '%s\n' "$sp_pw" >> "$scratch/needles"
-docker run -d --name "$id-sp" --network "$id-net" --network-alias minio-sp \
-  -e MINIO_ROOT_USER=root-sp -e MINIO_ROOT_PASSWORD="$sp_pw" "$MINIO_IMAGE" server /data >/dev/null
+MINIO_ROOT_USER=root-sp MINIO_ROOT_PASSWORD="$sp_pw" docker run -d --name "$id-sp" --network "$id-net" --network-alias minio-sp \
+  -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD "$MINIO_IMAGE" server /data >/dev/null
 for _ in $(seq 60); do docker exec "$id-sp" mc ready local >/dev/null 2>&1 && break; sleep 1; done
 MINIO_ROOT_USER=root-sp MINIO_ROOT_PASSWORD="$sp_pw" MINIO_URL=http://minio-sp:9000 \
   sampled sp app-sp-staging app-sp && rc=0 || rc=$?

@@ -6,7 +6,7 @@ Un único servidor MinIO, compatible con S3, para todas las aplicaciones de la V
 - un usuario propio, cuya política solo permite `s3:GetObject`, `s3:PutObject` y `s3:DeleteObject` sobre los objetos de ese bucket (sin listar, sin acceso a otros buckets);
 - lectura anónima de objetos por su clave (`s3:GetObject`), sin listado anónimo del bucket.
 
-Las credenciales administradoras (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`) solo se usan para aprovisionar; ninguna aplicación las recibe. El script las entrega a `mc` por la variable de entorno `MC_HOST_local` y el secreto de la aplicación por la entrada estándar, nunca como argumentos de un proceso.
+Las credenciales administradoras (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`) solo se usan para aprovisionar; ninguna aplicación las recibe. El script las pasa al contenedor de `mc` como variables de entorno por nombre y `mc alias set` las lee por la entrada estándar; el secreto de la aplicación llega a `mc admin user add` también por la entrada estándar. Ninguna credencial aparece como argumento de un proceso. La contraseña administradora no puede empezar ni terminar con espacios, porque `mc` los recorta al leerla; se recomienda `openssl rand -hex 32`.
 
 ## Archivos
 
