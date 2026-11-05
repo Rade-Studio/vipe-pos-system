@@ -12,13 +12,19 @@
 # Environment:
 #   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD  root credentials (required, never printed)
 #   MINIO_URL           URL mc uses to reach MinIO (default http://minio:9000)
-#
-# Exit 3 when <app-user> already exists with a policy for another bucket
-# (one user per bucket); nothing is changed in that case.
 #   MINIO_NETWORK       docker network to attach the mc container to (optional;
 #                       leave empty when MINIO_URL is the public S3 domain)
 #   S3_PUBLIC_ENDPOINT  public S3 URL written into the printed block
 #                       (default MINIO_URL)
+#
+# Exit codes:
+#   0  provisioned (user created, rotated or kept)
+#   1  MinIO error, including an existing user's info that cannot be read;
+#      nothing is changed when that check fails
+#   2  usage error: invalid bucket or user name, or <app-user> equal to
+#      MINIO_ROOT_USER; nothing is changed
+#   3  <app-user> already exists with a policy for another bucket (one user
+#      per bucket); nothing is changed
 #
 # stdout carries only the final S3_* block; every progress line goes to stderr.
 set -euo pipefail
@@ -48,6 +54,7 @@ APP_USER=${args[1]}
 [[ "$APP_USER" =~ ^[A-Za-z0-9._-]{3,64}$ ]] || { echo "invalid app user: $APP_USER" >&2; exit 2; }
 : "${MINIO_ROOT_USER:?define MINIO_ROOT_USER}"
 : "${MINIO_ROOT_PASSWORD:?define MINIO_ROOT_PASSWORD}"
+[ "$APP_USER" != "$MINIO_ROOT_USER" ] || { echo "app user must not be MINIO_ROOT_USER" >&2; exit 2; }
 MINIO_URL=${MINIO_URL:-http://minio:9000}
 S3_PUBLIC_ENDPOINT=${S3_PUBLIC_ENDPOINT:-$MINIO_URL}
 S3_PUBLIC_ENDPOINT=${S3_PUBLIC_ENDPOINT%/}
@@ -55,44 +62,34 @@ S3_PUBLIC_ENDPOINT=${S3_PUBLIC_ENDPOINT%/}
 # Generated on the host; only used if the user is created or rotated.
 APP_SECRET=$(od -An -tx1 -N24 /dev/urandom | tr -d ' \n')
 
-# Percent-encodes $1 for the userinfo part of a URL, with bash builtins only so
-# no external process ever receives the value as an argument.
-urlencode() {
-  local LC_ALL=C s=$1 out='' c i hex
-  for ((i = 0; i < ${#s}; i++)); do
-    c=${s:i:1}
-    case "$c" in
-      [A-Za-z0-9._~-]) out+=$c ;;
-      *) printf -v hex '%%%02X' "'$c"; out+=$hex ;;
-    esac
-  done
-  printf '%s' "$out"
-}
-scheme=${MINIO_URL%%://*}
-hostport=${MINIO_URL#*://}
-hostport=${hostport%%/*}
-MC_HOST_local="$scheme://$(urlencode "$MINIO_ROOT_USER"):$(urlencode "$MINIO_ROOT_PASSWORD")@$hostport"
-export MC_HOST_local BUCKET APP_USER APP_SECRET ROTATE
+export MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_URL BUCKET APP_USER APP_SECRET ROTATE
 
 network=()
 [ -n "${MINIO_NETWORK:-}" ] && network=(--network "$MINIO_NETWORK")
 
 # Values travel as inherited env (-e NAME), never on a command line: mc reads
-# the root credentials from MC_HOST_local and the app user and secret from
-# stdin (printf is a builtin of the image's busybox sh). The container writes
-# only "created", "rotated" or "kept" to stdout.
+# the root credentials and the app user and secret from stdin (printf is a
+# builtin of the image's busybox sh). mc alias set takes the password as is;
+# MC_HOST_* would need it percent-encoded and this mc does not decode it.
+# The container writes only "created", "rotated" or "kept" to stdout.
 state=$(docker run --rm -i "${network[@]}" \
-  -e MC_HOST_local -e BUCKET -e APP_USER -e APP_SECRET -e ROTATE \
+  -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD -e MINIO_URL -e BUCKET -e APP_USER -e APP_SECRET -e ROTATE \
   --entrypoint /bin/sh "$MC_IMAGE" -s <<'SH'
 set -eu
 log() { echo "$*" >&2; }
 POLICY="app-$BUCKET"
+printf '%s\n%s\n' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" | mc alias set local "$MINIO_URL" >/dev/null
 
 # One user per bucket: refuse an existing user bound to any other policy,
-# before touching the bucket, the user or its policies.
+# before touching the bucket, the user or its policies. Only mc's
+# XMinioAdminNoSuchUser answer means "create"; any other failure aborts.
+fail() { log "cannot read user $APP_USER: $1; nothing changed"; exit 1; }
 if info=$(mc admin user info --json local "$APP_USER" 2>/dev/null); then
   exists=1
+  case "$info" in *'"status":"success"'*) ;; *) fail "unexpected answer" ;; esac
+  # A user with no policy has no policyName key; a key that does not parse aborts.
   policies=$(echo "$info" | sed -n 's/.*"policyName":"\([^"]*\)".*/\1/p')
+  case "$info" in *'"policyName"'*) [ -n "$policies" ] || fail "unparsable policyName" ;; esac
   for p in $(echo "$policies" | tr ',' ' '); do
     if [ "$p" != "$POLICY" ]; then
       log "user $APP_USER already has policies: $policies; refusing to attach $POLICY (one user per bucket)"
@@ -100,7 +97,10 @@ if info=$(mc admin user info --json local "$APP_USER" 2>/dev/null); then
     fi
   done
 else
-  exists=0
+  case "$info" in
+    *'"Code":"XMinioAdminNoSuchUser"'*) exists=0 ;;
+    *) fail "$(echo "$info" | sed -n 's/.*"Code":"\([^"]*\)".*/\1/p')" ;;
+  esac
 fi
 
 mc mb --ignore-existing "local/$BUCKET" >&2

@@ -12,8 +12,11 @@ MC_IMAGE=$(sed -n 's/^MC_IMAGE=//p' "$here/provision-app.sh")
 id="shared-storage-test-$$"
 scratch=$(mktemp -d)
 
+sampler=
 cleanup() {
+  [ -n "$sampler" ] && kill "$sampler" 2>/dev/null || true
   docker rm -f "$id-minio" >/dev/null 2>&1 || true
+  docker rm -f "$id-sp" >/dev/null 2>&1 || true
   docker volume rm "$id-data" >/dev/null 2>&1 || true
   docker network rm "$id-net" >/dev/null 2>&1 || true
   rm -rf "$scratch"
@@ -51,18 +54,20 @@ bash "$here/provision-app.sh" app-a-staging app-a > "$scratch/a.env" 2>"$scratch
 bash "$here/provision-app.sh" app-b-staging app-b > "$scratch/b.env" 2>"$scratch/b.log"
 value() { sed -n "s/^$2=//p" "$1"; }
 check "provision prints the S3_* block" "7" "$(grep -c '^S3_' "$scratch/a.env")"
-check "no secret in provisioning logs" "0" "$(grep -c "$(value "$scratch/a.env" S3_SECRET_ACCESS_KEY)" "$scratch/a.log" || true)"
+value "$scratch/a.env" S3_SECRET_ACCESS_KEY > "$scratch/a.needle"
+check "no secret in provisioning logs" "0" "$(grep -cF -f "$scratch/a.needle" "$scratch/a.log" || true)"
 
-# mc as app-a, through the docker network.
+# mc as app-a, through the docker network. Credentials reach the container by
+# name (-e MC_HOST_a), never on the docker argv; test secrets are hex.
 as_a() {
-  docker run --rm -i --network "$id-net" \
-    -e MC_HOST_a="http://app-a:$(value "$scratch/a.env" S3_SECRET_ACCESS_KEY)@minio:9000" \
+  MC_HOST_a="http://app-a:$(value "$scratch/a.env" S3_SECRET_ACCESS_KEY)@minio:9000" \
+    docker run --rm -i --network "$id-net" -e MC_HOST_a \
     --entrypoint /bin/sh "$MC_IMAGE" -c "$1" >/dev/null 2>&1
 }
 as_a 'echo hello | mc pipe a/app-a-staging/r1/dishes/x.txt' && rc=0 || rc=$?
 check "app-a PUT in its bucket" 0 "$rc"
-denied=$(docker run --rm -i --network "$id-net" \
-  -e MC_HOST_a="http://app-a:$(value "$scratch/a.env" S3_SECRET_ACCESS_KEY)@minio:9000" \
+denied=$(MC_HOST_a="http://app-a:$(value "$scratch/a.env" S3_SECRET_ACCESS_KEY)@minio:9000" \
+  docker run --rm -i --network "$id-net" -e MC_HOST_a \
   --entrypoint /bin/sh "$MC_IMAGE" -c 'echo hello | mc pipe a/app-b-staging/r1/dishes/x.txt' 2>&1 || true)
 # mc renders S3 AccessDenied (HTTP 403) as "Insufficient permissions".
 check "app-a PUT in app-b bucket is denied" 1 "$(grep -c 'Insufficient permissions' <<<"$denied" || true)"
@@ -133,37 +138,59 @@ for bad in 'a"b app-x' 'AB app-x' 'app-a-staging $(id)' '-x app-x'; do
 done
 
 # app-a (rotated secret) has no admin rights and no reach into app-b's bucket.
+# Each denial first proves the rotated secret still works with an allowed PUT,
+# so a denial can never pass just because the credentials are invalid.
 as_a3() {
-  docker run --rm -i --network "$id-net" \
-    -e MC_HOST_a="http://app-a:$new_secret@minio:9000" \
+  MC_HOST_a="http://app-a:$new_secret@minio:9000" \
+    docker run --rm -i --network "$id-net" -e MC_HOST_a \
     --entrypoint /bin/sh "$MC_IMAGE" -c "$1" >/dev/null 2>&1
 }
 as_b() {
-  docker run --rm -i --network "$id-net" \
-    -e MC_HOST_b="http://app-b:$(value "$scratch/b.env" S3_SECRET_ACCESS_KEY)@minio:9000" \
+  MC_HOST_b="http://app-b:$(value "$scratch/b.env" S3_SECRET_ACCESS_KEY)@minio:9000" \
+    docker run --rm -i --network "$id-net" -e MC_HOST_b \
     --entrypoint /bin/sh "$MC_IMAGE" -c "$1" >/dev/null 2>&1
+}
+denied_as_a3() { # denied_as_a3 <description> <mc command>
+  as_a3 'echo ok | mc pipe a/app-a-staging/r1/valid.txt' && rc=0 || rc=$?
+  check "rotated secret valid before: $1" 0 "$rc"
+  as_a3 "$2" && rc=0 || rc=$?
+  check "$1" 1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
 }
 as_b 'echo keep | mc pipe b/app-b-staging/r1/keep.txt' && rc=0 || rc=$?
 check "app-b PUT in its bucket" 0 "$rc"
-as_a3 'mc admin user list a' && rc=0 || rc=$?
-check "app-a denied mc admin user list" 1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
-as_a3 'mc mb a/app-a-extra' && rc=0 || rc=$?
-check "app-a denied mc mb" 1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
-as_a3 'mc rm a/app-b-staging/r1/keep.txt' >/dev/null 2>&1 || true
+denied_as_a3 "app-a denied mc admin user list" 'mc admin user list a'
+denied_as_a3 "app-a denied mc mb" 'mc mb a/app-a-extra'
+denied_as_a3 "app-a denied rm in app-b bucket" 'mc rm a/app-b-staging/r1/keep.txt'
 check "app-b object survives app-a rm" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$local_url/app-b-staging/r1/keep.txt")"
 
-# No credential on any command line while provisioning a new app.
-( while :; do ps -eo args >> "$scratch/ps.txt"; done ) &
-sampler=$!
-bash "$here/provision-app.sh" app-c-staging app-c > "$scratch/c.env" 2>/dev/null
-kill "$sampler"; wait "$sampler" 2>/dev/null || true
-printf '%s\n%s\n' "$MINIO_ROOT_PASSWORD" "$(value "$scratch/c.env" S3_SECRET_ACCESS_KEY)" > "$scratch/needles"
-mc_seen=$(grep -cE '(^|/)mc( |$)' "$scratch/ps.txt" || true)
-if [ "$mc_seen" -gt 0 ]; then
-  check "no credential in process argv ($mc_seen mc samples)" 0 "$(grep -cF -f "$scratch/needles" "$scratch/ps.txt" || true)"
-else
-  echo "skip argv check (sampler saw no mc process)"
-fi
+# No credential on any command line while provisioning. sampled <name> <args>
+# runs provision-app.sh while sampling every process argv; when the sampler
+# missed every mc process it retries once with --rotate (a new secret, kept as
+# a needle too). Every printed secret and root password is a needle.
+: > "$scratch/needles"
+: > "$scratch/ps.txt"
+printf '%s\n' "$MINIO_ROOT_PASSWORD" >> "$scratch/needles"
+sampled() {
+  local name=$1 try rc=0 extra=()
+  shift
+  for try in 1 2; do
+    : > "$scratch/ps-$name.txt"
+    ( while :; do ps -eo args >> "$scratch/ps-$name.txt"; done ) &
+    sampler=$!
+    bash "$here/provision-app.sh" "${extra[@]}" "$@" > "$scratch/$name-$try.env" 2>/dev/null && rc=0 || rc=$?
+    kill "$sampler"; wait "$sampler" 2>/dev/null || true
+    sampler=
+    cat "$scratch/ps-$name.txt" >> "$scratch/ps.txt"
+    secret=$(value "$scratch/$name-$try.env" S3_SECRET_ACCESS_KEY)
+    [ -n "$secret" ] && printf '%s\n' "$secret" >> "$scratch/needles"
+    [ "$try" = 1 ] && cp "$scratch/$name-$try.env" "$scratch/$name.env"
+    grep -qE '(^|/)mc( |$)' "$scratch/ps-$name.txt" && break
+    extra=(--rotate)
+  done
+  check "sampler saw mc while provisioning $name" 1 "$(grep -qE '(^|/)mc( |$)' "$scratch/ps-$name.txt" && echo 1 || echo 0)"
+  return "$rc"
+}
+sampled c app-c-staging app-c || true
 
 # One user per bucket: provisioning app-c for another bucket is refused.
 bash "$here/provision-app.sh" app-c-other app-c >/dev/null 2>"$scratch/c-other.log" && rc=0 || rc=$?
@@ -173,5 +200,37 @@ export MC_HOST_root="http://$MINIO_ROOT_USER:$MINIO_ROOT_PASSWORD@minio:9000"
 policies=$(docker run --rm --network "$id-net" -e MC_HOST_root --entrypoint /bin/sh "$MC_IMAGE" \
   -c 'mc admin user info --json root app-c' | sed -n 's/.*"policyName":"\([^"]*\)".*/\1/p')
 check "app-c keeps only its policy" "app-app-c-staging" "$policies"
+
+# The app user may never be the root user: exit 2 before anything is created.
+bash "$here/provision-app.sh" app-r-staging "$MINIO_ROOT_USER" >/dev/null 2>"$scratch/r.log" && rc=0 || rc=$?
+check "app user equal to MINIO_ROOT_USER exits 2" 2 "$rc"
+docker run --rm --network "$id-net" -e MC_HOST_root --entrypoint /bin/sh "$MC_IMAGE" \
+  -c 'mc stat root/app-r-staging' >/dev/null 2>&1 && rc=0 || rc=$?
+check "root-user refusal creates no bucket" 1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
+
+# Fail closed: when user info cannot be read (here: credentials without admin
+# rights), nothing is created and the script exits 1 with a message.
+MINIO_ROOT_USER=app-a MINIO_ROOT_PASSWORD="$new_secret" \
+  bash "$here/provision-app.sh" app-z-staging app-z >/dev/null 2>"$scratch/z.log" && rc=0 || rc=$?
+check "unreadable user info exits 1" 1 "$rc"
+check "unreadable user info is reported" 1 "$(grep -c 'cannot read user app-z' "$scratch/z.log" || true)"
+docker run --rm --network "$id-net" -e MC_HOST_root --entrypoint /bin/sh "$MC_IMAGE" \
+  -c 'mc stat root/app-z-staging' >/dev/null 2>&1 && rc=0 || rc=$?
+check "unreadable user info creates no bucket" 1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
+
+# Root passwords with URL-reserved, quote, space and non-ASCII characters.
+sp_pw="p@ss:w/rd%41&x+y?z#q é ñ✓ $(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')"
+printf '%s\n' "$sp_pw" >> "$scratch/needles"
+docker run -d --name "$id-sp" --network "$id-net" --network-alias minio-sp \
+  -e MINIO_ROOT_USER=root-sp -e MINIO_ROOT_PASSWORD="$sp_pw" "$MINIO_IMAGE" server /data >/dev/null
+for _ in $(seq 60); do docker exec "$id-sp" mc ready local >/dev/null 2>&1 && break; sleep 1; done
+MINIO_ROOT_USER=root-sp MINIO_ROOT_PASSWORD="$sp_pw" MINIO_URL=http://minio-sp:9000 \
+  sampled sp app-sp-staging app-sp && rc=0 || rc=$?
+check "special-character root password provisions" 0 "$rc"
+check "special-character run prints a secret" 1 "$([ -n "$(value "$scratch/sp.env" S3_SECRET_ACCESS_KEY)" ] && echo 1 || echo 0)"
+docker rm -f "$id-sp" >/dev/null 2>&1 || true
+
+check "no credential in process argv ($(grep -cE '(^|/)mc( |$)' "$scratch/ps.txt" || true) mc samples)" 0 \
+  "$(grep -cF -f "$scratch/needles" "$scratch/ps.txt" || true)"
 
 if [ "$failures" -eq 0 ]; then echo "PASS shared-storage"; else echo "FAILED $failures check(s)"; exit 1; fi
