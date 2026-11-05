@@ -126,8 +126,10 @@ El rol lo define la cuenta con la que se inició sesión (lo resuelve la API en 
 
 #### Datos de demostración y primer restaurante
 
-- `DEMO_PASSWORD=<12+ caracteres> pnpm db:demo` carga en la base `vipe_demo` un restaurante ficticio ("Casa Guadua") con personal de todos los roles (`@demo.vipe.pos`), menú, mesas, inventario, 30 días de historia y actividad en vivo; `--reset` lo reemplaza. Es la demostración de staging; ver [docs/despliegue.md](docs/despliegue.md), sección 3.6.
-- `pnpm db:create-restaurant "<nombre>" <correo>` crea un restaurante y su primer administrador en una base sin registro (producción arranca vacía); la contraseña se lee de `ADMIN_PASSWORD` o de la entrada estándar. Ver la sección 3.5 de la misma guía.
+- `DEMO_PASSWORD=<12+ caracteres> pnpm db:demo` carga en la base `vipe_demo` un restaurante ficticio ("Casa Guadua") con personal de todos los roles (`@demo.vipe.pos`), menú, mesas, inventario con preparaciones, 30 días de historia y actividad en vivo; `--reset` lo reemplaza. Es la demostración de staging, accesible solo desde la red de Tailscale; ver [docs/despliegue.md](docs/despliegue.md), sección 3.6.
+- `pnpm db:create-restaurant "<nombre>" <correo>` crea un restaurante y su primer administrador en una base sin registro (producción arranca vacía); la contraseña se lee de `ADMIN_PASSWORD` o de la entrada estándar y `--username` cambia el usuario del perfil. Ver la sección 3.5 de la misma guía.
+- Los códigos de salida `2` (uso inválido) y `3` (ya existe) son los de los scripts ejecutados con `bash` (`bash packages/db/seed/demo/demo-db.sh`, `bash packages/db/seed/bootstrap/create-restaurant.sh`); a través de `pnpm` cualquier fallo se informa como `1`.
+- `pnpm db:test-seeds` prueba el contrato de ambos scripts contra contenedores desechables (no corre en CI).
 
 ### Vista de Mesero
 

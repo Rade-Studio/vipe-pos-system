@@ -30,6 +30,7 @@
     "db:dev": "pnpm --filter @vipe/db dev",
     "db:demo": "pnpm --filter @vipe/db demo",
     "db:create-restaurant": "pnpm --filter @vipe/db create-restaurant",
+    "db:test-seeds": "pnpm --filter @vipe/db test:seeds",
     "db:rehearse-migration": "pnpm --filter @vipe/db rehearse-migration",
     "web:api-types": "openapi-typescript apps/api/openapi.json -o lib/api/schema.d.ts",
     "docker:dev": "docker-compose up -d",

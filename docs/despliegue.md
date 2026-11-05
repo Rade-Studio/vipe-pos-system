@@ -200,6 +200,13 @@ la imagen: Coolify no coloca los archivos del repositorio junto al compose, así
 `./deploy/...` llegaría como un directorio vacío y no se crearían `vipe_migrator` ni `vipe_api`.
 Si un primer despliegue ya inicializó el volumen sin esos roles, hay que borrar el volumen de
 `postgres` (solo si está vacío) y desplegar de nuevo, porque el script de roles corre una sola vez.
+Si el volumen ya tiene datos, no se borra: se ejecuta `roles.sql` como superusuario, igual que en
+2.2, con el script que la imagen ya incluye y las contraseñas del contenedor, y después se vuelve a
+desplegar para que corra `migrate`:
+
+```bash
+docker exec <contenedor-postgres> sh /docker-entrypoint-initdb.d/10-roles.sh
+```
 
 ### 3.1 Crear el recurso
 
@@ -331,18 +338,27 @@ administrador en una sola transacción. Después, ese administrador inicia sesi�
 `https://<sitio>/portal` y crea el personal desde **Personal**.
 
 - Argumentos: el nombre del restaurante y el correo del administrador; `--admin-name` para el
-  nombre que se muestra (por defecto `Administrador`).
+  nombre que se muestra (por defecto `Administrador`) y `--username` para el usuario del perfil
+  (por defecto, la parte del correo antes de `@`; de 1 a 50 caracteres, sin espacios). El usuario
+  es único en toda la base: si la demo u otro restaurante ya usa, por ejemplo, `admin`, hay que
+  indicar otro con `--username`.
 - Contraseña: se lee de la variable `ADMIN_PASSWORD` o, si está vacía, de la entrada estándar
   (en una terminal la pide sin mostrarla). Nunca va como argumento. Mínimo 12 caracteres; se
   guarda como hash argon2id calculado con la dependencia `argon2` de la API.
-- Códigos de salida: `0` creado, `2` uso, nombre, correo o contraseña inválidos, `3` ya
-  existe un restaurante con ese nombre (sin distinguir mayúsculas) o un usuario con ese correo
-  (no se cambia nada), `1` cualquier otro error (no queda nada a medias).
+- Códigos de salida del script ejecutado con `bash`: `0` creado; `2` uso, nombre, correo,
+  usuario, contraseña o UUID del recurso inválidos o ausentes; `3` ya existe un restaurante con
+  ese nombre (sin distinguir mayúsculas), un usuario con ese correo o un perfil con ese usuario,
+  también si otro proceso lo creó mientras corría (no se cambia nada); `1` cualquier otro error,
+  incluido un fallo de `psql` o de `docker` (no queda nada a medias). `pnpm db:create-restaurant`
+  informa cualquier fallo como `1`; para distinguir `2` y `3`, ejecutar el script con `bash`.
 
 En el servidor el script corre en el host y usa `docker exec`: `psql` en el contenedor
 `postgres` y `node` en el contenedor `api` del recurso. Encuentra los contenedores por el nombre
-que les da Coolify, `<servicio>-<uuid del recurso>-<fecha>`; el UUID sale de
-`VIPE_COOLIFY_APP_UUID` (por defecto `zyxpf2vqnowxdolrgne8vxew`, el recurso de staging). Basta con
+que les da Coolify, `<servicio>-<uuid del recurso>-<fecha>`. El UUID es obligatorio con
+`--target coolify`, con `--app-uuid <uuid>` o con la variable `VIPE_COOLIFY_APP_UUID`; no hay valor
+por defecto, para que una variable olvidada no escriba en el recurso equivocado (sin UUID, código
+`2`). El recurso de staging es `zyxpf2vqnowxdolrgne8vxew`. Las escrituras corren como
+`vipe_migrator` (`SET LOCAL ROLE`), sea cual sea el `POSTGRES_USER` del contenedor. Basta con
 copiar los scripts al servidor; no hace falta el repositorio:
 
 ```bash
@@ -350,8 +366,8 @@ copiar los scripts al servidor; no hace falta el repositorio:
 scp -r packages/db/seed/bootstrap root@<servidor>:/root/vipe-seed/
 ssh root@<servidor>
 # en el servidor: pide la contraseña sin mostrarla
-VIPE_COOLIFY_APP_UUID=<uuid del recurso de producción> \
-  bash /root/vipe-seed/bootstrap/create-restaurant.sh --target coolify \
+bash /root/vipe-seed/bootstrap/create-restaurant.sh --target coolify \
+  --app-uuid <uuid del recurso de producción> \
   --admin-name "<nombre del administrador>" "<nombre del restaurante>" <correo del administrador>
 ```
 
@@ -360,8 +376,12 @@ migraciones. Para probarlo en local contra el stack de desarrollo (`--target loc
 valor por defecto, sobre la base `VIPE_DB_NAME`, por defecto `vipe_pos`):
 
 ```bash
-pnpm db:create-restaurant "<nombre del restaurante>" <correo del administrador>
+bash packages/db/seed/bootstrap/create-restaurant.sh "<nombre del restaurante>" <correo del administrador>
 ```
+
+`pnpm db:test-seeds` prueba el contrato de este script y el de la demo (3.6) contra contenedores
+desechables que imitan un recurso de Coolify, uno de ellos con `POSTGRES_USER=vipeowner`; no corre
+en CI.
 
 La opción A (`docker-compose.prod.yml`) no tiene destino propio en el script: ahí se puede
 ejecutar `create-restaurant.sql` con `psql` como superusuario, siguiendo el encabezado del
@@ -369,8 +389,8 @@ archivo.
 
 ### 3.6 Datos de demostración
 
-Staging es la demostración pública del POS y no recibe datos reales: arranca con un restaurante
-ficticio, "Casa Guadua" (Medellín, COP), cargado por `packages/db/seed/demo/demo-db.sh`.
+Staging es el entorno de demostración del POS, accesible solo desde la red de Tailscale, y no
+recibe datos reales: arranca con un restaurante ficticio, "Casa Guadua" (Medellín, COP), cargado por `packages/db/seed/demo/demo-db.sh`.
 Nombres, teléfonos, direcciones y NIT son inventados. Contiene:
 
 - Personal de todos los roles, con correo `@demo.vipe.pos`: `admin@`, `mesero.andres@`,
@@ -379,6 +399,8 @@ Nombres, teléfonos, direcciones y NIT son inventados. Contiene:
 - 8 categorías y 38 platos con precios en pesos, cuatro promociones (dos vigentes, una próxima y
   una vencida), 12 mesas, 3 domiciliarios, inventario con fórmulas, proveedores, una orden de
   compra en camino y cinco insumos bajo el mínimo.
+- Tres preparaciones (hogao, ají de la casa y arroz con coco) con su fórmula y la producción de
+  hoy, que usan algunos platos.
 - 30 días de historia: una caja por día abierta y cerrada, picos de almuerzo y cena, más
   movimiento el fin de semana, pagos repartidos entre Efectivo, Bancolombia, Nequi y
   Transferencia (algunos divididos), propina sugerida en la mayoría de las mesas y domicilios
@@ -388,7 +410,7 @@ Nombres, teléfonos, direcciones y NIT son inventados. Contiene:
   caja de hoy abierta.
 
 Los datos pasan por las mismas funciones que usa la API (`create_staff_user`, `pay_order`,
-`create_delivery_order`, `set_delivery_status`, `close_register`, entre otras), ejecutadas como el
+`create_delivery_order`, `set_delivery_status`, `close_register`, `produce_preparation`, entre otras), ejecutadas como el
 rol que lo haría en la aplicación; después se ajustan las fechas a la historia. Cargarlo toma unos
 20 segundos. Las fechas son relativas al momento de la carga: con los días, la actividad "en vivo"
 envejece y la historia se corre; volver a cargar con `--reset` la actualiza.
@@ -401,8 +423,8 @@ scp -r packages/db/seed/bootstrap packages/db/seed/demo root@<servidor>:/root/vi
 ssh root@<servidor>
 # en el servidor
 read -r -s -p 'Contraseña de las cuentas demo: ' DEMO_PASSWORD; echo; export DEMO_PASSWORD
-bash /root/vipe-seed/demo/demo-db.sh --target coolify            # base vacía
-bash /root/vipe-seed/demo/demo-db.sh --target coolify --reset    # reemplazar la demo
+bash /root/vipe-seed/demo/demo-db.sh --target coolify --app-uuid zyxpf2vqnowxdolrgne8vxew           # base vacía
+bash /root/vipe-seed/demo/demo-db.sh --target coolify --app-uuid zyxpf2vqnowxdolrgne8vxew --reset   # reemplazar la demo
 unset DEMO_PASSWORD
 ```
 
@@ -412,11 +434,17 @@ unset DEMO_PASSWORD
   `demo_seed` en `business_config`) y todo lo que depende de ellos, y vuelve a cargar, en una sola
   transacción. Si existe algún restaurante que no es de la demo, se niega con código `3` antes de
   borrar.
-- `DEMO_PASSWORD` vacía o de menos de 12 caracteres: código `2`. La contraseña se pasa a `node`
-  por la entrada estándar y a `psql` solo llega el hash.
-- Si el recurso de staging cambia, indicar el nuevo con `VIPE_COOLIFY_APP_UUID=<uuid>`.
+- `DEMO_PASSWORD` vacía o de menos de 12 caracteres, o `--target coolify` sin UUID del recurso:
+  código `2`. La contraseña se pasa a `node` por la entrada estándar y a `psql` solo llega el hash.
+- `--reset` falla con código `1`, antes de borrar, si una tabla de `public` con columna
+  `restaurant_id` no está en la lista de `reset.sql`; la tabla nueva se agrega a esa lista.
+- Los códigos son los del script ejecutado con `bash`; `pnpm db:demo` informa cualquier fallo como
+  `1`.
+- El UUID se indica siempre, con `--app-uuid` o `VIPE_COOLIFY_APP_UUID`; si el recurso de staging
+  cambia, se usa el nuevo.
 
-En local, `pnpm db:demo` (o `pnpm db:demo --reset`) carga la demo en la base `vipe_demo` del
+En local, `bash packages/db/seed/demo/demo-db.sh` (o con `--reset`; `pnpm db:demo` hace lo mismo
+pero informa cualquier fallo como `1`) carga la demo en la base `vipe_demo` del
 stack de desarrollo (`VIPE_DEMO_DB` para otra), creándola y migrándola si falta, de modo que
 `vipe_pos` conserva la semilla de desarrollo. Para verla, arrancar la API con
 `DATABASE_URL=postgres://vipe_api:vipe_api@localhost:5432/vipe_demo`.

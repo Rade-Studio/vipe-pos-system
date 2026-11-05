@@ -1,7 +1,8 @@
 #!/bin/sh
 # Docker init hook for the production postgres service: runs once, on an empty
 # data directory. Creates vipe_migrator and vipe_api (packages/db/scripts/roles.sql,
-# mounted at /opt/vipe/roles.sql) and hands the database to vipe_migrator.
+# mounted at /opt/vipe/roles.sql by docker-compose.prod.yml, or baked into the
+# Coolify image by deploy/postgres/Dockerfile) and hands the database to vipe_migrator.
 # No default passwords: the compose file requires both variables.
 set -eu
 

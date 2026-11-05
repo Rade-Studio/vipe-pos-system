@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Loads the demo restaurant (seed/demo/demo.sql) for the public staging demo
-# (odd/tasks/migracion-backend-nestjs.md, T16): staff for every role, menu,
-# tables, inventory, 30 days of history and live orders.
+# Loads the demo restaurant (seed/demo/demo.sql) for the staging demo, which
+# is reachable only from the Tailscale network (odd/tasks/migracion-backend-nestjs.md,
+# T16, L31): staff for every role, menu, tables, inventory and preparations,
+# 30 days of history and live orders.
 #
-#   DEMO_PASSWORD=... demo-db.sh [--reset] [--target local|coolify]
+#   DEMO_PASSWORD=... demo-db.sh [--reset] [--target local|coolify] [--app-uuid <uuid>]
 #
 # DEMO_PASSWORD (12+ characters) is the password of every demo account
 # (<role>@demo.vipe.pos, listed in docs/despliegue.md). It is hashed with
@@ -12,18 +13,20 @@
 #
 # Refuses a target that already has restaurants. --reset first deletes the
 # restaurants the demo seed created (seed/demo/reset.sql) and seeds again, in
-# one transaction; it still refuses when another restaurant exists.
+# one transaction; it still refuses when another restaurant exists. Every
+# write runs as vipe_migrator (target.sh), whatever user psql connects as.
 #
 # Targets (seed/bootstrap/target.sh): local is the dev stack of
 # docker-compose.yml, database $VIPE_DEMO_DB (default vipe_demo, created and
 # migrated when missing, so the dev database keeps its own seed); coolify runs
-# psql and node with `docker exec` in the containers of the Coolify app
-# $VIPE_COOLIFY_APP_UUID (default zyxpf2vqnowxdolrgne8vxew, staging).
+# psql and node with `docker exec` in the containers of the Coolify app given
+# by --app-uuid or VIPE_COOLIFY_APP_UUID (required, no default: a missing
+# uuid must never load the demo into another app's database).
 #
-# Exit codes:
+# Exit codes (of this script; `pnpm db:demo` reports any failure as 1):
 #   0  demo loaded
 #   1  any other failure (nothing is written: one transaction)
-#   2  invalid usage or DEMO_PASSWORD
+#   2  invalid usage, DEMO_PASSWORD or app uuid
 #   3  the target already has restaurants (without --reset), or has
 #      restaurants the demo seed did not create
 set -euo pipefail
@@ -33,7 +36,7 @@ seed_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$seed_dir/../bootstrap/target.sh"
 
 usage() {
-  sed -n '6p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  sed -n '7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -43,6 +46,7 @@ while (($#)); do
   case "$1" in
     --reset) reset=true; shift ;;
     --target) [[ $# -ge 2 ]] || usage; target="$2"; shift 2 ;;
+    --app-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_APP_UUID="$2"; shift 2 ;;
     -h | --help) usage ;;
     *) echo "error: unknown argument $1" >&2; usage ;;
   esac
@@ -59,10 +63,10 @@ TARGET_DB="${VIPE_DEMO_DB:-vipe_demo}"
 target_init "$target"
 target_prepare
 
-counts="$(target_psql -At -c "SELECT count(*) || ' ' || count(*) FILTER (WHERE EXISTS (
+counts="$(target_query -At -c "SELECT count(*) || ' ' || count(*) FILTER (WHERE EXISTS (
   SELECT 1 FROM public.business_config bc
    WHERE bc.restaurant_id = r.id AND bc.key = 'demo_seed' AND bc.value = 'true'))
-  FROM public.restaurants r")"
+  FROM public.restaurants r")" || exit 1
 read -r restaurants demo_restaurants <<<"$counts"
 
 if [[ "$restaurants" != 0 && "$reset" != true ]]; then
@@ -72,7 +76,7 @@ if [[ "$restaurants" != "$demo_restaurants" ]]; then
   target_die "the target has $((restaurants - demo_restaurants)) restaurant(s) not created by the demo seed; nothing was changed" 3
 fi
 
-hash="$(printf '%s' "$DEMO_PASSWORD" | target_hash)"
+hash="$(printf '%s' "$DEMO_PASSWORD" | target_hash)" || exit 1
 
 echo "loading the demo restaurant ($target)..." >&2
 {
@@ -81,7 +85,9 @@ echo "loading the demo restaurant ($target)..." >&2
   printf '\\set restaurant_name %s\n' "'Casa Guadua'"
   printf '\\set admin_email %s\n' "'admin@demo.vipe.pos'"
   printf '\\set admin_name %s\n' "'Mariana Restrepo Gil'"
+  printf '\\set admin_username %s\n' "'admin'"
   echo 'BEGIN;'
+  echo "$TARGET_OWNER_SQL"
   if [[ "$reset" == true ]]; then
     cat "$seed_dir/reset.sql"
   fi
@@ -90,7 +96,7 @@ echo "loading the demo restaurant ($target)..." >&2
   echo 'COMMIT;'
 } | target_psql || target_die "the demo was not loaded (see the psql error above)"
 
-target_psql -At -F ': ' <<'SQL'
+target_query -At -F ': ' <<'SQL'
 SELECT 'restaurant', r.name FROM public.restaurants r
  WHERE EXISTS (SELECT 1 FROM public.business_config bc WHERE bc.restaurant_id = r.id AND bc.key = 'demo_seed');
 SELECT 'staff', string_agg(role || ' ' || n, ', ' ORDER BY role)

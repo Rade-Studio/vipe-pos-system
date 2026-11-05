@@ -1,9 +1,9 @@
--- Demo data for the public staging demo (odd/tasks/migracion-backend-nestjs.md,
--- T16, S6): one fictional Colombian restaurant with staff for every role, a
+-- Demo data for the staging demo, reachable only from the Tailscale network
+-- (odd/tasks/migracion-backend-nestjs.md, T16, S6, L31): one fictional Colombian restaurant with staff for every role, a
 -- menu, tables, inventory, 30 days of history and live activity right now.
 -- Every name, phone, address and NIT is invented.
 --
--- Run by demo-db.sh as the superuser, in the same transaction and right after
+-- Run by demo-db.sh as vipe_migrator (SET LOCAL ROLE), in the same transaction and right after
 -- seed/bootstrap/create-restaurant.sql, which created the restaurant and its
 -- admin and left the id in the setting vipe.restaurant_id. psql variable:
 --   demo_hash  argon2id hash of DEMO_PASSWORD, for every staff account
@@ -13,9 +13,13 @@
 -- private.create_staff_user, inventory_adjust, save_formula, the order insert
 -- of OrdersService followed by recompute_caller_order_bill and
 -- consume_order_stock, create_delivery_order, set_delivery_status, pay_order
--- and close_register. Their timestamps are now(), so the history rows are
--- backdated afterwards (the superuser passes the immutability guards for that
--- UPDATE only; no trigger or constraint is disabled). No print job is queued.
+-- and close_register, plus produce_preparation for the kitchen's
+-- preparations. Their timestamps are now(), so the history rows are
+-- backdated afterwards (vipe_migrator, the schema owner, passes the
+-- immutability guards for that UPDATE only; no trigger or constraint is
+-- disabled). Direct inserts name restaurant_id: the column default
+-- private.default_restaurant_id() only fills it for the API role and for a
+-- user named postgres. No print job is queued.
 --
 -- Random choices use setseed, so a run on the same day gives the same shape.
 
@@ -155,8 +159,9 @@ DECLARE
 BEGIN
   PERFORM pg_temp.demo_as(p_waiter);
   PERFORM pg_temp.demo_fill_cart(p_meal, p_party);
-  INSERT INTO public.orders (table_id, waiter_id, status, order_type, subtotal, tax, tax_percentage, tip, tip_percentage, total)
-  VALUES (p_table, p_waiter, 'kitchen', 'dine_in', 0, 0, 8, 0, 10, 0)
+  INSERT INTO public.orders (table_id, waiter_id, status, order_type, subtotal, tax, tax_percentage, tip, tip_percentage, total,
+                             restaurant_id)
+  VALUES (p_table, p_waiter, 'kitchen', 'dine_in', 0, 0, 8, 0, 10, 0, current_setting('vipe.restaurant_id')::uuid)
   RETURNING id INTO v_order;
   PERFORM pg_temp.demo_add_cart(v_order, p_at);
   UPDATE public.tables SET status = 'kitchen', waiter_id = coalesce(waiter_id, p_waiter), updated_at = now()
@@ -239,7 +244,7 @@ BEGIN
   UPDATE public.orders SET created_at = p_at, updated_at = p_closed WHERE id = p_order;
   UPDATE public.order_items
      SET created_at = p_at + (added_at - now()), added_at = p_at + (added_at - now()),
-         updated_at = CASE WHEN status = 'served' THEN p_at + interval '18 minutes' ELSE p_at END,
+         updated_at = CASE WHEN status = 'served' THEN p_at + interval '18 minutes' ELSE p_at + (added_at - now()) END,
          stock_consumed_at = CASE WHEN stock_consumed_at IS NOT NULL THEN p_at END
    WHERE order_id = p_order AND added_at >= now();
   UPDATE public.payments SET created_at = p_closed WHERE order_id = p_order;
@@ -565,7 +570,8 @@ BEGIN
     ('Frutas y verduras', 'Plaza mayorista, dos veces por semana', v_rid),
     ('Lácteos y huevos', NULL, v_rid),
     ('Abarrotes', 'Granos, harinas y secos', v_rid),
-    ('Bebidas', 'Cervezas, gaseosas y aguas', v_rid);
+    ('Bebidas', 'Cervezas, gaseosas y aguas', v_rid),
+    ('Preparaciones', 'Bases y salsas de la cocina', v_rid);
 
   INSERT INTO public.suppliers (restaurant_id, name, tax_id, contact_name, phone, email, lead_time_days) VALUES
     (v_rid, 'Carnes La Pradera S.A.S.', '900000000-2', 'Hernán Restrepo', '604 555 0171', 'pedidos@carneslapradera.example', 1),
@@ -590,6 +596,11 @@ BEGIN
       ('Limón', 'Frutas y verduras', 'kg', 3800, 8, 5.5, 'Frutas y Verduras El Campo'),
       ('Maracuyá', 'Frutas y verduras', 'kg', 5200, 6, 11, 'Frutas y Verduras El Campo'),
       ('Mora', 'Frutas y verduras', 'kg', 6800, 6, 9, 'Frutas y Verduras El Campo'),
+      ('Tomate chonto', 'Frutas y verduras', 'kg', 3600, 8, 16, 'Frutas y Verduras El Campo'),
+      ('Cebolla larga', 'Frutas y verduras', 'kg', 4500, 4, 7, 'Frutas y Verduras El Campo'),
+      ('Cilantro', 'Frutas y verduras', 'kg', 9000, 0.5, 1.2, 'Frutas y Verduras El Campo'),
+      ('Ají picante', 'Frutas y verduras', 'kg', 12000, 0.5, 1.5, 'Frutas y Verduras El Campo'),
+      ('Leche de coco', 'Abarrotes', 'litro', 14500, 4, 9, 'Abastos del Valle'),
       ('Queso costeño', 'Lácteos y huevos', 'kg', 19000, 5, 3.1, 'Abastos del Valle'),
       ('Huevos', 'Lácteos y huevos', 'unidad', 550, 90, 210, 'Abastos del Valle'),
       ('Leche entera', 'Lácteos y huevos', 'litro', 3900, 20, 34, 'Abastos del Valle'),
@@ -613,6 +624,40 @@ BEGIN
   UPDATE public.inventory_movements SET created_at = now() - interval '31 days'
    WHERE restaurant_id = v_rid AND movement_type = 'opening';
 
+  -- Preparations (Fórmulas > Preparaciones), as POST /inventory/preparations
+  -- and PUT of its formula do: a kind = 'prep' item, then save_formula with
+  -- the batch yield.
+  FOR r IN SELECT * FROM (VALUES
+      ('Hogao', 'kg', 3, 4, 2, '[["Tomate chonto",1.6],["Cebolla larga",0.9],["Aceite vegetal",0.15]]'),
+      ('Ají de la casa', 'litro', 1, 7, 1, '[["Ají picante",0.25],["Cebolla larga",0.2],["Cilantro",0.1],["Limón",0.3]]'),
+      ('Arroz con coco', 'kg', 4, 1, 5, '[["Arroz",1.8],["Leche de coco",1.2],["Aceite vegetal",0.05]]')
+    ) AS p(name, unit, min_stock, shelf_life, yield, lines)
+  LOOP
+    INSERT INTO public.ingredients (name, unit, kind, min_stock, shelf_life_days, category_id, restaurant_id)
+    VALUES (r.name, r.unit, 'prep', r.min_stock, r.shelf_life,
+            (SELECT id FROM public.ingredient_categories WHERE restaurant_id = v_rid AND name = 'Preparaciones'), v_rid)
+    RETURNING id INTO v_item;
+    PERFORM public.save_formula('prep', v_item, r.yield,
+      (SELECT jsonb_agg(jsonb_build_object(
+                'ingredient_id', (SELECT id FROM public.ingredients WHERE restaurant_id = v_rid AND name = l ->> 0),
+                'quantity', (l ->> 1)::numeric))
+         FROM jsonb_array_elements(r.lines::jsonb) l));
+  END LOOP;
+
+  -- This morning's production, by the kitchen (POST /inventory/production).
+  PERFORM pg_temp.demo_as(pg_temp.demo_profile('kitchen'));
+  FOR r IN SELECT * FROM (VALUES
+      ('Hogao', 4, 'Producción de la mañana'),
+      ('Ají de la casa', 1.5, NULL),
+      ('Arroz con coco', 10, 'Para almuerzo y cena')
+    ) AS b(name, quantity, notes)
+  LOOP
+    PERFORM public.produce_preparation(
+      p_ingredient_id => (SELECT id FROM public.ingredients WHERE restaurant_id = v_rid AND name = r.name),
+      p_quantity => r.quantity, p_notes => r.notes);
+  END LOOP;
+  PERFORM pg_temp.demo_as(pg_temp.demo_profile('admin'));
+
   -- Formulas (one portion) for the dishes that carry the counted items.
   FOR r IN SELECT * FROM (VALUES
       ('Bandeja paisa', '[["Carne de res",0.15],["Chicharrón",0.12],["Chorizo antioqueño",1],["Huevos",1],["Aguacate",0.5],["Arroz",0.15],["Frijol cargamanto",0.12],["Plátano verde",0.5]]'),
@@ -622,11 +667,13 @@ BEGIN
       ('Ejecutivo de res', '[["Carne de res",0.18],["Arroz",0.15],["Frijol cargamanto",0.08]]'),
       ('Ejecutivo de pollo', '[["Pechuga de pollo",0.22],["Arroz",0.15]]'),
       ('Ejecutivo de cerdo', '[["Lomo de cerdo",0.2],["Arroz",0.15],["Plátano verde",0.5]]'),
-      ('Mojarra frita', '[["Mojarra roja",1],["Plátano verde",1],["Arroz",0.15],["Aceite vegetal",0.1]]'),
+      ('Mojarra frita', '[["Mojarra roja",1],["Plátano verde",1],["Arroz con coco",0.2],["Aceite vegetal",0.1]]'),
+      ('Posta negra cartagenera', '[["Carne de res",0.25],["Arroz con coco",0.2],["Plátano verde",0.5]]'),
+      ('Empanadas de pipián', '[["Harina de maíz",0.1],["Ají de la casa",0.03]]'),
       ('Trucha al ajillo', '[["Trucha",1],["Papa criolla",0.15]]'),
       ('Arroz de camarón', '[["Camarón",0.15],["Arroz",0.15]]'),
       ('Ceviche de camarón', '[["Camarón",0.12],["Limón",0.08]]'),
-      ('Patacón con hogao', '[["Plátano verde",1],["Queso costeño",0.04]]'),
+      ('Patacón con hogao', '[["Plátano verde",1],["Queso costeño",0.04],["Hogao",0.06]]'),
       ('Chicharrón con arepa', '[["Chicharrón",0.2],["Harina de maíz",0.08]]'),
       ('Cerveza nacional', '[["Cerveza nacional 330 ml",1]]'),
       ('Michelada', '[["Cerveza nacional 330 ml",1],["Limón",0.05]]'),
@@ -674,6 +721,7 @@ DECLARE
   v_close timestamptz;
   v_cutoff timestamptz;
   v_at timestamptz;
+  v_paid timestamptz;
   v_order uuid;
   v_meal text;
   v_waiter uuid;
@@ -699,8 +747,8 @@ BEGIN
 
     -- RegistersService.open, as the cashier of the day.
     PERFORM pg_temp.demo_as(v_cashier);
-    INSERT INTO public.cash_registers (opening_timestamp, initial_cash, status)
-    VALUES (now(), 200000, 'open') RETURNING id INTO v_register;
+    INSERT INTO public.cash_registers (opening_timestamp, initial_cash, status, restaurant_id)
+    VALUES (now(), 200000, 'open', v_rid) RETURNING id INTO v_register;
 
     -- Dine-in orders: lunch, afternoon and dinner, with Sunday lunch heavier
     -- and Sunday dinner lighter.
@@ -720,7 +768,12 @@ BEGIN
         CASE WHEN r.meal = 'afternoon' THEN 1 + floor(random() * 2)::int ELSE 1 + floor(random() * 4)::int END, r.at);
       PERFORM pg_temp.demo_serve(v_order);
       PERFORM pg_temp.demo_pay(v_cashier, v_order, v_register);
-      PERFORM pg_temp.demo_backdate(v_order, r.at, r.at + make_interval(mins => 40 + floor(random() * 50)::int));
+      -- Paid 40..90 minutes later; today, never after now.
+      v_paid := r.at + make_interval(mins => 40 + floor(random() * 50)::int);
+      IF d = 0 THEN
+        v_paid := least(v_paid, now() - interval '1 minute');
+      END IF;
+      PERFORM pg_temp.demo_backdate(v_order, r.at, v_paid);
     END LOOP;
 
     -- Deliveries: mostly delivered, a few cancelled or re-dispatched.
@@ -740,16 +793,19 @@ BEGIN
     -- An occasional drawer movement (RegistersService.addCashTransaction).
     IF random() < 0.35 THEN
       PERFORM pg_temp.demo_as(v_cashier);
-      INSERT INTO public.cash_transactions (amount, type, description, cash_register_id, "timestamp")
+      INSERT INTO public.cash_transactions (amount, type, description, cash_register_id, "timestamp", restaurant_id)
       VALUES (CASE WHEN random() < 0.7 THEN 35000 ELSE 60000 END, 'withdrawal',
               (ARRAY['Compra de hielo', 'Pago domicilio de plaza', 'Compra de gas', 'Propinas repartidas'])[1 + floor(random() * 4)::int],
-              v_register, least(v_cutoff, pg_temp.demo_at(v_day, interval '16 hours')));
+              v_register, least(v_cutoff, pg_temp.demo_at(v_day, interval '16 hours')), v_rid);
     END IF;
 
     IF d > 0 THEN
-      -- close_register computes the summary and final cash; then the real times.
+      -- close_register computes the summary and final cash; then the real
+      -- times, closing after the day's last payment.
       PERFORM pg_temp.demo_as(v_cashier);
       PERFORM public.close_register(v_register);
+      v_close := greatest(v_close, (SELECT max(p.created_at) + interval '7 minutes'
+                                      FROM public.payments p WHERE p.cash_register_id = v_register));
       UPDATE public.cash_registers
          SET opening_timestamp = v_open, closing_timestamp = v_close, created_at = v_open, updated_at = v_close
        WHERE id = v_register;

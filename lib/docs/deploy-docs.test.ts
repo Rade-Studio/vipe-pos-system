@@ -42,4 +42,22 @@ describe("deploy docs", () => {
     expect(repoMounts).toEqual([])
     expect(compose).toContain("dockerfile: deploy/postgres/Dockerfile")
   })
+
+  it("mounts no repository path in long or quoted form in the Coolify compose either", () => {
+    const repoMounts = read("docker-compose.coolify.yml")
+      .split("\n")
+      .filter((line) => /^\s*-\s*["']\.{1,2}\//.test(line) || /^\s*(-\s*)?source:\s*["']?\.{1,2}\//.test(line))
+    expect(repoMounts).toEqual([])
+  })
+
+  it("builds the Coolify postgres from the pinned image of docker-compose.prod.yml", () => {
+    const dockerfile = read("deploy/postgres/Dockerfile")
+    const from = dockerfile.match(/^FROM\s+(\S+)/m)?.[1] ?? ""
+    const image = from.replace(/^\$\{(\w+)\}$/, (_, name: string) =>
+      dockerfile.match(new RegExp(`^ARG ${name}=(\\S+)`, "m"))?.[1] ?? "",
+    )
+    const pinned = read("docker-compose.prod.yml").match(/^\s*image:\s*(postgres:\S+)/m)?.[1]
+    expect(pinned).toMatch(/@sha256:[0-9a-f]{64}$/)
+    expect(image).toBe(pinned)
+  })
 })

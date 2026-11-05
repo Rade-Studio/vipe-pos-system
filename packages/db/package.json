@@ -19,6 +19,7 @@
     "dev": "bash seed/dev-db.sh",
     "demo": "bash seed/demo/demo-db.sh",
     "create-restaurant": "bash seed/bootstrap/create-restaurant.sh",
+    "test:seeds": "bash seed/test.sh",
     "rehearse-migration": "bash migration-from-supabase/rehearse.sh"
   },
   "dependencies": {

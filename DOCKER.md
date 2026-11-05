@@ -119,7 +119,9 @@ docker compose -f docker-compose.prod.yml --profile self-hosted-storage up -d --
 ## Producción en Coolify (`docker-compose.coolify.yml`)
 
 Sin `caddy` (el proxy de Coolify maneja 80/443), sin `minio` (Coolify no aplica perfiles;
-las imágenes van a R2) y sin puertos publicados. Recurso Docker Compose con
+las imágenes van a R2) y sin puertos publicados. `postgres` se construye desde
+`deploy/postgres/Dockerfile`, que incluye `10-roles.sh` y `roles.sql` en la imagen, porque
+Coolify no coloca los archivos del repositorio junto al compose. Recurso Docker Compose con
 **Docker Compose Location** `/docker-compose.coolify.yml`, dominios `api` →
 `https://<sitio>:4000/api,https://<sitio>:4000/socket.io` y `web` → `https://<sitio>:3000`,
 **Strip prefixes** desactivado. Detalle y comprobaciones en
@@ -153,11 +155,16 @@ CI despliega en los recursos de Coolify configurados en `COOLIFY_APP_UUID_STAGIN
 ├── deploy/
 │   ├── Caddyfile                # Proxy inverso y cabeceras de seguridad
 │   ├── caddy/                   # storage-on.caddy / storage-off.caddy (STORAGE_SITE)
-│   └── postgres/10-roles.sh     # Init de roles de producción
+│   └── postgres/
+│       ├── 10-roles.sh          # Init de roles de producción
+│       └── Dockerfile           # Postgres de Coolify con 10-roles.sh y roles.sql incluidos
 └── packages/db/
     ├── docker/Dockerfile        # Postgres 16 + pgTAP de desarrollo y pruebas
     ├── migrations/              # Migraciones SQL (fuente de verdad del esquema)
     ├── scripts/roles.sql        # Roles vipe_migrator y vipe_api
     ├── seed/dev.sql             # Datos de desarrollo (pnpm db:dev)
+    ├── seed/bootstrap/          # Primer restaurante y administrador (pnpm db:create-restaurant)
+    ├── seed/demo/               # Demo de staging (pnpm db:demo)
+    ├── seed/test.sh             # Contrato de ambos scripts (pnpm db:test-seeds)
     └── tests/                   # Pruebas pgTAP (pnpm test:db)
 ```
