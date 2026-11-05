@@ -59,7 +59,8 @@ as_a() {
     -e MC_HOST_a="http://app-a:$(value "$scratch/a.env" S3_SECRET_ACCESS_KEY)@minio:9000" \
     --entrypoint /bin/sh "$MC_IMAGE" -c "$1" >/dev/null 2>&1
 }
-as_a 'echo hello | mc pipe a/app-a-staging/r1/dishes/x.txt'; check "app-a PUT in its bucket" 0 $?
+as_a 'echo hello | mc pipe a/app-a-staging/r1/dishes/x.txt' && rc=0 || rc=$?
+check "app-a PUT in its bucket" 0 "$rc"
 denied=$(docker run --rm -i --network "$id-net" \
   -e MC_HOST_a="http://app-a:$(value "$scratch/a.env" S3_SECRET_ACCESS_KEY)@minio:9000" \
   --entrypoint /bin/sh "$MC_IMAGE" -c 'echo hello | mc pipe a/app-b-staging/r1/dishes/x.txt' 2>&1 || true)
@@ -70,7 +71,8 @@ check "app-a cannot list (no s3:ListBucket)" 1 "$([ "$rc" -ne 0 ] && echo 1 || e
 
 check "anonymous GET of an object" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$local_url/app-a-staging/r1/dishes/x.txt")"
 check "anonymous listing of a bucket" 403 "$(curl -s -o /dev/null -w '%{http_code}' "$local_url/app-a-staging/")"
-as_a 'mc rm a/app-a-staging/r1/dishes/x.txt'; check "app-a DELETE in its bucket" 0 $?
+as_a 'mc rm a/app-a-staging/r1/dishes/x.txt' && rc=0 || rc=$?
+check "app-a DELETE in its bucket" 0 "$rc"
 check "object gone after DELETE" 404 "$(curl -s -o /dev/null -w '%{http_code}' "$local_url/app-a-staging/r1/dishes/x.txt")"
 
 preflight() {
@@ -115,12 +117,61 @@ key_before=$(value "$scratch/a.env" S3_ACCESS_KEY_ID)
 bash "$here/provision-app.sh" app-a-staging app-a > "$scratch/a2.env" 2>/dev/null
 check "re-run keeps the access key" "$key_before" "$(value "$scratch/a2.env" S3_ACCESS_KEY_ID)"
 check "re-run does not print a new secret" "" "$(value "$scratch/a2.env" S3_SECRET_ACCESS_KEY)"
-as_a 'echo again | mc pipe a/app-a-staging/r1/dishes/w.txt'; check "old secret still valid after re-run" 0 $?
+as_a 'echo again | mc pipe a/app-a-staging/r1/dishes/w.txt' && rc=0 || rc=$?
+check "old secret still valid after re-run" 0 "$rc"
 
 bash "$here/provision-app.sh" --rotate app-a-staging app-a > "$scratch/a3.env" 2>/dev/null
 new_secret=$(value "$scratch/a3.env" S3_SECRET_ACCESS_KEY)
 check "--rotate prints a new secret" 1 "$([ -n "$new_secret" ] && [ "$new_secret" != "$(value "$scratch/a.env" S3_SECRET_ACCESS_KEY)" ] && echo 1 || echo 0)"
 as_a 'echo again | mc pipe a/app-a-staging/r1/dishes/w.txt' && rc=0 || rc=$?
 check "old secret rejected after --rotate" 1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
+
+for bad in 'a"b app-x' 'AB app-x' 'app-a-staging $(id)' '-x app-x'; do
+  read -r b u <<<"$bad"
+  bash "$here/provision-app.sh" "$b" "$u" >/dev/null 2>&1 && rc=0 || rc=$?
+  check "rejects names: $bad" 2 "$rc"
+done
+
+# app-a (rotated secret) has no admin rights and no reach into app-b's bucket.
+as_a3() {
+  docker run --rm -i --network "$id-net" \
+    -e MC_HOST_a="http://app-a:$new_secret@minio:9000" \
+    --entrypoint /bin/sh "$MC_IMAGE" -c "$1" >/dev/null 2>&1
+}
+as_b() {
+  docker run --rm -i --network "$id-net" \
+    -e MC_HOST_b="http://app-b:$(value "$scratch/b.env" S3_SECRET_ACCESS_KEY)@minio:9000" \
+    --entrypoint /bin/sh "$MC_IMAGE" -c "$1" >/dev/null 2>&1
+}
+as_b 'echo keep | mc pipe b/app-b-staging/r1/keep.txt' && rc=0 || rc=$?
+check "app-b PUT in its bucket" 0 "$rc"
+as_a3 'mc admin user list a' && rc=0 || rc=$?
+check "app-a denied mc admin user list" 1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
+as_a3 'mc mb a/app-a-extra' && rc=0 || rc=$?
+check "app-a denied mc mb" 1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
+as_a3 'mc rm a/app-b-staging/r1/keep.txt' >/dev/null 2>&1 || true
+check "app-b object survives app-a rm" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$local_url/app-b-staging/r1/keep.txt")"
+
+# No credential on any command line while provisioning a new app.
+( while :; do ps -eo args >> "$scratch/ps.txt"; done ) &
+sampler=$!
+bash "$here/provision-app.sh" app-c-staging app-c > "$scratch/c.env" 2>/dev/null
+kill "$sampler"; wait "$sampler" 2>/dev/null || true
+printf '%s\n%s\n' "$MINIO_ROOT_PASSWORD" "$(value "$scratch/c.env" S3_SECRET_ACCESS_KEY)" > "$scratch/needles"
+mc_seen=$(grep -cE '(^|/)mc( |$)' "$scratch/ps.txt" || true)
+if [ "$mc_seen" -gt 0 ]; then
+  check "no credential in process argv ($mc_seen mc samples)" 0 "$(grep -cF -f "$scratch/needles" "$scratch/ps.txt" || true)"
+else
+  echo "skip argv check (sampler saw no mc process)"
+fi
+
+# One user per bucket: provisioning app-c for another bucket is refused.
+bash "$here/provision-app.sh" app-c-other app-c >/dev/null 2>"$scratch/c-other.log" && rc=0 || rc=$?
+check "existing user with another bucket policy exits 3" 3 "$rc"
+check "refusal names the user and its policies" 1 "$(grep -c 'user app-c already has policies: app-app-c-staging' "$scratch/c-other.log" || true)"
+export MC_HOST_root="http://$MINIO_ROOT_USER:$MINIO_ROOT_PASSWORD@minio:9000"
+policies=$(docker run --rm --network "$id-net" -e MC_HOST_root --entrypoint /bin/sh "$MC_IMAGE" \
+  -c 'mc admin user info --json root app-c' | sed -n 's/.*"policyName":"\([^"]*\)".*/\1/p')
+check "app-c keeps only its policy" "app-app-c-staging" "$policies"
 
 if [ "$failures" -eq 0 ]; then echo "PASS shared-storage"; else echo "FAILED $failures check(s)"; exit 1; fi

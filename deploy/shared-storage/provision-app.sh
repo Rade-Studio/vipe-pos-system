@@ -12,6 +12,9 @@
 # Environment:
 #   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD  root credentials (required, never printed)
 #   MINIO_URL           URL mc uses to reach MinIO (default http://minio:9000)
+#
+# Exit 3 when <app-user> already exists with a policy for another bucket
+# (one user per bucket); nothing is changed in that case.
 #   MINIO_NETWORK       docker network to attach the mc container to (optional;
 #                       leave empty when MINIO_URL is the public S3 domain)
 #   S3_PUBLIC_ENDPOINT  public S3 URL written into the printed block
@@ -51,22 +54,55 @@ S3_PUBLIC_ENDPOINT=${S3_PUBLIC_ENDPOINT%/}
 
 # Generated on the host; only used if the user is created or rotated.
 APP_SECRET=$(od -An -tx1 -N24 /dev/urandom | tr -d ' \n')
-export MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_URL BUCKET APP_USER APP_SECRET ROTATE
+
+# Percent-encodes $1 for the userinfo part of a URL, with bash builtins only so
+# no external process ever receives the value as an argument.
+urlencode() {
+  local LC_ALL=C s=$1 out='' c i hex
+  for ((i = 0; i < ${#s}; i++)); do
+    c=${s:i:1}
+    case "$c" in
+      [A-Za-z0-9._~-]) out+=$c ;;
+      *) printf -v hex '%%%02X' "'$c"; out+=$hex ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+scheme=${MINIO_URL%%://*}
+hostport=${MINIO_URL#*://}
+hostport=${hostport%%/*}
+MC_HOST_local="$scheme://$(urlencode "$MINIO_ROOT_USER"):$(urlencode "$MINIO_ROOT_PASSWORD")@$hostport"
+export MC_HOST_local BUCKET APP_USER APP_SECRET ROTATE
 
 network=()
 [ -n "${MINIO_NETWORK:-}" ] && network=(--network "$MINIO_NETWORK")
 
-# Values travel as inherited env (-e NAME), never on the docker command line.
-# Inside the throwaway container mc still receives them as arguments for the
-# few milliseconds each call lasts. The container writes only "created",
-# "rotated" or "kept" to stdout.
+# Values travel as inherited env (-e NAME), never on a command line: mc reads
+# the root credentials from MC_HOST_local and the app user and secret from
+# stdin (printf is a builtin of the image's busybox sh). The container writes
+# only "created", "rotated" or "kept" to stdout.
 state=$(docker run --rm -i "${network[@]}" \
-  -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD -e MINIO_URL \
-  -e BUCKET -e APP_USER -e APP_SECRET -e ROTATE \
+  -e MC_HOST_local -e BUCKET -e APP_USER -e APP_SECRET -e ROTATE \
   --entrypoint /bin/sh "$MC_IMAGE" -s <<'SH'
 set -eu
 log() { echo "$*" >&2; }
-mc alias set local "$MINIO_URL" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+POLICY="app-$BUCKET"
+
+# One user per bucket: refuse an existing user bound to any other policy,
+# before touching the bucket, the user or its policies.
+if info=$(mc admin user info --json local "$APP_USER" 2>/dev/null); then
+  exists=1
+  policies=$(echo "$info" | sed -n 's/.*"policyName":"\([^"]*\)".*/\1/p')
+  for p in $(echo "$policies" | tr ',' ' '); do
+    if [ "$p" != "$POLICY" ]; then
+      log "user $APP_USER already has policies: $policies; refusing to attach $POLICY (one user per bucket)"
+      exit 3
+    fi
+  done
+else
+  exists=0
+fi
+
 mc mb --ignore-existing "local/$BUCKET" >&2
 
 # Anyone may read an object by its key; nobody may list the bucket.
@@ -75,20 +111,20 @@ printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS
 mc anonymous set-json /tmp/anonymous.json "local/$BUCKET" >&2
 
 # The API only presigns PUTs and deletes by key: no s3:ListBucket.
-POLICY="app-$BUCKET"
 printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::%s/*"]}]}' \
   "$BUCKET" > /tmp/policy.json
 mc admin policy create local "$POLICY" /tmp/policy.json >&2
 
-if mc admin user info local "$APP_USER" >/dev/null 2>&1; then
+add_user() { printf '%s\n%s\n' "$APP_USER" "$APP_SECRET" | mc admin user add local >/dev/null; }
+if [ "$exists" = 1 ]; then
   if [ "$ROTATE" = 1 ]; then
-    mc admin user add local "$APP_USER" "$APP_SECRET" >/dev/null
+    add_user
     state=rotated
   else
     state=kept
   fi
 else
-  mc admin user add local "$APP_USER" "$APP_SECRET" >/dev/null
+  add_user
   state=created
 fi
 log "user $APP_USER: $state"
@@ -109,6 +145,7 @@ else
   echo "ATENCIÓN: el secreto se muestra una sola vez. Cópielo ahora en el entorno de la aplicación." >&2
 fi
 
+# us-east-1 is MinIO's default region, the one SigV4 signatures are made for.
 cat <<EOF
 S3_ENDPOINT=$S3_PUBLIC_ENDPOINT
 S3_REGION=us-east-1

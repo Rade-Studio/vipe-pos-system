@@ -6,7 +6,7 @@ Un único servidor MinIO, compatible con S3, para todas las aplicaciones de la V
 - un usuario propio, cuya política solo permite `s3:GetObject`, `s3:PutObject` y `s3:DeleteObject` sobre los objetos de ese bucket (sin listar, sin acceso a otros buckets);
 - lectura anónima de objetos por su clave (`s3:GetObject`), sin listado anónimo del bucket.
 
-Las credenciales administradoras (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`) solo se usan para aprovisionar; ninguna aplicación las recibe.
+Las credenciales administradoras (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`) solo se usan para aprovisionar; ninguna aplicación las recibe. El script las entrega a `mc` por la variable de entorno `MC_HOST_local` y el secreto de la aplicación por la entrada estándar, nunca como argumentos de un proceso.
 
 ## Archivos
 
@@ -18,13 +18,13 @@ Las credenciales administradoras (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`) solo
 
 ## Puesta en marcha
 
-1. En Coolify, crear el recurso Docker Compose con `/deploy/shared-storage/docker-compose.yml` y seguir la cabecera del archivo: dominio `https://<s3-dominio>:9000` para la API S3 (lo usan los navegadores y las URL prefirmadas), opcionalmente `https://<consola-dominio>:9001` para la consola, Strip prefixes desactivado.
+1. En Coolify, crear el recurso Docker Compose con `/deploy/shared-storage/docker-compose.yml` y seguir la cabecera del archivo: dominio `https://<s3-dominio>:9000` para la API S3 (lo usan los navegadores y las URL prefirmadas), Strip prefixes desactivado. La consola (puerto 9001) no se publica: se usa con un túnel SSH sobre Tailscale, `ssh -L 9001:<ip-del-contenedor>:9001 root@100.103.73.111`, y `http://localhost:9001`.
 2. Definir `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` (`openssl rand -hex 32`) y `MINIO_CORS_ORIGINS`.
 3. Desplegar y comprobar `curl -s -o /dev/null -w '%{http_code}\n' https://<s3-dominio>/minio/health/live` (debe imprimir `200`).
 
 ## Conectar una aplicación nueva
 
-1. Elegir un bucket por aplicación y ambiente: `<app>-staging`, `<app>-production`.
+1. Elegir un bucket por aplicación y ambiente: `<app>-staging`, `<app>-production`. Un usuario por bucket: si el usuario ya existe con la política de otro bucket, el script termina con código 3 sin cambiar nada; usar otro nombre de usuario.
 2. Agregar el origen de la aplicación (por ejemplo `https://pos.example.com`) a `MINIO_CORS_ORIGINS`, separado por comas, y volver a desplegar el recurso. MinIO aplica esta lista a todos los buckets del servidor: no existe CORS por bucket.
 3. En la VPS, con la red Docker del recurso (`docker network ls`, la red lleva el UUID del recurso de Coolify):
 

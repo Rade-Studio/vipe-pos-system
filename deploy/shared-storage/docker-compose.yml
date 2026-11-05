@@ -9,11 +9,15 @@
 # Configuración del recurso en Coolify (Docker Compose):
 #   1. Build Pack: Docker Compose. Docker Compose Location:
 #      /deploy/shared-storage/docker-compose.yml
-#   2. Domains del servicio minio:
+#   2. Domains del servicio minio: solo la API S3.
 #        https://<s3-dominio>:9000      API S3 (navegadores y URLs prefirmadas)
-#        https://<consola-dominio>:9001 consola web (opcional; se puede omitir)
 #      El puerto después del dominio indica a Coolify el puerto interno; el
-#      público sigue siendo 443. El DNS de ambos dominios apunta a la VPS.
+#      público sigue siendo 443. El DNS del dominio apunta a la VPS.
+#      La consola web (9001) NO se publica: un dominio público expondría una
+#      página de inicio de sesión del administrador. Se accede por un túnel SSH
+#      sobre Tailscale:
+#        ssh -L 9001:<ip-del-contenedor>:9001 root@100.103.73.111
+#      y luego http://localhost:9001.
 #   3. Strip prefixes: DESACTIVADO (la API S3 firma la ruta completa).
 #   4. Environment:
 #        MINIO_ROOT_USER      usuario administrador (solo para provision-app.sh)
