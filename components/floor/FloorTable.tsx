@@ -1,9 +1,11 @@
 "use client"
 
-import type { CSSProperties } from "react"
-import type { Table } from "@/types"
+import type { CSSProperties, KeyboardEvent, PointerEvent } from "react"
+import { Bookmark, Check, Clock, ConciergeBell, User, type LucideIcon } from "lucide-react"
+import type { Table, TableStatus } from "@/types"
 import { cn } from "@/lib/utils"
-import { chairPositions, initials, tableAccessibleName, tableBox } from "@/lib/floor/layout"
+import { chairPositions, initials, seatsText, tableAccessibleName, tableBox } from "@/lib/floor/layout"
+import { SHAPE_LABELS } from "@/lib/floor/editor"
 import { StatusChip } from "./StatusChip"
 import { toneClasses } from "./tones"
 
@@ -16,7 +18,25 @@ interface FloorTableProps {
   mine: boolean
   waiterName?: string
   onSelect: (tableId: string) => void
+  /** live: status chip and waiter badge; edit: shape and chairs only (admin editor); mini: number and a status icon. */
+  mode?: FloorMode
+  onPointerDown?: (tableId: string, event: PointerEvent<HTMLButtonElement>) => void
+  onKeyDown?: (tableId: string, event: KeyboardEvent<HTMLButtonElement>) => void
 }
+
+export type FloorMode = "live" | "edit" | "mini"
+
+const STATUS_ICON: Record<TableStatus, LucideIcon> = {
+  available: Check,
+  reserved: Bookmark,
+  occupied: User,
+  kitchen: Clock,
+  served: ConciergeBell,
+}
+
+/** "Mesa 4, Redonda, 4 sillas": the editor names a table by its layout, not its status. */
+export const editAccessibleName = (table: Table): string =>
+  [`Mesa ${table.number}`, SHAPE_LABELS[table.shape ?? "square"], seatsText(table.seats)].join(", ")
 
 const TOP_RADIUS = { round: "rounded-full", bar: "rounded-pill", square: "rounded-[18px]", rect: "rounded-[18px]" } as const
 
@@ -26,7 +46,17 @@ const TOP_RADIUS = { round: "rounded-full", bar: "rounded-pill", square: "rounde
  * `aria-pressed` accent ring; keyboard focus is a dashed outline, so they
  * never look alike.
  */
-export function FloorTable({ table, aspect, selected, mine, waiterName, onSelect }: FloorTableProps) {
+export function FloorTable({
+  table,
+  aspect,
+  selected,
+  mine,
+  waiterName,
+  onSelect,
+  mode = "live",
+  onPointerDown,
+  onKeyDown,
+}: FloorTableProps) {
   const box = tableBox(table, aspect)
   const chairs = chairPositions(table.shape, table.seats)
   const tone = toneClasses(table.status)
@@ -38,18 +68,32 @@ export function FloorTable({ table, aspect, selected, mine, waiterName, onSelect
   ]
     .filter(Boolean)
     .join(", ")
-  const badge = mine ? "Tú" : table.waiter ? initials(waiterName) : null
+  const badge = mode !== "live" ? null : mine ? "Tú" : table.waiter ? initials(waiterName) : null
+  const StatusIcon = STATUS_ICON[table.status]
+  // The mini map only shows: its tables are pictures, not (too small) buttons.
+  const interactive = mode !== "mini"
+  const Root = (interactive ? "button" : "span") as "button"
 
   return (
     // data-qa-ignore: chairs, the waiter badge and the status chip are drawn
     // around the tabletop on purpose (design/system.md); the floor is checked.
-    <button
-      type="button"
+    <Root
       data-qa-ignore
-      aria-pressed={selected}
-      aria-label={tableAccessibleName(table, waiterName)}
-      onClick={() => onSelect(table.id)}
-      className="group absolute grid min-h-[44px] place-items-center min-w-[44px] -translate-x-1/2 -translate-y-1/2 rounded-[18px] text-fg focus-visible:outline-none"
+      aria-label={mode === "edit" ? editAccessibleName(table) : tableAccessibleName(table, waiterName)}
+      {...(interactive
+        ? {
+            type: "button" as const,
+            "aria-pressed": selected,
+            onClick: () => onSelect(table.id),
+            onPointerDown: onPointerDown ? (event: PointerEvent<HTMLButtonElement>) => onPointerDown(table.id, event) : undefined,
+            onKeyDown: onKeyDown ? (event: KeyboardEvent<HTMLButtonElement>) => onKeyDown(table.id, event) : undefined,
+          }
+        : { role: "img" })}
+      className={cn(
+        "group absolute grid place-items-center -translate-x-1/2 -translate-y-1/2 rounded-[18px] text-fg focus-visible:outline-none",
+        mode === "mini" ? "min-h-[24px] min-w-[24px]" : "min-h-[44px] min-w-[44px]",
+        mode === "edit" && "cursor-grab touch-none select-none active:cursor-grabbing",
+      )}
       style={{ ...box, "--cs": "clamp(10px, 2.6cqi, 22px)" } as CSSProperties}
     >
       <span
@@ -73,15 +117,21 @@ export function FloorTable({ table, aspect, selected, mine, waiterName, onSelect
           className={cn(
             "absolute inset-0 border-[1.5px] transition-transform motion-safe:group-hover:-translate-y-0.5",
             TOP_RADIUS[table.shape ?? "square"],
-            tone.fill,
+            mode === "edit" ? "border-line-strong bg-surface text-fg" : tone.fill,
             "group-focus-visible:outline-dashed group-focus-visible:outline-[3px] group-focus-visible:outline-offset-[10px] group-focus-visible:outline-focus",
           )}
           style={{ boxShadow: shadow }}
         />
       </span>
 
-      <span className="relative z-10 text-[clamp(15px,3.4cqi,30px)] font-semibold leading-none tracking-tight tabular-nums">
+      <span
+        className={cn(
+          "relative z-10 inline-flex items-center gap-0.5 font-semibold leading-none tracking-tight tabular-nums",
+          mode === "mini" ? "text-[clamp(10px,3cqi,16px)]" : "text-[clamp(15px,3.4cqi,30px)]",
+        )}
+      >
         {table.number}
+        {mode === "mini" && <StatusIcon aria-hidden className="h-3 w-3 shrink-0" strokeWidth={2.6} />}
       </span>
 
       {badge && (
@@ -95,13 +145,13 @@ export function FloorTable({ table, aspect, selected, mine, waiterName, onSelect
         </span>
       )}
 
-      <StatusChip
+      {mode === "live" && <StatusChip
         status={table.status}
         className={cn(
           "absolute left-1/2 top-full z-20 -translate-x-1/2 px-1.5 text-[11px] shadow-sm sm:text-xs",
           chairs.length > 0 ? "mt-[calc(var(--cs)*1.3+4px)]" : "mt-2",
         )}
-      />
-    </button>
+      />}
+    </Root>
   )
 }
