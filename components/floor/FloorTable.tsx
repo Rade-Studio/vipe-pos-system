@@ -40,7 +40,7 @@ const STATUS_ICON: Record<TableStatus, LucideIcon> = {
 export const editAccessibleName = (table: Table): string =>
   [`Mesa ${table.number}`, SHAPE_LABELS[table.shape ?? "square"], seatsText(table.seats)].join(", ")
 
-/** "18 min" → "18m", "1 h 05" → "1h05": the floor chip on small tables. */
+/** "18 min" → "18m", "1 h 05" → "1h05": the status chip below 1024 px. */
 const shortElapsed = (label: string) => label.replace(" min", "m").replace(" h ", "h")
 
 const TOP_RADIUS = { round: "rounded-full", bar: "rounded-pill", square: "rounded-[18px]", rect: "rounded-[18px]" } as const
@@ -147,7 +147,7 @@ export function FloorTable({
       {badge && (
         <span
           className={cn(
-            "absolute -left-2 -top-2 z-30 grid h-6 min-w-6 place-items-center rounded-full border px-1 text-[11px] font-semibold leading-none sm:h-7 sm:min-w-7",
+            "absolute -left-3 -top-2 z-20 grid h-6 min-w-6 place-items-center rounded-full border px-1 text-[11px] font-semibold leading-none lg:h-7 lg:min-w-7",
             mine ? "border-brand bg-brand text-brand-contrast" : "border-line-strong bg-surface-2 text-fg",
           )}
         >
@@ -155,21 +155,21 @@ export function FloorTable({
         </span>
       )}
 
-      {/* Top-right, under the waiter badge; below 1024 px the short label ("18m") keeps it off the badge of a small table. */}
-      {elapsedChip && (
-        <span
-          aria-hidden
-          className="absolute -right-2 -top-2 z-20 inline-flex h-6 flex-none items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-card px-1.5 text-[11px] font-semibold leading-none tabular-nums text-fg shadow-sm sm:h-7 sm:px-2 sm:text-xs"
-        >
-          <Clock className="hidden h-3 w-3 flex-none xl:block" strokeWidth={2.4} />
-          <span className="lg:hidden">{shortElapsed(elapsedChip)}</span>
-          <span className="hidden lg:inline">{elapsedChip}</span>
-        </span>
-      )}
-
       {mode === "live" && <StatusChip
         status={table.status}
         inactive={inactive}
+        data-testid="table-status"
+        // T22/S6: the time since the order opened rides in the status chip under the
+        // table, so it never covers the number, the waiter badge or a neighbour.
+        extra={
+          elapsedChip ? (
+            <span className="tabular-nums">
+              {" · "}
+              <span className="lg:hidden">{shortElapsed(elapsedChip)}</span>
+              <span className="hidden lg:inline">{elapsedChip}</span>
+            </span>
+          ) : null
+        }
         className={cn(
           "absolute left-1/2 top-full z-20 -translate-x-1/2 px-1.5 text-[11px] shadow-sm sm:text-xs",
           chairs.length > 0 ? "mt-[calc(var(--cs)*1.3+4px)]" : "mt-2",

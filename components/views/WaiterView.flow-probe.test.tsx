@@ -231,8 +231,10 @@ function renderView(profile: Profile = waiterProfile) {
 
 const flush = async () => {
   // Drains the query promises and lets React Query notify, so the next
-  // assertion sees the settled view.
-  for (let tick = 0; tick < 3; tick += 1) {
+  // assertion sees the settled view. Three ticks are the floor; under a
+  // loaded full-suite run the reads can take longer, so it keeps ticking
+  // (bounded) until no query is fetching instead of assuming a tick count.
+  for (let tick = 0; tick < 200 && (tick < 3 || queryClient.isFetching() > 0); tick += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })

@@ -236,8 +236,10 @@ function renderView(profile: Profile = waiterProfile) {
 
 const flush = async () => {
   // Drains the query promises and lets React Query notify, so the next
-  // assertion sees the settled view.
-  for (let tick = 0; tick < 3; tick += 1) {
+  // assertion sees the settled view. Three ticks are the floor; under a
+  // loaded full-suite run the reads can take longer, so it keeps ticking
+  // (bounded) until no query is fetching instead of assuming a tick count.
+  for (let tick = 0; tick < 200 && (tick < 3 || queryClient.isFetching() > 0); tick += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
@@ -1264,6 +1266,77 @@ describe("WaiterView — guests, order note, sent time and order number (T22)", 
     })
     await tap("Enviar a cocina (1)")
     expect(env.addItems).toHaveBeenCalledWith("o-1", { items: [item], notes: "Sin prisa" })
+  })
+
+  it("sends an unsaved open-order note with exactly one add-items", async () => {
+    let listed = { ...openOrder(), notes: null as string | null }
+    env.orderGetByStatus.mockImplementation(async () => [listed])
+    env.addItems.mockImplementation(
+      async (_id: string, body: any) => (listed = { ...listed, ...("notes" in body ? { notes: body.notes } : {}) }),
+    )
+    await selectTable()
+    await tap("Agregar productos")
+    await addOne()
+    await tap(/Ver pedido/)
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Nota del pedido (opcional)"), { target: { value: "Sin prisa" } })
+    })
+    await tap("Enviar a cocina (1)")
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await tap("Agregar productos")
+    await addOne()
+    await tap("Enviar a cocina (1)")
+    expect(env.addItems.mock.calls.map(([, b]: any) => b)).toEqual([{ items: [item], notes: "Sin prisa" }, { items: [item] }])
+    expect(env.updateDetails).not.toHaveBeenCalled()
+  })
+
+  it("a blank order note adds no notes key", async () => {
+    await selectTable()
+    await openOrderFlow()
+    await addOne()
+    await tap(/Ver pedido/)
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Nota del pedido (opcional)"), { target: { value: "   " } })
+    })
+    await tap("Enviar a cocina (1)")
+    expect(env.orderCreate).toHaveBeenCalledWith({ tableId: "t-1", orderType: "dine_in", items: [item] })
+  })
+
+  it("C1 chips compose 'chip1, chip2, free note' in tap order; merge on same dish+comment; undo of merge", async () => {
+    const A = "aaaaaaaa-1111-4111-8111-111111111111"
+    env.menuTree.mockResolvedValue({
+      categories: [
+        menuCategory({ id: "cat-1", name: "Platos", dishes: [menuDish({ id: A, name: "Bandeja", price: 30000, quickNotes: ["Sin cebolla", "Término medio"] })] }),
+      ],
+      uncategorized: [],
+    })
+    const cart = () => (useCartStore.getState().cartItems["t-1"] ?? []).map((l) => [l.name, l.quantity, l.comments ?? null])
+    const pick = async (qty: number, note: string | undefined, chips: string[]) => {
+      await tap(/^Platos/)
+      await tap(/^Bandeja,/)
+      for (let i = 1; i < qty; i += 1) await tap("Sumar uno")
+      for (const c of chips) await tap(new RegExp(`^${c}$`))
+      if (note !== undefined) fireEvent.change(screen.getByLabelText(/Nota para cocina/), { target: { value: note } })
+      await tap(new RegExp(`^Agregar ${qty} ·`))
+    }
+    await selectTable()
+    await openOrderFlow()
+    await pick(1, "rápido", ["Término medio", "Sin cebolla"])
+    await pick(2, " rápido ", ["Término medio", "Sin cebolla"])
+    await pick(1, "rápido", ["Sin cebolla", "Término medio"])
+    await pick(1, undefined, ["Sin cebolla"])
+    expect(cart()).toEqual([
+      ["Bandeja", 3, "Término medio, Sin cebolla, rápido"],
+      ["Bandeja", 1, "Sin cebolla, Término medio, rápido"],
+      ["Bandeja", 1, "Sin cebolla"],
+    ])
+    const undo = env.toastFn.mock.calls.filter(([a]: any) => a.title === "✓ 2× Bandeja agregada")[0][0].action.props.onClick
+    await act(async () => undo())
+    await flush()
+    expect(cart()[0]).toEqual(["Bandeja", 1, "Término medio, Sin cebolla, rápido"])
   })
 
   it("refuses a new order on an inactive table without assigning it", async () => {

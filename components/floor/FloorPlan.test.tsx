@@ -188,7 +188,12 @@ describe("FloorPlan — live details (T22)", () => {
     renderPlan([placed("t-1", 4, { status: "kitchen", waiter: "w-2" }), placed("t-2", 5, { x: 0.6 })], {
       elapsedOf: (table) => (table.id === "t-1" ? "18 min" : null),
     })
-    expect(within(tableButton(4)).getByText("18 min")).toBeInTheDocument()
+    // The time rides in the status chip under the table, never over the number or the badge (S6).
+    const status = within(tableButton(4)).getByTestId("table-status")
+    expect(status).toHaveTextContent("En cocina")
+    expect(within(status).getByText("18 min")).toBeInTheDocument()
+    expect(within(status).getByText("18m")).toBeInTheDocument()
+    expect(within(tableButton(4)).getAllByText("18 min")).toHaveLength(1)
     expect(within(tableButton(4)).getByText("CR")).toBeInTheDocument()
     expect(tableButton(4)).toHaveAccessibleName("Mesa 4, En cocina, sin sillas, Carolina Ruiz, abierta hace 18 min")
     expect(within(tableButton(5)).queryByText(/min$/)).not.toBeInTheDocument()
