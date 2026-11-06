@@ -68,6 +68,30 @@ export function ticketStartedAt(order: Order): number {
 }
 
 /**
+ * Lines of one send share their time only up to the API's 1 µs step per line,
+ * which can cross a millisecond; anything within this window is the same send.
+ */
+export const SAME_SEND_WINDOW_MS = 1_000
+
+/**
+ * Which send each line came in (0 = the first): lines sorted by send time, a
+ * new send starting when the gap to the previous line exceeds the window.
+ */
+export function sendIndexOf(order: Order): Map<string, number> {
+  const timed = order.items
+    .map((item) => ({ id: item.id, time: item.addedAt?.getTime() }))
+    .filter((entry): entry is { id: string; time: number } => typeof entry.time === "number" && Number.isFinite(entry.time))
+    .sort((a, b) => a.time - b.time)
+  const index = new Map<string, number>()
+  let send = 0
+  timed.forEach((entry, position) => {
+    if (position > 0 && entry.time - timed[position - 1].time > SAME_SEND_WINDOW_MS) send += 1
+    index.set(entry.id, send)
+  })
+  return index
+}
+
+/**
  * "+n nuevos" (T23): the pending items sent after the order's first send,
  * from the persisted `addedAt` (the send time), so a reload keeps them.
  */
@@ -76,7 +100,7 @@ export function newItemIdsOf(order: Order): string[] {
   if (times.length === 0) return []
   const firstSend = Math.min(...times)
   return pendingItems(order)
-    .filter((item) => (item.addedAt?.getTime() ?? firstSend) > firstSend)
+    .filter((item) => (item.addedAt?.getTime() ?? firstSend) > firstSend + SAME_SEND_WINDOW_MS)
     .map((item) => item.id)
 }
 
