@@ -1,8 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Eye, LayoutGrid, List, Plus, Settings2 } from "lucide-react"
+import { Eye, LayoutGrid, List, Plus, Redo2, Settings2, Undo2 } from "lucide-react"
 import type { Table, TableShape } from "@/types"
 import { cn } from "@/lib/utils"
 import * as tablesApi from "@/lib/api/tables"
@@ -22,13 +22,15 @@ import {
   freeSpot,
   moveTo,
   nextTableNumber,
-  nudge,
   type LayoutEdit,
 } from "@/lib/floor/editor"
-import { FloorMap } from "@/components/floor/FloorMap"
+import { alignTables, distributeTables, type AlignMode, type DistributeAxis } from "@/lib/admin/floor/align"
+import { canRedo, canUndo, createHistory, record, redo, undo, type History } from "@/lib/admin/floor/history"
+import { hasDimensions, nudgeBy, SNAP_CM, toCm, yToCm, sizeText } from "@/lib/admin/floor/units"
+import { takeEditorZone } from "@/lib/admin/floor/editor-zone"
+import { keepActiveFlag } from "@/lib/admin/floor/live"
 import { FloorPlan } from "@/components/floor/FloorPlan"
 import { UnplacedStrip } from "@/components/floor/UnplacedStrip"
-import { StatusChip } from "@/components/floor/StatusChip"
 import { TableManagementPanel } from "@/components/admin/tables/TableManagementPanel"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -36,6 +38,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useWaiters } from "@/hooks/use-waiters"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { ZONES_QUERY_KEY } from "@/hooks/use-zones"
+import { AlignToolbar } from "./AlignToolbar"
+import { EditorCanvas } from "./EditorCanvas"
 import { ShapeIcon } from "./ShapeIcon"
 import { TableInspector, type TableData } from "./TableInspector"
 import { ZoneSheet } from "./ZoneSheet"
@@ -63,12 +67,21 @@ const layoutOf = (table: Table): LayoutEdit => ({
 
 const changesText = (count: number) => `${count} ${count === 1 ? "cambio" : "cambios"} sin guardar`
 
+type Edits = Record<string, LayoutEdit>
+const EMPTY_HISTORY: History<Edits> = createHistory<Edits>({})
+
+const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+const inField = (target: EventTarget | null) =>
+  target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+
 /**
  * Admin "Mesas": the floor plan editor (T5, S4; design/admin-floor-plan/01).
  * Canvas first with a floating inspector; every layout change stays local
  * until "Guardar cambios" sends them all in ONE `PUT /tables/layout`. The
  * table list (search, status filter, create, edit, delete) stays one tab
- * away. On a phone the plan is read only and tables are edited from a list.
+ * away. T26: undo/redo of the unsaved session, multi-select with align and
+ * distribute, real sizes from the zone's measures, inactive tables, and
+ * touch drag (long press) on the phone.
  */
 export function FloorPlanEditor() {
   const { toast } = useToast()
@@ -88,15 +101,19 @@ export function FloorPlanEditor() {
 
   const [base, setBase] = useState<Table[]>([])
   const [loading, setLoading] = useState(true)
-  const [edits, setEdits] = useState<Record<string, LayoutEdit>>({})
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [zoneId, setZoneId] = useState<string | null>(null)
+  const [history, setHistory] = useState<History<Edits>>(EMPTY_HISTORY)
+  const edits = history.present
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [zoneId, setZoneId] = useState<string | null>(() => takeEditorZone())
   const [view, setView] = useState<"plan" | "list">("plan")
   const [preview, setPreview] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState("")
+  // Height of the sticky save bar while shown: the plan keeps that much space free under its content.
+  const barRef = useRef<HTMLDivElement>(null)
+  const [barHeight, setBarHeight] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -113,7 +130,8 @@ export function FloorPlanEditor() {
         if (!cancelled) setLoading(false)
       })
     const unsubscribe = realtimeService.subscribeToTables((payload) => {
-      setBase((prev) => mergeTableList(prev, payload as unknown as TableChange))
+      const change = payload as unknown as TableChange
+      setBase((prev) => keepActiveFlag(prev, mergeTableList(prev, change), change.new as { id?: string; is_active?: unknown }))
     }, "admin")
     return () => {
       cancelled = true
@@ -132,7 +150,10 @@ export function FloorPlanEditor() {
   const sorted = useMemo(() => [...draft].sort((a, b) => a.number - b.number), [draft])
   const zoneTables = zone ? sorted.filter((table) => table.zoneId === zone.id && isPlaced(table, zoneIds)) : []
   const unplaced = sorted.filter((table) => !isPlaced(table, zoneIds))
+  const selectedId = selectedIds.length === 1 ? selectedIds[0] : null
+  const setSelectedId = useCallback((id: string | null) => setSelectedIds(id ? [id] : []), [])
   const selected = draft.find((table) => table.id === selectedId) ?? null
+  const multi = zoneTables.filter((table) => selectedIds.includes(table.id))
 
   // A table selected elsewhere (list, Sin ubicar, zone change) shows its zone.
   const selectedZoneId = selected && isPlaced(selected, zoneIds) ? selected.zoneId : undefined
@@ -140,20 +161,55 @@ export function FloorPlanEditor() {
     if (selectedZoneId) setZoneId(selectedZoneId)
   }, [selectedZoneId])
 
+  /** Record the updated tables as one undo step (`gesture`: steps of one drag or field merge). */
+  const commit = useCallback((updated: Table[], gesture: string | null = null) => {
+    if (updated.length === 0) return
+    setHistory((prev) => record(prev, { ...prev.present, ...Object.fromEntries(updated.map((table) => [table.id, layoutOf(table)])) }, gesture))
+    setSaveError(null)
+  }, [])
+
   const change = useCallback(
-    (tableId: string, next: (table: Table) => Table | null) => {
+    (tableId: string, next: (table: Table) => Table | null, gesture: string | null = null) => {
       const current = draft.find((table) => table.id === tableId)
       const updated = current && next(current)
-      if (!updated) return
-      setEdits((prev) => ({ ...prev, [tableId]: layoutOf(updated) }))
-      setSaveError(null)
+      if (updated) commit([updated], gesture)
     },
-    [draft],
+    [draft, commit],
   )
 
-  const onMoveTable = (tableId: string, x: number, y: number) => change(tableId, (table) => moveTo(table, x, y, aspectOf(table)))
-  const onNudgeTable = (tableId: string, key: string, big: boolean) =>
-    change(tableId, (table) => nudge(table, key, big, aspectOf(table)))
+  const zoneOf = (table: Table) => zones.find((candidate) => candidate.id === table.zoneId) ?? { aspect: aspectOf(table) }
+
+  const onMoveTables = (moves: { id: string; x: number; y: number }[], gesture: string) =>
+    commit(
+      moves.flatMap(({ id, x, y }) => {
+        const table = draft.find((candidate) => candidate.id === id)
+        return table ? [moveTo(table, x, y, aspectOf(table), { snap: false })] : []
+      }),
+      gesture,
+    )
+
+  const onNudgeTable = (tableId: string, key: string, big: boolean) => {
+    const group = selectedIds.includes(tableId) && selectedIds.length > 1 ? multi : draft.filter((table) => table.id === tableId)
+    commit(group.flatMap((table) => nudgeBy(table, key, big, zoneOf(table)) ?? []))
+  }
+
+  const onAlign = (mode: AlignMode) => zone && commit(alignTables(multi, mode, zone.aspect))
+  const onDistribute = (axis: DistributeAxis) => zone && commit(distributeTables(multi, axis, zone.aspect))
+
+  const onUndo = useCallback(() => setHistory((prev) => undo(prev)), [])
+  const onRedo = useCallback(() => setHistory((prev) => redo(prev)), [])
+  const planOpen = view === "plan" && !preview
+  useEffect(() => {
+    if (!planOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z" || inField(event.target)) return
+      event.preventDefault()
+      if (event.shiftKey) onRedo()
+      else onUndo()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [planOpen, onUndo, onRedo])
 
   const onEdit = (tableId: string, edit: LayoutEdit) =>
     change(tableId, (table) => {
@@ -167,7 +223,7 @@ export function FloorPlanEditor() {
         return { ...next, ...size, ...freeSpot(others, { ...size, shape: next.shape }, aspect) }
       }
       return next
-    })
+    }, `edit:${tableId}:${Object.keys(edit).sort().join(",")}`)
 
   const placeSelected = () => {
     if (!selected || !zone) return
@@ -199,7 +255,7 @@ export function FloorPlanEditor() {
     try {
       const saved = await tablesApi.saveLayout(dirty)
       setBase(saved.map(tablesApi.toTable))
-      setEdits({})
+      setHistory(EMPTY_HISTORY)
       setAnnouncement("Plano guardado")
     } catch (error) {
       log.error("Error al guardar el plano:", { error: String(error) })
@@ -210,7 +266,7 @@ export function FloorPlanEditor() {
   }
 
   const discard = () => {
-    setEdits({})
+    setHistory(EMPTY_HISTORY)
     setSaveError(null)
   }
 
@@ -225,11 +281,22 @@ export function FloorPlanEditor() {
     }
   }
 
+  const setActive = async (tableId: string, isActive: boolean) => {
+    try {
+      const updated = tablesApi.toTable(await tablesApi.setTableActive(tableId, isActive))
+      setBase((prev) => prev.map((table) => (table.id === tableId ? { ...updated, isActive: updated.isActive ?? isActive } : table)))
+      setAnnouncement(`Mesa ${updated.number} ${isActive ? "activa" : "inactiva"}`)
+    } catch (error) {
+      log.error("Error al cambiar si la mesa está activa:", { error: String(error) })
+      toast({ title: "Error", description: conflictMessage(error, "No se pudo cambiar la mesa."), variant: "destructive" })
+    }
+  }
+
   const deleteTable = async (tableId: string) => {
     try {
       await tablesApi.delete(tableId)
       setBase((prev) => prev.filter((table) => table.id !== tableId))
-      setEdits(({ [tableId]: _removed, ...rest }) => rest)
+      // Its unsaved edits stay in the history: `applyEdits` only reads tables that exist.
       setSelectedId(null)
       toast({ title: "Mesa eliminada", description: "La mesa ha sido eliminada." })
     } catch (error) {
@@ -250,6 +317,7 @@ export function FloorPlanEditor() {
       placed={isPlaced(table, zoneIds)}
       waiters={waiters}
       onEdit={(edit) => onEdit(table.id, edit)}
+      onSetActive={(isActive) => setActive(table.id, isActive)}
       onPlace={placeSelected}
       onSaveData={(data) => saveData(table.id, data)}
       onDelete={() => deleteTable(table.id)}
@@ -292,14 +360,30 @@ export function FloorPlanEditor() {
     </div>
   )
 
+  const barShown = view === "plan" && (dirty.length > 0 || !!saveError)
+  useEffect(() => {
+    const bar = barRef.current
+    if (!barShown || !bar) {
+      setBarHeight(0)
+      return
+    }
+    const measure = () => setBarHeight(bar.getBoundingClientRect().height)
+    measure()
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(measure)
+    observer.observe(bar)
+    return () => observer.disconnect()
+  }, [barShown])
+
   const saveBar = (dirty.length > 0 || saveError) && (
     <div
+      ref={barRef}
       className="sticky bottom-3 z-30 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card-lg border border-line bg-surface px-4 py-3 text-sm text-fg shadow-lg"
       aria-label="Cambios del plano"
       role="region"
     >
       {dirty.length > 0 && (
-        <span className="min-w-0 flex-1 font-medium">
+        <span className="min-w-0 flex-1 basis-full font-medium sm:basis-auto">
           <span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full bg-brand" />
           {changesText(dirty.length)}
         </span>
@@ -336,6 +420,30 @@ export function FloorPlanEditor() {
       </div>
       {view === "plan" && (
         <div className="ml-auto flex flex-wrap gap-2">
+          {!preview && (
+            <div role="group" aria-label="Historial" className="flex gap-1.5">
+              <button
+                type="button"
+                aria-label={`Deshacer (${isMac() ? "⌘Z" : "Ctrl+Z"})`}
+                title={`Deshacer (${isMac() ? "⌘Z" : "Ctrl+Z"})`}
+                disabled={!canUndo(history)}
+                className={cn(PILL, PILL_OFF, "w-11 justify-center px-0 disabled:opacity-40")}
+                onClick={onUndo}
+              >
+                <Undo2 className="h-4 w-4" aria-hidden />
+              </button>
+              <button
+                type="button"
+                aria-label={`Rehacer (${isMac() ? "⇧⌘Z" : "Ctrl+Shift+Z"})`}
+                title={`Rehacer (${isMac() ? "⇧⌘Z" : "Ctrl+Shift+Z"})`}
+                disabled={!canRedo(history)}
+                className={cn(PILL, PILL_OFF, "w-11 justify-center px-0 disabled:opacity-40")}
+                onClick={onRedo}
+              >
+                <Redo2 className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          )}
           {!isPhone && (
             <button type="button" aria-pressed={preview} className={cn(PILL, preview ? PILL_ON : PILL_OFF)} onClick={() => setPreview((on) => !on)}>
               <Eye className="h-4 w-4" aria-hidden />
@@ -356,44 +464,6 @@ export function FloorPlanEditor() {
     body = <TableManagementPanel />
   } else if (loading) {
     body = <Skeleton className="aspect-[1.6] w-full rounded-card-lg" data-testid="floor-loading" />
-  } else if (isPhone) {
-    body = (
-      <div className="flex min-w-0 flex-col gap-4">
-        <p className="rounded-card border border-line bg-surface-2 px-3 py-2 text-sm text-fg-2">
-          En el teléfono el plano es de solo lectura: arrastrar y alinear mesas está disponible en tablet y computador. Aquí puedes editar
-          los datos de cada mesa desde la lista.
-        </p>
-        <FloorPlan zones={zones} tables={draft} selectedTableId={selectedId} onSelectTable={setSelectedId} waiterNameOf={waiterNameOf} />
-        <ul aria-label="Mesas" className="flex flex-col gap-2">
-          {sorted.map((table) => {
-            const open = table.id === selectedId
-            return (
-              <li key={table.id} className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  onClick={() => setSelectedId(open ? null : table.id)}
-                  className={cn(
-                    "flex min-h-[52px] items-center justify-between gap-3 rounded-card border bg-surface px-4 text-left text-sm",
-                    "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus",
-                    open ? "border-brand" : "border-line",
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block font-semibold">Mesa {table.number}</span>
-                    <span className="block truncate text-xs text-muted-fg">
-                      {SHAPE_LABELS[table.shape ?? "square"]} · {zones.find((z) => z.id === table.zoneId)?.name ?? "Sin ubicar"}
-                    </span>
-                  </span>
-                  <StatusChip status={table.status} />
-                </button>
-                {open && inspector(table, "shadow-none")}
-              </li>
-            )
-          })}
-        </ul>
-      </div>
-    )
   } else if (preview) {
     body = <FloorPlan zones={zones.filter((z) => z.active)} tables={draft} selectedTableId={selectedId} onSelectTable={setSelectedId} waiterNameOf={waiterNameOf} />
   } else {
@@ -415,20 +485,33 @@ export function FloorPlanEditor() {
               {SHAPE_LABELS[shape]}
             </button>
           ))}
-          <span className="ml-auto hidden text-xs text-muted-fg xl:inline">Arrastra una mesa o usa las flechas (Shift: pasos grandes).</span>
         </div>
+
+        {multi.length > 1 ? (
+          <AlignToolbar count={multi.length} onAlign={onAlign} onDistribute={onDistribute} onClear={() => setSelectedIds([])} />
+        ) : (
+          zone && (
+            <p className="flex min-h-[44px] flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-fg">
+              <span>
+                {isPhone ? "Mantén presionada una mesa para moverla" : "Arrastra una mesa o usa las flechas"} · imán de{" "}
+                {hasDimensions(zone) ? `${SNAP_CM} cm` : "2,5 % del ancho"}
+              </span>
+              {!isPhone && <span>Shift + clic o arrastrar en el piso selecciona varias</span>}
+              {!hasDimensions(zone) && <span>Sin medidas reales: indícalas en Gestionar zonas</span>}
+            </p>
+          )
+        )}
 
         <div className="relative min-w-0">
           {zone ? (
             <div className={cn("min-w-0 overflow-auto rounded-card-lg p-3 sm:p-4", selected && "lg:pr-[22rem]")}>
-              <FloorMap
+              <EditorCanvas
                 zone={zone}
                 tables={zoneTables}
-                selectedTableId={selectedId}
-                onSelectTable={setSelectedId}
-                mode="edit"
-                onMoveTable={onMoveTable}
-                onNudgeTable={onNudgeTable}
+                selectedIds={selectedIds}
+                onSelect={setSelectedIds}
+                onMove={onMoveTables}
+                onNudge={onNudgeTable}
                 className="mx-auto max-w-[960px]"
               />
             </div>
@@ -448,8 +531,13 @@ export function FloorPlanEditor() {
             )}
         </div>
 
+        {selected && zone && selected.zoneId === zone.id && isPlaced(selected, zoneIds) && (
+          <p aria-live="polite" className="text-xs tabular-nums text-fg-2">
+            Mesa {selected.number} · {sizeText(selected, zone)}
+            {hasDimensions(zone) && ` · x ${toCm(selected.x ?? 0.5, zone)} cm · y ${yToCm(selected.y ?? 0.5, zone)} cm`}
+          </p>
+        )}
         <UnplacedStrip tables={unplaced} selectedTableId={selectedId} onSelectTable={setSelectedId} waiterNameOf={waiterNameOf} />
-        {!selected && zone && <p className="text-xs text-muted-fg xl:hidden">Toca una mesa para editarla; arrástrala o usa las flechas para moverla.</p>}
       </div>
     )
   }
@@ -457,7 +545,10 @@ export function FloorPlanEditor() {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {viewTabs}
-      {body}
+      {/* The bar sticks 12 px above the bottom: reserve its height plus that offset. */}
+      <div className="min-w-0" style={barHeight ? { paddingBottom: barHeight + 12 } : undefined} data-testid="plan-body">
+        {body}
+      </div>
       {view === "plan" && saveBar}
       <p aria-live="polite" className="sr-only">
         {announcement}

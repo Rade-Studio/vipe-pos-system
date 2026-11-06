@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const env = vi.hoisted(() => ({
   calls: [] as { method: string; path: string; init?: any }[],
   errors: {} as Record<string, unknown>,
+  zones: null as unknown[] | null,
 }))
 
 const tableDto = (id: string, number: number, extra: Record<string, unknown> = {}) => ({
@@ -40,6 +41,8 @@ const zoneDto = (id: string, name: string, sortOrder: number, extra: Record<stri
   sortOrder,
   labels: [],
   active: true,
+  widthM: null,
+  depthM: null,
   createdAt: null,
   updatedAt: null,
   ...extra,
@@ -54,7 +57,7 @@ vi.mock("@/lib/api/client", () => {
     const error = env.errors[`${method} ${path}`]
     if (error) throw error
     if (method === "GET" && path === "/api/tables") return { data: TABLES }
-    if (method === "GET" && path === "/api/zones") return { data: ZONES }
+    if (method === "GET" && path === "/api/zones") return { data: env.zones ?? ZONES }
     if (method === "GET" && path === "/api/staff/waiters") return { data: [{ id: "w-1", name: "Ana Gómez", username: "ana" }] }
     if (method === "PUT" && path === "/api/tables/layout") {
       return { data: TABLES.map((t) => ({ ...t, ...init.body.tables.find((row: any) => row.id === t.id) })) }
@@ -83,6 +86,7 @@ Element.prototype.scrollIntoView = vi.fn()
 Element.prototype.hasPointerCapture = vi.fn(() => false)
 Element.prototype.releasePointerCapture = vi.fn()
 import { FloorPlanEditor } from "./FloorPlanEditor"
+import { requestEditorZone } from "@/lib/admin/floor/editor-zone"
 
 function renderEditor() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -99,6 +103,7 @@ const calls = (method: string, path: string) => env.calls.filter((call) => call.
 beforeEach(() => {
   env.calls.length = 0
   env.errors = {}
+  env.zones = null
   toastMock.mockReset()
 })
 
@@ -283,5 +288,154 @@ describe("FloorPlanEditor — waiter preview", () => {
     expect(screen.getByRole("button", { name: "Vista previa mesero" })).toHaveAttribute("aria-pressed", "true")
     expect(table(1)).toHaveAccessibleName("Mesa 1, Libre, sin sillas")
     expect(screen.queryByRole("button", { name: "Agregar mesa Redonda" })).not.toBeInTheDocument()
+  })
+})
+
+describe("FloorPlanEditor — T26 real sizes", () => {
+  const SIZED = [zoneDto("z-1", "Salón principal", 0, { widthM: 16, depthM: 10 }), zoneDto("z-2", "Terraza", 1)]
+
+  it("shows sizes and positions in cm on a zone with dimensions and snaps arrows to 10 cm", async () => {
+    env.zones = SIZED
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    expect(within(inspector).getByText("160 × 160 cm")).toBeInTheDocument()
+    expect(within(inspector).getByLabelText("Tamaño (cm)")).toHaveValue(160)
+    expect(within(inspector).getByLabelText("Posición X (cm)")).toHaveValue(800)
+    expect(within(inspector).getByLabelText("Posición Y (cm)")).toHaveValue(500)
+    expect(screen.getByText(/imán de 10 cm/)).toBeInTheDocument()
+
+    fireEvent.keyDown(table(1), { key: "ArrowRight" })
+    expect(within(inspector).getByLabelText("Posición X (cm)")).toHaveValue(810)
+    fireEvent.change(within(inspector).getByLabelText("Tamaño (cm)"), { target: { value: "120" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
+    })
+    const [row] = calls("PUT", "/api/tables/layout")[0].init.body.tables
+    expect(row.w).toBeCloseTo(0.075)
+    expect(row.x).toBeCloseTo(0.50625)
+  })
+
+  it("keeps the % of the width without dimensions and says how to get cm", async () => {
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    expect(within(inspector).getByLabelText("Tamaño (% del ancho)")).toHaveValue(10)
+    expect(within(inspector).getByText(/Indica el ancho y el fondo de la zona en Gestionar zonas/)).toBeInTheDocument()
+  })
+
+  it('saves "Ancho × fondo (m)" with the zone and derives its proportion', async () => {
+    await ready()
+    act(() => screen.getByRole("button", { name: "Gestionar zonas" }).click())
+    const sheet = await screen.findByRole("dialog", { name: "Gestionar zonas" })
+    const group = within(sheet).getAllByRole("group", { name: "Ancho × fondo (m)" })[0]
+    fireEvent.change(within(group).getByLabelText("Ancho (m)"), { target: { value: "12" } })
+    fireEvent.change(within(group).getByLabelText("Fondo (m)"), { target: { value: "8" } })
+    expect(within(sheet).getAllByLabelText("Proporción (ancho / alto)")[0]).toBeDisabled()
+    await act(async () => {
+      fireEvent.click(within(sheet).getByRole("button", { name: "Guardar Salón principal" }))
+    })
+    expect(calls("PATCH", "/api/zones/{id}")[0].init.body).toEqual({ name: "Salón principal", aspect: 1.5, labels: [], active: true, widthM: 12, depthM: 8 })
+  })
+})
+
+describe("FloorPlanEditor — T26 undo/redo", () => {
+  it("undoes and redoes layout edits with the buttons and Ctrl/Cmd+Z", async () => {
+    await ready()
+    const undoButton = screen.getByRole("button", { name: /^Deshacer/ })
+    const redoButton = screen.getByRole("button", { name: /^Rehacer/ })
+    expect(undoButton).toBeDisabled()
+    act(() => table(1).click())
+    fireEvent.keyDown(table(1), { key: "ArrowRight" })
+    expect(table(1).style.left).toBe("52.5%")
+    act(() => undoButton.click())
+    expect(table(1).style.left).toBe("50%")
+    expect(screen.queryByText(/sin guardar/)).not.toBeInTheDocument()
+    act(() => redoButton.click())
+    expect(table(1).style.left).toBe("52.5%")
+
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true })
+    expect(table(1).style.left).toBe("50%")
+    fireEvent.keyDown(window, { key: "z", metaKey: true, shiftKey: true })
+    expect(table(1).style.left).toBe("52.5%")
+  })
+
+  it("starts a fresh history after saving", async () => {
+    await ready()
+    act(() => table(1).click())
+    fireEvent.keyDown(table(1), { key: "ArrowRight" })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
+    })
+    expect(screen.getByRole("button", { name: /^Deshacer/ })).toBeDisabled()
+  })
+})
+
+describe("FloorPlanEditor — T26 multi-select and align", () => {
+  it("Shift-click selects several tables and aligns them in one undo step", async () => {
+    await ready()
+    act(() => table(1).click())
+    fireEvent.pointerDown(table(2), { button: 0, shiftKey: true, pointerId: 1 })
+    fireEvent.click(table(2))
+    expect(table(1)).toHaveAttribute("aria-pressed", "true")
+    expect(table(2)).toHaveAttribute("aria-pressed", "true")
+    const bar = screen.getByRole("toolbar", { name: "Acciones de selección múltiple" })
+    expect(bar).toHaveTextContent("2 seleccionadas")
+    expect(within(bar).getByRole("button", { name: "Distribuir en horizontal" })).toBeDisabled()
+
+    act(() => within(bar).getByRole("button", { name: "Alinear a la izquierda" }).click())
+    expect(table(1).style.left).toBe("20%")
+    expect(table(2).style.left).toBe("20%")
+    act(() => screen.getByRole("button", { name: /^Deshacer/ }).click())
+    expect(table(1).style.left).toBe("50%")
+    act(() => screen.getByRole("button", { name: /^Rehacer/ }).click())
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
+    })
+    expect(calls("PUT", "/api/tables/layout")).toHaveLength(1)
+    expect(calls("PUT", "/api/tables/layout")[0].init.body.tables).toEqual([expect.objectContaining({ id: "t-1", x: 0.2 })])
+  })
+})
+
+describe("FloorPlanEditor — T26 inactive tables", () => {
+  it('"Activa" switches the table with PATCH isActive and greys it on the plan', async () => {
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    await act(async () => {
+      fireEvent.click(within(inspector).getByRole("switch", { name: "Activa" }))
+    })
+    const patch = calls("PATCH", "/api/tables/{id}")[0]
+    expect(patch.init).toEqual({ params: { path: { id: "t-1" } }, body: { isActive: false } })
+    expect(table(1)).toHaveAccessibleName("Mesa 1, Cuadrada, sin sillas, inactiva")
+    expect(calls("PUT", "/api/tables/layout")).toHaveLength(0)
+  })
+})
+
+describe("FloorPlanEditor — T26 Editar plano", () => {
+  it("opens on the zone the overview asked for", async () => {
+    requestEditorZone("z-2")
+    renderEditor()
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Terraza/ })).toHaveAttribute("aria-selected", "true"))
+  })
+})
+
+describe("FloorPlanEditor — T26 save bar space", () => {
+  it("reserves the sticky bar's height under the plan while it is shown", async () => {
+    const original = Element.prototype.getBoundingClientRect
+    const spy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      return this.getAttribute("aria-label") === "Cambios del plano" ? ({ height: 96, width: 300 } as DOMRect) : original.call(this)
+    })
+    try {
+      await ready()
+      expect(screen.getByTestId("plan-body").style.paddingBottom).toBe("")
+      act(() => table(1).click())
+      fireEvent.keyDown(table(1), { key: "ArrowRight" })
+      await waitFor(() => expect(screen.getByTestId("plan-body").style.paddingBottom).toBe("108px"))
+      act(() => screen.getByRole("button", { name: "Descartar" }).click())
+      await waitFor(() => expect(screen.getByTestId("plan-body").style.paddingBottom).toBe(""))
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

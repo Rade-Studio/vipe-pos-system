@@ -27,6 +27,24 @@ const SIDES: { side: ZoneLabelDto["side"]; label: string }[] = [
 
 const ICON_BUTTON = "h-11 w-11 shrink-0"
 
+const metres = (text: string): number | null => {
+  const value = Number.parseFloat(text.replace(",", "."))
+  return text.trim() === "" || !Number.isFinite(value) ? null : value
+}
+
+/** The typed measures; `aspect` (width / depth, 2 decimals) only when both are positive. */
+function zoneDimensions(widthText: string, depthText: string): { widthM: number | null; depthM: number | null; aspect?: string; touched: boolean } {
+  const widthM = metres(widthText)
+  const depthM = metres(depthText)
+  const both = widthM !== null && depthM !== null && widthM > 0 && depthM > 0
+  return {
+    widthM,
+    depthM,
+    aspect: both ? String(Math.round((widthM / depthM) * 100) / 100) : undefined,
+    touched: widthText.trim() !== "" || depthText.trim() !== "",
+  }
+}
+
 /** The API's words for a refused write (409 duplicate name / zone with tables, 422 invalid value). */
 const errorText = (error: unknown, fallback: string): string =>
   error instanceof ApiError && (error.status === 409 || error.status === 422 || error.status === 400) ? error.message : fallback
@@ -49,23 +67,34 @@ function ZoneRow({
   const [aspect, setAspect] = useState(String(zone.aspect))
   const [labels, setLabels] = useState<Record<string, string>>({})
   const [active, setActive] = useState(zone.active)
+  const [widthM, setWidthM] = useState(zone.widthM == null ? "" : String(zone.widthM))
+  const [depthM, setDepthM] = useState(zone.depthM == null ? "" : String(zone.depthM))
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     setName(zone.name)
     setAspect(String(zone.aspect))
     setActive(zone.active)
+    setWidthM(zone.widthM == null ? "" : String(zone.widthM))
+    setDepthM(zone.depthM == null ? "" : String(zone.depthM))
     setLabels(Object.fromEntries(zone.labels.map((label) => [label.side, label.text])))
   }, [zone])
+
+  const dimensions = zoneDimensions(widthM, depthM)
+  // With both measures the proportion follows them (the floor is drawn at it).
+  const shownAspect = dimensions.aspect ?? aspect
+  const hadDimensions = zone.widthM != null || zone.depthM != null
 
   const save = () =>
     run(
       () =>
         zonesApi.update(zone.id, {
           name: name.trim(),
-          aspect: Number.parseFloat(aspect),
+          aspect: Number.parseFloat(shownAspect),
           labels: SIDES.flatMap(({ side }) => (labels[side]?.trim() ? [{ text: labels[side].trim(), side }] : [])),
           active,
+          // Sent together (the API refuses one alone with its own message); untouched zones keep the T5 body.
+          ...(dimensions.touched || hadDimensions ? { widthM: dimensions.widthM, depthM: dimensions.depthM } : {}),
         }),
       "No se pudo guardar la zona.",
     )
@@ -119,7 +148,8 @@ function ZoneRow({
             min={0.3}
             max={3.9}
             className="h-11 tabular-nums"
-            value={aspect}
+            value={shownAspect}
+            disabled={dimensions.aspect !== undefined}
             onChange={(event) => setAspect(event.target.value)}
           />
         </div>
@@ -128,6 +158,40 @@ function ZoneRow({
           <Switch aria-label={`Activa ${zone.name}`} checked={active} onCheckedChange={setActive} />
         </label>
       </div>
+
+      <fieldset role="group" aria-label="Ancho × fondo (m)" className="flex min-w-0 flex-col gap-1.5">
+        <legend className="mb-1.5 text-xs font-medium text-muted-fg">Ancho × fondo (m)</legend>
+        <div className="flex items-center gap-2">
+          <Input
+            aria-label="Ancho (m)"
+            type="number"
+            inputMode="decimal"
+            step={0.1}
+            min={0.1}
+            max={200}
+            placeholder="Ancho"
+            className="h-11 min-w-0 flex-1 tabular-nums"
+            value={widthM}
+            onChange={(event) => setWidthM(event.target.value)}
+          />
+          <span aria-hidden className="text-muted-fg">
+            ×
+          </span>
+          <Input
+            aria-label="Fondo (m)"
+            type="number"
+            inputMode="decimal"
+            step={0.1}
+            min={0.1}
+            max={200}
+            placeholder="Fondo"
+            className="h-11 min-w-0 flex-1 tabular-nums"
+            value={depthM}
+            onChange={(event) => setDepthM(event.target.value)}
+          />
+        </div>
+        <p className="text-xs text-muted-fg">Con las medidas reales el plano muestra centímetros y la proporción se calcula sola.</p>
+      </fieldset>
 
       <details className="text-sm">
         <summary className="flex min-h-[44px] cursor-pointer items-center text-fg-2">Rótulos de las paredes</summary>
