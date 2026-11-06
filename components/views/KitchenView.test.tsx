@@ -769,7 +769,12 @@ describe("kitchen ticket rail (rediseno-pos T13)", () => {
 })
 
 describe("kitchen ticket real data (rediseno-pos T23)", () => {
-  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
+  // One clock reading per test, so rows of the same send share their time exactly.
+  let clock = Date.now()
+  beforeEach(() => {
+    clock = Date.now()
+  })
+  const minutesAgo = (minutes: number) => new Date(clock - minutes * 60_000).toISOString()
   const recent = (id: string, minutes: number, status: "kitchen" | "served" = "kitchen") => ({
     ...item(id, status),
     addedAt: minutesAgo(minutes),
@@ -871,6 +876,23 @@ describe("kitchen ticket real data (rediseno-pos T23)", () => {
       expect.stringContaining("Arroz"),
     ])
     expect(within(ticket).getByText("Bandeja").closest("li")).not.toHaveTextContent("Nuevo")
+  })
+
+  it("shows one line for the same dish sent together even when its rows straddle a millisecond", async () => {
+    const at = (ms: number) => new Date(clock - 4 * 60_000 + ms).toISOString()
+    env.kitchenRows = [
+      row("o-1", {
+        items: [
+          { ...recent("o-1-i-1", 20), name: "Bandeja" },
+          { ...item("o-1-i-2"), name: "Empanadas", addedAt: at(0) },
+          { ...item("o-1-i-3"), name: "Empanadas", addedAt: at(1) },
+        ],
+      }),
+    ]
+    renderKitchen()
+    const ticket = await screen.findByRole("article")
+    expect(within(ticket).getByText("+1 nuevos")).toBeInTheDocument()
+    expect(within(ticket).getAllByText("Empanadas")).toHaveLength(1)
   })
 
   it("reads kitchenLateMinutes once per session: at risk from 60% of it, late at it", async () => {
