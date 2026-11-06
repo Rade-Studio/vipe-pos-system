@@ -788,6 +788,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/registers/{id}/paid-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["RegistersController_paidOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/registers/{id}/cash-transactions": {
         parameters: {
             query?: never;
@@ -1460,6 +1476,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/delivery/orders/{id}/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DeliveryController_returnCourier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/delivery/closed-today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeliveryController_closedToday"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/delivery/active": {
         parameters: {
             query?: never;
@@ -1918,7 +1966,7 @@ export interface components {
             deliveryDefaultFee: number;
             /**
              * @description Minutes after which a kitchen ticket is late.
-             * @default 15
+             * @default 25
              */
             kitchenLateMinutes: number;
             /**
@@ -2016,6 +2064,8 @@ export interface components {
             methodKind: "cash" | "electronic";
             amount: number;
             cashReceived: number | null;
+            /** @description Manual reference of a non-cash line; null when none. */
+            reference: string | null;
         };
         Payment: {
             /** Format: uuid */
@@ -2413,6 +2463,8 @@ export interface components {
             amount: number;
             /** @description Cash handed over; required for cash, null for electronic. */
             cashReceived?: number | null;
+            /** @description Card last digits, approval code or transfer reference, captured by hand. Non-cash lines only (422 `Una línea en efectivo no lleva referencia`); tabs and line breaks become spaces, then trimmed to 1..60 chars. Not echoed in the result; read it from the payment tenders. */
+            reference?: string | null;
         };
         PayOrderRequest: {
             /** Format: uuid */
@@ -2474,6 +2526,12 @@ export interface components {
         UndoSplitResult: {
             parent: components["schemas"]["OrderBillSummary"];
         };
+        ProfileRef: {
+            /** Format: uuid */
+            id: string;
+            /** @description profiles.full_name. */
+            name: string;
+        };
         CashTransaction: {
             /** Format: uuid */
             id: string;
@@ -2508,6 +2566,8 @@ export interface components {
             createdAt: string | null;
             /** Format: date-time */
             updatedAt: string | null;
+            /** @description Who opened it: always the caller's profile at open; null for registers opened before migration 0014 or a deleted profile. */
+            openedBy: components["schemas"]["ProfileRef"] | null;
             /** @description Only with include=transactions; legacy payment_transactions, newest first. */
             transactions?: components["schemas"]["LegacyPaymentTransaction"][];
             /** @description Only with include=cashTransactions; newest first. */
@@ -2567,6 +2627,42 @@ export interface components {
              */
             closingTimestamp: string;
             summary: components["schemas"]["RegisterSummary"];
+        };
+        PaidOrderTender: {
+            /** @description Snapshot at payment time. */
+            methodCode: string;
+            /** @description Current catalog name of the method. */
+            methodName: string;
+            /** @enum {string} */
+            methodKind: "cash" | "electronic";
+            amount: number;
+            reference: string | null;
+        };
+        RegisterPaidOrder: {
+            /** Format: uuid */
+            orderId: string;
+            /** @description Per-restaurant order number. */
+            orderNumber: number | null;
+            /** @enum {string} */
+            orderType: "dine_in" | "delivery";
+            tableNumber: number | null;
+            zoneName: string | null;
+            /** @description The order's waiter. */
+            waiter: components["schemas"]["ProfileRef"] | null;
+            /** Format: uuid */
+            paymentId: string;
+            /** @description amount_due of the payment. */
+            amountDue: number;
+            tip: number;
+            /** @description total_charged (amount due + tip). */
+            total: number;
+            /**
+             * Format: date-time
+             * @description Payment time.
+             */
+            paidAt: string;
+            /** @description By line number. */
+            tenders: components["schemas"]["PaidOrderTender"][];
         };
         CreateCashTransactionRequest: {
             amount: number;
@@ -3317,10 +3413,27 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        DeliveryAddressSnapshot: {
+            addressLine: string;
+            neighborhood: string | null;
+            reference: string | null;
+        };
+        CustomerHistory: {
+            /** @description Deliveries of the customer, cancelled ones excluded. */
+            ordersCount: number;
+            /**
+             * Format: date-time
+             * @description Creation of the latest counted delivery.
+             */
+            lastOrderAt: string | null;
+            /** @description Address of the latest counted delivery. */
+            lastAddress: components["schemas"]["DeliveryAddressSnapshot"] | null;
+        };
         CustomerWithAddresses: {
             customer: components["schemas"]["Customer"];
             /** @description Default address first. */
             addresses: components["schemas"]["CustomerAddress"][];
+            history: components["schemas"]["CustomerHistory"];
         };
         Courier: {
             /** Format: uuid */
@@ -3387,6 +3500,16 @@ export interface components {
             cashChangeFor?: number | null;
             /** @description <= 300 chars validated by create_delivery_order. */
             notes?: string | null;
+            /**
+             * Format: uuid
+             * @description Payment channel of a prepaid order: an active payment method of the restaurant, validated by create_delivery_order.
+             */
+            prepaidMethodId?: string | null;
+        };
+        PrepaidMethod: {
+            /** Format: uuid */
+            id: string;
+            name: string;
         };
         DeliveryOrder: {
             /** Format: uuid */
@@ -3403,8 +3526,22 @@ export interface components {
             /** @enum {string} */
             paymentMode: "prepaid" | "cash_on_delivery";
             cashChangeFor: number | null;
+            /** @description Payment channel of a prepaid order; null when not captured. */
+            prepaidMethod: components["schemas"]["PrepaidMethod"] | null;
             /** Format: uuid */
             courierId: string | null;
+            /**
+             * Format: date-time
+             * @description When the courier is expected back, typed at dispatch.
+             */
+            courierEta: string | null;
+            /** @description Where the courier is, typed at dispatch. */
+            courierLocation: string | null;
+            /**
+             * Format: date-time
+             * @description Courier back at the restaurant.
+             */
+            returnedAt: string | null;
             /** @enum {string} */
             status: "received" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "failed" | "cancelled";
             failureReason: string | null;
@@ -3448,6 +3585,23 @@ export interface components {
             courierId?: string | null;
             /** @description Required for fail (1..200 chars). */
             reason?: string | null;
+            /**
+             * Format: date-time
+             * @description Only with dispatch: when the courier is expected back, after now and within 6 hours (validated by set_delivery_status).
+             */
+            courierEta?: string | null;
+            /** @description Only with dispatch: where the courier is, trimmed 1..60 chars (validated by set_delivery_status). */
+            courierLocation?: string | null;
+        };
+        ClosedTodaySummary: {
+            /** @description Delivered deliveries updated today. */
+            deliveredCount: number;
+            /** @description Cancelled deliveries updated today. */
+            cancelledCount: number;
+            /** @description Deliveries currently failed that failed today. */
+            failedCount: number;
+            /** @description Average dispatched_at → delivered_at of the delivered ones, rounded minutes; null without any. */
+            averageDeliveryMinutes: number | null;
         };
         DeliveryOrderWithBill: {
             delivery: components["schemas"]["DeliveryOrder"];
@@ -6019,6 +6173,52 @@ export interface operations {
             };
         };
     };
+    RegistersController_paidOrders: {
+        parameters: {
+            query?: {
+                /** @description 1..200, default 100. */
+                limit?: unknown;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paid orders of the register (one per pay_order payment), newest payment first; legacy payment_transactions are not listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegisterPaidOrder"][];
+                };
+            };
+            /** @description Not admin or cashier. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or of another restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     RegistersController_cashTransactions: {
         parameters: {
             query?: never;
@@ -7969,6 +8169,7 @@ export interface operations {
                     "application/json": components["schemas"]["Courier"];
                 };
             };
+            /** @description Not admin or delivery_operator. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7993,6 +8194,7 @@ export interface operations {
             };
             cookie?: never;
         };
+        /** @description A delivery_operator may send isActive only. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateCourierRequest"];
@@ -8007,6 +8209,7 @@ export interface operations {
                     "application/json": components["schemas"]["Courier"];
                 };
             };
+            /** @description Not admin or delivery_operator, or a delivery_operator sending name or phone. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -8105,6 +8308,82 @@ export interface operations {
             };
             /** @description P0002: delivery or courier not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_returnCourier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description return_courier: returnedAt set on a delivered or failed delivery, once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryOrder"];
+                };
+            };
+            /** @description 42501: not admin or delivery_operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description P0002: delivery not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_closedToday: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restaurant day of GET /delivery/active. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosedTodaySummary"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

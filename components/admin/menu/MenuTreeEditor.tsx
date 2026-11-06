@@ -10,15 +10,18 @@ import { SectionHeader } from "@/components/admin/common/Panel"
 import { EmptyState } from "@/components/admin/common/EmptyState"
 import { useToast } from "@/hooks/use-toast"
 import { log } from "@/lib/log"
-import { reorderCategories, type CategoryDto, type DishDto } from "@/lib/api/catalog"
+import { reorderCategories, reorderDishes, type CategoryDto, type DishDto, type DishGroup, type MenuPublicationDto, type MenuTreeDto } from "@/lib/api/catalog"
 import type { SubcategoryDto } from "@/lib/api/subcategories"
 import {
   ADMIN_LIST_STALE_MS,
   buildAdminMenuTree,
   catalogKeys,
+  draftMenuTree,
   errorMessage,
   fetchCategories,
   fetchDishes,
+  fetchMenuDraft,
+  fetchMenuPublication,
   fetchSubcategories,
   invalidateCatalogReaders,
   invalidateMenuReaders,
@@ -28,6 +31,8 @@ import {
 import { cn } from "@/lib/utils"
 import { CategoryForm } from "./CategoryForm"
 import { CategoryInspector } from "./CategoryInspector"
+import { DishOrderList } from "./DishOrderList"
+import { PublishBar } from "./PublishBar"
 import { CategorySwatch } from "./tones"
 import { plural, WaiterPreview } from "./WaiterPreview"
 
@@ -55,30 +60,29 @@ const summary = (node: AdminCategoryNode) =>
     ? `Sin subcategorías · ${plural(node.dishCount, "plato", "platos")}`
     : `${plural(node.subcategories.length, "subcategoría", "subcategorías")} · ${plural(node.dishCount, "plato", "platos")}`
 
-function DishLine({ dish }: { dish: DishDto }) {
-  return (
-    <li className="flex min-h-9 min-w-0 items-center rounded-lg px-2 text-sm text-fg-2">
-      <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-        {dish.name}
-        {!dish.active && <span className="text-muted-fg"> · Inactivo</span>}
-      </span>
-    </li>
-  )
+interface DishReorder {
+  saving: boolean
+  onReorder: (group: DishGroup, ids: string[], movedId: string) => void
 }
 
 /** The expanded part of a category row: subcategories with their dishes, or the dishes alone. */
-function TreeChildren({ node }: { node: AdminCategoryNode }) {
+function TreeChildren({ node, reorder }: { node: AdminCategoryNode; reorder: DishReorder }) {
   const { category } = node
   const kids = "mt-1.5 ml-[22px] grid gap-1.5 border-l-2 border-line pl-3"
+  const loose = (label: string, className?: string) => (
+    <DishOrderList
+      label={label}
+      dishes={node.looseDishes}
+      className={className}
+      saving={reorder.saving}
+      onReorder={(ids, movedId) => reorder.onReorder({ categoryId: category.id, subcategoryId: null }, ids, movedId)}
+    />
+  )
   if (node.subcategories.length === 0) {
     return node.looseDishes.length === 0 ? (
       <p className={cn(kids, "py-2 text-sm text-muted-fg")}>Sin platos todavía.</p>
     ) : (
-      <ol aria-label={`Platos de ${category.name}`} className={kids}>
-        {node.looseDishes.map((dish) => (
-          <DishLine key={dish.id} dish={dish} />
-        ))}
-      </ol>
+      loose(`Platos de ${category.name}`, kids)
     )
   }
   return (
@@ -96,22 +100,20 @@ function TreeChildren({ node }: { node: AdminCategoryNode }) {
             </span>
           </div>
           {dishes.length > 0 && (
-            <ul aria-label={`Platos de ${subcategory.name}`} className="ml-4 mt-1 grid gap-0.5">
-              {dishes.map((dish) => (
-                <DishLine key={dish.id} dish={dish} />
-              ))}
-            </ul>
+            <DishOrderList
+              label={`Platos de ${subcategory.name}`}
+              dishes={dishes}
+              className="ml-4 mt-1"
+              saving={reorder.saving}
+              onReorder={(ids, movedId) => reorder.onReorder({ categoryId: category.id, subcategoryId: subcategory.id }, ids, movedId)}
+            />
           )}
         </li>
       ))}
       {node.looseDishes.length > 0 && (
         <li className="min-w-0">
           <p className="px-2 pt-1 text-xs font-medium text-muted-fg">Sin subcategoría</p>
-          <ul aria-label={`Platos de ${category.name} sin subcategoría`} className="ml-4 mt-1 grid gap-0.5">
-            {node.looseDishes.map((dish) => (
-              <DishLine key={dish.id} dish={dish} />
-            ))}
-          </ul>
+          {loose(`Platos de ${category.name} sin subcategoría`, "ml-4 mt-1")}
         </li>
       )}
     </ol>
@@ -124,6 +126,10 @@ function TreeChildren({ node }: { node: AdminCategoryNode }) {
  * expandable to subcategories and dishes; the selected category opens in the
  * inspector next to the waiter preview. Phone: list editing, no drag; the
  * inspector is a full-height sheet.
+ *
+ * T27: dishes reorder inside their group the same way (PUT /catalog/dishes/order);
+ * the waiters get structure edits only through "Publicar a meseros", so the
+ * preview reads the draft (GET /catalog/menu/draft).
  */
 export function MenuTreeEditor() {
   const { toast } = useToast()
@@ -156,6 +162,17 @@ export function MenuTreeEditor() {
     queryFn: fetchDishes,
     staleTime: ADMIN_LIST_STALE_MS,
   })
+  const { data: draft } = useQuery<MenuTreeDto>({
+    queryKey: catalogKeys.draft,
+    queryFn: fetchMenuDraft,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
+  // Same slot as the publish bar: only the "sin publicar" label of the preview reads it here.
+  const { data: publication } = useQuery<MenuPublicationDto>({
+    queryKey: catalogKeys.publication,
+    queryFn: fetchMenuPublication,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data])
 
   useEffect(() => {
@@ -179,6 +196,12 @@ export function MenuTreeEditor() {
   const effectiveId = selectedId ?? (wide ? (nodes[0]?.category.id ?? null) : null)
   const selectedIndex = nodes.findIndex((node) => node.category.id === effectiveId)
   const selected = selectedIndex >= 0 ? nodes[selectedIndex] : null
+
+  // The preview is what the next publication serves; until the draft arrives, the saved lists stand in.
+  const previewNodes = useMemo(() => (draft ? draftMenuTree(draft) : nodes), [draft, nodes])
+  const previewSelected = selected ? (previewNodes.find((node) => node.category.id === selected.category.id) ?? selected) : null
+  const unpublished = (publication?.pendingChanges ?? 0) > 0
+  const preview = <WaiterPreview nodes={previewNodes} selected={previewSelected} unpublished={unpublished} />
 
   useEffect(() => {
     if (!focusHandle) return
@@ -210,6 +233,33 @@ export function MenuTreeEditor() {
       setSaving(false)
     }
   }
+
+  /** Saves `ids` as the order of one dish group; shown at once, the previous order comes back on a refusal. */
+  const saveDishOrder = async (group: DishGroup, ids: string[], movedId: string) => {
+    const previous = queryClient.getQueryData<DishDto[]>(catalogKeys.dishes)
+    const position = new Map(ids.map((id, index) => [id, index]))
+    queryClient.setQueryData<DishDto[]>(catalogKeys.dishes, (rows: DishDto[] = []) =>
+      rows.map((row) => (position.has(row.id) ? { ...row, sortOrder: position.get(row.id)! } : row)),
+    )
+    const moved = previous?.find((row) => row.id === movedId)
+    setAnnouncement(`${moved?.name ?? "Plato"} movido a la posición ${position.get(movedId)! + 1} de ${ids.length}`)
+    setSaving(true)
+    try {
+      const saved = await reorderDishes(group, ids)
+      const byId = new Map(saved.map((row) => [row.id, row]))
+      queryClient.setQueryData<DishDto[]>(catalogKeys.dishes, (rows: DishDto[] = []) => rows.map((row) => byId.get(row.id) ?? row))
+      void invalidateMenuReaders(queryClient)
+    } catch (error) {
+      log.error("Error saving the dish order:", { error: String(error) })
+      if (previous) queryClient.setQueryData(catalogKeys.dishes, previous)
+      toast({ variant: "destructive", title: "Error", description: `No se guardó el orden: ${errorMessage(error)}` })
+      setAnnouncement("No se guardó el orden")
+      void invalidateCatalogReaders(queryClient, catalogKeys.dishes)
+    } finally {
+      setSaving(false)
+    }
+  }
+  const dishReorder: DishReorder = { saving, onReorder: (group, ids, movedId) => void saveDishOrder(group, ids, movedId) }
 
   const moveCategory = (id: string, delta: number, focus = true) => {
     const ids = nodes.map((node) => node.category.id)
@@ -296,7 +346,7 @@ export function MenuTreeEditor() {
   )
 
   return (
-    <section className="min-w-0 space-y-3">
+    <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Menú para meseros"
         description="Categorías, subcategorías y platos en el orden y los colores de la toma de pedidos."
@@ -310,6 +360,8 @@ export function MenuTreeEditor() {
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>
+      {/* Phone: last in the section and stuck to the bottom of the screen while the tree scrolls. */}
+      <PublishBar className="z-20 max-md:sticky max-md:bottom-0 max-md:order-last max-md:bg-canvas max-md:pb-2 max-md:pt-1" />
 
       {categoriesQuery.isLoading ? (
         <p className="py-8 text-center text-sm text-muted-foreground">Cargando categorías...</p>
@@ -394,7 +446,7 @@ export function MenuTreeEditor() {
                         />
                       </button>
                     </div>
-                    {isOpen && <TreeChildren node={node} />}
+                    {isOpen && <TreeChildren node={node} reorder={dishReorder} />}
                   </li>
                 )
               })}
@@ -402,17 +454,20 @@ export function MenuTreeEditor() {
             <p id="menu-tree-handle-help" className="sr-only">
               Usa las flechas arriba y abajo para mover la categoría; el orden se guarda al instante.
             </p>
+            <p id="menu-tree-dish-handle-help" className="sr-only">
+              Usa las flechas arriba y abajo para mover el plato dentro de su grupo; el orden se guarda al instante.
+            </p>
           </div>
 
           {wide && selected && (
             <>
               <div className="min-w-0 rounded-card border border-line bg-card p-4">{inspector}</div>
               <div className="min-w-0 lg:col-start-2 min-[1440px]:col-start-auto">
-                <WaiterPreview nodes={nodes} selected={selected} />
+                {preview}
               </div>
             </>
           )}
-          {!wide && <WaiterPreview nodes={nodes} selected={selected} />}
+          {!wide && preview}
         </div>
       )}
 
@@ -438,7 +493,7 @@ export function MenuTreeEditor() {
             </SheetHeader>
             <div className="space-y-6 pt-4">
               {inspector}
-              <WaiterPreview nodes={nodes} selected={selected} />
+              {preview}
             </div>
           </SheetContent>
         </Sheet>

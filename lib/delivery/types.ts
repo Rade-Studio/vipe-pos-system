@@ -110,6 +110,29 @@ export interface Courier {
   updatedAt: string
 }
 
+/** Payment channel of a prepaid delivery (a payment method of the restaurant). */
+export interface PrepaidMethod {
+  id: string
+  /** null only on a raw realtime row, which carries the id alone. */
+  name: string | null
+}
+
+/** The customer's deliveries except cancelled ones (GET /delivery/customers). */
+export interface CustomerHistory {
+  ordersCount: number
+  lastOrderAt: string | null
+  lastAddress: { addressLine: string; neighborhood: string | null; reference: string | null } | null
+}
+
+/** "Cerrados hoy" of the board (GET /delivery/closed-today). */
+export interface ClosedTodaySummary {
+  deliveredCount: number
+  cancelledCount: number
+  failedCount: number
+  /** Rounded minutes from dispatch to delivery; null without deliveries. */
+  averageDeliveryMinutes: number | null
+}
+
 // -----------------------------------------------------------
 // Order delivery (the 1:1 mirror on public.order_deliveries)
 // -----------------------------------------------------------
@@ -136,6 +159,15 @@ export interface DeliveryOrder {
   cancelledAt: string | null
   createdAt: string
   updatedAt: string
+  // T19. Optional so rows built before the columns existed still type; the
+  // API and the realtime parser always send them (absent reads as null).
+  prepaidMethod?: PrepaidMethod | null
+  /** When the courier is expected back, typed at dispatch. */
+  courierEta?: string | null
+  /** Where the courier is, typed at dispatch (1..60 characters). */
+  courierLocation?: string | null
+  /** Courier back at the restaurant (return_courier). */
+  returnedAt?: string | null
 }
 
 /** Minimal order fields the operator board joins against. */
@@ -194,6 +226,8 @@ export interface CreateDeliveryOrderInput {
   /** Whole COP pesos, only allowed when paymentMode === 'cash_on_delivery'. */
   cashChangeFor?: number | null
   notes?: string | null
+  /** Payment channel, only when paymentMode === 'prepaid'. */
+  prepaidMethodId?: string | null
 }
 
 /**
@@ -205,6 +239,10 @@ export interface SetDeliveryStatusInput {
   action: DeliveryAction
   courierId?: string | null
   reason?: string | null
+  /** Only with dispatch: ISO instant after now, within 6 hours. */
+  courierEta?: string | null
+  /** Only with dispatch: trimmed, 1..60 characters. */
+  courierLocation?: string | null
 }
 
 // -----------------------------------------------------------

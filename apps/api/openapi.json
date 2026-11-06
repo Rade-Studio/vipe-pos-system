@@ -2862,6 +2862,60 @@
         ]
       }
     },
+    "/api/registers/{id}/paid-orders": {
+      "get": {
+        "operationId": "RegistersController_paidOrders",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "1..200, default 100.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paid orders of the register (one per pay_order payment), newest payment first; legacy payment_transactions are not listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegisterPaidOrder"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier."
+          },
+          "404": {
+            "description": "Unknown or of another restaurant."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
     "/api/registers/{id}/cash-transactions": {
       "get": {
         "operationId": "RegistersController_cashTransactions",
@@ -5147,7 +5201,7 @@
             }
           },
           "403": {
-            "description": ""
+            "description": "Not admin or delivery_operator."
           },
           "422": {
             "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
@@ -5178,6 +5232,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A delivery_operator may send isActive only.",
           "content": {
             "application/json": {
               "schema": {
@@ -5198,7 +5253,7 @@
             }
           },
           "403": {
-            "description": ""
+            "description": "Not admin or delivery_operator, or a delivery_operator sending name or phone."
           },
           "404": {
             "description": ""
@@ -5301,6 +5356,82 @@
           },
           "404": {
             "description": "P0002: delivery or courier not found."
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/orders/{id}/return": {
+      "post": {
+        "operationId": "DeliveryController_returnCourier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "return_courier: returnedAt set on a delivered or failed delivery, once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "42501: not admin or delivery_operator."
+          },
+          "404": {
+            "description": "P0002: delivery not found."
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/closed-today": {
+      "get": {
+        "operationId": "DeliveryController_closedToday",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Restaurant day of GET /delivery/active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosedTodaySummary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
           },
           "422": {
             "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
@@ -6701,7 +6832,7 @@
           },
           "kitchenLateMinutes": {
             "type": "number",
-            "default": 15,
+            "default": 25,
             "minimum": 1,
             "maximum": 240,
             "description": "Minutes after which a kitchen ticket is late."
@@ -7015,6 +7146,11 @@
           "cashReceived": {
             "type": "number",
             "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "description": "Manual reference of a non-cash line; null when none."
           }
         },
         "required": [
@@ -7025,7 +7161,8 @@
           "methodCode",
           "methodKind",
           "amount",
-          "cashReceived"
+          "cashReceived",
+          "reference"
         ]
       },
       "Payment": {
@@ -8287,6 +8424,13 @@
             "type": "number",
             "nullable": true,
             "description": "Cash handed over; required for cash, null for electronic."
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Card last digits, approval code or transfer reference, captured by hand. Non-cash lines only (422 `Una línea en efectivo no lleva referencia`); tabs and line breaks become spaces, then trimmed to 1..60 chars. Not echoed in the result; read it from the payment tenders."
           }
         },
         "required": [
@@ -8504,6 +8648,23 @@
           "parent"
         ]
       },
+      "ProfileRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "profiles.full_name."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
       "CashTransaction": {
         "type": "object",
         "properties": {
@@ -8585,6 +8746,16 @@
             "format": "date-time",
             "nullable": true
           },
+          "openedBy": {
+            "nullable": true,
+            "description": "Who opened it: always the caller's profile at open; null for registers opened before migration 0014 or a deleted profile.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
           "transactions": {
             "description": "Only with include=transactions; legacy payment_transactions, newest first.",
             "type": "array",
@@ -8608,7 +8779,8 @@
           "finalCash",
           "status",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "openedBy"
         ]
       },
       "RegisterMethodSummary": {
@@ -8797,6 +8969,120 @@
           "finalCash",
           "closingTimestamp",
           "summary"
+        ]
+      },
+      "PaidOrderTender": {
+        "type": "object",
+        "properties": {
+          "methodCode": {
+            "type": "string",
+            "description": "Snapshot at payment time."
+          },
+          "methodName": {
+            "type": "string",
+            "description": "Current catalog name of the method."
+          },
+          "methodKind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          },
+          "amount": {
+            "type": "number"
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "methodCode",
+          "methodName",
+          "methodKind",
+          "amount",
+          "reference"
+        ]
+      },
+      "RegisterPaidOrder": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderNumber": {
+            "type": "number",
+            "nullable": true,
+            "description": "Per-restaurant order number."
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ]
+          },
+          "tableNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true
+          },
+          "waiter": {
+            "nullable": true,
+            "description": "The order's waiter.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "paymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amountDue": {
+            "type": "number",
+            "description": "amount_due of the payment."
+          },
+          "tip": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number",
+            "description": "total_charged (amount due + tip)."
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Payment time."
+          },
+          "tenders": {
+            "description": "By line number.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaidOrderTender"
+            }
+          }
+        },
+        "required": [
+          "orderId",
+          "orderNumber",
+          "orderType",
+          "tableNumber",
+          "zoneName",
+          "waiter",
+          "paymentId",
+          "amountDue",
+          "tip",
+          "total",
+          "paidAt",
+          "tenders"
         ]
       },
       "CreateCashTransactionRequest": {
@@ -11282,6 +11568,57 @@
           "updatedAt"
         ]
       },
+      "DeliveryAddressSnapshot": {
+        "type": "object",
+        "properties": {
+          "addressLine": {
+            "type": "string"
+          },
+          "neighborhood": {
+            "type": "string",
+            "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "addressLine",
+          "neighborhood",
+          "reference"
+        ]
+      },
+      "CustomerHistory": {
+        "type": "object",
+        "properties": {
+          "ordersCount": {
+            "type": "integer",
+            "description": "Deliveries of the customer, cancelled ones excluded."
+          },
+          "lastOrderAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Creation of the latest counted delivery."
+          },
+          "lastAddress": {
+            "nullable": true,
+            "description": "Address of the latest counted delivery.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryAddressSnapshot"
+              }
+            ]
+          }
+        },
+        "required": [
+          "ordersCount",
+          "lastOrderAt",
+          "lastAddress"
+        ]
+      },
       "CustomerWithAddresses": {
         "type": "object",
         "properties": {
@@ -11294,11 +11631,15 @@
             "items": {
               "$ref": "#/components/schemas/CustomerAddress"
             }
+          },
+          "history": {
+            "$ref": "#/components/schemas/CustomerHistory"
           }
         },
         "required": [
           "customer",
-          "addresses"
+          "addresses",
+          "history"
         ]
       },
       "Courier": {
@@ -11490,6 +11831,12 @@
             "nullable": true,
             "maxLength": 1000,
             "description": "<= 300 chars validated by create_delivery_order."
+          },
+          "prepaidMethodId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Payment channel of a prepaid order: an active payment method of the restaurant, validated by create_delivery_order."
           }
         },
         "required": [
@@ -11498,6 +11845,22 @@
           "items",
           "deliveryFee",
           "paymentMode"
+        ]
+      },
+      "PrepaidMethod": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ]
       },
       "DeliveryOrder": {
@@ -11543,10 +11906,37 @@
             "type": "number",
             "nullable": true
           },
+          "prepaidMethod": {
+            "nullable": true,
+            "description": "Payment channel of a prepaid order; null when not captured.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PrepaidMethod"
+              }
+            ]
+          },
           "courierId": {
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "courierEta": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "When the courier is expected back, typed at dispatch."
+          },
+          "courierLocation": {
+            "type": "string",
+            "nullable": true,
+            "description": "Where the courier is, typed at dispatch."
+          },
+          "returnedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Courier back at the restaurant."
           },
           "status": {
             "type": "string",
@@ -11608,7 +11998,11 @@
           "deliveryFee",
           "paymentMode",
           "cashChangeFor",
+          "prepaidMethod",
           "courierId",
+          "courierEta",
+          "courierLocation",
+          "returnedAt",
           "status",
           "failureReason",
           "notes",
@@ -11690,10 +12084,50 @@
             "type": "string",
             "nullable": true,
             "description": "Required for fail (1..200 chars)."
+          },
+          "courierEta": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Only with dispatch: when the courier is expected back, after now and within 6 hours (validated by set_delivery_status)."
+          },
+          "courierLocation": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000,
+            "description": "Only with dispatch: where the courier is, trimmed 1..60 chars (validated by set_delivery_status)."
           }
         },
         "required": [
           "action"
+        ]
+      },
+      "ClosedTodaySummary": {
+        "type": "object",
+        "properties": {
+          "deliveredCount": {
+            "type": "integer",
+            "description": "Delivered deliveries updated today."
+          },
+          "cancelledCount": {
+            "type": "integer",
+            "description": "Cancelled deliveries updated today."
+          },
+          "failedCount": {
+            "type": "integer",
+            "description": "Deliveries currently failed that failed today."
+          },
+          "averageDeliveryMinutes": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Average dispatched_at → delivered_at of the delivered ones, rounded minutes; null without any."
+          }
+        },
+        "required": [
+          "deliveredCount",
+          "cancelledCount",
+          "failedCount",
+          "averageDeliveryMinutes"
         ]
       },
       "DeliveryOrderWithBill": {

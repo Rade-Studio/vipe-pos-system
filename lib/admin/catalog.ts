@@ -21,7 +21,11 @@ import {
   fetchCategories as listCategories,
   fetchDishes as listDishes,
   fetchPromotions as listPromotions,
+  getMenuDraft,
+  getMenuPublication,
   type CategoryColor,
+  type MenuPublicationDto,
+  type MenuTreeDto,
   type CategoryDto,
   type DishDto,
   type PromotionDto,
@@ -52,6 +56,9 @@ export const catalogKeys = {
   dishes: ["catalog", "menu", "dishes"] as const,
   promotions: ["catalog", "menu", "promotions"] as const,
   subcategories: ["catalog", "menu", "subcategories"] as const,
+  /** T27: the live structure the next publication serves, and the "n cambios sin publicar" status. */
+  draft: ["catalog", "menu", "draft"] as const,
+  publication: ["catalog", "menu", "publication"] as const,
   staff: ["catalog", "staff"] as const,
 }
 
@@ -79,6 +86,14 @@ export async function fetchPromotions(): Promise<PromotionDto[]> {
   return listPromotions()
 }
 
+export async function fetchMenuDraft(): Promise<MenuTreeDto> {
+  return getMenuDraft()
+}
+
+export async function fetchMenuPublication(): Promise<MenuPublicationDto> {
+  return getMenuPublication()
+}
+
 /**
  * After an admin catalog write: refresh the admin list that changed and every
  * menu the POS and delivery screens cache, so a new dish, a renamed category or
@@ -88,12 +103,19 @@ export function invalidateCatalogReaders(queryClient: QueryClient, adminKey: rea
   return Promise.all([queryClient.invalidateQueries({ queryKey: adminKey }), invalidateMenuReaders(queryClient)])
 }
 
-/** Only the POS and delivery menus: for a write whose admin list is already up to date (a saved order). */
+/**
+ * The POS and delivery menus, plus the admin draft and its pending-change
+ * count (T27): every structure write goes through here, so "n cambios sin
+ * publicar" follows each edit. Alone, for a write whose admin list is already
+ * up to date (a saved order).
+ */
 export function invalidateMenuReaders(queryClient: QueryClient) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: ["menu"] }),
     queryClient.invalidateQueries({ queryKey: ["delivery-menu-categories"] }),
     queryClient.invalidateQueries({ queryKey: ["delivery-menu-dishes"] }),
+    queryClient.invalidateQueries({ queryKey: catalogKeys.draft }),
+    queryClient.invalidateQueries({ queryKey: catalogKeys.publication }),
   ])
 }
 
@@ -190,4 +212,57 @@ export function planGeneralSubcategory(node: AdminCategoryNode): { existingId: s
     name: GENERAL_SUBCATEGORY,
     dishIds: node.looseDishes.map((dish) => dish.id),
   }
+}
+
+/** The editor nodes of `GET /catalog/menu/draft`: what the waiters get on the next publication. */
+export function draftMenuTree(tree: MenuTreeDto): AdminCategoryNode[] {
+  return buildAdminMenuTree(
+    tree.categories,
+    tree.categories.flatMap((category) => category.subcategories),
+    tree.categories.flatMap((category) => category.dishes),
+  )
+}
+
+// ---- Menu publication (redesign T27) -----------------------------------------
+
+export const pendingChangesLabel = (n: number) => `${n} ${n === 1 ? "cambio" : "cambios"} sin publicar`
+
+/** "hace 2 h": the age of a publication, never negative when the clocks drift. */
+export function publishedAgo(iso: string, now: number = Date.now()): string {
+  const minutes = Math.floor(Math.max(0, now - Date.parse(iso)) / 60_000)
+  if (minutes < 1) return "hace un momento"
+  if (minutes < 60) return `hace ${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `hace ${hours} h`
+  return `hace ${Math.floor(hours / 24)} d`
+}
+
+// ---- Quick notes (T27): the API's rules and Spanish messages ------------------
+
+export const QUICK_NOTES_MAX = 12
+export const QUICK_NOTE_MAX_LENGTH = 30
+export const QUICK_NOTE_MESSAGES = {
+  tooMany: "Máximo 12 notas rápidas",
+  length: "Cada nota rápida debe tener entre 1 y 30 caracteres",
+  duplicate: "Las notas rápidas no se pueden repetir",
+} as const
+
+/** `candidate` as the API stores it (trimmed, inner spaces collapsed), or why it cannot join `notes`. */
+export function checkQuickNote(notes: readonly string[], candidate: string): { note: string } | { error: string } {
+  const note = candidate.trim().replace(/\s+/g, " ")
+  const length = [...note].length
+  if (length < 1 || length > QUICK_NOTE_MAX_LENGTH) return { error: QUICK_NOTE_MESSAGES.length }
+  if (notes.some((existing) => existing.toLowerCase() === note.toLowerCase())) return { error: QUICK_NOTE_MESSAGES.duplicate }
+  if (notes.length >= QUICK_NOTES_MAX) return { error: QUICK_NOTE_MESSAGES.tooMany }
+  return { note }
+}
+
+// ---- Tile name hint (T27, L19 e) ----------------------------------------------
+
+/** Characters a category or subcategory name shows in two lines of a phone tile; a hint, not an API limit. */
+export const TILE_NAME_LIMIT = 22
+
+export function tileNameHint(name: string): { count: number; over: boolean } {
+  const count = [...name.trim()].length
+  return { count, over: count > TILE_NAME_LIMIT }
 }

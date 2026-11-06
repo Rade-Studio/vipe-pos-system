@@ -226,6 +226,30 @@ describe("wireRowToPartialOrder — delivery mapping (S14)", () => {
   })
 })
 
+describe("wireRowToPartialOrder — order number, guests and notes (T17 note, rediseno-pos T23)", () => {
+  test("copies order_number, guests and notes from the realtime row", () => {
+    const mapped = wireRowToPartialOrder({ id: "o-1", status: "kitchen", order_number: 128, guests: 4, notes: "Cumpleaños, traer vela" })
+    expect(mapped).toMatchObject({ orderNumber: 128, guests: 4, notes: "Cumpleaños, traer vela" })
+  })
+
+  test("a null guests or notes clears them; absent keys are not carried", () => {
+    const cleared = wireRowToPartialOrder({ id: "o-1", status: "kitchen", order_number: 7, guests: null, notes: null })
+    expect(cleared).toHaveProperty("guests", undefined)
+    expect(cleared).toHaveProperty("notes", undefined)
+    expect(cleared!.orderNumber).toBe(7)
+    const partial = wireRowToPartialOrder({ id: "o-1", status: "kitchen" })
+    expect(partial).not.toHaveProperty("orderNumber")
+    expect(partial).not.toHaveProperty("guests")
+    expect(partial).not.toHaveProperty("notes")
+  })
+
+  test("a live UPDATE with a new note replaces it on the merged order", () => {
+    const prev = [{ id: "o-1", tableId: "t-1", status: "kitchen", items: [], notes: "Old" } as never]
+    const next = mergeOrdersList(prev, { eventType: "UPDATE", new: wireRowToPartialOrder({ id: "o-1", table_id: "t-1", status: "kitchen", notes: "Sin cebolla" }) })
+    expect(next[0].notes).toBe("Sin cebolla")
+  })
+})
+
 describe("mergeOrdersForWaiter — a delivery order never enters the waiter list (S13)", () => {
   test("INSERT of a delivery row leaves the waiter list untouched", () => {
     const prev = [makeOrder("o-1")]

@@ -1,9 +1,11 @@
 import { toIso } from '../common/validation';
 import { numOrNull, req } from '../payments/payments.mappers';
 import {
+  type ClosedTodaySummary,
   type Courier,
   type Customer,
   type CustomerAddress,
+  type CustomerHistory,
   DELIVERY_STATUSES,
   type DeliveryOrder,
   type DeliveryOrderWithBill,
@@ -40,7 +42,10 @@ function oneOf<T extends string>(row: Json, field: string, values: readonly T[])
   return value as T;
 }
 
-/** One `to_jsonb(order_deliveries)` row (also what set_delivery_status returns). */
+/**
+ * One `to_jsonb(order_deliveries)` row plus `prepaid_method_name` (the
+ * DELIVERY_ROW select in the service; the RPCs' own result lacks the name).
+ */
 export const toDeliveryOrder = (row: Json): DeliveryOrder => ({
   orderId: str(row, 'order_id'),
   customerId: str(row, 'customer_id'),
@@ -52,7 +57,13 @@ export const toDeliveryOrder = (row: Json): DeliveryOrder => ({
   deliveryFee: req(row, 'delivery_fee'),
   paymentMode: oneOf<PaymentMode>(row, 'payment_mode', PAYMENT_MODES),
   cashChangeFor: numOrNull(row.cash_change_for),
+  prepaidMethod: textOrNull(row.prepaid_method_id) === null
+    ? null
+    : { id: str(row, 'prepaid_method_id'), name: str(row, 'prepaid_method_name') },
   courierId: textOrNull(row.courier_id),
+  courierEta: timeOrNull(row.courier_eta),
+  courierLocation: textOrNull(row.courier_location),
+  returnedAt: timeOrNull(row.returned_at),
   status: oneOf<DeliveryStatus>(row, 'delivery_status', DELIVERY_STATUSES),
   failureReason: textOrNull(row.failure_reason),
   notes: textOrNull(row.notes),
@@ -92,6 +103,25 @@ export const toCourier = (row: Json): Courier => ({
   isActive: bool(row, 'is_active'),
   createdAt: time(row, 'created_at'),
   updatedAt: time(row, 'updated_at'),
+});
+
+/** `{orders_count, last_order_at, last_address}` of the customer's counted deliveries. */
+export const toCustomerHistory = (row: Json): CustomerHistory => {
+  const last = row.last_address as Json | null;
+  return {
+    ordersCount: req(row, 'orders_count'),
+    lastOrderAt: timeOrNull(row.last_order_at),
+    lastAddress: last
+      ? { addressLine: str(last, 'address_line'), neighborhood: textOrNull(last.neighborhood), reference: textOrNull(last.address_reference) }
+      : null,
+  };
+};
+
+export const toClosedTodaySummary = (row: Json): ClosedTodaySummary => ({
+  deliveredCount: req(row, 'delivered'),
+  cancelledCount: req(row, 'cancelled'),
+  failedCount: req(row, 'failed'),
+  averageDeliveryMinutes: numOrNull(row.average_minutes),
 });
 
 /** `{delivery, subtotal, tax, status}` of GET /delivery/active; amountDue = subtotal + tax, as the web computed it. */
