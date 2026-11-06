@@ -258,6 +258,32 @@ describe('cart actions', () => {
     expect(d.cartLines).toHaveLength(2)
   })
 
+  it('undoAdd takes back the added quantity from the same dish + comments line, dropping it at 0', () => {
+    const line = { dishId: 'dish-1', name: 'Hamburguesa', unitPrice: 15000, quantity: 1, comments: 'sin cebolla' }
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, { type: 'addItem', line })
+    d = orderDraftReducer(d, { type: 'addItem', line: { ...line, quantity: 2 } })
+    d = orderDraftReducer(d, { type: 'undoAdd', dishId: 'dish-1', comments: 'sin cebolla', quantity: 2, quantityAfterAdd: 3 })
+    expect(d.cartLines).toHaveLength(1)
+    expect(d.cartLines[0]?.quantity).toBe(1)
+    // another note is another line: nothing to undo there
+    expect(orderDraftReducer(d, { type: 'undoAdd', dishId: 'dish-1', comments: null, quantity: 1, quantityAfterAdd: 1 })).toBe(d)
+    d = orderDraftReducer(d, { type: 'undoAdd', dishId: 'dish-1', comments: 'sin cebolla', quantity: 1, quantityAfterAdd: 1 })
+    expect(d.cartLines).toEqual([])
+  })
+
+  it('undoAdd does nothing once the line changed after that add (stale Deshacer)', () => {
+    const line = { dishId: 'dish-1', name: 'Hamburguesa', unitPrice: 15000, quantity: 2, comments: null }
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, { type: 'addItem', line })
+    const stale = { type: 'undoAdd' as const, dishId: 'dish-1', comments: null, quantity: 2, quantityAfterAdd: 2 }
+    // Quitar on Confirmar, then the same dish added again with 1
+    d = orderDraftReducer(d, { type: 'removeItem', lineId: d.cartLines[0]!.id })
+    d = orderDraftReducer(d, { type: 'addItem', line: { ...line, quantity: 1 } })
+    expect(orderDraftReducer(d, stale)).toBe(d)
+    expect(d.cartLines[0]?.quantity).toBe(1)
+  })
+
   it('incrementItem / decrementItem move the quantity by +1 / -1', () => {
     let d = initialOrderDraft({ suggestedFee: 0 })
     d = orderDraftReducer(d, {

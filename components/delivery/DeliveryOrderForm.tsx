@@ -2,16 +2,15 @@
 
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { useQuery } from '@tanstack/react-query'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ArrowLeft, ArrowRight, Check, Loader2, Minus, Plus, Search, Trash2 } from 'lucide-react'
-import { fetchCategories, fetchDishes } from '@/lib/api/catalog'
+import { ArrowLeft, ArrowRight, Check, Loader2, Minus, Plus, Trash2 } from 'lucide-react'
+import { StepPicker, type StepPickerItem } from '@/components/order-steps/StepPicker'
+import { useMenuTree } from '@/hooks/use-menu-tree'
 import {
   findCustomerByPhone,
   createDeliveryOrder,
@@ -76,9 +75,9 @@ interface DeliveryOrderFormProps {
  * with a persistent summary; validation and submit are unchanged. Owns:
  *   - phone lookup state (`findCustomerByPhone` on blur / Enter)
  *   - the draft reducer (`orderDraftReducer`)
- *   - menu picker (categories + dishes, search box, reuse of
- *     the catalog API with server-side promotion pricing, the same
- *     prices the waiter menu shows)
+ *   - the Productos step: the waiter's step picker (T11) over the same
+ *     menu tree (`useMenuTree`, promotion prices and availability),
+ *     read once the step first opens
  *   - submit gating via single-flight + Spanish toasts per
  *     DeliveryServiceError kind
  *
@@ -102,8 +101,12 @@ export function DeliveryOrderForm({
   // Only the latest lookup may write its result, and submit waits for it.
   const lookupSeq = useRef(0)
   const [lookupPending, setLookupPending] = useState(false)
-  const [search, setSearch] = useState('')
   const [step, setStep] = useState<OrderStepId>('customer')
+  // The picker (and its menu read) mounts the first time Productos opens and
+  // then stays mounted, so its step is kept while the operator moves around.
+  const [productsOpened, setProductsOpened] = useState(false)
+  if (step === 'products' && !productsOpened) setProductsOpened(true)
+  const menuTree = useMenuTree({ enabled: productsOpened })
   const stepIndex = ORDER_STEPS.findIndex((st) => st.id === step)
   const headingRefs = useRef<Partial<Record<OrderStepId, HTMLHeadingElement | null>>>({})
   const stepMoved = useRef(false)
@@ -125,38 +128,6 @@ export function DeliveryOrderForm({
     return map
   }, [issues])
 
-  // Menu data: same categories + dishes the waiter uses (with
-  // promotions). The category list loads on mount; the dish list
-  // loads per category change. A search box filters dishes across
-  // categories for the operator.
-  const { data: categories = [], isLoading: loadingCategories } = useQuery({
-    queryKey: ['delivery-menu-categories'],
-    queryFn: () => fetchCategories({ active: true }),
-    staleTime: 60_000,
-  })
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
-  const { data: dishes = [], isLoading: loadingDishes } = useQuery({
-    queryKey: ['delivery-menu-dishes', selectedCategoryId],
-    queryFn: () => fetchDishes({ categoryId: selectedCategoryId!, active: true, pricing: 'promotions' }),
-    enabled: selectedCategoryId !== null,
-    staleTime: 60_000,
-  })
-
-  // Pick the first category once it arrives so the dish pane has
-  // something to render on first open.
-  useEffect(() => {
-    if (selectedCategoryId === null && categories.length > 0) {
-      setSelectedCategoryId(categories[0]!.id)
-    }
-  }, [categories, selectedCategoryId])
-
-  // Filter dishes by the search box across the visible category.
-  const visibleDishes = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    if (needle.length === 0) return dishes as DishLike[]
-    return (dishes as DishLike[]).filter((d) => d.name.toLowerCase().includes(needle))
-  }, [dishes, search])
-
   // Seed the suggested fee once it is known. The dialog used to hold the form
   // back until the read resolved; now the form is already on screen and this
   // is what fills the field (T10/S2).
@@ -167,18 +138,18 @@ export function DeliveryOrderForm({
     dispatch({ type: 'setFee', value: suggestedFee })
   }, [draft.fee, suggestedFee, suggestedFeeResolved])
 
-  const onAddDish = (dish: DishLike) => {
-    const action: OrderDraftAction = {
+  // A dish picked through the steps goes into the draft with the same merge
+  // rule (dish + comments); the returned undo takes back what was just added,
+  // only while the line is still as this add left it.
+  const onAddFromSteps = ({ dish, quantity, comments }: StepPickerItem) => {
+    const note = comments ?? null
+    const existing = draft.cartLines.find((l) => l.dishId === dish.id && (l.comments ?? null) === note)
+    const quantityAfterAdd = (existing?.quantity ?? 0) + quantity
+    dispatch({
       type: 'addItem',
-      line: {
-        dishId: dish.id,
-        name: dish.name,
-        unitPrice: dish.price,
-        quantity: 1,
-        comments: dish.comments ?? null,
-      },
-    }
-    dispatch(action)
+      line: { dishId: dish.id, name: dish.name, unitPrice: dish.price, quantity, comments: note },
+    })
+    return () => dispatch({ type: 'undoAdd', dishId: dish.id, comments: note, quantity, quantityAfterAdd })
   }
 
   // Phone lookup: fires on blur and on Enter while the phone has the
@@ -265,13 +236,13 @@ export function DeliveryOrderForm({
     await task
   }
 
-  const stepHeading = (id: OrderStepId) => (
+  const stepHeading = (id: OrderStepId, srOnly = false) => (
     <h3
       ref={(el) => {
         headingRefs.current[id] = el
       }}
       tabIndex={-1}
-      className="text-xl font-semibold tracking-tight focus:outline-none"
+      className={cn('text-xl font-semibold tracking-tight focus:outline-none', srOnly && 'sr-only')}
     >
       {ORDER_STEPS.find((st) => st.id === id)!.title}
     </h3>
@@ -425,63 +396,39 @@ export function DeliveryOrderForm({
             )}
           </section>
 
-          {/* T11 replaces this picker with the shared Categoría → Subcategoría → Plato steps. */}
-          <section hidden={step !== 'products'} className={stepSection(step === 'products')}>
-            {stepHeading('products')}
-            <div className="space-y-1">
-              <Label htmlFor="dishSearch">Buscar plato</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden />
-                <Input
-                  id="dishSearch"
-                  className="h-11 pl-9"
-                  placeholder="Buscar..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex min-w-0 gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
-              {loadingCategories
-                ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-11 w-24 shrink-0 rounded-full" />)
-                : categories.map((c: CategoryLike) => (
-                    <Button
-                      key={c.id}
-                      variant={c.id === selectedCategoryId ? 'default' : 'outline'}
-                      className={cn(PILL_BUTTON, 'shrink-0')}
-                      aria-pressed={c.id === selectedCategoryId}
-                      onClick={() => setSelectedCategoryId(c.id)}
-                    >
-                      {c.name}
-                    </Button>
-                  ))}
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {loadingDishes ? (
-                Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-card" />)
-              ) : visibleDishes.length === 0 ? (
-                <p className="col-span-full p-4 text-sm text-muted-fg">No hay platos disponibles.</p>
-              ) : (
-                visibleDishes.map((d) => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => onAddDish(d)}
-                    className={cn(
-                      'flex min-h-16 min-w-0 flex-col items-start justify-center gap-0.5 rounded-card border border-line bg-surface p-3 text-left text-sm hover:border-brand-line dark:bg-surface-2',
-                      FOCUS_RING,
-                    )}
-                  >
-                    <span className="line-clamp-2 font-medium [overflow-wrap:anywhere]">{d.name}</span>
-                    <span className={cn(MONEY, 'text-muted-fg')}>{formatMoney(d.price)}</span>
-                  </button>
-                ))
-              )}
-            </div>
-
-            <CartPanel draft={draft} dispatch={dispatch} itemError={issuesByField.get('items') ?? null} />
+          {/* T11 (S3): the waiter's Categoría → Subcategoría → Plato → Agregar steps, same menu tree. */}
+          <section
+            hidden={step !== 'products'}
+            className={cn('flex h-full min-h-0 flex-col', step !== 'products' && 'hidden')}
+          >
+            {/* The picker titles each level; the step title stays for focus and screen readers. */}
+            {stepHeading('products', true)}
+            {productsOpened && (
+              <StepPicker
+                embedded
+                className="min-h-0 flex-1"
+                menu={menuTree.categories}
+                isError={menuTree.isError}
+                onRetry={menuTree.refetch}
+                onAdd={onAddFromSteps}
+                onExit={() => goTo('address')}
+                exitLabel="Dirección"
+                summary={
+                  <p className="flex min-h-[52px] min-w-0 items-center justify-between gap-2 rounded-2xl border border-line bg-surface-2 px-3 text-sm md:min-h-[60px]">
+                    <span className="truncate text-fg-2">
+                      {itemCount} {itemCount === 1 ? 'producto' : 'productos'}
+                    </span>
+                    <span className={cn(MONEY, 'shrink-0 font-semibold text-fg')}>{formatMoney(totals.total)}</span>
+                  </p>
+                }
+                primaryAction={
+                  <Button type="button" className="text-base" onClick={() => goTo('payment')}>
+                    Continuar
+                    <ArrowRight className="ml-1 h-5 w-5" aria-hidden />
+                  </Button>
+                }
+              />
+            )}
           </section>
 
           <section hidden={step !== 'payment'} className={stepSection(step === 'payment')}>
@@ -591,6 +538,7 @@ export function DeliveryOrderForm({
               />
               {draft.notes && <ConfirmRow label="Notas" value={draft.notes} />}
             </dl>
+            <CartPanel draft={draft} dispatch={dispatch} itemError={issuesByField.get('items') ?? null} />
             {issues.length > 0 && (
               <div className="grid gap-2 rounded-card border border-status-warning-line bg-status-warning-bg p-3 text-status-warning-fg">
                 <p className="text-sm font-medium">Falta completar:</p>
@@ -644,54 +592,57 @@ export function DeliveryOrderForm({
         </aside>
       </div>
 
-      <div className="flex items-center gap-2 border-t border-line px-4 py-3 md:px-6">
-        <Button
-          type="button"
-          variant="outline"
-          className={cn(PILL_BUTTON, 'max-sm:w-11 max-sm:px-0')}
-          onClick={() => goTo(ORDER_STEPS[stepIndex - 1]!.id)}
-          disabled={stepIndex === 0}
-        >
-          <ArrowLeft className="h-4 w-4 sm:mr-1" aria-hidden />
-          <span className="max-sm:sr-only">Atrás</span>
-        </Button>
-        <p className="mr-auto flex min-w-0 items-baseline gap-1.5 pl-1 text-sm text-muted-fg min-[900px]:hidden">
-          <span className="truncate">
-            <span className="max-sm:hidden">
-              {itemCount} {itemCount === 1 ? 'producto' : 'productos'} ·{' '}
+      {/* On Productos the picker's own bar carries Atrás / Continuar. */}
+      {step !== 'products' && (
+        <div className="flex items-center gap-2 border-t border-line px-4 py-3 md:px-6">
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(PILL_BUTTON, 'max-sm:w-11 max-sm:px-0')}
+            onClick={() => goTo(ORDER_STEPS[stepIndex - 1]!.id)}
+            disabled={stepIndex === 0}
+          >
+            <ArrowLeft className="h-4 w-4 sm:mr-1" aria-hidden />
+            <span className="max-sm:sr-only">Atrás</span>
+          </Button>
+          <p className="mr-auto flex min-w-0 items-baseline gap-1.5 pl-1 text-sm text-muted-fg min-[900px]:hidden">
+            <span className="truncate">
+              <span className="max-sm:hidden">
+                {itemCount} {itemCount === 1 ? 'producto' : 'productos'} ·{' '}
+              </span>
+              Total
             </span>
-            Total
-          </span>
-          <span className={cn(MONEY, 'shrink-0 font-semibold text-fg')}>{formatMoney(totals.total)}</span>
-        </p>
-        <span className="hidden flex-1 min-[900px]:block" />
-        {step === 'confirm' ? (
-          <Button
-            type="button"
-            className={cn(PILL_BUTTON, 'bg-btn px-5 text-btn-foreground shadow-glow hover:bg-btn/90')}
-            onClick={() => void onSubmit()}
-            disabled={issues.length > 0 || submitting || lookupPending}
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-                Creando domicilio…
-              </>
-            ) : (
-              'Crear domicilio'
-            )}
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            className={cn(PILL_BUTTON, 'bg-btn px-5 text-btn-foreground hover:bg-btn/90')}
-            onClick={() => goTo(ORDER_STEPS[stepIndex + 1]!.id)}
-          >
-            Continuar
-            <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
-          </Button>
-        )}
-      </div>
+            <span className={cn(MONEY, 'shrink-0 font-semibold text-fg')}>{formatMoney(totals.total)}</span>
+          </p>
+          <span className="hidden flex-1 min-[900px]:block" />
+          {step === 'confirm' ? (
+            <Button
+              type="button"
+              className={cn(PILL_BUTTON, 'bg-btn px-5 text-btn-foreground shadow-glow hover:bg-btn/90')}
+              onClick={() => void onSubmit()}
+              disabled={issues.length > 0 || submitting || lookupPending}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                  Creando domicilio…
+                </>
+              ) : (
+                'Crear domicilio'
+              )}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              className={cn(PILL_BUTTON, 'bg-btn px-5 text-btn-foreground hover:bg-btn/90')}
+              onClick={() => goTo(ORDER_STEPS[stepIndex + 1]!.id)}
+            >
+              Continuar
+              <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -699,18 +650,6 @@ export function DeliveryOrderForm({
 // -----------------------------------------------------------
 // Subcomponents (kept in this file because they are form-internal)
 // -----------------------------------------------------------
-
-interface DishLike {
-  id: string
-  name: string
-  price: number
-  comments?: string | null
-}
-
-interface CategoryLike {
-  id: string
-  name: string
-}
 
 function AddressPicker({
   addresses,
@@ -847,7 +786,7 @@ function CartPanel({
   if (draft.cartLines.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
-        Toca un plato para agregarlo al pedido
+        Aún no agregas productos. Vuelve a «Productos».
         {itemError && <p className="mt-1 text-destructive">{itemError}</p>}
       </div>
     )
@@ -855,7 +794,7 @@ function CartPanel({
   return (
     <div className="space-y-2 rounded-md border p-2">
       {draft.cartLines.map((line) => (
-        <div key={line.id} className="space-y-1 text-xs">
+        <div key={line.id} className="space-y-1 text-sm">
           <div className="flex items-center justify-between gap-2">
             <span className="min-w-0 font-medium [overflow-wrap:anywhere]">{line.name}</span>
             <button

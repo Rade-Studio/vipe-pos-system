@@ -54,6 +54,12 @@ export interface StepPickerProps {
   /** Replaces the steps (e.g. the order review); "Atrás" calls `onCloseOverlay`. */
   overlay?: ReactNode
   onCloseOverlay?: () => void
+  /**
+   * Inside a panel (the delivery drawer, T11) instead of full screen: tiles
+   * follow the panel (2 columns on phone, 3 from 640 px) and, without
+   * `header`, the top bar is left out.
+   */
+  embedded?: boolean
   className?: string
 }
 
@@ -62,7 +68,8 @@ const TILE =
   "shadow-[0_4px_0_-1px_rgba(9,9,11,.18)] dark:shadow-[0_4px_0_-1px_rgba(0,0,0,.55)] md:min-h-[156px] lg:min-h-[168px] min-[1440px]:min-h-[180px] " +
   "motion-safe:transition-transform motion-safe:active:translate-y-0.5 motion-safe:active:scale-[.985] " +
   "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-4 focus-visible:outline-focus"
-const GRID = "grid grid-cols-2 gap-2.5 md:grid-cols-3 md:gap-3 xl:grid-cols-4 xl:gap-3.5"
+const FULL_GRID = "grid grid-cols-2 gap-2.5 md:grid-cols-3 md:gap-3 xl:grid-cols-4 xl:gap-3.5"
+const EMBEDDED_GRID = "grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3"
 const FOCUS = "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
 
 function Bar({ className }: { className: string }) {
@@ -116,8 +123,11 @@ export function StepPicker({
   aside,
   overlay,
   onCloseOverlay,
+  embedded = false,
   className,
 }: StepPickerProps) {
+  const GRID = embedded ? EMBEDDED_GRID : FULL_GRID
+  const showHeader = !embedded || header != null
   const [state, rawDispatch] = useReducer(stepReducer, initialStepState)
   const { toast } = useToast()
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -407,12 +417,15 @@ export function StepPicker({
   return (
     <div
       className={cn(
-        "grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] bg-canvas text-fg",
+        "grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] bg-canvas text-fg",
+        showHeader ? "grid-rows-[auto_auto_minmax(0,1fr)_auto]" : "grid-rows-[auto_minmax(0,1fr)_auto]",
         aside && "lg:grid-cols-[minmax(0,1fr)_340px] min-[1440px]:grid-cols-[minmax(0,1fr)_380px]",
         className,
       )}
     >
-      <header className="col-span-full flex min-w-0 items-center gap-2.5 border-b border-line px-3 py-2 md:px-5 md:py-2.5">{header}</header>
+      {showHeader && (
+        <header className="col-span-full flex min-w-0 items-center gap-2.5 border-b border-line px-3 py-2 md:px-5 md:py-2.5">{header}</header>
+      )}
 
       <nav aria-label="Pasos para agregar" className="min-w-0 border-b border-line p-2 md:px-5 md:py-2.5">
         <ol className="grid grid-cols-4 gap-1 md:gap-2">
