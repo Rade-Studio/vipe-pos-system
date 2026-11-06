@@ -66,13 +66,17 @@ bucket="vipe-rehearse-real"
 
 # Original stderr: cleanup writes here, because Ctrl-C also kills the tee below.
 exec 3>&2
+# A signal to the process group also kills the tee; bash then reports the dead
+# child ("Terminated") into that broken pipe, and a default SIGPIPE would kill the
+# shell before its INT/TERM trap runs, leaving the export behind. Ignore it here.
+trap '' PIPE
 export PG_TOOL_TRACE="$work/pg-tool-argv.log"
 
 # Runs on every exit, including Ctrl-C: the real hashes go first, before any
 # output (stdout may be a dead pipe), and nothing here may stop it half-way.
 cleanup() {
   local status=$?
-  trap '' INT TERM PIPE
+  trap '' INT TERM HUP PIPE
   set +e
   rm -rf "$work/export"
   exec >&3 2>&3
@@ -104,6 +108,7 @@ trap cleanup EXIT
 exec > >(tee "$work/rehearsal.log") 2>&1
 : > "$PG_TOOL_TRACE"
 trap 'exit 130' INT TERM
+trap 'exit 129' HUP
 
 wait_pg() {
   for _ in $(seq 1 60); do

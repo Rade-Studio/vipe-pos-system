@@ -10,6 +10,7 @@
 #   (b) a full run passes, keeps a log without the password, leaves no container or export directory
 #   (c) no command run by the script (PATH shims) gets the password as an argument
 #   (d) Ctrl-C to the process group during import.sh exits 130 and leaves no export or container
+#   (d2) SIGTERM to the process group during import.sh: same as (d)
 #   (e) hostile inherited S3_*, DATABASE_URL and PG* variables do not change the result
 # REHEARSAL_PORT_BASE default 55600 (source +1, script target +2 and MinIO +3, storage +4).
 set -euo pipefail
@@ -124,6 +125,25 @@ set -e
 [ "$rc" -eq 130 ] && ok "interrupt exits 130" || check_failed "interrupt exited $rc, expected 130"
 [ "$(leftover_exports "$scratch/int-tmp")" -eq 0 ] && ok "no export directory left after the interrupt" || check_failed "export directory (auth-users.csv) left after the interrupt"
 [ "$(rr_containers)" -eq 0 ] && ok "no container left after the interrupt" || check_failed "containers left after the interrupt"
+
+# SIGTERM to the group (`kill %1`): bash prints "Terminated" into the dead tee, so
+# without an ignored SIGPIPE the shell dies before its trap and cleanup never runs.
+log "(d2) SIGTERM to the process group during import.sh"
+set -m
+mkdir -p "$scratch/term-tmp"
+TMPDIR="$scratch/term-tmp" REHEARSAL_LOG="$scratch/term.log" REHEARSAL_PORT_BASE="$base" \
+  SUPABASE_DB_URL="$src_url" SUPABASE_PUBLIC_STORAGE_URL="$storage_url" bash "$script" >"$scratch/term.out" 2>&1 &
+term_pid=$!
+set +m
+for _ in $(seq 1 600); do grep -q -- '---- import.sh' "$scratch/term.out" && break; sleep 0.5; done
+kill -TERM -- "-$term_pid"
+set +e
+wait "$term_pid"
+rc=$?
+set -e
+[ "$rc" -eq 130 ] && ok "SIGTERM exits 130" || check_failed "SIGTERM exited $rc, expected 130"
+[ "$(leftover_exports "$scratch/term-tmp")" -eq 0 ] && ok "no export directory left after SIGTERM" || check_failed "export directory (auth-users.csv) left after SIGTERM"
+[ "$(rr_containers)" -eq 0 ] && ok "no container left after SIGTERM" || check_failed "containers left after SIGTERM"
 
 log "(e) hostile inherited environment"
 run_script hostile SUPABASE_DB_URL="$src_url" SUPABASE_PUBLIC_STORAGE_URL="$storage_url" \
