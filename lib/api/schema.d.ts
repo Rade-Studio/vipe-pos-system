@@ -340,6 +340,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["TablesController_saveLayout"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{id}": {
         parameters: {
             query?: never;
@@ -402,6 +418,38 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ZonesController_list"];
+        put?: never;
+        post: operations["ZonesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/zones/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["ZonesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["ZonesController_update"];
         trace?: never;
     };
     "/api/payments/methods": {
@@ -1816,6 +1864,25 @@ export interface components {
              */
             waiterId: string | null;
             waiterName: string | null;
+            /**
+             * Format: uuid
+             * @description Zone the table sits on.
+             */
+            zoneId: string | null;
+            /** @description Centre, fraction of the zone width. */
+            x: number | null;
+            /** @description Centre, fraction of the zone height. */
+            y: number | null;
+            /** @description Width, fraction of the zone width. */
+            w: number | null;
+            /** @description Height, fraction of the zone height. */
+            h: number | null;
+            /** @enum {string} */
+            shape: "round" | "square" | "rect" | "bar";
+            /** @description Degrees, 0 <= rotation < 360. */
+            rotation: number;
+            /** @description Chairs to draw; null or 0 draws none. */
+            seats: number | null;
             /** Format: date-time */
             createdAt: string | null;
             /**
@@ -1825,6 +1892,17 @@ export interface components {
             updatedAt: string | null;
         };
         CreateTableRequest: {
+            /** Format: uuid */
+            zoneId?: string | null;
+            /** @description x, y, w and h go together. */
+            x?: number | null;
+            y?: number | null;
+            w?: number | null;
+            h?: number | null;
+            /** @enum {string} */
+            shape?: "round" | "square" | "rect" | "bar";
+            rotation?: number;
+            seats?: number | null;
             number: number;
             /**
              * @default available
@@ -1832,7 +1910,37 @@ export interface components {
              */
             status: "available" | "reserved" | "occupied" | "kitchen" | "served";
         };
+        TableLayout: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            zoneId: string | null;
+            /** @description x, y, w and h go together. */
+            x: number | null;
+            y: number | null;
+            w: number | null;
+            h: number | null;
+            /** @enum {string} */
+            shape: "round" | "square" | "rect" | "bar";
+            rotation: number;
+            seats: number | null;
+        };
+        SaveLayoutRequest: {
+            /** @description Each table once. */
+            tables: components["schemas"]["TableLayout"][];
+        };
         UpdateTableRequest: {
+            /** Format: uuid */
+            zoneId?: string | null;
+            /** @description x, y, w and h go together. */
+            x?: number | null;
+            y?: number | null;
+            w?: number | null;
+            h?: number | null;
+            /** @enum {string} */
+            shape?: "round" | "square" | "rect" | "bar";
+            rotation?: number;
+            seats?: number | null;
             number?: number;
             /**
              * @description available also clears the waiter unless waiterId is given.
@@ -1861,6 +1969,48 @@ export interface components {
             id: string;
             name: string;
             username: string | null;
+        };
+        ZoneLabel: {
+            text: string;
+            /** @enum {string} */
+            side: "top" | "right" | "bottom" | "left";
+        };
+        Zone: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Width / height of the floor. */
+            aspect: number;
+            sortOrder: number;
+            labels: components["schemas"]["ZoneLabel"][];
+            active: boolean;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        CreateZoneRequest: {
+            /** @description Unique per restaurant, case-insensitive. */
+            name: string;
+            /**
+             * @description Width / height, 0.25 < aspect < 4.
+             * @default 1.6
+             */
+            aspect: number;
+            /** @default 0 */
+            sortOrder: number;
+            /** @default [] */
+            labels: components["schemas"]["ZoneLabel"][];
+            /** @default true */
+            active: boolean;
+        };
+        UpdateZoneRequest: {
+            name?: string;
+            /** @description Width / height, 0.25 < aspect < 4. */
+            aspect?: number;
+            sortOrder?: number;
+            labels?: components["schemas"]["ZoneLabel"][];
+            active?: boolean;
         };
         PaymentMethod: {
             /** Format: uuid */
@@ -4137,6 +4287,44 @@ export interface operations {
             };
         };
     };
+    TablesController_saveLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveLayoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Every table after the save, ordered by number. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"][];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown table (another restaurant), zone of another restaurant or invalid values; nothing is saved. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     TablesController_remove: {
         parameters: {
             query?: never;
@@ -4316,6 +4504,171 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Waiter"][];
                 };
+            };
+        };
+    };
+    ZonesController_list: {
+        parameters: {
+            query?: {
+                /** @description Admin only. */
+                includeInactive?: "true" | "false";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active zones (all with includeInactive), by sort order then name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Zone"][];
+                };
+            };
+            /** @description includeInactive by a non-admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ZonesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateZoneRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Zone"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una zona con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ZonesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La zona tiene mesas; muévelas o elimínalas primero */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ZonesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateZoneRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Zone"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una zona con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

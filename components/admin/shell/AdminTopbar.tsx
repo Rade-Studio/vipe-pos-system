@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, Search, UserCog } from "lucide-react"
+import { LogOut, Menu, PanelLeft, Search, UserCog } from "lucide-react"
 import type { Profile } from "@/types"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -20,8 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Separator } from "@/components/ui/separator"
-import { SidebarTrigger } from "@/components/ui/sidebar"
+import { useSidebar } from "@/components/ui/sidebar"
 import { roleLabel } from "@/lib/auth/roles"
 import { getAdminSection, groupOfSection, type AdminSectionId } from "@/lib/admin/navigation"
 import { signOutAndLeave } from "./actions"
@@ -50,45 +49,67 @@ export function AdminTopbar({ profile, authRole, section, onChangeProfile, onOpe
   const group = groupOfSection(section)
   const role = roleLabel(profile.role) ?? profile.role
 
+  const { setOpenMobile, toggleSidebar, state } = useSidebar()
+
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-4">
-      <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="mr-1 h-4" />
+    <header className="sticky top-0 z-30 flex min-h-[60px] shrink-0 items-center gap-2 border-b border-line bg-[color-mix(in_srgb,var(--canvas)_80%,transparent)] px-3 py-2 backdrop-blur-xl md:gap-3 md:px-6">
+      {/* Phones: the navigation is a drawer. Tablets keep the icon rail, wide screens may collapse it. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-11 shrink-0 rounded-full md:hidden"
+        aria-label="Abrir menú"
+        onClick={() => setOpenMobile(true)}
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="hidden size-11 shrink-0 rounded-full xl:inline-flex"
+        aria-label={state === "expanded" ? "Contraer menú" : "Expandir menú"}
+        onClick={toggleSidebar}
+      >
+        <PanelLeft className="h-5 w-5" />
+      </Button>
       <Breadcrumb className="min-w-0 flex-1">
-        <BreadcrumbList className="flex-nowrap">
-          <BreadcrumbItem className="hidden sm:inline-flex">{group.label}</BreadcrumbItem>
-          <BreadcrumbSeparator className="hidden sm:block" />
+        <BreadcrumbList className="flex-nowrap text-muted-fg">
+          <BreadcrumbItem className="hidden md:inline-flex">{group.label}</BreadcrumbItem>
+          <BreadcrumbSeparator className="hidden md:block" />
           <BreadcrumbItem className="min-w-0">
-            <BreadcrumbPage className="truncate">{current.label}</BreadcrumbPage>
+            <BreadcrumbPage className="truncate font-semibold text-fg">{current.label}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       <Button
         variant="outline"
-        size="sm"
         onClick={onOpenCommand}
-        className="h-8 gap-2 px-2 text-muted-foreground md:w-56 md:justify-start md:px-3"
+        className="size-11 shrink-0 gap-2 rounded-full border-line-strong bg-surface-2 p-0 text-muted-fg hover:bg-surface hover:text-fg lg:w-64 lg:justify-start lg:px-3.5"
         aria-label="Buscar sección o acción"
       >
         <Search className="h-4 w-4" />
-        <span className="hidden md:inline">Buscar…</span>
-        <kbd className="pointer-events-none ml-auto hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium md:inline-flex">
+        <span className="hidden min-w-0 truncate lg:inline">Buscar…</span>
+        <kbd className="pointer-events-none ml-auto hidden h-5 select-none items-center gap-1 rounded-md border border-line-strong px-1.5 font-mono text-[11px] font-medium text-fg-2 lg:inline-flex">
           ⌘K
         </kbd>
       </Button>
 
-      <ThemeToggle />
+      <div className="shrink-0 [&>button]:size-11 [&>button]:rounded-full">
+        <ThemeToggle />
+      </div>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="h-9 gap-2 px-1.5" aria-label="Menú de perfil">
-            <Avatar className="h-7 w-7">
-              <AvatarFallback className="text-xs">{initials(profile.name)}</AvatarFallback>
+          <Button variant="ghost" className="h-11 shrink-0 gap-2.5 rounded-full px-1.5 xl:pr-3" aria-label="Menú de perfil">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="border border-brand-line bg-brand-tint text-xs font-semibold text-brand-strong">
+                {initials(profile.name)}
+              </AvatarFallback>
             </Avatar>
-            <span className="hidden flex-col items-start leading-tight lg:flex">
+            <span className="hidden flex-col items-start leading-tight xl:flex">
               <span className="text-sm font-medium">{profile.name}</span>
-              <span className="text-xs text-muted-foreground">{role}</span>
+              <span className="text-xs text-muted-fg">{role}</span>
             </span>
           </Button>
         </DropdownMenuTrigger>
