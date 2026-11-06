@@ -25,6 +25,7 @@ import {
   toTable,
   toTableRow,
   update,
+  setTableActive,
   updateTableStatus,
   type TableDto,
 } from "./tables"
@@ -43,6 +44,7 @@ const table: TableDto = {
   shape: "round",
   rotation: 45,
   seats: 6,
+  isActive: true,
   createdAt: "2026-11-04T11:00:00.000Z",
   updatedAt: "2026-11-04T12:00:00.000Z",
 }
@@ -69,6 +71,7 @@ describe("mapping", () => {
       shape: "round",
       rotation: 45,
       seats: 6,
+      isActive: true,
       updated_at: new Date("2026-11-04T12:00:00.000Z"),
     })
     const unplaced = { zoneId: null, x: null, y: null, w: null, h: null, seats: null }
@@ -86,8 +89,10 @@ describe("mapping", () => {
       shape: "round",
       rotation: 45,
       seats: undefined,
+      isActive: true,
       updated_at: undefined,
     })
+    expect(toTable({ ...table, isActive: false }).isActive).toBe(false)
   })
 
   it("maps the DTO onto the pos_changes row shape the admin panel merges", () => {
@@ -134,6 +139,14 @@ describe("requests", () => {
     api.DELETE.mockResolvedValueOnce({ data: undefined })
     await deleteTable("t-1")
     expect(api.DELETE).toHaveBeenCalledWith("/api/tables/{id}", byId)
+  })
+
+  it("turns a table off and on with the table PATCH", async () => {
+    api.PATCH.mockResolvedValueOnce({ data: { ...table, isActive: false } })
+    await expect(setTableActive("t-1", false)).resolves.toMatchObject({ isActive: false })
+    expect(api.PATCH).toHaveBeenCalledWith("/api/tables/{id}", { ...byId, body: { isActive: false } })
+    await setTableActive("t-1", true)
+    expect(api.PATCH).toHaveBeenLastCalledWith("/api/tables/{id}", { ...byId, body: { isActive: true } })
   })
 
   it("saves the floor plan layout in one PUT and returns every table", async () => {

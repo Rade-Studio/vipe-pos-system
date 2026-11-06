@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 /** T7b (S4) — the dish form writes through the API with a camelCase body. */
@@ -60,6 +60,8 @@ const dish = {
   imageUrl: "https://img/d-1.png",
   active: true,
   allowComments: true,
+  sortOrder: 0,
+  quickNotes: [],
   createdAt: null,
   updatedAt: null,
 }
@@ -103,6 +105,7 @@ describe("DishForm", () => {
       imageUrl: "https://img/d-1.png",
       active: true,
       allowComments: true,
+      quickNotes: [],
     })
     expect(catalog.createDish).not.toHaveBeenCalled()
   })
@@ -127,6 +130,7 @@ describe("DishForm", () => {
       imageUrl: null,
       active: true,
       allowComments: false,
+      quickNotes: [],
     })
   })
 
@@ -326,5 +330,80 @@ describe("DishForm — subcategory", () => {
         }),
       ),
     )
+  })
+})
+
+describe("DishForm — quick notes (T27)", () => {
+  const input = () => screen.getByLabelText("Nueva nota rápida")
+  const add = (value: string) => {
+    fireEvent.change(input(), { target: { value } })
+    fireEvent.click(screen.getByRole("button", { name: "Agregar nota" }))
+  }
+  const chips = () =>
+    within(screen.getByRole("list", { name: "Notas rápidas" }))
+      .queryAllByRole("listitem")
+      .map((li) => li.querySelector("[data-note]")?.textContent)
+
+  it("loads the dish notes, adds and removes chips, and saves them", async () => {
+    const onSuccess = vi.fn()
+    render(<DishForm dish={{ ...dish, quickNotes: ["Sin sal"] }} categories={categories} onSuccess={onSuccess} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+    expect(chips()).toEqual(["Sin sal"])
+
+    add("  Bien   caliente ")
+    expect(chips()).toEqual(["Sin sal", "Bien caliente"])
+    expect(input()).toHaveValue("")
+    fireEvent.click(screen.getByRole("button", { name: "Quitar nota Sin sal" }))
+    expect(chips()).toEqual(["Bien caliente"])
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+    })
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(catalog.updateDish).toHaveBeenCalledWith("d-1", expect.objectContaining({ quickNotes: ["Bien caliente"] }))
+  })
+
+  it("adds a note with Enter without submitting the dish", async () => {
+    render(<DishForm dish={dish} categories={categories} onSuccess={vi.fn()} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+
+    fireEvent.change(input(), { target: { value: "Sin hielo" } })
+    fireEvent.keyDown(input(), { key: "Enter" })
+
+    expect(chips()).toEqual(["Sin hielo"])
+    expect(catalog.updateDish).not.toHaveBeenCalled()
+  })
+
+  it("refuses a duplicate ignoring case, with the API message", async () => {
+    render(<DishForm dish={{ ...dish, quickNotes: ["Sin hielo"] }} categories={categories} onSuccess={vi.fn()} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+
+    add("SIN HIELO")
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Las notas rápidas no se pueden repetir")
+    expect(chips()).toEqual(["Sin hielo"])
+    expect(input()).toHaveValue("SIN HIELO")
+  })
+
+  it("refuses an empty or a 31-character note", async () => {
+    render(<DishForm dish={dish} categories={categories} onSuccess={vi.fn()} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+
+    add("x".repeat(31))
+    expect(screen.getByRole("alert")).toHaveTextContent("Cada nota rápida debe tener entre 1 y 30 caracteres")
+    add("   ")
+    expect(screen.getByRole("alert")).toHaveTextContent("Cada nota rápida debe tener entre 1 y 30 caracteres")
+    expect(chips()).toEqual([])
+  })
+
+  it("refuses a 13th note", async () => {
+    const twelve = Array.from({ length: 12 }, (_, i) => `Nota ${i + 1}`)
+    render(<DishForm dish={{ ...dish, quickNotes: twelve }} categories={categories} onSuccess={vi.fn()} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+
+    add("Otra")
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Máximo 12 notas rápidas")
+    expect(chips()).toHaveLength(12)
   })
 })

@@ -56,6 +56,30 @@ describe('parseOrderDeliveryRow', () => {
     expect(parsed.updatedAt).toBe(WIRE_DELIVERY.updated_at)
   })
 
+  it('reads the T19 columns: prepaid method id (name unknown in a raw row), courier ETA, location and return', () => {
+    const parsed = parseOrderDeliveryRow({
+      ...WIRE_DELIVERY,
+      payment_mode: 'prepaid',
+      cash_change_for: null,
+      prepaid_method_id: '55555555-5555-5555-5555-555555555555',
+      courier_eta: '2026-10-07T02:00:00.000Z',
+      courier_location: 'Laureles',
+      returned_at: '2026-10-07T01:30:00.000Z',
+    })
+    expect(parsed).toMatchObject({
+      prepaidMethod: { id: '55555555-5555-5555-5555-555555555555', name: null },
+      courierEta: '2026-10-07T02:00:00.000Z',
+      courierLocation: 'Laureles',
+      returnedAt: '2026-10-07T01:30:00.000Z',
+    })
+    expect(parseOrderDeliveryRow(WIRE_DELIVERY)).toMatchObject({
+      prepaidMethod: null,
+      courierEta: null,
+      courierLocation: null,
+      returnedAt: null,
+    })
+  })
+
   it('handles prepaid rows (cashChangeFor must be null)', () => {
     const prepaid = { ...WIRE_DELIVERY, payment_mode: 'prepaid', cash_change_for: null }
     const parsed = parseOrderDeliveryRow(prepaid)

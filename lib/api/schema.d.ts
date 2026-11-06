@@ -148,6 +148,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/dishes/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["DishesController_reorder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/dishes/{id}": {
         parameters: {
             query?: never;
@@ -286,6 +302,54 @@ export interface paths {
         get: operations["MenuController_tree"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/menu/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MenuController_draft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/menu/publication": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MenuController_publication"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/menu/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MenuController_publish"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1412,6 +1476,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/delivery/orders/{id}/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DeliveryController_returnCourier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/delivery/closed-today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DeliveryController_closedToday"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/delivery/active": {
         parameters: {
             query?: never;
@@ -1615,6 +1711,10 @@ export interface components {
             imageUrl: string | null;
             active: boolean;
             allowComments: boolean;
+            /** @description Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name. */
+            sortOrder: number;
+            /** @description Modifier chips offered when the dish is added (append to the item comment, no price). */
+            quickNotes: string[];
             /** Format: date-time */
             createdAt: string | null;
             /** Format: date-time */
@@ -1649,6 +1749,19 @@ export interface components {
             active: boolean;
             /** @default false */
             allowComments: boolean;
+            /** @description At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish). */
+            quickNotes?: string[];
+        };
+        DishOrderRequest: {
+            /**
+             * Format: uuid
+             * @description null: the dishes without category.
+             */
+            categoryId: string | null;
+            /** Format: uuid */
+            subcategoryId: string | null;
+            /** @description Dish ids of the group in order; position i gets sortOrder i. Ids left out keep theirs. */
+            ids: string[];
         };
         UpdateDishRequest: {
             name?: string;
@@ -1664,6 +1777,8 @@ export interface components {
             imageUrl?: string | null;
             active?: boolean;
             allowComments?: boolean;
+            /** @description At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish). */
+            quickNotes?: string[];
         };
         Promotion: {
             /** Format: uuid */
@@ -1764,6 +1879,10 @@ export interface components {
             imageUrl: string | null;
             active: boolean;
             allowComments: boolean;
+            /** @description Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name. */
+            sortOrder: number;
+            /** @description Modifier chips offered when the dish is added (append to the item comment, no price). */
+            quickNotes: string[];
             /** Format: date-time */
             createdAt: string | null;
             /** Format: date-time */
@@ -1803,12 +1922,25 @@ export interface components {
             updatedAt: string | null;
             /** @description Active subcategories by sortOrder, then name. */
             subcategories: components["schemas"]["Subcategory"][];
-            /** @description Active dishes by name, priced with the promotions active now; dishes of an inactive subcategory are left out. */
+            /** @description Active dishes by sortOrder, then name, priced with the promotions active now; dishes of an inactive subcategory are left out. */
             dishes: components["schemas"]["MenuTreeDish"][];
         };
         MenuTree: {
             /** @description Active categories by sortOrder, then name. */
             categories: components["schemas"]["MenuTreeCategory"][];
+            /** @description Active dishes without category ("Otros"), by sortOrder, then name, priced and with availability. */
+            uncategorized: components["schemas"]["MenuTreeDish"][];
+        };
+        MenuPublicationStatus: {
+            /**
+             * Format: date-time
+             * @description Latest publication; null: never published (the live menu is served).
+             */
+            publishedAt: string | null;
+            /** @description Name of the admin who published; null for the deploy backfill or a deleted profile. */
+            publishedByName: string | null;
+            /** @description Categories, subcategories and dishes added, removed or changed in structure since then; 0 with no publication. */
+            pendingChanges: number;
         };
         BusinessConfig: {
             /** @default 10 */
@@ -1834,7 +1966,7 @@ export interface components {
             deliveryDefaultFee: number;
             /**
              * @description Minutes after which a kitchen ticket is late.
-             * @default 15
+             * @default 25
              */
             kitchenLateMinutes: number;
             /**
@@ -2152,6 +2284,8 @@ export interface components {
             rotation: number;
             /** @description Chairs to draw; null or 0 draws none. */
             seats: number | null;
+            /** @description An inactive table takes no new order (409 La mesa está inactiva); it is still listed, flagged, so the map greys it. */
+            isActive: boolean;
             /** Format: date-time */
             createdAt: string | null;
             /**
@@ -2178,6 +2312,8 @@ export interface components {
              * @enum {string}
              */
             status: "available" | "reserved" | "occupied" | "kitchen" | "served";
+            /** @default true */
+            isActive: boolean;
         };
         TableLayout: {
             /** Format: uuid */
@@ -2218,6 +2354,8 @@ export interface components {
             status?: "available" | "reserved" | "occupied" | "kitchen" | "served";
             /** Format: uuid */
             waiterId?: string | null;
+            /** @description false: no new order on the table; its open orders are unaffected. */
+            isActive?: boolean;
         };
         AssignTableRequest: {
             /** Format: uuid */
@@ -2253,6 +2391,10 @@ export interface components {
             sortOrder: number;
             labels: components["schemas"]["ZoneLabel"][];
             active: boolean;
+            /** @description Real width in metres; set with depthM or both null. */
+            widthM: number | null;
+            /** @description Real depth in metres; set with widthM or both null. */
+            depthM: number | null;
             /** Format: date-time */
             createdAt: string | null;
             /** Format: date-time */
@@ -2272,6 +2414,9 @@ export interface components {
             labels: components["schemas"]["ZoneLabel"][];
             /** @default true */
             active: boolean;
+            /** @description Metres; widthM and depthM go together (both numbers or both null). */
+            widthM?: number | null;
+            depthM?: number | null;
         };
         UpdateZoneRequest: {
             name?: string;
@@ -2280,6 +2425,9 @@ export interface components {
             sortOrder?: number;
             labels?: components["schemas"]["ZoneLabel"][];
             active?: boolean;
+            /** @description Metres; widthM and depthM go together (both numbers or both null). */
+            widthM?: number | null;
+            depthM?: number | null;
         };
         PaymentMethod: {
             /** Format: uuid */
@@ -3265,10 +3413,27 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        DeliveryAddressSnapshot: {
+            addressLine: string;
+            neighborhood: string | null;
+            reference: string | null;
+        };
+        CustomerHistory: {
+            /** @description Deliveries of the customer, cancelled ones excluded. */
+            ordersCount: number;
+            /**
+             * Format: date-time
+             * @description Creation of the latest counted delivery.
+             */
+            lastOrderAt: string | null;
+            /** @description Address of the latest counted delivery. */
+            lastAddress: components["schemas"]["DeliveryAddressSnapshot"] | null;
+        };
         CustomerWithAddresses: {
             customer: components["schemas"]["Customer"];
             /** @description Default address first. */
             addresses: components["schemas"]["CustomerAddress"][];
+            history: components["schemas"]["CustomerHistory"];
         };
         Courier: {
             /** Format: uuid */
@@ -3335,6 +3500,16 @@ export interface components {
             cashChangeFor?: number | null;
             /** @description <= 300 chars validated by create_delivery_order. */
             notes?: string | null;
+            /**
+             * Format: uuid
+             * @description Payment channel of a prepaid order: an active payment method of the restaurant, validated by create_delivery_order.
+             */
+            prepaidMethodId?: string | null;
+        };
+        PrepaidMethod: {
+            /** Format: uuid */
+            id: string;
+            name: string;
         };
         DeliveryOrder: {
             /** Format: uuid */
@@ -3351,8 +3526,22 @@ export interface components {
             /** @enum {string} */
             paymentMode: "prepaid" | "cash_on_delivery";
             cashChangeFor: number | null;
+            /** @description Payment channel of a prepaid order; null when not captured. */
+            prepaidMethod: components["schemas"]["PrepaidMethod"] | null;
             /** Format: uuid */
             courierId: string | null;
+            /**
+             * Format: date-time
+             * @description When the courier is expected back, typed at dispatch.
+             */
+            courierEta: string | null;
+            /** @description Where the courier is, typed at dispatch. */
+            courierLocation: string | null;
+            /**
+             * Format: date-time
+             * @description Courier back at the restaurant.
+             */
+            returnedAt: string | null;
             /** @enum {string} */
             status: "received" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "failed" | "cancelled";
             failureReason: string | null;
@@ -3396,6 +3585,23 @@ export interface components {
             courierId?: string | null;
             /** @description Required for fail (1..200 chars). */
             reason?: string | null;
+            /**
+             * Format: date-time
+             * @description Only with dispatch: when the courier is expected back, after now and within 6 hours (validated by set_delivery_status).
+             */
+            courierEta?: string | null;
+            /** @description Only with dispatch: where the courier is, trimmed 1..60 chars (validated by set_delivery_status). */
+            courierLocation?: string | null;
+        };
+        ClosedTodaySummary: {
+            /** @description Delivered deliveries updated today. */
+            deliveredCount: number;
+            /** @description Cancelled deliveries updated today. */
+            cancelledCount: number;
+            /** @description Deliveries currently failed that failed today. */
+            failedCount: number;
+            /** @description Average dispatched_at → delivered_at of the delivered ones, rounded minutes; null without any. */
+            averageDeliveryMinutes: number | null;
         };
         DeliveryOrderWithBill: {
             delivery: components["schemas"]["DeliveryOrder"];
@@ -3883,6 +4089,44 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DishesController_reorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DishOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Every dish of the group after the reorder, inactive included, by sortOrder, then name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dish"][];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown dish (another group or restaurant) or a repeated id; nothing is saved. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -4410,7 +4654,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The waiter and delivery step picker: active categories, active subcategories and active dishes, priced and with availability. */
+            /** @description The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and quick notes are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4418,6 +4662,86 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MenuTree"];
                 };
+            };
+        };
+    };
+    MenuController_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tree from the live structure: what the next publication serves (admin menu editor preview). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MenuTree"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MenuController_publication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MenuPublicationStatus"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MenuController_publish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The live structure is now what waiters and delivery see; pendingChanges is 0. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MenuPublicationStatus"];
+                };
+            };
+            /** @description Solo un administrador puede publicar el menú */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -7845,6 +8169,7 @@ export interface operations {
                     "application/json": components["schemas"]["Courier"];
                 };
             };
+            /** @description Not admin or delivery_operator. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7869,6 +8194,7 @@ export interface operations {
             };
             cookie?: never;
         };
+        /** @description A delivery_operator may send isActive only. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateCourierRequest"];
@@ -7883,6 +8209,7 @@ export interface operations {
                     "application/json": components["schemas"]["Courier"];
                 };
             };
+            /** @description Not admin or delivery_operator, or a delivery_operator sending name or phone. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7981,6 +8308,82 @@ export interface operations {
             };
             /** @description P0002: delivery or courier not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_returnCourier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description return_courier: returnedAt set on a delivered or failed delivery, once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryOrder"];
+                };
+            };
+            /** @description 42501: not admin or delivery_operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description P0002: delivery not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_closedToday: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restaurant day of GET /delivery/active. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosedTodaySummary"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

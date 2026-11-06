@@ -1,4 +1,4 @@
-import type { DishDto, MenuTreeCategoryDto, MenuTreeDishDto } from "@/lib/api/catalog"
+import type { MenuTreeCategoryDto, MenuTreeDishDto } from "@/lib/api/catalog"
 
 /** One tile of step 2; `id: null` is the dishes of the category without subcategory. */
 export interface SubcategoryChoice {
@@ -58,17 +58,15 @@ export const dishCount = (count: number) => plural(count, "plato", "platos")
 export const OTHERS_CATEGORY_ID = "__others__"
 
 /**
- * The menu tree leaves out the active dishes without category, which no
- * waiter screen listed before T10. They become a last "Otros" category (no
- * subcategories, so step 2 is skipped). The dishes list has no stock flag:
- * they read as available and the send still checks the stock server-side.
+ * The menu tree's active dishes without category (`uncategorized`, T20)
+ * become a last "Otros" category (no subcategories, so step 2 is skipped),
+ * priced and with their real availability.
  */
 export function withUncategorized(
   categories: MenuTreeCategoryDto[],
-  dishes: readonly (DishDto & { available?: boolean })[],
+  uncategorized: readonly MenuTreeDishDto[] | undefined,
 ): MenuTreeCategoryDto[] {
-  const loose = dishes.filter((dish) => dish.active && !dish.categoryId)
-  if (loose.length === 0) return categories
+  if (!uncategorized || uncategorized.length === 0) return categories
   return [
     ...categories,
     {
@@ -83,7 +81,7 @@ export function withUncategorized(
       createdAt: null,
       updatedAt: null,
       subcategories: [],
-      dishes: loose.map((dish) => ({ ...dish, subcategoryId: null, available: true })),
+      dishes: uncategorized.map((dish) => ({ ...dish, subcategoryId: null })),
     },
   ]
 }

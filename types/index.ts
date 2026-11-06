@@ -53,6 +53,8 @@ export type Table = {
   rotation?: number
   /** Chairs to draw; absent or 0 draws none. */
   seats?: number
+  /** false: no new order on the table (the map greys it). Absent from realtime rows until mapped: treat as true. */
+  isActive?: boolean
   updated_at?: Date
   restaurantId?: string
 }

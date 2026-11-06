@@ -8,6 +8,7 @@ import { categoryMeta, dishCount, dishesOf, NO_SUBCATEGORY, skipsSubcategories, 
 import {
   addedMessage,
   canGoToStep,
+  composeComment,
   initialStepState,
   soldOutMessage,
   STEP_LABELS,
@@ -152,7 +153,7 @@ export function StepPicker({
 
   const add = () => {
     if (!category || !dish) return
-    const comments = state.note.trim()
+    const comments = composeComment(state.quickNotes, state.note)
     const undo = onAdd({ dish, category, quantity: state.quantity, ...(comments ? { comments } : {}) })
     toast({
       title: addedMessage(state.quantity, dish.name),
@@ -385,6 +386,36 @@ export function StepPicker({
             </button>
           </div>
         </div>
+
+        {dish!.quickNotes.length > 0 && (
+          <div>
+            <p id="step-quick" className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-fg-2">
+              Indicaciones rápidas
+            </p>
+            {/* The chips go before the free note in the line comment, joined with ", ". */}
+            <div role="group" aria-labelledby="step-quick" className="flex flex-wrap gap-2">
+              {dish!.quickNotes.map((note) => {
+                const on = state.quickNotes.includes(note)
+                return (
+                  <button
+                    key={note}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => dispatch({ type: "quickNote", note })}
+                    className={cn(
+                      "inline-flex min-h-12 max-w-full flex-none items-center gap-1.5 rounded-pill border border-line-strong bg-card px-4 text-[15px] font-medium text-fg",
+                      on && "border-brand bg-brand-tint shadow-[inset_0_0_0_1px_var(--accent)]",
+                      FOCUS,
+                    )}
+                  >
+                    {on && <Check aria-hidden className="h-4 w-4 flex-none text-brand-strong" />}
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{note}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Offered on every dish, like the old menu grid and the cart comment action. */}
         <div>

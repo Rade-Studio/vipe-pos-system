@@ -35,8 +35,8 @@ export const CONFIG_KEYS = {
   businessNit: { key: 'business_nit', fallback: '123456789', read: text },
   inventoryControlEnabled: { key: 'inventory_control_enabled', fallback: false, read: (v: string) => v === 'true' },
   deliveryDefaultFee: { key: 'delivery_default_fee', fallback: 0, read: wholeFee },
-  /** Minutes after which a kitchen ticket is late (default 15). */
-  kitchenLateMinutes: { key: 'kitchen_late_minutes', fallback: 15, read: minutes(15) },
+  /** Minutes after which a kitchen ticket is late (default 25: the rail's at-risk 15 / late 25). */
+  kitchenLateMinutes: { key: 'kitchen_late_minutes', fallback: 25, read: minutes(25) },
   /** Minutes after which an open delivery is late (default 45). */
   deliveryLateMinutes: { key: 'delivery_late_minutes', fallback: 45, read: minutes(45) },
 } as const;
@@ -82,7 +82,7 @@ export class BusinessConfig {
   @ApiProperty({ default: '123456789' }) businessNit!: string;
   @ApiProperty({ default: false }) inventoryControlEnabled!: boolean;
   @ApiProperty({ default: 0, description: 'Suggested delivery fee in whole pesos.' }) deliveryDefaultFee!: number;
-  @ApiProperty({ default: 15, minimum: 1, maximum: 240, description: 'Minutes after which a kitchen ticket is late.' })
+  @ApiProperty({ default: 25, minimum: 1, maximum: 240, description: 'Minutes after which a kitchen ticket is late.' })
   kitchenLateMinutes!: number;
   @ApiProperty({ default: 45, minimum: 1, maximum: 240, description: 'Minutes after which an open delivery is late.' })
   deliveryLateMinutes!: number;

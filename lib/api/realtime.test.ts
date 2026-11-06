@@ -259,6 +259,7 @@ describe("pos_changes dispatch", () => {
         status: "occupied",
         waiter: "w-1",
         waiter_name: "Ana",
+        isActive: true,
         updated_at: new Date("2026-11-04T12:00:00.000Z"),
       },
     ])

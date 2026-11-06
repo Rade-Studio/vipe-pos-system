@@ -13,6 +13,14 @@ import type { components } from "./schema"
  * `hasSubcategories`; dishes carry `subcategoryId` (subcategory writes live in
  * `./subcategories`). `getMenuTree` is the waiter and delivery step picker's
  * one read, priced and with availability.
+ *
+ * Menu publication (T20): `getMenuTree` serves the latest publication's
+ * structure with live prices, availability and quick notes, plus the active
+ * dishes without category in `uncategorized`; the admin editor reads the live
+ * structure with `getMenuDraft`, the "n cambios sin publicar" status with
+ * `getMenuPublication` and publishes with `publishMenu` (403 `Solo un
+ * administrador puede publicar el menú`). Dishes carry `sortOrder` and
+ * `quickNotes` (422 in Spanish when invalid); `reorderDishes` orders one group.
  */
 
 type Schemas = components["schemas"]
@@ -23,6 +31,9 @@ export type CategoryColor = CategoryDto["color"]
 export type MenuTreeDto = Schemas["MenuTree"]
 export type MenuTreeCategoryDto = Schemas["MenuTreeCategory"]
 export type MenuTreeDishDto = Schemas["MenuTreeDish"]
+export type MenuPublicationDto = Schemas["MenuPublicationStatus"]
+/** A dish group: a subcategory of a category, the category's loose dishes, or (null, null) the dishes without category. */
+export type DishGroup = Pick<Schemas["DishOrderRequest"], "categoryId" | "subcategoryId">
 export type CreateCategoryBody = Schemas["CreateCategoryRequest"]
 export type UpdateCategoryBody = Schemas["UpdateCategoryRequest"]
 export type CreateDishBody = Schemas["CreateDishRequest"]
@@ -118,15 +129,41 @@ export async function updateDish(id: string, body: UpdateDishBody): Promise<Dish
   return required(data)
 }
 
+/** Position i gets sortOrder i inside the group, atomically; an id of another group (422 `Unknown dish`) saves nothing. */
+export async function reorderDishes(group: DishGroup, ids: string[]): Promise<DishDto[]> {
+  const { data } = await api.PUT("/api/catalog/dishes/order", {
+    body: { categoryId: group.categoryId, subcategoryId: group.subcategoryId, ids },
+  })
+  return required(data)
+}
+
 export async function deleteDish(id: string): Promise<void> {
   await api.DELETE("/api/catalog/dishes/{id}", byId(id))
 }
 
 // ---- Menu tree --------------------------------------------------------------
 
-/** Active categories, subcategories and dishes in menu order, the same for waiter and delivery. */
+/** Active categories, subcategories and dishes in the published menu order, the same for waiter and delivery. */
 export async function getMenuTree(): Promise<MenuTreeDto> {
   const { data } = await api.GET("/api/catalog/menu/tree")
+  return required(data)
+}
+
+/** Admin. The tree from the live structure: what the next publication serves. */
+export async function getMenuDraft(): Promise<MenuTreeDto> {
+  const { data } = await api.GET("/api/catalog/menu/draft")
+  return required(data)
+}
+
+/** Admin. Last publication time and publisher, and the structure changes since. */
+export async function getMenuPublication(): Promise<MenuPublicationDto> {
+  const { data } = await api.GET("/api/catalog/menu/publication")
+  return required(data)
+}
+
+/** Admin. "Publicar a meseros": the live structure becomes the waiter and delivery menu. */
+export async function publishMenu(): Promise<MenuPublicationDto> {
+  const { data } = await api.POST("/api/catalog/menu/publish")
   return required(data)
 }
 

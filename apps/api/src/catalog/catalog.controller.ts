@@ -37,6 +37,10 @@ import {
   createPromotionSchema,
   Dish,
   dishListQuerySchema,
+  DishOrderRequest,
+  dishOrderSchema,
+  MENU_MESSAGES,
+  MenuPublicationStatus,
   Promotion,
   promotionDishesSchema,
   SetPromotionDishesRequest,
@@ -206,6 +210,17 @@ export class DishesController {
     return this.dishes.create(parseInput(createDishSchema, body));
   }
 
+  @Put('order')
+  @Roles(ADMIN)
+  @ApiBody({ type: DishOrderRequest })
+  @ApiOkResponse({ type: [Dish], description: 'Every dish of the group after the reorder, inactive included, by sortOrder, then name.' })
+  @ApiForbiddenResponse({ description: 'Not an admin.' })
+  @ApiUnprocessableEntityResponse({ description: 'Unknown dish (another group or restaurant) or a repeated id; nothing is saved.' })
+  reorder(@Body() body: unknown): Promise<Dish[]> {
+    const { categoryId, subcategoryId, ids } = parseInput(dishOrderSchema, body);
+    return this.dishes.reorder({ categoryId, subcategoryId }, ids);
+  }
+
   @Patch(':id')
   @Roles(ADMIN)
   @ApiBody({ type: UpdateDishRequest })
@@ -297,9 +312,34 @@ export class MenuController {
   @Get('tree')
   @ApiOkResponse({
     type: MenuTree,
-    description: 'The waiter and delivery step picker: active categories, active subcategories and active dishes, priced and with availability.',
+    description:
+      'The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and quick notes are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.',
   })
   tree(): Promise<MenuTree> {
     return this.menu.tree();
+  }
+
+  @Get('draft')
+  @Roles(ADMIN)
+  @ApiOkResponse({ type: MenuTree, description: 'The tree from the live structure: what the next publication serves (admin menu editor preview).' })
+  @ApiForbiddenResponse({ description: 'Not an admin.' })
+  draft(): Promise<MenuTree> {
+    return this.menu.draft();
+  }
+
+  @Get('publication')
+  @Roles(ADMIN)
+  @ApiOkResponse({ type: MenuPublicationStatus })
+  @ApiForbiddenResponse({ description: 'Not an admin.' })
+  publication(): Promise<MenuPublicationStatus> {
+    return this.menu.status();
+  }
+
+  // No @Roles: public.publish_menu() is the guard (42501 through RLS), answered in Spanish.
+  @Post('publish')
+  @ApiCreatedResponse({ type: MenuPublicationStatus, description: 'The live structure is now what waiters and delivery see; pendingChanges is 0.' })
+  @ApiForbiddenResponse({ description: MENU_MESSAGES.publishForbidden })
+  publish(): Promise<MenuPublicationStatus> {
+    return this.menu.publish();
   }
 }

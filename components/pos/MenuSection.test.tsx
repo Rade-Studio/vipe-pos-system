@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -164,12 +164,17 @@ describe("MenuSection — cached menu (T6/S1/S2)", () => {
   })
 
   it("shows skeletons only while the very first category is still loading", async () => {
+    // Hold the first category's read so the loading state does not depend on timing.
+    const release = deferCategory("cat-1")
     const { container } = renderMenu()
     await flush()
 
     expect(skeletonCount(container)).toBeGreaterThan(0)
     expect(screen.queryByText("Bandeja")).not.toBeInTheDocument()
 
+    // Release only once the component has asked for it (the resolver exists then).
+    await waitFor(() => expect(env.getByCategoryWithPromotions).toHaveBeenCalledWith("cat-1"))
+    await release()
     expect(await screen.findByText("Bandeja")).toBeInTheDocument()
     expect(skeletonCount(container)).toBe(0)
   })

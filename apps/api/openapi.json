@@ -449,6 +449,51 @@
         ]
       }
     },
+    "/api/catalog/dishes/order": {
+      "put": {
+        "operationId": "DishesController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DishOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every dish of the group after the reorder, inactive included, by sortOrder, then name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Dish"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Unknown dish (another group or restaurant) or a repeated id; nothing is saved."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/catalog/dishes/{id}": {
       "patch": {
         "operationId": "DishesController_update",
@@ -1056,7 +1101,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "The waiter and delivery step picker: active categories, active subcategories and active dishes, priced and with availability.",
+            "description": "The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and quick notes are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1064,6 +1109,93 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/menu/draft": {
+      "get": {
+        "operationId": "MenuController_draft",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The tree from the live structure: what the next publication serves (admin menu editor preview).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenuTree"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/menu/publication": {
+      "get": {
+        "operationId": "MenuController_publication",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenuPublicationStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/menu/publish": {
+      "post": {
+        "operationId": "MenuController_publish",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "The live structure is now what waiters and delivery see; pendingChanges is 0.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenuPublicationStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Solo un administrador puede publicar el menú"
           }
         },
         "security": [
@@ -5069,7 +5201,7 @@
             }
           },
           "403": {
-            "description": ""
+            "description": "Not admin or delivery_operator."
           },
           "422": {
             "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
@@ -5100,6 +5232,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A delivery_operator may send isActive only.",
           "content": {
             "application/json": {
               "schema": {
@@ -5120,7 +5253,7 @@
             }
           },
           "403": {
-            "description": ""
+            "description": "Not admin or delivery_operator, or a delivery_operator sending name or phone."
           },
           "404": {
             "description": ""
@@ -5223,6 +5356,82 @@
           },
           "404": {
             "description": "P0002: delivery or courier not found."
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/orders/{id}/return": {
+      "post": {
+        "operationId": "DeliveryController_returnCourier",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "return_courier: returnedAt set on a delivered or failed delivery, once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "42501: not admin or delivery_operator."
+          },
+          "404": {
+            "description": "P0002: delivery not found."
+          },
+          "422": {
+            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/closed-today": {
+      "get": {
+        "operationId": "DeliveryController_closedToday",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Restaurant day of GET /delivery/active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosedTodaySummary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
           },
           "422": {
             "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
@@ -5906,6 +6115,17 @@
           "allowComments": {
             "type": "boolean"
           },
+          "sortOrder": {
+            "type": "number",
+            "description": "Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name."
+          },
+          "quickNotes": {
+            "description": "Modifier chips offered when the dish is added (append to the item comment, no price).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -5949,6 +6169,8 @@
           "imageUrl",
           "active",
           "allowComments",
+          "sortOrder",
+          "quickNotes",
           "createdAt",
           "updatedAt"
         ]
@@ -5990,11 +6212,47 @@
           "allowComments": {
             "type": "boolean",
             "default": false
+          },
+          "quickNotes": {
+            "maxItems": 12,
+            "description": "At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "name",
           "price"
+        ]
+      },
+      "DishOrderRequest": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "null: the dishes without category."
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "ids": {
+            "description": "Dish ids of the group in order; position i gets sortOrder i. Ids left out keep theirs.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "categoryId",
+          "subcategoryId",
+          "ids"
         ]
       },
       "UpdateDishRequest": {
@@ -6032,6 +6290,14 @@
           },
           "allowComments": {
             "type": "boolean"
+          },
+          "quickNotes": {
+            "maxItems": 12,
+            "description": "At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -6331,6 +6597,17 @@
           "allowComments": {
             "type": "boolean"
           },
+          "sortOrder": {
+            "type": "number",
+            "description": "Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name."
+          },
+          "quickNotes": {
+            "description": "Modifier chips offered when the dish is added (append to the item comment, no price).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -6378,6 +6655,8 @@
           "imageUrl",
           "active",
           "allowComments",
+          "sortOrder",
+          "quickNotes",
           "createdAt",
           "updatedAt",
           "available"
@@ -6441,7 +6720,7 @@
             }
           },
           "dishes": {
-            "description": "Active dishes by name, priced with the promotions active now; dishes of an inactive subcategory are left out.",
+            "description": "Active dishes by sortOrder, then name, priced with the promotions active now; dishes of an inactive subcategory are left out.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MenuTreeDish"
@@ -6472,10 +6751,43 @@
             "items": {
               "$ref": "#/components/schemas/MenuTreeCategory"
             }
+          },
+          "uncategorized": {
+            "description": "Active dishes without category (\"Otros\"), by sortOrder, then name, priced and with availability.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuTreeDish"
+            }
           }
         },
         "required": [
-          "categories"
+          "categories",
+          "uncategorized"
+        ]
+      },
+      "MenuPublicationStatus": {
+        "type": "object",
+        "properties": {
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Latest publication; null: never published (the live menu is served)."
+          },
+          "publishedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name of the admin who published; null for the deploy backfill or a deleted profile."
+          },
+          "pendingChanges": {
+            "type": "number",
+            "description": "Categories, subcategories and dishes added, removed or changed in structure since then; 0 with no publication."
+          }
+        },
+        "required": [
+          "publishedAt",
+          "publishedByName",
+          "pendingChanges"
         ]
       },
       "BusinessConfig": {
@@ -6520,7 +6832,7 @@
           },
           "kitchenLateMinutes": {
             "type": "number",
-            "default": 15,
+            "default": 25,
             "minimum": 1,
             "maximum": 240,
             "description": "Minutes after which a kitchen ticket is late."
@@ -7518,6 +7830,10 @@
             "maximum": 20,
             "description": "Chairs to draw; null or 0 draws none."
           },
+          "isActive": {
+            "type": "boolean",
+            "description": "An inactive table takes no new order (409 La mesa está inactiva); it is still listed, flagged, so the map greys it."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -7544,6 +7860,7 @@
           "shape",
           "rotation",
           "seats",
+          "isActive",
           "createdAt",
           "updatedAt"
         ]
@@ -7613,6 +7930,10 @@
               "served"
             ],
             "default": "available"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
           }
         },
         "required": [
@@ -7774,6 +8095,10 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "false: no new order on the table; its open orders are unaffected."
           }
         }
       },
@@ -7870,6 +8195,16 @@
           "active": {
             "type": "boolean"
           },
+          "widthM": {
+            "type": "number",
+            "nullable": true,
+            "description": "Real width in metres; set with depthM or both null."
+          },
+          "depthM": {
+            "type": "number",
+            "nullable": true,
+            "description": "Real depth in metres; set with widthM or both null."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -7888,6 +8223,8 @@
           "sortOrder",
           "labels",
           "active",
+          "widthM",
+          "depthM",
           "createdAt",
           "updatedAt"
         ]
@@ -7921,6 +8258,21 @@
           "active": {
             "type": "boolean",
             "default": true
+          },
+          "widthM": {
+            "type": "number",
+            "nullable": true,
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 200,
+            "description": "Metres; widthM and depthM go together (both numbers or both null)."
+          },
+          "depthM": {
+            "type": "number",
+            "nullable": true,
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 200
           }
         },
         "required": [
@@ -7951,6 +8303,21 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "widthM": {
+            "type": "number",
+            "nullable": true,
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 200,
+            "description": "Metres; widthM and depthM go together (both numbers or both null)."
+          },
+          "depthM": {
+            "type": "number",
+            "nullable": true,
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 200
           }
         }
       },
@@ -11201,6 +11568,57 @@
           "updatedAt"
         ]
       },
+      "DeliveryAddressSnapshot": {
+        "type": "object",
+        "properties": {
+          "addressLine": {
+            "type": "string"
+          },
+          "neighborhood": {
+            "type": "string",
+            "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "addressLine",
+          "neighborhood",
+          "reference"
+        ]
+      },
+      "CustomerHistory": {
+        "type": "object",
+        "properties": {
+          "ordersCount": {
+            "type": "integer",
+            "description": "Deliveries of the customer, cancelled ones excluded."
+          },
+          "lastOrderAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Creation of the latest counted delivery."
+          },
+          "lastAddress": {
+            "nullable": true,
+            "description": "Address of the latest counted delivery.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryAddressSnapshot"
+              }
+            ]
+          }
+        },
+        "required": [
+          "ordersCount",
+          "lastOrderAt",
+          "lastAddress"
+        ]
+      },
       "CustomerWithAddresses": {
         "type": "object",
         "properties": {
@@ -11213,11 +11631,15 @@
             "items": {
               "$ref": "#/components/schemas/CustomerAddress"
             }
+          },
+          "history": {
+            "$ref": "#/components/schemas/CustomerHistory"
           }
         },
         "required": [
           "customer",
-          "addresses"
+          "addresses",
+          "history"
         ]
       },
       "Courier": {
@@ -11409,6 +11831,12 @@
             "nullable": true,
             "maxLength": 1000,
             "description": "<= 300 chars validated by create_delivery_order."
+          },
+          "prepaidMethodId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Payment channel of a prepaid order: an active payment method of the restaurant, validated by create_delivery_order."
           }
         },
         "required": [
@@ -11417,6 +11845,22 @@
           "items",
           "deliveryFee",
           "paymentMode"
+        ]
+      },
+      "PrepaidMethod": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ]
       },
       "DeliveryOrder": {
@@ -11462,10 +11906,37 @@
             "type": "number",
             "nullable": true
           },
+          "prepaidMethod": {
+            "nullable": true,
+            "description": "Payment channel of a prepaid order; null when not captured.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PrepaidMethod"
+              }
+            ]
+          },
           "courierId": {
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "courierEta": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "When the courier is expected back, typed at dispatch."
+          },
+          "courierLocation": {
+            "type": "string",
+            "nullable": true,
+            "description": "Where the courier is, typed at dispatch."
+          },
+          "returnedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Courier back at the restaurant."
           },
           "status": {
             "type": "string",
@@ -11527,7 +11998,11 @@
           "deliveryFee",
           "paymentMode",
           "cashChangeFor",
+          "prepaidMethod",
           "courierId",
+          "courierEta",
+          "courierLocation",
+          "returnedAt",
           "status",
           "failureReason",
           "notes",
@@ -11609,10 +12084,50 @@
             "type": "string",
             "nullable": true,
             "description": "Required for fail (1..200 chars)."
+          },
+          "courierEta": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Only with dispatch: when the courier is expected back, after now and within 6 hours (validated by set_delivery_status)."
+          },
+          "courierLocation": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000,
+            "description": "Only with dispatch: where the courier is, trimmed 1..60 chars (validated by set_delivery_status)."
           }
         },
         "required": [
           "action"
+        ]
+      },
+      "ClosedTodaySummary": {
+        "type": "object",
+        "properties": {
+          "deliveredCount": {
+            "type": "integer",
+            "description": "Delivered deliveries updated today."
+          },
+          "cancelledCount": {
+            "type": "integer",
+            "description": "Cancelled deliveries updated today."
+          },
+          "failedCount": {
+            "type": "integer",
+            "description": "Deliveries currently failed that failed today."
+          },
+          "averageDeliveryMinutes": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Average dispatched_at → delivered_at of the delivered ones, rounded minutes; null without any."
+          }
+        },
+        "required": [
+          "deliveredCount",
+          "cancelledCount",
+          "failedCount",
+          "averageDeliveryMinutes"
         ]
       },
       "DeliveryOrderWithBill": {

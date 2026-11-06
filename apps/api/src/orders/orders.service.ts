@@ -115,7 +115,13 @@ export class OrdersService {
       VALUES
         (${table.id}, ${waiterId}, 'kitchen', 'dine_in', 0, 0, ${settings.taxPercentage}, 0,
          ${input.tipPercentage ?? settings.tipPercentage}, 0, ${input.guests ?? null}, ${input.notes ?? null})
-      RETURNING id`);
+      RETURNING id`).catch((error: unknown) => {
+      // 0015 trigger orders_table_active: no new order on an inactive table.
+      if (isInactiveTableError(error)) {
+        throw new ConflictException('La mesa está inactiva');
+      }
+      throw error;
+    });
     await this.insertItems(order.id, input.items, prices);
     await this.afterItems(order.id);
     // The waiter who sends the first order keeps the table (WaiterView assigned it client-side).
@@ -346,4 +352,16 @@ export class OrdersService {
     const result = await this.uow.db.execute(query);
     return result.rows as T[];
   }
+}
+
+/** The 23514 `table <id> is inactive` of the 0015 trigger, through Drizzle's `cause` chain; other 23514s are not it. */
+function isInactiveTableError(error: unknown): boolean {
+  for (let current = error, depth = 0; current && typeof current === 'object' && depth < 5; depth += 1) {
+    const { code, message } = current as { code?: unknown; message?: unknown };
+    if (code === '23514' && typeof message === 'string' && /^table \S+ is inactive$/.test(message)) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }

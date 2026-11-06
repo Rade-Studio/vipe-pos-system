@@ -93,11 +93,26 @@ export function isDeliveryOrderChange(payload: {
   return false
 }
 
-/** Field-by-field identity for two parsed `order_deliveries` rows. */
+/**
+ * Field-by-field identity for two parsed `order_deliveries` rows. An absent
+ * optional field equals null (a row cached before the T19 columns existed).
+ */
 function sameDelivery(a: DeliveryOrder, b: DeliveryOrder): boolean {
-  const keys = Object.keys(a) as Array<keyof DeliveryOrder>
-  if (keys.length !== Object.keys(b).length) return false
-  return keys.every((key) => a[key] === b[key])
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof DeliveryOrder>
+  return [...keys].every((key) => (a[key] ?? null) === (b[key] ?? null))
+}
+
+/**
+ * A raw row names the prepaid method by id only: keep the cached method
+ * (with its name) while the id is the same. No RPC changes the method after
+ * creation.
+ */
+function withCachedMethod(cached: DeliveryOrder, incoming: DeliveryOrder): DeliveryOrder {
+  const method = cached.prepaidMethod
+  if (method && incoming.prepaidMethod && incoming.prepaidMethod.id === method.id && incoming.prepaidMethod !== method) {
+    return { ...incoming, prepaidMethod: method }
+  }
+  return incoming
 }
 
 /**
@@ -127,11 +142,12 @@ function isStale(cached: DeliveryOrder, incoming: DeliveryOrder): boolean {
  */
 function mergeDelivery<T extends DeliveryBoardRow>(
   prev: readonly T[],
-  delivery: DeliveryOrder,
+  incoming: DeliveryOrder,
 ): DeliveryMergeOutcome<T> {
-  const index = prev.findIndex((row) => row.delivery.orderId === delivery.orderId)
+  const index = prev.findIndex((row) => row.delivery.orderId === incoming.orderId)
   if (index === -1) return { kind: 'needs-refresh' }
   const current = prev[index]!
+  const delivery = withCachedMethod(current.delivery, incoming)
   // An older row (late push, stale RPC echo) must never move the card back.
   if (isStale(current.delivery, delivery)) return { kind: 'unchanged' }
   if (sameDelivery(current.delivery, delivery)) return { kind: 'unchanged' }
