@@ -17,8 +17,10 @@ import {
   errorMessage,
   fetchCategories,
   fetchDishes,
+  fetchSubcategories,
   invalidateCatalogReaders,
 } from "@/lib/admin/catalog"
+import type { SubcategoryDto } from "@/lib/api/subcategories"
 import { Edit, Plus, Search, Trash, BookOpen } from "lucide-react"
 import {
   AlertDialog,
@@ -56,6 +58,12 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
   const { data: categories = [] } = useQuery<CategoryDto[]>({
     queryKey: catalogKeys.categories,
     queryFn: fetchCategories,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
+  // Same slot as the menu tree editor above this list.
+  const { data: subcategories = [] } = useQuery<SubcategoryDto[]>({
+    queryKey: catalogKeys.subcategories,
+    queryFn: fetchSubcategories,
     staleTime: ADMIN_LIST_STALE_MS,
   })
 
@@ -129,7 +137,7 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
 
   return (
     <section className="min-w-0 space-y-3">
-      <SectionHeader title="Platos" description="Productos de la carta, su precio y disponibilidad." />
+      <SectionHeader title="Todos los platos" description="Productos de la carta, su precio y disponibilidad." />
       <Toolbar
         actions={
         <Dialog open={openDialog} onOpenChange={setOpenDialog}>
@@ -151,6 +159,7 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
             <DishForm
               dish={selectedDish}
               categories={categories}
+              subcategories={subcategories}
               onSuccess={() => {
                 void invalidateCatalogReaders(queryClient, catalogKeys.dishes)
                 handleDialogClose()

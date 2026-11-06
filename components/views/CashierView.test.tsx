@@ -128,6 +128,8 @@ vi.mock("@/lib/api/payments", () => ({
   getRegisterSummary: () => getRegisterSummary(),
   listRegisterPayments: () => listRegisterPayments(),
   payOrder: (input: unknown) => payOrder(input),
+  splitOrder: async () => ({}),
+  undoSplit: async () => ({}),
   closeRegisterRpc: vi.fn(async () => ({ finalCash: 0, summary: null })),
 }))
 vi.mock("@/lib/api/delivery", () => ({
@@ -172,15 +174,37 @@ function renderCashier() {
   )
 }
 
-/** Opens the payment dialog for the only card and pays it in full in cash. */
-async function payTheOrderInCash() {
-  fireEvent.click(screen.getByRole("button", { name: "Pago Total" }))
+/** The queue row whose visible name starts with `label` ("Mesa 1", "Mesa 1 · Parcial"). */
+const queueRow = (label: string) =>
+  screen.findByRole("button", { name: new RegExp(`^${label}(\\s|$)`) })
+
+/** The primary action of the payment panel ("Registrar $ X y cerrar"). */
+const registerButton = () => screen.getByRole("button", { name: /^Registrar .* y cerrar$/ })
+
+/** Selects the row and waits for the always-visible payment panel to bill it. */
+async function openPaymentFor(label = "Mesa 1") {
+  fireEvent.click(await queueRow(label))
   await screen.findByRole("heading", { name: "Cobrar orden" })
+}
+
+/** Adds one cash line for the whole remaining and registers the payment. */
+async function addCashForRemainingAndRegister() {
   fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
   fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
   fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
-  fireEvent.click(screen.getByRole("button", { name: "Cobrar" }))
+  fireEvent.click(registerButton())
+}
+
+/** Opens the payment panel for the only row and pays it in full in cash. */
+async function payTheOrderInCash() {
+  await openPaymentFor("Mesa 1")
+  await addCashForRemainingAndRegister()
   fireEvent.click(await screen.findByRole("button", { name: "Cerrar" }))
+}
+
+function setOnline(online: boolean) {
+  Object.defineProperty(window.navigator, "onLine", { configurable: true, get: () => online })
+  window.dispatchEvent(new Event(online ? "online" : "offline"))
 }
 
 beforeEach(() => {
@@ -202,6 +226,7 @@ beforeEach(() => {
 afterEach(() => {
   queryClient.clear()
   delete (globalThis as Record<string, unknown>).__orderCb
+  setOnline(true)
 })
 
 describe("cashier mount (S1: load only what the screen needs)", () => {
@@ -249,16 +274,13 @@ describe("cashier mount (S1: load only what the screen needs)", () => {
   })
 })
 
-describe("opening the payment dialog (S1: reuse the order the view already loaded)", () => {
+describe("opening the payment panel (S1: reuse the order the view already loaded)", () => {
   it("does NOT re-read the order", async () => {
     renderCashier()
-    await screen.findByText("Mesa 1")
-
-    fireEvent.click(screen.getByRole("button", { name: "Pago Total" }))
-    await screen.findByRole("heading", { name: "Cobrar orden" })
+    await openPaymentFor("Mesa 1")
 
     expect(getById).not.toHaveBeenCalled()
-    // …and the dialog still shows the order the card was rendering.
+    // …and the detail still shows the order the row was rendering.
     expect(screen.getByText("Bandeja paisa")).toBeInTheDocument()
   })
 
@@ -284,28 +306,12 @@ describe("opening the payment dialog (S1: reuse the order the view already loade
     renderCashier()
     await screen.findByText("Mesa 2")
 
-    // The "Pago Total" button inside the card that renders the given table label.
-    const buttonFor = (tableLabel: string) => {
-      let node: HTMLElement | null = screen.getByText(tableLabel)
-      while (node && within(node).queryAllByRole("button", { name: "Pago Total" }).length === 0) {
-        node = node.parentElement
-      }
-      const [button] = within(node!).getAllByRole("button", { name: "Pago Total" })
-      return button
-    }
-
-    fireEvent.click(buttonFor("Mesa 1"))
-    await screen.findByRole("heading", { name: "Cobrar orden" })
+    await openPaymentFor("Mesa 1")
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }))
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Cobrar orden" })).not.toBeInTheDocument())
 
-    fireEvent.click(buttonFor("Mesa 2"))
-    await screen.findByRole("heading", { name: "Cobrar orden" })
-
-    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
-    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
-    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
-    fireEvent.click(screen.getByRole("button", { name: "Cobrar" }))
+    await openPaymentFor("Mesa 2")
+    await addCashForRemainingAndRegister()
 
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
     const input = payOrder.mock.calls[0][0] as { orderId: string; tenders: Array<{ amount: number }> }
@@ -331,11 +337,11 @@ describe("refresh after a payment (S2: never blanks the screen)", () => {
     await payTheOrderInCash()
     expect(payOrder).toHaveBeenCalledTimes(1)
 
-    // The refetch is in flight: the list (and the panel above it) are still
-    // there — no skeletons, no unmount, no blank tab.
+    // The refetch is in flight: the queue is still there — no skeletons, no
+    // unmount, no blank tab.
     await waitFor(() => expect(getByStatus).toHaveBeenCalledTimes(2))
     expect(screen.getByText("Mesa 1")).toBeInTheDocument()
-    expect(screen.getByText("Órdenes Regulares")).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /^Mesas/ })).toBeInTheDocument()
     expect(container.querySelectorAll(".animate-pulse")).toHaveLength(0)
 
     await act(async () => {
@@ -346,7 +352,7 @@ describe("refresh after a payment (S2: never blanks the screen)", () => {
   })
 })
 
-describe("the Transacciones tab (S1: no duplicate register load, one summary query)", () => {
+describe("Resumen del turno (S1: no duplicate register load, one summary query)", () => {
   it("adds no register load and no extra summary query when the tab opens", async () => {
     renderCashier()
     await screen.findByText("Mesa 1")
@@ -355,7 +361,7 @@ describe("the Transacciones tab (S1: no duplicate register load, one summary que
     const summariesAtMount = getRegisterSummary.mock.calls.length
     expect(summariesAtMount).toBe(1)
 
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Transacciones" }), { button: 0, ctrlKey: false })
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Resumen del turno" }), { button: 0, ctrlKey: false })
     await screen.findByText("Transacciones de Venta")
 
     expect(getCurrentRegister.mock.calls.length).toBe(registerLoadsAtMount)
@@ -386,8 +392,8 @@ describe("realtime status change (S1: moves the order between views)", () => {
   })
 })
 
-describe("partial orders (pago parcial) still render as their own cards", () => {
-  it("lists the split child above the by-table cards and keeps its actions", async () => {
+describe("partial orders (pago parcial) still render as their own rows", () => {
+  it("lists the split child under Parciales and keeps its actions", async () => {
     getByStatus.mockResolvedValue([
       dbRow(),
       dbRow({
@@ -403,18 +409,20 @@ describe("partial orders (pago parcial) still render as their own cards", () => 
 
     renderCashier()
 
-    await screen.findByText("Mesa 1 - Orden Parcial")
-    // The parent keeps its own card, and the partial is not merged into it.
-    expect(screen.getByText("Órdenes Parciales")).toBeInTheDocument()
-    expect(screen.getByText("Órdenes Regulares")).toBeInTheDocument()
-    expect(screen.getAllByRole("button", { name: "Pago Total" })).toHaveLength(2)
+    // The parent keeps its own table row, and the partial is not merged into it.
+    await queueRow("Mesa 1")
+    expect(screen.getByRole("tab", { name: /^Parciales\s*1$/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("tab", { name: /^Parciales/ }))
+
+    await openPaymentFor("Mesa 1 · Parcial")
     expect(screen.getByRole("button", { name: "Eliminar" })).toBeInTheDocument()
+    expect(registerButton()).toBeInTheDocument()
     expect(getByStatus).toHaveBeenCalledTimes(1)
   })
 })
 
 describe("regression guard", () => {
-  it("still charges deliveries from DeliveryPaymentsPanel, never as a table card", async () => {
+  it("still charges deliveries from DeliveryPaymentsPanel, never as a table row", async () => {
     listActiveDeliveries.mockResolvedValue([
       {
         delivery: {
@@ -431,13 +439,16 @@ describe("regression guard", () => {
     ] as never)
 
     renderCashier()
-    await screen.findByText("Domicilios por cobrar")
     await screen.findByText("Mesa 1")
 
+    // The delivery is not part of the table rows.
+    expect(screen.getAllByText(/^Mesa /).map((n) => n.textContent)).toEqual(["Mesa 1"])
+    await screen.findByRole("tab", { name: /^Domicilios\s*1$/ })
+
+    fireEvent.click(screen.getByRole("tab", { name: /^Domicilios/ }))
+    await screen.findByText("Domicilios por cobrar")
     expect(screen.getByText("DOMICILIO")).toBeInTheDocument()
     expect(screen.getByText("Ana Pérez")).toBeInTheDocument()
-    // The delivery is not part of the by-table cards.
-    expect(screen.getAllByText(/^Mesa /).map((n) => n.textContent)).toEqual(["Mesa 1"])
 
     expect(realtimeService.subscribeToOrders).toBeDefined()
   })
@@ -460,6 +471,8 @@ describe("regression guard", () => {
     getById.mockResolvedValue(dbRow({ id: "d-1", table_id: null, order_type: "delivery" }) as never)
 
     renderCashier()
+    await screen.findByText("Mesa 1")
+    fireEvent.click(await screen.findByRole("tab", { name: /^Domicilios\s*1$/ }))
     await screen.findByText("Domicilios por cobrar")
 
     // The panel has no app `Order` to hand over, so the dialog still reads it.
@@ -471,15 +484,12 @@ describe("regression guard", () => {
     expect(screen.getAllByText("Domicilio").length).toBeGreaterThanOrEqual(2)
   })
 })
+
 describe("payment toasts (T9 PRESERVE: driven by the API result and the error kind)", () => {
   /** Same as `payTheOrderInCash` without closing the invoice (absent on errors). */
   async function submitCashPayment() {
-    fireEvent.click(screen.getByRole("button", { name: "Pago Total" }))
-    await screen.findByRole("heading", { name: "Cobrar orden" })
-    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
-    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
-    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
-    fireEvent.click(screen.getByRole("button", { name: "Cobrar" }))
+    await openPaymentFor("Mesa 1")
+    await addCashForRemainingAndRegister()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
   }
 
@@ -528,5 +538,341 @@ describe("payment toasts (T9 PRESERVE: driven by the API result and the error ki
     await submitCashPayment()
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(shown))
+    // The server's message (stock, price, closed register…) also stays on the panel.
+    expect(await screen.findByRole("alert")).toHaveTextContent(shown)
   })
 })
+
+describe("T14 three-panel layout: queue, detail and the always-visible payment panel", () => {
+  it("lists each table with its waiter, amount and status, and shows its detail when selected", async () => {
+    renderCashier()
+
+    const row = await queueRow("Mesa 1")
+    expect(row).toHaveTextContent("Ana")
+    expect(row).toHaveTextContent(/47\.600/)
+    expect(row).toHaveTextContent("Abierta")
+    expect(screen.getByRole("tab", { name: /^Mesas\s*1$/ })).toHaveAttribute("aria-selected", "true")
+    // Before a row is chosen the payment panel says what to do.
+    expect(screen.getByText("Selecciona una orden para cobrar")).toBeInTheDocument()
+
+    fireEvent.click(row)
+    await screen.findByRole("heading", { name: "Cobrar orden" })
+
+    const table = screen.getByRole("table", { name: "Productos de la orden" })
+    const line = within(table).getByRole("row", { name: /Bandeja paisa/ })
+    expect(line).toHaveTextContent(/2/)
+    expect(line).toHaveTextContent(/20\.000/)
+    expect(line).toHaveTextContent(/40\.000/)
+    expect(screen.getByText("Consumo").nextSibling).toHaveTextContent(/40\.000/)
+    expect(screen.getByText("Impuestos 19 %").nextSibling).toHaveTextContent(/7\.600/)
+    expect(screen.getByText("Total de la cuenta").nextSibling).toHaveTextContent(/47\.600/)
+
+    // Nothing applied yet: the whole bill is still owed and nothing can be registered.
+    expect(screen.getByTestId("payment-remaining")).toHaveTextContent(/47\.600/)
+    expect(registerButton()).toHaveAccessibleName(/^Registrar \$\s47\.600 y cerrar$/)
+    expect(registerButton()).toBeDisabled()
+  })
+
+  it("filters the queue by table, waiter or order number", async () => {
+    getByStatus.mockResolvedValue([dbRow(), dbRow({ id: "o-2", table_id: "t-2", waiter_id: "w-2" })])
+    useTableStore.setState({
+      tables: [
+        { id: "t-1", number: 1, status: "occupied" },
+        { id: "t-2", number: 2, status: "occupied" },
+      ],
+    })
+    useProfileStore.setState({
+      profiles: [
+        { id: "w-1", name: "Ana", role: "waiter" },
+        { id: "w-2", name: "Luis", role: "waiter" },
+      ],
+    })
+    renderCashier()
+    await queueRow("Mesa 2")
+
+    const search = screen.getByRole("searchbox", { name: "Buscar orden" })
+    fireEvent.change(search, { target: { value: "luis" } })
+    expect(screen.queryByRole("button", { name: /^Mesa 1(\s|$)/ })).not.toBeInTheDocument()
+    expect(await queueRow("Mesa 2")).toBeInTheDocument()
+
+    fireEvent.change(search, { target: { value: "mesa 1" } })
+    expect(await queueRow("Mesa 1")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^Mesa 2(\s|$)/ })).not.toBeInTheDocument()
+
+    fireEvent.change(search, { target: { value: "zzz" } })
+    expect(screen.getByText("Ninguna orden coincide con la búsqueda")).toBeInTheDocument()
+  })
+
+  it("says there is nothing to charge when the queue is empty", async () => {
+    getByStatus.mockResolvedValue([])
+    renderCashier()
+
+    expect(await screen.findByText("Nada por cobrar")).toBeInTheDocument()
+  })
+
+  it("offers quick cash amounts and shows the change to hand back", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+
+    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
+    const quick = screen.getByRole("group", { name: "Billetes rápidos" })
+    expect(within(quick).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      expect.stringMatching(/48\.000/),
+      expect.stringMatching(/50\.000/),
+      expect.stringMatching(/100\.000/),
+    ])
+
+    fireEvent.click(within(quick).getByRole("button", { name: /50\.000/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+
+    expect(screen.getByText("Cambio a entregar").nextSibling).toHaveTextContent(/2\.400/)
+    expect(screen.getByTestId("payment-remaining")).toHaveTextContent(/\$\s0/)
+    expect(registerButton()).toBeEnabled()
+
+    fireEvent.click(registerButton())
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    const input = payOrder.mock.calls[0][0] as { tenders: Array<{ amount: number; cash_received: number | null }> }
+    expect(input.tenders).toEqual([expect.objectContaining({ amount: 47_600, cash_received: 50_000 })])
+  })
+
+  it("keeps the order visible but the payment disabled, with the reason, while the register is closed", async () => {
+    getCurrentRegister.mockResolvedValueOnce(null as never)
+    vi.mocked(toast.error).mockClear()
+    renderCashier()
+
+    expect(await screen.findByText("Caja cerrada")).toBeInTheDocument()
+    await openPaymentFor("Mesa 1")
+
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(screen.getByText(/La caja debe estar abierta para procesar pagos/)).toBeInTheDocument()
+    expect(registerButton()).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Abrir caja" })).toBeInTheDocument()
+  })
+
+  it("pauses the payment while the browser is offline and resumes when it reconnects", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+    expect(registerButton()).toBeEnabled()
+
+    act(() => setOnline(false))
+    expect(screen.getByText("Sin conexión: el pago se habilita al reconectar.")).toBeInTheDocument()
+    expect(registerButton()).toBeDisabled()
+    fireEvent.click(registerButton())
+    expect(payOrder).not.toHaveBeenCalled()
+
+    act(() => setOnline(true))
+    expect(screen.queryByText("Sin conexión: el pago se habilita al reconectar.")).not.toBeInTheDocument()
+    expect(registerButton()).toBeEnabled()
+  })
+})
+
+describe("re-billing the always-visible panel when the selected order's bill changes", () => {
+  const halfRow = () =>
+    dbRow({
+      order_items: [{ id: "oi-1", name: "Bandeja paisa", price: 20_000, quantity: 1, comments: null }],
+      subtotal: 20_000,
+      tax: 3_800,
+      total: 23_800,
+    })
+
+  it("re-bills the panel after Dividir reduces the selected order", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    getByStatus.mockResolvedValue([
+      halfRow(),
+      dbRow({
+        id: "o-child",
+        order_items: [{ id: "oi-c", name: "Bandeja paisa", price: 20_000, quantity: 1, comments: null }],
+        subtotal: 20_000,
+        tax: 3_800,
+        total: 23_800,
+        is_partial_order: true,
+        parent_order_id: "o-1",
+      }),
+    ])
+    fireEvent.click(screen.getByRole("button", { name: /Dividir/ }))
+    fireEvent.click(await screen.findByRole("checkbox"))
+    fireEvent.click(screen.getByRole("button", { name: "Disminuir" }))
+    fireEvent.click(screen.getByRole("button", { name: "Crear Orden Parcial" }))
+
+    await waitFor(() => expect(screen.getByTestId("payment-remaining")).toHaveTextContent(/23\.800/))
+    expect(registerButton()).toHaveAccessibleName(/^Registrar \$\s23\.800 y cerrar$/)
+    await addCashForRemainingAndRegister()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    expect((payOrder.mock.calls[0][0] as any).tenders).toEqual([
+      { payment_method_id: "pm-cash", amount: 23_800, cash_received: 23_800 },
+    ])
+  })
+
+  it("re-bills silently after an \"Actualizar datos\" refresh changes the total", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    expect(screen.getByTestId("payment-remaining")).toHaveTextContent(/47\.600/)
+
+    getByStatus.mockResolvedValue([halfRow()])
+    fireEvent.click(screen.getByRole("button", { name: /Actualizar datos/ }))
+
+    await waitFor(() => expect(screen.getByTestId("payment-remaining")).toHaveTextContent(/23\.800/))
+    expect(screen.queryByText(/La cuenta cambió/)).not.toBeInTheDocument()
+  })
+
+  it("resets the lines already added and says so, never sending the old amount", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+    expect(registerButton()).toBeEnabled()
+
+    getByStatus.mockResolvedValue([halfRow()])
+    fireEvent.click(screen.getByRole("button", { name: /Actualizar datos/ }))
+
+    const notice = await screen.findByText(/La cuenta cambió/)
+    expect(notice).toHaveTextContent(/^La cuenta cambió \(de \$\s47\.600 a \$\s23\.800\); vuelve a registrar los pagos$/)
+    expect(screen.getByTestId("payment-remaining")).toHaveTextContent(/23\.800/)
+    expect(registerButton()).toBeDisabled()
+    fireEvent.click(registerButton())
+    expect(payOrder).not.toHaveBeenCalled()
+
+    await addCashForRemainingAndRegister()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    expect((payOrder.mock.calls[0][0] as any).tenders).toEqual([
+      { payment_method_id: "pm-cash", amount: 23_800, cash_received: 23_800 },
+    ])
+  })
+
+  it("uses a new idempotency key after a re-bill", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+    payOrder.mockImplementationOnce(async () => {
+      throw new PaymentServiceError({ kind: "unknown", message: "boom" })
+    })
+    fireEvent.click(registerButton())
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    const firstKey = (payOrder.mock.calls[0][0] as any).idempotencyKey
+
+    getByStatus.mockResolvedValue([halfRow()])
+    fireEvent.click(screen.getByRole("button", { name: /Actualizar datos/ }))
+    await screen.findByText(/La cuenta cambió/)
+    await addCashForRemainingAndRegister()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(2))
+    expect((payOrder.mock.calls[1][0] as any).idempotencyKey).not.toBe(firstKey)
+  })
+})
+
+describe("pay_order request body parity (T14 PRESERVE: same body as the old dialog)", () => {
+  const body = () => payOrder.mock.calls[0][0] as Record<string, unknown>
+
+  it("cash exact", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    await addCashForRemainingAndRegister()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    expect(body()).toEqual({
+      orderId: "o-1",
+      cashRegisterId: "reg-1",
+      tip: 0,
+      tenders: [{ payment_method_id: "pm-cash", amount: 47_600, cash_received: 47_600 }],
+      idempotencyKey: expect.any(String),
+    })
+  })
+
+  it("cash with change", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
+    fireEvent.change(screen.getByLabelText("Recibido en efectivo"), { target: { value: "100000" } })
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+    fireEvent.click(registerButton())
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    expect(body()).toEqual({
+      orderId: "o-1",
+      cashRegisterId: "reg-1",
+      tip: 0,
+      tenders: [{ payment_method_id: "pm-cash", amount: 47_600, cash_received: 100_000 }],
+      idempotencyKey: expect.any(String),
+    })
+  })
+
+  it("mixed tenders", async () => {
+    listPaymentMethods.mockImplementation(async () => [
+      { id: "pm-cash", code: "cash", name: "Efectivo", kind: "cash" as const, isActive: true, sortOrder: 1 },
+      { id: "pm-card", code: "card", name: "Tarjeta", kind: "electronic" as never, isActive: true, sortOrder: 2 },
+    ])
+    try {
+      renderCashier()
+      await openPaymentFor("Mesa 1")
+      fireEvent.click(await screen.findByRole("button", { name: "Tarjeta" }))
+      fireEvent.change(screen.getByLabelText("Monto"), { target: { value: "30000" } })
+      fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+      fireEvent.click(screen.getByRole("button", { name: "Efectivo" }))
+      fireEvent.change(screen.getByLabelText("Recibido en efectivo"), { target: { value: "20000" } })
+      fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+      fireEvent.click(registerButton())
+      await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+      expect(body().tenders).toEqual([
+        { payment_method_id: "pm-card", amount: 30_000, cash_received: null },
+        { payment_method_id: "pm-cash", amount: 17_600, cash_received: 20_000 },
+      ])
+    } finally {
+      listPaymentMethods.mockReset()
+      listPaymentMethods.mockImplementation(async () => [
+        { id: "pm-cash", code: "cash", name: "Efectivo", kind: "cash" as const, isActive: true, sortOrder: 1 },
+      ])
+    }
+  })
+
+  it("suggested tip", async () => {
+    getByStatus.mockResolvedValue([dbRow({ tip_percentage: 10, tip: 4_000 })])
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    fireEvent.click(screen.getByRole("button", { name: /Sugerida/ }))
+    expect(registerButton()).toHaveAccessibleName(/^Registrar \$\s51\.600 y cerrar$/)
+    await addCashForRemainingAndRegister()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    expect(body()).toMatchObject({
+      tip: 4_000,
+      tenders: [{ payment_method_id: "pm-cash", amount: 51_600, cash_received: 51_600 }],
+    })
+  })
+
+  it("partial child order", async () => {
+    getByStatus.mockResolvedValue([
+      halfRowParent(),
+      dbRow({
+        id: "o-child",
+        order_items: [{ id: "oi-c", name: "Bandeja paisa", price: 20_000, quantity: 1, comments: null }],
+        subtotal: 20_000,
+        tax: 3_800,
+        total: 23_800,
+        is_partial_order: true,
+        parent_order_id: "o-1",
+      }),
+    ])
+    renderCashier()
+    fireEvent.click(await screen.findByRole("tab", { name: /^Parciales/ }))
+    await openPaymentFor("Mesa 1 · Parcial")
+    await addCashForRemainingAndRegister()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    expect(body()).toMatchObject({
+      orderId: "o-child",
+      tip: 0,
+      tenders: [{ payment_method_id: "pm-cash", amount: 23_800, cash_received: 23_800 }],
+    })
+  })
+})
+
+function halfRowParent() {
+  return dbRow({
+    order_items: [{ id: "oi-1", name: "Bandeja paisa", price: 20_000, quantity: 1, comments: null }],
+    subtotal: 20_000,
+    tax: 3_800,
+    total: 23_800,
+  })
+}

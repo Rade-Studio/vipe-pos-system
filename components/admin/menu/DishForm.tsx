@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { createDish, updateDish, type CategoryDto, type DishDto } from "@/lib/api/catalog"
+import type { SubcategoryDto } from "@/lib/api/subcategories"
 import { ImageUpload } from "@/components/ui/image-upload"
 import { Loader2, Trash2, RefreshCw } from "lucide-react"
 import Image from "next/image"
@@ -22,9 +23,16 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 interface DishFormProps {
   dish?: DishDto | null
   categories: CategoryDto[]
+  /** Every subcategory; the picker offers those of the chosen category. */
+  subcategories?: SubcategoryDto[]
+  /** Category a new dish starts in (the menu tree's selected category). */
+  defaultCategoryId?: string
   onSuccess: () => void
   isNewDish?: boolean
 }
+
+/** Radix Select items cannot carry an empty value. */
+const NO_SUBCATEGORY = "__none__"
 
 // Estado inicial del formulario
 const initialFormState = {
@@ -32,17 +40,29 @@ const initialFormState = {
   description: "",
   price: "",
   category_id: "",
+  subcategory_id: "",
   image_url: "",
   active: true,
   allow_comments: false,
 }
 
-export function DishForm({ dish, categories, onSuccess, isNewDish = false }: DishFormProps) {
+export function DishForm({
+  dish,
+  categories,
+  subcategories = [],
+  defaultCategoryId,
+  onSuccess,
+  isNewDish = false,
+}: DishFormProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({ ...initialFormState })
   const [imageError, setImageError] = useState(false)
   const [deletingImage, setDeletingImage] = useState(false)
+  // Set when a category change cleared the subcategory: the API refuses a dish
+  // left in a subcategory of its old category, so the admin picks one (or none).
+  const [subcategoryPending, setSubcategoryPending] = useState(false)
+  const newDishState = () => ({ ...initialFormState, category_id: defaultCategoryId ?? "" })
   const previousDishIdRef = useRef<string | number | null>(null)
   const originalImageUrlRef = useRef<string>("")
 
@@ -51,7 +71,8 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
     // Caso 1: Crear nuevo plato (explícitamente indicado por isNewDish)
     if (isNewDish) {
       log.info("Creando nuevo plato (isNewDish=true), limpiando formulario")
-      setFormData({ ...initialFormState })
+      setFormData(newDishState())
+      setSubcategoryPending(false)
       originalImageUrlRef.current = ""
       return
     }
@@ -60,7 +81,8 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
     const currentDishId = dish?.id || null
     if (previousDishIdRef.current && !currentDishId) {
       log.info("Transición de editar a nuevo plato, limpiando formulario")
-      setFormData({ ...initialFormState })
+      setFormData(newDishState())
+      setSubcategoryPending(false)
       previousDishIdRef.current = null
       originalImageUrlRef.current = ""
       return
@@ -108,24 +130,49 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
         description: dish.description || "",
         price: dish.price ? dish.price.toString() : "",
         category_id: categoryId,
+        subcategory_id: dish.subcategoryId || "",
         image_url: dish.imageUrl || "",
         active: dish.active !== undefined ? dish.active : true,
         allow_comments: dish.allowComments !== undefined ? dish.allowComments : false,
       })
+      setSubcategoryPending(false)
     } else {
       // Caso 4: Inicialización inicial sin plato (nuevo plato por defecto)
       log.info("Inicialización sin plato, limpiando formulario")
-      setFormData({ ...initialFormState })
+      setFormData(newDishState())
+      setSubcategoryPending(false)
       originalImageUrlRef.current = ""
     }
-  }, [dish, categories, isNewDish])
+    // `newDishState` only reads `defaultCategoryId`.
+  }, [dish, categories, isNewDish, defaultCategoryId])
+
+  const categorySubcategories = subcategories.filter(
+    (s) => s.categoryId === formData.category_id && (s.active || s.id === formData.subcategory_id),
+  )
+  const chosenCategoryName = categories.find((c) => c.id === formData.category_id)?.name ?? ""
+
+  const handleCategoryChange = (value: string) => {
+    const current = formData.subcategory_id
+    const stillFits = !current || subcategories.some((s) => s.id === current && s.categoryId === value)
+    if (stillFits) {
+      setFormData((prev) => ({ ...prev, category_id: value }))
+      return
+    }
+    setFormData((prev) => ({ ...prev, category_id: value, subcategory_id: "" }))
+    setSubcategoryPending(subcategories.some((s) => s.categoryId === value && s.active))
+  }
+
+  // While a choice is pending the picker shows no value, so any pick (even
+  // "Sin subcategoría") is a change. Radix echoes "" through its hidden native
+  // select (on mount, before the options register); no option carries "".
+  const handleSubcategoryChange = (value: string) => {
+    if (!value) return
+    setFormData((prev) => ({ ...prev, subcategory_id: value === NO_SUBCATEGORY ? "" : value }))
+    setSubcategoryPending(false)
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
-
-  const handleSelectChange = (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -209,6 +256,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
         description: formData.description || null,
         price,
         categoryId: formData.category_id || null,
+        subcategoryId: (formData.category_id && formData.subcategory_id) || null,
         imageUrl: formData.image_url || null,
         active: formData.active,
         allowComments: formData.allow_comments,
@@ -247,7 +295,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
 
       // Limpiar el formulario después de un envío exitoso
       if (!dish) {
-        setFormData({ ...initialFormState })
+        setFormData(newDishState())
         originalImageUrlRef.current = ""
       }
 
@@ -321,12 +369,10 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
             key={`category-select-${formData.category_id || "empty"}-${Date.now()}`}
             defaultValue={formData.category_id}
             value={formData.category_id}
-            onValueChange={(value) => {
-              handleSelectChange("category_id", value)
-            }}
+            onValueChange={handleCategoryChange}
             required
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id="category_id" className="w-full">
               <SelectValue placeholder="Selecciona una categoría" />
             </SelectTrigger>
             <SelectContent>
@@ -337,6 +383,41 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
               ))}
             </SelectContent>
           </Select>
+
+          <Label htmlFor="subcategory_id" className="block pt-2 text-sm font-medium">
+            Subcategoría
+          </Label>
+          <Select
+            value={subcategoryPending ? "" : formData.subcategory_id || NO_SUBCATEGORY}
+            onValueChange={handleSubcategoryChange}
+            disabled={!formData.category_id}
+          >
+            <SelectTrigger
+              id="subcategory_id"
+              className="w-full"
+              aria-describedby={subcategoryPending ? "subcategory_pending" : undefined}
+            >
+              <SelectValue placeholder="Elige una subcategoría" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_SUBCATEGORY}>Sin subcategoría</SelectItem>
+              {categorySubcategories.map((subcategory) => (
+                <SelectItem key={subcategory.id} value={subcategory.id}>
+                  {subcategory.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {subcategoryPending ? (
+            <p id="subcategory_pending" role="alert" className="text-xs text-status-warning-fg">
+              Cambiaste la categoría: elige una subcategoría de {chosenCategoryName} o «Sin subcategoría».
+            </p>
+          ) : (
+            formData.category_id &&
+            categorySubcategories.length === 0 && (
+              <p className="text-xs text-muted-foreground">Esta categoría no tiene subcategorías: el mesero ve el plato directo.</p>
+            )
+          )}
         </div>
 
         <div className="space-y-2">
@@ -488,7 +569,7 @@ export function DishForm({ dish, categories, onSuccess, isNewDish = false }: Dis
           </Card>
 
           <div className="flex items-center justify-center pt-4">
-            <Button type="submit" className="w-full" disabled={loading || deletingImage} size="lg">
+            <Button type="submit" className="w-full" disabled={loading || deletingImage || subcategoryPending} size="lg">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {dish ? "Actualizar Plato" : "Crear Plato"}
             </Button>

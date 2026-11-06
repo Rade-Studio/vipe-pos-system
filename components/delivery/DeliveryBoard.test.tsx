@@ -34,22 +34,25 @@ const harness = vi.hoisted(() => {
       subscription.active = false
     }
   }
-  return { subscriptions, emit, subscribeToDeliveries }
+  // T12: the live indicator reads the socket state.
+  const realtime = { isConnected: false, subscribeToDeliveries }
+  return { subscriptions, emit, subscribeToDeliveries, realtime }
 })
 
 const listActiveDeliveries = vi.hoisted(() => vi.fn())
 const setDeliveryStatus = vi.hoisted(() => vi.fn())
+const listCouriers = vi.hoisted(() => vi.fn())
 
 vi.mock("@/lib/api/delivery", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
-  return { ...actual, listActiveDeliveries, setDeliveryStatus }
+  return { ...actual, listActiveDeliveries, setDeliveryStatus, listCouriers }
 })
 
 const getCurrentRegister = vi.hoisted(() => vi.fn())
 const getOpenRegister = vi.hoisted(() => vi.fn())
 
 vi.mock("@/lib/api/realtime", () => ({
-  realtimeService: { subscribeToDeliveries: harness.subscribeToDeliveries },
+  realtimeService: harness.realtime,
 }))
 
 vi.mock("@/lib/api/registers", () => ({ getCurrentRegister, getOpenRegister }))
@@ -61,7 +64,7 @@ vi.mock("@/lib/api/catalog", () => ({
 
 vi.mock("@/lib/api/config", () => ({
   CONFIG_QUERY_KEY: ["config"],
-  fetchConfig: async () => ({ deliveryDefaultFee: 0 }),
+  fetchConfig: async () => ({ deliveryDefaultFee: 5000 }),
 }))
 
 vi.mock("@/lib/api/payments", async () => {
@@ -151,6 +154,9 @@ function renderBoard(client: QueryClient) {
 beforeEach(() => {
   harness.subscriptions.length = 0
   listActiveDeliveries.mockReset()
+  listCouriers.mockReset()
+  listCouriers.mockResolvedValue([])
+  harness.realtime.isConnected = false
   setDeliveryStatus.mockReset()
   getCurrentRegister.mockReset()
   getOpenRegister.mockReset()
@@ -213,14 +219,14 @@ describe("DeliveryBoard — one reload per card action", () => {
     await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
     expect(listActiveDeliveries).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole("button", { name: "En preparación" }))
+    fireEvent.click(screen.getByRole("button", { name: "Preparar" }))
 
     await waitFor(() => expect(setDeliveryStatus).toHaveBeenCalledTimes(1))
     expect(setDeliveryStatus).toHaveBeenCalledWith({ orderId: "d-1", action: "start_preparing" })
     // One read for the board, not one more for the action.
     await waitFor(() => expect(listActiveDeliveries).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(screen.getByText("En preparación (1)")).toBeInTheDocument())
-    expect(screen.getByText("Recibido (0)")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("tab", { name: "En preparación 1" })).toBeInTheDocument())
+    expect(screen.getByRole("tab", { name: "Recibido 0" })).toBeInTheDocument()
 
     // The realtime echo of our own write must not reload the board either.
     harness.emit("order_deliveries", {
@@ -263,7 +269,7 @@ describe("DeliveryBoard — one reload per card action", () => {
 
     renderBoard(client)
     await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
-    fireEvent.click(screen.getAllByRole("button", { name: "En preparación" })[0]!)
+    fireEvent.click(screen.getAllByRole("button", { name: "Preparar" })[0]!)
 
     await waitFor(() => expect(setDeliveryStatus).toHaveBeenCalledTimes(1))
     await waitFor(() => {
@@ -282,11 +288,70 @@ describe("DeliveryBoard — one reload per card action", () => {
     await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
     expect(listActiveDeliveries).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole("button", { name: "En preparación" }))
+    fireEvent.click(screen.getByRole("button", { name: "Preparar" }))
 
     await waitFor(() => expect(toastError).toHaveBeenCalled())
     await waitFor(() => expect(listActiveDeliveries).toHaveBeenCalledTimes(2))
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(listActiveDeliveries).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("DeliveryBoard — T12 dispatch console", () => {
+  it("shows the real live state of the socket", async () => {
+    renderBoard(makeClient())
+    await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
+    expect(screen.getByText("Sin conexión en vivo")).toBeInTheDocument()
+
+    harness.realtime.isConnected = true
+    await waitFor(() => expect(screen.getByText("En vivo")).toBeInTheDocument(), { timeout: 3000 })
+    expect(screen.queryByText("Sin conexión en vivo")).not.toBeInTheDocument()
+  })
+
+  it("opens Nuevo domicilio with the N shortcut, but not while typing", async () => {
+    renderBoard(makeClient())
+    await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
+    expect(screen.queryByRole("dialog", { name: "Nuevo domicilio" })).not.toBeInTheDocument()
+
+    const input = document.createElement("input")
+    document.body.appendChild(input)
+    fireEvent.keyDown(input, { key: "n" })
+    expect(screen.queryByRole("dialog", { name: "Nuevo domicilio" })).not.toBeInTheDocument()
+    input.remove()
+
+    fireEvent.keyDown(document.body, { key: "n" })
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Nuevo domicilio" })).toBeInTheDocument())
+  })
+
+  it("lists the couriers with their real load and active state", async () => {
+    listActiveDeliveries.mockResolvedValue([
+      boardRow({ delivery_status: "out_for_delivery", courier_id: "k-1" }),
+    ])
+    listCouriers.mockResolvedValue([
+      { id: "k-1", name: "Juan Camilo Ospina", phone: null, isActive: true, createdAt: "", updatedAt: "" },
+      { id: "k-2", name: "Luis Pérez", phone: null, isActive: true, createdAt: "", updatedAt: "" },
+      { id: "k-3", name: "Sebastián Gutiérrez", phone: null, isActive: false, createdAt: "", updatedAt: "" },
+    ])
+    renderBoard(makeClient())
+
+    const rail = await screen.findByRole("region", { name: "Repartidores" })
+    await waitFor(() => expect(rail).toHaveTextContent("Juan Camilo Ospina"))
+    expect(listCouriers).toHaveBeenCalledWith({ activeOnly: false })
+    expect(rail).toHaveTextContent(/Juan Camilo Ospina\s*1 pedido en ruta\s*En ruta/)
+    expect(rail).toHaveTextContent(/Luis Pérez\s*Sin pedidos en ruta\s*Libre/)
+    expect(rail).toHaveTextContent(/Sebastián Gutiérrez\s*No asignable\s*Inactivo/)
+  })
+
+  it("shows the suggested delivery fee setting", async () => {
+    renderBoard(makeClient())
+    const rail = await screen.findByRole("region", { name: "Repartidores" })
+    await waitFor(() => expect(rail).toHaveTextContent(/Valor sugerido del domicilio\s*\$\s*5\.000/))
+  })
+
+  it("labels the card actions per state", async () => {
+    renderBoard(makeClient())
+    await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Preparar" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeInTheDocument()
   })
 })
