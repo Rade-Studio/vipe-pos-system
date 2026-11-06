@@ -110,6 +110,10 @@ export type OrderDraftAction =
         comments: string | null
       }
     }
+  /** Deshacer of an add: takes `quantity` back from the same dish + comments line. */
+  // quantityAfterAdd: the line's quantity right after that add; a stale undo
+  // (the line was removed, edited or added to since) does nothing.
+  | { type: 'undoAdd'; dishId: string; comments: string | null; quantity: number; quantityAfterAdd: number }
   | { type: 'incrementItem'; lineId: string }
   | { type: 'decrementItem'; lineId: string }
   | { type: 'removeItem'; lineId: string }
@@ -251,6 +255,21 @@ export function orderDraftReducer(state: OrderDraft, action: OrderDraftAction): 
           comments: action.line.comments,
         }),
       }
+
+    case 'undoAdd': {
+      const idx = state.cartLines.findIndex(
+        (l) => l.dishId === action.dishId && (l.comments ?? null) === action.comments,
+      )
+      if (idx === -1) return state
+      const line = state.cartLines[idx]!
+      if (line.quantity !== action.quantityAfterAdd) return state
+      if (line.quantity <= action.quantity) {
+        return { ...state, cartLines: state.cartLines.filter((_, i) => i !== idx) }
+      }
+      const next = state.cartLines.slice()
+      next[idx] = { ...line, quantity: line.quantity - action.quantity }
+      return { ...state, cartLines: next }
+    }
 
     case 'incrementItem': {
       const idx = state.cartLines.findIndex((l) => l.id === action.lineId)

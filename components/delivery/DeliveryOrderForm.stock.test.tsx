@@ -17,10 +17,15 @@ const env = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }))
 
-vi.mock("@/lib/api/catalog", () => ({
-  fetchCategories: async () => [{ id: "cat-1", name: "Platos", icon: "Soup" }],
-  fetchDishes: async () => [{ id: "d-1", name: "Bandeja", price: 12000, categoryId: "cat-1" }],
-}))
+vi.mock("@/lib/api/catalog", async () => {
+  const { menuCategory, menuDish } = await import("@/lib/order-steps/fixtures")
+  return {
+    getMenuTree: async () => ({
+      categories: [menuCategory({ id: "cat-1", name: "Platos", dishes: [menuDish({ id: "d-1", name: "Bandeja", price: 12000 })] })],
+    }),
+    fetchDishes: async () => [],
+  }
+})
 
 vi.mock("@/lib/api/delivery", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
@@ -31,7 +36,7 @@ vi.mock("@/lib/api/inventory", () => ({ consumeOrderStock: env.consumeOrderStock
 
 vi.mock("@/lib/api/print", () => ({ sendCommand: env.sendCommand }))
 
-vi.mock("@/hooks/use-toast", () => ({ toast: env.toast }))
+vi.mock("@/hooks/use-toast", () => ({ toast: env.toast, useToast: () => ({ toast: vi.fn() }) }))
 
 import { DeliveryOrderForm } from "@/components/delivery/DeliveryOrderForm"
 import { DeliveryServiceError } from "@/lib/api/delivery"
@@ -69,7 +74,13 @@ async function fillAndSubmit(onSubmitted: () => void) {
   })
   fireEvent.change(await screen.findByLabelText("Nombre del cliente"), { target: { value: "Luis" } })
   fireEvent.change(await screen.findByLabelText("Dirección"), { target: { value: "Calle 1 # 2-3" } })
-  fireEvent.click(await screen.findByText("Bandeja"))
+  // T11: products are added through the step picker.
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Productos/ }))
+  })
+  fireEvent.click(await screen.findByRole("button", { name: /^Platos/ }))
+  fireEvent.click(await screen.findByRole("button", { name: /^Bandeja/ }))
+  fireEvent.click(await screen.findByRole("button", { name: "Agregar 1 Bandeja al pedido" }))
   // T12: the submit lives on the Confirmar step.
   fireEvent.click(screen.getByRole("button", { name: /Confirmar/ }))
   await act(async () => {

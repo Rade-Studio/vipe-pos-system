@@ -9,8 +9,8 @@ import { describe, expect, it, vi } from "vitest"
  */
 
 vi.mock("@/lib/api/catalog", () => ({
-  fetchCategories: async () => [{ id: "cat-1", name: "Platos", icon: "Soup" }],
-  fetchDishes: async () => [{ id: "d-1", name: "Bandeja", price: 12000, categoryId: "cat-1" }],
+  getMenuTree: async () => ({ categories: [] }),
+  fetchDishes: async () => [],
 }))
 
 vi.mock("@/lib/api/delivery", async () => {
@@ -18,7 +18,10 @@ vi.mock("@/lib/api/delivery", async () => {
   return { ...actual, findCustomerByPhone: vi.fn(async () => null), createDeliveryOrder: vi.fn() }
 })
 
-vi.mock("@/hooks/use-toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }))
+vi.mock("@/hooks/use-toast", () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+  useToast: () => ({ toast: vi.fn() }),
+}))
 
 import { DeliveryOrderForm } from "@/components/delivery/DeliveryOrderForm"
 
