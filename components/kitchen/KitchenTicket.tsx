@@ -8,6 +8,7 @@ import { isServedItem, pendingItems } from "@/lib/kitchen/order"
 import {
   formatElapsed,
   newItemIdsOf,
+  sendIndexOf,
   ticketAge,
   ticketStartedAt,
   type KitchenThresholds,
@@ -59,14 +60,16 @@ interface ItemGroup {
   served: boolean
 }
 
-// Identical lines (same name, comment, arrival and state) render as one row;
+// Identical lines (same name, comment, send and state) render as one row;
 // its ✓ serves the first line, as the previous kitchen card did. Served lines
-// stay, struck through as "Entregado" (T23).
+// stay, struck through as "Entregado" (T23). The send, not the exact
+// millisecond, groups them: one send can straddle a millisecond.
 function groupItems(order: Order): ItemGroup[] {
   const groups = new Map<string, ItemGroup>()
+  const sendOf = sendIndexOf(order)
   for (const item of order.items) {
     const served = isServedItem(item)
-    const key = `${item.name}|${item.comments || ""}|${item.addedAt?.getTime()}|${served}`
+    const key = `${item.name}|${item.comments || ""}|${sendOf.get(item.id) ?? "?"}|${served}`
     const group = groups.get(key) ?? { key, name: item.name, comments: item.comments, quantity: 0, ids: [], served }
     group.quantity += item.quantity
     group.ids.push(item.id)
