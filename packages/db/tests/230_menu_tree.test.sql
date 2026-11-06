@@ -9,7 +9,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(49);
+SELECT plan(52);
 
 -- ============================================
 -- 1. Schema
@@ -190,6 +190,11 @@ SELECT is(
   (SELECT count(*) FROM pg_trigger WHERE tgrelid IN ('public.categories'::regclass, 'public.subcategories'::regclass, 'public.dishes'::regclass) AND tgname = 'notify_change')::bigint,
   0::bigint,
   'menu tables stay out of realtime (the menu is read when an order starts)');
+
+-- Regression probes from the independent verifier (S5).
+SELECT throws_ok($$UPDATE public.dishes SET category_id = NULL WHERE subcategory_id IS NOT NULL$$, '23514', NULL, 'clearing the category of a dish in a subcategory is refused');
+SELECT throws_ok($$DELETE FROM public.categories c WHERE EXISTS (SELECT 1 FROM public.subcategories s WHERE s.category_id = c.id)$$, '23503', NULL, 'a category with subcategories cannot be deleted');
+SELECT throws_ok($$UPDATE public.subcategories s SET restaurant_id = '23000000-0000-0000-0000-0000000000b2', category_id = '23200000-0000-0000-0000-0000000000b1' WHERE EXISTS (SELECT 1 FROM public.dishes d WHERE d.subcategory_id = s.id)$$, '23503', NULL, 'a used subcategory cannot move restaurant');
 
 SELECT * FROM finish();
 ROLLBACK;
