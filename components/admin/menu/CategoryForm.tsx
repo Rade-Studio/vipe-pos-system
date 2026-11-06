@@ -16,7 +16,10 @@ import { ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import * as RadioGroupPrimitive from "@radix-ui/react-radio-group"
 import * as LucideIcons from "lucide-react"
+import { CATEGORY_COLORS } from "@/lib/admin/catalog"
+import { colorClasses, lucideIcon } from "./tones"
 
 // Esquema de validación para el formulario
 const categorySchema = z.object({
@@ -24,6 +27,7 @@ const categorySchema = z.object({
   description: z.string().optional(),
   icon: z.string().min(1, { message: "Selecciona un icono" }),
   active: z.boolean().default(true),
+  color: z.enum(["neutral", "yellow", "orange", "sky", "violet", "emerald", "rose"]).default("neutral"),
 })
 
 type CategoryFormValues = z.infer<typeof categorySchema>
@@ -31,6 +35,8 @@ type CategoryFormValues = z.infer<typeof categorySchema>
 interface CategoryFormProps {
   category?: CategoryDto | null
   onSuccess?: () => void
+  /** One column whatever the viewport (the menu tree inspector is narrow). */
+  compact?: boolean
 }
 
 // Lista de iconos de cocina/restaurante disponibles en Lucide
@@ -129,10 +135,11 @@ function categoryBody(data: CategoryFormValues) {
     description: data.description ? data.description : null,
     icon: data.icon,
     active: data.active,
+    color: data.color,
   }
 }
 
-export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
+export function CategoryForm({ category, onSuccess, compact = false }: CategoryFormProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
@@ -145,6 +152,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
       description: category?.description || "",
       icon: category?.icon || "",
       active: category?.active !== undefined ? category.active : true,
+      color: category?.color ?? "neutral",
     },
   })
 
@@ -156,6 +164,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
         description: category.description || "",
         icon: category.icon || "",
         active: category.active !== undefined ? category.active : true,
+        color: category.color ?? "neutral",
       })
     } else {
       form.reset({
@@ -163,6 +172,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
         description: "",
         icon: "",
         active: true,
+        color: "neutral",
       })
     }
   }, [category, form])
@@ -206,7 +216,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit as any)} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className={cn("grid grid-cols-1 gap-6", !compact && "md:grid-cols-2")}>
           {/* Primera columna */}
           <div className="space-y-4">
             <FormField
@@ -257,7 +267,7 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
                           {field.value ? (
                             <div className="flex items-center">
                               {(() => {
-                                const IconComponent = field.value ? (LucideIcons as any)[field.value] : null
+                                const IconComponent = lucideIcon(field.value)
                                 return IconComponent ? <IconComponent className="h-5 w-5" /> : "Seleccionar icono"
                               })()}
                             </div>
@@ -305,6 +315,39 @@ export function CategoryForm({ category, onSuccess }: CategoryFormProps) {
                     </PopoverContent>
                   </Popover>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="color"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel id="category-color-label">Color</FormLabel>
+                  <RadioGroupPrimitive.Root
+                    aria-labelledby="category-color-label"
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    className="flex flex-wrap gap-2"
+                  >
+                    {CATEGORY_COLORS.map((option) => (
+                      <RadioGroupPrimitive.Item
+                        key={option.value}
+                        value={option.value}
+                        aria-label={option.label}
+                        className={cn(
+                          "inline-flex min-h-11 items-center gap-2 rounded-pill border border-line-strong bg-card py-1 pl-1.5 pr-3 text-sm",
+                          "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-[3px] focus-visible:outline-focus",
+                          "data-[state=checked]:border-brand data-[state=checked]:bg-brand-tint data-[state=checked]:shadow-[inset_0_0_0_1px_var(--accent)]",
+                        )}
+                      >
+                        <span aria-hidden className={cn("h-7 w-7 rounded-full border-2", colorClasses(option.value).swatch)} />
+                        <span aria-hidden>{option.label}</span>
+                      </RadioGroupPrimitive.Item>
+                    ))}
+                  </RadioGroupPrimitive.Root>
+                  <p className="text-xs text-muted-foreground">El color del botón de la categoría en la toma de pedidos.</p>
                 </FormItem>
               )}
             />

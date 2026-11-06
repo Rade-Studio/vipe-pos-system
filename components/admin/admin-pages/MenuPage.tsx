@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/admin/common/PageHeader"
-import { CategoryList } from "@/components/admin/menu/CategoryList"
 import { DishList } from "@/components/admin/menu/DishList"
+import { MenuTreeEditor } from "@/components/admin/menu/MenuTreeEditor"
 import { PromotionList } from "@/components/admin/promotions/PromotionList"
 
 export function MenuPage({
@@ -13,7 +13,7 @@ export function MenuPage({
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title="Menú" description={description} />
-      <CategoryList />
+      <MenuTreeEditor />
       <DishList onNavigate={onNavigate} />
       <PromotionList />
     </div>
