@@ -4,7 +4,7 @@ import { Printer, SplitSquareVertical, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
 import type { CartItem } from "@/types"
-import { clockTime, type QueueEntry, type QueueTotals } from "@/lib/cashier/queue"
+import { entryHeader, type QueueEntry, type QueueTotals } from "@/lib/cashier/queue"
 import { Chip, Eyebrow, Money } from "./cashier-ui"
 
 interface OrderDetailProps {
@@ -31,21 +31,17 @@ export function OrderDetail({
   undoBusy,
   onReprint,
 }: OrderDetailProps) {
-  const orderCount = entry.orders.length
+  const header = entryHeader(entry)
   return (
     <div className="flex min-h-0 flex-col gap-4 p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Eyebrow>
-            {orderCount > 1 ? `${orderCount} órdenes` : `Orden #${entry.payOrder.id.slice(0, 8)}`}
-          </Eyebrow>
+          <Eyebrow>{header.eyebrow}</Eyebrow>
           <h2 className="flex flex-wrap items-center gap-2 text-xl font-bold text-fg">
             <span className="min-w-0 break-words">{entry.label}</span>
             <Chip tone={entry.status.tone}>{entry.status.label}</Chip>
           </h2>
-          <p className="text-sm text-muted-fg">
-            {[entry.waiterName, `abierta ${clockTime(entry.openedAt)}`].filter(Boolean).join(" · ")}
-          </p>
+          <p className="text-sm text-muted-fg">{header.meta}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {onSplit && (

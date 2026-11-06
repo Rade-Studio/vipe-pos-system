@@ -25,7 +25,7 @@
  * keeps tableless delivery rows OUT of the by-table cards — `DeliveryPaymentsPanel`
  * stays the place where the cashier charges deliveries.
  */
-import { orderDtoFromWire, toOrder } from "@/lib/api/orders"
+import { orderDtoFromWire, toOrder, type OrderDto } from "@/lib/api/orders"
 import { groupDineInOrdersByTable } from "@/lib/delivery/kitchen"
 import { mergeOrdersList, wireRowToPartialOrder } from "@/lib/realtime/order-merge"
 import type { Order } from "@/types"
@@ -81,6 +81,18 @@ function num(value: unknown): number {
 }
 
 /** Wire row -> app `Order`, through the shared mapper. Null without id/status. */
+/** The cashier reads its orders with the waiter's name (T24): `GET /orders?include=waiter`. */
+export const CASHIER_ORDER_INCLUDES = ["waiter"] as const
+
+/** A cashier order: the domain `Order` plus the waiter's name when the API sent it. */
+export type CashierOrder = Order & { waiterName?: string }
+
+/** `toOrder` keeping `waiterName` (include=waiter); without it the result is exactly `toOrder`. */
+export function toCashierOrder(dto: OrderDto): CashierOrder {
+  const order = toOrder(dto)
+  return dto.waiterName ? { ...order, waiterName: dto.waiterName } : order
+}
+
 function orderFromRow(row: unknown): Order | null {
   const dto = orderDtoFromWire(row)
   return dto ? toOrder(dto) : null

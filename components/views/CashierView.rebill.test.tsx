@@ -122,7 +122,13 @@ vi.mock("@/lib/api/client", () => {
     onSessionRefreshed: () => () => {},
   }
 })
-vi.mock("@/lib/api/registers", () => ({ getCurrentRegister: () => getCurrentRegister() }))
+const getRegisterPaidOrders = vi.fn(async (_registerId: string): Promise<unknown[]> => [])
+vi.mock("@/lib/api/registers", () => ({
+  getCurrentRegister: () => getCurrentRegister(),
+  getRegisterPaidOrders: (registerId: string) => getRegisterPaidOrders(registerId),
+}))
+const zones = vi.hoisted(() => ({ list: [] as Array<{ id: string; name: string }> }))
+vi.mock("@/hooks/use-zones", () => ({ useZones: () => ({ data: zones.list }) }))
 vi.mock("@/lib/api/payments", () => ({
   listPaymentMethods: () => listPaymentMethods(),
   getRegisterSummary: () => getRegisterSummary(),
@@ -145,6 +151,13 @@ vi.mock("@/lib/api/realtime", () => ({
     },
     subscribeToTables: () => () => {},
     subscribeToDeliveries: () => () => {},
+    subscribeToConnectionStatus: (cb: (connected: boolean) => void) => {
+      ;(globalThis as Record<string, unknown>).__statusCb = cb
+      cb(true)
+      return () => {
+        delete (globalThis as Record<string, unknown>).__statusCb
+      }
+    },
   },
 }))
 vi.mock("@/lib/api/print", () => ({
@@ -181,6 +194,15 @@ const queueRow = (label: string) =>
 /** The primary action of the payment panel ("Registrar $ X y cerrar"). */
 const registerButton = () => screen.getByRole("button", { name: /^Registrar .* y cerrar$/ })
 
+/**
+ * "Registrar $X y cerrar", then "Cerrar ahora": since T24 the payment is sent
+ * only when the 10 s undo window ends or the cashier closes it now.
+ */
+function confirmPayment() {
+  fireEvent.click(registerButton())
+  fireEvent.click(screen.getByRole("button", { name: "Cerrar ahora" }))
+}
+
 /** Selects the row and waits for the always-visible payment panel to bill it. */
 async function openPaymentFor(label = "Mesa 1") {
   fireEvent.click(await queueRow(label))
@@ -192,7 +214,7 @@ async function addCashForRemainingAndRegister() {
   fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
   fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
   fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
-  fireEvent.click(registerButton())
+  confirmPayment()
 }
 
 /** Opens the payment panel for the only row and pays it in full in cash. */
@@ -218,6 +240,8 @@ beforeEach(() => {
   payOrder.mockClear()
   listActiveDeliveries.mockClear()
   getByStatus.mockResolvedValue([dbRow()])
+  getRegisterPaidOrders.mockClear()
+  zones.list = []
   useTableStore.setState({ tables: [{ id: "t-1", number: 1, status: "occupied" }] })
   useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter" }] })
   useCashRegisterStore.setState({ currentRegister: null, registers: [] })
@@ -248,7 +272,7 @@ describe("PROBE re-bill", () => {
     await openPaymentFor("Mesa 1")
     await addCashLine()
     emit(dbRow({ order_items: halfItems, subtotal: 20_000, tax: 3_800, total: 23_800 }))
-    await screen.findByText(/La cuenta cambió \(de \$\s47\.600 a \$\s23\.800\)/)
+    await screen.findByText(/La cuenta sin propina cambió de \$\s47\.600 a \$\s23\.800/)
     expect(registerButton()).toBeDisabled()
     await addCashForRemainingAndRegister()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
@@ -260,7 +284,7 @@ describe("PROBE re-bill", () => {
     await openPaymentFor("Mesa 1")
     await addCashLine()
     emit(dbRow({ order_items: [{ ...orderItems[0], price: 25_000 }], subtotal: 50_000, tax: 9_500, total: 59_500 }))
-    await screen.findByText(/La cuenta cambió/)
+    await screen.findByText(/La cuenta sin propina cambió/)
     await addCashForRemainingAndRegister()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
     expect(bodyAt(0).tenders[0].amount).toBe(59_500)
@@ -272,7 +296,7 @@ describe("PROBE re-bill", () => {
     await addCashLine()
     getByStatus.mockResolvedValue([dbRow({ tax_percentage: 8, tax: 3_200, total: 43_200 })])
     fireEvent.click(screen.getByRole("button", { name: /Actualizar datos/ }))
-    await screen.findByText(/La cuenta cambió/)
+    await screen.findByText(/La cuenta sin propina cambió/)
     await addCashForRemainingAndRegister()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
     expect(bodyAt(0).tenders[0].amount).toBe(43_200)
@@ -294,9 +318,9 @@ describe("PROBE re-bill", () => {
     await openPaymentFor("Mesa 1")
     await addCashLine()
     emit(dbRow({ status: "kitchen" }))
-    expect(screen.queryByText(/La cuenta cambió/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/La cuenta sin propina cambió/)).not.toBeInTheDocument()
     expect(registerButton()).toBeEnabled()
-    fireEvent.click(registerButton())
+    confirmPayment()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
     expect(bodyAt(0).tenders[0].amount).toBe(47_600)
   })
@@ -308,10 +332,10 @@ describe("PROBE re-bill", () => {
     await openPaymentFor("Mesa 1")
     await addCashLine()
     payOrder.mockImplementationOnce(async () => { throw new PaymentServiceError({ kind: "unknown", message: "boom" }) })
-    fireEvent.click(registerButton())
+    confirmPayment()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(registerButton()).toBeEnabled())
-    fireEvent.click(registerButton())
+    confirmPayment()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(2))
     expect(bodyAt(1).idempotencyKey).toBe(bodyAt(0).idempotencyKey)
     expect(bodyAt(1).tenders[0].amount).toBe(47_600)
@@ -323,14 +347,14 @@ describe("PROBE re-bill", () => {
     await addCashLine()
     let reject!: (e: unknown) => void
     payOrder.mockImplementationOnce(() => new Promise((_r, rj) => { reject = rj }) as any)
-    fireEvent.click(registerButton())
+    confirmPayment()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
     expect(screen.getByRole("button", { name: /Procesando/ })).toBeDisabled()
     emit(dbRow({ order_items: halfItems, subtotal: 20_000, tax: 3_800, total: 23_800 }))
     // still submitting: no re-seed yet, no second call possible
     expect(screen.getByRole("button", { name: /Procesando/ })).toBeDisabled()
     await act(async () => { reject(new PaymentServiceError({ kind: "rejected", message: "monto no coincide" })) })
-    await screen.findByText(/La cuenta cambió \(de \$\s47\.600 a \$\s23\.800\)/)
+    await screen.findByText(/La cuenta sin propina cambió de \$\s47\.600 a \$\s23\.800/)
     expect(registerButton()).toBeDisabled()
     fireEvent.click(registerButton())
     expect(payOrder).toHaveBeenCalledTimes(1)
@@ -346,7 +370,7 @@ describe("PROBE re-bill", () => {
     await addCashLine()
     let resolve!: (v: unknown) => void
     payOrder.mockImplementationOnce(() => new Promise((r) => { resolve = r }) as any)
-    fireEvent.click(registerButton())
+    confirmPayment()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
     emit(dbRow({ order_items: halfItems, subtotal: 20_000, tax: 3_800, total: 23_800 }))
     await act(async () => {
@@ -365,7 +389,7 @@ describe("PROBE re-bill", () => {
     await addCashLine()
     fireEvent.click(await queueRow("Mesa 2"))
     await waitFor(() => expect(screen.getByTestId("payment-remaining")).toHaveTextContent(/23\.800/))
-    expect(screen.queryByText(/La cuenta cambió/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/La cuenta sin propina cambió/)).not.toBeInTheDocument()
     await addCashForRemainingAndRegister()
     await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
     expect(bodyAt(0)).toMatchObject({ orderId: "o-2", tenders: [{ amount: 23_800 }] })

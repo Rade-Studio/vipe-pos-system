@@ -5,15 +5,16 @@ import { Search } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/utils/helpers"
 import { cn } from "@/lib/utils"
-import { clockTime, type QueueEntry } from "@/lib/cashier/queue"
+import { entryMeta, type QueueEntry } from "@/lib/cashier/queue"
 import { Chip, Eyebrow, Money, focusRing, toneClasses } from "./cashier-ui"
 
-export type QueueTab = "tables" | "deliveries" | "partials"
+export type QueueTab = "tables" | "deliveries" | "partials" | "paid"
 
 interface CashierQueueProps {
   tab: QueueTab
   onTabChange: (tab: QueueTab) => void
-  counts: Record<QueueTab, number>
+  /** Pending counts; "Pagadas" shows none (it is history, not work). */
+  counts: Record<Exclude<QueueTab, "paid">, number>
   query: string
   onQueryChange: (query: string) => void
   entries: QueueEntry[]
@@ -24,12 +25,15 @@ interface CashierQueueProps {
   loading: boolean
   /** The Domicilios tab body (the delivery panel keeps its own payment flow). */
   deliveries: React.ReactNode
+  /** The Pagadas tab body (T24). */
+  paid: React.ReactNode
 }
 
 const TABS: Array<{ id: QueueTab; label: string }> = [
   { id: "tables", label: "Mesas" },
   { id: "deliveries", label: "Domicilios" },
   { id: "partials", label: "Parciales" },
+  { id: "paid", label: "Pagadas" },
 ]
 
 /** Left pane: what is waiting to be charged, by type, with a search. */
@@ -45,6 +49,7 @@ export function CashierQueue({
   onSelect,
   loading,
   deliveries,
+  paid,
 }: CashierQueueProps) {
   return (
     <div className="flex min-h-0 flex-col gap-3 p-3 sm:p-4">
@@ -53,7 +58,11 @@ export function CashierQueue({
         <h2 className="text-lg font-bold text-fg">Órdenes para facturar</h2>
       </div>
 
-      <div className="flex flex-wrap gap-1 rounded-md bg-surface-2 p-1" role="tablist" aria-label="Tipo de orden">
+      <div
+        className="grid grid-cols-2 gap-1 rounded-md bg-surface-2 p-1 md:grid-cols-4 min-[1180px]:grid-cols-2"
+        role="tablist"
+        aria-label="Tipo de orden"
+      >
         {TABS.map(({ id, label }) => (
           <button
             key={id}
@@ -62,25 +71,27 @@ export function CashierQueue({
             aria-selected={tab === id}
             onClick={() => onTabChange(id)}
             className={cn(
-              "inline-flex min-h-[44px] flex-auto items-center justify-center gap-1 whitespace-nowrap rounded-md px-2 text-sm font-semibold",
+              "inline-flex min-h-[44px] min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-md px-2 text-sm font-semibold",
               focusRing,
               tab === id ? "bg-surface text-fg shadow-sm" : "text-muted-fg hover:text-fg",
             )}
           >
             {label}
-            <span
-              className={cn(
-                "rounded-pill px-1.5 text-xs tabular-nums",
-                tab === id ? "bg-brand-tint text-brand" : "bg-surface text-muted-fg",
-              )}
-            >
-              {counts[id]}
-            </span>
+            {id !== "paid" && (
+              <span
+                className={cn(
+                  "rounded-pill px-1.5 text-xs tabular-nums",
+                  tab === id ? "bg-brand-tint text-brand" : "bg-surface text-muted-fg",
+                )}
+              >
+                {counts[id]}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {tab !== "deliveries" && (
+      {(tab === "tables" || tab === "partials") && (
         <label className="flex h-11 items-center gap-2 rounded-md border border-line bg-surface px-3 focus-within:ring-2 focus-within:ring-focus">
           <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-fg" />
           <span className="sr-only">Buscar orden</span>
@@ -94,7 +105,9 @@ export function CashierQueue({
         </label>
       )}
 
-      {tab === "deliveries" ? (
+      {tab === "paid" ? (
+        <div className="min-h-0">{paid}</div>
+      ) : tab === "deliveries" ? (
         <div className="min-h-0">
           {deliveries}
           {counts.deliveries === 0 && <p className="text-sm text-muted-fg">No hay domicilios por cobrar.</p>}
@@ -144,8 +157,8 @@ export function CashierQueue({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-fg">{entry.label}</span>{" "}
-                    <span className="block truncate text-xs text-muted-fg">
-                      {[entry.waiterName, `desde ${clockTime(entry.openedAt)}`].filter(Boolean).join(" · ")}
+                    <span className="block truncate text-xs text-muted-fg" title={entryMeta(entry)}>
+                      {entryMeta(entry)}
                     </span>
                   </span>{" "}
                   <span className="flex shrink-0 flex-col items-end gap-1">

@@ -32,9 +32,10 @@ export function TenderLinesList({ lines, methodName, onRemove, disabled }: Tende
         <li key={index} className="flex items-center gap-3 py-1 pl-3 pr-1">
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-fg">{methodName(line.methodId)}</div>
-            <div className="text-xs text-muted-fg">
+            <div className="break-words text-xs text-muted-fg">
               {line.kind === "cash" ? "Efectivo" : "Electrónico"} · Recibido{" "}
               <Money>{formatCurrency(line.tendered)}</Money>
+              {line.kind !== "cash" && line.reference && <> · Ref. {line.reference}</>}
               {line.change > 0 && (
                 <>
                   {" "}

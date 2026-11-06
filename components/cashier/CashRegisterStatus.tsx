@@ -15,6 +15,7 @@ import { useRegisterSummary } from "@/hooks/use-register-summary"
 import { queryClient } from "@/lib/queryClient"
 import { registerSummaryQueryKey } from "@/lib/payments/register-summary"
 import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
+import type { CashRegisterWithOpener } from "@/lib/api/registers"
 
 export function CashRegisterStatus() {
   const [openDialog, setOpenDialog] = useState(false)
@@ -48,6 +49,12 @@ export function CashRegisterStatus() {
     ? clockTime(new Date(currentRegister.openingTimestamp))
     : null
 
+  // The API's register carries who opened it (T18); older registers have none.
+  const openerName = (currentRegister as Partial<CashRegisterWithOpener> | null)?.openedBy?.name ?? null
+  const openedLabel = openerName
+    ? `Caja abierta por ${openerName}${openedAt ? ` · ${openedAt}` : ""}`
+    : `Caja abierta${openedAt ? ` · desde ${openedAt}` : ""}`
+
   const action = cn(
     "inline-flex h-11 min-w-[44px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-line bg-surface px-3 text-sm font-semibold text-fg hover:bg-surface-2",
     focusRing,
@@ -58,9 +65,10 @@ export function CashRegisterStatus() {
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {isOpen ? (
           <>
-            <Chip tone="ok" dot>
-              Caja abierta
-              {openedAt && <span className="hidden font-normal sm:inline">· desde {openedAt}</span>}
+            <Chip tone="ok" dot className="min-w-0 max-w-full shrink">
+              <span className="truncate" title={openedLabel}>
+                {openedLabel}
+              </span>
             </Chip>
             <span className="whitespace-nowrap text-sm text-muted-fg">
               Efectivo actual: <Money className="font-semibold text-fg">{formatCurrency(expectedCash)}</Money>
@@ -68,11 +76,11 @@ export function CashRegisterStatus() {
             <div className="ml-auto flex flex-wrap gap-2">
               <button type="button" className={action} onClick={() => setAddCashDialog(true)} aria-label="Agregar efectivo">
                 <PlusCircle aria-hidden="true" className="h-4 w-4 text-status-ok-fg" />
-                <span className="hidden lg:inline">Agregar efectivo</span>
+                <span className="hidden min-[1600px]:inline">Agregar efectivo</span>
               </button>
               <button type="button" className={action} onClick={() => setWithdrawCashDialog(true)} aria-label="Retirar efectivo">
                 <MinusCircle aria-hidden="true" className="h-4 w-4 text-status-danger-fg" />
-                <span className="hidden lg:inline">Retirar efectivo</span>
+                <span className="hidden min-[1600px]:inline">Retirar efectivo</span>
               </button>
               <button type="button" className={action} onClick={() => setCloseDialog(true)}>
                 <Lock aria-hidden="true" className="h-4 w-4" />

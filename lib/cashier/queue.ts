@@ -5,6 +5,7 @@
  */
 import type { CartItem, Order } from "@/types"
 import type { ChipTone } from "@/components/cashier/cashier-ui"
+import type { CashierOrder } from "./orders"
 
 export type QueueKind = "table" | "partial"
 
@@ -17,6 +18,12 @@ export interface QueueEntry {
   /** "Mesa 12" or "Mesa 12 · Parcial". */
   label: string
   waiterName: string | undefined
+  /** Zone of the table (T24), when the table is placed in one. */
+  zoneName: string | undefined
+  /** Per-restaurant folios of the listed orders, in list order (T24). */
+  orderNumbers: number[]
+  /** Guests captured on the orders; the largest when several (T24). */
+  guests: number | undefined
   orders: Order[]
   /** The order the payment panel charges (the first order of the table, as before). */
   payOrder: Order
@@ -46,10 +53,18 @@ export interface QueueSources {
   byTable: Record<string, Order[]>
   partial: Order[]
   tableNumberById: Record<string, number>
+  /** Zone name by table id; a table without zone is absent. */
+  zoneNameByTableId?: Record<string, string>
   waiterName: (waiterId: string) => string | undefined
 }
 
-export function tableEntries({ byTable, tableNumberById, waiterName }: QueueSources): QueueEntry[] {
+function captured(orders: readonly Order[]) {
+  const orderNumbers = orders.flatMap((o) => (typeof o.orderNumber === "number" && o.orderNumber > 0 ? [o.orderNumber] : []))
+  const guestCounts = orders.flatMap((o) => (typeof o.guests === "number" ? [o.guests] : []))
+  return { orderNumbers, guests: guestCounts.length > 0 ? Math.max(...guestCounts) : undefined }
+}
+
+export function tableEntries({ byTable, tableNumberById, zoneNameByTableId = {}, waiterName }: QueueSources): QueueEntry[] {
   return Object.entries(byTable)
     .filter(([, orders]) => orders.length > 0)
     .map(([tableId, orders]) => {
@@ -60,7 +75,9 @@ export function tableEntries({ byTable, tableNumberById, waiterName }: QueueSour
         tableId,
         tableNumber,
         label: `Mesa ${tableNumber ?? "?"}`,
-        waiterName: waiterName(orders[0]!.waiter),
+        waiterName: (orders[0] as CashierOrder).waiterName ?? waiterName(orders[0]!.waiter),
+        zoneName: zoneNameByTableId[tableId],
+        ...captured(orders),
         orders,
         payOrder: orders[0]!,
         total: orders.reduce((sum, o) => sum + o.bill.total, 0),
@@ -70,7 +87,7 @@ export function tableEntries({ byTable, tableNumberById, waiterName }: QueueSour
     })
 }
 
-export function partialEntries({ partial, tableNumberById, waiterName }: QueueSources): QueueEntry[] {
+export function partialEntries({ partial, tableNumberById, zoneNameByTableId = {}, waiterName }: QueueSources): QueueEntry[] {
   return partial.map((order) => {
     const tableNumber = tableNumberById[order.tableId]
     return {
@@ -79,7 +96,9 @@ export function partialEntries({ partial, tableNumberById, waiterName }: QueueSo
       tableId: order.tableId,
       tableNumber,
       label: `Mesa ${tableNumber ?? "?"} · Parcial`,
-      waiterName: waiterName(order.waiter),
+      waiterName: (order as CashierOrder).waiterName ?? waiterName(order.waiter),
+      zoneName: zoneNameByTableId[order.tableId],
+      ...captured([order]),
       orders: [order],
       payOrder: order,
       total: order.bill.total,
@@ -91,11 +110,46 @@ export function partialEntries({ partial, tableNumberById, waiterName }: QueueSo
 
 const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
 
-/** Case- and accent-insensitive match on the table label, the waiter or an order number. */
+export const folio = (orderNumber: number) => `#${orderNumber}`
+
+const guestsLabel = (guests: number) => (guests === 1 ? "1 persona" : `${guests} personas`)
+
+/** Queue row line: "#128 · Terraza · Carlos Pérez · 4 personas · desde 13:46"; what was not captured is left out. */
+export function entryMeta(entry: QueueEntry): string {
+  return [
+    ...entry.orderNumbers.slice(0, 1).map(folio),
+    entry.zoneName,
+    entry.waiterName,
+    entry.guests !== undefined ? guestsLabel(entry.guests) : undefined,
+    `desde ${clockTime(entry.openedAt)}`,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+}
+
+/** Detail header: eyebrow "Orden #128 · Terraza" and "Carlos Pérez · abierta 13:46 · 4 personas". */
+export function entryHeader(entry: QueueEntry): { eyebrow: string; meta: string } {
+  const folios = entry.orderNumbers.map(folio).join(", ")
+  const head = entry.orders.length > 1 ? [`${entry.orders.length} órdenes`, folios || undefined] : [`Orden${folios ? ` ${folios}` : ""}`]
+  return {
+    eyebrow: [...head, entry.zoneName].filter(Boolean).join(" · "),
+    meta: [entry.waiterName, `abierta ${clockTime(entry.openedAt)}`, entry.guests !== undefined ? guestsLabel(entry.guests) : undefined]
+      .filter(Boolean)
+      .join(" · "),
+  }
+}
+
+/** Case- and accent-insensitive match on the table label, zone, waiter, folio or order id. */
 export function matchesQueueSearch(entry: QueueEntry, query: string): boolean {
   const needle = fold(query.trim())
   if (!needle) return true
-  const haystack = [entry.label, entry.waiterName ?? "", ...entry.orders.map((o) => o.id)].map(fold)
+  const haystack = [
+    entry.label,
+    entry.zoneName ?? "",
+    entry.waiterName ?? "",
+    ...entry.orderNumbers.map(folio),
+    ...entry.orders.map((o) => o.id),
+  ].map(fold)
   return haystack.some((value) => value.includes(needle))
 }
 
