@@ -35,6 +35,9 @@ export function toOrder(row: OrderRow, include: { withTable?: boolean; withWaite
   const o = row.order;
   const order: Order = {
     id: String(o.id),
+    orderNumber: num(o.order_number),
+    guests: o.guests === null || o.guests === undefined ? null : num(o.guests),
+    notes: text(o.notes),
     tableId: text(o.table_id),
     waiterId: text(o.waiter_id),
     status: o.status as OrderStatus,

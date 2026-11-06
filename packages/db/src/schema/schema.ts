@@ -667,6 +667,9 @@ export const orders = pgTable("orders", {
 	totalDiscounts: numeric("total_discounts", { precision: 10, scale:  2 }).default('0'),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
 	orderType: text("order_type").default('dine_in').notNull(),
+	orderNumber: integer("order_number").notNull(),
+	guests: smallint(),
+	notes: text(),
 }, (table) => [
 	index("idx_orders_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	index("idx_orders_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
@@ -699,6 +702,10 @@ export const orders = pgTable("orders", {
 	pgPolicy("orders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("orders_order_type_check", sql`order_type = ANY (ARRAY['dine_in'::text, 'delivery'::text])`),
 	check("orders_order_type_table_id_check", sql`(order_type = 'dine_in'::text) OR (table_id IS NULL)`),
+	unique("orders_restaurant_id_order_number_key").on(table.restaurantId, table.orderNumber),
+	check("orders_order_number_check", sql`order_number >= 1`),
+	check("orders_guests_check", sql`(guests >= 1) AND (guests <= 99)`),
+	check("orders_notes_check", sql`(length(btrim(notes)) >= 1) AND (length(btrim(notes)) <= 300)`),
 	check("orders_status_check", sql`status = ANY (ARRAY['active'::text, 'kitchen'::text, 'delivered'::text, 'cancelled'::text, 'paid'::text])`),
 ]);
 

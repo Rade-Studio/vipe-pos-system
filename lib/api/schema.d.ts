@@ -353,7 +353,7 @@ export interface paths {
         delete: operations["OrdersController_remove"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["OrdersController_updateDetails"];
         trace?: never;
     };
     "/api/orders/{id}/items": {
@@ -1848,6 +1848,16 @@ export interface components {
              * @default 0
              */
             deliveryDefaultFee: number;
+            /**
+             * @description Minutes after which a kitchen ticket is late.
+             * @default 15
+             */
+            kitchenLateMinutes: number;
+            /**
+             * @description Minutes after which an open delivery is late.
+             * @default 45
+             */
+            deliveryLateMinutes: number;
         };
         UpdateBusinessConfigRequest: {
             taxPercentage?: number;
@@ -1859,6 +1869,8 @@ export interface components {
             businessNit?: string;
             inventoryControlEnabled?: boolean;
             deliveryDefaultFee?: number;
+            kitchenLateMinutes?: number;
+            deliveryLateMinutes?: number;
         };
         OrderItem: {
             /** Format: uuid */
@@ -1884,6 +1896,12 @@ export interface components {
         Order: {
             /** Format: uuid */
             id: string;
+            /** @description Per-restaurant order number assigned by the database (1, 2, ...); never set by the client. */
+            orderNumber: number;
+            /** @description Guests at the table; null when not captured. */
+            guests: number | null;
+            /** @description Order-level note for the kitchen; null when none. */
+            notes: string | null;
             /** Format: uuid */
             tableId: string | null;
             /**
@@ -1975,6 +1993,12 @@ export interface components {
         CompletedOrder: {
             /** Format: uuid */
             id: string;
+            /** @description Per-restaurant order number assigned by the database (1, 2, ...); never set by the client. */
+            orderNumber: number;
+            /** @description Guests at the table; null when not captured. */
+            guests: number | null;
+            /** @description Order-level note for the kitchen; null when none. */
+            notes: string | null;
             /** Format: uuid */
             tableId: string | null;
             /**
@@ -2084,11 +2108,25 @@ export interface components {
              * @default false
              */
             force: boolean;
+            /** @description Guests at the table. */
+            guests?: number | null;
+            /** @description Order note, trimmed; blank is null. */
+            notes?: string | null;
         };
         AddOrderItemsRequest: {
             items: components["schemas"]["OrderItemInput"][];
             /** @default false */
             force: boolean;
+            /** @description Sets guests; omitted keeps them. */
+            guests?: number | null;
+            /** @description Sets the order note; omitted keeps it. */
+            notes?: string | null;
+        };
+        UpdateOrderDetailsRequest: {
+            /** @description Guests at the table. */
+            guests?: number | null;
+            /** @description Order note, trimmed; blank is null. */
+            notes?: string | null;
         };
         UpdateOrderStatusRequest: {
             /** @enum {string} */
@@ -4638,6 +4676,59 @@ export interface operations {
                 content?: never;
             };
             /** @description Order is paid. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_updateDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOrderDetailsRequest"];
+            };
+        };
+        responses: {
+            /** @description Guests and/or the order note set (null or a blank note clears). orderNumber is refused (422). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Not admin, waiter or cashier. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Order is closed (paid or cancelled). */
             409: {
                 headers: {
                     [name: string]: unknown;
