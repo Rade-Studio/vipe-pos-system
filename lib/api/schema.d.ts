@@ -1834,7 +1834,7 @@ export interface components {
             deliveryDefaultFee: number;
             /**
              * @description Minutes after which a kitchen ticket is late.
-             * @default 15
+             * @default 25
              */
             kitchenLateMinutes: number;
             /**

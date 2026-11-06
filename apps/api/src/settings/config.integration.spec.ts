@@ -14,7 +14,7 @@ const DEFAULTS = {
   businessNit: '123456789',
   inventoryControlEnabled: false,
   deliveryDefaultFee: 0,
-  kitchenLateMinutes: 15,
+  kitchenLateMinutes: 25,
   deliveryLateMinutes: 45,
 };
 

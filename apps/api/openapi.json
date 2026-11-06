@@ -6520,7 +6520,7 @@
           },
           "kitchenLateMinutes": {
             "type": "number",
-            "default": 15,
+            "default": 25,
             "minimum": 1,
             "maximum": 240,
             "description": "Minutes after which a kitchen ticket is late."
