@@ -24,6 +24,7 @@ const STOCK_DISH = "d1d1d1d1-0000-4000-8000-000000000001"
 const env = vi.hoisted(() => ({
   addItems: vi.fn(),
   tableGetAll: vi.fn(),
+  zoneGetAll: vi.fn(),
   orderGetByStatus: vi.fn(),
   waiterGetAll: vi.fn(),
   categories: vi.fn(),
@@ -46,6 +47,7 @@ const env = vi.hoisted(() => ({
   reset() {
     this.addItems.mockReset()
     this.tableGetAll.mockReset()
+    this.zoneGetAll.mockReset()
     this.orderGetByStatus.mockReset()
     this.waiterGetAll.mockReset()
     this.categories.mockReset()
@@ -65,6 +67,7 @@ const env = vi.hoisted(() => ({
     this.tableCallbacks = []
     this.orderCallbacks = []
     this.tableGetAll.mockResolvedValue([])
+    this.zoneGetAll.mockResolvedValue([])
     this.orderGetByStatus.mockResolvedValue([])
     this.waiterGetAll.mockResolvedValue([])
     this.categories.mockResolvedValue([])
@@ -95,6 +98,8 @@ vi.mock("@/lib/api/client", () => {
     switch (`${method} ${path}`) {
       case "GET /api/tables":
         return { data: await env.tableGetAll() }
+      case "GET /api/zones":
+        return { data: await env.zoneGetAll() }
       case "GET /api/orders":
         return { data: await env.orderGetByStatus(init.params.query) }
       case "GET /api/staff/waiters":
@@ -153,6 +158,7 @@ vi.mock("@/lib/api/realtime", () => ({
         env.unsubscribes += 1
       }
     },
+    subscribeToZones: () => () => {},
     subscribeToOrders: (cb: (payload: unknown) => void) => {
       env.orderCallbacks.push(cb)
       env.subscribeToOrders(cb)
@@ -350,6 +356,79 @@ describe("WaiterView — selecting a table does not rebuild the screen (T6/S2)",
 
     expect(env.assignWaiter).toHaveBeenCalledTimes(1)
     expect(env.assignWaiter).toHaveBeenCalledWith("t-1", "w-1")
+  })
+})
+
+describe("WaiterView — zone map (T6)", () => {
+  const zoneRow = (id: string, name: string, sortOrder: number) => ({
+    id,
+    name,
+    aspect: 1.6,
+    sortOrder,
+    labels: [],
+    active: true,
+    createdAt: null,
+    updatedAt: null,
+  })
+  const placedRow = (id: string, number: number, zoneId: string, status = "available", waiterId: string | null = null) => ({
+    ...tableRow(id, number, status, waiterId),
+    zoneId,
+    x: 0.3,
+    y: 0.4,
+    w: 0.1,
+    h: 0.1,
+    shape: "round",
+    rotation: 0,
+    seats: 4,
+  })
+
+  it("draws the tables on their zone tabs instead of the grid", async () => {
+    env.zoneGetAll.mockResolvedValue([zoneRow("z-1", "Salón principal", 0), zoneRow("z-2", "Terraza", 1)])
+    env.tableGetAll.mockResolvedValue([placedRow("t-1", 1, "z-1"), placedRow("t-2", 2, "z-2")])
+    renderView()
+    await flush()
+
+    expect(screen.getByRole("tab", { name: /Salón principal/ })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("button", { name: "Mesa 1, Libre, 4 sillas" })).toBeInTheDocument()
+    expect(screen.queryByText("Distribución de Mesas")).not.toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole("tab", { name: /Terraza/ }).click()
+    })
+    expect(screen.getByRole("button", { name: "Mesa 2, Libre, 4 sillas" })).toBeInTheDocument()
+  })
+
+  it("opens the table panel on a tap, with the table's actions", async () => {
+    env.zoneGetAll.mockResolvedValue([zoneRow("z-1", "Salón principal", 0)])
+    env.tableGetAll.mockResolvedValue([placedRow("t-1", 1, "z-1", "occupied", "w-1")])
+    env.waiterGetAll.mockResolvedValue(waiterRows)
+    env.categories.mockResolvedValue([{ id: "cat-1", name: "Platos", icon: null }])
+    renderView()
+    await flush()
+
+    expect(screen.getByText("Toca una mesa para ver su pedido.")).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole("button", { name: /^Mesa 1,/ }).click()
+    })
+    await flush()
+
+    const panel = screen.getByRole("region", { name: "Mesa 1" })
+    expect(panel).toHaveTextContent("Ocupada")
+    expect(panel).toHaveTextContent("Ana Gómez")
+    expect(panel).toHaveTextContent("4 sillas")
+    expect(screen.getByRole("button", { name: "Reservar" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Liberar mesa" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Agregar productos" })).toBeInTheDocument()
+    // The add-items UI of today stays under the map.
+    expect(screen.getByText("Menú")).toBeInTheDocument()
+
+    // Freeing the table goes through the existing release handler.
+    await act(async () => {
+      screen.getByRole("button", { name: "Liberar mesa" }).click()
+    })
+    await flush()
+    expect(env.releaseTable).toHaveBeenCalledWith("t-1", {})
   })
 })
 
