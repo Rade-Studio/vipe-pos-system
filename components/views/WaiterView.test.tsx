@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react"
+import { act, render, screen, within } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 
@@ -29,6 +29,7 @@ const env = vi.hoisted(() => ({
   waiterGetAll: vi.fn(),
   categories: vi.fn(),
   dishesByCategory: vi.fn(),
+  menuTree: vi.fn(),
   assignWaiter: vi.fn(),
   updateTableStatus: vi.fn(),
   releaseTable: vi.fn(),
@@ -52,6 +53,7 @@ const env = vi.hoisted(() => ({
     this.waiterGetAll.mockReset()
     this.categories.mockReset()
     this.dishesByCategory.mockReset()
+    this.menuTree.mockReset()
     this.assignWaiter.mockReset()
     this.updateTableStatus.mockReset()
     this.releaseTable.mockReset()
@@ -72,6 +74,7 @@ const env = vi.hoisted(() => ({
     this.waiterGetAll.mockResolvedValue([])
     this.categories.mockResolvedValue([])
     this.dishesByCategory.mockResolvedValue([])
+    this.menuTree.mockResolvedValue({ categories: [] })
     // The table DTO the floor actions answer with.
     const table = { id: "t-1", number: 1, status: "occupied", waiterId: "w-1", waiterName: null, createdAt: null, updatedAt: null }
     this.assignWaiter.mockResolvedValue(table)
@@ -132,6 +135,7 @@ vi.mock("@/lib/api/client", () => {
 vi.mock("@/lib/api/catalog", () => ({
   fetchCategories: () => env.categories(),
   fetchDishes: (filter: { categoryId: string }) => env.dishesByCategory(filter.categoryId),
+  getMenuTree: () => env.menuTree(),
 }))
 
 vi.mock("@/lib/api/inventory", () => ({
@@ -173,6 +177,7 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
 
 import { WaiterView } from "./WaiterView"
 import { ApiError } from "@/lib/api/errors"
+import { menuCategory, menuDish } from "@/lib/order-steps/fixtures"
 
 // jsdom has no layout: WaiterView scrolls the menu into view after a table is
 // picked, which jsdom does not implement.
@@ -232,6 +237,21 @@ const flush = async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
   }
+}
+
+/** "Agregar productos" of the table panel opens the full-screen step flow (T10). */
+const openOrderFlow = async () => {
+  await act(async () => {
+    screen.getByRole("button", { name: "Agregar productos" }).click()
+  })
+  await flush()
+}
+
+const tap = async (name: string | RegExp) => {
+  await act(async () => {
+    screen.getByRole("button", { name }).click()
+  })
+  await flush()
 }
 
 beforeEach(() => {
@@ -308,22 +328,10 @@ describe("WaiterView — selecting a table does not rebuild the screen (T6/S2)",
   })
 
   it("does not re-read the menu when a second table is selected", async () => {
-    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1), tableRow("t-2", 2)])
-    env.categories.mockResolvedValue([{ id: "cat-1", name: "Platos", icon: null }])
-    env.dishesByCategory.mockResolvedValue([
-      {
-        id: "d-1",
-        name: "Bandeja",
-        price: 12000,
-        categoryId: "cat-1",
-        imageUrl: "/dish.png",
-        originalPrice: null,
-        discountAmount: null,
-        discountPercentage: null,
-        promotionId: null,
-        promotionName: null,
-      },
-    ])
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1"), tableRow("t-2", 2, "occupied", "w-1")])
+    env.menuTree.mockResolvedValue({
+      categories: [menuCategory({ id: "cat-1", name: "Platos", dishes: [menuDish({ id: "d-1", name: "Bandeja" })] })],
+    })
     renderView()
     await flush()
 
@@ -331,17 +339,22 @@ describe("WaiterView — selecting a table does not rebuild the screen (T6/S2)",
       screen.getByText("Mesa 1").click()
     })
     await flush()
-    expect(env.dishesByCategory).toHaveBeenCalledTimes(1)
+    await openOrderFlow()
+    expect(env.menuTree).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      screen.getByRole("button", { name: "Mapa" }).click()
+    })
+    await flush()
 
     await act(async () => {
       screen.getByText("Mesa 2").click()
     })
     await flush()
+    await openOrderFlow()
 
-    expect(env.categories).toHaveBeenCalledTimes(1)
-    expect(env.dishesByCategory).toHaveBeenCalledTimes(1)
-    // The previous table's menu stayed on screen: no skeletons for the new one.
-    expect(screen.getByText("Bandeja")).toBeInTheDocument()
+    // The second table's flow reads the cached tree: no request, no skeleton.
+    expect(env.menuTree).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: /Platos/ })).toBeInTheDocument()
   })
 
   it("keeps assigning a free table to the signed-in waiter", async () => {
@@ -420,8 +433,8 @@ describe("WaiterView — zone map (T6)", () => {
     expect(screen.getByRole("button", { name: "Reservar" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Liberar mesa" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Agregar productos" })).toBeInTheDocument()
-    // The add-items UI of today stays under the map.
-    expect(screen.getByText("Menú")).toBeInTheDocument()
+    // T10: the old menu under the map is gone; "Agregar productos" opens the step flow.
+    expect(screen.queryByText("Menú")).not.toBeInTheDocument()
 
     // Freeing the table goes through the existing release handler.
     await act(async () => {
@@ -481,7 +494,7 @@ describe("WaiterView — existing behavior (preserve)", () => {
   it("clears the selection when the active table is released over realtime", async () => {
     // Already occupied by the signed-in waiter: no local write to echo.
     env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
-    env.categories.mockResolvedValue([{ id: "cat-1", name: "Platos", icon: null }])
+    env.menuTree.mockResolvedValue({ categories: [menuCategory({ id: "cat-1", name: "Platos" })] })
     renderView()
     await flush()
 
@@ -489,7 +502,8 @@ describe("WaiterView — existing behavior (preserve)", () => {
       screen.getByText("Mesa 1").click()
     })
     await flush()
-    expect(screen.getByText("Menú")).toBeInTheDocument()
+    await openOrderFlow()
+    expect(screen.getByRole("heading", { name: "¿Qué categoría?" })).toBeInTheDocument()
 
     await act(async () => {
       for (const cb of env.tableCallbacks) {
@@ -498,8 +512,8 @@ describe("WaiterView — existing behavior (preserve)", () => {
     })
     await flush()
 
-    // The menu unmounted with the selection.
-    expect(screen.queryByText("Menú")).not.toBeInTheDocument()
+    // The order flow closed with the selection.
+    expect(screen.queryByRole("heading", { name: "¿Qué categoría?" })).not.toBeInTheDocument()
   })
 
   it("skips the echo of a local table write instead of patching the store twice", async () => {
@@ -541,25 +555,22 @@ describe("WaiterView — existing behavior (preserve)", () => {
  * `['menu','stock', ...]` prefix, so the next render shows the new stock.
  */
 describe("WaiterView — stock cache after sending to the kitchen (T6 advisory)", () => {
-  // The order lines carry the dish uuid the server prices.
-  const dishRow = {
-    id: "d1d1d1d1-0000-4000-8000-000000000001",
-    name: "Bandeja",
-    price: 12000,
-    category_id: "cat-1",
-    image_url: "/dish.png",
-    originalPrice: null,
-    discountAmount: null,
-    discountPercentage: null,
-    promotionId: null,
-    promotionName: null,
-  }
+  // The order lines carry the dish uuid the server prices; T10 reads "Agotado"
+  // from the menu tree's `available`.
+  const tree = () => ({
+    categories: [
+      menuCategory({
+        id: "cat-1",
+        name: "Platos",
+        dishes: [menuDish({ id: STOCK_DISH, name: "Bandeja", price: 12000, available: !env.stockSoldOut })],
+      }),
+    ],
+  })
 
   beforeEach(() => {
     useConfigStore.setState({ inventoryControlEnabled: true })
     env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
-    env.categories.mockResolvedValue([{ id: "cat-1", name: "Platos", icon: null }])
-    env.dishesByCategory.mockResolvedValue([dishRow])
+    env.menuTree.mockImplementation(async () => tree())
     // Sending the order (the API consumes the stock) is what makes the dish sell out.
     env.orderCreate.mockImplementation(async () => {
       env.stockSoldOut = true
@@ -577,40 +588,37 @@ describe("WaiterView — stock cache after sending to the kitchen (T6 advisory)"
     renderView()
     await flush()
 
-    // The menu of the selected table is on screen and the dish is available.
+    // The step flow of the selected table is on screen and the dish is available.
     await act(async () => {
       screen.getByText("Mesa 1").click()
     })
     await flush()
-    expect(await screen.findByText("Bandeja")).toBeInTheDocument()
+    await openOrderFlow()
+    await tap(/Platos/)
+    expect(screen.getByRole("button", { name: /^Bandeja,/ })).not.toHaveAttribute("aria-disabled")
     expect(screen.queryAllByText("Agotado")).toHaveLength(0)
-    expect(env.checkStockForDishes).toHaveBeenCalledTimes(1)
+    expect(env.menuTree).toHaveBeenCalledTimes(1)
 
-    // Add the dish to the cart and send the order to the kitchen.
-    const card = screen.getByText("Bandeja").closest(".cursor-pointer") as HTMLElement
-    await act(async () => {
-      card.click()
-    })
-    await flush()
-    await act(async () => {
-      screen.getByRole("button", { name: /Enviar/ }).click()
-    })
-    await flush()
+    // Add the dish and send the order to the kitchen.
+    await tap(/^Bandeja,/)
+    await tap(/^Agregar 1 ·/)
+    await tap("Enviar a cocina (1)")
 
     expect(env.orderCreate).toHaveBeenCalledTimes(1)
     expect(env.sendCommand).toHaveBeenCalledTimes(1)
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["menu", "stock"] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["menu", "tree"] })
 
-    // The stock read ran again for the same dish set (invalidated -> refetch).
-    expect(env.checkStockForDishes).toHaveBeenCalledTimes(2)
-
-    // Next render of the same menu shows the dish as sold out, not 30 s later.
+    // The next flow reads the tree again and shows the dish as sold out, not 30 s later.
     await act(async () => {
       screen.getByText("Mesa 1").click()
     })
     await flush()
+    await openOrderFlow()
+    await tap(/Platos/)
 
-    expect(await screen.findAllByText("Agotado")).not.toHaveLength(0)
+    expect(env.menuTree).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole("button", { name: /^Bandeja,.*agotado/ })).toHaveAttribute("aria-disabled", "true")
 
     invalidateSpy.mockRestore()
   })
@@ -890,5 +898,199 @@ describe("echo that beats the POST /orders response", () => {
 
     const cached = queryClient.getQueryData(["orders"]) as { id: string }[]
     expect(cached.map((order) => order.id)).toContain("o-9")
+  })
+})
+
+/**
+ * T10 (S5) — "Agregar productos" opens the full-screen step flow. What it adds
+ * goes to the same cart, and "Enviar a cocina" goes through the same send
+ * handler (create / add items, stock shortage, open order) as the cart.
+ */
+describe("WaiterView — step order flow (T10)", () => {
+  const BANDEJA = "33333333-3333-4333-8333-333333333333"
+  const ARROZ = "44444444-4444-4444-8444-444444444444"
+  const menu = {
+    categories: [
+      menuCategory({
+        id: "cat-1",
+        name: "Platos fuertes",
+        subcategories: [{ id: "sub-1", name: "Carnes" }],
+        dishes: [menuDish({ id: BANDEJA, name: "Bandeja paisa", price: 32000, subcategoryId: "sub-1" })],
+      }),
+      menuCategory({ id: "cat-2", name: "Postres", dishes: [menuDish({ id: ARROZ, name: "Arroz con leche", price: 7000 })] }),
+    ],
+  }
+  const shortage = { ingredientId: "g-1", name: "Arroz", unit: "g", required: 300, available: 120, missing: 180 }
+
+  beforeEach(() => {
+    useConfigStore.setState({ inventoryControlEnabled: true })
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
+    env.menuTree.mockResolvedValue(menu)
+  })
+
+  afterEach(() => {
+    useConfigStore.setState({ inventoryControlEnabled: false })
+  })
+
+  async function addTwoItems() {
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await openOrderFlow()
+
+    await tap(/Platos fuertes/)
+    await tap(/Carnes/)
+    await tap(/^Bandeja paisa,/)
+    await tap("Sumar uno")
+    await tap(/^Agregar 2 ·/)
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "✓ 2× Bandeja paisa agregada" }))
+    expect(screen.getByRole("heading", { name: "¿Qué categoría?" })).toBeInTheDocument()
+
+    await tap(/Postres/)
+    await tap(/^Arroz con leche,/)
+    await tap(/^Agregar 1 ·/)
+  }
+
+  const items = [
+    { dishId: BANDEJA, quantity: 2, unitPrice: 32000, comments: null },
+    { dishId: ARROZ, quantity: 1, unitPrice: 7000, comments: null },
+  ]
+
+  it("adds two dishes through the steps to the table cart and sends them through the existing create path", async () => {
+    await addTwoItems()
+
+    expect(useCartStore.getState().cartItems["t-1"].map((item) => [item.name, item.quantity])).toEqual([
+      ["Bandeja paisa", 2],
+      ["Arroz con leche", 1],
+    ])
+    expect(screen.getByRole("button", { name: /Mesa 1, 3 productos, .*71\.000.*Ver pedido/ })).toBeInTheDocument()
+
+    await tap("Enviar a cocina (3)")
+
+    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+    expect(env.orderCreate).toHaveBeenCalledWith({ tableId: "t-1", orderType: "dine_in", items })
+    expect(env.sendCommand).toHaveBeenCalledTimes(1)
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden enviada" }))
+    expect(useCartStore.getState().cartItems["t-1"]).toEqual([])
+    // Back on the map.
+    expect(screen.queryByRole("heading", { name: "¿Qué categoría?" })).not.toBeInTheDocument()
+    expect(screen.getByText("Mesa 1")).toBeInTheDocument()
+  })
+
+  it("adds to the table's open order through the existing add-items path", async () => {
+    env.orderCreate.mockRejectedValueOnce(
+      new ApiError(409, "Conflict", "Table has an open order", { message: "Table has an open order", orderId: "o-9" }),
+    )
+    await addTwoItems()
+    await tap("Enviar a cocina (3)")
+
+    expect(env.addItems).toHaveBeenCalledWith("o-9", { items })
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Productos adicionales enviados" }))
+  })
+
+  it("keeps the stock shortage dialog and resends with force", async () => {
+    env.orderCreate.mockRejectedValueOnce(
+      new ApiError(409, "Conflict", "Insufficient stock", {
+        statusCode: 409,
+        error: "Conflict",
+        message: "Insufficient stock",
+        shortages: [shortage],
+      }),
+    )
+    await addTwoItems()
+    await tap("Enviar a cocina (3)")
+
+    expect(screen.getByText("Advertencia de Inventario")).toBeInTheDocument()
+    expect(screen.getByText("120 g")).toBeInTheDocument()
+    expect(env.sendCommand).not.toHaveBeenCalled()
+    // The flow stays open behind the dialog with the cart intact.
+    expect(useCartStore.getState().cartItems["t-1"]).toHaveLength(2)
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Enviar de todos modos" }).click()
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    })
+    await flush()
+
+    expect(env.orderCreate).toHaveBeenCalledTimes(2)
+    expect(env.orderCreate).toHaveBeenLastCalledWith({ tableId: "t-1", orderType: "dine_in", items, force: true })
+    expect(env.sendCommand).toHaveBeenCalledTimes(1)
+  })
+
+  it("offers the active dishes without category under Otros", async () => {
+    const LOOSE = "55555555-5555-4555-8555-555555555555"
+    env.dishesByCategory.mockResolvedValue([
+      { ...menuDish({ id: LOOSE, name: "Porción de arroz", price: 4000 }), available: undefined },
+    ])
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await openOrderFlow()
+
+    await tap(/^Otros/)
+    await tap(/^Porción de arroz,/)
+    await tap(/^Agregar 1 ·/)
+    expect(useCartStore.getState().cartItems["t-1"].map((item) => item.name)).toEqual(["Porción de arroz"])
+  })
+
+  it("undoes an add from the toast", async () => {
+    await addTwoItems()
+    const added = env.toastFn.mock.calls.filter(([arg]) => arg.title === "✓ 1× Arroz con leche agregada")
+    expect(added).toHaveLength(1)
+    await act(async () => {
+      added[0][0].action.props.onClick()
+    })
+    await flush()
+
+    expect(useCartStore.getState().cartItems["t-1"].map((item) => item.name)).toEqual(["Bandeja paisa"])
+  })
+
+  it("Ver pedido shows the sent and the new lines, edits the new ones and undoes a removal", async () => {
+    const sent = { ...orderDto("o-1", "t-1"), items: [] as unknown[] }
+    sent.items = [
+      { id: "i-1", orderId: "o-1", dishId: ARROZ, name: "Ajiaco", price: 28000, quantity: 1, status: "kitchen", comments: null },
+    ]
+    env.orderGetByStatus.mockResolvedValue([sent])
+    await addTwoItems()
+
+    await tap(/Ver pedido/)
+    const fresh = screen.getByRole("region", { name: "Nuevos" })
+    const already = screen.getByRole("region", { name: "Enviados" })
+    expect(fresh).toHaveTextContent("Bandeja paisa")
+    expect(fresh).toHaveTextContent("Arroz con leche")
+    expect(already).toHaveTextContent("Ajiaco")
+    expect(within(already).queryByRole("button")).not.toBeInTheDocument()
+
+    await act(async () => {
+      within(fresh).getByRole("button", { name: "Sumar uno a Arroz con leche" }).click()
+    })
+    await flush()
+    expect(useCartStore.getState().cartItems["t-1"].find((item) => item.name === "Arroz con leche")?.quantity).toBe(2)
+
+    await act(async () => {
+      within(fresh).getByRole("button", { name: "Quitar Bandeja paisa" }).click()
+    })
+    await flush()
+    expect(useCartStore.getState().cartItems["t-1"].map((item) => item.name)).toEqual(["Arroz con leche"])
+    const removed = env.toastFn.mock.calls.find(([arg]) => arg.title === "Quitaste 2× Bandeja paisa")
+    expect(removed).toBeDefined()
+    await act(async () => {
+      removed![0].action.props.onClick()
+    })
+    await flush()
+    expect(useCartStore.getState().cartItems["t-1"].map((item) => item.name)).toEqual(["Bandeja paisa", "Arroz con leche"])
+
+    // The send counts only the new lines; it goes to the order already listed.
+    await tap("Enviar a cocina (4)")
+    expect(env.orderCreate).not.toHaveBeenCalled()
+    expect(env.addItems).toHaveBeenCalledWith("o-1", {
+      items: [items[0], { ...items[1], quantity: 2 }],
+    })
   })
 })

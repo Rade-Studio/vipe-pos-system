@@ -6,14 +6,16 @@ import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { useProfileStore } from "@/store/useProfileStore"
-import type { Profile, Dish, Order, CommandPayload } from "@/types"
+import type { Profile, Order, CommandPayload } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { TablePanel } from "@/components/floor/TablePanel"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { MenuSection } from "@/components/pos/MenuSection"
 import { CartSidebar } from "@/components/pos/CartSidebar"
-import { AlertTriangle, ShoppingCart } from "lucide-react"
+import { StepPicker, type StepPickerItem } from "@/components/order-steps/StepPicker"
+import { OrderColumn, OrderReview, lineCount, lineTotal } from "@/components/order-steps/OrderReview"
+import { ToastAction } from "@/components/ui/toast"
+import { AlertTriangle, ArrowLeft, ChevronRight, Send, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintView"
@@ -42,6 +44,8 @@ import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { useWaiters } from "@/hooks/use-waiters"
 import { useZones } from "@/hooks/use-zones"
+import { MENU_TREE_KEY, useMenuTree } from "@/hooks/use-menu-tree"
+import { formatCurrency } from "@/utils/helpers"
 import { useConfigStore } from "@/store/use-config-store"
 import { invalidationsFor } from "@/hooks/inventory/invalidations"
 import {
@@ -109,11 +113,14 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const [showMobileCart, setShowMobileCart] = useState(false)
   // T6: on the phone the selected table's panel is a bottom sheet over the map.
   const [showTableSheet, setShowTableSheet] = useState(false)
+  // T10: "Agregar productos" opens the full-screen step flow over the map;
+  // "Ver pedido" inside it swaps the steps for the order review.
+  const [orderFlowOpen, setOrderFlowOpen] = useState(false)
+  const [orderReviewOpen, setOrderReviewOpen] = useState(false)
   const [cartStyle, cartApi] = useSpring(() => ({ scale: 1 }))
 
   // Referencias
   const unsubscribeRef = useRef<(() => void) | null>(null)
-  const menuSectionRef = useRef<HTMLDivElement>(null)
   const tablesSubscriptionRef = useRef<(() => void) | null>(null)
   const ordersSubscriptionRef = useRef<(() => void) | null>(null)
   // Table ids whose next realtime event is this screen's own write. Marked
@@ -139,6 +146,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // A failed read leaves every table reachable from "Sin ubicar".
   const zonesQuery = useZones()
   const floorZones = zonesQuery.data ?? (zonesQuery.isError ? [] : undefined)
+  // T10: the step picker's menu, read once the flow opens and then cached.
+  const menuTree = useMenuTree({ enabled: orderFlowOpen })
 
   // Query functions for React Query
   const fetchTables = async () => {
@@ -364,17 +373,12 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     }
   }, [activeTable, tableSelectionTime, getCartByTable])
 
-  // Efecto para scroll suave a sección de menú
+  // The step flow belongs to the selected table: a send (which clears the
+  // selection), a release or a realtime free closes it, back to the map.
   useEffect(() => {
-    if (activeTable && menuSectionRef.current) {
-      const timer = setTimeout(() => {
-        menuSectionRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        })
-      }, 100)
-
-      return () => clearTimeout(timer)
+    if (!activeTable) {
+      setOrderFlowOpen(false)
+      setOrderReviewOpen(false)
     }
   }, [activeTable])
 
@@ -621,24 +625,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     [tables, activeTable, toast, isMobile],
   )
 
-  // Agregar plato al carrito
-  const handleAddToCart = useCallback(
-    (dish: Dish, comments?: string) => {
-      if (!activeTable) return
-
-      addToCart(activeTable, {
-        id: dish.id,
-        name: dish.name,
-        price: dish.price,
-        quantity: 1,
-        categoryId: dish.categoryId,
-        image: dish.image,
-        comments,
-      })
-    },
-    [activeTable, addToCart, isMobile],
-  )
-
   // Actualizar cantidad de producto
   const handleUpdateQuantity = useCallback(
     (itemId: string, change: number) => {
@@ -670,7 +656,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // inventory). Not awaited: it is a read and must not delay "Orden enviada".
   const refreshStockAfterSending = useCallback(() => {
     if (!inventoryControlEnabled) return
-    for (const queryKey of invalidationsFor({ type: "consumeOrder" })) {
+    // The step picker reads "Agotado" from the menu tree.
+    for (const queryKey of [...invalidationsFor({ type: "consumeOrder" }), [...MENU_TREE_KEY]]) {
       void queryClient.invalidateQueries({ queryKey }).catch(() => undefined)
     }
   }, [inventoryControlEnabled, queryClient])
@@ -891,10 +878,70 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     ? floorZones?.find((zone) => zone.id === activeTableRow.zoneId)?.name
     : undefined
 
-  // "Agregar productos": today's menu under the map (T10 replaces it with the step picker).
+  // "Agregar productos": the full-screen step flow (T10, S5).
   const handleAddItems = () => {
     setShowTableSheet(false)
-    menuSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    setShowMobileCart(false)
+    setOrderReviewOpen(false)
+    setOrderFlowOpen(true)
+  }
+
+  // A dish picked through the steps goes into the same table cart as before;
+  // the returned undo takes back exactly the quantity just added.
+  const handleAddFromSteps = (item: StepPickerItem): (() => void) | void => {
+    if (!activeTable) return
+    const tableId = activeTable
+    const { dish, quantity, comments } = item
+    addToCart(tableId, {
+      id: dish.id,
+      name: dish.name,
+      price: dish.price,
+      quantity,
+      categoryId: dish.categoryId ?? "",
+      image: dish.imageUrl ?? "",
+      comments,
+      originalPrice: dish.originalPrice,
+      discountAmount: dish.discountAmount,
+      discountPercentage: dish.discountPercentage ?? undefined,
+      promotionId: dish.promotionId,
+      promotionName: dish.promotionName,
+    })
+    return () => {
+      const line = useCartStore
+        .getState()
+        .getCartByTable(tableId)
+        .find((entry) => dishIdFromCartItemId(entry.id) === dish.id && (entry.comments || "") === (comments || ""))
+      if (line) updateQuantity(tableId, line.id, line.quantity - quantity)
+    }
+  }
+
+  // "Quitar" in the review, with "Deshacer" putting the line back where it was.
+  const handleRemoveLine = (lineId: string) => {
+    if (!activeTable) return
+    const tableId = activeTable
+    const before = getCartByTable(tableId)
+    const index = before.findIndex((entry) => entry.id === lineId)
+    if (index === -1) return
+    const removed = before[index]
+    updateQuantity(tableId, lineId, 0)
+    toast({
+      title: `Quitaste ${removed.quantity}× ${removed.name}`,
+      action: (
+        <ToastAction
+          altText="Deshacer"
+          className="min-h-11 px-4"
+          onClick={() =>
+            useCartStore.setState((state) => {
+              const cart = [...(state.cartItems[tableId] ?? [])]
+              cart.splice(Math.min(index, cart.length), 0, removed)
+              return { cartItems: { ...state.cartItems, [tableId]: cart } }
+            })
+          }
+        >
+          Deshacer
+        </ToastAction>
+      ),
+    })
   }
 
   const tablePanel = (onShowOrder?: () => void) => (
@@ -909,6 +956,96 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       orderCount={cartItems.reduce((sum, item) => sum + item.quantity, 0)}
     />
   )
+
+  // T10: the full-screen step flow of the selected table.
+  const sentLines = activeTable ? (checkExistingOrder(activeTable)?.items ?? []) : []
+  const newCount = lineCount(cartItems)
+  const tableCount = lineCount(sentLines) + newCount
+  const tableTotal = lineTotal(sentLines) + cartTotal
+  const orderTitle = `Pedido · Mesa ${activeTableNumber ?? ""}`
+  const flowDetails = [activeZoneName, activeWaiterName].filter(Boolean).join(" · ")
+  const closeOrderFlow = () => {
+    setOrderFlowOpen(false)
+    setOrderReviewOpen(false)
+  }
+  const orderFlow =
+    orderFlowOpen && activeTableRow ? (
+      <div className="fixed inset-0 z-40 h-[100dvh]">
+        <StepPicker
+          menu={menuTree.categories}
+          isError={menuTree.isError}
+          onRetry={menuTree.refetch}
+          onAdd={handleAddFromSteps}
+          onExit={closeOrderFlow}
+          exitLabel="Mapa"
+          header={
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 flex-none"
+                aria-label="Volver al mapa del salón"
+                onClick={closeOrderFlow}
+              >
+                <ArrowLeft className="h-5 w-5" aria-hidden />
+              </Button>
+              <span
+                aria-hidden
+                className="grid h-11 w-11 flex-none place-items-center rounded-[14px] border-[1.5px] border-status-occupied-line bg-status-occupied-bg text-[17px] font-semibold tabular-nums text-status-occupied-fg"
+              >
+                {activeTableNumber}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-base font-semibold">Mesa {activeTableNumber} · Agregar productos</p>
+                {flowDetails && <p className="mt-0.5 truncate text-[12.5px] text-muted-fg">{flowDetails}</p>}
+              </div>
+            </>
+          }
+          summary={
+            <button
+              type="button"
+              onClick={() => setOrderReviewOpen((open) => !open)}
+              aria-label={`Mesa ${activeTableNumber}, ${tableCount} productos, ${formatCurrency(tableTotal)}. ${orderReviewOpen ? "Volver a los pasos" : "Ver pedido"}`}
+              className="flex min-h-[52px] w-full min-w-0 items-center gap-2.5 rounded-2xl border border-line bg-surface-2 px-3 py-1.5 text-left focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus md:min-h-[60px]"
+            >
+              <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1 text-[14.5px] leading-snug md:flex-col md:gap-0">
+                <span className="whitespace-nowrap">
+                  Mesa {activeTableNumber} · <b className="font-semibold tabular-nums">{tableCount} productos</b>
+                  <span className="md:hidden"> ·</span>
+                </span>
+                <b className="whitespace-nowrap font-semibold tabular-nums">{formatCurrency(tableTotal)}</b>
+              </span>
+              <span className="inline-flex flex-none items-center gap-1 whitespace-nowrap text-sm font-semibold text-brand-strong">
+                {orderReviewOpen ? "Ocultar" : "Ver pedido"}
+                <ChevronRight className="h-4 w-4" aria-hidden />
+              </span>
+            </button>
+          }
+          primaryAction={
+            <Button onClick={handleSendToKitchen} disabled={newCount === 0 || sendingToKitchen} className="text-base">
+              <Send className="mr-1.5 h-[18px] w-[18px]" aria-hidden />
+              Enviar a cocina ({newCount})
+            </Button>
+          }
+          aside={
+            <OrderColumn title={orderTitle} newLines={cartItems} sentLines={sentLines} onReview={() => setOrderReviewOpen(true)} />
+          }
+          overlay={
+            orderReviewOpen ? (
+              <OrderReview
+                title={orderTitle}
+                newLines={cartItems}
+                sentLines={sentLines}
+                onChangeQuantity={handleUpdateQuantity}
+                onRemove={handleRemoveLine}
+                onContinue={() => setOrderReviewOpen(false)}
+              />
+            ) : undefined
+          }
+          onCloseOverlay={() => setOrderReviewOpen(false)}
+        />
+      </div>
+    ) : null
 
   // Si estamos mostrando la comanda, mostrar la vista de impresión
   if (showKitchenOrder && kitchenOrderData) {
@@ -959,6 +1096,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
   return (
     <div className="flex h-screen overflow-hidden">
+      {orderFlow ?? (
+        <>
       {/* Contenido principal */}
       <div className="flex-1 overflow-auto bg-muted/20 p-0">
         <div className="p-1 md:p-2">
@@ -988,11 +1127,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                   floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id }}
                 />
 
-                {activeTable && (
-                  <div className="mt-2 px-1" ref={menuSectionRef}>
-                    <MenuSection onAddToCart={handleAddToCart} />
-                  </div>
-                )}
               </TabsContent>
 
               <TabsContent value="orders" className="mt-0 p-0">
@@ -1102,6 +1236,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
               )}
             </Button>
           </animated.div>
+      )}
+
+        </>
       )}
 
       {/* Modal para selección de mesero */}
