@@ -376,22 +376,21 @@ export function StepPicker({
           </div>
         </div>
 
-        {dish!.allowComments && (
-          <div>
-            <label htmlFor="step-note" className="mb-2 block text-[13px] font-semibold uppercase tracking-wider text-fg-2">
-              Nota para cocina (opcional)
-            </label>
-            <input
-              id="step-note"
-              type="text"
-              value={state.note}
-              maxLength={200}
-              placeholder="Ej.: sin cebolla"
-              onChange={(event) => dispatch({ type: "note", note: event.target.value })}
-              className={cn("min-h-[52px] w-full rounded-[14px] border border-line-strong bg-card px-3.5 py-3 text-[15px] text-fg placeholder:text-muted-fg", FOCUS)}
-            />
-          </div>
-        )}
+        {/* Offered on every dish, like the old menu grid and the cart comment action. */}
+        <div>
+          <label htmlFor="step-note" className="mb-2 block text-[13px] font-semibold uppercase tracking-wider text-fg-2">
+            Nota para cocina (opcional)
+          </label>
+          <input
+            id="step-note"
+            type="text"
+            value={state.note}
+            maxLength={200}
+            placeholder="Ej.: sin cebolla"
+            onChange={(event) => dispatch({ type: "note", note: event.target.value })}
+            className={cn("min-h-[52px] w-full rounded-[14px] border border-line-strong bg-card px-3.5 py-3 text-[15px] text-fg placeholder:text-muted-fg", FOCUS)}
+          />
+        </div>
 
         <Button className="h-14 rounded-[18px] text-base" onClick={add}>
           <Plus className="mr-1.5 h-5 w-5" aria-hidden />

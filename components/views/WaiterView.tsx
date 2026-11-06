@@ -887,7 +887,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   }
 
   // A dish picked through the steps goes into the same table cart as before;
-  // the returned undo takes back exactly the quantity just added.
+  // the returned undo takes back exactly the quantity just added, and only
+  // while the line is still as this add left it: after a send, a removal or a
+  // newer add of the same dish, a stale "Deshacer" does nothing.
   const handleAddFromSteps = (item: StepPickerItem): (() => void) | void => {
     if (!activeTable) return
     const tableId = activeTable
@@ -906,12 +908,15 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       promotionId: dish.promotionId,
       promotionName: dish.promotionName,
     })
-    return () => {
-      const line = useCartStore
+    const findLine = () =>
+      useCartStore
         .getState()
         .getCartByTable(tableId)
         .find((entry) => dishIdFromCartItemId(entry.id) === dish.id && (entry.comments || "") === (comments || ""))
-      if (line) updateQuantity(tableId, line.id, line.quantity - quantity)
+    const quantityAfterAdd = findLine()?.quantity
+    return () => {
+      const line = findLine()
+      if (line && line.quantity === quantityAfterAdd) updateQuantity(tableId, line.id, line.quantity - quantity)
     }
   }
 
@@ -933,7 +938,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           onClick={() =>
             useCartStore.setState((state) => {
               const cart = [...(state.cartItems[tableId] ?? [])]
-              cart.splice(Math.min(index, cart.length), 0, removed)
+              // The same line added again meanwhile: put the quantity back on it.
+              const current = cart.findIndex((entry) => entry.id === removed.id)
+              if (current !== -1) cart[current] = { ...cart[current], quantity: cart[current].quantity + removed.quantity }
+              else cart.splice(Math.min(index, cart.length), 0, removed)
               return { cartItems: { ...state.cartItems, [tableId]: cart } }
             })
           }
