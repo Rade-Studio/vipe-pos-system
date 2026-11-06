@@ -17,6 +17,8 @@ const d = {
   t5: 'f9000000-0000-0000-0000-000000000005',
   t6: 'f9000000-0000-0000-0000-000000000006',
   t7: 'f9000000-0000-0000-0000-000000000007',
+  t8: 'f9000000-0000-0000-0000-000000000008',
+  t9: 'f9000000-0000-0000-0000-000000000009',
   paid: '89000000-0000-0000-0000-000000000001',
 } as const;
 
@@ -119,6 +121,31 @@ describe('order number, guests and notes (Testcontainers, vipe_api)', () => {
       expect(res.body).toMatchObject({ guests: 99, notes: 'n'.repeat(300) });
       const one = await create(d.t5, { guests: 1 });
       expect(one.body.guests).toBe(1);
+    });
+  });
+
+  describe('inactive tables (T22, 0015 trigger)', () => {
+    it('answers 409 La mesa está inactiva on a new order and stores nothing', async () => {
+      await db('UPDATE tables SET is_active = false WHERE id = $1', [d.t8]);
+      const before = await maxNumber();
+      const res = await create(d.t8, { guests: 2 });
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ statusCode: 409, message: 'La mesa está inactiva' });
+      expect(await ordersOf(d.t8)).toEqual([]);
+      expect(await maxNumber()).toBe(before);
+      const [table] = await db<{ status: string }>('SELECT status FROM tables WHERE id = $1', [d.t8]);
+      expect(table.status).toBe('available');
+    });
+
+    it('keeps adding items to an order opened before the table was deactivated', async () => {
+      const opened = await create(d.t9);
+      expect(opened.status).toBe(201);
+      await db('UPDATE tables SET is_active = false WHERE id = $1', [d.t9]);
+      const res = await waiterA().post(`/api/orders/${opened.body.id}/items`, {
+        items: [{ dishId: d.arepa, quantity: 1, unitPrice: 5000 }],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.items).toHaveLength(2);
     });
   });
 
@@ -252,8 +279,9 @@ async function seed(superuserUrl: string) {
   await q(
     `INSERT INTO tables (id, number, status, restaurant_id) VALUES
        ($1, 901, 'available', $8), ($2, 902, 'available', $8), ($3, 903, 'available', $8), ($4, 904, 'available', $8),
-       ($5, 905, 'available', $8), ($6, 906, 'available', $8), ($7, 907, 'served', $8)`,
-    [d.t1, d.t2, d.t3, d.t4, d.t5, d.t6, d.t7, A],
+       ($5, 905, 'available', $8), ($6, 906, 'available', $8), ($7, 907, 'served', $8),
+       ($9, 908, 'available', $8), ($10, 909, 'available', $8)`,
+    [d.t1, d.t2, d.t3, d.t4, d.t5, d.t6, d.t7, A, d.t8, d.t9],
   );
   await q(
     `INSERT INTO orders (id, table_id, waiter_id, status, subtotal, tax, tax_percentage, total, guests, notes, restaurant_id)

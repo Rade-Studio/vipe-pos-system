@@ -3,6 +3,7 @@
 import { useId } from "react"
 import type { Table } from "@/types"
 import { cn } from "@/lib/utils"
+import { isInactive } from "@/lib/floor/layout"
 import { StatusChip } from "./StatusChip"
 
 interface UnplacedStripProps {
@@ -34,11 +35,12 @@ export function UnplacedStrip({ tables, selectedTableId, onSelectTable, waiterNa
                 "flex min-h-[44px] shrink-0 flex-col items-start justify-center gap-1 rounded-card border border-line bg-surface px-3 py-2 text-left text-sm text-fg",
                 "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus",
                 selectedTableId === table.id && "border-brand ring-2 ring-brand",
+                isInactive(table) && "border-dashed bg-surface-2 text-muted-fg",
               )}
             >
               <span className="flex items-center gap-2">
                 <span className="font-semibold">Mesa {table.number}</span>
-                <StatusChip status={table.status} />
+                <StatusChip status={table.status} inactive={isInactive(table)} />
               </span>
               {waiterName && <span className="max-w-[12rem] truncate text-xs text-muted-fg">{waiterName}</span>}
             </button>

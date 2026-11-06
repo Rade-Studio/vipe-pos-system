@@ -20,6 +20,8 @@ export interface TableRow {
   shape?: string | null
   rotation?: number | null
   seats?: number | null
+  /** Migration 0015; absent on older rows: active. */
+  is_active?: boolean | null
   updated_at?: string | null
 }
 
@@ -67,6 +69,7 @@ export function toTable(row: TableRow): Table | null {
     shape: (row.shape as TableShape | null) ?? undefined,
     rotation: row.rotation ?? undefined,
     seats: row.seats ?? undefined,
+    isActive: row.is_active !== false,
     // D4: makes the out-of-order guard live for the first time — see design.md
     updated_at: row.updated_at ? new Date(row.updated_at) : undefined,
   }

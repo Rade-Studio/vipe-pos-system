@@ -13,6 +13,9 @@ const TONE_CLASSES = {
   served: { fill: "bg-status-served-bg border-status-served-line text-status-served-fg", dot: "bg-status-served-line" },
 } as const
 
+/** An inactive table (T22): dashed, greyed, never a status colour. */
+export const INACTIVE_TONE = { fill: "border-dashed bg-surface-2 border-line-strong text-muted-fg", dot: "bg-line-strong" } as const
+
 export const toneClasses = (status: TableStatus) => TONE_CLASSES[TABLE_STATUS[status]?.tone ?? "reserved"]
 
 /**

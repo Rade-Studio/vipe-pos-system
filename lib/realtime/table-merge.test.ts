@@ -189,6 +189,16 @@ describe("toTable", () => {
     expect(result[0]).toMatchObject({ zoneId: "z-2", x: 0.9, y: 0.8, w: 0.2, h: 0.1, shape: "bar", rotation: 90, seats: undefined })
   })
 
+  it("maps is_active (T22): false greys the table, a row without it reads as active", () => {
+    expect(toTable({ id: "t-1", number: 1, status: "available", is_active: false })!.isActive).toBe(false)
+    expect(toTable({ id: "t-1", number: 1, status: "available", is_active: true })!.isActive).toBe(true)
+    expect(toTable({ id: "t-1", number: 1, status: "available" })!.isActive).toBe(true)
+    expect(toTable({ id: "t-1", number: 1, status: "available", is_active: null })!.isActive).toBe(true)
+    const prev = [toTable({ id: "t-1", number: 1, status: "available" })!]
+    const result = mergeTableList(prev, { eventType: "UPDATE", new: { id: "t-1", number: 1, status: "available", is_active: false } })
+    expect(result[0].isActive).toBe(false)
+  })
+
   it("returns null when id is absent", () => {
     const result = toTable({ id: null, number: 1, status: "available" })
 
