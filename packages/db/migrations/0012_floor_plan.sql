@@ -11,7 +11,8 @@
 --    trigger: both rows exist before the assignment, so no deferral is
 --    needed, and the rule holds for every writer without code.
 -- 3. Backfill: each restaurant with unplaced tables gets "Salón principal"
---    and its tables a grid in number order (4 seats). Idempotent: only
+--    and its tables a grid in number order (seats left NULL: the admin sets
+--    chairs, nothing is invented). Idempotent: only
 --    tables without a zone are placed.
 -- 4. zones joins realtime (the waiter map refreshes when the admin saves the
 --    plan). The API ignores the new table name until
@@ -112,14 +113,14 @@ BEGIN
          y = pg_catalog.round((pg_catalog.floor(g.ord / g.cols) + 0.5) / g.nrows, 4),
          w = pg_catalog.round(LEAST(0.12, 0.5 / g.cols, 0.5 / g.nrows), 4),
          h = pg_catalog.round(LEAST(0.12, 0.5 / g.cols, 0.5 / g.nrows), 4),
-         seats = 4
+         seats = NULL
     FROM grid g
     JOIN public.zones z ON z.restaurant_id = g.restaurant_id AND pg_catalog.lower(z.name) = pg_catalog.lower('Salón principal')
    WHERE t.id = g.id;
 END
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.backfill_default_zones() IS 'Places every table without a zone: creates "Salón principal" for its restaurant when missing and lays the unplaced tables on a grid in number order with 4 seats. Idempotent. Run by migration 0012; not executable by vipe_api.';
+COMMENT ON FUNCTION private.backfill_default_zones() IS 'Places every table without a zone: creates "Salón principal" for its restaurant when missing and lays the unplaced tables on a grid in number order, seats left NULL (set by the admin). Idempotent. Run by migration 0012; not executable by vipe_api.';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.backfill_default_zones() FROM PUBLIC;
 --> statement-breakpoint
