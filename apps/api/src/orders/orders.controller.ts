@@ -33,6 +33,8 @@ import {
   serveOrderItemsSchema,
   StockShortageResponse,
   TableHasOpenOrderResponse,
+  UpdateOrderDetailsRequest,
+  updateOrderDetailsSchema,
   UpdateOrderStatusRequest,
   updateOrderStatusSchema,
 } from './orders.dto';
@@ -106,6 +108,17 @@ export class OrdersController {
   @ApiNotFoundResponse()
   addItems(@Param('id') id: string, @Body() body: unknown): Promise<Order> {
     return this.orders.addItems(parseInput(idParamSchema, id), parseInput(addOrderItemsSchema, body));
+  }
+
+  @Patch(':id')
+  @Roles(...ORDER_TAKERS)
+  @ApiBody({ type: UpdateOrderDetailsRequest })
+  @ApiOkResponse({ type: Order, description: 'Guests and/or the order note set (null or a blank note clears). orderNumber is refused (422).' })
+  @ApiConflictResponse({ description: 'Order is closed (paid or cancelled).' })
+  @ApiForbiddenResponse({ description: 'Not admin, waiter or cashier.' })
+  @ApiNotFoundResponse()
+  updateDetails(@Param('id') id: string, @Body() body: unknown): Promise<Order> {
+    return this.orders.updateDetails(parseInput(idParamSchema, id), parseInput(updateOrderDetailsSchema, body));
   }
 
   @Patch(':id/status')

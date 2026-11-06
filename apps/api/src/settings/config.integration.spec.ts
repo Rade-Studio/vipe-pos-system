@@ -14,6 +14,8 @@ const DEFAULTS = {
   businessNit: '123456789',
   inventoryControlEnabled: false,
   deliveryDefaultFee: 0,
+  kitchenLateMinutes: 15,
+  deliveryLateMinutes: 45,
 };
 
 describe('business config endpoints (Testcontainers, vipe_api)', () => {
@@ -28,7 +30,8 @@ describe('business config endpoints (Testcontainers, vipe_api)', () => {
       database.superuserUrl,
       `INSERT INTO business_config (key, value, restaurant_id) VALUES
          ('tax_percentage', '8.5', $1), ('inventory_control_enabled', 'true', $1),
-         ('business_name', 'Casa B', $1), ('delivery_default_fee', '4000', $1), ('legacy_unknown', 'x', $1)`,
+         ('business_name', 'Casa B', $1), ('delivery_default_fee', '4000', $1), ('legacy_unknown', 'x', $1),
+         ('kitchen_late_minutes', '20', $1), ('delivery_late_minutes', 'tarde', $1)`,
       [fixtures.restaurantB],
     );
     app = await createTestApp(database.apiUrl);
@@ -68,6 +71,7 @@ describe('business config endpoints (Testcontainers, vipe_api)', () => {
       inventoryControlEnabled: true,
       businessName: 'Casa B',
       deliveryDefaultFee: 4000,
+      kitchenLateMinutes: 20,
     });
   });
 
@@ -111,11 +115,34 @@ describe('business config endpoints (Testcontainers, vipe_api)', () => {
     ['a wrong type', { taxPercentage: '5' }],
     ['a negative fee', { deliveryDefaultFee: -1 }],
     ['a fractional fee', { deliveryDefaultFee: 10.5 }],
+    ['kitchen late 0 minutes', { kitchenLateMinutes: 0 }],
+    ['delivery late 241 minutes', { deliveryLateMinutes: 241 }],
+    ['fractional late minutes', { kitchenLateMinutes: 12.5 }],
   ])('answers 422 for %s and stores nothing', async (_case, body) => {
     const before = await rows(fixtures.restaurantA);
     const res = await put(fixtures.adminA, body);
     expect(res.status).toBe(422);
     expect(res.body).toMatchObject({ statusCode: 422, error: 'Unprocessable Entity' });
+    expect(await rows(fixtures.restaurantA)).toEqual(before);
+  });
+
+  it('stores the late thresholds for the admin and serves them to staff', async () => {
+    const res = await put(fixtures.adminA, { kitchenLateMinutes: 1, deliveryLateMinutes: 240 });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ kitchenLateMinutes: 1, deliveryLateMinutes: 240 });
+    expect(await rows(fixtures.restaurantA)).toEqual(
+      expect.arrayContaining([
+        { key: 'delivery_late_minutes', value: '240' },
+        { key: 'kitchen_late_minutes', value: '1' },
+      ]),
+    );
+    expect((await get(fixtures.waiterA)).body).toMatchObject({ kitchenLateMinutes: 1, deliveryLateMinutes: 240 });
+    expect((await get(fixtures.adminB)).body).toMatchObject({ kitchenLateMinutes: 20, deliveryLateMinutes: 45 });
+  });
+
+  it('rejects a waiter writing a late threshold with 403', async () => {
+    const before = await rows(fixtures.restaurantA);
+    expect((await put(fixtures.waiterA, { kitchenLateMinutes: 30 })).status).toBe(403);
     expect(await rows(fixtures.restaurantA)).toEqual(before);
   });
 });

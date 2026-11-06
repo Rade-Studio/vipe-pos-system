@@ -71,8 +71,8 @@ describe('realtime enrichment for orders, order_items and tables (Testcontainers
     const b = await connect(fixtures.adminB.email);
     await db(
       `WITH o AS (
-         INSERT INTO public.orders (id, status, subtotal, tax, tax_percentage, total, restaurant_id)
-         VALUES ($1, 'kitchen', 0, 0, 0, 0, $4) RETURNING id)
+         INSERT INTO public.orders (id, status, subtotal, tax, tax_percentage, total, guests, notes, restaurant_id)
+         VALUES ($1, 'kitchen', 0, 0, 0, 0, 4, 'sin picante', $4) RETURNING id)
        INSERT INTO public.order_items (id, order_id, name, price, quantity, restaurant_id, added_at)
        SELECT $2::uuid, id, 'Arepa', 5000, 2, $4, now() FROM o
        UNION ALL SELECT $3::uuid, id, 'Jugo', 3000, 1, $4, now() + interval '1 second' FROM o`,
@@ -81,7 +81,7 @@ describe('realtime enrichment for orders, order_items and tables (Testcontainers
     await eventually(() => a.changes.length >= 3);
     const insert = a.changes.find((event) => event.table === 'orders');
     expect(insert?.eventType).toBe('INSERT');
-    expect(insert?.new).toMatchObject({ id: ORDER_ID, status: 'kitchen' });
+    expect(insert?.new).toMatchObject({ id: ORDER_ID, status: 'kitchen', guests: 4, notes: 'sin picante', order_number: expect.any(Number) });
     const items = insert?.new.order_items as Array<Record<string, unknown>>;
     expect(items.map((item) => [item.id, item.name, item.status, item.order_id])).toEqual([
       [ITEM_1, 'Arepa', 'kitchen', ORDER_ID],
@@ -107,10 +107,12 @@ describe('realtime enrichment for orders, order_items and tables (Testcontainers
 
   it('an order UPDATE carries the current items; a DELETE carries none', async () => {
     const a = await connect(fixtures.adminA.email);
-    await db("UPDATE public.orders SET status = 'delivered' WHERE id = $1", [ORDER_ID]);
+    await db("UPDATE public.orders SET status = 'delivered', guests = 2, notes = NULL WHERE id = $1", [ORDER_ID]);
     await eventually(() => a.changes.length >= 1);
     const [update] = a.changes;
     expect(update).toMatchObject({ table: 'orders', eventType: 'UPDATE' });
+    expect(update.new).toMatchObject({ guests: 2, notes: null, order_number: expect.any(Number) });
+    expect(update.old).toMatchObject({ guests: 4, notes: 'sin picante' });
     expect((update.new.order_items as Array<{ status: string }>).map((item) => item.status)).toEqual(['served', 'kitchen']);
     expect(update.old).not.toHaveProperty('order_items');
 

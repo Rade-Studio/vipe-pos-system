@@ -88,6 +88,12 @@ export type OrderItem = {
 
 export type Order = {
   id: string
+  /** Per-restaurant number from the database; absent on orders not read from the API. */
+  orderNumber?: number
+  /** Guests at the table, when captured. */
+  guests?: number
+  /** Order-level note for the kitchen. */
+  notes?: string
   tableId: string
   /** Absent on readers that do not map orders.order_type; treat as dine-in. */
   orderType?: OrderType
