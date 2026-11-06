@@ -60,6 +60,9 @@ export function sameKitchenOrder(a: Order, b: Order): boolean {
     a.orderType === b.orderType &&
     a.status === b.status &&
     a.waiter === b.waiter &&
+    a.orderNumber === b.orderNumber &&
+    (a.guests ?? undefined) === (b.guests ?? undefined) &&
+    (a.notes ?? undefined) === (b.notes ?? undefined) &&
     (a.isPartialOrder ?? false) === (b.isPartialOrder ?? false) &&
     a.parentOrderId === b.parentOrderId &&
     (a.paymentMethod ?? undefined) === (b.paymentMethod ?? undefined) &&

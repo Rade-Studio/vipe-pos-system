@@ -37,6 +37,7 @@ import { KitchenTicket } from "@/components/kitchen/KitchenTicket"
 import { KitchenRail } from "@/components/kitchen/KitchenRail"
 import {
   countByKind,
+  kitchenThresholds,
   matchesKindFilter,
   oldestFirst,
   ticketAge,
@@ -44,14 +45,9 @@ import {
   type KindFilter,
 } from "@/lib/kitchen/ticket"
 import { cn } from "@/lib/utils"
-import { kitchenOrderOf, kitchenOrdersOf } from "@/lib/kitchen/order"
-import {
-  addNewItems,
-  dropNewItems,
-  mergeKitchenOrders,
-  mergeNewItems,
-  removeNewItems,
-} from "@/lib/kitchen/hydration"
+import { kitchenOrderOf, kitchenOrdersOf, pendingItems } from "@/lib/kitchen/order"
+import { DEFAULT_LATE_THRESHOLDS, fetchLateThresholds } from "@/lib/api/settings"
+import { mergeKitchenOrders } from "@/lib/kitchen/hydration"
 import type { KitchenItemBatch } from "@/lib/kitchen/realtime"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -89,7 +85,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const [newOrderAlert, setNewOrderAlert] = useState(false)
   const [newOrderCount, setNewOrderCount] = useState(0)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
-  const [newItems, setNewItems] = useState<Record<string, string[]>>({}) // Mapeo de orderId -> array de itemIds nuevos
   const [showCompleteDialog, setShowCompleteDialog] = useState(false)
   const [orderToDeliver, setOrderToDeliver] = useState<string | null>(null)
   const [filterWaiter, setFilterWaiter] = useState<string | null>(null)
@@ -109,6 +104,19 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     queryKey: ['orders', 'kitchen'],
     queryFn: fetchKitchenOrders,
   })
+
+  // Late threshold (T23): read once per kitchen session; a failed read keeps
+  // the default, so the rail never waits on it.
+  const { data: lateThresholds } = useQuery({
+    queryKey: ["config", "late-thresholds"],
+    queryFn: fetchLateThresholds,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+  const thresholds = kitchenThresholds(lateThresholds?.kitchenLateMinutes ?? DEFAULT_LATE_THRESHOLDS.kitchenLateMinutes)
 
   // Customer names and delivery status for the delivery orders in the queue.
   const { data: deliveries = [] } = useActiveDeliveries()
@@ -148,14 +156,13 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   // T7: replace the queue in ONE store write that keeps the identity of every
   // order whose content did not change. The board used to `setOrders([])` and
   // re-add the orders one by one, so every refresh blanked it and every card
-  // was a new element (S2). `mergeNewItems` keeps the "new product" highlights
-  // of the orders that are still on the queue.
+  // was a new element (S2). "+n nuevos" is derived from the persisted send
+  // time of each item (T23), so there is no in-session highlight to keep.
   useEffect(() => {
     if (!kitchenOrdersData) return
     setOrders(mergeKitchenOrders(useOrderStore.getState().orders, kitchenOrdersData))
-    setNewItems((previous) => mergeNewItems(previous, kitchenOrdersData.map((order) => order.id)))
     kitchenOrdersData.forEach((order) => {
-      realtimeService.registerItems(order.id, order.items.map((item) => item.id))
+      realtimeService.registerItems(order.id, pendingItems(order).map((item) => item.id))
     })
   }, [kitchenOrdersData, setOrders])
 
@@ -223,26 +230,21 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     if (!orderId) return
     log.info("Orden eliminada de cocina:", { orderId })
     removeOrder(orderId)
-    setNewItems((previous) => dropNewItems(previous, orderId))
     realtimeService.unregisterOrder(orderId)
   }
 
   // Aplicar el lote de una orden: el servicio ya la leyó una única vez por
   // ráfaga de eventos (una orden nueva con cinco items, dos productos
   // entregados a la vez, ...), así que aquí no hay ninguna lectura: solo se
-  // parchea esa orden y se ajustan los avisos de "nuevo".
+  // parchea esa orden y se avisa de lo nuevo.
   const handleItemBatch = (batch: KitchenItemBatch<Order>) => {
-    const { orderId, newItemIds, servedItemIds } = batch
+    const { orderId, newItemIds } = batch
     const storeOrder = kitchenOrderOf(batch.order)
     const known = useOrderStore.getState().orders.some((order) => order.id === orderId)
-
-    // Lo que salió de cocina deja de estar marcado como nuevo.
-    setNewItems((previous) => removeNewItems(previous, orderId, servedItemIds))
 
     if (!storeOrder) {
       // La orden ya no tiene nada pendiente en cocina.
       if (known) removeOrder(orderId)
-      setNewItems((previous) => dropNewItems(previous, orderId))
       realtimeService.unregisterOrder(orderId)
       return
     }
@@ -258,7 +260,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     const isNew = batch.isNewOrder || !known
     if (!isNew && newItemIds.length === 0) return
 
-    setNewItems((previous) => addNewItems(previous, orderId, newItemIds))
     setNewOrderCount((previous) => previous + 1)
     setNewOrderAlert(true)
 
@@ -483,7 +484,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       })
 
       realtimeService.unregisterItem(orderId, itemId)
-      setNewItems((previous) => removeNewItems(previous, orderId, [itemId]))
 
       // Solo se parchea LA orden del item: las demás órdenes del panel
       // conservan su identidad (antes se reconstruía el array completo).
@@ -496,7 +496,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       if (!remaining) {
         // Sin items pendientes la orden sale del panel de cocina.
         removeOrder(orderId)
-        setNewItems((previous) => dropNewItems(previous, orderId))
         realtimeService.unregisterOrder(orderId)
 
         // Cerrar la orden (mesa servida o domicilio listo)
@@ -532,13 +531,13 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       // Obtener la orden del store
       const order = useOrderStore.getState().orders.find((o) => o.id === orderToDeliver)
 
-      if (!order || order.items.length === 0) {
+      if (!order || pendingItems(order).length === 0) {
         log.error("Orden no encontrada o sin items")
         return
       }
 
       // Obtener los IDs de todos los items en estado "kitchen"
-      const itemIds = order.items.map((item) => item.id)
+      const itemIds = pendingItems(order).map((item) => item.id)
 
       if (itemIds.length === 0) {
         log.info("No hay items para marcar como entregados")
@@ -563,7 +562,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       const remaining = kitchenOrderOf(toOrder(served))
       if (remaining) {
         updateOrder(order.id, remaining)
-        setNewItems((previous) => removeNewItems(previous, order.id, itemIds))
         return
       }
 
@@ -576,9 +574,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
       // Eliminar la orden del store ya que todos sus items han sido entregados
       removeOrder(orderToDeliver)
-
-      // Eliminar la orden de la lista de nuevos items
-      setNewItems((previous) => dropNewItems(previous, orderToDeliver))
     } catch (error) {
       log.error("Error al marcar todos los items como entregados:", { error: String(error) })
       toast({
@@ -790,9 +785,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
             </nav>
 
             <div className="hidden flex-none gap-3.5 whitespace-nowrap text-[13px] text-muted-fg min-[1400px]:flex" aria-label="Tiempo en cocina">
-              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-reserved-fg" />0–14 min</span>
-              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-kitchen-fg" />15–24 min</span>
-              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-danger-fg" />25+ min</span>
+              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-reserved-fg" />0–{thresholds.riskFrom - 1} min</span>
+              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-kitchen-fg" />{thresholds.riskFrom}–{thresholds.lateFrom - 1} min</span>
+              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-danger-fg" />{thresholds.lateFrom}+ min</span>
             </div>
           </div>
 
@@ -896,7 +891,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
             <KitchenRail
               tickets={railOrders.map((order) => {
                 const place = ticketPlace(order)
-                const age = ticketAge(now - ticketStartedAt(order))
+                const age = ticketAge(now - ticketStartedAt(order), thresholds)
                 const delivery = isDeliveryOrder(order) ? deliveriesRef.current.get(order.id)?.delivery : undefined
                 return {
                   key: order.id,
@@ -907,9 +902,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
                       place={place}
                       waiterName={profiles?.find((p) => p.id === order.waiter)?.name ?? null}
                       address={delivery?.addressLine ?? null}
-                      note={delivery?.notes?.trim() || null}
+                      note={(isDeliveryOrder(order) ? delivery?.notes : order.notes)?.trim() || null}
                       now={now}
-                      newItemIds={newItems[order.id] || []}
+                      thresholds={thresholds}
                       onServeItem={(itemId) => handleMarkAsDelivered(order.id, itemId)}
                       onServeAll={() => handleMarkAllAsDelivered(order.id)}
                     />
@@ -951,7 +946,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
           </AlertDialogHeader>
           {pendingDelivery && (
             <ul className="max-h-[40vh] overflow-y-auto rounded-card border border-line">
-              {pendingDelivery.items.map((item) => (
+              {pendingItems(pendingDelivery).map((item) => (
                 <li key={item.id} className="flex gap-2.5 border-line px-3.5 py-2.5 text-base [&+&]:border-t">
                   <span className="font-mono font-bold tabular-nums text-brand-strong">{item.quantity}×</span>
                   <span className="min-w-0 [overflow-wrap:anywhere]">{item.name}</span>
