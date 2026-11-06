@@ -24,7 +24,7 @@ DO $reset$
 DECLARE
   -- Deleted in this order by restaurant_id; profiles go after the users.
   c_tables constant text[] := ARRAY[
-    'payment_tenders', 'payments', 'payment_transactions', 'cash_transactions', 'order_deliveries',
+    'menu_publications', 'payment_tenders', 'payments', 'payment_transactions', 'cash_transactions', 'order_deliveries',
     'order_items', 'orders', 'cash_registers', 'print_jobs', 'printer_tokens',
     'customer_addresses', 'customers', 'couriers', 'promotion_dishes', 'promotions',
     'recipe_ingredients', 'recipes', 'inventory_count_lines', 'inventory_counts', 'production_batches',

@@ -18,6 +18,12 @@ const wholeFee = (value: string) => {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
 };
 const text = (value: string) => value;
+/** Late thresholds: a stored value that is not an integer 1..240 reads as the default. */
+const minutes = (fallback: number) => (value: string) => {
+  const trimmed = value.trim();
+  const parsed = trimmed.length === 0 ? Number.NaN : Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 240 ? parsed : fallback;
+};
 
 export const CONFIG_KEYS = {
   taxPercentage: { key: 'tax_percentage', fallback: 10, read: (v: string) => number(v, 10) },
@@ -29,12 +35,17 @@ export const CONFIG_KEYS = {
   businessNit: { key: 'business_nit', fallback: '123456789', read: text },
   inventoryControlEnabled: { key: 'inventory_control_enabled', fallback: false, read: (v: string) => v === 'true' },
   deliveryDefaultFee: { key: 'delivery_default_fee', fallback: 0, read: wholeFee },
+  /** Minutes after which a kitchen ticket is late (default 15). */
+  kitchenLateMinutes: { key: 'kitchen_late_minutes', fallback: 15, read: minutes(15) },
+  /** Minutes after which an open delivery is late (default 45). */
+  deliveryLateMinutes: { key: 'delivery_late_minutes', fallback: 45, read: minutes(45) },
 } as const;
 
 export type ConfigField = keyof typeof CONFIG_KEYS;
 
 const percentage = z.number().min(0).max(100);
 const shortText = z.string().max(255);
+const lateMinutes = z.number().int().min(1).max(240);
 
 export const updateConfigSchema = z.strictObject({
   taxPercentage: percentage.optional(),
@@ -46,6 +57,8 @@ export const updateConfigSchema = z.strictObject({
   businessNit: shortText.optional(),
   inventoryControlEnabled: z.boolean().optional(),
   deliveryDefaultFee: z.number().int().min(0).optional(),
+  kitchenLateMinutes: lateMinutes.optional(),
+  deliveryLateMinutes: lateMinutes.optional(),
 });
 
 /** Typed config built from the stored rows; missing or unreadable keys take the default. */
@@ -69,6 +82,10 @@ export class BusinessConfig {
   @ApiProperty({ default: '123456789' }) businessNit!: string;
   @ApiProperty({ default: false }) inventoryControlEnabled!: boolean;
   @ApiProperty({ default: 0, description: 'Suggested delivery fee in whole pesos.' }) deliveryDefaultFee!: number;
+  @ApiProperty({ default: 15, minimum: 1, maximum: 240, description: 'Minutes after which a kitchen ticket is late.' })
+  kitchenLateMinutes!: number;
+  @ApiProperty({ default: 45, minimum: 1, maximum: 240, description: 'Minutes after which an open delivery is late.' })
+  deliveryLateMinutes!: number;
 }
 
 export class UpdateBusinessConfigRequest {
@@ -81,4 +98,6 @@ export class UpdateBusinessConfigRequest {
   @ApiPropertyOptional({ maxLength: 255 }) businessNit?: string;
   @ApiPropertyOptional() inventoryControlEnabled?: boolean;
   @ApiPropertyOptional({ minimum: 0, type: 'integer' }) deliveryDefaultFee?: number;
+  @ApiPropertyOptional({ minimum: 1, maximum: 240, type: 'integer' }) kitchenLateMinutes?: number;
+  @ApiPropertyOptional({ minimum: 1, maximum: 240, type: 'integer' }) deliveryLateMinutes?: number;
 }

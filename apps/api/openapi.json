@@ -1336,6 +1336,61 @@
           "orders"
         ]
       },
+      "patch": {
+        "operationId": "OrdersController_updateDetails",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrderDetailsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Guests and/or the order note set (null or a blank note clears). orderNumber is refused (422).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, waiter or cashier."
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Order is closed (paid or cancelled)."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      },
       "delete": {
         "operationId": "OrdersController_remove",
         "parameters": [
@@ -6462,6 +6517,20 @@
             "type": "number",
             "default": 0,
             "description": "Suggested delivery fee in whole pesos."
+          },
+          "kitchenLateMinutes": {
+            "type": "number",
+            "default": 15,
+            "minimum": 1,
+            "maximum": 240,
+            "description": "Minutes after which a kitchen ticket is late."
+          },
+          "deliveryLateMinutes": {
+            "type": "number",
+            "default": 45,
+            "minimum": 1,
+            "maximum": 240,
+            "description": "Minutes after which an open delivery is late."
           }
         },
         "required": [
@@ -6473,7 +6542,9 @@
           "businessPhone",
           "businessNit",
           "inventoryControlEnabled",
-          "deliveryDefaultFee"
+          "deliveryDefaultFee",
+          "kitchenLateMinutes",
+          "deliveryLateMinutes"
         ]
       },
       "UpdateBusinessConfigRequest": {
@@ -6515,6 +6586,16 @@
           "deliveryDefaultFee": {
             "type": "integer",
             "minimum": 0
+          },
+          "kitchenLateMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 240
+          },
+          "deliveryLateMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 240
           }
         }
       },
@@ -6592,6 +6673,23 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "orderNumber": {
+            "type": "number",
+            "description": "Per-restaurant order number assigned by the database (1, 2, ...); never set by the client."
+          },
+          "guests": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 99,
+            "description": "Guests at the table; null when not captured."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Order-level note for the kitchen; null when none."
           },
           "tableId": {
             "type": "string",
@@ -6680,6 +6778,9 @@
         },
         "required": [
           "id",
+          "orderNumber",
+          "guests",
+          "notes",
           "tableId",
           "waiterId",
           "status",
@@ -6889,6 +6990,23 @@
             "type": "string",
             "format": "uuid"
           },
+          "orderNumber": {
+            "type": "number",
+            "description": "Per-restaurant order number assigned by the database (1, 2, ...); never set by the client."
+          },
+          "guests": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 99,
+            "description": "Guests at the table; null when not captured."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Order-level note for the kitchen; null when none."
+          },
           "tableId": {
             "type": "string",
             "format": "uuid",
@@ -6993,6 +7111,9 @@
         },
         "required": [
           "id",
+          "orderNumber",
+          "guests",
+          "notes",
           "tableId",
           "waiterId",
           "status",
@@ -7213,6 +7334,19 @@
             "type": "boolean",
             "default": false,
             "description": "Send even when check_dishes_stock reports shortages."
+          },
+          "guests": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 99,
+            "description": "Guests at the table."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Order note, trimmed; blank is null."
           }
         },
         "required": [
@@ -7234,11 +7368,42 @@
           "force": {
             "type": "boolean",
             "default": false
+          },
+          "guests": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 99,
+            "description": "Sets guests; omitted keeps them."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Sets the order note; omitted keeps it."
           }
         },
         "required": [
           "items"
         ]
+      },
+      "UpdateOrderDetailsRequest": {
+        "type": "object",
+        "properties": {
+          "guests": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 99,
+            "description": "Guests at the table."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Order note, trimmed; blank is null."
+          }
+        }
       },
       "UpdateOrderStatusRequest": {
         "type": "object",

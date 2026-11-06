@@ -33,7 +33,7 @@ const o = {
 } as const;
 
 const ORDER_KEYS = [
-  'createdAt', 'id', 'isPartialOrder', 'items', 'orderType', 'parentOrderId', 'status', 'subtotal', 'tableId', 'tax',
+  'createdAt', 'guests', 'id', 'isPartialOrder', 'items', 'notes', 'orderNumber', 'orderType', 'parentOrderId', 'status', 'subtotal', 'tableId', 'tax',
   'taxPercentage', 'tip', 'tipPercentage', 'total', 'totalDiscounts', 'updatedAt', 'waiterId',
 ];
 const ITEM_KEYS = [
