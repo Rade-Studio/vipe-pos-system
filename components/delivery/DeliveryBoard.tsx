@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Tabs,
   TabsContent,
@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import {
+  getClosedTodaySummary,
+  returnCourier,
   setDeliveryStatus,
   DeliveryServiceError,
   type DeliveryServiceErrorKind,
@@ -30,6 +32,7 @@ import type { DeliveryAction } from '@/lib/delivery/types'
 import { toast } from '@/hooks/use-toast'
 import { needsPrepaidWarning, rejectionMessage } from '@/lib/delivery/card-actions'
 import { useCashRegisterStore } from '@/store/use-cash-register-store'
+import { getOpenRegister } from '@/lib/api/registers'
 import { PaymentMethodDialog } from '@/components/cashier/PaymentMethodDialog'
 import { DeliveryCard } from './DeliveryCard'
 import { NewDeliveryDialog } from './NewDeliveryDialog'
@@ -37,16 +40,23 @@ import { DispatchDialog } from './DispatchDialog'
 import { FailDialog } from './FailDialog'
 import { CancelDeliveryDialog } from './CancelDeliveryDialog'
 import { CouriersRail } from './CouriersRail'
+import { useLastLiveSignal, useNow } from './use-live-signal'
+import { CONFIG_QUERY_KEY, fetchConfig } from '@/lib/api/config'
+import { DEFAULT_LATE_THRESHOLDS } from '@/lib/api/settings'
 import {
   BOARD_COLUMNS,
   BOARD_COLUMN_GAP_PX,
   BOARD_COLUMN_MIN_PX,
   BOARD_WIDE_MIN_PX,
+  closedTodayLine,
   columnRangeLabel,
   courierLoad,
+  courierTrips,
+  deliveryOrderRef,
   groupDeliveries,
   isShortcutTarget,
-  shortOrderRef,
+  lostConnectionText,
+  signalAgeLabel,
   visibleColumnRange,
   type BoardColumnStatus,
   type ColumnRange,
@@ -81,6 +91,10 @@ function deliveryErrorMessage(err: unknown): string {
 interface DeliveryBoardProps {
   /** Auth role, drives `allowedActions`. */
   role: 'admin' | 'delivery_operator' | 'kitchen' | 'cashier'
+  /** T25: the signed-in person, shown in the header with the register state. */
+  operatorName?: string
+  /** T25: the view shows the role nav (bottom bar on phones), so the FAB moves up. */
+  withRoleNav?: boolean
 }
 
 const ACTION_SUCCESS_TOAST: Record<DeliveryAction, string> = {
@@ -93,6 +107,9 @@ const ACTION_SUCCESS_TOAST: Record<DeliveryAction, string> = {
 }
 
 type CardDialogKind = 'dispatch' | 'fail' | 'cancel' | 'pay'
+
+/** T25: how often the header re-checks the register (also on window focus). */
+export const REGISTER_POLL_MS = 60_000
 
 /** Container width from which the couriers rail is a side column. */
 const RAIL_SIDE_MIN_PX = 1024
@@ -115,8 +132,14 @@ const RAIL_SIDE_MIN_PX = 1024
  * opens the cashier payment dialog on the open register. Every
  * mutation is single-flight per card: a synchronous ref gate plus a
  * state set that disables the card's buttons.
+ *
+ * T25 (S8): the header names the operator with "Caja abierta/cerrada" and the
+ * age of the last live signal; "Cerrados hoy" reads the server's split and
+ * average; cards show "#D-0412", the prepaid channel and turn late at the
+ * restaurant's `deliveryLateMinutes`; the couriers rail shows each trip (ETA,
+ * location), records the return and lets the operator add and switch couriers.
  */
-export function DeliveryBoard({ role }: DeliveryBoardProps) {
+export function DeliveryBoard({ role, operatorName, withRoleNav = false }: DeliveryBoardProps) {
   const queryClient = useQueryClient()
   const { data: deliveries = [], isLoading, error } = useActiveDeliveries()
   const [newOpen, setNewOpen] = useState(false)
@@ -124,17 +147,69 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
   const inFlight = useRef(new Set<string>())
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(() => new Set())
   const { isRegisterOpen, loadOpenRegister } = useCashRegisterStore()
+  // null until the first check: the header shows nothing rather than a guess.
+  const [registerOpen, setRegisterOpen] = useState<boolean | null>(null)
 
   // The register may have been opened after the app loaded. The board only
   // needs open/closed, so this is the ONE-request check, not the full register
   // load (which also reads both transaction histories) — T10/S1.
   useEffect(() => {
-    void loadOpenRegister()
+    let alive = true
+    void loadOpenRegister().finally(() => {
+      if (alive) setRegisterOpen(useCashRegisterStore.getState().isRegisterOpen())
+    })
+    return () => {
+      alive = false
+    }
+  }, [loadOpenRegister])
+
+  // T25: "Caja abierta/cerrada" follows the register while the console is open.
+  // The store's check never clears a register closed elsewhere, so the header
+  // re-reads the open register every minute and on window focus; a newly
+  // opened one goes into the store through the same store check.
+  useEffect(() => {
+    let alive = true
+    const recheck = async () => {
+      try {
+        const open = await getOpenRegister()
+        if (!alive) return
+        setRegisterOpen(open !== null)
+        if (open && useCashRegisterStore.getState().currentRegister?.id !== open.id) void loadOpenRegister()
+      } catch {
+        // Keep the last known state; the next check tries again.
+      }
+    }
+    const timer = setInterval(() => void recheck(), REGISTER_POLL_MS)
+    const onFocus = () => void recheck()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      alive = false
+      clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [loadOpenRegister])
 
   const grouped = useMemo(() => groupDeliveries(deliveries), [deliveries])
   const load = useMemo(() => courierLoad(deliveries), [deliveries])
+  const trips = useMemo(() => courierTrips(deliveries), [deliveries])
   const connected = useRealtimeConnected()
+  const lastSignalAt = useLastLiveSignal(connected)
+  // Late tones move with the clock; a 30 s tick is enough for whole minutes.
+  const nowMs = useNow(30_000)
+  const { data: config } = useQuery({ queryKey: CONFIG_QUERY_KEY, queryFn: fetchConfig, staleTime: 5 * 60_000 })
+  const lateMinutes = config?.deliveryLateMinutes ?? DEFAULT_LATE_THRESHOLDS.deliveryLateMinutes
+  // Re-read the closed-today metrics when a delivery closes or fails on the board.
+  const { data: closedToday } = useQuery({
+    queryKey: ['delivery-closed-today', grouped.closed.length, grouped.failed.length],
+    queryFn: getClosedTodaySummary,
+    enabled: !isLoading,
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
+  })
+  const shift = [
+    operatorName,
+    registerOpen === null ? null : registerOpen ? 'Caja abierta' : 'Caja cerrada',
+  ].filter(Boolean).join(' · ')
   const [rootRef, width] = useElementWidth<HTMLDivElement>()
   const wide = width >= BOARD_WIDE_MIN_PX
   const railSide = width >= RAIL_SIDE_MIN_PX
@@ -202,6 +277,8 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
     action: DeliveryAction
     courierId?: string
     reason?: string
+    courierEta?: string
+    courierLocation?: string
   }): Promise<boolean> => {
     const ok = await runForCard(input.orderId, async () => {
       let moved: DeliveryOrder | null = null
@@ -251,20 +328,43 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
     })
   }
 
+  /** "Volvió": the courier is back for these finished trips (one request each). */
+  const onReturn = async (orderIds: string[]) => {
+    let returned = 0
+    for (const orderId of orderIds) {
+      await runForCard(orderId, async () => {
+        try {
+          applyMove(await returnCourier(orderId))
+          returned += 1
+        } catch (err) {
+          toast.error(deliveryErrorMessage(err))
+          refreshBoard()
+        }
+      })
+    }
+    if (returned > 0) toast.success('Repartidor de regreso en el local')
+  }
+
   const dialogPending = dialog !== null && pendingIds.has(dialog.orderId)
   const closeDialog = (open: boolean) => {
     if (!open) setDialog(null)
   }
 
-  const listProps = { isLoading, error, role, onAction, onRegisterPayment, pendingIds }
+  const listProps = { isLoading, error, role, onAction, onRegisterPayment, pendingIds, lateMinutes, nowMs }
+  const closedLine = closedToday ? closedTodayLine(closedToday) : null
 
   return (
     <div ref={rootRef} className="flex min-h-full min-w-0 flex-col bg-canvas text-fg">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-4 py-3 md:px-6">
         <div className="mr-auto min-w-0">
           <h2 className="whitespace-nowrap text-xl font-semibold tracking-tight">Consola de despacho</h2>
+          {shift && (
+            <p aria-label="Turno" className="truncate text-sm text-muted-fg">
+              {shift}
+            </p>
+          )}
         </div>
-        <LiveIndicator connected={connected} />
+        <LiveIndicator connected={connected} lastSignalAt={lastSignalAt} />
         <Button
           className={cn(PILL_BUTTON, 'hidden bg-btn px-5 text-btn-foreground shadow-glow hover:bg-btn/90 md:inline-flex')}
           onClick={() => setNewOpen(true)}
@@ -277,10 +377,17 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
         </Button>
       </div>
 
+      {!connected && lastSignalAt !== null && (
+        <LostConnectionBanner lastSignalAt={lastSignalAt} onRefresh={refreshBoard} />
+      )}
+
       <div className={cn('grid min-w-0 flex-1', railSide ? 'grid-cols-[minmax(0,1fr)_300px]' : 'grid-cols-1')}>
         <section
           aria-labelledby="board-title"
-          className="flex min-w-0 flex-col gap-4 px-4 pb-24 pt-4 md:px-6 md:pb-7 md:pt-5"
+          className={cn(
+            'flex min-w-0 flex-col gap-4 px-4 pt-4 md:px-6 md:pb-7 md:pt-5',
+            withRoleNav ? 'pb-40' : 'pb-24',
+          )}
         >
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h3 id="board-title" className="mr-auto whitespace-nowrap text-[17px] font-semibold">
@@ -302,6 +409,20 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
             )}
           </div>
 
+          {closedLine && (
+            <p
+              role="group"
+              aria-label="Cerrados hoy"
+              className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-card border border-line bg-surface px-3 py-2 text-sm text-fg-2 dark:bg-surface-2"
+            >
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                <span className="font-medium text-fg">Cerrados hoy:</span>{' '}
+                <span className="tabular-nums">{closedLine.counts}</span>
+              </span>
+              <span className="tabular-nums text-muted-fg">{closedLine.average}</span>
+            </p>
+          )}
+
           {wide ? (
             <>
               <ColumnScroller grouped={grouped} {...listProps} />
@@ -317,12 +438,19 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
           )}
         </section>
 
-        <CouriersRail load={load} layout={railSide ? 'side' : 'section'} />
+        <CouriersRail
+          load={load}
+          trips={trips}
+          layout={railSide ? 'side' : 'section'}
+          canManage={role === 'delivery_operator' || role === 'admin'}
+          onReturn={onReturn}
+        />
       </div>
 
       <Button
         className={cn(
-          'fixed bottom-5 right-4 z-30 h-14 w-14 rounded-full bg-btn p-0 text-btn-foreground shadow-glow-lg hover:bg-btn/90 md:hidden',
+          withRoleNav ? 'bottom-[84px]' : 'bottom-5',
+          'fixed right-4 z-30 h-14 w-14 rounded-full bg-btn p-0 text-btn-foreground shadow-glow-lg hover:bg-btn/90 md:hidden',
           FOCUS_RING,
         )}
         onClick={() => setNewOpen(true)}
@@ -344,11 +472,13 @@ export function DeliveryBoard({ role }: DeliveryBoardProps) {
             isPaid: dialogRow.isPaid,
           })}
           isPending={dialogPending}
-          orderSummary={`${shortOrderRef(dialogRow.delivery.orderId)} · ${dialogRow.delivery.customerName} · ${safeAddress(dialogRow.delivery)}`}
+          orderRef={deliveryOrderRef(dialogRow.delivery)}
+          orderSummary={`${dialogRow.delivery.customerName} · ${safeAddress(dialogRow.delivery)}`}
           courierLoad={load}
-          onConfirm={(courierId) =>
+          courierTrips={trips}
+          onConfirm={(courierId, details) =>
             void closeDialogOnSuccess(
-              transition({ orderId: dialogRow.delivery.orderId, action: 'dispatch', courierId }),
+              transition({ orderId: dialogRow.delivery.orderId, action: 'dispatch', courierId, ...details }),
             )
           }
         />
@@ -403,14 +533,21 @@ type ListProps = {
   onAction: (orderId: string, action: DeliveryAction) => void
   onRegisterPayment: (orderId: string) => void
   pendingIds: ReadonlySet<string>
+  lateMinutes: number
+  nowMs: number
 }
 
 type Grouped = ReturnType<typeof groupDeliveries<DeliveryOrderWithBill>>
 
-function LiveIndicator({ connected }: { connected: boolean }) {
+function LiveIndicator({ connected, lastSignalAt }: { connected: boolean; lastSignalAt: number | null }) {
+  const now = useNow(1_000)
+  // Connected: age of the last signal; disconnected: time since it (T25).
+  const age = lastSignalAt !== null ? signalAgeLabel(now - lastSignalAt) : null
+  const label = `${connected ? 'En vivo' : 'Sin conexión en vivo'}${age ? ` · ${age}` : ''}`
   return (
     <span
       role="status"
+      aria-label={label}
       className={cn(
         CHIP,
         'h-8 px-3 text-[13px]',
@@ -426,8 +563,32 @@ function LiveIndicator({ connected }: { connected: boolean }) {
           connected && 'animate-pulse motion-reduce:animate-none',
         )}
       />
-      {connected ? 'En vivo' : 'Sin conexión en vivo'}
+      <span>{connected ? 'En vivo' : 'Sin conexión en vivo'}</span>
+      {age && <span className="tabular-nums">{` · ${age}`}</span>}
     </span>
+  )
+}
+
+/**
+ * The design's stale-board banner (T25): shown while the live connection is
+ * lost after a first signal, with the time since it; the socket reconnects on
+ * its own, so the action re-reads the board now.
+ */
+function LostConnectionBanner({ lastSignalAt, onRefresh }: { lastSignalAt: number; onRefresh: () => void }) {
+  const now = useNow(1_000)
+  return (
+    <div
+      role="alert"
+      className="mx-4 mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-status-warning-line bg-status-warning-bg px-4 py-3 text-sm text-status-warning-fg md:mx-6"
+    >
+      <p className="min-w-0 flex-1 basis-60 [overflow-wrap:anywhere]">
+        <b className="font-semibold">{lostConnectionText(now - lastSignalAt)}</b> El tablero puede estar
+        desactualizado; las acciones siguen funcionando.
+      </p>
+      <Button size="sm" variant="outline" className={cn(PILL_BUTTON, 'px-4')} onClick={onRefresh}>
+        Actualizar tablero
+      </Button>
+    </div>
   )
 }
 
@@ -576,6 +737,8 @@ function CardList({
   onAction,
   onRegisterPayment,
   pendingIds,
+  lateMinutes,
+  nowMs,
   closedMode = false,
   stacked = false,
   showStatus = false,
@@ -619,6 +782,8 @@ function CardList({
           onRegisterPayment={() => onRegisterPayment(row.delivery.orderId)}
           isPending={pendingIds.has(row.delivery.orderId)}
           showStatus={showStatus}
+          lateMinutes={lateMinutes}
+          nowMs={nowMs}
         />
       ))}
     </div>

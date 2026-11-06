@@ -11870,6 +11870,10 @@
             "type": "string",
             "format": "uuid"
           },
+          "orderNumber": {
+            "type": "number",
+            "description": "Per-restaurant order number (orders.order_number); shown as #D-0412."
+          },
           "customerId": {
             "type": "string",
             "format": "uuid"
@@ -11989,6 +11993,7 @@
         },
         "required": [
           "orderId",
+          "orderNumber",
           "customerId",
           "customerName",
           "customerPhone",

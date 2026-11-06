@@ -139,6 +139,11 @@ export interface ClosedTodaySummary {
 
 export interface DeliveryOrder {
   orderId: string
+  /**
+   * T25: orders.order_number, shown as "#D-0412". The API always sends it; a
+   * raw realtime row has none (the merge keeps the cached one).
+   */
+  orderNumber?: number | null
   customerId: string
   customerName: string
   customerPhone: string

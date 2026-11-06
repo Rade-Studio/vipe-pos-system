@@ -3514,6 +3514,8 @@ export interface components {
         DeliveryOrder: {
             /** Format: uuid */
             orderId: string;
+            /** @description Per-restaurant order number (orders.order_number); shown as #D-0412. */
+            orderNumber: number;
             /** Format: uuid */
             customerId: string;
             customerName: string;

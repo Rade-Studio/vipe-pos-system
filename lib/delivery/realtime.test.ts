@@ -104,6 +104,17 @@ describe('applyDeliveryRowPatch (order_deliveries realtime push)', () => {
     expect(applyDeliveryRowPatch(prev, wireRow({ payment_mode: 'prepaid', prepaid_method_id: 'm-1' }))).toEqual({ kind: 'unchanged' })
   })
 
+  it('keeps the cached order number, which a raw row does not carry (T25)', () => {
+    const cached = boardRow()
+    const prev = [{ ...cached, delivery: { ...cached.delivery, orderNumber: 412 } }]
+    const outcome = applyDeliveryRowPatch(prev, wireRow({ delivery_status: 'ready' }))
+    expect(outcome.kind).toBe('patched')
+    if (outcome.kind !== 'patched') return
+    expect(outcome.rows[0]!.delivery.orderNumber).toBe(412)
+    expect(outcome.rows[0]!.delivery.status).toBe('ready')
+    expect(applyDeliveryRowPatch(prev, wireRow())).toEqual({ kind: 'unchanged' })
+  })
+
   it('treats a missing T19 field on a cached row like null (rows cached before the columns existed)', () => {
     const cached = boardRow()
     const t19 = ['prepaidMethod', 'courierEta', 'courierLocation', 'returnedAt']

@@ -37,11 +37,13 @@ const json = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`;
 const ADMIN_ONLY_COURIER_FIELDS = ['name', 'phone'] as const;
 
 /**
- * `to_jsonb(order_deliveries)` plus the prepaid method's name, for a query
- * whose FROM has `public.order_deliveries od` and DELIVERY_JOIN.
+ * `to_jsonb(order_deliveries)` plus the prepaid method's name and the order's
+ * number (T25), for a query whose FROM has `public.order_deliveries od` and
+ * DELIVERY_JOIN.
  */
-const DELIVERY_ROW = sql`to_jsonb(od) || jsonb_build_object('prepaid_method_name', pm.name)`;
-const DELIVERY_JOIN = sql`LEFT JOIN public.payment_methods pm ON pm.restaurant_id = od.restaurant_id AND pm.id = od.prepaid_method_id`;
+const DELIVERY_ROW = sql`to_jsonb(od) || jsonb_build_object('prepaid_method_name', pm.name, 'order_number', onum.order_number)`;
+const DELIVERY_JOIN = sql`LEFT JOIN public.payment_methods pm ON pm.restaurant_id = od.restaurant_id AND pm.id = od.prepaid_method_id
+  JOIN public.orders onum ON onum.id = od.order_id`;
 
 /** Local midnight of `now` in the restaurant's timezone, for a query whose FROM has `public.restaurants r`. */
 const restaurantMidnight = (now: string) => sql`(date_trunc('day', ${now}::timestamptz AT TIME ZONE r.timezone) AT TIME ZONE r.timezone)`;
