@@ -119,6 +119,8 @@ export interface PayOrderTenderLine {
   payment_method_id: string
   amount: number
   cash_received: number | null
+  /** Manual card/transfer reference; sent only on non-cash lines (see `normalizeTenderReference`). */
+  reference?: string | null
 }
 
 export interface SplitOrderItem {

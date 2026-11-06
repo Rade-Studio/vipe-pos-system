@@ -724,6 +724,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/registers/{id}/paid-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["RegistersController_paidOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/registers/{id}/cash-transactions": {
         parameters: {
             query?: never;
@@ -1898,6 +1914,8 @@ export interface components {
             methodKind: "cash" | "electronic";
             amount: number;
             cashReceived: number | null;
+            /** @description Manual reference of a non-cash line; null when none. */
+            reference: string | null;
         };
         Payment: {
             /** Format: uuid */
@@ -2259,6 +2277,8 @@ export interface components {
             amount: number;
             /** @description Cash handed over; required for cash, null for electronic. */
             cashReceived?: number | null;
+            /** @description Card last digits, approval code or transfer reference, captured by hand. Non-cash lines only (422 `Una línea en efectivo no lleva referencia`); tabs and line breaks become spaces, then trimmed to 1..60 chars. Not echoed in the result; read it from the payment tenders. */
+            reference?: string | null;
         };
         PayOrderRequest: {
             /** Format: uuid */
@@ -2320,6 +2340,12 @@ export interface components {
         UndoSplitResult: {
             parent: components["schemas"]["OrderBillSummary"];
         };
+        ProfileRef: {
+            /** Format: uuid */
+            id: string;
+            /** @description profiles.full_name. */
+            name: string;
+        };
         CashTransaction: {
             /** Format: uuid */
             id: string;
@@ -2354,6 +2380,8 @@ export interface components {
             createdAt: string | null;
             /** Format: date-time */
             updatedAt: string | null;
+            /** @description Who opened it: always the caller's profile at open; null for registers opened before migration 0014 or a deleted profile. */
+            openedBy: components["schemas"]["ProfileRef"] | null;
             /** @description Only with include=transactions; legacy payment_transactions, newest first. */
             transactions?: components["schemas"]["LegacyPaymentTransaction"][];
             /** @description Only with include=cashTransactions; newest first. */
@@ -2413,6 +2441,42 @@ export interface components {
              */
             closingTimestamp: string;
             summary: components["schemas"]["RegisterSummary"];
+        };
+        PaidOrderTender: {
+            /** @description Snapshot at payment time. */
+            methodCode: string;
+            /** @description Current catalog name of the method. */
+            methodName: string;
+            /** @enum {string} */
+            methodKind: "cash" | "electronic";
+            amount: number;
+            reference: string | null;
+        };
+        RegisterPaidOrder: {
+            /** Format: uuid */
+            orderId: string;
+            /** @description Per-restaurant order number. */
+            orderNumber: number | null;
+            /** @enum {string} */
+            orderType: "dine_in" | "delivery";
+            tableNumber: number | null;
+            zoneName: string | null;
+            /** @description The order's waiter. */
+            waiter: components["schemas"]["ProfileRef"] | null;
+            /** Format: uuid */
+            paymentId: string;
+            /** @description amount_due of the payment. */
+            amountDue: number;
+            tip: number;
+            /** @description total_charged (amount due + tip). */
+            total: number;
+            /**
+             * Format: date-time
+             * @description Payment time.
+             */
+            paidAt: string;
+            /** @description By line number. */
+            tenders: components["schemas"]["PaidOrderTender"][];
         };
         CreateCashTransactionRequest: {
             amount: number;
@@ -5679,6 +5743,52 @@ export interface operations {
                 content?: never;
             };
             /** @description Unknown or of another restaurant (P0002). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_paidOrders: {
+        parameters: {
+            query?: {
+                /** @description 1..200, default 100. */
+                limit?: unknown;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paid orders of the register (one per pay_order payment), newest payment first; legacy payment_transactions are not listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegisterPaidOrder"][];
+                };
+            };
+            /** @description Not admin or cashier. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or of another restaurant. */
             404: {
                 headers: {
                     [name: string]: unknown;

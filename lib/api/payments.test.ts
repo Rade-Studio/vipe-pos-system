@@ -134,6 +134,28 @@ describe("payOrder", () => {
     })
   })
 
+  it("T18: sends a non-cash reference with tabs/newlines as spaces, trimmed; never on cash, never empty", async () => {
+    api.POST.mockResolvedValue({ data: { status: "paid", alreadyPaid: false, drawerWarning: false, tenders: [] } })
+    await payOrder({
+      orderId: "o-1",
+      cashRegisterId: "r-1",
+      tip: 0,
+      tenders: [
+        { payment_method_id: "m-card", amount: 5000, cash_received: null, reference: "  Aprob\t4821\r\n77 " },
+        { payment_method_id: "m-cash", amount: 3000, cash_received: 5000, reference: "123" },
+        { payment_method_id: "m-nequi", amount: 2000, cash_received: null, reference: " \t\n " },
+        { payment_method_id: "m-transfer", amount: 1000, cash_received: null, reference: null },
+      ],
+      idempotencyKey: "k-1",
+    })
+    expect(api.POST.mock.calls[0][1].body.tenders).toEqual([
+      { paymentMethodId: "m-card", amount: 5000, reference: "Aprob 4821 77" },
+      { paymentMethodId: "m-cash", amount: 3000, cashReceived: 5000 },
+      { paymentMethodId: "m-nequi", amount: 2000 },
+      { paymentMethodId: "m-transfer", amount: 1000 },
+    ])
+  })
+
   it("passes alreadyPaid and drawerWarning through", async () => {
     api.POST.mockResolvedValue({ data: { status: "already_paid", alreadyPaid: true, drawerWarning: true, tenders: [] } })
     const result = await payOrder({ orderId: "o", cashRegisterId: "r", tip: 0, tenders: [], idempotencyKey: "k" })

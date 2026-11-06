@@ -287,6 +287,39 @@ export function canGiveChange(summary: RegisterSummary, change: number): boolean
   return summary.expectedCash >= change
 }
 
+/** The cashier's shift sheet, derived only from register_summary (T18). */
+export interface ShiftKpis {
+  /** Ventas: billed amount (amount_due), tips excluded. */
+  sales: number
+  /** Propinas. */
+  tips: number
+  /** Tickets: pay_order payments (one per paid order). */
+  tickets: number
+  /** Ticket promedio: sales / tickets in whole pesos, 0 without tickets. */
+  averageTicket: number
+  /** Efectivo esperado in the drawer (tips still inside). */
+  expectedCash: number
+  /** Por método, as the close dialog shows them. */
+  methods: RegisterMethodSummary[]
+}
+
+/**
+ * Shift KPIs for the register(s) summarized. Legacy payment_transactions are
+ * left out, as in `expected_cash` (a register opened after the pay_order
+ * cut-over has none).
+ */
+export function shiftKpis(summary: RegisterSummary): ShiftKpis {
+  const tickets = summary.paymentsCount
+  return {
+    sales: summary.totalBilled,
+    tips: summary.totalTips,
+    tickets,
+    averageTicket: tickets > 0 ? Math.round(summary.totalBilled / tickets) : 0,
+    expectedCash: summary.expectedCash,
+    methods: summaryRows(summary),
+  }
+}
+
 // -----------------------------------------------------------
 // Query key (exported so others can invalidate)
 // -----------------------------------------------------------
