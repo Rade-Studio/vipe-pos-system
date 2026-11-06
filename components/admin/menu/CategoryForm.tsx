@@ -20,6 +20,7 @@ import * as RadioGroupPrimitive from "@radix-ui/react-radio-group"
 import * as LucideIcons from "lucide-react"
 import { CATEGORY_COLORS } from "@/lib/admin/catalog"
 import { colorClasses, lucideIcon } from "./tones"
+import { NameLengthHint } from "./NameLengthHint"
 
 // Esquema de validación para el formulario
 const categorySchema = z.object({
@@ -228,6 +229,7 @@ export function CategoryForm({ category, onSuccess, compact = false }: CategoryF
                   <FormControl>
                     <Input placeholder="Nombre de la categoría" {...field} />
                   </FormControl>
+                  <NameLengthHint value={field.value ?? ""} />
                   <FormMessage />
                 </FormItem>
               )}

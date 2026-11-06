@@ -23,6 +23,7 @@ import * as subcategoriesApi from "@/lib/api/subcategories"
 import type { SubcategoryDto } from "@/lib/api/subcategories"
 import { catalogKeys, errorMessage, invalidateCatalogReaders, moveItem, type AdminCategoryNode } from "@/lib/admin/catalog"
 import { cn } from "@/lib/utils"
+import { NameLengthHint } from "./NameLengthHint"
 import { plural } from "./WaiterPreview"
 
 /** The API trims and accepts 1..40 characters. */
@@ -121,6 +122,9 @@ export function SubcategoryManager({ node, inputId }: { node: AdminCategoryNode;
                     onChange={(event) => setRenaming({ id: subcategory.id, name: event.target.value })}
                     className="h-11 min-w-0 flex-1 basis-40"
                   />
+                  <div className="w-full">
+                    <NameLengthHint value={renaming.name} />
+                  </div>
                   <Button type="submit" className="min-h-11" disabled={busy || !renaming.name.trim()}>
                     Guardar
                   </Button>
@@ -213,6 +217,7 @@ export function SubcategoryManager({ node, inputId }: { node: AdminCategoryNode;
             onChange={(event) => setNewName(event.target.value)}
             className="h-11"
           />
+          <NameLengthHint value={newName} />
         </div>
         <Button type="submit" variant="outline" className="min-h-11" disabled={busy || !newName.trim()}>
           <Plus className="mr-1 h-4 w-4" aria-hidden />

@@ -25,6 +25,10 @@ const api = vi.hoisted(() => ({
   createDish: vi.fn(),
   updateDish: vi.fn(),
   deleteDish: vi.fn(),
+  reorderDishes: vi.fn(),
+  getMenuDraft: vi.fn(),
+  getMenuPublication: vi.fn(),
+  publishMenu: vi.fn(),
 }))
 vi.mock("@/lib/api/catalog", () => api)
 const subApi = vi.hoisted(() => ({
@@ -87,6 +91,8 @@ const dish = (id: string, name: string, categoryId: string, subcategoryId: strin
   imageUrl: null,
   active: true,
   allowComments: false,
+  sortOrder: 0,
+  quickNotes: [] as string[],
   createdAt: null,
   updatedAt: null,
 })
@@ -94,6 +100,20 @@ const dish = (id: string, name: string, categoryId: string, subcategoryId: strin
 let categories: ReturnType<typeof category>[]
 let subcategories: ReturnType<typeof sub>[]
 let dishes: ReturnType<typeof dish>[]
+let publication: { publishedAt: string | null; publishedByName: string | null; pendingChanges: number }
+
+/** GET /catalog/menu/draft: the live structure, active rows only, as the API serves it. */
+const draftOf = () => ({
+  categories: categories
+    .filter((c) => c.active)
+    .map((c) => ({
+      ...c,
+      subcategories: subcategories.filter((s) => s.categoryId === c.id && s.active),
+      dishes: dishes.filter((d) => d.categoryId === c.id && d.active).map((d) => ({ ...d, available: true })),
+    })),
+  uncategorized: [],
+})
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
 
 function wrap(ui: React.ReactElement) {
   return <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
@@ -114,7 +134,17 @@ beforeEach(() => {
     dish("d-natas", "Natas", "c-pos"),
     dish("d-arroz", "Arroz con leche", "c-pos"),
   ]
+  publication = { publishedAt: hoursAgo(2), publishedByName: "Ana Gómez", pendingChanges: 0 }
   for (const fn of [...Object.values(api), ...Object.values(subApi)]) fn.mockReset()
+  api.getMenuDraft.mockImplementation(async () => draftOf())
+  api.getMenuPublication.mockImplementation(async () => publication)
+  api.publishMenu.mockImplementation(async () => {
+    publication = { publishedAt: new Date().toISOString(), publishedByName: "Ana Gómez", pendingChanges: 0 }
+    return publication
+  })
+  api.reorderDishes.mockImplementation(async (_group: unknown, ids: string[]) =>
+    ids.map((id, i) => ({ ...dishes.find((d) => d.id === id)!, sortOrder: i })),
+  )
   api.fetchCategories.mockImplementation(async () => categories)
   api.fetchDishes.mockImplementation(async () => dishes)
   api.reorderCategories.mockImplementation(async (ids: string[]) =>
@@ -438,5 +468,187 @@ describe("MenuTreeEditor — phone", () => {
     } finally {
       Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width })
     }
+  })
+})
+
+describe("MenuTreeEditor — 'Publicar a meseros' (T27)", () => {
+  const bar = () => screen.getByRole("region", { name: "Publicación del menú" })
+
+  it("with nothing pending shows when and who published, and the button is off", async () => {
+    await renderEditor()
+
+    await waitFor(() => expect(within(bar()).getByText("Publicado hace 2 h · por Ana Gómez")).toBeInTheDocument())
+    expect(within(bar()).getByRole("button", { name: "Publicar a meseros, sin cambios" })).toBeDisabled()
+    expect(screen.queryByText(/cambios? sin publicar/)).not.toBeInTheDocument()
+    expect(screen.queryByText("Vista previa (sin publicar)")).not.toBeInTheDocument()
+  })
+
+  it("with n changes shows the count, the warning and the draft preview label", async () => {
+    publication = { ...publication, pendingChanges: 3 }
+    await renderEditor()
+
+    await waitFor(() => expect(within(bar()).getByText("3 cambios sin publicar")).toBeInTheDocument())
+    expect(within(bar()).getByText("Publicado hace 2 h · por Ana Gómez")).toBeInTheDocument()
+    expect(within(bar()).getByRole("button", { name: "Publicar 3 cambios a meseros" })).toBeEnabled()
+    expect(screen.getByText(/Los meseros siguen viendo el menú anterior hasta que publiques/)).toBeInTheDocument()
+    expect(within(screen.getByRole("region", { name: "Así lo ve el mesero" })).getByText("Vista previa (sin publicar)")).toBeInTheDocument()
+  })
+
+  it("publishes after the confirmation, says so and the count goes back to 0", async () => {
+    publication = { ...publication, pendingChanges: 2 }
+    await renderEditor()
+    await waitFor(() => expect(within(bar()).getByText("2 cambios sin publicar")).toBeInTheDocument())
+
+    fireEvent.click(within(bar()).getByRole("button", { name: "Publicar 2 cambios a meseros" }))
+    const dialog = screen.getByRole("alertdialog")
+    expect(within(dialog).getByText("¿Publicar 2 cambios a meseros?")).toBeInTheDocument()
+    expect(api.publishMenu).not.toHaveBeenCalled()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Publicar" }))
+    })
+
+    expect(api.publishMenu).toHaveBeenCalledTimes(1)
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Menú publicado",
+          description: "Los meseros verán el nuevo menú al abrir su próximo pedido.",
+        }),
+      ),
+    )
+    await waitFor(() => expect(within(bar()).getByText("Publicado hace un momento · por Ana Gómez")).toBeInTheDocument())
+    expect(within(bar()).getByRole("button", { name: "Publicar a meseros, sin cambios" })).toBeDisabled()
+  })
+
+  it("cancelling the confirmation publishes nothing", async () => {
+    publication = { ...publication, pendingChanges: 1 }
+    await renderEditor()
+    await waitFor(() => expect(within(bar()).getByText("1 cambio sin publicar")).toBeInTheDocument())
+
+    fireEvent.click(within(bar()).getByRole("button", { name: "Publicar 1 cambio a meseros" }))
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancelar" }))
+
+    expect(api.publishMenu).not.toHaveBeenCalled()
+  })
+
+  it("shows the API 403 message and keeps the pending count", async () => {
+    publication = { ...publication, pendingChanges: 2 }
+    api.publishMenu.mockRejectedValue(new ApiError(403, "Forbidden", "Solo un administrador puede publicar el menú"))
+    await renderEditor()
+    await waitFor(() => expect(within(bar()).getByText("2 cambios sin publicar")).toBeInTheDocument())
+
+    fireEvent.click(within(bar()).getByRole("button", { name: "Publicar 2 cambios a meseros" }))
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Publicar" }))
+    })
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "destructive", description: "Solo un administrador puede publicar el menú" }),
+      ),
+    )
+    expect(within(bar()).getByText("2 cambios sin publicar")).toBeInTheDocument()
+  })
+
+  it("without any publication says the waiters see the saved menu", async () => {
+    publication = { publishedAt: null, publishedByName: null, pendingChanges: 0 }
+    await renderEditor()
+
+    await waitFor(() => expect(within(bar()).getByText("Sin publicar todavía: los meseros ven lo guardado")).toBeInTheDocument())
+  })
+
+  it("refreshes the count after a structure edit", async () => {
+    await renderEditor()
+    await waitFor(() => expect(within(bar()).getByRole("button", { name: "Publicar a meseros, sin cambios" })).toBeInTheDocument())
+
+    publication = { ...publication, pendingChanges: 1 }
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("button", { name: "Mover Bebidas, posición 1 de 3" }), { key: "ArrowDown" })
+    })
+
+    await waitFor(() => expect(within(bar()).getByText("1 cambio sin publicar")).toBeInTheDocument())
+  })
+
+  it("the preview reads the draft, not the saved lists", async () => {
+    await renderEditor()
+    await waitFor(() => expect(api.getMenuDraft).toHaveBeenCalled())
+  })
+})
+
+describe("MenuTreeEditor — dish order (T27)", () => {
+  const postres = () => screen.getByRole("list", { name: "Platos de Postres" })
+  const names = (list: HTMLElement) => within(list).getAllByRole("listitem").map((li) => li.querySelector("[data-dish-name]")?.textContent)
+
+  it("moves a dish with ↓ on its handle and saves the group order", async () => {
+    await renderEditor()
+    fireEvent.click(screen.getByRole("button", { name: "Expandir Postres" }))
+    expect(names(postres())).toEqual(["Arroz con leche", "Natas"])
+
+    await act(async () => {
+      fireEvent.keyDown(within(postres()).getByRole("button", { name: "Mover Arroz con leche, posición 1 de 2" }), { key: "ArrowDown" })
+    })
+
+    expect(api.reorderDishes).toHaveBeenCalledWith({ categoryId: "c-pos", subcategoryId: null }, ["d-natas", "d-arroz"])
+    expect(names(postres())).toEqual(["Natas", "Arroz con leche"])
+    expect(screen.getByRole("status")).toHaveTextContent("Arroz con leche movido a la posición 2 de 2")
+  })
+
+  it("moves a dish of a subcategory with Subir", async () => {
+    dishes.push({ ...dish("d-mora", "Mora", "c-beb", "s-jug"), sortOrder: 1 })
+    await renderEditor()
+    fireEvent.click(screen.getByRole("button", { name: "Expandir Bebidas" }))
+
+    const jugos = screen.getByRole("list", { name: "Platos de Jugos" })
+    expect(within(jugos).getByRole("button", { name: "Subir Lulo" })).toBeDisabled()
+    await act(async () => {
+      fireEvent.click(within(jugos).getByRole("button", { name: "Subir Mora" }))
+    })
+
+    expect(api.reorderDishes).toHaveBeenCalledWith({ categoryId: "c-beb", subcategoryId: "s-jug" }, ["d-mora", "d-lulo"])
+  })
+
+  it("shows the API message and goes back to the saved order when refused", async () => {
+    api.reorderDishes.mockRejectedValue(new ApiError(422, "Unprocessable Entity", "Unknown dish"))
+    await renderEditor()
+    fireEvent.click(screen.getByRole("button", { name: "Expandir Postres" }))
+
+    await act(async () => {
+      fireEvent.click(within(postres()).getByRole("button", { name: "Bajar Arroz con leche" }))
+    })
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "destructive", description: "No se guardó el orden: Unknown dish" }),
+      ),
+    )
+    expect(names(postres())).toEqual(["Arroz con leche", "Natas"])
+  })
+})
+
+describe("MenuTreeEditor — tile name hint and quick notes in the preview (T27)", () => {
+  it("counts a new subcategory name against 22 and warns above it", async () => {
+    await renderEditor()
+    await select("Bebidas")
+
+    const input = within(inspector()).getByLabelText("Nueva subcategoría")
+    fireEvent.change(input, { target: { value: "Jugos" } })
+    expect(within(inspector()).getByText("5/22")).toBeInTheDocument()
+    fireEvent.change(input, { target: { value: "Jugos naturales de temporada" } })
+    expect(within(inspector()).getByText("28/22")).toBeInTheDocument()
+    expect(within(inspector()).getByText("Más de 22 caracteres: puede cortarse en el botón del mesero.")).toBeInTheDocument()
+  })
+
+  it("step 4 of the preview shows the dish with its quick notes", async () => {
+    dishes = dishes.map((d) => (d.id === "d-natas" ? { ...d, quickNotes: ["Sin azúcar", "Tibio"] } : d))
+    await renderEditor()
+    await select("Postres")
+    const preview = () => screen.getByRole("region", { name: "Así lo ve el mesero" })
+    await waitFor(() => expect(api.getMenuDraft).toHaveBeenCalled())
+
+    fireEvent.click(within(preview()).getByRole("button", { name: "Platos de Postres" }))
+    fireEvent.click(await within(preview()).findByRole("button", { name: /^Natas/ }))
+
+    const notes = within(preview()).getByRole("list", { name: "Notas rápidas de Natas" })
+    expect(within(notes).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Sin azúcar", "Tibio"])
   })
 })

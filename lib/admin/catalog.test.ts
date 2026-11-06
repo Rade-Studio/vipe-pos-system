@@ -22,6 +22,8 @@ const catalogApi = vi.hoisted(() => ({
   fetchCategories: vi.fn(),
   fetchDishes: vi.fn(),
   fetchPromotions: vi.fn(),
+  getMenuDraft: vi.fn(),
+  getMenuPublication: vi.fn(),
 }))
 vi.mock("@/lib/api/catalog", () => catalogApi)
 
@@ -48,6 +50,15 @@ import {
   fetchPromotions,
   fetchStaff,
   invalidateCatalogReaders,
+  invalidateMenuReaders,
+  checkQuickNote,
+  draftMenuTree,
+  fetchMenuDraft,
+  fetchMenuPublication,
+  pendingChangesLabel,
+  publishedAgo,
+  TILE_NAME_LIMIT,
+  tileNameHint,
 } from "./catalog"
 
 beforeEach(() => {
@@ -60,6 +71,8 @@ const ALL_KEYS = [
   catalogKeys.promotions,
   catalogKeys.subcategories,
   catalogKeys.staff,
+  catalogKeys.draft,
+  catalogKeys.publication,
 ]
 
 describe("catalogKeys", () => {
@@ -144,7 +157,107 @@ describe("invalidateCatalogReaders", () => {
       ["menu"],
       ["delivery-menu-categories"],
       ["delivery-menu-dishes"],
+      catalogKeys.draft,
+      catalogKeys.publication,
     ])
+  })
+
+  it("a saved order alone also refreshes the draft and the 'n cambios sin publicar' count (T27)", async () => {
+    const invalidateQueries = vi.fn(async (_filters: { queryKey: unknown }) => undefined)
+
+    await invalidateMenuReaders({ invalidateQueries } as never)
+
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters.queryKey)).toEqual([
+      ["menu"],
+      ["delivery-menu-categories"],
+      ["delivery-menu-dishes"],
+      catalogKeys.draft,
+      catalogKeys.publication,
+    ])
+  })
+})
+
+describe("menu publication (T27)", () => {
+  it("reads the draft and the publication status through the API, under the menu prefix", async () => {
+    catalogApi.getMenuDraft.mockResolvedValue({ categories: [], uncategorized: [] })
+    catalogApi.getMenuPublication.mockResolvedValue({ publishedAt: null, publishedByName: null, pendingChanges: 0 })
+
+    await expect(fetchMenuDraft()).resolves.toEqual({ categories: [], uncategorized: [] })
+    await expect(fetchMenuPublication()).resolves.toEqual({ publishedAt: null, publishedByName: null, pendingChanges: 0 })
+    expect(catalogKeys.draft.slice(0, 2)).toEqual(["catalog", "menu"])
+    expect(catalogKeys.publication.slice(0, 2)).toEqual(["catalog", "menu"])
+  })
+
+  it("names the pending changes in Spanish, singular and plural", () => {
+    expect(pendingChangesLabel(1)).toBe("1 cambio sin publicar")
+    expect(pendingChangesLabel(4)).toBe("4 cambios sin publicar")
+  })
+
+  it("says how long ago the menu was published", () => {
+    const now = Date.parse("2026-11-06T20:00:00Z")
+    expect(publishedAgo("2026-11-06T19:59:30Z", now)).toBe("hace un momento")
+    expect(publishedAgo("2026-11-06T19:55:00Z", now)).toBe("hace 5 min")
+    expect(publishedAgo("2026-11-06T18:00:00Z", now)).toBe("hace 2 h")
+    expect(publishedAgo("2026-11-03T20:00:00Z", now)).toBe("hace 3 d")
+    // A clock a little ahead of the server never reads "hace -1 min".
+    expect(publishedAgo("2026-11-06T20:00:40Z", now)).toBe("hace un momento")
+  })
+
+  it("builds the editor nodes from the draft tree", () => {
+    const tree = {
+      categories: [
+        {
+          ...cat("c-2", "Postres", 1),
+          subcategories: [],
+          dishes: [{ ...dish("d-5", "Natas", "c-2"), quickNotes: ["Sin azúcar"], available: true }],
+        },
+        {
+          ...cat("c-1", "Bebidas", 0),
+          subcategories: [sub("s-1", "c-1", "Jugos", 0)],
+          dishes: [{ ...dish("d-1", "Lulo", "c-1", "s-1"), quickNotes: [], available: true }],
+        },
+      ],
+      uncategorized: [],
+    }
+
+    const nodes = draftMenuTree(tree as never)
+
+    expect(nodes.map((node) => node.category.name)).toEqual(["Bebidas", "Postres"])
+    expect(nodes[0].subcategories[0].dishes.map((d) => d.name)).toEqual(["Lulo"])
+    expect(nodes[1].looseDishes[0].quickNotes).toEqual(["Sin azúcar"])
+    expect(nodes[1].skipsSubcategoryStep).toBe(true)
+  })
+})
+
+describe("checkQuickNote (T27, the API's rules and messages)", () => {
+  it("accepts a note, trimmed and with inner spaces collapsed", () => {
+    expect(checkQuickNote([], "  Sin   cebolla ")).toEqual({ note: "Sin cebolla" })
+  })
+
+  it("refuses an empty or a too long note", () => {
+    const message = "Cada nota rápida debe tener entre 1 y 30 caracteres"
+    expect(checkQuickNote([], "   ")).toEqual({ error: message })
+    expect(checkQuickNote([], "x".repeat(31))).toEqual({ error: message })
+    expect(checkQuickNote([], "x".repeat(30))).toEqual({ note: "x".repeat(30) })
+  })
+
+  it("refuses a duplicate ignoring case", () => {
+    expect(checkQuickNote(["Sin hielo"], "SIN HIELO")).toEqual({ error: "Las notas rápidas no se pueden repetir" })
+  })
+
+  it("refuses a 13th note", () => {
+    const twelve = Array.from({ length: 12 }, (_, i) => `Nota ${i}`)
+    expect(checkQuickNote(twelve, "Otra")).toEqual({ error: "Máximo 12 notas rápidas" })
+    expect(checkQuickNote(twelve.slice(1), "Otra")).toEqual({ note: "Otra" })
+  })
+})
+
+describe("tileNameHint (T27, L19 e)", () => {
+  it("counts the trimmed name against the 22 characters a tile shows in two lines", () => {
+    expect(TILE_NAME_LIMIT).toBe(22)
+    expect(tileNameHint(" Bebidas ")).toEqual({ count: 7, over: false })
+    expect(tileNameHint("x".repeat(22))).toEqual({ count: 22, over: false })
+    expect(tileNameHint("x".repeat(23))).toEqual({ count: 23, over: true })
   })
 })
 
