@@ -8,7 +8,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(82);
+SELECT plan(106);
 
 -- ============================================
 -- 1. Schema
@@ -48,12 +48,14 @@ INSERT INTO public.users (id, email, password_hash) VALUES
   ('25000000-0000-0000-0000-000000000001', 'admin@t250a.test', 'h'),
   ('25000000-0000-0000-0000-000000000002', 'admin@t250b.test', 'h'),
   ('25000000-0000-0000-0000-000000000003', 'waiter@t250a.test', 'h'),
-  ('25000000-0000-0000-0000-000000000004', 'kitchen@t250a.test', 'h');
+  ('25000000-0000-0000-0000-000000000004', 'kitchen@t250a.test', 'h'),
+  ('25000000-0000-0000-0000-000000000005', 'cashier@t250a.test', 'h');
 INSERT INTO public.profiles (id, user_id, full_name, email, role, active, restaurant_id) VALUES
   ('25100000-0000-0000-0000-000000000001', '25000000-0000-0000-0000-000000000001', 'Admin A', 'admin@t250a.test', 'admin', true, '25000000-0000-0000-0000-0000000000a1'),
   ('25100000-0000-0000-0000-000000000002', '25000000-0000-0000-0000-000000000002', 'Admin B', 'admin@t250b.test', 'admin', true, '25000000-0000-0000-0000-0000000000b2'),
   ('25100000-0000-0000-0000-000000000003', '25000000-0000-0000-0000-000000000003', 'Mesero A', 'waiter@t250a.test', 'waiter', true, '25000000-0000-0000-0000-0000000000a1'),
-  ('25100000-0000-0000-0000-000000000004', '25000000-0000-0000-0000-000000000004', 'Cocina A', 'kitchen@t250a.test', 'kitchen', true, '25000000-0000-0000-0000-0000000000a1');
+  ('25100000-0000-0000-0000-000000000004', '25000000-0000-0000-0000-000000000004', 'Cocina A', 'kitchen@t250a.test', 'kitchen', true, '25000000-0000-0000-0000-0000000000a1'),
+  ('25100000-0000-0000-0000-000000000005', '25000000-0000-0000-0000-000000000005', 'Caja A', 'cashier@t250a.test', 'cashier', true, '25000000-0000-0000-0000-0000000000a1');
 INSERT INTO public.categories (id, name, icon, restaurant_id) VALUES
   ('25200000-0000-0000-0000-0000000000a1', 'Platos', 'beef', '25000000-0000-0000-0000-0000000000a1'),
   ('25200000-0000-0000-0000-0000000000b1', 'Platos', 'beef', '25000000-0000-0000-0000-0000000000b2');
@@ -126,6 +128,24 @@ SELECT throws_ok(
   $$ UPDATE public.dishes SET quick_notes = ARRAY['Sin sal', ' sin SAL '] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
   '23514', NULL, 'duplicate quick notes (trimmed, case-insensitive) are refused');
 SELECT throws_ok(
+  $$ UPDATE public.dishes SET quick_notes = ARRAY['Sin cebolla', 'Sin  cebolla'] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
+  '23514', NULL, 'quick notes that differ only in inner spaces are duplicates');
+SELECT throws_ok(
+  $$ UPDATE public.dishes SET quick_notes = ARRAY['ÁRBOL', 'árbol'] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
+  '23514', NULL, 'duplicate quick notes with accented capitals are refused');
+SELECT lives_ok(
+  $$ UPDATE public.dishes SET quick_notes = ARRAY['  Sin   sal ', E'Poco\t picante'] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
+  'quick notes with extra spaces are accepted');
+SELECT is((SELECT quick_notes FROM public.dishes WHERE id = '25400000-0000-0000-0000-0000000000a2'), ARRAY['Sin sal', 'Poco picante'],
+  'quick notes are stored trimmed with single inner spaces');
+SELECT lives_ok(
+  $$ INSERT INTO public.dishes (id, name, price, restaurant_id, quick_notes)
+     VALUES ('25400000-0000-0000-0000-0000000000a8', 'Jugo', 5000, '25000000-0000-0000-0000-0000000000a1', ARRAY[' Sin  hielo']) $$,
+  'a dish is inserted with quick notes');
+SELECT is((SELECT quick_notes FROM public.dishes WHERE id = '25400000-0000-0000-0000-0000000000a8'), ARRAY['Sin hielo'],
+  'quick notes are normalised on insert');
+DELETE FROM public.dishes WHERE id = '25400000-0000-0000-0000-0000000000a8';
+SELECT throws_ok(
   $$ UPDATE public.dishes SET quick_notes = ARRAY['Sin sal', NULL] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
   '23514', NULL, 'a NULL quick note is refused');
 SELECT throws_ok(
@@ -146,15 +166,18 @@ SELECT throws_ok($$ UPDATE public.zones SET width_m = 0, depth_m = 10 WHERE id =
 SELECT throws_ok($$ UPDATE public.zones SET width_m = 10, depth_m = 200.01 WHERE id = '25500000-0000-0000-0000-0000000000a1' $$, '23514', NULL, 'a depth over 200 m is refused');
 SELECT lives_ok($$ UPDATE public.zones SET width_m = 200, depth_m = 0.5 WHERE id = '25500000-0000-0000-0000-0000000000a1' $$, '200 m and fractions are accepted');
 SELECT throws_ok($$ UPDATE public.zones SET width_m = 'NaN', depth_m = 10 WHERE id = '25500000-0000-0000-0000-0000000000a1' $$, '23514', NULL, 'a NaN width is refused');
+SELECT throws_ok($$ UPDATE public.zones SET width_m = 'Infinity', depth_m = 5 WHERE id = '25500000-0000-0000-0000-0000000000a1' $$, '23514', NULL, 'an infinite width is refused');
 
 -- ============================================
 -- 5. Inactive tables take no new order
 -- ============================================
 INSERT INTO public.tables (id, number, restaurant_id) VALUES
   ('25600000-0000-0000-0000-0000000000a1', 1, '25000000-0000-0000-0000-0000000000a1'),
-  ('25600000-0000-0000-0000-0000000000a2', 2, '25000000-0000-0000-0000-0000000000a1');
+  ('25600000-0000-0000-0000-0000000000a2', 2, '25000000-0000-0000-0000-0000000000a1'),
+  ('25600000-0000-0000-0000-0000000000a3', 3, '25000000-0000-0000-0000-0000000000a1');
 INSERT INTO public.orders (id, table_id, waiter_id, status, subtotal, tax, tax_percentage, total, restaurant_id) VALUES
-  ('25700000-0000-0000-0000-0000000000a1', '25600000-0000-0000-0000-0000000000a1', '25100000-0000-0000-0000-000000000003', 'active', 0, 0, 0, 0, '25000000-0000-0000-0000-0000000000a1');
+  ('25700000-0000-0000-0000-0000000000a1', '25600000-0000-0000-0000-0000000000a1', '25100000-0000-0000-0000-000000000003', 'active', 0, 0, 0, 0, '25000000-0000-0000-0000-0000000000a1'),
+  ('25700000-0000-0000-0000-0000000000a9', '25600000-0000-0000-0000-0000000000a1', '25100000-0000-0000-0000-000000000003', 'paid', 0, 0, 0, 0, '25000000-0000-0000-0000-0000000000a1');
 SELECT lives_ok($$ UPDATE public.tables SET is_active = false WHERE id = '25600000-0000-0000-0000-0000000000a1' $$, 'a table with an open order can be deactivated');
 SELECT is((SELECT status FROM public.orders WHERE id = '25700000-0000-0000-0000-0000000000a1'), 'active', 'the open order of a deactivated table is unaffected');
 SELECT lives_ok($$ UPDATE public.orders SET status = 'kitchen' WHERE id = '25700000-0000-0000-0000-0000000000a1' $$, 'the open order of a deactivated table keeps working');
@@ -176,9 +199,46 @@ SELECT lives_ok(
   $$ INSERT INTO public.orders (table_id, waiter_id, status, subtotal, tax, tax_percentage, total, is_partial_order, parent_order_id)
      VALUES ('25600000-0000-0000-0000-0000000000a1', '25100000-0000-0000-0000-000000000003', 'kitchen', 0, 0, 0, 0, true, '25700000-0000-0000-0000-0000000000a1') $$,
   'a split of the open order of an inactive table is accepted');
+SELECT throws_ok(
+  $$ INSERT INTO public.orders (table_id, waiter_id, status, subtotal, tax, tax_percentage, total, is_partial_order, parent_order_id)
+     VALUES ('25600000-0000-0000-0000-0000000000a1', '25100000-0000-0000-0000-000000000003', 'active', 0, 0, 0, 0, true, '25700000-0000-0000-0000-0000000000a2') $$,
+  '23514', 'table 25600000-0000-0000-0000-0000000000a1 is inactive', 'a child of an order on another table cannot open an inactive table');
+SELECT throws_ok(
+  $$ INSERT INTO public.orders (table_id, waiter_id, status, subtotal, tax, tax_percentage, total, is_partial_order, parent_order_id)
+     VALUES ('25600000-0000-0000-0000-0000000000a1', '25100000-0000-0000-0000-000000000003', 'active', 0, 0, 0, 0, true, '25700000-0000-0000-0000-0000000000a9') $$,
+  '23514', 'table 25600000-0000-0000-0000-0000000000a1 is inactive', 'a child of a closed order cannot open an inactive table');
 RESET ROLE;
-SELECT is((SELECT count(*)::int FROM public.orders WHERE table_id = '25600000-0000-0000-0000-0000000000a1' AND parent_order_id IS NULL), 1,
-  'the refused order left nothing behind');
+SELECT is((SELECT count(*)::int FROM public.orders WHERE table_id = '25600000-0000-0000-0000-0000000000a1'), 3,
+  'the refused orders left nothing behind');
+
+-- A cashier splits and pays both bills of a table deactivated meanwhile.
+INSERT INTO public.cash_registers (id, restaurant_id, opening_timestamp, initial_cash, status) VALUES
+  ('25800000-0000-0000-0000-0000000000a1', '25000000-0000-0000-0000-0000000000a1', now(), 100000, 'open');
+INSERT INTO public.orders (id, table_id, waiter_id, status, subtotal, tax, tax_percentage, total, restaurant_id) VALUES
+  ('25700000-0000-0000-0000-0000000000b3', '25600000-0000-0000-0000-0000000000a3', '25100000-0000-0000-0000-000000000003', 'kitchen', 0, 0, 0, 0, '25000000-0000-0000-0000-0000000000a1');
+INSERT INTO public.order_items (id, order_id, dish_id, name, price, quantity, restaurant_id, status) VALUES
+  ('25900000-0000-0000-0000-0000000000a1', '25700000-0000-0000-0000-0000000000b3', NULL, 'Item 1', 10000, 1, '25000000-0000-0000-0000-0000000000a1', 'pending'),
+  ('25900000-0000-0000-0000-0000000000a2', '25700000-0000-0000-0000-0000000000b3', NULL, 'Item 2', 20000, 1, '25000000-0000-0000-0000-0000000000a1', 'pending');
+UPDATE public.tables SET status = 'occupied', is_active = false WHERE id = '25600000-0000-0000-0000-0000000000a3';
+SELECT set_config('app.user_id', '25000000-0000-0000-0000-000000000005', true);
+SET LOCAL ROLE vipe_api;
+SELECT set_config('t250.child',
+  public.split_order('25700000-0000-0000-0000-0000000000b3', '[{"order_item_id": "25900000-0000-0000-0000-0000000000a2", "quantity": 1}]') ->> 'child_order_id', true);
+SELECT isnt(current_setting('t250.child'), '', 'the cashier splits the order of a deactivated table');
+SELECT is(
+  public.pay_order(current_setting('t250.child')::uuid, '25800000-0000-0000-0000-0000000000a1', 0,
+    jsonb_build_array(jsonb_build_object('payment_method_id', (SELECT id FROM public.payment_methods WHERE code = 'cash'), 'amount', 20000, 'cash_received', 20000)),
+    '25a00000-0000-0000-0000-000000000001') ->> 'status',
+  'paid', 'the cashier pays the child of a deactivated table');
+SELECT is(
+  public.pay_order('25700000-0000-0000-0000-0000000000b3', '25800000-0000-0000-0000-0000000000a1', 0,
+    jsonb_build_array(jsonb_build_object('payment_method_id', (SELECT id FROM public.payment_methods WHERE code = 'cash'), 'amount', 10000, 'cash_received', 10000)),
+    '25a00000-0000-0000-0000-000000000002') ->> 'status',
+  'paid', 'the cashier pays the parent of a deactivated table');
+RESET ROLE;
+SELECT set_config('app.user_id', '', true);
+SELECT is((SELECT status FROM public.tables WHERE id = '25600000-0000-0000-0000-0000000000a3'), 'available',
+  'the deactivated table is available once both bills are paid');
 
 -- ============================================
 -- 6. Menu publication: snapshot, backfill, pending changes
@@ -219,6 +279,9 @@ SELECT is(
   private.menu_pending_changes((SELECT snapshot FROM public.menu_publications WHERE restaurant_id = '25000000-0000-0000-0000-0000000000a1'),
                                private.menu_structure('25000000-0000-0000-0000-0000000000a1')),
   0, 'nothing is pending right after a publication');
+SELECT is(private.menu_pending_changes(NULL, '{"categories":{},"subcategories":{},"dishes":{}}'::jsonb), 0, 'no publication counts 0 (header contract)');
+SELECT is(private.menu_pending_changes(NULL, private.menu_structure('25000000-0000-0000-0000-0000000000a1')), 0,
+  'no publication counts 0 for a non-empty live menu');
 
 UPDATE public.dishes SET name = 'Arroz con coco', price = 21000 WHERE id = '25400000-0000-0000-0000-0000000000a2';
 UPDATE public.dishes SET price = 50000, active = false, quick_notes = ARRAY['Sin sal'] WHERE id = '25400000-0000-0000-0000-0000000000a5';
@@ -258,20 +321,49 @@ SELECT throws_ok(
   '42501', NULL, 'the admin of A cannot publish for B');
 SELECT is(private.menu_structure('25000000-0000-0000-0000-0000000000b2'), '{"categories": {}, "subcategories": {}, "dishes": {}}'::jsonb,
   'the structure of another restaurant reads empty under RLS');
-SELECT throws_ok(
-  $$ INSERT INTO public.menu_publications (published_by, snapshot) VALUES ('25100000-0000-0000-0000-000000000002', '{}') $$,
-  '23503', NULL, 'a publisher of another restaurant is refused');
+SELECT set_config('t250.pub', (public.publish_menu()).id::text, true);
+SELECT is((SELECT published_by FROM public.menu_publications WHERE id = current_setting('t250.pub')::uuid),
+  '25100000-0000-0000-0000-000000000001'::uuid, 'publish_menu records the admin');
+SELECT lives_ok(
+  $$ INSERT INTO public.menu_publications (id, published_at, published_by, snapshot)
+     VALUES ('25b00000-0000-0000-0000-000000000001', '2099-01-01', '25100000-0000-0000-0000-000000000003', '{"x": 1}') $$,
+  'a direct insert by the admin with a future date and another publisher runs');
+SELECT ok((SELECT published_at <= clock_timestamp() FROM public.menu_publications WHERE id = '25b00000-0000-0000-0000-000000000001'),
+  'a client published_at is replaced by the server time');
+SELECT is((SELECT published_by FROM public.menu_publications WHERE id = '25b00000-0000-0000-0000-000000000001'),
+  '25100000-0000-0000-0000-000000000001'::uuid, 'a client published_by is replaced by the caller profile');
+SELECT lives_ok(
+  $$ INSERT INTO public.menu_publications (id, published_by, snapshot) VALUES ('25b00000-0000-0000-0000-000000000002', '25100000-0000-0000-0000-000000000002', '{"x": 2}') $$,
+  'a direct insert naming a publisher of another restaurant runs');
+SELECT is((SELECT published_by FROM public.menu_publications WHERE id = '25b00000-0000-0000-0000-000000000002'),
+  '25100000-0000-0000-0000-000000000001'::uuid, 'a publisher of another restaurant is replaced by the caller profile');
 SELECT lives_ok($$ UPDATE public.menu_publications SET snapshot = '{}' $$, 'an update of a publication by the admin runs (RLS filters every row)');
 SELECT lives_ok($$ DELETE FROM public.menu_publications $$, 'a delete of a publication by the admin runs (RLS filters every row)');
 SELECT set_config('app.user_id', '25000000-0000-0000-0000-000000000002', true);
 SELECT is((SELECT count(*)::int FROM public.menu_publications), 1, 'the admin of B reads only the publication of B');
 RESET ROLE;
+SELECT set_config('app.user_id', '', true);
 SELECT is((SELECT count(*)::int FROM public.menu_publications WHERE restaurant_id = '25000000-0000-0000-0000-0000000000b2'), 1,
   'the refused writes added nothing to B');
 SELECT is(
   ARRAY[(SELECT count(*)::int FROM public.menu_publications WHERE restaurant_id = '25000000-0000-0000-0000-0000000000a1'),
         (SELECT count(*)::int FROM public.menu_publications WHERE snapshot = '{}')],
-  ARRAY[2, 0], 'no publication was changed or deleted: the history is insert-only');
+  ARRAY[5, 0], 'no publication was changed or deleted: the history is insert-only');
+SELECT is(
+  (SELECT id FROM public.menu_publications WHERE restaurant_id = '25000000-0000-0000-0000-0000000000a1' ORDER BY published_at DESC, id DESC LIMIT 1),
+  '25b00000-0000-0000-0000-000000000002'::uuid, 'the latest publication is the last one inserted, not a future-dated one');
+-- Outside an API session (no caller profile, as the deploy backfill) the
+-- publisher is kept as given and still checked against the restaurant.
+SELECT throws_ok(
+  $$ INSERT INTO public.menu_publications (restaurant_id, published_by, snapshot)
+     VALUES ('25000000-0000-0000-0000-0000000000a1', '25100000-0000-0000-0000-000000000002', '{}') $$,
+  '23503', NULL, 'a publisher of another restaurant is refused');
+SELECT lives_ok(
+  $$ INSERT INTO public.menu_publications (id, restaurant_id, published_by, snapshot)
+     VALUES ('25b00000-0000-0000-0000-000000000003', '25000000-0000-0000-0000-0000000000a1', NULL, '{}') $$,
+  'a publication without publisher is accepted outside an API session');
+SELECT is((SELECT published_by FROM public.menu_publications WHERE id = '25b00000-0000-0000-0000-000000000003'), NULL::uuid,
+  'the publisher stays NULL outside an API session');
 
 SELECT * FROM finish();
 ROLLBACK;

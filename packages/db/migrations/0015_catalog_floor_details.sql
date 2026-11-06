@@ -7,24 +7,32 @@
 --    today. Idempotent: a group with an order set is kept.
 -- 2. public.dishes.quick_notes: modifier chips ("Término medio", "Sin
 --    cebolla") that only append text to the item comment, no price. At most
---    12, each 1-30 characters after trim, no NULL, no duplicates (trimmed,
---    case-insensitive); private.quick_notes_valid() is the CHECK.
+--    12, each 1-30 characters, no NULL, no duplicates (case-insensitive);
+--    private.quick_notes_valid() is the CHECK. A BEFORE INSERT/UPDATE
+--    trigger stores every note trimmed with single inner spaces, so "Sin
+--    cebolla" and " Sin  cebolla" are the same note (and a duplicate).
 -- 3. public.tables.is_active: an inactive table takes no new order. Enforced
 --    in the database for every writer: an order cannot be inserted on, or
 --    moved to, an inactive table (23514 'table <id> is inactive'). Orders
---    already open stay as they are, and a split of such an order
---    (parent_order_id set) is still accepted. Deactivating a table never
---    fails. tables is already realtime (to_jsonb of the row), so the flag
+--    already open stay as they are, and a split of such an order is still
+--    accepted: a row with parent_order_id whose parent is open
+--    (active|kitchen|delivered) on the same table, as split_order creates.
+--    Deactivating a table never fails. tables is already realtime (to_jsonb of the row), so the flag
 --    reaches the map without a trigger change.
 -- 4. public.zones.width_m / depth_m: real dimensions in metres, both or
---    neither, each > 0 and <= 200 (NaN refused).
+--    neither, each > 0 and <= 200 (NaN and Infinity refused).
 -- 5. public.menu_publications: the menu structure waiters and delivery see
 --    until the admin publishes again. Insert-only history; the latest row
 --    (published_at DESC, id DESC) wins. Admin-only insert, readable by the
 --    staff of the restaurant (tenant RLS); no UPDATE or DELETE
---    policy, so a row never changes. The publisher is a profile of the
---    same restaurant (composite key; NULL for the deploy backfill or when the
---    profile is deleted). Backfill: one publication per restaurant from the
+--    policy, so a row never changes. A BEFORE INSERT trigger makes every
+--    row trustworthy: published_at is always the server time
+--    (clock_timestamp(); a client value, e.g. a future date, is ignored) and,
+--    when the caller has a profile, published_by is that profile (a client
+--    value is replaced). Outside an API session (no caller profile, as the
+--    deploy backfill) published_by is kept as given. The publisher is a
+--    profile of the same restaurant (composite key; NULL for the deploy
+--    backfill or when the profile is deleted). Backfill: one publication per restaurant from the
 --    current structure, so nothing changes for waiters on deploy.
 --    The snapshot holds STRUCTURE only, as built by private.menu_structure():
 --      {"categories":    {"<id>": {name, icon, color, sort_order, active}},
@@ -44,10 +52,12 @@
 --   the live structure, as before.
 -- - Pending changes: private.menu_pending_changes(<latest snapshot>,
 --   private.menu_structure(<restaurant>)) = number of categories,
---   subcategories and dishes added, removed or changed in structure (0 when
---   there is no publication: show "sin publicar").
+--   subcategories and dishes added, removed or changed in structure. With
+--   no publication (NULL snapshot) it is 0: waiters already see the live
+--   menu, so there is nothing to publish.
 -- - Publish: SELECT * FROM public.publish_menu() as the admin (42501 for any
---   other role, through RLS); published_at is clock_timestamp().
+--   other role, through RLS); published_at is clock_timestamp() and
+--   published_by the caller profile (trigger).
 -- - No realtime: the menu is read when an order starts (as in 0013);
 --   menu_publications keeps no notify trigger.
 ALTER TABLE public.dishes
@@ -87,6 +97,20 @@ REVOKE ALL ON FUNCTION private.backfill_dish_sort_order() FROM PUBLIC;
 --> statement-breakpoint
 SELECT private.backfill_dish_sort_order();
 --> statement-breakpoint
+CREATE FUNCTION private.normalize_quick_note(p_note text)
+    RETURNS text
+    LANGUAGE sql IMMUTABLE
+    SET search_path TO ''
+    AS $$
+  SELECT pg_catalog.regexp_replace(pg_catalog.btrim(p_note, E' \t\n\r\f\v'), '[[:space:]]+', ' ', 'g')
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.normalize_quick_note(text) IS 'A quick note trimmed, with every inner run of whitespace collapsed to one space. NULL stays NULL.';
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION private.normalize_quick_note(text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION private.normalize_quick_note(text) TO vipe_api;
+--> statement-breakpoint
 CREATE FUNCTION private.quick_notes_valid(p_notes text[])
     RETURNS boolean
     LANGUAGE sql IMMUTABLE
@@ -97,13 +121,13 @@ CREATE FUNCTION private.quick_notes_valid(p_notes text[])
     AND coalesce(pg_catalog.array_ndims(p_notes), 1) = 1
     AND NOT EXISTS (
       SELECT 1 FROM pg_catalog.unnest(p_notes) n
-       WHERE n IS NULL OR pg_catalog.length(pg_catalog.btrim(n)) NOT BETWEEN 1 AND 30)
-    AND (SELECT pg_catalog.count(DISTINCT pg_catalog.lower(pg_catalog.btrim(n))) FROM pg_catalog.unnest(p_notes) n)
+       WHERE n IS NULL OR pg_catalog.length(private.normalize_quick_note(n)) NOT BETWEEN 1 AND 30)
+    AND (SELECT pg_catalog.count(DISTINCT pg_catalog.lower(private.normalize_quick_note(n))) FROM pg_catalog.unnest(p_notes) n)
         = pg_catalog.cardinality(p_notes)
   )
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.quick_notes_valid(text[]) IS 'CHECK of dishes.quick_notes: at most 12 entries, one dimension, each 1-30 characters after trim, no NULL entry, no duplicates (trimmed, case-insensitive). NULL passes (the column is NOT NULL).';
+COMMENT ON FUNCTION private.quick_notes_valid(text[]) IS 'CHECK of dishes.quick_notes: at most 12 entries, one dimension, each 1-30 characters once normalised (private.normalize_quick_note), no NULL entry, no duplicates (normalised, case-insensitive). NULL passes (the column is NOT NULL).';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.quick_notes_valid(text[]) FROM PUBLIC;
 --> statement-breakpoint
@@ -111,6 +135,27 @@ GRANT EXECUTE ON FUNCTION private.quick_notes_valid(text[]) TO vipe_api;
 --> statement-breakpoint
 ALTER TABLE public.dishes
     ADD CONSTRAINT dishes_quick_notes_check CHECK (private.quick_notes_valid(quick_notes));
+--> statement-breakpoint
+CREATE FUNCTION private.normalize_dish_quick_notes()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO ''
+    AS $$
+BEGIN
+  IF NEW.quick_notes IS NOT NULL AND pg_catalog.array_ndims(NEW.quick_notes) = 1 THEN
+    NEW.quick_notes := ARRAY(
+      SELECT private.normalize_quick_note(n) FROM pg_catalog.unnest(NEW.quick_notes) WITH ORDINALITY u(n, i) ORDER BY i);
+  END IF;
+  RETURN NEW;
+END
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.normalize_dish_quick_notes() IS 'BEFORE INSERT OR UPDATE OF quick_notes on dishes: stores every quick note through private.normalize_quick_note(), keeping the order. The CHECK then validates the stored value.';
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION private.normalize_dish_quick_notes() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER dishes_normalize_quick_notes BEFORE INSERT OR UPDATE OF quick_notes ON public.dishes
+    FOR EACH ROW EXECUTE FUNCTION private.normalize_dish_quick_notes();
 --> statement-breakpoint
 COMMENT ON COLUMN public.dishes.sort_order IS 'Order of the dish inside its (category, subcategory) group, from 0.';
 --> statement-breakpoint
@@ -130,7 +175,11 @@ BEGIN
   IF NEW.table_id IS NULL THEN
     RETURN NEW;
   END IF;
-  IF TG_OP = 'INSERT' AND NEW.parent_order_id IS NOT NULL THEN
+  IF TG_OP = 'INSERT' AND NEW.parent_order_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.orders p
+     WHERE p.id = NEW.parent_order_id
+       AND p.table_id = NEW.table_id
+       AND p.status IN ('active', 'kitchen', 'delivered')) THEN
     RETURN NEW;
   END IF;
   IF TG_OP = 'UPDATE' AND NEW.table_id IS NOT DISTINCT FROM OLD.table_id THEN
@@ -143,7 +192,7 @@ BEGIN
 END
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.assert_order_table_active() IS 'BEFORE INSERT OR UPDATE OF table_id on orders: refuses (23514) a new order, or an order moved, onto an inactive table. A split (parent_order_id set) and orders that keep their table pass.';
+COMMENT ON FUNCTION private.assert_order_table_active() IS 'BEFORE INSERT OR UPDATE OF table_id on orders: refuses (23514) a new order, or an order moved, onto an inactive table. A split (parent_order_id of an open order on the same table, as split_order creates) and orders that keep their table pass.';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.assert_order_table_active() FROM PUBLIC;
 --> statement-breakpoint
@@ -175,6 +224,29 @@ CREATE TABLE public.menu_publications (
 );
 --> statement-breakpoint
 COMMENT ON TABLE public.menu_publications IS 'Published menu structure per restaurant (insert-only history; latest published_at, then id, wins). snapshot = private.menu_structure(): order, names, colours, icons, category/subcategory active flags, subcategory membership. Prices, stock, dish availability and quick notes stay live. No publication = the live structure is served.';
+--> statement-breakpoint
+CREATE FUNCTION private.menu_publication_stamp()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO ''
+    AS $$
+DECLARE
+  v_profile uuid := private.current_profile_id();
+BEGIN
+  NEW.published_at := pg_catalog.clock_timestamp();
+  IF v_profile IS NOT NULL THEN
+    NEW.published_by := v_profile;
+  END IF;
+  RETURN NEW;
+END
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.menu_publication_stamp() IS 'BEFORE INSERT on menu_publications: published_at is always clock_timestamp() (a client value is ignored), and published_by is the caller profile when there is one (a client value is replaced; kept as given outside an API session, e.g. the deploy backfill).';
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION private.menu_publication_stamp() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER menu_publications_stamp BEFORE INSERT ON public.menu_publications
+    FOR EACH ROW EXECUTE FUNCTION private.menu_publication_stamp();
 --> statement-breakpoint
 CREATE INDEX idx_menu_publications_latest ON public.menu_publications USING btree (restaurant_id, published_at DESC, id DESC);
 --> statement-breakpoint
@@ -220,7 +292,7 @@ CREATE FUNCTION private.menu_pending_changes(p_published jsonb, p_live jsonb)
     LANGUAGE sql IMMUTABLE
     SET search_path TO ''
     AS $$
-  SELECT pg_catalog.count(*)::integer
+  SELECT CASE WHEN p_published IS NULL THEN 0 ELSE pg_catalog.count(*)::integer END
     FROM pg_catalog.unnest(ARRAY['categories', 'subcategories', 'dishes']) k
    CROSS JOIN LATERAL (
      SELECT 1
@@ -230,7 +302,7 @@ CREATE FUNCTION private.menu_pending_changes(p_published jsonb, p_live jsonb)
    ) d
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.menu_pending_changes(jsonb, jsonb) IS 'Number of categories, subcategories and dishes added, removed or changed between two menu structures (a publication snapshot and private.menu_structure()). The "n cambios sin publicar" count.';
+COMMENT ON FUNCTION private.menu_pending_changes(jsonb, jsonb) IS 'Number of categories, subcategories and dishes added, removed or changed between two menu structures (a publication snapshot and private.menu_structure()). The "n cambios sin publicar" count; 0 when the snapshot is NULL (no publication: the live menu is served).';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.menu_pending_changes(jsonb, jsonb) FROM PUBLIC;
 --> statement-breakpoint
@@ -243,7 +315,7 @@ CREATE FUNCTION public.publish_menu()
     AS $$
   INSERT INTO public.menu_publications (restaurant_id, published_by, snapshot)
   SELECT private.current_restaurant_id(),
-         (SELECT p.id FROM public.profiles p WHERE p.user_id = private.current_user_id()),
+         private.current_profile_id(),
          private.menu_structure(private.current_restaurant_id())
   RETURNING *
 $$;
