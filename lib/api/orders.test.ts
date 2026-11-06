@@ -28,6 +28,7 @@ import {
   orderDtoFromWire,
   serveItems,
   toOrder,
+  updateDetails,
   updateStatus,
   type OrderDto,
 } from "./orders"
@@ -35,6 +36,9 @@ import {
 function dto(overrides: Partial<OrderDto> = {}): OrderDto {
   return {
     id: "o-1",
+    orderNumber: 42,
+    guests: 4,
+    notes: "sin picante",
     tableId: "t-1",
     waiterId: "w-1",
     status: "kitchen",
@@ -78,6 +82,9 @@ describe("toOrder", () => {
     const order = toOrder(dto())
     expect(order).toEqual({
       id: "o-1",
+      orderNumber: 42,
+      guests: 4,
+      notes: "sin picante",
       tableId: "t-1",
       orderType: "dine_in",
       status: "kitchen",
@@ -119,12 +126,22 @@ describe("toOrder", () => {
     expect(order.waiter).toBe("")
     expect(order.parentOrderId).toBe("o-0")
   })
+
+  it("turns null guests and notes into undefined", () => {
+    const order = toOrder(dto({ guests: null, notes: null }))
+    expect(order.guests).toBeUndefined()
+    expect(order.notes).toBeUndefined()
+    expect(order.orderNumber).toBe(42)
+  })
 })
 
 describe("orderDtoFromWire", () => {
   it("adapts a pos_changes orders row with its order_items onto the DTO shape", () => {
     const wire = {
       id: "o-1",
+      order_number: 42,
+      guests: 4,
+      notes: "sin picante",
       table_id: "t-1",
       waiter_id: "w-1",
       status: "kitchen",
@@ -158,6 +175,11 @@ describe("orderDtoFromWire", () => {
     }
     expect(orderDtoFromWire(wire)).toEqual(dto())
     expect(orderDtoFromWire({ id: "o-1" })).toBeNull()
+  })
+
+  it("reads missing guests and notes as null and a missing order_number as 0", () => {
+    const wire = orderDtoFromWire({ id: "o-1", status: "kitchen" })
+    expect(wire).toMatchObject({ orderNumber: 0, guests: null, notes: null })
   })
 })
 
@@ -193,6 +215,34 @@ describe("requests", () => {
     await create({ tableId: "t-1", orderType: "dine_in", items, force: true })
     expect(api.POST).toHaveBeenLastCalledWith("/api/orders", {
       body: { tableId: "t-1", orderType: "dine_in", items, force: true },
+    })
+  })
+
+  it("sends guests and notes on create and add-items only when given", async () => {
+    api.POST.mockResolvedValue({ data: dto() })
+    const items = [{ dishId: "d-1", quantity: 1 }]
+    await create({ tableId: "t-1", items, guests: 4, notes: "sin picante" })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/orders", {
+      body: { tableId: "t-1", items, guests: 4, notes: "sin picante" },
+    })
+    await addItemsToOrder("o-1", items, { guests: 6, notes: null })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/orders/{id}/items", {
+      params: { path: { id: "o-1" } },
+      body: { items, guests: 6, notes: null },
+    })
+    await addItemsToOrder("o-1", items, { force: true })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/orders/{id}/items", {
+      params: { path: { id: "o-1" } },
+      body: { items, force: true },
+    })
+  })
+
+  it("sets or clears guests and notes with PATCH /orders/:id", async () => {
+    api.PATCH.mockResolvedValueOnce({ data: dto({ guests: null }) })
+    await expect(updateDetails("o-1", { guests: null, notes: "cumpleaños" })).resolves.toEqual(dto({ guests: null }))
+    expect(api.PATCH).toHaveBeenCalledWith("/api/orders/{id}", {
+      params: { path: { id: "o-1" } },
+      body: { guests: null, notes: "cumpleaños" },
     })
   })
 

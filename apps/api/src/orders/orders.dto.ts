@@ -35,6 +35,26 @@ const orderItemInputSchema = z.strictObject({
 });
 const orderItemsSchema = z.array(orderItemInputSchema).min(1).max(MAX_ITEMS);
 
+/** Same bounds as orders_guests_check (0014); null clears. */
+const guestsSchema = z
+  .number({ error: 'Los comensales deben ser un número entero entre 1 y 99' })
+  .int({ error: 'Los comensales deben ser un número entero entre 1 y 99' })
+  .min(1, { error: 'Los comensales deben ser un número entero entre 1 y 99' })
+  .max(99, { error: 'Los comensales deben ser un número entero entre 1 y 99' })
+  .nullable();
+/** Same bounds as orders_notes_check (0014) after trim; a blank note is null. */
+const notesSchema = z
+  .string({ error: 'La nota del pedido debe tener entre 1 y 300 caracteres' })
+  .trim()
+  .max(300, { error: 'La nota del pedido debe tener entre 1 y 300 caracteres' })
+  .transform((value) => (value.length === 0 ? null : value))
+  .nullable();
+/**
+ * guests and notes on create, add-items and PATCH. order_number is assigned by
+ * the 0014 trigger: the strict schemas refuse a client orderNumber with 422.
+ */
+const orderDetails = { guests: guestsSchema.optional(), notes: notesSchema.optional() };
+
 /** Delivery orders need their order_deliveries row: they go through create_delivery_order (T11). */
 export const createOrderSchema = z.strictObject({
   tableId: z.guid(),
@@ -43,9 +63,15 @@ export const createOrderSchema = z.strictObject({
   items: orderItemsSchema,
   tipPercentage: z.number().min(0).max(100).optional(),
   force: z.boolean().optional(),
+  ...orderDetails,
 });
 
-export const addOrderItemsSchema = z.strictObject({ items: orderItemsSchema, force: z.boolean().optional() });
+export const addOrderItemsSchema = z.strictObject({ items: orderItemsSchema, force: z.boolean().optional(), ...orderDetails });
+
+/** PATCH /orders/:id: guests and/or notes of an open order; null (or a blank note) clears. */
+export const updateOrderDetailsSchema = z
+  .strictObject(orderDetails)
+  .refine((value) => value.guests !== undefined || value.notes !== undefined, { error: 'Send guests or notes' });
 
 /** Only kitchen -> delivered; paid goes through pay_order, cancellations are not an API action yet. */
 export const updateOrderStatusSchema = z.strictObject({
@@ -73,6 +99,12 @@ export class OrderItem {
 
 export class Order {
   @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'Per-restaurant order number assigned by the database (1, 2, ...); never set by the client.' })
+  orderNumber!: number;
+  @ApiProperty({ type: Number, nullable: true, minimum: 1, maximum: 99, description: 'Guests at the table; null when not captured.' })
+  guests!: number | null;
+  @ApiProperty({ type: String, nullable: true, maxLength: 300, description: 'Order-level note for the kitchen; null when none.' })
+  notes!: string | null;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) tableId!: string | null;
   @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Waiter profile id.' }) waiterId!: string | null;
   @ApiProperty({ enum: ORDER_STATUSES }) status!: OrderStatus;
@@ -123,11 +155,26 @@ export class CreateOrderRequest {
   tipPercentage?: number;
   @ApiPropertyOptional({ default: false, description: 'Send even when check_dishes_stock reports shortages.' })
   force?: boolean;
+  @ApiPropertyOptional({ type: Number, nullable: true, minimum: 1, maximum: 99, description: 'Guests at the table.' })
+  guests?: number | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 300, description: 'Order note, trimmed; blank is null.' })
+  notes?: string | null;
 }
 
 export class AddOrderItemsRequest {
   @ApiProperty({ type: [OrderItemInput], minItems: 1, maxItems: MAX_ITEMS }) items!: OrderItemInput[];
   @ApiPropertyOptional({ default: false }) force?: boolean;
+  @ApiPropertyOptional({ type: Number, nullable: true, minimum: 1, maximum: 99, description: 'Sets guests; omitted keeps them.' })
+  guests?: number | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 300, description: 'Sets the order note; omitted keeps it.' })
+  notes?: string | null;
+}
+
+export class UpdateOrderDetailsRequest {
+  @ApiPropertyOptional({ type: Number, nullable: true, minimum: 1, maximum: 99, description: 'Guests at the table.' })
+  guests?: number | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 300, description: 'Order note, trimmed; blank is null.' })
+  notes?: string | null;
 }
 
 export class UpdateOrderStatusRequest {

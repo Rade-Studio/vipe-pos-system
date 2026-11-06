@@ -23,6 +23,8 @@ export type OrderItemDto = Schemas["OrderItem"]
 export type OrderItemInput = Schemas["OrderItemInput"]
 export type StockShortage = Schemas["StockShortage"]
 export type DishPrice = Schemas["DishPrice"]
+/** PATCH /orders/:id: guests and/or the order note; null (or a blank note) clears. */
+export type OrderDetails = Schemas["UpdateOrderDetailsRequest"]
 
 /** The contract marks the defaulted fields as required; the API does not. */
 export type CreateOrderBody = Omit<Schemas["CreateOrderRequest"], "orderType" | "force"> & {
@@ -69,6 +71,9 @@ function toOrderItem(item: OrderItemDto): ApiOrderItem {
 export function toOrder(dto: OrderDto): Order {
   return {
     id: dto.id,
+    orderNumber: dto.orderNumber,
+    guests: dto.guests ?? undefined,
+    notes: dto.notes ?? undefined,
     tableId: dto.tableId ?? "",
     orderType: dto.orderType,
     items: dto.items.map(toOrderItem),
@@ -122,6 +127,9 @@ export function orderDtoFromWire(row: unknown): OrderDto | null {
   const items = Array.isArray(wire.order_items) ? (wire.order_items as WireRow[]) : []
   return {
     id: wire.id,
+    orderNumber: num(wire.order_number),
+    guests: typeof wire.guests === "number" ? wire.guests : null,
+    notes: str(wire.notes),
     tableId: str(wire.table_id),
     waiterId: str(wire.waiter_id),
     status: wire.status as OrderStatus,
@@ -202,14 +210,26 @@ export async function create(body: CreateOrderBody): Promise<OrderDto> {
   return required(data)
 }
 
-/** New items on an open order; the order goes back to the kitchen. */
+/** New items on an open order; the order goes back to the kitchen. Guests and notes are set only when given. */
 export async function addItemsToOrder(
   orderId: string,
   items: OrderItemInput[],
-  options: { force?: boolean } = {},
+  options: { force?: boolean } & OrderDetails = {},
 ): Promise<OrderDto> {
-  const body = (options.force ? { items, force: true } : { items }) as Schemas["AddOrderItemsRequest"]
-  const { data } = await api.POST("/api/orders/{id}/items", { ...byId(orderId), body })
+  const body: Partial<Schemas["AddOrderItemsRequest"]> = { items }
+  if (options.force) body.force = true
+  if (options.guests !== undefined) body.guests = options.guests
+  if (options.notes !== undefined) body.notes = options.notes
+  const { data } = await api.POST("/api/orders/{id}/items", {
+    ...byId(orderId),
+    body: body as Schemas["AddOrderItemsRequest"],
+  })
+  return required(data)
+}
+
+/** Guests and/or the note of an open order (409 `Order is closed` when paid or cancelled). */
+export async function updateDetails(orderId: string, details: OrderDetails): Promise<OrderDto> {
+  const { data } = await api.PATCH("/api/orders/{id}", { ...byId(orderId), body: details })
   return required(data)
 }
 

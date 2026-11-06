@@ -13,10 +13,12 @@ import {
   ORDER_LIST_LIMIT,
   type OrderStatus,
   type StockShortage,
+  type updateOrderDetailsSchema,
 } from './orders.dto';
 import { type CompletedOrderRow, type OrderRow, toCompletedOrder, toOrder, toShortage } from './orders.mappers';
 
 type ItemInput = z.infer<typeof createOrderSchema>['items'][number];
+type OrderDetails = z.infer<typeof updateOrderDetailsSchema>;
 /** Order statuses that keep a table busy. */
 const OPEN_STATUSES = ['active', 'kitchen', 'delivered'];
 /** Roles a profile must have to own an order or a table. */
@@ -109,10 +111,10 @@ export class OrdersService {
     const settings = await this.config.get();
     const [order] = await this.rows<{ id: string }>(sql`
       INSERT INTO public.orders
-        (table_id, waiter_id, status, order_type, subtotal, tax, tax_percentage, tip, tip_percentage, total)
+        (table_id, waiter_id, status, order_type, subtotal, tax, tax_percentage, tip, tip_percentage, total, guests, notes)
       VALUES
         (${table.id}, ${waiterId}, 'kitchen', 'dine_in', 0, 0, ${settings.taxPercentage}, 0,
-         ${input.tipPercentage ?? settings.tipPercentage}, 0)
+         ${input.tipPercentage ?? settings.tipPercentage}, 0, ${input.guests ?? null}, ${input.notes ?? null})
       RETURNING id`);
     await this.insertItems(order.id, input.items, prices);
     await this.afterItems(order.id);
@@ -137,8 +139,33 @@ export class OrdersService {
     await this.insertItems(id, input.items, prices);
     await this.afterItems(id);
     await this.uow.db.execute(sql`UPDATE public.orders SET status = 'kitchen', updated_at = now() WHERE id = ${id}`);
+    await this.setDetails(id, input);
     await this.setTableStatus(order.table_id, 'kitchen');
     return this.get(id);
+  }
+
+  /** PATCH /orders/:id: guests and/or notes of an open order (active, kitchen or delivered). */
+  async updateDetails(id: string, input: OrderDetails): Promise<Order> {
+    const order = await this.lockOrder(id);
+    if (!OPEN_STATUSES.includes(order.status)) {
+      throw new ConflictException('Order is closed');
+    }
+    await this.setDetails(id, input);
+    return this.get(id);
+  }
+
+  /** Writes only the given keys; null clears. */
+  private async setDetails(id: string, input: OrderDetails): Promise<void> {
+    const sets: SQL[] = [];
+    if (input.guests !== undefined) {
+      sets.push(sql`guests = ${input.guests}`);
+    }
+    if (input.notes !== undefined) {
+      sets.push(sql`notes = ${input.notes}`);
+    }
+    if (sets.length > 0) {
+      await this.uow.db.execute(sql`UPDATE public.orders SET ${sql.join(sets, sql`, `)}, updated_at = now() WHERE id = ${id}`);
+    }
   }
 
   /** PATCH /orders/:id/status: only kitchen -> delivered; the table becomes served. */
