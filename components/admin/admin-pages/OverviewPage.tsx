@@ -1,6 +1,6 @@
 "use client"
 
-import { useId, useMemo, useState, type ReactNode } from "react"
+import { useMemo, type ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import type { PopularDish } from "@/types"
 import { cn } from "@/lib/utils"
@@ -23,11 +23,7 @@ import { fetchDashboardSummary } from "@/lib/api/dashboard"
 import { countOrdersByStatus, countPaidOrdersOn, type AdminOrder } from "@/lib/admin/orders"
 import { DASHBOARD_DAYS, DASHBOARD_STALE_MS, dashboardSummaryKey } from "@/lib/admin/dashboard"
 import { startOfLocalDayMs } from "@/lib/admin/dates"
-import { useZones } from "@/hooks/use-zones"
-import { FloorPlan } from "@/components/floor/FloorPlan"
-import { toneClasses } from "@/components/floor/tones"
-import { TABLE_STATUS } from "@/lib/floor/layout"
-import type { TableStatus } from "@/types"
+import { LiveRoomCard } from "@/components/admin/overview/LiveRoomCard"
 
 /** Stable empty arrays: `useQuery` defaults must not be a new identity per render. */
 const EMPTY_DAILY_SALES: never[] = []
@@ -117,59 +113,6 @@ function CountList({ rows }: { rows: [string, number][] }) {
         </div>
       ))}
     </dl>
-  )
-}
-
-/**
- * "Sala en vivo" (T5): the shared floor in its small read-only mode, fed by
- * the same live table store and zones query as the waiter, with the status
- * legend and its counts. Own component: only it re-renders on table events.
- */
-function LiveRoomCard({ onNavigate }: { onNavigate?: (sectionId: string) => void }) {
-  const headingId = useId()
-  const tables = useTableStore((s) => s.tables)
-  const { data: zones = [], isLoading } = useZones()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const counts = useMemo(() => {
-    const out = {} as Record<TableStatus, number>
-    for (const status of Object.keys(TABLE_STATUS) as TableStatus[]) out[status] = 0
-    for (const table of tables) out[table.status] = (out[table.status] ?? 0) + 1
-    return out
-  }, [tables])
-
-  return (
-    <section aria-labelledby={headingId} className="flex min-w-0 flex-col gap-3 rounded-card-lg border border-line bg-surface p-4 text-fg dark:backdrop-blur-xl">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h2 id={headingId} className="text-sm font-medium">
-            Sala en vivo
-          </h2>
-          <p className="text-xs text-muted-fg">{tables.length} mesas</p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-11 rounded-full border-line-strong bg-transparent px-4"
-          onClick={() => onNavigate?.("tables")}
-        >
-          Editar plano
-        </Button>
-      </div>
-      <ul aria-label="Estados de las mesas" className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-fg-2">
-        {(Object.keys(TABLE_STATUS) as TableStatus[]).map((status) => (
-          <li key={status} className="inline-flex items-center gap-1.5">
-            <span aria-hidden className={cn("h-2.5 w-2.5 rounded-full", toneClasses(status).dot)} />
-            <span>{TABLE_STATUS[status].label}</span>
-            <span className="font-medium tabular-nums text-fg">{counts[status]}</span>
-          </li>
-        ))}
-      </ul>
-      {isLoading ? (
-        <Skeleton className="aspect-[1.6] w-full rounded-card-lg" />
-      ) : (
-        <FloorPlan compact zones={zones} tables={tables} selectedTableId={selectedId} onSelectTable={setSelectedId} waiterNameOf={(t) => t.waiter_name} />
-      )}
-    </section>
   )
 }
 
@@ -326,7 +269,7 @@ export function OverviewPage({ description, activeOrders, onNavigate }: Overview
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
-          <LiveRoomCard onNavigate={onNavigate} />
+          <LiveRoomCard orders={activeOrders} onNavigate={onNavigate} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
         <Panel title="Órdenes activas" className={CARD_CLASS}>
