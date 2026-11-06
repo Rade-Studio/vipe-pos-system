@@ -16,9 +16,28 @@ const t = {
   reserved: 'f9000000-0000-0000-0000-000000000005',
   paidOnly: 'f9000000-0000-0000-0000-000000000006',
   otherTable: 'f9000000-0000-0000-0000-0000000000b1',
+  hall: 'f9100000-0000-0000-0000-000000000001',
+  terrace: 'f9100000-0000-0000-0000-000000000002',
+  zoneB: 'f9100000-0000-0000-0000-0000000000b1',
 } as const;
 
-const TABLE_KEYS = ['createdAt', 'id', 'number', 'status', 'updatedAt', 'waiterId', 'waiterName'];
+const TABLE_KEYS = [
+  'createdAt',
+  'h',
+  'id',
+  'number',
+  'rotation',
+  'seats',
+  'shape',
+  'status',
+  'updatedAt',
+  'w',
+  'waiterId',
+  'waiterName',
+  'x',
+  'y',
+  'zoneId',
+];
 
 describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
   let database: TestDatabase;
@@ -47,6 +66,7 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       get: (url: string) => server.get(url).set('Cookie', cookie),
       post: (url: string, body?: object) => server.post(url).set('Cookie', cookie).send(body),
       patch: (url: string, body?: object) => server.patch(url).set('Cookie', cookie).send(body),
+      put: (url: string, body?: object) => server.put(url).set('Cookie', cookie).send(body),
       delete: (url: string) => server.delete(url).set('Cookie', cookie),
     };
   };
@@ -75,6 +95,8 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       expect(Object.keys(res.body[0]).sort()).toEqual(TABLE_KEYS);
       expect(res.body[1]).toMatchObject({ id: t.busy, status: 'occupied', waiterId: fixtures.waiterA.profileId, waiterName: 'Waiter A' });
       expect(res.body[0]).toMatchObject({ id: t.free, waiterId: null, waiterName: null });
+      expect(res.body[0]).toMatchObject({ zoneId: t.hall, x: 0.0625, y: 0.0625, w: 0.1, h: 0.1, shape: 'round', rotation: 0, seats: 4 });
+      expect(res.body[2]).toMatchObject({ zoneId: null, x: null, y: null, w: null, h: null, shape: 'square', rotation: 0, seats: null });
     });
 
     it("never shows restaurant A's tables to restaurant B", async () => {
@@ -128,6 +150,86 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       expect(res.status).toBe(204);
       expect(await tableRow(t.paidOnly)).toBeUndefined();
       expect((await waiterA().delete(`/api/tables/${t.free}`)).status).toBe(403);
+    });
+  });
+
+  describe('floor plan layout', () => {
+    const layout = (id: string, over: Record<string, unknown> = {}) => ({
+      id,
+      zoneId: t.terrace,
+      x: 0.25,
+      y: 0.75,
+      w: 0.2,
+      h: 0.1,
+      shape: 'rect',
+      rotation: 90,
+      seats: 6,
+      ...over,
+    });
+    const layoutRow = async (id: string) =>
+      (
+        await db(
+          `SELECT zone_id, x::float8 AS x, y::float8 AS y, w::float8 AS w, h::float8 AS h, shape,
+                  rotation::float8 AS rotation, seats FROM tables WHERE id = $1`,
+          [id],
+        )
+      )[0];
+
+    it('places a new table without layout on the first zone, next free grid slot', async () => {
+      // Slot 0 holds table 1 and slot 1 the table 7 created above; 8 x 8 cells of 1/8.
+      const res = await adminA().post('/api/tables', { number: 20 });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ zoneId: t.hall, x: 0.3125, y: 0.0625, w: 0.1, h: 0.1, shape: 'square', rotation: 0, seats: null });
+    });
+
+    it('creates and patches a table with its layout; 422 for a zone of another restaurant or partial coordinates', async () => {
+      const created = await adminA().post('/api/tables', { number: 30, ...layout(t.free), id: undefined });
+      expect(created.status).toBe(201);
+      expect(created.body).toMatchObject({ number: 30, zoneId: t.terrace, x: 0.25, y: 0.75, w: 0.2, h: 0.1, shape: 'rect', rotation: 90, seats: 6 });
+      const patched = await adminA().patch(`/api/tables/${created.body.id}`, { seats: null, shape: 'bar', rotation: 0 });
+      expect(patched.status).toBe(200);
+      expect(patched.body).toMatchObject({ seats: null, shape: 'bar', rotation: 0, x: 0.25 });
+      expect((await adminA().patch(`/api/tables/${created.body.id}`, { zoneId: t.zoneB })).status).toBe(422);
+      expect((await adminA().post('/api/tables', { number: 31, x: 0.5 })).status).toBe(422);
+      expect((await adminA().post('/api/tables', { number: 31, shape: 'oval' })).status).toBe(422);
+      expect((await adminA().post('/api/tables', { number: 31, rotation: 360 })).status).toBe(422);
+      expect((await adminA().post('/api/tables', { number: 31, seats: 21 })).status).toBe(422);
+      expect(await db('SELECT 1 FROM tables WHERE number = 31')).toHaveLength(0);
+      expect(await layoutRow(created.body.id)).toMatchObject({ zone_id: t.terrace, seats: null, shape: 'bar' });
+    });
+
+    it('saves the whole layout in one request and returns every table', async () => {
+      const res = await adminA().put('/api/tables/layout', {
+        tables: [layout(t.busy), layout(t.kitchen, { x: 0.5, seats: null, shape: 'round', rotation: 45.5 })],
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.map((row: { number: number }) => row.number)).toEqual(
+        (await db<{ number: number }>('SELECT number FROM tables WHERE restaurant_id = $1 ORDER BY number, id', [fixtures.restaurantA])).map(
+          (row) => row.number,
+        ),
+      );
+      expect(await layoutRow(t.busy)).toEqual({ zone_id: t.terrace, x: 0.25, y: 0.75, w: 0.2, h: 0.1, shape: 'rect', rotation: 90, seats: 6 });
+      expect(await layoutRow(t.kitchen)).toMatchObject({ x: 0.5, seats: null, shape: 'round', rotation: 45.5 });
+    });
+
+    it('is all or nothing: one bad row leaves every table unchanged', async () => {
+      const before = await db('SELECT id, zone_id, x, y, w, h, shape, rotation, seats FROM tables ORDER BY id');
+      const move = layout(t.busy, { zoneId: t.hall, x: 0.9 });
+      for (const [body, status, message] of [
+        [{ tables: [move, layout(t.kitchen, { zoneId: t.zoneB })] }, 422, 'Invalid data'],
+        [{ tables: [move, layout(t.otherTable)] }, 422, 'Unknown table'],
+        [{ tables: [move, layout(t.kitchen, { x: 1.5 })] }, 422, undefined],
+        [{ tables: [move, layout(t.kitchen, { w: null })] }, 422, undefined],
+        [{ tables: [move, move] }, 422, undefined],
+        [{ tables: [move], extra: true }, 422, undefined],
+      ] as const) {
+        const res = await adminA().put('/api/tables/layout', body);
+        expect(res.status).toBe(status);
+        if (message) expect(res.body.message).toBe(message);
+      }
+      expect((await waiterA().put('/api/tables/layout', { tables: [move] })).status).toBe(403);
+      expect((await adminB().put('/api/tables/layout', { tables: [move] })).status).toBe(422);
+      expect(await db('SELECT id, zone_id, x, y, w, h, shape, rotation, seats FROM tables ORDER BY id')).toEqual(before);
     });
   });
 
@@ -212,6 +314,11 @@ async function seedTables(superuserUrl: string) {
     [t.waiter2Profile, t.retiredWaiter, t.waiterB, A, B],
   );
   await q(
+    `INSERT INTO zones (id, name, sort_order, restaurant_id) VALUES
+       ($1, 'Salón', 0, $4), ($2, 'Terraza', 1, $4), ($3, 'Zona B', 0, $5)`,
+    [t.hall, t.terrace, t.zoneB, A, B],
+  );
+  await q(
     `INSERT INTO tables (id, number, status, waiter_id, restaurant_id, updated_at) VALUES
        ($1, 1, 'available', NULL, $9, now() - interval '1 hour'),
        ($2, 2, 'occupied', $8, $9, now() - interval '1 hour'),
@@ -221,6 +328,10 @@ async function seedTables(superuserUrl: string) {
        ($6, 6, 'available', NULL, $9, now() - interval '1 hour'),
        ($7, 101, 'available', NULL, $10, now() - interval '1 hour')`,
     [t.free, t.busy, t.kitchen, t.served, t.reserved, t.paidOnly, t.otherTable, fixtures.waiterA.profileId, A, B],
+  );
+  await q(
+    `UPDATE tables SET zone_id = $2, x = 0.0625, y = 0.0625, w = 0.1, h = 0.1, shape = 'round', seats = 4 WHERE id = $1`,
+    [t.free, t.hall],
   );
   await q(
     `INSERT INTO orders (table_id, status, subtotal, tax, tax_percentage, total, restaurant_id) VALUES

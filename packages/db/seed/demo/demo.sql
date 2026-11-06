@@ -412,19 +412,19 @@ BEGIN
 
   -- Menu: 8 categories, 38 dishes, whole-peso COP prices.
   FOR c IN SELECT * FROM (VALUES
-      (1, 'Entradas', 'Para compartir mientras llega el plato fuerte', 'salad', 'entrada'),
-      (2, 'Sopas', 'Recetas de olla, como en casa de la abuela', 'soup', 'sopa'),
-      (3, 'Almuerzo ejecutivo', 'De lunes a sábado: sopa del día, seco, jugo y postre', 'utensils', 'almuerzo'),
-      (4, 'Platos fuertes', 'Carnes a la parrilla y clásicos colombianos', 'beef', 'fuerte'),
-      (5, 'Del mar', 'Pescados y mariscos del Pacífico y el Caribe', 'fish', 'mar'),
-      (6, 'Bebidas', 'Jugos naturales, bebidas frías y calientes', 'water', 'bebida'),
-      (7, 'Cervezas y cócteles', 'Para acompañar la comida', 'cocktail', 'coctel'),
-      (8, 'Postres', 'Dulces tradicionales hechos en casa', 'dessert', 'postre')
-    ) AS t(ord, name, description, icon, grp)
+      (1, 'Entradas', 'Para compartir mientras llega el plato fuerte', 'salad', 'entrada', 'yellow'),
+      (2, 'Sopas', 'Recetas de olla, como en casa de la abuela', 'soup', 'sopa', 'rose'),
+      (3, 'Almuerzo ejecutivo', 'De lunes a sábado: sopa del día, seco, jugo y postre', 'utensils', 'almuerzo', 'emerald'),
+      (4, 'Platos fuertes', 'Carnes a la parrilla y clásicos colombianos', 'beef', 'fuerte', 'orange'),
+      (5, 'Del mar', 'Pescados y mariscos del Pacífico y el Caribe', 'fish', 'mar', 'violet'),
+      (6, 'Bebidas', 'Jugos naturales, bebidas frías y calientes', 'water', 'bebida', 'sky'),
+      (7, 'Cervezas y cócteles', 'Para acompañar la comida', 'cocktail', 'coctel', 'rose'),
+      (8, 'Postres', 'Dulces tradicionales hechos en casa', 'dessert', 'postre', 'violet')
+    ) AS t(ord, name, description, icon, grp, color)
     ORDER BY ord
   LOOP
-    INSERT INTO public.categories (name, description, icon, active, restaurant_id)
-    VALUES (c.name, c.description, c.icon, true, v_rid) RETURNING id INTO v_cat;
+    INSERT INTO public.categories (name, description, icon, active, sort_order, color, restaurant_id)
+    VALUES (c.name, c.description, c.icon, true, c.ord - 1, c.color, v_rid) RETURNING id INTO v_cat;
     FOR r IN SELECT * FROM (VALUES
         ('entrada', 'Empanadas de pipián', 'Tres empanadas crocantes con ají de la casa', 9500, false, 5),
         ('entrada', 'Patacón con hogao', 'Patacón pisao con hogao y queso costeño', 12000, false, 4),
@@ -472,6 +472,31 @@ BEGIN
       INSERT INTO demo_menu VALUES (v_dish, r.grp, r.weight);
     END LOOP;
   END LOOP;
+
+  -- Subcategories (S5): every dish of a category with subcategories gets
+  -- one; the other categories skip the step. Fish and beer have their own
+  -- categories (Del mar, Cervezas y cócteles).
+  INSERT INTO public.subcategories (category_id, name, sort_order, restaurant_id)
+  SELECT mc.id, ms.name, ms.ord, v_rid
+    FROM (VALUES
+      ('Entradas', 'Empanadas y arepas', 0), ('Entradas', 'Patacones', 1), ('Entradas', 'Ceviches', 2),
+      ('Platos fuertes', 'Carnes', 0), ('Platos fuertes', 'Típicos', 1),
+      ('Bebidas', 'Jugos naturales', 0), ('Bebidas', 'Gaseosas y agua', 1), ('Bebidas', 'Calientes', 2)
+    ) AS ms(cat, name, ord)
+    JOIN public.categories mc ON mc.restaurant_id = v_rid AND mc.name = ms.cat;
+  UPDATE public.dishes md SET subcategory_id = msc.id
+    FROM (VALUES
+      ('Empanadas de pipián', 'Empanadas y arepas'), ('Arepa de chócolo con quesito', 'Empanadas y arepas'),
+      ('Chicharrón con arepa', 'Empanadas y arepas'), ('Patacón con hogao', 'Patacones'),
+      ('Ceviche de camarón', 'Ceviches'),
+      ('Churrasco 400 g', 'Carnes'), ('Sobrebarriga en salsa criolla', 'Carnes'), ('Lomo al trapo', 'Carnes'),
+      ('Pechuga gratinada', 'Carnes'), ('Bandeja paisa', 'Típicos'), ('Posta negra cartagenera', 'Típicos'),
+      ('Limonada de coco', 'Jugos naturales'), ('Jugo natural en agua', 'Jugos naturales'),
+      ('Jugo natural en leche', 'Jugos naturales'), ('Gaseosa 400 ml', 'Gaseosas y agua'),
+      ('Agua con o sin gas', 'Gaseosas y agua'), ('Tinto', 'Calientes'), ('Aguapanela con queso', 'Calientes')
+    ) AS mm(dish, sub)
+    JOIN public.subcategories msc ON msc.restaurant_id = v_rid AND msc.name = mm.sub
+   WHERE md.restaurant_id = v_rid AND md.name = mm.dish AND md.category_id = msc.category_id;
 
   -- Promotions (the schema has no modifiers or combos): two running, one
   -- coming, one finished.

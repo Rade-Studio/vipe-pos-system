@@ -89,6 +89,8 @@ export const categories = pgTable("categories", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	color: text().default('neutral').notNull(),
 }, (table) => [
 	index("idx_categories_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
@@ -100,6 +102,8 @@ export const categories = pgTable("categories", {
 	pgPolicy("categories_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("categories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("categories_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	unique("categories_restaurant_id_id_key").on(table.restaurantId, table.id),
+	check("categories_color_check", sql`color = ANY (ARRAY['neutral'::text, 'yellow'::text, 'orange'::text, 'sky'::text, 'violet'::text, 'emerald'::text, 'rose'::text])`),
 ]);
 
 export const couriers = pgTable("couriers", {
@@ -192,6 +196,7 @@ export const dishes = pgTable("dishes", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	subcategoryId: uuid("subcategory_id"),
 }, (table) => [
 	index("idx_dishes_category").using("btree", table.categoryId.asc().nullsLast().op("uuid_ops")),
 	index("idx_dishes_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
@@ -209,6 +214,13 @@ export const dishes = pgTable("dishes", {
 	pgPolicy("dishes_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("dishes_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("dishes_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	index("idx_dishes_subcategory_id").using("btree", table.subcategoryId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId, table.categoryId, table.subcategoryId],
+			foreignColumns: [subcategories.restaurantId, subcategories.categoryId, subcategories.id],
+			name: "dishes_subcategory_id_fkey"
+		}).onDelete("restrict"),
+	check("dishes_subcategory_category_check", sql`(subcategory_id IS NULL) OR (category_id IS NOT NULL)`),
 ]);
 
 export const ingredientCategories = pgTable("ingredient_categories", {
@@ -1333,4 +1345,34 @@ export const zones = pgTable("zones", {
 	check("zones_aspect_check", sql`(aspect > 0.25) AND (aspect < (4)::numeric)`),
 	// Array of at most 12 {text, side: top|right|bottom|left}; full expression in 0012_floor_plan.sql.
 	check("zones_labels_check", sql`jsonb_typeof(labels) = 'array'::text`),
+]);
+
+export const subcategories = pgTable("subcategories", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	categoryId: uuid("category_id").notNull(),
+	name: text().notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	active: boolean().default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	uniqueIndex("subcategories_category_id_name_key").using("btree", table.categoryId.asc().nullsLast().op("uuid_ops"), sql`lower(name)`),
+	index("idx_subcategories_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "subcategories_restaurant_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.categoryId],
+			foreignColumns: [categories.restaurantId, categories.id],
+			name: "subcategories_category_id_fkey"
+		}).onDelete("restrict"),
+	unique("subcategories_restaurant_id_category_id_id_key").on(table.restaurantId, table.categoryId, table.id),
+	pgPolicy("subcategories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("subcategories_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	pgPolicy("subcategories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("subcategories_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	check("subcategories_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 40)`),
 ]);

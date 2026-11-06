@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useHashSection } from "@/hooks/use-hash-section"
 import { ADMIN_NAV_GROUPS, sectionsInGroup } from "@/lib/admin/navigation"
+import { useConfigStore } from "@/store/use-config-store"
 import { AdminShell } from "./AdminShell"
 
 // cmdk measures and scrolls its list; jsdom implements neither.
@@ -136,10 +137,63 @@ describe("AdminShell sidebar width", () => {
     expect(container.ownerDocument.querySelector('[data-state="collapsed"][data-collapsible="icon"]')).not.toBeNull()
   })
 
+  it("follows the window across 1280 px: rail on tablet, full sidebar on desktop", async () => {
+    setWidth(1440)
+    const { container } = render(<Harness />)
+    const doc = container.ownerDocument
+    expect(doc.querySelector('[data-state="expanded"]')).not.toBeNull()
+
+    await act(async () => {
+      setWidth(1024)
+      window.dispatchEvent(new Event("resize"))
+    })
+    expect(doc.querySelector('[data-state="collapsed"][data-collapsible="icon"]')).not.toBeNull()
+
+    await act(async () => {
+      setWidth(1440)
+      window.dispatchEvent(new Event("resize"))
+    })
+    expect(doc.querySelector('[data-state="expanded"]')).not.toBeNull()
+  })
+
   it("starts expanded on wide screens", () => {
     setWidth(1440)
     const { container } = render(<Harness />)
     expect(container.ownerDocument.querySelector('[data-state="expanded"]')).not.toBeNull()
     expect(container.ownerDocument.querySelector('[data-state="collapsed"][data-collapsible="icon"]')).toBeNull()
+  })
+})
+
+describe("AdminShell brand and phone drawer", () => {
+  const setWidth = (width: number) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width })
+  }
+
+  it("names the product VipePOS with the restaurant and the role under it", () => {
+    setWidth(1440)
+    useConfigStore.setState({ businessName: "Asadero La Fonda" })
+    render(<Harness />)
+
+    const sidebar = screen.getByTestId("admin-brand")
+    expect(sidebar).toHaveTextContent("VipePOS")
+    expect(sidebar).toHaveTextContent("Asadero La Fonda · Administrador")
+    expect(document.body).not.toHaveTextContent("VibePOS")
+  })
+
+  it("opens the navigation as a drawer from the top-bar menu button on phones and closes it on navigate", async () => {
+    setWidth(390)
+    render(<Harness />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Abrir menú" }))
+    })
+    const drawer = await screen.findByRole("dialog")
+    expect(within(drawer).getByTestId("nav-overview")).toHaveAttribute("aria-current", "page")
+
+    await act(async () => {
+      fireEvent.click(within(drawer).getByTestId("nav-tables"))
+    })
+    expect(screen.getByTestId("page")).toHaveTextContent("tables")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 })

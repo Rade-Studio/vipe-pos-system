@@ -30,7 +30,7 @@ DECLARE
     'recipe_ingredients', 'recipes', 'inventory_count_lines', 'inventory_counts', 'production_batches',
     'inventory_movements', 'inventory_lots', 'purchase_order_lines', 'purchase_orders',
     'ingredient_transactions', 'ingredients', 'ingredient_categories', 'suppliers', 'inventory_locations',
-    'dishes', 'categories', 'tables', 'zones', 'payment_methods', 'business_config'];
+    'dishes', 'subcategories', 'categories', 'tables', 'zones', 'payment_methods', 'business_config'];
   v_missing text;
   v_table text;
 BEGIN
