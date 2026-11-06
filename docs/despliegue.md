@@ -119,9 +119,9 @@ docker compose -f docker-compose.prod.yml logs -f api          # o web, caddy, p
 docker compose -f docker-compose.prod.yml logs migrate         # resultado de la última migración
 ```
 
-Atajos de `package.json`: `pnpm docker:prod`, `pnpm docker:prod:down` y
-`pnpm docker:prod:logs` llaman al binario antiguo `docker-compose`; con Docker Compose v2
-usar los comandos `docker compose` de esta guía.
+Atajos de `package.json`: `pnpm docker:prod` (`up -d --build`), `pnpm docker:prod:down`
+(`down`) y `pnpm docker:prod:logs` (`logs -f` de todos los servicios) ejecutan
+`docker compose -f docker-compose.prod.yml` (Docker Compose v2), igual que los comandos de esta guía.
 
 ### 2.5 Actualizaciones y reversión
 

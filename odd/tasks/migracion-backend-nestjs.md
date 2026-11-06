@@ -398,3 +398,4 @@ Source map: explorer report 2026-11-04 (services `lib/supabase/service.ts:13-92`
   - VPS swap 4048 of 4095 MiB after the builds; B1 still pending.
 - L43 (user, 2026-11-05): "quiero ambas cosas, aun no estamos listo para produccion asi que vamos trabajando cosas pendientes y mejoras en staging"
 - L44 (evidence, 2026-11-05): reconciled the open boxes with the commits on dev: T8b f3147e9/4185c64, T16 2eaf3d5 + fixes, T17 3214a17 + fixes; T16b (demo photos) is still open. T21 added for the real-data rehearsal.
+- L45 (evidence, 2026-11-05): the L35 seed/test advisories are closed in code (odd/tasks/staging-polish.md L2, S6). An empty --username exits 2 (packages/db/seed/bootstrap/create-restaurant.sh:17,76, pinned by packages/db/seed/test.sh:143,189); test.sh removes containers with their anonymous volumes (`docker rm -fv`, test.sh:36); Tailscale-only staging is documented in docs/despliegue.md section 3 and DOCKER.md:129.

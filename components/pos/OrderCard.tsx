@@ -189,7 +189,7 @@ export function OrderCard({
 
             {!isKitchenView && (
               <p className="text-sm text-muted-foreground">
-                {isWaiterView ? (
+                {isWaiterView || isAdmin ? (
                   <>
                     Mesero: {waiter?.name || "No asignado"} - {localDate}
                   </>

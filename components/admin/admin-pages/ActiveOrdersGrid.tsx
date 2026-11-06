@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/admin/common/EmptyState"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { newOrderIdsAt, type AdminOrder } from "@/lib/admin/orders"
+import type { Profile, Table } from "@/types"
 
 /**
  * A clock that ticks only while `enabled`.
@@ -38,6 +39,18 @@ interface ActiveOrdersGridProps {
   isLoading: boolean
   onDelete: (orderId: string) => void
   onRefresh: () => void
+}
+
+/** The card's `Table` from the table number the order carries, if any. */
+function tableFromOrder(order: AdminOrder): Table | undefined {
+  if (!order.tableId || typeof order.tableName !== "number") return undefined
+  return { id: order.tableId, number: order.tableName, status: "occupied" }
+}
+
+/** The card's waiter from the name the order carries ("Desconocido" is no name). */
+function waiterFromOrder(order: AdminOrder): Profile | undefined {
+  if (!order.waiter || !order.waiterName || order.waiterName === "Desconocido") return undefined
+  return { id: order.waiter, name: order.waiterName, role: "waiter" }
 }
 
 const GRID_CLASS = "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
@@ -97,8 +110,10 @@ export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: Act
         // read fresh on every render this component already performs
         // for unrelated reasons (order data), which is safe because a
         // table's `number` never changes after creation.
-        const table = useTableStore.getState().getTableById(order.tableId)
-        const waiter = profiles?.find((p) => p.id === order.waiter)
+        // The shell stores win; the names the order carries (the API join,
+        // or the stores at INSERT time) cover a table or waiter they lack.
+        const table = useTableStore.getState().getTableById(order.tableId) ?? tableFromOrder(order)
+        const waiter = profiles?.find((p) => p.id === order.waiter) ?? waiterFromOrder(order)
 
         return (
           <div
