@@ -586,9 +586,8 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       for (const [name, at] of Object.entries(rows)) {
         await db(`SET session_replication_role = replica; UPDATE order_deliveries SET updated_at = '${at}' WHERE order_id = '${ids[name]}'`);
       }
-      // Clock is provided per module (delivery, dashboard), so app.get(Clock) can return
-      // an instance DeliveryService never sees; stubbing the prototype covers all of them.
-      const spy = vi.spyOn(Clock.prototype, 'now').mockReturnValue(new Date(nowIso));
+      // CommonModule provides the one Clock, so stubbing app.get(Clock) reaches DeliveryService.
+      const spy = vi.spyOn(app.get(Clock), 'now').mockReturnValue(new Date(nowIso));
       try {
         const listed = (await operatorA().get('/api/delivery/active')).body.map((r: { delivery: { orderId: string } }) => r.delivery.orderId);
         return Object.fromEntries(Object.entries(ids).map(([name, id]) => [name, listed.includes(id)]));

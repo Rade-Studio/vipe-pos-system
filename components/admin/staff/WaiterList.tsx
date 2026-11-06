@@ -25,7 +25,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { roleLabel } from "@/lib/auth/roles"
 import { StaffServiceError, deleteStaff, type StaffMember } from "@/lib/api/staff"
-import { WAITERS_QUERY_KEY } from "@/hooks/use-waiters"
+import { WAITERS_QUERY_KEY, fetchWaiters } from "@/hooks/use-waiters"
+import { useProfileStore } from "@/store/useProfileStore"
 
 type Waiter = StaffMember
 
@@ -61,10 +62,18 @@ export function WaiterList() {
     })
   }, [isError, error, toast])
 
-  // The waiter pickers (`['waiters']`) read the same people.
+  // The waiter pickers (`['waiters']`) read the same people, and so does the
+  // shell's waiter directory (`useProfileStore.profiles`, loaded once at
+  // startup) behind the Overview "Meseros activos" panel: it is reloaded here,
+  // where every create, (de)activation and delete lands, so the panel follows
+  // without a page reload (odd/tasks/staging-polish.md S3). A failed reload
+  // keeps the previous directory.
   const invalidateStaffReaders = () => {
     queryClient.invalidateQueries({ queryKey: catalogKeys.staff })
     queryClient.invalidateQueries({ queryKey: WAITERS_QUERY_KEY })
+    fetchWaiters()
+      .then((profiles) => useProfileStore.getState().setProfiles(profiles))
+      .catch((error) => log.error("Error refreshing the waiter directory:", { error: String(error) }))
   }
 
   const handleAddWaiter = () => {

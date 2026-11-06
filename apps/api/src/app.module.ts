@@ -3,6 +3,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { CommonModule } from './common/common.module';
 import { EnvModule } from './config/env.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DbModule } from './db/db.module';
@@ -23,6 +24,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
 @Module({
   imports: [
     EnvModule,
+    CommonModule,
     DbModule,
     AuthModule,
     TenancyModule,

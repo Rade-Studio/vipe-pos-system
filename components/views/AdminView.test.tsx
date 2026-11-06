@@ -377,6 +377,39 @@ describe("AdminView — realtime on the Órdenes tab (S3)", () => {
     expect(screen.getByTestId("admin-order-o-1")).toBeInTheDocument()
   })
 
+  it("shows the table number and waiter name of a realtime INSERT at once (S2)", async () => {
+    useTableStore.setState({ tables: [{ id: "t-2", number: 7, status: "occupied" }] })
+    useProfileStore.setState({ profiles: [{ id: "w-1", name: "Ana", role: "waiter" }] })
+    await openOrdersWith([activeOrderDto("o-1")])
+
+    await emit({ eventType: "INSERT", new: insertedRow("o-2"), old: {} })
+
+    const card = await screen.findByTestId("admin-order-o-2")
+    expect(card).toHaveTextContent("Mesa 7")
+    expect(card).toHaveTextContent("Mesero: Ana")
+    // The cached order carries the names too, not "N/A" / "Desconocido".
+    const cached = (queryClient.getQueryData(["orders", "admin"]) as any[]).find((o) => o.id === "o-2")
+    expect(cached).toMatchObject({ tableName: 7, waiterName: "Ana" })
+  })
+
+  it("shows the API's table number and waiter name when the shell stores lack them (S2)", async () => {
+    await openOrdersWith([activeOrderDto("o-1")])
+
+    const card = screen.getByTestId("admin-order-o-1")
+    expect(card).toHaveTextContent("Mesa 1")
+    expect(card).toHaveTextContent("Mesero: Ana")
+  })
+
+  it("keeps Mesa ? and no waiter for a live order nobody can name (previous fallback)", async () => {
+    await openOrdersWith([activeOrderDto("o-1")])
+
+    await emit({ eventType: "INSERT", new: insertedRow("o-2"), old: {} })
+
+    const card = await screen.findByTestId("admin-order-o-2")
+    expect(card).toHaveTextContent("Mesa ?")
+    expect(card).toHaveTextContent("Mesero: No asignado")
+  })
+
   it("keeps the screen up when an INSERT row arrives without order_items", async () => {
     await openOrdersWith([activeOrderDto("o-1")])
     const bare: Record<string, unknown> = insertedRow("o-2")
