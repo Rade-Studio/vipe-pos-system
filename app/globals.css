@@ -2,38 +2,97 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme tokens. Two layers per theme:
+ *  - Semantic tokens (design/system.md "Round 2 extensions › Themes"): raw
+ *    CSS colors, read by redesigned screens through the Tailwind `canvas`,
+ *    `surface`, `line`, `fg`, `brand`, `status` … colors.
+ *  - shadcn HSL triplets, re-mapped onto the same zinc + violet palette so the
+ *    existing screens match. The shadcn quiet fill lives in `--accent-quiet`
+ *    because `--accent` is the semantic violet accent.
+ */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --canvas: #fafafa;
+    --surface: #ffffff;
+    --surface-2: #f4f4f5;
+    --line: #e4e4e7;
+    --line-strong: #d4d4d8;
+    --text: #09090b;
+    --text-2: #3f3f46;
+    --text-muted: #52525b;
+    --accent: #7c3aed;
+    --accent-strong: #6d28d9;
+    --accent-contrast: #ffffff;
+    --accent-tint: #ede9fe;
+    --accent-line: #c4b5fd;
+    --focus: #0369a1;
+    --btn-bg: #7c3aed;
+    --btn-fg: #ffffff;
+
+    --status-free-bg: #d1fae5;
+    --status-free-fg: #065f46;
+    --status-free-line: #6ee7b7;
+    --status-occupied-bg: #ede9fe;
+    --status-occupied-fg: #5b21b6;
+    --status-occupied-line: #c4b5fd;
+    --status-kitchen-bg: #ffedd5;
+    --status-kitchen-fg: #9a3412;
+    --status-kitchen-line: #fdba74;
+    --status-served-bg: #e0f2fe;
+    --status-served-fg: #075985;
+    --status-served-line: #7dd3fc;
+    --status-reserved-bg: #f4f4f5;
+    --status-reserved-fg: #3f3f46;
+    --status-reserved-line: #d4d4d8;
+    --status-danger-bg: #ffe4e6;
+    --status-danger-fg: #9f1239;
+    --status-danger-line: #fda4af;
+    --status-warning-bg: #fef9c3;
+    --status-warning-fg: #854d0e;
+    --status-warning-line: #fde047;
+    --status-ok-bg: #dcfce7;
+    --status-ok-fg: #166534;
+    --status-ok-line: #86efac;
+
+    --radius-card: 16px;
+    --radius-card-lg: 24px;
+    --radius-pill: 9999px;
+    --shadow-glow: 0 0 40px -8px rgba(124, 58, 237, 0.45);
+    --shadow-glow-lg: 0 0 60px -8px rgba(124, 58, 237, 0.55);
+    --shadow-elevated: 0 40px 120px -30px rgba(124, 58, 237, 0.25);
+
+    /* shadcn (zinc + violet) */
+    --background: 0 0% 98%;
+    --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 251 83% 56.1%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 262.1 83.3% 57.8%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 5.2% 33.9%;
+    --accent-quiet: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 345.3 82.7% 40.8%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 200.6 96.4% 32.2%;
     --radius: 0.5rem;
 
-    /* Sidebar variables (admin dashboard shell) */
+    /* Sidebar (admin shell): same canvas as the page, violet active item */
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 221.2 83.2% 53.3%;
+    --sidebar-primary: 262.1 83.3% 57.8%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 251.4 91.3% 95.5%;
+    --sidebar-accent-foreground: 263.4 69.3% 42.2%;
+    --sidebar-border: 240 5.9% 90%;
+    --sidebar-ring: 200.6 96.4% 32.2%;
 
     --chart-1: hsl(249.2 86.7% 97.1%);
     --chart-2: hsl(250.1 83.3% 94.9%);
@@ -50,35 +109,85 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 250.9 82.9% 61%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --canvas: #07060d;
+    --surface: rgba(24, 24, 27, 0.7);
+    --surface-2: #09090b;
+    --line: rgba(255, 255, 255, 0.1);
+    --line-strong: rgba(255, 255, 255, 0.15);
+    --text: #ffffff;
+    --text-2: #d4d4d8;
+    --text-muted: #a1a1aa;
+    --accent: #a78bfa;
+    --accent-strong: #c4b5fd;
+    --accent-contrast: #09090b;
+    --accent-tint: rgba(139, 92, 246, 0.15);
+    --accent-line: rgba(167, 139, 250, 0.5);
+    --focus: #7dd3fc;
+    --btn-bg: #ffffff;
+    --btn-fg: #09090b;
 
-    /* Sidebar variables */
-    --sidebar-background: 240 10% 3.9%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 0 0% 98%;
-    --sidebar-primary-foreground: 240 5.9% 10%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 224.3 76.3% 48%;
+    --status-free-bg: #0c1b1b;
+    --status-free-fg: #6ee7b7;
+    --status-free-line: rgba(52, 211, 153, 0.4);
+    --status-occupied-bg: #1b1330;
+    --status-occupied-fg: #ddd6fe;
+    --status-occupied-line: rgba(167, 139, 250, 0.5);
+    --status-kitchen-bg: #2b160e;
+    --status-kitchen-fg: #fed7aa;
+    --status-kitchen-line: rgba(251, 146, 60, 0.5);
+    --status-served-bg: #081e2e;
+    --status-served-fg: #bae6fd;
+    --status-served-line: rgba(56, 189, 248, 0.5);
+    --status-reserved-bg: #16161d;
+    --status-reserved-fg: #d4d4d8;
+    --status-reserved-line: rgba(161, 161, 170, 0.3);
+    --status-danger-bg: #2b0f19;
+    --status-danger-fg: #fecdd3;
+    --status-danger-line: rgba(251, 113, 133, 0.5);
+    --status-warning-bg: #1f1a0e;
+    --status-warning-fg: #fef08a;
+    --status-warning-line: rgba(250, 204, 21, 0.4);
+    --status-ok-bg: #0e1c19;
+    --status-ok-fg: #bbf7d0;
+    --status-ok-line: rgba(74, 222, 128, 0.4);
+
+    --radius-card: 16px;
+    --radius-card-lg: 24px;
+    --radius-pill: 9999px;
+    --shadow-glow: 0 0 40px -8px rgba(167, 139, 250, 0.8);
+    --shadow-glow-lg: 0 0 60px -8px rgba(167, 139, 250, 0.9);
+    --shadow-elevated: 0 40px 120px -30px rgba(124, 58, 237, 0.6);
+
+    /* shadcn (zinc + violet on the #07060d canvas) */
+    --background: 248.6 36.8% 3.7%;
+    --foreground: 0 0% 100%;
+    --card: 240 9.5% 8.2%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 9.5% 8.2%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 255.1 91.7% 76.3%;
+    --primary-foreground: 240 10% 3.9%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent-quiet: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 346.8 77.2% 49.8%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 250 8.8% 13.3%;
+    --input: 250 8.8% 13.3%;
+    --ring: 198.4 93.2% 73.9%;
+
+    /* Sidebar: same canvas as the page, violet active item */
+    --sidebar-background: 248.6 36.8% 3.7%;
+    --sidebar-foreground: 240 4.9% 83.9%;
+    --sidebar-primary: 255.1 91.7% 76.3%;
+    --sidebar-primary-foreground: 240 10% 3.9%;
+    --sidebar-accent: 256.6 43.3% 13.1%;
+    --sidebar-accent-foreground: 250.5 95.2% 91.8%;
+    --sidebar-border: 250 8.8% 13.3%;
+    --sidebar-ring: 198.4 93.2% 73.9%;
 
     --chart-7: #581c87;
     --chart-6: #6b21a8;

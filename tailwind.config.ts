@@ -42,7 +42,7 @@ const config = {
           foreground: "hsl(var(--muted-foreground))",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
+          DEFAULT: "hsl(var(--accent-quiet))",
           foreground: "hsl(var(--accent-foreground))",
         },
         popover: {
@@ -63,11 +63,57 @@ const config = {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // Redesign semantic tokens (design/system.md, Round 2 › Themes).
+        // `brand` is the violet --accent; `accent` stays the shadcn quiet fill.
+        canvas: "var(--canvas)",
+        surface: {
+          DEFAULT: "var(--surface)",
+          2: "var(--surface-2)",
+        },
+        line: {
+          DEFAULT: "var(--line)",
+          strong: "var(--line-strong)",
+        },
+        fg: {
+          DEFAULT: "var(--text)",
+          2: "var(--text-2)",
+        },
+        "muted-fg": "var(--text-muted)",
+        brand: {
+          DEFAULT: "var(--accent)",
+          strong: "var(--accent-strong)",
+          contrast: "var(--accent-contrast)",
+          tint: "var(--accent-tint)",
+          line: "var(--accent-line)",
+        },
+        focus: "var(--focus)",
+        btn: {
+          DEFAULT: "var(--btn-bg)",
+          foreground: "var(--btn-fg)",
+        },
+        status: Object.fromEntries(
+          ["free", "occupied", "kitchen", "served", "reserved", "danger", "warning", "ok"].map((s) => [
+            s,
+            {
+              bg: `var(--status-${s}-bg)`,
+              fg: `var(--status-${s}-fg)`,
+              line: `var(--status-${s}-line)`,
+            },
+          ]),
+        ),
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        card: "var(--radius-card)",
+        "card-lg": "var(--radius-card-lg)",
+        pill: "var(--radius-pill)",
+      },
+      boxShadow: {
+        glow: "var(--shadow-glow)",
+        "glow-lg": "var(--shadow-glow-lg)",
+        elevated: "var(--shadow-elevated)",
       },
       keyframes: {
         "accordion-down": {
