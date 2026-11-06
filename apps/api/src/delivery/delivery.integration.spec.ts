@@ -770,6 +770,45 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       });
     });
 
+    describe('orderNumber on delivery reads (tenant, no duplicates)', () => {
+      it('each restaurant sees its own number, no foreign row, no duplicate rows, kitchen/cashier reads keep it', async () => {
+        const a = await create();
+        expect(a.status).toBe(201);
+        const b = await adminB().post('/api/delivery/orders', {
+          customer: { id: d.anaInB }, address: { addressLine: 'Calle B', neighborhood: null, reference: null, label: null, save: false },
+          items: [{ dishId: d.otherDish, quantity: 1 }], deliveryFee: 0, paymentMode: 'cash_on_delivery', cashChangeFor: null, notes: null,
+        });
+        expect(b.status).toBe(201);
+        const nums = await db<{ id: string; order_number: number; restaurant_id: string }>(
+          'SELECT id, order_number, restaurant_id FROM orders WHERE id = ANY($1)', [[a.body.orderId, b.body.orderId]]);
+        const numOf = (id: string) => nums.find((n) => n.id === id)!.order_number;
+        expect(b.body.delivery.orderNumber).toBe(numOf(b.body.orderId));
+        const boardA = (await operatorA().get('/api/delivery/active')).body as { delivery: { orderId: string; orderNumber: number } }[];
+        const boardB = (await adminB().get('/api/delivery/active')).body as { delivery: { orderId: string; orderNumber: number } }[];
+        expect(boardA.some((r) => r.delivery.orderId === b.body.orderId)).toBe(false);
+        expect(boardB.some((r) => r.delivery.orderId === a.body.orderId)).toBe(false);
+        expect(boardB.find((r) => r.delivery.orderId === b.body.orderId)?.delivery.orderNumber).toBe(numOf(b.body.orderId));
+        for (const board of [boardA, boardB]) expect(new Set(board.map((r) => r.delivery.orderId)).size).toBe(board.length);
+        const [{ n }] = await db<{ n: string }>(
+          `SELECT count(*)::text AS n FROM order_deliveries od JOIN restaurants r ON r.id = od.restaurant_id
+            WHERE od.restaurant_id = $1 AND (od.delivery_status NOT IN ('delivered','cancelled')
+               OR od.updated_at >= (date_trunc('day', now() AT TIME ZONE r.timezone) AT TIME ZONE r.timezone))`, [fixtures.restaurantA]);
+        expect(boardA.length).toBe(Number(n));
+        const ids = boardA.map((r) => r.delivery.orderId);
+        const truth = await db<{ id: string; order_number: number }>('SELECT id, order_number FROM orders WHERE id = ANY($1)', [ids]);
+        for (const r of boardA) expect(r.delivery.orderNumber).toBe(truth.find((t) => t.id === r.delivery.orderId)!.order_number);
+        const cashierBoard = await cashierA().get('/api/delivery/active');
+        expect(cashierBoard.status).toBe(200);
+        expect(cashierBoard.body.find((r: { delivery: { orderId: string } }) => r.delivery.orderId === a.body.orderId)?.delivery.orderNumber).toBe(numOf(a.body.orderId));
+        const k = await kitchenA().post(`/api/delivery/orders/${a.body.orderId}/status`, { action: 'start_preparing' });
+        expect(k.status).toBe(200);
+        expect(k.body.orderNumber).toBe(numOf(a.body.orderId));
+        expect((await adminB().post(`/api/delivery/orders/${a.body.orderId}/status`, { action: 'mark_ready' })).status).toBe(404);
+        // Restaurant B's closed-today test below counts every B delivery: leave none behind.
+        await db('DELETE FROM orders WHERE id = $1', [b.body.orderId]);
+      });
+    });
+
     describe('POST /delivery/orders/:id/return', () => {
       it('records the courier back once, on a delivered or failed delivery', async () => {
         const orderId = await readyOrder();

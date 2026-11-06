@@ -145,7 +145,8 @@ export function CouriersRail({ load, trips, layout, canManage = false, onReturn 
                     ? `${onRoad} ${onRoad === 1 ? 'pedido' : 'pedidos'} en ruta`
                     : 'En el local'
             const pending = busy.has(c.id)
-            const showReturn = toReturn.length > 0 && onReturn !== undefined
+            // Only a manager may record the return (the server refuses others, 42501).
+            const showReturn = canManage && toReturn.length > 0 && onReturn !== undefined
             const showSwitch = canManage && (state === 'inactive' || state === 'free')
             return (
               <li
