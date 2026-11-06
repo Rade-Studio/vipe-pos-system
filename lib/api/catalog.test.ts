@@ -27,6 +27,8 @@ import {
   fetchDishes,
   fetchPromotionDishes,
   fetchPromotions,
+  getMenuTree,
+  reorderCategories,
   setPromotionDishes,
   updateCategory,
   updateDish,
@@ -66,6 +68,19 @@ describe("categories", () => {
     expect(api.DELETE).toHaveBeenCalledWith("/api/catalog/categories/{id}", { params: { path: { id: "c-1" } } })
   })
 
+  it("sends colour and order on writes and saves a full reorder with one PUT", async () => {
+    api.POST.mockResolvedValueOnce({ data: { id: "c-1" } })
+    api.PUT.mockResolvedValueOnce({ data: [{ id: "c-2" }, { id: "c-1" }] })
+
+    await createCategory({ name: "Entradas", icon: "Coffee", active: true, color: "sky", sortOrder: 2 })
+    await expect(reorderCategories(["c-2", "c-1"])).resolves.toEqual([{ id: "c-2" }, { id: "c-1" }])
+
+    expect(api.POST).toHaveBeenCalledWith("/api/catalog/categories", {
+      body: { name: "Entradas", icon: "Coffee", active: true, color: "sky", sortOrder: 2 },
+    })
+    expect(api.PUT).toHaveBeenCalledWith("/api/catalog/categories/order", { body: { ids: ["c-2", "c-1"] } })
+  })
+
   it("passes the API's 409 through as an ApiError with its message", async () => {
     api.DELETE.mockRejectedValueOnce(new ApiError(409, "Conflict", "Category has dishes"))
     await expect(deleteCategory("c-1")).rejects.toMatchObject({ status: 409, message: "Category has dishes" })
@@ -80,6 +95,21 @@ describe("dishes", () => {
     await fetchDishes({ categoryId: "c-1", active: true, pricing: "promotions" })
     expect(api.GET).toHaveBeenLastCalledWith("/api/catalog/dishes", {
       params: { query: { categoryId: "c-1", active: "true", pricing: "promotions" } },
+    })
+
+    await fetchDishes({ categoryId: "c-1", subcategoryId: "s-1" })
+    expect(api.GET).toHaveBeenLastCalledWith("/api/catalog/dishes", {
+      params: { query: { categoryId: "c-1", subcategoryId: "s-1" } },
+    })
+  })
+
+  it("sets and clears the subcategory of a dish", async () => {
+    api.PATCH.mockResolvedValue({ data: { id: "d-1" } })
+    await updateDish("d-1", { categoryId: "c-2", subcategoryId: "s-2" })
+    await updateDish("d-1", { subcategoryId: null })
+    expect(api.PATCH).toHaveBeenLastCalledWith("/api/catalog/dishes/{id}", {
+      params: { path: { id: "d-1" } },
+      body: { subcategoryId: null },
     })
   })
 
@@ -147,5 +177,19 @@ describe("promotions", () => {
       params: { path: { id: "p-1" } },
       body: { dishIds: ["d-2"] },
     })
+  })
+})
+
+describe("menu tree", () => {
+  it("reads the whole step-picker tree in one GET", async () => {
+    const tree = { categories: [{ id: "c-1", subcategories: [], dishes: [{ id: "d-1", available: true }] }] }
+    api.GET.mockResolvedValueOnce({ data: tree })
+    await expect(getMenuTree()).resolves.toEqual(tree)
+    expect(api.GET).toHaveBeenCalledWith("/api/catalog/menu/tree")
+  })
+
+  it("throws on a 2xx without body", async () => {
+    api.GET.mockResolvedValueOnce({ data: undefined })
+    await expect(getMenuTree()).rejects.toMatchObject({ status: 500 })
   })
 })
