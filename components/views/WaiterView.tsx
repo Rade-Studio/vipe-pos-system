@@ -9,6 +9,8 @@ import { useProfileStore } from "@/store/useProfileStore"
 import type { Profile, Dish, Order, CommandPayload } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
+import { TablePanel } from "@/components/floor/TablePanel"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { MenuSection } from "@/components/pos/MenuSection"
 import { CartSidebar } from "@/components/pos/CartSidebar"
 import { AlertTriangle, ShoppingCart } from "lucide-react"
@@ -39,6 +41,7 @@ import { mergeOrdersForWaiter, wireRowToPartialOrder, type OrderChange } from "@
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { useWaiters } from "@/hooks/use-waiters"
+import { useZones } from "@/hooks/use-zones"
 import { useConfigStore } from "@/store/use-config-store"
 import { invalidationsFor } from "@/hooks/inventory/invalidations"
 import {
@@ -104,6 +107,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
   // Estado para controlar la visibilidad del sidebar en móviles
   const [showMobileCart, setShowMobileCart] = useState(false)
+  // T6: on the phone the selected table's panel is a bottom sheet over the map.
+  const [showTableSheet, setShowTableSheet] = useState(false)
   const [cartStyle, cartApi] = useSpring(() => ({ scale: 1 }))
 
   // Referencias
@@ -130,6 +135,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // WaiterSelectionModal, from here and from the kitchen screen), so selecting
   // a table or opening the picker never reads it again.
   const { data: waiters = [], isError: waitersError } = useWaiters()
+  // T6 (S4): the floor map's zones, refreshed live by `zones` realtime events.
+  // A failed read leaves every table reachable from "Sin ubicar".
+  const zonesQuery = useZones()
+  const floorZones = zonesQuery.data ?? (zonesQuery.isError ? [] : undefined)
 
   // Query functions for React Query
   const fetchTables = async () => {
@@ -464,9 +473,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         }
       }
 
-      // Si estamos en móvil y seleccionamos una mesa, mostrar el carrito
+      // Si estamos en móvil y seleccionamos una mesa, mostrar su panel
       if (isMobile && tableId) {
-        setShowMobileCart(true)
+        setShowTableSheet(true)
       }
     },
     [activeTable, checkEmptyCartAndReleaseTable, tables, isMobile, profile],
@@ -497,9 +506,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           setSelectedTableForWaiter(null)
           setShowWaiterModal(false)
 
-          // Si estamos en móvil, mostrar el carrito
+          // Si estamos en móvil, mostrar el panel de la mesa
           if (isMobile) {
-            setShowMobileCart(true)
+            setShowTableSheet(true)
           }
         } catch (err) {
           toast({
@@ -534,9 +543,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           setSelectedTableForWaiter(null)
           setShowWaiterModal(false)
 
-          // Si estamos en móvil, mostrar el carrito
+          // Si estamos en móvil, mostrar el panel de la mesa
           if (isMobile) {
-            setShowMobileCart(true)
+            setShowTableSheet(true)
           }
         } catch (err) {
           toast({
@@ -589,9 +598,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         if (activeTable === tableId) {
           setActiveTable(null)
 
-          // Si estamos en móvil, ocultar el carrito
+          // Si estamos en móvil, ocultar el carrito y el panel
           if (isMobile) {
             setShowMobileCart(false)
+            setShowTableSheet(false)
           }
         }
 
@@ -872,7 +882,33 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const cartTotal = activeTable ? getCartTotal(activeTable) : 0
 
   // Obtener número de mesa activa
-  const activeTableNumber = activeTable ? tables.find((t) => t.id === activeTable)?.number : undefined
+  const activeTableRow = activeTable ? (tables.find((t) => t.id === activeTable) ?? null) : null
+  const activeTableNumber = activeTableRow?.number
+  const activeWaiterName = activeTableRow?.waiter
+    ? (waiters.find((p) => p.id === activeTableRow.waiter)?.name ?? activeTableRow.waiter_name)
+    : undefined
+  const activeZoneName = activeTableRow?.zoneId
+    ? floorZones?.find((zone) => zone.id === activeTableRow.zoneId)?.name
+    : undefined
+
+  // "Agregar productos": today's menu under the map (T10 replaces it with the step picker).
+  const handleAddItems = () => {
+    setShowTableSheet(false)
+    menuSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
+  const tablePanel = (onShowOrder?: () => void) => (
+    <TablePanel
+      table={activeTableRow}
+      waiterName={activeWaiterName}
+      zoneName={activeZoneName}
+      onAddItems={handleAddItems}
+      onReserve={handleReserveTable}
+      onRelease={handleReleaseTable}
+      onShowOrder={onShowOrder}
+      orderCount={cartItems.reduce((sum, item) => sum + item.quantity, 0)}
+    />
+  )
 
   // Si estamos mostrando la comanda, mostrar la vista de impresión
   if (showKitchenOrder && kitchenOrderData) {
@@ -949,10 +985,11 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                   onReserveTable={handleReserveTable}
                   onReleaseTable={handleReleaseTable}
                   isTableAccessible={checkTableAccess}
+                  floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id }}
                 />
 
                 {activeTable && (
-                  <div className="mt-2" ref={menuSectionRef}>
+                  <div className="mt-2 px-1" ref={menuSectionRef}>
                     <MenuSection onAddToCart={handleAddToCart} />
                   </div>
                 )}
@@ -990,18 +1027,21 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
             zIndex: 40,
           }}
         >
-          <CartSidebar
-            tableNumber={activeTableNumber}
-            cartItems={cartItems}
-            cartTotal={cartTotal}
-            onUpdateQuantity={handleUpdateQuantity}
-            onUpdateComments={handleUpdateComments}
-            onClearCart={handleClearCart}
-            onSendToKitchen={handleSendToKitchen}
-            onToggleSidebar={() => {}}
-            isSending={sendingToKitchen}
-            hasActiveTable={activeTable !== null}
-          />
+          <div className="flex h-full flex-col overflow-y-auto">
+            <div className="border-b border-line">{tablePanel()}</div>
+            <CartSidebar
+              tableNumber={activeTableNumber}
+              cartItems={cartItems}
+              cartTotal={cartTotal}
+              onUpdateQuantity={handleUpdateQuantity}
+              onUpdateComments={handleUpdateComments}
+              onClearCart={handleClearCart}
+              onSendToKitchen={handleSendToKitchen}
+              onToggleSidebar={() => {}}
+              isSending={sendingToKitchen}
+              hasActiveTable={activeTable !== null}
+            />
+          </div>
         </div>
       )}
 
@@ -1025,6 +1065,22 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           isOpen={showMobileCart}
           onOpenChange={setShowMobileCart}
         />
+      )}
+
+      {/* Panel de la mesa en móvil: hoja inferior sobre el mapa */}
+      {isMobile && (
+        <Sheet open={showTableSheet && activeTableRow !== null} onOpenChange={setShowTableSheet}>
+          <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-3xl p-0 pb-[env(safe-area-inset-bottom)]">
+            <SheetHeader className="px-4 pt-4 text-left">
+              <SheetTitle>Mesa {activeTableNumber}</SheetTitle>
+              <SheetDescription className="sr-only">Estado y acciones de la mesa</SheetDescription>
+            </SheetHeader>
+            {tablePanel(() => {
+              setShowTableSheet(false)
+              setShowMobileCart(true)
+            })}
+          </SheetContent>
+        </Sheet>
       )}
 
       {/* Botón flotante para mostrar carrito en móvil */}
