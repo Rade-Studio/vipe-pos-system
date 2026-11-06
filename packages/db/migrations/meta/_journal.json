@@ -85,6 +85,13 @@
       "when": 1793831681411,
       "tag": "0011_staff_helpers",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793835281411,
+      "tag": "0012_floor_plan",
+      "breakpoints": true
     }
   ]
 }
