@@ -266,6 +266,11 @@ expect_eq "demo: preparations with production batches" "t" \
 
 expect_eq "demo: three zones and every table placed on one" "Barra,Salón principal,Terraza/0" \
   "$(q "SELECT (SELECT string_agg(name, ',' ORDER BY name) FROM public.zones) || '/' || (SELECT count(*) FROM public.tables WHERE zone_id IS NULL OR x IS NULL)")"
+expect_eq "demo: categories with subcategories put every dish in one, Postres skips the step" "Bebidas:3,Entradas:3,Platos fuertes:2/0/0/8" \
+  "$(q "SELECT (SELECT string_agg(c.name || ':' || n, ',' ORDER BY c.name) FROM (SELECT category_id, count(*) AS n FROM public.subcategories GROUP BY category_id) s JOIN public.categories c ON c.id = s.category_id)
+         || '/' || (SELECT count(*) FROM public.dishes d WHERE d.subcategory_id IS NULL AND EXISTS (SELECT 1 FROM public.subcategories s WHERE s.category_id = d.category_id))
+         || '/' || (SELECT count(*) FROM public.dishes d JOIN public.categories c ON c.id = d.category_id WHERE c.name = 'Postres' AND d.subcategory_id IS NOT NULL)
+         || '/' || (SELECT count(DISTINCT sort_order) FROM public.categories)")"
 
 # Invariants of the loaded demo (independent verifier of 2eaf3d5).
 expect_eq "demo: every payment inside its register's window" "0" \
