@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from '@vipe/db';
 import type { z } from 'zod';
 import type { CallerProfile } from '../auth/auth-context';
@@ -8,6 +8,7 @@ import { definedColumns, insertColumns, one, rows, rpc, setList } from '../inven
 import { SalesService } from '../inventory/sales.service';
 import { PrintService } from '../print/print.service';
 import type {
+  ClosedTodaySummary,
   Courier,
   createCourierSchema,
   CreateDeliveryOrderInput,
@@ -18,12 +19,32 @@ import type {
   setDeliveryStatusSchema,
   updateCourierSchema,
 } from './delivery.dto';
-import { toCourier, toCustomer, toCustomerAddress, toDeliveryOrder, toDeliveryWithBill } from './delivery.mappers';
+import {
+  toClosedTodaySummary,
+  toCourier,
+  toCustomer,
+  toCustomerAddress,
+  toCustomerHistory,
+  toDeliveryOrder,
+  toDeliveryWithBill,
+} from './delivery.mappers';
 
 type Json = Record<string, unknown>;
 /** Waiter on the kitchen ticket when the operator has no name; the printer drops commands without one. */
 const FALLBACK_WAITER = 'Domicilios';
 const json = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`;
+/** The courier fields a delivery operator may not change (T19: only isActive). */
+const ADMIN_ONLY_COURIER_FIELDS = ['name', 'phone'] as const;
+
+/**
+ * `to_jsonb(order_deliveries)` plus the prepaid method's name, for a query
+ * whose FROM has `public.order_deliveries od` and DELIVERY_JOIN.
+ */
+const DELIVERY_ROW = sql`to_jsonb(od) || jsonb_build_object('prepaid_method_name', pm.name)`;
+const DELIVERY_JOIN = sql`LEFT JOIN public.payment_methods pm ON pm.restaurant_id = od.restaurant_id AND pm.id = od.prepaid_method_id`;
+
+/** Local midnight of `now` in the restaurant's timezone, for a query whose FROM has `public.restaurants r`. */
+const restaurantMidnight = (now: string) => sql`(date_trunc('day', ${now}::timestamptz AT TIME ZONE r.timezone) AT TIME ZONE r.timezone)`;
 
 /** Only the keys the caller sent, renamed for the RPC (delivery-service.ts customerWire/addressWire/itemsWire). */
 function wire(input: Record<string, unknown>, names: Record<string, string>): Json {
@@ -88,7 +109,36 @@ export class DeliveryService {
       SELECT to_jsonb(a) AS row FROM public.customer_addresses a
        WHERE a.customer_id = ${customer.row.id as string}
        ORDER BY a.is_default DESC, a.created_at, a.id`);
-    return { customer: toCustomer(customer.row), addresses: addresses.map((a) => toCustomerAddress(a.row)) };
+    return {
+      customer: toCustomer(customer.row),
+      addresses: addresses.map((a) => toCustomerAddress(a.row)),
+      history: await this.customerHistory(customer.row.id as string),
+    };
+  }
+
+  /** The customer's deliveries except cancelled ones: count, latest date and its address snapshot. */
+  private async customerHistory(customerId: string) {
+    const [row] = await rows<{ row: Json }>(this.uow, sql`
+      SELECT jsonb_build_object(
+               'orders_count', count(*),
+               'last_order_at', max(od.created_at),
+               'last_address', (
+                 SELECT jsonb_build_object('address_line', l.address_line, 'neighborhood', l.neighborhood,
+                                           'address_reference', l.address_reference)
+                   FROM public.order_deliveries l
+                  WHERE l.customer_id = ${customerId} AND l.delivery_status <> 'cancelled'
+                  ORDER BY l.created_at DESC, l.order_id DESC
+                  LIMIT 1)) AS row
+        FROM public.order_deliveries od
+       WHERE od.customer_id = ${customerId} AND od.delivery_status <> 'cancelled'`);
+    return toCustomerHistory(row.row);
+  }
+
+  /** One delivery as the DTO reads it (RLS: the caller's restaurant). */
+  private async readDelivery(orderId: string): Promise<DeliveryOrder> {
+    return toDeliveryOrder(await one<Json>(this.uow, sql`
+      SELECT ${DELIVERY_ROW} AS row FROM public.order_deliveries od ${DELIVERY_JOIN}
+       WHERE od.order_id = ${orderId}`, 'row', 'Delivery not found'));
   }
 
   async listCouriers(activeOnly: boolean): Promise<Courier[]> {
@@ -104,7 +154,14 @@ export class DeliveryService {
       INSERT INTO public.couriers ${insertColumns(pairs)} RETURNING to_jsonb(couriers) AS row`, 'row', 'Courier not found'));
   }
 
-  async updateCourier(id: string, patch: z.infer<typeof updateCourierSchema>): Promise<Courier> {
+  /**
+   * Admins patch every field; a delivery operator only isActive (403 before
+   * any write; couriers_operator_guard refuses it in the database too).
+   */
+  async updateCourier(id: string, patch: z.infer<typeof updateCourierSchema>, caller: CallerProfile): Promise<Courier> {
+    if (caller.role === 'delivery_operator' && ADMIN_ONLY_COURIER_FIELDS.some((field) => patch[field] !== undefined)) {
+      throw new ForbiddenException('A delivery operator may only change isActive');
+    }
     const pairs = definedColumns({ name: patch.name, phone: patch.phone, is_active: patch.isActive });
     return toCourier(await one(this.uow, sql`
       UPDATE public.couriers SET ${setList(pairs)} WHERE id = ${id} RETURNING to_jsonb(couriers) AS row`, 'row', 'Courier not found'));
@@ -131,9 +188,10 @@ export class DeliveryService {
     const cashChangeFor = input.paymentMode === 'cash_on_delivery' ? (input.cashChangeFor ?? null) : null;
     const created = await rpc(this.uow, sql`
       SELECT public.create_delivery_order(${json(customer)}, ${json(address)}, ${json(items)},
-               ${input.deliveryFee}::bigint, ${input.paymentMode}::text, ${cashChangeFor}::bigint, ${input.notes ?? null}::text) AS result`);
+               ${input.deliveryFee}::bigint, ${input.paymentMode}::text, ${cashChangeFor}::bigint, ${input.notes ?? null}::text,
+               ${input.prepaidMethodId ?? null}::uuid) AS result`);
     const orderId = String(created.order_id);
-    const delivery = toDeliveryOrder(created.delivery as Json);
+    const delivery = await this.readDelivery(orderId);
 
     const consumption = await this.sales.consume(orderId);
 
@@ -168,9 +226,17 @@ export class DeliveryService {
   }
 
   async setStatus(orderId: string, input: z.infer<typeof setDeliveryStatusSchema>): Promise<DeliveryOrder> {
-    return toDeliveryOrder(await rpc(this.uow, sql`
+    await rpc(this.uow, sql`
       SELECT public.set_delivery_status(${orderId}::uuid, ${input.action}::text,
-               ${input.courierId ?? null}::uuid, ${input.reason ?? null}::text) AS result`));
+               ${input.courierId ?? null}::uuid, ${input.reason ?? null}::text,
+               ${input.courierEta ?? null}::timestamptz, ${input.courierLocation ?? null}::text) AS result`);
+    return this.readDelivery(orderId);
+  }
+
+  /** return_courier owns the role matrix and the state rule (delivered or failed, once). */
+  async returnCourier(orderId: string): Promise<DeliveryOrder> {
+    await rpc(this.uow, sql`SELECT public.return_courier(${orderId}::uuid) AS result`);
+    return this.readDelivery(orderId);
   }
 
   /**
@@ -182,13 +248,35 @@ export class DeliveryService {
   async listActive(): Promise<DeliveryOrderWithBill[]> {
     const now = this.clock.now().toISOString();
     const result = await rows<{ delivery: Json; bill: Json }>(this.uow, sql`
-      SELECT to_jsonb(od) AS delivery, jsonb_build_object('subtotal', o.subtotal, 'tax', o.tax, 'status', o.status) AS bill
+      SELECT ${DELIVERY_ROW} AS delivery, jsonb_build_object('subtotal', o.subtotal, 'tax', o.tax, 'status', o.status) AS bill
         FROM public.order_deliveries od
+        ${DELIVERY_JOIN}
         JOIN public.orders o ON o.id = od.order_id
         JOIN public.restaurants r ON r.id = od.restaurant_id
        WHERE od.delivery_status NOT IN ('delivered', 'cancelled')
-          OR od.updated_at >= (date_trunc('day', ${now}::timestamptz AT TIME ZONE r.timezone) AT TIME ZONE r.timezone)
+          OR od.updated_at >= ${restaurantMidnight(now)}
        ORDER BY od.updated_at DESC, od.order_id`);
     return result.map(toDeliveryWithBill);
+  }
+
+  /**
+   * "Cerrados hoy" of the board: delivered and cancelled deliveries updated
+   * since local midnight (the listActive rule), failed ones that failed since
+   * then, and the average dispatched_at → delivered_at of the delivered ones
+   * in rounded minutes.
+   */
+  async closedToday(): Promise<ClosedTodaySummary> {
+    const now = this.clock.now().toISOString();
+    const [row] = await rows<{ row: Json }>(this.uow, sql`
+      SELECT jsonb_build_object(
+               'delivered', count(*) FILTER (WHERE od.delivery_status = 'delivered' AND od.updated_at >= m.midnight),
+               'cancelled', count(*) FILTER (WHERE od.delivery_status = 'cancelled' AND od.updated_at >= m.midnight),
+               'failed', count(*) FILTER (WHERE od.delivery_status = 'failed' AND od.failed_at >= m.midnight),
+               'average_minutes', round(avg(extract(epoch FROM od.delivered_at - od.dispatched_at) / 60)
+                 FILTER (WHERE od.delivery_status = 'delivered' AND od.updated_at >= m.midnight AND od.dispatched_at IS NOT NULL))) AS row
+        FROM public.restaurants r -- RLS: only the caller's restaurant
+        CROSS JOIN LATERAL (SELECT ${restaurantMidnight(now)} AS midnight) m
+        LEFT JOIN public.order_deliveries od ON od.restaurant_id = r.id`);
+    return toClosedTodaySummary(row?.row ?? { delivered: 0, cancelled: 0, failed: 0, average_minutes: null });
   }
 }

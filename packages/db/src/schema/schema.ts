@@ -128,7 +128,7 @@ export const couriers = pgTable("couriers", {
 			foreignColumns: [restaurants.id],
 			name: "couriers_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
-	pgPolicy("couriers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
+	pgPolicy("couriers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: sql`((( SELECT private.current_app_role() AS current_app_role) = ANY (ARRAY['admin'::text, 'delivery_operator'::text])) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`  }),
 	pgPolicy("couriers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("couriers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("couriers_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 80)`),
@@ -568,7 +568,12 @@ export const orderDeliveries = pgTable("order_deliveries", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	notes: text(),
+	prepaidMethodId: uuid("prepaid_method_id"),
+	courierEta: timestamp("courier_eta", { withTimezone: true, mode: 'string' }),
+	courierLocation: text("courier_location"),
+	returnedAt: timestamp("returned_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
+	index("idx_order_deliveries_prepaid_method_id").using("btree", table.prepaidMethodId.asc().nullsLast().op("uuid_ops")),
 	index("idx_order_deliveries_restaurant_id_courier_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.courierId.asc().nullsLast().op("uuid_ops")),
 	index("idx_order_deliveries_restaurant_id_delivery_status").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.deliveryStatus.asc().nullsLast().op("text_ops")),
 	foreignKey({
@@ -591,6 +596,11 @@ export const orderDeliveries = pgTable("order_deliveries", {
 			foreignColumns: [restaurants.id],
 			name: "order_deliveries_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.prepaidMethodId],
+			foreignColumns: [paymentMethods.restaurantId, paymentMethods.id],
+			name: "order_deliveries_prepaid_method_id_fkey"
+		}).onDelete("restrict"),
 	pgPolicy("order_deliveries_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("order_deliveries_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("order_deliveries_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
@@ -605,6 +615,9 @@ export const orderDeliveries = pgTable("order_deliveries", {
 	check("order_deliveries_neighborhood_check", sql`(neighborhood IS NULL) OR (length(neighborhood) <= 80)`),
 	check("order_deliveries_notes_check", sql`(notes IS NULL) OR (char_length(notes) <= 300)`),
 	check("order_deliveries_payment_mode_check", sql`payment_mode = ANY (ARRAY['prepaid'::text, 'cash_on_delivery'::text])`),
+	check("order_deliveries_prepaid_method_check", sql`(prepaid_method_id IS NULL) OR (payment_mode = 'prepaid'::text)`),
+	check("order_deliveries_courier_location_check", sql`(length(btrim(courier_location)) >= 1) AND (length(btrim(courier_location)) <= 60)`),
+	check("order_deliveries_returned_at_check", sql`(returned_at IS NULL) OR ((dispatched_at IS NOT NULL) AND (returned_at >= dispatched_at))`),
 ]);
 
 export const orderItems = pgTable("order_items", {

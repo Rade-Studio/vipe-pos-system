@@ -150,5 +150,17 @@ export function parseOrderDeliveryRow(raw: unknown): DeliveryOrder {
     cancelledAt: optionalIsoDate(obj.cancelled_at, 'cancelled_at'),
     createdAt: requireIsoDate(obj.created_at, 'created_at'),
     updatedAt: requireIsoDate(obj.updated_at, 'updated_at'),
+    // The raw row carries the method id only; the board keeps the name it
+    // read from the API (realtime.ts mergeDelivery).
+    prepaidMethod:
+        obj.prepaid_method_id === null || obj.prepaid_method_id === undefined
+          ? null
+          : { id: requireUuid(obj.prepaid_method_id, 'prepaid_method_id'), name: null },
+    courierEta: optionalIsoDate(obj.courier_eta, 'courier_eta'),
+    courierLocation:
+        typeof obj.courier_location === 'string' && obj.courier_location !== ''
+          ? obj.courier_location
+          : null,
+    returnedAt: optionalIsoDate(obj.returned_at, 'returned_at'),
   }
 }

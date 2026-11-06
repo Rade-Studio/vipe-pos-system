@@ -7,6 +7,7 @@ import {
   countByKind,
   kitchenThresholds,
   newItemIdsOf,
+  sendIndexOf,
   formatElapsed,
   matchesKindFilter,
   oldestFirst,
@@ -117,6 +118,33 @@ describe("new items from persisted addedAt (T23)", () => {
       { id: "late-served", at: "2026-10-07T11:20:00Z", status: "served" },
     ])
     expect(newItemIdsOf(o)).toEqual(["late-a", "late-b"])
+  })
+
+  it("treats one send whose lines straddle a millisecond as one send (the API adds 1 µs per line)", () => {
+    const o = withItems([
+      { id: "a", at: "2026-10-07T11:00:00.999Z" },
+      { id: "b", at: "2026-10-07T11:00:01.000Z" },
+      { id: "c", at: "2026-10-07T11:00:01.001Z" },
+    ])
+    expect(newItemIdsOf(o)).toEqual([])
+  })
+
+  it("marks a later send a few seconds after the first one", () => {
+    const o = withItems([
+      { id: "first", at: "2026-10-07T11:00:00.000Z" },
+      { id: "later", at: "2026-10-07T11:00:05.000Z" },
+    ])
+    expect(newItemIdsOf(o)).toEqual(["later"])
+  })
+
+  it("numbers sends by time, joining lines that straddle a millisecond", () => {
+    const o = withItems([
+      { id: "a", at: "2026-10-07T11:00:00.999Z" },
+      { id: "b", at: "2026-10-07T11:00:01.000Z" },
+      { id: "c", at: "2026-10-07T11:04:00.000Z" },
+      { id: "d", at: "2026-10-07T11:04:00.001Z" },
+    ])
+    expect(Object.fromEntries(sendIndexOf(o))).toEqual({ a: 0, b: 0, c: 1, d: 1 })
   })
 
   it("has no new items on a single send", () => {

@@ -87,6 +87,7 @@ export const createDeliveryOrderSchema = z
     paymentMode: z.enum(PAYMENT_MODES),
     cashChangeFor: z.number().int().nullable().optional(),
     notes: z.string().max(TEXT_MAX).nullable().optional(),
+    prepaidMethodId: z.guid().nullable().optional(),
   })
   .superRefine((input, ctx) => {
     if (input.paymentMode === 'prepaid' && input.cashChangeFor != null) {
@@ -100,6 +101,8 @@ export const setDeliveryStatusSchema = z.strictObject({
   action: z.string().min(1).max(40),
   courierId: z.guid().nullable().optional(),
   reason: z.string().max(TEXT_MAX).nullable().optional(),
+  courierEta: z.iso.datetime({ offset: true }).nullable().optional(),
+  courierLocation: z.string().max(TEXT_MAX).nullable().optional(),
 });
 
 export class Customer {
@@ -123,9 +126,25 @@ export class CustomerAddress {
   @ApiProperty({ format: 'date-time' }) updatedAt!: string;
 }
 
+/** Address snapshot of a delivery (order_deliveries), not a registry row. */
+export class DeliveryAddressSnapshot {
+  @ApiProperty() addressLine!: string;
+  @ApiProperty({ type: String, nullable: true }) neighborhood!: string | null;
+  @ApiProperty({ type: String, nullable: true }) reference!: string | null;
+}
+
+export class CustomerHistory {
+  @ApiProperty({ type: 'integer', description: 'Deliveries of the customer, cancelled ones excluded.' }) ordersCount!: number;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Creation of the latest counted delivery.' })
+  lastOrderAt!: string | null;
+  @ApiProperty({ type: DeliveryAddressSnapshot, nullable: true, description: 'Address of the latest counted delivery.' })
+  lastAddress!: DeliveryAddressSnapshot | null;
+}
+
 export class CustomerWithAddresses {
   @ApiProperty({ type: Customer }) customer!: Customer;
   @ApiProperty({ type: [CustomerAddress], description: 'Default address first.' }) addresses!: CustomerAddress[];
+  @ApiProperty({ type: CustomerHistory }) history!: CustomerHistory;
 }
 
 export class Courier {
@@ -149,6 +168,11 @@ export class UpdateCourierRequest {
   @ApiPropertyOptional() isActive?: boolean;
 }
 
+export class PrepaidMethod {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() name!: string;
+}
+
 /** The order_deliveries row in camelCase (lib/delivery/types.ts DeliveryOrder). */
 export class DeliveryOrder {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
@@ -161,7 +185,13 @@ export class DeliveryOrder {
   @ApiProperty({ description: 'Whole COP pesos.' }) deliveryFee!: number;
   @ApiProperty({ enum: PAYMENT_MODES }) paymentMode!: PaymentMode;
   @ApiProperty({ type: Number, nullable: true }) cashChangeFor!: number | null;
+  @ApiProperty({ type: PrepaidMethod, nullable: true, description: 'Payment channel of a prepaid order; null when not captured.' })
+  prepaidMethod!: PrepaidMethod | null;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) courierId!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'When the courier is expected back, typed at dispatch.' })
+  courierEta!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Where the courier is, typed at dispatch.' }) courierLocation!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Courier back at the restaurant.' }) returnedAt!: string | null;
   @ApiProperty({ enum: DELIVERY_STATUSES }) status!: DeliveryStatus;
   @ApiProperty({ type: String, nullable: true }) failureReason!: string | null;
   @ApiProperty({ type: String, nullable: true }) notes!: string | null;
@@ -213,6 +243,13 @@ export class CreateDeliveryOrderRequest {
   })
   cashChangeFor?: number | null;
   @ApiPropertyOptional({ type: String, nullable: true, maxLength: TEXT_MAX, description: `<= 300 chars ${BY_RPC}.` }) notes?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: `Payment channel of a prepaid order: an active payment method of the restaurant, ${BY_RPC}.`,
+  })
+  prepaidMethodId?: string | null;
 }
 
 export class CreateDeliveryOrderResult {
@@ -231,6 +268,33 @@ export class SetDeliveryStatusRequest {
   @ApiProperty({ enum: DELIVERY_ACTIONS }) action!: string;
   @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Required for dispatch.' }) courierId?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true, description: 'Required for fail (1..200 chars).' }) reason?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Only with dispatch: when the courier is expected back, after now and within 6 hours (validated by set_delivery_status).',
+  })
+  courierEta?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: TEXT_MAX,
+    description: 'Only with dispatch: where the courier is, trimmed 1..60 chars (validated by set_delivery_status).',
+  })
+  courierLocation?: string | null;
+}
+
+/** GET /delivery/closed-today: the board's terminal deliveries of the restaurant day. */
+export class ClosedTodaySummary {
+  @ApiProperty({ type: 'integer', description: 'Delivered deliveries updated today.' }) deliveredCount!: number;
+  @ApiProperty({ type: 'integer', description: 'Cancelled deliveries updated today.' }) cancelledCount!: number;
+  @ApiProperty({ type: 'integer', description: 'Deliveries currently failed that failed today.' }) failedCount!: number;
+  @ApiProperty({
+    type: 'integer',
+    nullable: true,
+    description: 'Average dispatched_at → delivered_at of the delivered ones, rounded minutes; null without any.',
+  })
+  averageDeliveryMinutes!: number | null;
 }
 
 /** One row of the operator board (DeliveryOrderWithBill). */
