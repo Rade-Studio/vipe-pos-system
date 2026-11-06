@@ -35,9 +35,16 @@ export const cashRegisters = pgTable("cash_registers", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	openedBy: uuid("opened_by").default(sql`private.current_profile_id()`),
 }, (table) => [
+	index("idx_cash_registers_opened_by").using("btree", table.openedBy.asc().nullsLast().op("uuid_ops")),
 	index("idx_cash_registers_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("one_open_register_per_restaurant").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")).where(sql`((status)::text = 'open'::text)`),
+	foreignKey({
+			columns: [table.restaurantId, table.openedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "cash_registers_opened_by_fkey"
+		}).onDelete("set null"),
 	foreignKey({
 			columns: [table.restaurantId],
 			foreignColumns: [restaurants.id],
@@ -735,6 +742,7 @@ export const paymentTenders = pgTable("payment_tenders", {
 	amount: bigint({ mode: "number" }).notNull(),
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
 	cashReceived: bigint("cash_received", { mode: "number" }),
+	reference: text(),
 }, (table) => [
 	index("idx_payment_tenders_restaurant_id_payment_method_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.paymentMethodId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
@@ -760,6 +768,7 @@ export const paymentTenders = pgTable("payment_tenders", {
 	check("payment_tenders_cash_received_check", sql`((method_kind = 'cash'::text) AND (cash_received IS NOT NULL) AND (cash_received >= amount)) OR ((method_kind = 'electronic'::text) AND (cash_received IS NULL))`),
 	check("payment_tenders_line_no_check", sql`line_no >= 1`),
 	check("payment_tenders_method_kind_check", sql`method_kind = ANY (ARRAY['cash'::text, 'electronic'::text])`),
+	check("payment_tenders_reference_check", sql`(length(btrim(reference)) >= 1) AND (length(btrim(reference)) <= 60)`),
 ]);
 
 export const paymentTransactions = pgTable("payment_transactions", {

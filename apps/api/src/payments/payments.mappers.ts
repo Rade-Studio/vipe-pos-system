@@ -80,6 +80,7 @@ const toTender = (row: Json): PaymentTender => ({
   methodKind: row.method_kind as PaymentMethodKind,
   amount: req(row, 'amount'),
   cashReceived: numOrNull(row.cash_received),
+  reference: text(row.reference),
 });
 
 /** A `paymentJson` value. */
