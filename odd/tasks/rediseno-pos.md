@@ -1,0 +1,41 @@
+# POS redesign implementation
+
+Implement the approved gentle-design redesign of every role view on staging (`dev`), in chained PRs. Production is not touched. Designs live in the main checkout under `design/` (not committed); `design/system.md` is the token and rule source.
+
+## Specs
+
+- S1 (L1): "Listo, me gusta todo implementemos todo y debes modificar los diseños con los comentarios de las implementaciones, dime si hay algun diseño qeu debo escojer entre a o B". Every implemented artboard gets its canvas handoff (`in_progress`, then `implemented` with a note of what differs from the design).
+- S2 (L2, chosen artboards): waiter `design/flujo-mesero/01-mapa-y-pedido.html`; kitchen `design/kitchen-redesign/01-ticket-rail.html`; cashier `design/cashier-redesign/01-cobro-en-tres-paneles.html`; delivery `design/delivery-redesign/01-dispatch-console.html`; admin shell `design/admin-shell-redesign/01-unified-canvas-sidebar.html`; floor plan editor `design/admin-floor-plan/01-canvas-floating-inspector.html`; menu tree `design/admin-menu-tree/01-admin-menu-tree.html`.
+- S3 (L3, delivery): "Me gusta el de consola de despacho, pero toca implementar el diseño igual al toma pedido de los meseros, que son categorias y subcategorias y platos, deberia funcionar con la misma configuracion".
+- S4 (L4, waiter map, earlier round): "desde el celular, tablet y computador se entidad y se vea algo 3d las mesas, por zonas, como si fuera un mapa en 2d con su ubicacion personalizada de cada mesa, cantidad de sillas en esa mesa opcionall que se pueda configurar todo eso en administracion".
+- S5 (L5, order entry): "Es una serie de paso, ejemplo cuadros grandes de categorias, cuadros grandes de subcategorias, platos, agregar". One level per screen with huge tiles; after Agregar it returns to Categoría.
+- S6 (L6, quality bar from round-1 feedback): "No vi los diseños en modo claro, y de paso, veo poco responsive disign, todo esta roto, cada chip que veo esta roto, se exceden de los limites, muchas ventanas mal comodas". Every screen works in light and dark and at phone 390, tablet 768/1024 and desktop 1440 without overflow; checked visually on the running app.
+- S7 (admin sidebar): "la administrativa el sidebar del menu tiene algo que no cuadra con el fondo". Sidebar and page share the same canvas background.
+- S8 (scope rule): data the designs show that the system does not store today (e.g. courier return time, waiter tip payouts, "precio cambió" chip) is implemented only when the data exists; otherwise it is left out and listed in the Log as a decision for the user. No invented data in the product.
+
+## Tasks
+
+- [ ] T1. Theme tokens: `design/system.md` light/dark semantic tokens into `app/globals.css` (`:root`, `.dark`) and `tailwind.config.ts`; remove the duplicate `components/theme-provider.tsx`. (S6, S7) Route: worker. Commit: pending.
+- [ ] T2. Admin shell: unified-canvas sidebar (same background, violet active item, VipePOS name, icon rail on tablet, drawer on phone) on `components/admin/shell/**`; overview "Sala en vivo" waits for T6. (S2, S6, S7) Route: worker. Commit: pending.
+- [ ] T3. Floor plan DB: migration 0012 `zones` (name, aspect, sort order, labels jsonb) + `tables` layout columns (`zone_id`, `x`, `y`, `w`, `h`, `shape`, `rotation`, nullable `seats`), RLS/grants, pgTAP `220_*`, Drizzle schema; existing tables land in a default zone. (S4) Route: worker + verify. Risk: item 1 (schema change on live data). Commit: pending.
+- [ ] T4. Floor plan API: zones CRUD, table layout fields in DTOs and realtime merge, integration spec, regenerated OpenAPI + `schema.d.ts`. (S4) Route: worker + verify. Risk: item 3 (API contract). Commit: pending.
+- [ ] T5. Admin floor plan editor (canvas first, floating inspector). (S2, S4, S6) Route: worker. Commit: pending.
+- [ ] T6. Waiter zone map (2.5D tables by zone, table panel) replacing the table grid; admin overview "Sala en vivo" mini map. (S2, S4, S6) Route: worker + verify. Commit: pending.
+- [ ] T7. Menu DB: migration 0013 `subcategories`, `categories.color` + `sort_order`, `dishes.subcategory_id` with same-restaurant/same-category guard, pgTAP, Drizzle schema. (S5) Route: worker + verify. Risk: item 1. Commit: pending.
+- [ ] T8. Menu API: subcategory CRUD, category color/order, dish `subcategoryId` filter, regenerated contract. (S5) Route: worker + verify. Risk: item 3. Commit: pending.
+- [ ] T9. Admin menu tree (categories → subcategories → dishes, order, colour, icon, "sin subcategorías", waiter preview). (S2, S5) Route: worker. Commit: pending.
+- [ ] T10. Shared step picker (Categoría → Subcategoría → Plato → Agregar) and the waiter order flow from the map. (S2, S5, S6) Route: worker + verify. Commit: pending.
+- [ ] T11. Delivery uses the shared step picker for products, same configuration. (S3) Route: worker. Commit: pending.
+- [ ] T12. Delivery dispatch console layout. (S2, S6, S8) Route: worker. Commit: pending.
+- [ ] T13. Kitchen ticket rail. (S2, S6, S8) Route: worker. Commit: pending.
+- [ ] T14. Cashier three-panel layout. (S2, S6, S8) Route: worker. Commit: pending.
+
+## Log
+
+- L1 (user, 2026-11-06): "Listo, me gusta todo implementemos todo y debes modificar los diseños con los comentarios de las implementaciones, dime si hay algun diseño qeu debo escojer entre a o B"
+- L2 (user, 2026-11-06, choices): Caja "01 · Cobro en tres paneles"; Admin "01 · Sidebar sobre el mismo lienzo"; Editor plano "01 · Lienzo primero"; kitchen riel de comandas and the waiter `flujo-mesero` were already approved.
+- L3 (user, 2026-11-06): "Me gusta el de consola de despacho, pero toca implementar el diseño igual al toma pedido de los meseros, que son categorias y subcategorias y platos, deberia funcionar con la misma configuracion"
+- L4 (user, 2026-11-05): "te dije que necesitaba un redesign del mesero, cosa que desde el celular, tablet y computador se entidad y se vea algo 3d las mesas, por zonas, como si fuera un mapa en 2d con su ubicacion personalizada de cada mesa, cantidad de sillas en esa mesa opcionall que se pueda configurar todo eso en administracion"
+- L5 (user, 2026-11-06): "no es teclado mecanico, no me entendiste nada. Es una serie de paso, ejemplo cuadros grandes de categorias, cuadros grandes de subcategorias, platos, agregar"
+- L6 (user, 2026-11-05): "No vi los diseños en modo claro, y de paso, veo poco responsive disign, todo esta roto, cada chip que veo esta roto, se exceden de los limites, muchas ventanas mal comodas"
+- L7 (evidence, 2026-11-06): code map (explorer). Schema: `tables` `0000_baseline.sql:5364` (no layout), `categories` :4451 (icon, no color/order), `dishes` :4544; next migration 0012; RLS pattern `0000_baseline.sql:8245-8266`; realtime whitelist `0004_realtime_notify.sql:83-99` + `apps/api/src/realtime/change-event.ts`; contract drift check `ci.yml:62-70`. Views: WaiterView 1130 lines (tests 816), KitchenView 825, CashierView 865, DeliveryOrderForm 749, DeliveryBoard 440. Theming: next-themes class mode, shadcn HSL vars `app/globals.css:7,52`. Printer bridge uses table `number` only (`pos/print_renderer.py:110`). Unverified: order_items timestamp/price snapshot, saved addresses, courier return time.
