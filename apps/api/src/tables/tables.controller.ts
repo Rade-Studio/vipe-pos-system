@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Req } from '@nestjs/common';
 import {
   ApiBody,
   ApiConflictResponse,
@@ -21,6 +21,8 @@ import {
   createTableSchema,
   ReleaseTableRequest,
   releaseTableSchema,
+  SaveLayoutRequest,
+  saveLayoutSchema,
   Table,
   UpdateTableRequest,
   updateTableSchema,
@@ -52,6 +54,18 @@ export class TablesController {
   @ApiForbiddenResponse({ description: 'Not an admin.' })
   create(@Body() body: unknown): Promise<Table> {
     return this.tables.create(parseInput(createTableSchema, body));
+  }
+
+  @Put('layout')
+  @Roles(ADMIN)
+  @ApiBody({ type: SaveLayoutRequest })
+  @ApiOkResponse({ type: [Table], description: 'Every table after the save, ordered by number.' })
+  @ApiForbiddenResponse({ description: 'Not an admin.' })
+  @ApiUnprocessableEntityResponse({
+    description: 'Unknown table (another restaurant), zone of another restaurant or invalid values; nothing is saved.',
+  })
+  saveLayout(@Body() body: unknown): Promise<Table[]> {
+    return this.tables.saveLayout(parseInput(saveLayoutSchema, body));
   }
 
   @Patch(':id')

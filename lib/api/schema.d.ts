@@ -100,6 +100,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/categories/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CategoriesController_reorder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/categories/{id}": {
         parameters: {
             query?: never;
@@ -205,6 +221,70 @@ export interface paths {
         };
         get: operations["PromotionsController_dishes"];
         put: operations["PromotionsController_setDishes"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/subcategories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SubcategoriesController_list"];
+        put?: never;
+        post: operations["SubcategoriesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/subcategories/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["SubcategoriesController_reorder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/subcategories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["SubcategoriesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["SubcategoriesController_update"];
+        trace?: never;
+    };
+    "/api/catalog/menu/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MenuController_tree"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -340,6 +420,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["TablesController_saveLayout"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{id}": {
         parameters: {
             query?: never;
@@ -402,6 +498,38 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ZonesController_list"];
+        put?: never;
+        post: operations["ZonesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/zones/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["ZonesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["ZonesController_update"];
         trace?: never;
     };
     "/api/payments/methods": {
@@ -1415,6 +1543,12 @@ export interface components {
             description: string | null;
             icon: string;
             active: boolean;
+            /** @description Menu order; the list is ordered by sortOrder, then name. */
+            sortOrder: number;
+            /** @enum {string} */
+            color: "neutral" | "yellow" | "orange" | "sky" | "violet" | "emerald" | "rose";
+            /** @description Derived: true when any dish of the category (active or not) sits in a subcategory. False is "sin subcategorías": the pickers skip the subcategory step. */
+            hasSubcategories: boolean;
             /** Format: date-time */
             createdAt: string | null;
             /** Format: date-time */
@@ -1426,12 +1560,26 @@ export interface components {
             icon: string;
             /** @default true */
             active: boolean;
+            /** @description Omitted: after the last category. */
+            sortOrder?: number;
+            /**
+             * @description Omitted: neutral.
+             * @enum {string}
+             */
+            color?: "neutral" | "yellow" | "orange" | "sky" | "violet" | "emerald" | "rose";
+        };
+        CategoryOrderRequest: {
+            /** @description Category ids in menu order; position i gets sortOrder i. Ids left out keep theirs. */
+            ids: string[];
         };
         UpdateCategoryRequest: {
             name?: string;
             description?: string | null;
             icon?: string;
             active?: boolean;
+            sortOrder?: number;
+            /** @enum {string} */
+            color?: "neutral" | "yellow" | "orange" | "sky" | "violet" | "emerald" | "rose";
         };
         Dish: {
             /** Format: uuid */
@@ -1442,6 +1590,11 @@ export interface components {
             price: number;
             /** Format: uuid */
             categoryId: string | null;
+            /**
+             * Format: uuid
+             * @description A subcategory of categoryId, or null.
+             */
+            subcategoryId: string | null;
             /** @description Opaque image reference. */
             imageUrl: string | null;
             active: boolean;
@@ -1470,6 +1623,11 @@ export interface components {
             price: number;
             /** Format: uuid */
             categoryId?: string | null;
+            /**
+             * Format: uuid
+             * @description A subcategory of the dish category. Changing categoryId of a dish in a subcategory needs a new subcategoryId or null.
+             */
+            subcategoryId?: string | null;
             imageUrl?: string | null;
             /** @default true */
             active: boolean;
@@ -1482,6 +1640,11 @@ export interface components {
             price?: number;
             /** Format: uuid */
             categoryId?: string | null;
+            /**
+             * Format: uuid
+             * @description A subcategory of the dish category. Changing categoryId of a dish in a subcategory needs a new subcategoryId or null.
+             */
+            subcategoryId?: string | null;
             imageUrl?: string | null;
             active?: boolean;
             allowComments?: boolean;
@@ -1532,6 +1695,104 @@ export interface components {
         SetPromotionDishesRequest: {
             /** @description The complete dish set; replaces the previous one. */
             dishIds: string[];
+        };
+        Subcategory: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            categoryId: string;
+            name: string;
+            sortOrder: number;
+            active: boolean;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        CreateSubcategoryRequest: {
+            /** Format: uuid */
+            categoryId: string;
+            /** @description Unique per category, case-insensitive. */
+            name: string;
+            /** @description Omitted: after the last subcategory of the category. */
+            sortOrder?: number;
+            /** @description Omitted: true. */
+            active?: boolean;
+        };
+        SubcategoryOrderRequest: {
+            /** Format: uuid */
+            categoryId: string;
+            /** @description Subcategory ids of the category in order; position i gets sortOrder i. */
+            ids: string[];
+        };
+        UpdateSubcategoryRequest: {
+            name?: string;
+            sortOrder?: number;
+            active?: boolean;
+        };
+        MenuTreeDish: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            /** @description Price after the best active promotion when pricing=promotions applied one. */
+            price: number;
+            /** Format: uuid */
+            categoryId: string | null;
+            /**
+             * Format: uuid
+             * @description A subcategory of categoryId, or null.
+             */
+            subcategoryId: string | null;
+            /** @description Opaque image reference. */
+            imageUrl: string | null;
+            active: boolean;
+            allowComments: boolean;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+            /** @description Only when a promotion applies (pricing=promotions). */
+            originalPrice?: number;
+            /** @description Only when a promotion applies. */
+            discountAmount?: number;
+            /** @description Only when a promotion applies; null for fixed amounts. */
+            discountPercentage?: number | null;
+            /**
+             * Format: uuid
+             * @description Only when a promotion applies.
+             */
+            promotionId?: string;
+            /** @description Only when a promotion applies. */
+            promotionName?: string;
+            /** @description One portion is in stock (the check_dishes_stock rule); always true with inventory control off. */
+            available: boolean;
+        };
+        MenuTreeCategory: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            icon: string;
+            active: boolean;
+            /** @description Menu order; the list is ordered by sortOrder, then name. */
+            sortOrder: number;
+            /** @enum {string} */
+            color: "neutral" | "yellow" | "orange" | "sky" | "violet" | "emerald" | "rose";
+            /** @description Derived: true when any dish of the category (active or not) sits in a subcategory. False is "sin subcategorías": the pickers skip the subcategory step. */
+            hasSubcategories: boolean;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+            /** @description Active subcategories by sortOrder, then name. */
+            subcategories: components["schemas"]["Subcategory"][];
+            /** @description Active dishes by name, priced with the promotions active now; dishes of an inactive subcategory are left out. */
+            dishes: components["schemas"]["MenuTreeDish"][];
+        };
+        MenuTree: {
+            /** @description Active categories by sortOrder, then name. */
+            categories: components["schemas"]["MenuTreeCategory"][];
         };
         BusinessConfig: {
             /** @default 10 */
@@ -1816,6 +2077,25 @@ export interface components {
              */
             waiterId: string | null;
             waiterName: string | null;
+            /**
+             * Format: uuid
+             * @description Zone the table sits on.
+             */
+            zoneId: string | null;
+            /** @description Centre, fraction of the zone width. */
+            x: number | null;
+            /** @description Centre, fraction of the zone height. */
+            y: number | null;
+            /** @description Width, fraction of the zone width. */
+            w: number | null;
+            /** @description Height, fraction of the zone height. */
+            h: number | null;
+            /** @enum {string} */
+            shape: "round" | "square" | "rect" | "bar";
+            /** @description Degrees, 0 <= rotation < 360. */
+            rotation: number;
+            /** @description Chairs to draw; null or 0 draws none. */
+            seats: number | null;
             /** Format: date-time */
             createdAt: string | null;
             /**
@@ -1825,6 +2105,17 @@ export interface components {
             updatedAt: string | null;
         };
         CreateTableRequest: {
+            /** Format: uuid */
+            zoneId?: string | null;
+            /** @description x, y, w and h go together. */
+            x?: number | null;
+            y?: number | null;
+            w?: number | null;
+            h?: number | null;
+            /** @enum {string} */
+            shape?: "round" | "square" | "rect" | "bar";
+            rotation?: number;
+            seats?: number | null;
             number: number;
             /**
              * @default available
@@ -1832,7 +2123,37 @@ export interface components {
              */
             status: "available" | "reserved" | "occupied" | "kitchen" | "served";
         };
+        TableLayout: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            zoneId: string | null;
+            /** @description x, y, w and h go together. */
+            x: number | null;
+            y: number | null;
+            w: number | null;
+            h: number | null;
+            /** @enum {string} */
+            shape: "round" | "square" | "rect" | "bar";
+            rotation: number;
+            seats: number | null;
+        };
+        SaveLayoutRequest: {
+            /** @description Each table once. */
+            tables: components["schemas"]["TableLayout"][];
+        };
         UpdateTableRequest: {
+            /** Format: uuid */
+            zoneId?: string | null;
+            /** @description x, y, w and h go together. */
+            x?: number | null;
+            y?: number | null;
+            w?: number | null;
+            h?: number | null;
+            /** @enum {string} */
+            shape?: "round" | "square" | "rect" | "bar";
+            rotation?: number;
+            seats?: number | null;
             number?: number;
             /**
              * @description available also clears the waiter unless waiterId is given.
@@ -1861,6 +2182,48 @@ export interface components {
             id: string;
             name: string;
             username: string | null;
+        };
+        ZoneLabel: {
+            text: string;
+            /** @enum {string} */
+            side: "top" | "right" | "bottom" | "left";
+        };
+        Zone: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Width / height of the floor. */
+            aspect: number;
+            sortOrder: number;
+            labels: components["schemas"]["ZoneLabel"][];
+            active: boolean;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        CreateZoneRequest: {
+            /** @description Unique per restaurant, case-insensitive. */
+            name: string;
+            /**
+             * @description Width / height, 0.25 < aspect < 4.
+             * @default 1.6
+             */
+            aspect: number;
+            /** @default 0 */
+            sortOrder: number;
+            /** @default [] */
+            labels: components["schemas"]["ZoneLabel"][];
+            /** @default true */
+            active: boolean;
+        };
+        UpdateZoneRequest: {
+            name?: string;
+            /** @description Width / height, 0.25 < aspect < 4. */
+            aspect?: number;
+            sortOrder?: number;
+            labels?: components["schemas"]["ZoneLabel"][];
+            active?: boolean;
         };
         PaymentMethod: {
             /** Format: uuid */
@@ -3187,6 +3550,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description By sortOrder, then name. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3241,6 +3605,44 @@ export interface operations {
             };
         };
     };
+    CategoriesController_reorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Every category after the reorder, by sortOrder, then name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category"][];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown category (another restaurant) or a repeated id; nothing is saved. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     CategoriesController_remove: {
         parameters: {
             query?: never;
@@ -3264,7 +3666,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Category has dishes. */
+            /** @description Category has dishes, or La categoría tiene subcategorías; elimínalas primero. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3324,6 +3726,7 @@ export interface operations {
                 /** @description Apply the best promotion active now; discounted dishes carry the promotion fields. */
                 pricing?: "promotions";
                 active?: "true" | "false";
+                subcategoryId?: string;
                 categoryId?: string;
             };
             header?: never;
@@ -3340,7 +3743,7 @@ export interface operations {
                     "application/json": components["schemas"]["Dish"][];
                 };
             };
-            /** @description Invalid input, unknown fields or unknown category. */
+            /** @description Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3377,7 +3780,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input, unknown fields or unknown category. */
+            /** @description Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3409,7 +3812,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input, unknown fields or unknown category. */
+            /** @description Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3447,7 +3850,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input, unknown fields or unknown category. */
+            /** @description Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3688,6 +4091,231 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    SubcategoriesController_list: {
+        parameters: {
+            query?: {
+                /** @description Admin only. */
+                includeInactive?: "true" | "false";
+                /** @description Omitted: every category. */
+                categoryId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active subcategories (all with includeInactive), by category order, then sortOrder and name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subcategory"][];
+                };
+            };
+            /** @description includeInactive by a non-admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SubcategoriesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSubcategoryRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subcategory"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una subcategoría con ese nombre en la categoría */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SubcategoriesController_reorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubcategoryOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Every subcategory of the category after the reorder, inactive included. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subcategory"][];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown subcategory (another category or restaurant) or a repeated id; nothing is saved. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SubcategoriesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La subcategoría tiene platos; muévelos primero */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SubcategoriesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSubcategoryRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subcategory"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una subcategoría con ese nombre en la categoría */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MenuController_tree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The waiter and delivery step picker: active categories, active subcategories and active dishes, priced and with availability. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MenuTree"];
+                };
             };
         };
     };
@@ -4137,6 +4765,44 @@ export interface operations {
             };
         };
     };
+    TablesController_saveLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveLayoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Every table after the save, ordered by number. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"][];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown table (another restaurant), zone of another restaurant or invalid values; nothing is saved. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     TablesController_remove: {
         parameters: {
             query?: never;
@@ -4316,6 +4982,171 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Waiter"][];
                 };
+            };
+        };
+    };
+    ZonesController_list: {
+        parameters: {
+            query?: {
+                /** @description Admin only. */
+                includeInactive?: "true" | "false";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active zones (all with includeInactive), by sort order then name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Zone"][];
+                };
+            };
+            /** @description includeInactive by a non-admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ZonesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateZoneRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Zone"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una zona con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ZonesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La zona tiene mesas; muévelas o elimínalas primero */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ZonesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateZoneRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Zone"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una zona con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

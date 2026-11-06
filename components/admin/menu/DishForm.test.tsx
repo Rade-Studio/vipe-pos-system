@@ -33,13 +33,27 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver
 
-const categories = [{ id: "c-1", name: "Platos", description: null, icon: "Soup", active: true, createdAt: null, updatedAt: null }]
+const categories = [
+  {
+    id: "c-1",
+    name: "Platos",
+    description: null,
+    icon: "Soup",
+    active: true,
+    sortOrder: 0,
+    color: "neutral" as const,
+    hasSubcategories: false,
+    createdAt: null,
+    updatedAt: null,
+  },
+]
 const dish = {
   id: "d-1",
   name: "Sopa",
   description: "Del día",
   price: 9000,
   categoryId: "c-1",
+  subcategoryId: null,
   imageUrl: "https://img/d-1.png",
   active: true,
   allowComments: true,

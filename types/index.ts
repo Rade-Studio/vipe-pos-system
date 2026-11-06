@@ -33,12 +33,26 @@ export type Profile = {
 // Table types
 export type TableStatus = "available" | "reserved" | "occupied" | "kitchen" | "served"
 
+/** Floor plan shape of a table (tables.shape). */
+export type TableShape = "round" | "square" | "rect" | "bar"
+
 export type Table = {
   id: string
   number: number
   status: TableStatus
   waiter?: string
   waiter_name?: string
+  /** Floor plan (T4): zone and centre x, y / size w, h as fractions 0-1 of the zone; unplaced when absent. */
+  zoneId?: string
+  x?: number
+  y?: number
+  w?: number
+  h?: number
+  shape?: TableShape
+  /** Degrees, 0 <= rotation < 360. */
+  rotation?: number
+  /** Chairs to draw; absent or 0 draws none. */
+  seats?: number
   updated_at?: Date
   restaurantId?: string
 }

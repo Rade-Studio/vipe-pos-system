@@ -139,7 +139,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "By sortOrder, then name.",
             "content": {
               "application/json": {
                 "schema": {
@@ -193,6 +193,51 @@
           },
           "422": {
             "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/categories/order": {
+      "put": {
+        "operationId": "CategoriesController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every category after the reorder, by sortOrder, then name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Category"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Unknown category (another restaurant) or a repeated id; nothing is saved."
           }
         },
         "security": [
@@ -275,7 +320,7 @@
             "description": ""
           },
           "409": {
-            "description": "Category has dishes."
+            "description": "Category has dishes, or La categoría tiene subcategorías; elimínalas primero."
           },
           "422": {
             "description": "Invalid input or unknown fields."
@@ -320,6 +365,14 @@
             }
           },
           {
+            "name": "subcategoryId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "categoryId",
             "required": false,
             "in": "query",
@@ -343,7 +396,7 @@
             }
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown category."
+            "description": "Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message)."
           }
         },
         "security": [
@@ -383,7 +436,7 @@
             "description": "Not an admin."
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown category."
+            "description": "Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message)."
           }
         },
         "security": [
@@ -434,7 +487,7 @@
             "description": ""
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown category."
+            "description": "Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message)."
           }
         },
         "security": [
@@ -466,7 +519,7 @@
             "description": ""
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown category."
+            "description": "Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message)."
           }
         },
         "security": [
@@ -750,6 +803,267 @@
           },
           "422": {
             "description": "Invalid input, unknown fields or unknown dish."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/subcategories": {
+      "get": {
+        "operationId": "SubcategoriesController_list",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "required": false,
+            "in": "query",
+            "description": "Admin only.",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": false,
+            "in": "query",
+            "description": "Omitted: every category.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active subcategories (all with includeInactive), by category order, then sortOrder and name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Subcategory"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "includeInactive by a non-admin."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown category."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      },
+      "post": {
+        "operationId": "SubcategoriesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSubcategoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subcategory"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "Ya existe una subcategoría con ese nombre en la categoría"
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown category."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/subcategories/order": {
+      "put": {
+        "operationId": "SubcategoriesController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubcategoryOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every subcategory of the category after the reorder, inactive included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Subcategory"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Unknown subcategory (another category or restaurant) or a repeated id; nothing is saved."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/subcategories/{id}": {
+      "patch": {
+        "operationId": "SubcategoriesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSubcategoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subcategory"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Ya existe una subcategoría con ese nombre en la categoría"
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown category."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      },
+      "delete": {
+        "operationId": "SubcategoriesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "La subcategoría tiene platos; muévelos primero"
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown category."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/menu/tree": {
+      "get": {
+        "operationId": "MenuController_tree",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The waiter and delivery step picker: active categories, active subcategories and active dishes, priced and with availability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenuTree"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1292,6 +1606,51 @@
         ]
       }
     },
+    "/api/tables/layout": {
+      "put": {
+        "operationId": "TablesController_saveLayout",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveLayoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every table after the save, ordered by number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Table"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Unknown table (another restaurant), zone of another restaurant or invalid values; nothing is saved."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "tables"
+        ]
+      }
+    },
     "/api/tables/{id}": {
       "patch": {
         "operationId": "TablesController_update",
@@ -1509,6 +1868,187 @@
         ],
         "tags": [
           "staff"
+        ]
+      }
+    },
+    "/api/zones": {
+      "get": {
+        "operationId": "ZonesController_list",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "required": false,
+            "in": "query",
+            "description": "Admin only.",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active zones (all with includeInactive), by sort order then name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Zone"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "includeInactive by a non-admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "zones"
+        ]
+      },
+      "post": {
+        "operationId": "ZonesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateZoneRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "Ya existe una zona con ese nombre"
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "zones"
+        ]
+      }
+    },
+    "/api/zones/{id}": {
+      "patch": {
+        "operationId": "ZonesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateZoneRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Ya existe una zona con ese nombre"
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "zones"
+        ]
+      },
+      "delete": {
+        "operationId": "ZonesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "La zona tiene mesas; muévelas o elimínalas primero"
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "zones"
         ]
       }
     },
@@ -5081,6 +5621,26 @@
           "active": {
             "type": "boolean"
           },
+          "sortOrder": {
+            "type": "number",
+            "description": "Menu order; the list is ordered by sortOrder, then name."
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "neutral",
+              "yellow",
+              "orange",
+              "sky",
+              "violet",
+              "emerald",
+              "rose"
+            ]
+          },
+          "hasSubcategories": {
+            "type": "boolean",
+            "description": "Derived: true when any dish of the category (active or not) sits in a subcategory. False is \"sin subcategorías\": the pickers skip the subcategory step."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -5098,6 +5658,9 @@
           "description",
           "icon",
           "active",
+          "sortOrder",
+          "color",
+          "hasSubcategories",
           "createdAt",
           "updatedAt"
         ]
@@ -5120,11 +5683,43 @@
           "active": {
             "type": "boolean",
             "default": true
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "Omitted: after the last category."
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "neutral",
+              "yellow",
+              "orange",
+              "sky",
+              "violet",
+              "emerald",
+              "rose"
+            ],
+            "description": "Omitted: neutral."
           }
         },
         "required": [
           "name",
           "icon"
+        ]
+      },
+      "CategoryOrderRequest": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "Category ids in menu order; position i gets sortOrder i. Ids left out keep theirs.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ids"
         ]
       },
       "UpdateCategoryRequest": {
@@ -5144,6 +5739,21 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "neutral",
+              "yellow",
+              "orange",
+              "sky",
+              "violet",
+              "emerald",
+              "rose"
+            ]
           }
         }
       },
@@ -5169,6 +5779,12 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A subcategory of categoryId, or null."
           },
           "imageUrl": {
             "type": "string",
@@ -5220,6 +5836,7 @@
           "description",
           "price",
           "categoryId",
+          "subcategoryId",
           "imageUrl",
           "active",
           "allowComments",
@@ -5246,6 +5863,12 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A subcategory of the dish category. Changing categoryId of a dish in a subcategory needs a new subcategoryId or null."
           },
           "imageUrl": {
             "type": "string",
@@ -5284,6 +5907,12 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A subcategory of the dish category. Changing categoryId of a dish in a subcategory needs a new subcategoryId or null."
           },
           "imageUrl": {
             "type": "string",
@@ -5447,6 +6076,297 @@
         },
         "required": [
           "dishIds"
+        ]
+      },
+      "Subcategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "categoryId",
+          "name",
+          "sortOrder",
+          "active",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateSubcategoryRequest": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "Unique per category, case-insensitive."
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "Omitted: after the last subcategory of the category."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Omitted: true."
+          }
+        },
+        "required": [
+          "categoryId",
+          "name"
+        ]
+      },
+      "SubcategoryOrderRequest": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ids": {
+            "description": "Subcategory ids of the category in order; position i gets sortOrder i.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "categoryId",
+          "ids"
+        ]
+      },
+      "UpdateSubcategoryRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MenuTreeDish": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "price": {
+            "type": "number",
+            "description": "Price after the best active promotion when pricing=promotions applied one."
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A subcategory of categoryId, or null."
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Opaque image reference."
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "allowComments": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "originalPrice": {
+            "type": "number",
+            "description": "Only when a promotion applies (pricing=promotions)."
+          },
+          "discountAmount": {
+            "type": "number",
+            "description": "Only when a promotion applies."
+          },
+          "discountPercentage": {
+            "type": "number",
+            "nullable": true,
+            "description": "Only when a promotion applies; null for fixed amounts."
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Only when a promotion applies."
+          },
+          "promotionName": {
+            "type": "string",
+            "description": "Only when a promotion applies."
+          },
+          "available": {
+            "type": "boolean",
+            "description": "One portion is in stock (the check_dishes_stock rule); always true with inventory control off."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "price",
+          "categoryId",
+          "subcategoryId",
+          "imageUrl",
+          "active",
+          "allowComments",
+          "createdAt",
+          "updatedAt",
+          "available"
+        ]
+      },
+      "MenuTreeCategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "icon": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "Menu order; the list is ordered by sortOrder, then name."
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "neutral",
+              "yellow",
+              "orange",
+              "sky",
+              "violet",
+              "emerald",
+              "rose"
+            ]
+          },
+          "hasSubcategories": {
+            "type": "boolean",
+            "description": "Derived: true when any dish of the category (active or not) sits in a subcategory. False is \"sin subcategorías\": the pickers skip the subcategory step."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "subcategories": {
+            "description": "Active subcategories by sortOrder, then name.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subcategory"
+            }
+          },
+          "dishes": {
+            "description": "Active dishes by name, priced with the promotions active now; dishes of an inactive subcategory are left out.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuTreeDish"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "icon",
+          "active",
+          "sortOrder",
+          "color",
+          "hasSubcategories",
+          "createdAt",
+          "updatedAt",
+          "subcategories",
+          "dishes"
+        ]
+      },
+      "MenuTree": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "description": "Active categories by sortOrder, then name.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuTreeCategory"
+            }
+          }
+        },
+        "required": [
+          "categories"
         ]
       },
       "BusinessConfig": {
@@ -6319,6 +7239,60 @@
             "type": "string",
             "nullable": true
           },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Zone the table sits on."
+          },
+          "x": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Centre, fraction of the zone width."
+          },
+          "y": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Centre, fraction of the zone height."
+          },
+          "w": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1,
+            "description": "Width, fraction of the zone width."
+          },
+          "h": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1,
+            "description": "Height, fraction of the zone height."
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "round",
+              "square",
+              "rect",
+              "bar"
+            ]
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 359.99,
+            "description": "Degrees, 0 <= rotation < 360."
+          },
+          "seats": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 20,
+            "description": "Chairs to draw; null or 0 draws none."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -6337,6 +7311,14 @@
           "status",
           "waiterId",
           "waiterName",
+          "zoneId",
+          "x",
+          "y",
+          "w",
+          "h",
+          "shape",
+          "rotation",
+          "seats",
           "createdAt",
           "updatedAt"
         ]
@@ -6344,6 +7326,54 @@
       "CreateTableRequest": {
         "type": "object",
         "properties": {
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "x": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "x, y, w and h go together."
+          },
+          "y": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "w": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "h": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "round",
+              "square",
+              "rect",
+              "bar"
+            ]
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 359.99
+          },
+          "seats": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 20
+          },
           "number": {
             "type": "number",
             "minimum": 1
@@ -6364,9 +7394,142 @@
           "number"
         ]
       },
+      "TableLayout": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "x": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "x, y, w and h go together."
+          },
+          "y": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "w": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "h": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "round",
+              "square",
+              "rect",
+              "bar"
+            ]
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 359.99
+          },
+          "seats": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "id",
+          "zoneId",
+          "x",
+          "y",
+          "w",
+          "h",
+          "shape",
+          "rotation",
+          "seats"
+        ]
+      },
+      "SaveLayoutRequest": {
+        "type": "object",
+        "properties": {
+          "tables": {
+            "minItems": 1,
+            "maxItems": 500,
+            "description": "Each table once.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TableLayout"
+            }
+          }
+        },
+        "required": [
+          "tables"
+        ]
+      },
       "UpdateTableRequest": {
         "type": "object",
         "properties": {
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "x": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "x, y, w and h go together."
+          },
+          "y": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "w": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "h": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "round",
+              "square",
+              "rect",
+              "bar"
+            ]
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 359.99
+          },
+          "seats": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 20
+          },
           "number": {
             "type": "number",
             "minimum": 1
@@ -6432,6 +7595,139 @@
           "name",
           "username"
         ]
+      },
+      "ZoneLabel": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "top",
+              "right",
+              "bottom",
+              "left"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "side"
+        ]
+      },
+      "Zone": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "aspect": {
+            "type": "number",
+            "description": "Width / height of the floor."
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneLabel"
+            }
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "aspect",
+          "sortOrder",
+          "labels",
+          "active",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateZoneRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "Unique per restaurant, case-insensitive."
+          },
+          "aspect": {
+            "type": "number",
+            "default": 1.6,
+            "description": "Width / height, 0.25 < aspect < 4."
+          },
+          "sortOrder": {
+            "type": "number",
+            "default": 0
+          },
+          "labels": {
+            "maxItems": 12,
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneLabel"
+            }
+          },
+          "active": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateZoneRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "aspect": {
+            "type": "number",
+            "description": "Width / height, 0.25 < aspect < 4."
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "labels": {
+            "maxItems": 12,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneLabel"
+            }
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
       },
       "PaymentMethod": {
         "type": "object",

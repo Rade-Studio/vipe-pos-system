@@ -70,6 +70,8 @@ async function fillAndSubmit(onSubmitted: () => void) {
   fireEvent.change(await screen.findByLabelText("Nombre del cliente"), { target: { value: "Luis" } })
   fireEvent.change(await screen.findByLabelText("Dirección"), { target: { value: "Calle 1 # 2-3" } })
   fireEvent.click(await screen.findByText("Bandeja"))
+  // T12: the submit lives on the Confirmar step.
+  fireEvent.click(screen.getByRole("button", { name: /Confirmar/ }))
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Crear domicilio" }))
   })

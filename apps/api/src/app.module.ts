@@ -20,6 +20,7 @@ import { StaffModule } from './staff/staff.module';
 import { StorageModule } from './storage/storage.module';
 import { TablesModule } from './tables/tables.module';
 import { TenancyModule } from './tenancy/tenancy.module';
+import { ZonesModule } from './zones/zones.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     SettingsModule,
     OrdersModule,
     TablesModule,
+    ZonesModule,
     PaymentsModule,
     RegistersModule,
     InventoryModule,

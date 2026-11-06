@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones } from "./schema";
+import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones, subcategories } from "./schema";
 
 export const businessConfigRelations = relations(businessConfig, ({one}) => ({
 	restaurant: one(restaurants, {
@@ -45,6 +45,7 @@ export const restaurantsRelations = relations(restaurants, ({many}) => ({
 	printerTokens: many(printerTokens),
 	printJobs: many(printJobs),
 	zones: many(zones),
+	subcategories: many(subcategories),
 }));
 
 export const cashRegistersRelations = relations(cashRegisters, ({one, many}) => ({
@@ -74,6 +75,7 @@ export const categoriesRelations = relations(categories, ({one, many}) => ({
 		references: [restaurants.id]
 	}),
 	dishes: many(dishes),
+	subcategories: many(subcategories),
 }));
 
 export const couriersRelations = relations(couriers, ({one, many}) => ({
@@ -116,6 +118,10 @@ export const dishesRelations = relations(dishes, ({one, many}) => ({
 	orderItems: many(orderItems),
 	promotionDishes: many(promotionDishes),
 	recipes: many(recipes),
+	subcategory: one(subcategories, {
+		fields: [dishes.subcategoryId],
+		references: [subcategories.id]
+	}),
 }));
 
 export const ingredientCategoriesRelations = relations(ingredientCategories, ({one, many}) => ({
@@ -577,4 +583,16 @@ export const zonesRelations = relations(zones, ({one, many}) => ({
 		references: [restaurants.id]
 	}),
 	tables: many(tables),
+}));
+
+export const subcategoriesRelations = relations(subcategories, ({one, many}) => ({
+	restaurant: one(restaurants, {
+		fields: [subcategories.restaurantId],
+		references: [restaurants.id]
+	}),
+	category: one(categories, {
+		fields: [subcategories.categoryId],
+		references: [categories.id]
+	}),
+	dishes: many(dishes),
 }));
