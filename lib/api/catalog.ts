@@ -8,12 +8,21 @@ import type { components } from "./schema"
  * rules the web used to split with SQL: promotion pricing (`pricing:
  * "promotions"`), the "category has dishes" 409, cascading promotion deletes
  * and the atomic dish set of a promotion.
+ *
+ * Menu tree (T8): categories carry `sortOrder`, `color` and the derived
+ * `hasSubcategories`; dishes carry `subcategoryId` (subcategory writes live in
+ * `./subcategories`). `getMenuTree` is the waiter and delivery step picker's
+ * one read, priced and with availability.
  */
 
 type Schemas = components["schemas"]
 export type CategoryDto = Schemas["Category"]
 export type DishDto = Schemas["Dish"]
 export type PromotionDto = Schemas["Promotion"]
+export type CategoryColor = CategoryDto["color"]
+export type MenuTreeDto = Schemas["MenuTree"]
+export type MenuTreeCategoryDto = Schemas["MenuTreeCategory"]
+export type MenuTreeDishDto = Schemas["MenuTreeDish"]
 export type CreateCategoryBody = Schemas["CreateCategoryRequest"]
 export type UpdateCategoryBody = Schemas["UpdateCategoryRequest"]
 export type CreateDishBody = Schemas["CreateDishRequest"]
@@ -56,7 +65,16 @@ export async function updateCategory(id: string, body: UpdateCategoryBody): Prom
   return required(data)
 }
 
-/** Rejects with the API's 409 `Category has dishes` when dishes still reference it. */
+/** Position i gets sortOrder i, atomically; an unknown id (422) saves nothing. */
+export async function reorderCategories(ids: string[]): Promise<CategoryDto[]> {
+  const { data } = await api.PUT("/api/catalog/categories/order", { body: { ids } })
+  return required(data)
+}
+
+/**
+ * Rejects with the API's 409 `Category has dishes` when dishes still reference
+ * it, or `La categoría tiene subcategorías; elimínalas primero`.
+ */
 export async function deleteCategory(id: string): Promise<void> {
   await api.DELETE("/api/catalog/categories/{id}", byId(id))
 }
@@ -65,6 +83,7 @@ export async function deleteCategory(id: string): Promise<void> {
 
 export interface DishFilter {
   categoryId?: string
+  subcategoryId?: string
   active?: boolean
   /** Apply the best promotion active now, server-side. */
   pricing?: "promotions"
@@ -74,12 +93,21 @@ export interface DishFilter {
 export async function fetchDishes(filter: DishFilter = {}): Promise<DishDto[]> {
   const { data } = await api.GET("/api/catalog/dishes", {
     params: {
-      query: defined({ categoryId: filter.categoryId, active: flag(filter.active), pricing: filter.pricing }),
+      query: defined({
+        categoryId: filter.categoryId,
+        subcategoryId: filter.subcategoryId,
+        active: flag(filter.active),
+        pricing: filter.pricing,
+      }),
     },
   })
   return required(data)
 }
 
+/**
+ * A subcategory outside the dish category answers 422 in Spanish; moving a dish
+ * in a subcategory to another category needs `subcategoryId` (new or null).
+ */
 export async function createDish(body: CreateDishBody): Promise<DishDto> {
   const { data } = await api.POST("/api/catalog/dishes", { body })
   return required(data)
@@ -92,6 +120,14 @@ export async function updateDish(id: string, body: UpdateDishBody): Promise<Dish
 
 export async function deleteDish(id: string): Promise<void> {
   await api.DELETE("/api/catalog/dishes/{id}", byId(id))
+}
+
+// ---- Menu tree --------------------------------------------------------------
+
+/** Active categories, subcategories and dishes in menu order, the same for waiter and delivery. */
+export async function getMenuTree(): Promise<MenuTreeDto> {
+  const { data } = await api.GET("/api/catalog/menu/tree")
+  return required(data)
 }
 
 // ---- Promotions -------------------------------------------------------------

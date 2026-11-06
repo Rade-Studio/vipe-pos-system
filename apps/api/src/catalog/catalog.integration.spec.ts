@@ -22,7 +22,7 @@ const c = {
 } as const;
 
 const DISH_KEYS = [
-  'active', 'allowComments', 'categoryId', 'createdAt', 'description', 'id', 'imageUrl', 'name', 'price', 'updatedAt',
+  'active', 'allowComments', 'categoryId', 'createdAt', 'description', 'id', 'imageUrl', 'name', 'price', 'subcategoryId', 'updatedAt',
 ];
 
 describe('catalog endpoints (Testcontainers, vipe_api)', () => {
@@ -78,6 +78,9 @@ describe('catalog endpoints (Testcontainers, vipe_api)', () => {
         description: 'Frías',
         icon: 'cup',
         active: true,
+        sortOrder: 0,
+        color: 'neutral',
+        hasSubcategories: false,
         createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
         updatedAt: expect.stringMatching(/Z$/),
       });

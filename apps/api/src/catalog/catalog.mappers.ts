@@ -1,17 +1,21 @@
 import type { schema } from '@vipe/db';
 import { toIso } from '../common/validation';
-import type { Category, DiscountType, Dish, Promotion } from './catalog.dto';
+import type { Category, CategoryColor, DiscountType, Dish, Promotion } from './catalog.dto';
 
 type CategoryRow = typeof schema.categories.$inferSelect;
 type DishRow = typeof schema.dishes.$inferSelect;
 type PromotionRow = typeof schema.promotions.$inferSelect;
 
-export const toCategory = (row: CategoryRow): Category => ({
+/** `hasSubcategories` is derived from the dishes (see CategoriesService). */
+export const toCategory = (row: CategoryRow, hasSubcategories: boolean): Category => ({
   id: row.id,
   name: row.name,
   description: row.description,
   icon: row.icon,
   active: row.active,
+  sortOrder: row.sortOrder,
+  color: row.color as CategoryColor,
+  hasSubcategories,
   createdAt: toIso(row.createdAt),
   updatedAt: toIso(row.updatedAt),
 });
@@ -22,6 +26,7 @@ export const toDish = (row: DishRow): Dish => ({
   description: row.description,
   price: Number(row.price),
   categoryId: row.categoryId,
+  subcategoryId: row.subcategoryId,
   imageUrl: row.imageUrl,
   active: row.active,
   allowComments: row.allowComments,
