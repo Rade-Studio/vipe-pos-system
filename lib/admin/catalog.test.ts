@@ -25,6 +25,10 @@ const catalogApi = vi.hoisted(() => ({
 }))
 vi.mock("@/lib/api/catalog", () => catalogApi)
 
+// T9 (redesign): the menu tree editor reads every subcategory, inactive too.
+const subcategoriesApi = vi.hoisted(() => ({ getAll: vi.fn() }))
+vi.mock("@/lib/api/subcategories", () => subcategoriesApi)
+
 // T12: the staff list comes from `GET /api/staff`.
 const staffApi = vi.hoisted(() => ({ listStaff: vi.fn() }))
 vi.mock("@/lib/api/staff", () => staffApi)
@@ -32,8 +36,14 @@ vi.mock("@/lib/api/staff", () => staffApi)
 import {
   ADMIN_LIST_STALE_MS,
   ADMIN_STAFF_ROLES,
+  buildAdminMenuTree,
+  CATEGORY_COLORS,
   catalogKeys,
   fetchCategories,
+  fetchSubcategories,
+  moveItem,
+  planGeneralSubcategory,
+  planMergeIntoCategory,
   fetchDishes,
   fetchPromotions,
   fetchStaff,
@@ -48,6 +58,7 @@ const ALL_KEYS = [
   catalogKeys.categories,
   catalogKeys.dishes,
   catalogKeys.promotions,
+  catalogKeys.subcategories,
   catalogKeys.staff,
 ]
 
@@ -140,5 +151,134 @@ describe("invalidateCatalogReaders", () => {
 describe("ADMIN_LIST_STALE_MS", () => {
   it("is long enough that revisiting a sub-tab inside it costs zero requests", () => {
     expect(ADMIN_LIST_STALE_MS).toBeGreaterThan(30_000)
+  })
+})
+
+// ---- T9 (redesign): the admin menu tree ------------------------------------
+
+const cat = (id: string, name: string, sortOrder: number, extra: Record<string, unknown> = {}) => ({
+  id,
+  name,
+  description: null,
+  icon: "Soup",
+  active: true,
+  sortOrder,
+  color: "neutral" as const,
+  hasSubcategories: false,
+  createdAt: null,
+  updatedAt: null,
+  ...extra,
+})
+const sub = (id: string, categoryId: string, name: string, sortOrder: number, active = true) => ({
+  id,
+  categoryId,
+  name,
+  sortOrder,
+  active,
+  createdAt: null,
+  updatedAt: null,
+})
+const dish = (id: string, name: string, categoryId: string | null, subcategoryId: string | null = null) => ({
+  id,
+  name,
+  description: null,
+  price: 1000,
+  categoryId,
+  subcategoryId,
+  imageUrl: null,
+  active: true,
+  allowComments: false,
+  createdAt: null,
+  updatedAt: null,
+})
+
+describe("fetchSubcategories", () => {
+  it("reads every subcategory, inactive ones too, under the menu prefix", async () => {
+    subcategoriesApi.getAll.mockReset().mockResolvedValue([])
+    await fetchSubcategories()
+
+    expect(subcategoriesApi.getAll).toHaveBeenCalledWith({ includeInactive: true })
+    expect(catalogKeys.subcategories.slice(0, 2)).toEqual(["catalog", "menu"])
+  })
+})
+
+describe("CATEGORY_COLORS", () => {
+  it("is the closed colour set of the API, each with a Spanish label, neutral first", () => {
+    expect(CATEGORY_COLORS.map((c) => c.value)).toEqual(["neutral", "yellow", "orange", "sky", "violet", "emerald", "rose"])
+    expect(CATEGORY_COLORS.map((c) => c.label)).toEqual(["Neutro", "Amarillo", "Naranja", "Cielo", "Violeta", "Esmeralda", "Rosa"])
+  })
+})
+
+describe("moveItem", () => {
+  it("moves one entry and returns a new array", () => {
+    const list = ["a", "b", "c", "d"]
+    expect(moveItem(list, 0, 2)).toEqual(["b", "c", "a", "d"])
+    expect(moveItem(list, 3, 0)).toEqual(["d", "a", "b", "c"])
+    expect(list).toEqual(["a", "b", "c", "d"])
+  })
+
+  it("returns null when the move leaves the list or does nothing", () => {
+    expect(moveItem(["a", "b"], 0, -1)).toBeNull()
+    expect(moveItem(["a", "b"], 1, 2)).toBeNull()
+    expect(moveItem(["a", "b"], 1, 1)).toBeNull()
+  })
+})
+
+describe("buildAdminMenuTree", () => {
+  const categories = [cat("c-2", "Postres", 1), cat("c-1", "Bebidas", 0), cat("c-3", "Arepas", 1)]
+  const subcategories = [
+    sub("s-2", "c-1", "Gaseosas", 1),
+    sub("s-1", "c-1", "Jugos", 0),
+    sub("s-3", "c-1", "Viejas", 2, false),
+  ]
+  const dishes = [
+    dish("d-3", "Mora", "c-1", "s-1"),
+    dish("d-1", "Lulo", "c-1", "s-1"),
+    dish("d-2", "Cola", "c-1", "s-2"),
+    dish("d-4", "Agua", "c-1"),
+    dish("d-5", "Natas", "c-2"),
+    dish("d-6", "Suelto", null),
+  ]
+  const tree = buildAdminMenuTree(categories, subcategories, dishes)
+
+  it("orders categories by sort order, then name", () => {
+    expect(tree.map((node) => node.category.name)).toEqual(["Bebidas", "Arepas", "Postres"])
+  })
+
+  it("nests the subcategories in order, inactive ones included, with their dishes by name", () => {
+    const bebidas = tree[0]
+    expect(bebidas.subcategories.map((s) => s.subcategory.name)).toEqual(["Jugos", "Gaseosas", "Viejas"])
+    expect(bebidas.subcategories[0].dishes.map((d) => d.name)).toEqual(["Lulo", "Mora"])
+    expect(bebidas.looseDishes.map((d) => d.name)).toEqual(["Agua"])
+    expect(bebidas.dishCount).toBe(4)
+  })
+
+  it("derives 'sin subcategorías' from the dishes: none of them sits in a subcategory", () => {
+    expect(tree[0].skipsSubcategoryStep).toBe(false)
+    expect(tree[2].skipsSubcategoryStep).toBe(true)
+    expect(tree[1].skipsSubcategoryStep).toBe(true)
+    expect(tree[1].dishCount).toBe(0)
+  })
+})
+
+describe("subcategory step actions", () => {
+  const categories = [cat("c-1", "Bebidas", 0), cat("c-2", "Postres", 1)]
+  const subcategories = [sub("s-1", "c-1", "Jugos", 0), sub("s-9", "c-2", "general", 0)]
+  const dishes = [
+    dish("d-1", "Lulo", "c-1", "s-1"),
+    dish("d-4", "Agua", "c-1"),
+    dish("d-5", "Natas", "c-2"),
+    dish("d-6", "Arroz con leche", "c-2"),
+  ]
+  const [bebidas, postres] = buildAdminMenuTree(categories, subcategories, dishes)
+
+  it("merging takes every dish out of its subcategory, in tree order", () => {
+    expect(planMergeIntoCategory(bebidas)).toEqual(["d-1"])
+    expect(planMergeIntoCategory(postres)).toEqual([])
+  })
+
+  it("'General' reuses an existing subcategory of that name (any case) and moves the loose dishes", () => {
+    expect(planGeneralSubcategory(postres)).toEqual({ existingId: "s-9", name: "General", dishIds: ["d-6", "d-5"] })
+    expect(planGeneralSubcategory(bebidas)).toEqual({ existingId: null, name: "General", dishIds: ["d-4"] })
   })
 })
