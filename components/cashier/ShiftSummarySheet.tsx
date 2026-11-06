@@ -154,6 +154,10 @@ export function ShiftSummarySheet({
                     <Money>{formatCurrency(summary.initialCash)}</Money>
                   </div>
                   <div className="flex justify-between gap-3">
+                    <span>Ventas en efectivo</span>
+                    <Money>+{formatCurrency(kpis.cashSales)}</Money>
+                  </div>
+                  <div className="flex justify-between gap-3">
                     <span>Ingresos / retiros</span>
                     <Money>
                       +{formatCurrency(summary.cashDeposits)} / −

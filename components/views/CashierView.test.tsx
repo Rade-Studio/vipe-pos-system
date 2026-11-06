@@ -1305,7 +1305,12 @@ describe("T24 review fixes", () => {
   it("shift sheet: arqueo de efectivo with a live difference, nothing saved, and Ir al cierre de caja", async () => {
     getRegisterSummary.mockResolvedValue({
       registersCount: 1, initialCash: 50_000, paymentsCount: 3, totalBilled: 100_000, totalTips: 9_000, totalSales: 109_000,
-      totalChange: 0, methods: [], cashDeposits: 10_000, cashWithdrawals: 5_000, expectedCash: 110_000, tipsPayout: 9_000,
+      totalChange: 0,
+      methods: [
+        { paymentMethodId: "pm-cash", code: "cash", name: "Efectivo", kind: "cash", sortOrder: 1, isActive: true, total: 55_000, tendersCount: 2 },
+        { paymentMethodId: "pm-card", code: "card", name: "Tarjeta", kind: "electronic", sortOrder: 2, isActive: true, total: 54_000, tendersCount: 1 },
+      ] as never,
+      cashDeposits: 10_000, cashWithdrawals: 5_000, expectedCash: 110_000, tipsPayout: 9_000,
       expectedCashAfterTips: 101_000, legacy: { paymentsCount: 0, total: 0, tips: 0, change: 0, byMethod: {} },
     })
     try {
@@ -1319,6 +1324,12 @@ describe("T24 review fixes", () => {
       expect(stat("Ingresos / retiros")).toHaveTextContent(/\+\$\s10\.000 \/ −\$\s5\.000/)
       expect(stat("Propinas a meseros")).toHaveTextContent(/−\$\s9\.000/)
       expect(stat("Esperado después de propinas")).toHaveTextContent(/101\.000/)
+      expect(stat("Ventas en efectivo")).toHaveTextContent(/55\.000/)
+      // The visible rows add up to the shown total: 50.000 + 55.000 + 10.000 − 5.000 − 9.000 = 101.000.
+      const pesos = (label: string) =>
+        [...stat(label).textContent!.matchAll(/([+−-]?)\$\s([\d.]+)/g)].map(([, sign, n]) => (sign === "−" || sign === "-" ? -1 : 1) * Number(n.replace(/\./g, "")))
+      const sum = ["Base inicial", "Ventas en efectivo", "Ingresos / retiros", "Propinas a meseros"].flatMap(pesos).reduce((a, b) => a + b, 0)
+      expect(sum).toBe(pesos("Esperado después de propinas")[0])
 
       const counted = within(arqueo).getByLabelText("Efectivo contado")
       fireEvent.change(counted, { target: { value: "100000" } })
