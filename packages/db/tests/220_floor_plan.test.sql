@@ -15,7 +15,7 @@ SELECT plan(54);
 -- ============================================
 SELECT has_table('public', 'zones', 'public.zones exists');
 SELECT columns_are('public', 'zones',
-  ARRAY['id', 'restaurant_id', 'name', 'aspect', 'sort_order', 'labels', 'active', 'created_at', 'updated_at'],
+  ARRAY['id', 'restaurant_id', 'name', 'aspect', 'sort_order', 'labels', 'active', 'created_at', 'updated_at', 'width_m', 'depth_m'],
   'zones has exactly the floor plan columns');
 SELECT col_default_is('public', 'zones', 'restaurant_id', 'private.current_restaurant_id()', 'zones.restaurant_id defaults to the caller tenant');
 SELECT col_default_is('public', 'zones', 'aspect', '1.6', 'zones.aspect defaults to 1.6');
