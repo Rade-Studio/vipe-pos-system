@@ -31,7 +31,7 @@ import { useRegisterSummary } from "@/hooks/use-register-summary"
 import { canGiveChange, registerSummaryQueryKey } from "@/lib/payments/register-summary"
 import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
 import { queryClient } from "@/lib/queryClient"
-import { billSourceFromOrder, hasBillableItems, type CashierBillSource } from "@/lib/cashier/orders"
+import { billSignature, billSourceFromOrder, hasBillableItems, type CashierBillSource } from "@/lib/cashier/orders"
 import { quickCashAmounts } from "@/lib/cashier/quick-cash"
 import { useOnlineStatus } from "@/lib/cashier/use-online-status"
 import { MethodPicker } from "./payment/MethodPicker"
@@ -146,6 +146,7 @@ export function PaymentPanel({
   const orderData = loadedOrder?.orderId === orderId ? loadedOrder.data : null
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [billChangedNotice, setBillChangedNotice] = useState<string | null>(null)
   const online = useOnlineStatus()
 
   const { isRegisterOpen, currentRegister } = useCashRegisterStore()
@@ -175,11 +176,13 @@ export function PaymentPanel({
   // Load the order for the open cycle (active + orderId). When the caller
   // already holds it, that copy is used as-is and NO request is issued (S1).
   // The prop is read through a ref: adopting the fresh object the parent
-  // re-creates on every render would re-seed the draft and loop.
+  // re-creates on every render would re-seed the draft and loop. Only a
+  // change of its bill (split, refresh, realtime) adopts it again.
   const orderRef = useRef(order)
   useEffect(() => {
     orderRef.current = order
   }, [order])
+  const orderSignature = billSignature(order)
 
   useEffect(() => {
     if (!active || !orderId) return
@@ -208,25 +211,36 @@ export function PaymentPanel({
     return () => {
       cancelled = true
     }
-  }, [active, orderId])
+  }, [active, orderId, orderSignature])
 
-  // Re-seed the draft ONCE per open cycle + order. A later cache patch of the
-  // same order (realtime, refetch) must not wipe the amounts already entered.
-  // A new cycle generates a fresh idempotency key (one attempt); it is kept
-  // across `submitFailed` so a retry uses the same key, per the server contract.
-  const seededForRef = useRef<string | null>(null)
+  // Re-seed the draft once per open cycle + order + bill. A cache patch that
+  // leaves the bill as it was (status change, same refetch) keeps the amounts
+  // entered; a changed bill re-seeds, so tenders computed for an old total are
+  // never sent. Lines already added are dropped and the notice says so. Each
+  // seed generates a fresh idempotency key (one attempt); it is kept across
+  // `submitFailed` so a retry of the same bill uses the same key.
+  const seededForRef = useRef<{ orderId: string; signature: string; amountDue: number } | null>(null)
   useEffect(() => {
     if (!active) {
       seededForRef.current = null
       return
     }
-    if (!orderData) return
-    if (seededForRef.current === orderId) return
-    seededForRef.current = orderId
+    if (!orderData || draft.submitting) return
+    const signature = `${billSignature(orderData)}|${deliveryFee}`
+    const previous = seededForRef.current
+    if (previous?.orderId === orderId && previous.signature === signature) return
     const bill = computeBill(
       orderData.order_items.map((it) => ({ price: it.price, quantity: it.quantity })),
       orderData.tax_percentage,
       orderData.tip_percentage,
+    )
+    const amountDue = bill.amountDue + deliveryFee
+    seededForRef.current = { orderId, signature, amountDue }
+    const rebill = previous?.orderId === orderId
+    setBillChangedNotice(
+      rebill && draft.tenders.length > 0
+        ? `La cuenta cambió (de ${formatCurrency(previous.amountDue)} a ${formatCurrency(amountDue)}); vuelve a registrar los pagos`
+        : null,
     )
     setDraft(
       initialPaymentDraft({
@@ -237,7 +251,7 @@ export function PaymentPanel({
       }),
     )
     setSubmitError(null)
-  }, [active, orderData, orderId, deliveryFee])
+  }, [active, orderData, orderId, deliveryFee, draft.submitting, draft.tenders.length])
 
   const dispatch = (action: PaymentDraftAction) => setDraft((current) => paymentDraftReducer(current, action))
 
@@ -453,6 +467,16 @@ export function PaymentPanel({
               <Money>{formatCurrency(view.totalToCharge)}</Money>
             </div>
           </div>
+        )}
+
+        {billChangedNotice && (
+          <p
+            role="status"
+            className="flex items-start gap-2 rounded-card border border-status-warning-line bg-status-warning-bg p-3 text-sm text-status-warning-fg"
+          >
+            <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{billChangedNotice}</span>
+          </p>
         )}
 
         <section className="space-y-2" aria-labelledby="applied-heading">
