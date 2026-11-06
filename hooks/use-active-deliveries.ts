@@ -34,7 +34,7 @@
  * the cashier panel and the kitchen share one cache slot.
  */
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   useQuery,
   useQueryClient,
@@ -148,4 +148,23 @@ export function useActiveDeliveries(): UseQueryResult<DeliveryOrderWithBill[], E
   }, [queryClient])
 
   return query
+}
+
+/** How often the console re-reads the socket state for its live indicator. */
+export const REALTIME_STATUS_POLL_MS = 1_000
+
+/**
+ * T12: the dispatch console's "En vivo" indicator. Reads the socket state the
+ * realtime client already keeps (`realtimeService.isConnected`); the client
+ * exposes no status subscription for the delivery stream, so it is polled.
+ */
+export function useRealtimeConnected(): boolean {
+  const [connected, setConnected] = useState(() => realtimeService.isConnected === true)
+  useEffect(() => {
+    const read = () => setConnected(realtimeService.isConnected === true)
+    read()
+    const timer = setInterval(read, REALTIME_STATUS_POLL_MS)
+    return () => clearInterval(timer)
+  }, [])
+  return connected
 }

@@ -12,9 +12,8 @@ interface DeliveryViewProps {
 }
 
 /**
- * Delivery operator view: header on top, board below. Tasks 5+ wires
- * the actual board + new-order flow; the previous placeholder shell
- * only proved the role reached this component.
+ * Delivery operator view: app header on top, the dispatch console
+ * (T12) below; the console owns its own paddings and breakpoints.
  *
  * `profile.role` is the impersonated role (the operator is using a
  * delivery_operator profile); `authRole` is the REAL signed-in
@@ -24,14 +23,16 @@ interface DeliveryViewProps {
 export function DeliveryView({ profile, onChangeProfile, authRole }: DeliveryViewProps) {
   const role = resolveDeliveryRole(profile.role, authRole)
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <Header
-        profile={profile}
-        onChangeProfile={onChangeProfile}
-        authRole={authRole}
-        title="Domicilios"
-      />
-      <main className="flex-1 overflow-auto p-4">
+    <div className="flex h-[100dvh] flex-col bg-canvas">
+      <div className="px-4 md:px-6 [&>header]:mb-0 [&>header]:bg-canvas">
+        <Header
+          profile={profile}
+          onChangeProfile={onChangeProfile}
+          authRole={authRole}
+          title="Domicilios"
+        />
+      </div>
+      <main className="min-w-0 flex-1 overflow-auto">
         <DeliveryBoard role={role} />
       </main>
     </div>
