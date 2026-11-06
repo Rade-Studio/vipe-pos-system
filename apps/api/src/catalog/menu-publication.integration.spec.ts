@@ -154,6 +154,23 @@ describe('menu publication, dish order and quick notes (Testcontainers, vipe_api
       expect(ids((await tree()).uncategorized)).toEqual([p.loose]);
     });
 
+    it('takes category and subcategory active flags from the publication; any role header is ignored', async () => {
+      expect((await adminA().patch(`/api/catalog/categories/${p.mains}`, { active: false })).status).toBe(200);
+      expect((await adminA().patch(`/api/catalog/subcategories/${p.grill}`, { active: false })).status).toBe(200);
+      const kept = await tree();
+      expect(ids(kept.categories)).toContain(p.mains);
+      expect(ids(kept.categories.find((c: { id: string }) => c.id === p.mains).subcategories)).toEqual([p.grill]);
+      expect((await as(fixtures.waiterA).get('/api/catalog/menu/tree')).body).toEqual(kept);
+      const forged = await waiterA().post('/api/catalog/menu/publish').set('x-role', 'admin');
+      expect([forged.status, forged.body.message]).toEqual([403, PUBLISH_FORBIDDEN]);
+      await adminA().post('/api/catalog/menu/publish');
+      expect(ids((await tree()).categories)).not.toContain(p.mains);
+      await adminA().patch(`/api/catalog/categories/${p.mains}`, { active: true });
+      expect(ids((await tree()).categories)).not.toContain(p.mains);
+      await adminA().patch(`/api/catalog/subcategories/${p.grill}`, { active: true });
+      await adminA().post('/api/catalog/menu/publish');
+    });
+
     it("never shows restaurant A's publication to restaurant B", async () => {
       const res = await adminB().get('/api/catalog/menu/tree');
       expect(ids(res.body.categories)).toEqual([p.categoryB]);
@@ -182,6 +199,20 @@ describe('menu publication, dish order and quick notes (Testcontainers, vipe_api
       expect((await adminB().put('/api/catalog/dishes/order', { categoryId: p.drinks, subcategoryId: null, ids: [p.coffee, p.water] })).status).toBe(422);
       expect((await waiterA().put('/api/catalog/dishes/order', { categoryId: p.drinks, subcategoryId: null, ids: [p.coffee, p.water] })).status).toBe(403);
       expect(await sortOrders([p.water, p.coffee, p.loose])).toEqual(before);
+    });
+  });
+
+  describe('moving a dish to another group', () => {
+    it('places it after the last dish of the new group', async () => {
+      expect(await sortOrders([p.loose, p.looseOff])).toEqual([[p.loose, 1], [p.looseOff, 0]]);
+      const res = await adminA().patch(`/api/catalog/dishes/${p.water}`, { categoryId: null });
+      expect(res.status).toBe(200);
+      expect(res.body.sortOrder).toBe(2);
+      expect(ids((await adminA().get('/api/catalog/menu/draft')).body.uncategorized)).toEqual([p.loose, p.water]);
+      const same = await adminA().patch(`/api/catalog/dishes/${p.water}`, { categoryId: null, price: 3100 });
+      expect(same.body.sortOrder).toBe(2);
+      const back = await adminA().patch(`/api/catalog/dishes/${p.water}`, { categoryId: p.drinks });
+      expect(back.body.sortOrder).toBe(3);
     });
   });
 
