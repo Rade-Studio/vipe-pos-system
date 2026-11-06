@@ -645,14 +645,13 @@ SELECT is(
   1::bigint,
   'a delivery_operator of tenant A sees the tenant A courier');
 
-SELECT throws_ok(
+SELECT lives_ok(
   $$ INSERT INTO public.couriers (name, phone) VALUES ('Operator', '003000000002') $$,
-  '42501', NULL,
-  'a delivery_operator cannot create a courier');
+  'a delivery_operator may create a courier (T19)');
 SELECT is(
   pg_temp.probe_exec($$ UPDATE public.couriers SET name = 'X' $$),
-  0,
-  'a delivery_operator updating couriers affects zero rows');
+  -1,
+  'a delivery_operator renaming couriers is refused (T19: only is_active)');
 
 RESET ROLE;
 

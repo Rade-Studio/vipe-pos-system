@@ -145,12 +145,12 @@ SELECT is(
   'vipe_api keeps EXECUTE on delete_order_with_items'
 );
 SELECT is(
-  has_function_privilege('vipe_api', 'public.create_delivery_order(jsonb,jsonb,jsonb,bigint,text,bigint,text)', 'EXECUTE'),
+  has_function_privilege('vipe_api', 'public.create_delivery_order(jsonb,jsonb,jsonb,bigint,text,bigint,text,uuid)', 'EXECUTE'),
   true,
   'vipe_api keeps EXECUTE on create_delivery_order'
 );
 SELECT is(
-  has_function_privilege('vipe_api', 'public.set_delivery_status(uuid,text,uuid,text)', 'EXECUTE'),
+  has_function_privilege('vipe_api', 'public.set_delivery_status(uuid,text,uuid,text,timestamptz,text)', 'EXECUTE'),
   true,
   'vipe_api keeps EXECUTE on set_delivery_status'
 );
