@@ -264,6 +264,9 @@ expect_eq "demo: one demo restaurant" "Casa Guadua" "$(q "SELECT string_agg(name
 expect_eq "demo: preparations with production batches" "t" \
   "$(q "SELECT (SELECT count(*) FROM public.ingredients WHERE kind = 'prep') >= 3 AND (SELECT count(*) FROM public.production_batches) >= 3")"
 
+expect_eq "demo: three zones and every table placed on one" "Barra,Salón principal,Terraza/0" \
+  "$(q "SELECT (SELECT string_agg(name, ',' ORDER BY name) FROM public.zones) || '/' || (SELECT count(*) FROM public.tables WHERE zone_id IS NULL OR x IS NULL)")"
+
 # Invariants of the loaded demo (independent verifier of 2eaf3d5).
 expect_eq "demo: every payment inside its register's window" "0" \
   "$(q "SELECT count(*) FROM public.payments p JOIN public.cash_registers c ON c.id = p.cash_register_id
