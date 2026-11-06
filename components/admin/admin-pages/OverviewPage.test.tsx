@@ -11,20 +11,28 @@ vi.mock("@/lib/api/dashboard", () => ({
 vi.mock("@/hooks/inventory", () => ({ useInventoryItems: () => ({ data: [], isLoading: false }) }))
 vi.mock("@/components/admin/SalesChart", () => ({ SalesChart: () => null }))
 vi.mock("@/components/admin/PopularDishesChart", () => ({ PopularDishesChart: () => null }))
+vi.mock("@/hooks/use-zones", () => ({
+  useZones: () => ({
+    data: [{ id: "z-1", name: "Salón principal", aspect: 1.6, sortOrder: 0, labels: [], active: true, createdAt: null, updatedAt: null }],
+    isLoading: false,
+  }),
+}))
 
 import { OverviewPage } from "./OverviewPage"
+import { useTableStore } from "@/store/useTableStore"
 
-function renderPage() {
+function renderPage(onNavigate?: (sectionId: string) => void) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <OverviewPage description="" activeOrders={[]} />
+      <OverviewPage description="" activeOrders={[]} onNavigate={onNavigate} />
     </QueryClientProvider>,
   )
 }
 
 beforeEach(() => {
   dashboard.fetchDashboardSummary.mockReset()
+  useTableStore.setState({ tables: [] })
 })
 
 describe("OverviewPage", () => {
@@ -84,5 +92,27 @@ describe("OverviewPage", () => {
     })
     renderPage()
     expect(await screen.findByText("Todavía no hay ventas en los últimos 30 días.")).toBeInTheDocument()
+  })
+
+  it("shows the live room as a mini floor map with a status legend and an Editar plano link (T5)", async () => {
+    dashboard.fetchDashboardSummary.mockResolvedValue({ monthSales: 0, kitchenOrders: 0, dailySales: [], popularDishes: [] })
+    useTableStore.setState({
+      tables: [
+        { id: "t-1", number: 1, status: "available", zoneId: "z-1", x: 0.2, y: 0.3, w: 0.1, h: 0.1, shape: "round" },
+        { id: "t-2", number: 2, status: "kitchen", zoneId: "z-1", x: 0.6, y: 0.3, w: 0.1, h: 0.1, shape: "square" },
+      ],
+    })
+    const onNavigate = vi.fn()
+    renderPage(onNavigate)
+
+    const card = screen.getByRole("region", { name: "Sala en vivo" })
+    expect(within(card).getByRole("tab", { name: /Salón principal/ })).toBeInTheDocument()
+    expect(within(card).getByRole("img", { name: "Mesa 2, En cocina, sin sillas" })).toBeInTheDocument()
+    const legend = within(card).getByRole("list", { name: "Estados de las mesas" })
+    expect(within(legend).getByText("Libre").parentElement).toHaveTextContent("Libre1")
+    expect(within(legend).getByText("En cocina").parentElement).toHaveTextContent("En cocina1")
+
+    fireEvent.click(within(card).getByRole("button", { name: "Editar plano" }))
+    expect(onNavigate).toHaveBeenCalledWith("tables")
   })
 })

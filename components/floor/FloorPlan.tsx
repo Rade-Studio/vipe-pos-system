@@ -15,6 +15,8 @@ export interface FloorPlanProps {
   onSelectTable: (tableId: string) => void
   currentWaiterId?: string
   waiterNameOf?: (table: Table) => string | undefined
+  /** Small read-only map (admin overview): no zoom, no "Sin ubicar" strip, number + status icon per table. */
+  compact?: boolean
   className?: string
 }
 
@@ -35,6 +37,7 @@ export function FloorPlan({
   onSelectTable,
   currentWaiterId,
   waiterNameOf,
+  compact = false,
   className,
 }: FloorPlanProps) {
   const zoneIds = useMemo(() => new Set(zones.map((zone) => zone.id)), [zones])
@@ -88,7 +91,7 @@ export function FloorPlan({
               )
             })}
           </div>
-          <div className="flex shrink-0 items-center gap-1 lg:hidden">
+          {!compact && <div className="flex shrink-0 items-center gap-1 lg:hidden">
             <button
               type="button"
               aria-label="Alejar"
@@ -117,13 +120,18 @@ export function FloorPlan({
               <Maximize2 className="h-4 w-4" aria-hidden />
               <span className="hidden sm:inline">Ajustar</span>
             </button>
-          </div>
+          </div>}
         </div>
       )}
 
       {zone && (
-        <div className="min-w-0 overflow-auto overscroll-contain rounded-card-lg bg-[radial-gradient(120%_80%_at_50%_0%,var(--accent-tint),transparent_60%)] px-3 pb-12 pt-4 sm:px-6">
-          <div data-testid="floor-zoom" className={cn("mx-auto", zoom === 0 && "max-w-[960px]")} style={{ width: `${ZOOM_STEPS[zoom] * 100}%` }}>
+        <div
+          className={cn(
+            "min-w-0 overflow-auto overscroll-contain rounded-card-lg bg-[radial-gradient(120%_80%_at_50%_0%,var(--accent-tint),transparent_60%)]",
+            compact ? "px-2 pb-6 pt-2" : "px-3 pb-12 pt-4 sm:px-6",
+          )}
+        >
+          <div data-testid="floor-zoom" className={cn("mx-auto", zoom === 0 && "max-w-[960px]")} style={{ width: `${ZOOM_STEPS[compact ? 0 : zoom] * 100}%` }}>
             <FloorMap
               zone={zone}
               tables={zoneTables}
@@ -131,17 +139,20 @@ export function FloorPlan({
               onSelectTable={onSelectTable}
               currentWaiterId={currentWaiterId}
               waiterNameOf={waiterNameOf}
+              mode={compact ? "mini" : "live"}
             />
           </div>
         </div>
       )}
 
-      <UnplacedStrip
-        tables={unplaced}
-        selectedTableId={selectedTableId}
-        onSelectTable={onSelectTable}
-        waiterNameOf={waiterNameOf}
-      />
+      {!compact && (
+        <UnplacedStrip
+          tables={unplaced}
+          selectedTableId={selectedTableId}
+          onSelectTable={onSelectTable}
+          waiterNameOf={waiterNameOf}
+        />
+      )}
 
       {tables.length === 0 && <p className="py-8 text-center text-sm text-muted-fg">No hay mesas configuradas.</p>}
     </div>
