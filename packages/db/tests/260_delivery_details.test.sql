@@ -11,7 +11,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(64);
+SELECT plan(67);
 
 -- ============================================
 -- 1. Signatures, grants, policies
@@ -355,6 +355,18 @@ SELECT is(
   'the cashier and the other restaurant''s operator switch left Pedro and Courier B active');
 SELECT is((SELECT count(*) FROM public.couriers WHERE restaurant_id IN ('26000000-0000-0000-0000-0000000000a1', '26000000-0000-0000-0000-0000000000b2')),
   3::bigint, 'refused inserts wrote no courier and the operator DELETE removed none');
+
+-- Verifier regressions (T19): an operator may only switch is_active, whatever the statement shape.
+SELECT set_config('app.user_id', '26000000-0000-0000-0000-000000000001', true);
+SET LOCAL ROLE vipe_api;
+SELECT throws_ok($$ INSERT INTO public.couriers (id, name) VALUES ('26300000-0000-0000-0000-0000000000a1', 'Hack')
+  ON CONFLICT (id) DO UPDATE SET name = excluded.name $$, '42501',
+  'couriers: a delivery operator may only change is_active', 'an operator upsert cannot rename a courier');
+SELECT throws_ok($$ UPDATE public.couriers SET phone = NULL WHERE id = '26300000-0000-0000-0000-0000000000a1' $$, '42501',
+  'couriers: a delivery operator may only change is_active', 'an operator cannot clear a courier phone');
+SELECT throws_ok($$ UPDATE public.couriers SET is_active = false, name = 'pedro' WHERE id = '26300000-0000-0000-0000-0000000000a1' $$, '42501',
+  'couriers: a delivery operator may only change is_active', 'is_active with a case-only rename is refused');
+RESET ROLE;
 
 SELECT * FROM finish();
 ROLLBACK;
