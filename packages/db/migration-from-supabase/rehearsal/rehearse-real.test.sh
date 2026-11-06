@@ -11,6 +11,7 @@
 #   (c) no command run by the script (PATH shims) gets the password as an argument
 #   (d) Ctrl-C to the process group during import.sh exits 130 and leaves no export or container
 #   (d2) SIGTERM to the process group during import.sh: same as (d)
+#   (d3) a second SIGTERM during cleanup: the containers are still removed
 #   (e) hostile inherited S3_*, DATABASE_URL and PG* variables do not change the result
 # REHEARSAL_PORT_BASE default 55600 (source +1, script target +2 and MinIO +3, storage +4).
 set -euo pipefail
@@ -144,6 +145,27 @@ set -e
 [ "$rc" -eq 130 ] && ok "SIGTERM exits 130" || check_failed "SIGTERM exited $rc, expected 130"
 [ "$(leftover_exports "$scratch/term-tmp")" -eq 0 ] && ok "no export directory left after SIGTERM" || check_failed "export directory (auth-users.csv) left after SIGTERM"
 [ "$(rr_containers)" -eq 0 ] && ok "no container left after SIGTERM" || check_failed "containers left after SIGTERM"
+
+# A second SIGTERM lands while cleanup runs `docker rm`; the docker CLI does not keep
+# an inherited ignored TERM, so the removal must run outside the process group.
+log "(d3) a second SIGTERM during cleanup still removes the containers"
+set -m
+mkdir -p "$scratch/term2-tmp"
+TMPDIR="$scratch/term2-tmp" REHEARSAL_LOG="$scratch/term2.log" REHEARSAL_PORT_BASE="$base" \
+  SUPABASE_DB_URL="$src_url" SUPABASE_PUBLIC_STORAGE_URL="$storage_url" bash "$script" >"$scratch/term2.out" 2>&1 &
+term2_pid=$!
+set +m
+for _ in $(seq 1 600); do grep -q -- '---- import.sh' "$scratch/term2.out" && break; sleep 0.5; done
+kill -TERM -- "-$term2_pid"
+sleep 1.15
+kill -TERM -- "-$term2_pid" 2>/dev/null || true
+set +e
+wait "$term2_pid"
+rc=$?
+set -e
+[ "$rc" -eq 130 ] && ok "double SIGTERM exits 130" || check_failed "double SIGTERM exited $rc, expected 130"
+[ "$(leftover_exports "$scratch/term2-tmp")" -eq 0 ] && ok "no export directory left after a double SIGTERM" || check_failed "export directory left after a double SIGTERM"
+[ "$(rr_containers)" -eq 0 ] && ok "no container left after a double SIGTERM" || check_failed "containers left after a double SIGTERM"
 
 log "(e) hostile inherited environment"
 run_script hostile SUPABASE_DB_URL="$src_url" SUPABASE_PUBLIC_STORAGE_URL="$storage_url" \

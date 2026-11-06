@@ -88,7 +88,15 @@ cleanup() {
   if [ "${REHEARSAL_KEEP:-}" = 1 ]; then
     clog "kept $tgt_c (127.0.0.1:$tgt_port, postgres/$password) and $minio_c; remove them with: docker rm -f $tgt_c $minio_c"
   else
-    docker rm -f "$tgt_c" "$minio_c" >/dev/null 2>&1
+    # The docker CLI does not keep an inherited ignored INT/TERM, so a second signal
+    # to the group would kill it mid-removal: run it in its own session, check, retry.
+    local left=""
+    for _ in 1 2 3; do
+      setsid -w docker rm -f "$tgt_c" "$minio_c" >/dev/null 2>&1
+      left="$(setsid -w docker ps -aq --filter "name=^${tgt_c}\$" --filter "name=^${minio_c}\$" 2>/dev/null)"
+      [ -z "$left" ] && break
+    done
+    [ -z "$left" ] || clog "WARNING: containers with real data are still present; remove them with: docker rm -f $tgt_c $minio_c"
   fi
   if [ "$status" -eq 0 ]; then clog "PASS"; else clog "FAIL (exit $status)"; fi
   local files=() secrets=()
