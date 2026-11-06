@@ -105,14 +105,19 @@ function sameDelivery(a: DeliveryOrder, b: DeliveryOrder): boolean {
 /**
  * A raw row names the prepaid method by id only: keep the cached method
  * (with its name) while the id is the same. No RPC changes the method after
- * creation.
+ * creation. The order number is kept the same way (T25).
  */
 function withCachedMethod(cached: DeliveryOrder, incoming: DeliveryOrder): DeliveryOrder {
+  let next = incoming
   const method = cached.prepaidMethod
   if (method && incoming.prepaidMethod && incoming.prepaidMethod.id === method.id && incoming.prepaidMethod !== method) {
-    return { ...incoming, prepaidMethod: method }
+    next = { ...next, prepaidMethod: method }
   }
-  return incoming
+  // T25: the raw row has no order number either; an order never changes it.
+  if (incoming.orderNumber == null && cached.orderNumber != null) {
+    next = { ...next, orderNumber: cached.orderNumber }
+  }
+  return next
 }
 
 /**

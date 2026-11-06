@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,7 +29,14 @@ import {
   type OrderDraft,
   type OrderDraftAction,
 } from '@/lib/delivery/order-draft'
-import { ORDER_STEPS, stepForField, type OrderStepId } from '@/lib/delivery/console'
+import {
+  ORDER_STEPS,
+  customerHistoryLine,
+  matchSavedAddress,
+  stepForField,
+  type OrderStepId,
+} from '@/lib/delivery/console'
+import { listPaymentMethods } from '@/lib/api/payments'
 import { createSingleFlight } from '@/lib/payments/single-flight'
 import { FOCUS_RING, MONEY, PILL_BUTTON } from './console-ui'
 import { toast } from '@/hooks/use-toast'
@@ -107,6 +115,19 @@ export function DeliveryOrderForm({
   const [productsOpened, setProductsOpened] = useState(false)
   if (step === 'products' && !productsOpened) setProductsOpened(true)
   const menuTree = useMenuTree({ enabled: productsOpened })
+  // T25: the payment channel of a prepaid order is one of the restaurant's
+  // active, non-cash payment methods; read only once "Anticipado" is chosen.
+  const methodsQuery = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: () => listPaymentMethods(),
+    enabled: draft.paymentMode === 'prepaid',
+    staleTime: 5 * 60_000,
+  })
+  const prepaidMethods = useMemo(
+    () => (methodsQuery.data ?? []).filter((m) => m.isActive && m.kind !== 'cash'),
+    [methodsQuery.data],
+  )
+  const chosenMethodName = prepaidMethods.find((m) => m.id === draft.prepaidMethodId)?.name ?? null
   const stepIndex = ORDER_STEPS.findIndex((st) => st.id === step)
   const headingRefs = useRef<Partial<Record<OrderStepId, HTMLHeadingElement | null>>>({})
   const stepMoved = useRef(false)
@@ -181,6 +202,7 @@ export function DeliveryOrderForm({
           customer: result.customer,
           addresses: result.addresses,
           defaultAddressId: defaultAddr?.id ?? '',
+          history: result.history,
         },
       })
       // Pre-fill the address choice with the default row so the
@@ -262,6 +284,29 @@ export function DeliveryOrderForm({
           })
         : ''
   const customerText = draft.lookup.kind === 'existing' ? draft.lookup.customer.name : draft.customerName.trim()
+  const history = draft.lookup.kind === 'existing' ? draft.lookup.history : undefined
+  const lastAddress = history?.lastAddress ?? null
+  /** "Usar esta dirección": the matching saved row, or a new one prefilled with it. */
+  const applyLastAddress = () => {
+    if (!lastAddress || draft.lookup.kind !== 'existing') return
+    const savedId = matchSavedAddress(lastAddress, draft.lookup.addresses)
+    if (savedId) {
+      dispatch({ type: 'setAddressExisting', addressId: savedId })
+    } else {
+      dispatch({
+        type: 'setAddressNew',
+        addressLine: lastAddress.addressLine,
+        neighborhood: lastAddress.neighborhood,
+        reference: lastAddress.reference,
+        label: null,
+      })
+    }
+    goTo('address')
+  }
+  const paymentText =
+    draft.paymentMode === 'prepaid'
+      ? `Anticipado${chosenMethodName ? ` · ${chosenMethodName}` : ''}`
+      : `Contra entrega${draft.cashChangeFor ? ` · lleva cambio de ${formatMoney(draft.cashChangeFor)}` : ''}`
   const itemCount = draft.cartLines.reduce((n, l) => n + l.quantity, 0)
   const stepsWithIssues = new Set(issues.map((i) => stepForField(i.field)))
 
@@ -337,7 +382,10 @@ export function DeliveryOrderForm({
               <div className="rounded-card border border-status-ok-line bg-status-ok-bg p-3 text-sm text-status-ok-fg">
                 <p className="flex items-center gap-1.5 font-medium">
                   <Check className="h-4 w-4 shrink-0" aria-hidden />
-                  {draft.lookup.customer.name}
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{draft.lookup.customer.name}</span>
+                </p>
+                <p className="text-xs">
+                  {history ? `Cliente encontrado · ${customerHistoryLine(history)}` : 'Cliente encontrado'}
                 </p>
                 <p className="text-xs">{draft.lookup.addresses.length} dirección(es) guardada(s)</p>
               </div>
@@ -355,6 +403,22 @@ export function DeliveryOrderForm({
                 {issuesByField.get('customerName') && (
                   <p className="text-xs text-destructive">{issuesByField.get('customerName')}</p>
                 )}
+              </div>
+            )}
+
+            {lastAddress && (
+              <div
+                role="group"
+                aria-label="Última dirección"
+                className="grid gap-2 rounded-card border border-line bg-surface-2 p-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+              >
+                <p className="min-w-0">
+                  <span className="block text-xs font-medium uppercase tracking-wide text-muted-fg">Última dirección</span>
+                  <span className="[overflow-wrap:anywhere]">{safeFormat(lastAddress)}</span>
+                </p>
+                <Button type="button" variant="outline" className={cn(PILL_BUTTON, 'justify-self-start')} onClick={applyLastAddress}>
+                  Usar esta dirección
+                </Button>
               </div>
             )}
           </section>
@@ -483,6 +547,47 @@ export function DeliveryOrderForm({
               </div>
             </div>
 
+            {draft.paymentMode === 'prepaid' && (
+              <div className="space-y-1">
+                <p id="prepaidMethod-label" className="text-sm font-medium leading-none">
+                  Canal de pago <span className="font-normal text-muted-fg">· opcional</span>
+                </p>
+                {methodsQuery.isError ? (
+                  <p className="text-xs text-destructive">No se pudieron cargar los medios de pago.</p>
+                ) : methodsQuery.isLoading ? (
+                  <p className="text-xs text-muted-fg">Cargando medios de pago…</p>
+                ) : prepaidMethods.length === 0 ? (
+                  <p className="text-xs text-muted-fg">No hay medios de pago electrónicos activos.</p>
+                ) : (
+                  <div
+                    role="radiogroup"
+                    aria-labelledby="prepaidMethod-label"
+                    className="flex flex-wrap gap-2"
+                  >
+                    {prepaidMethods.map((m) => {
+                      const checked = draft.prepaidMethodId === m.id
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={checked}
+                          onClick={() => dispatch({ type: 'setPrepaidMethod', methodId: checked ? null : m.id })}
+                          className={cn(
+                            'min-h-11 max-w-full rounded-pill border px-4 text-sm font-medium [overflow-wrap:anywhere]',
+                            checked ? 'border-brand-line bg-brand-tint text-fg' : 'border-line bg-surface text-fg-2 hover:bg-surface-2 dark:bg-surface-2',
+                            FOCUS_RING,
+                          )}
+                        >
+                          {m.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {draft.paymentMode === 'cash_on_delivery' && (
               <div className="space-y-1 sm:max-w-[50%]">
                 <Label htmlFor="cashChangeFor">Lleva cambio de</Label>
@@ -528,14 +633,7 @@ export function DeliveryOrderForm({
             <dl className="grid gap-3 text-sm">
               <ConfirmRow label="Cliente" value={customerText || 'Sin nombre'} />
               <ConfirmRow label="Dirección" value={addressText || 'Sin dirección'} />
-              <ConfirmRow
-                label="Pago"
-                value={
-                  draft.paymentMode === 'prepaid'
-                    ? 'Anticipado'
-                    : `Contra entrega${draft.cashChangeFor ? ` · lleva cambio de ${formatMoney(draft.cashChangeFor)}` : ''}`
-                }
-              />
+              <ConfirmRow label="Pago" value={paymentText} />
               {draft.notes && <ConfirmRow label="Notas" value={draft.notes} />}
             </dl>
             <CartPanel draft={draft} dispatch={dispatch} itemError={issuesByField.get('items') ?? null} />

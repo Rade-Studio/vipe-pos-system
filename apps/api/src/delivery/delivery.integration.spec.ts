@@ -34,7 +34,7 @@ const ANA_PHONE = '3101234567';
 const DELIVERY_KEYS = [
   'addressLine', 'addressReference', 'cancelledAt', 'cashChangeFor', 'courierEta', 'courierId', 'courierLocation', 'createdAt',
   'customerId', 'customerName', 'customerPhone', 'deliveredAt', 'deliveryFee', 'dispatchedAt', 'failedAt', 'failureReason',
-  'neighborhood', 'notes', 'orderId', 'paymentMode', 'prepaidMethod', 'returnedAt', 'status', 'updatedAt',
+  'neighborhood', 'notes', 'orderId', 'orderNumber', 'paymentMode', 'prepaidMethod', 'returnedAt', 'status', 'updatedAt',
 ];
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -751,6 +751,22 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
         expect(notADate.status).toBe(422);
         expect(notADate.body.code).toBeUndefined();
         expect(await deliveryStatus(orderId)).toBe('ready');
+      });
+    });
+
+    describe('order number (T25)', () => {
+      it('every delivery read carries orders.order_number: create, status, return and the board', async () => {
+        const res = await create();
+        const { orderId } = res.body;
+        const [{ order_number }] = await db<{ order_number: number }>('SELECT order_number FROM orders WHERE id = $1', [orderId]);
+        expect(Number.isInteger(order_number)).toBe(true);
+        expect(res.body.delivery.orderNumber).toBe(order_number);
+        expect((await act(orderId, 'mark_ready')).body.orderNumber).toBe(order_number);
+        expect((await act(orderId, 'dispatch', { courierId: d.pedro })).body.orderNumber).toBe(order_number);
+        await act(orderId, 'deliver');
+        expect((await operatorA().post(`/api/delivery/orders/${orderId}/return`)).body.orderNumber).toBe(order_number);
+        const board = (await operatorA().get('/api/delivery/active')).body as { delivery: { orderId: string; orderNumber: number } }[];
+        expect(board.find((r) => r.delivery.orderId === orderId)?.delivery.orderNumber).toBe(order_number);
       });
     });
 

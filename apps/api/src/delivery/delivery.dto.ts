@@ -176,6 +176,7 @@ export class PrepaidMethod {
 /** The order_deliveries row in camelCase (lib/delivery/types.ts DeliveryOrder). */
 export class DeliveryOrder {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({ description: 'Per-restaurant order number (orders.order_number); shown as #D-0412.' }) orderNumber!: number;
   @ApiProperty({ format: 'uuid' }) customerId!: string;
   @ApiProperty() customerName!: string;
   @ApiProperty() customerPhone!: string;

@@ -43,11 +43,12 @@ function oneOf<T extends string>(row: Json, field: string, values: readonly T[])
 }
 
 /**
- * One `to_jsonb(order_deliveries)` row plus `prepaid_method_name` (the
+ * One `to_jsonb(order_deliveries)` row plus `prepaid_method_name` and `order_number` (the
  * DELIVERY_ROW select in the service; the RPCs' own result lacks the name).
  */
 export const toDeliveryOrder = (row: Json): DeliveryOrder => ({
   orderId: str(row, 'order_id'),
+  orderNumber: req(row, 'order_number'),
   customerId: str(row, 'customer_id'),
   customerName: str(row, 'customer_name'),
   customerPhone: str(row, 'customer_phone'),

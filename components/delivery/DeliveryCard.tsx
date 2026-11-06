@@ -8,7 +8,7 @@ import { statusLabel, allowedActions, type DeliveryAction } from '@/lib/delivery
 import type { DeliveryRole } from '@/lib/delivery/types'
 import { formatAddress } from '@/lib/delivery/address'
 import { canRegisterPayment } from '@/lib/delivery/card-actions'
-import { shortOrderRef } from '@/lib/delivery/console'
+import { deliveryOrderRef, lateTone, stateClockStart } from '@/lib/delivery/console'
 import { formatPhone } from '@/lib/delivery/phone'
 import { formatElapsedMinutes } from './elapsed'
 import { CARD_SURFACE, CHIP, MONEY, PILL_BUTTON, STATUS_CHIP, formatMoney } from './console-ui'
@@ -28,6 +28,10 @@ interface DeliveryCardProps {
   isPending?: boolean
   /** Shows the status chip (the tab list and the closed list; a column already names it). */
   showStatus?: boolean
+  /** T25: `deliveryLateMinutes` of the restaurant; without it no late tone. */
+  lateMinutes?: number
+  /** Clock for the late tone (the board refreshes it). */
+  nowMs?: number
 }
 
 const ACTION_LABELS: Record<DeliveryAction, string> = {
@@ -62,13 +66,18 @@ export function DeliveryCard({
   onRegisterPayment,
   isPending = false,
   showStatus = false,
+  lateMinutes,
+  nowMs = Date.now(),
 }: DeliveryCardProps) {
   const { delivery, amountDue, subtotal, tax, isPaid } = row
   const actions = allowedActions(delivery.status, role)
   const showPayment = canRegisterPayment({ status: delivery.status, isPaid, role })
+  const tone = lateMinutes ? lateTone(delivery, nowMs, lateMinutes) : null
+  // One clock per card (design): kitchen phase from the order, road from the dispatch.
+  const clock = formatElapsedMinutes(stateClockStart(delivery), nowMs)
   const paymentLine =
     delivery.paymentMode === 'prepaid'
-      ? 'Anticipado'
+      ? `Anticipado${delivery.prepaidMethod?.name ? ` · ${delivery.prepaidMethod.name}` : ''}`
       : `Contra entrega${
           delivery.cashChangeFor !== null && delivery.cashChangeFor > 0
             ? ` · lleva cambio de ${formatMoney(delivery.cashChangeFor)}`
@@ -80,16 +89,34 @@ export function DeliveryCard({
       aria-label={`${delivery.customerName}, ${statusLabel(delivery.status)}`}
       className={cn(
         'grid min-w-0 gap-2 rounded-card border border-line p-3 text-sm shadow-sm focus-within:border-brand-line',
+        tone === 'late' && 'border-status-danger-line ring-1 ring-status-danger-line',
+        tone === 'risk' && 'border-status-warning-line',
         CARD_SURFACE,
       )}
     >
-      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-fg">
-        <span className="font-mono font-medium text-fg-2">{shortOrderRef(delivery.orderId)}</span>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-fg">
+        <span className="font-mono font-medium tabular-nums text-fg-2">{deliveryOrderRef(delivery)}</span>
         {showStatus && <span className={cn(CHIP, STATUS_CHIP[delivery.status])}>{statusLabel(delivery.status)}</span>}
-        <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap tabular-nums">
-          <Clock className="h-3 w-3" aria-hidden />
-          {formatElapsedMinutes(delivery.updatedAt)}
-        </span>
+        {tone ? (
+          <span
+            className={cn(
+              CHIP,
+              'ml-auto tabular-nums',
+              tone === 'late'
+                ? 'border-status-danger-line bg-status-danger-bg text-status-danger-fg'
+                : 'border-status-warning-line bg-status-warning-bg text-status-warning-fg',
+            )}
+            title={`Demorado desde ${lateMinutes} min`}
+          >
+            <AlertTriangle className="h-3 w-3" aria-hidden />
+            {clock} · {tone === 'late' ? 'Demorado' : 'En riesgo'}
+          </span>
+        ) : (
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap tabular-nums">
+            <Clock className="h-3 w-3" aria-hidden />
+            {clock}
+          </span>
+        )}
       </div>
 
       <h4 className="line-clamp-2 break-words text-[15px] font-semibold leading-snug text-fg [overflow-wrap:anywhere]">

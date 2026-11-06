@@ -35,3 +35,25 @@ export function normalizeCourierLocation(text: string | null | undefined): strin
 export function canReturnCourier(delivery: Pick<DeliveryOrder, 'status' | 'returnedAt'>): boolean {
   return (delivery.status === 'delivered' || delivery.status === 'failed') && !delivery.returnedAt
 }
+
+export type CourierEtaResult = { ok: true; eta: string | null } | { ok: false; error: string }
+
+const TIME_OF_DAY = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+/**
+ * The dispatch dialog's "Vuelve a las" time (T25): the next instant at that
+ * local time of day, accepted when it lies after now and within 6 hours (the
+ * server's window). Blank is "not captured".
+ */
+export function courierEtaAt(time: string, now: Date = new Date()): CourierEtaResult {
+  const text = time.trim()
+  if (text === '') return { ok: true, eta: null }
+  const match = TIME_OF_DAY.exec(text)
+  if (!match) return { ok: false, error: 'Escribe la hora como 19:55.' }
+  const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), Number(match[1]), Number(match[2]))
+  if (at.getTime() <= now.getTime()) at.setDate(at.getDate() + 1)
+  if (at.getTime() - now.getTime() > MAX_COURIER_ETA_MINUTES * 60_000) {
+    return { ok: false, error: 'Elige una hora dentro de las próximas 6 horas.' }
+  }
+  return { ok: true, eta: at.toISOString() }
+}

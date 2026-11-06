@@ -4,6 +4,8 @@ import { Header } from "@/components/layout/Header"
 import type { Profile } from "@/types"
 import type { DeliveryRole } from "@/lib/delivery/types"
 import { DeliveryBoard } from "@/components/delivery/DeliveryBoard"
+import { RoleNav } from "@/components/delivery/RoleNav"
+import { useProfileStore } from "@/store/useProfileStore"
 
 interface DeliveryViewProps {
   profile: Profile
@@ -19,9 +21,17 @@ interface DeliveryViewProps {
  * delivery_operator profile); `authRole` is the REAL signed-in
  * user's role, which we prefer so an admin operator sees the admin
  * permissions on the board (delivery_operator actions only).
+ *
+ * T25: the console names the signed-in person (not the preview tile), and the
+ * role nav shows only for a user with more than one role view: the admin,
+ * who previews every role. A delivery operator has only this view, so none.
  */
 export function DeliveryView({ profile, onChangeProfile, authRole }: DeliveryViewProps) {
   const role = resolveDeliveryRole(profile.role, authRole)
+  const authProfile = useProfileStore((s) => s.authProfile)
+  const operator = authProfile ?? profile
+  const operatorName = (operator.full_name || operator.name || "").trim() || undefined
+  const withRoleNav = authRole === "admin"
   return (
     <div className="flex h-[100dvh] flex-col bg-canvas">
       <div className="px-4 md:px-6 [&>header]:mb-0 [&>header]:bg-canvas">
@@ -32,8 +42,9 @@ export function DeliveryView({ profile, onChangeProfile, authRole }: DeliveryVie
           title="Domicilios"
         />
       </div>
+      {withRoleNav && <RoleNav />}
       <main className="min-w-0 flex-1 overflow-auto">
-        <DeliveryBoard role={role} />
+        <DeliveryBoard role={role} operatorName={operatorName} withRoleNav={withRoleNav} />
       </main>
     </div>
   )

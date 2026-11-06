@@ -338,7 +338,7 @@ describe("DeliveryBoard — T12 dispatch console", () => {
     await waitFor(() => expect(rail).toHaveTextContent("Juan Camilo Ospina"))
     expect(listCouriers).toHaveBeenCalledWith({ activeOnly: false })
     expect(rail).toHaveTextContent(/Juan Camilo Ospina\s*1 pedido en ruta\s*En ruta/)
-    expect(rail).toHaveTextContent(/Luis Pérez\s*Sin pedidos en ruta\s*Libre/)
+    expect(rail).toHaveTextContent(/Luis Pérez\s*En el local\s*Libre/)
     expect(rail).toHaveTextContent(/Sebastián Gutiérrez\s*No asignable\s*Inactivo/)
   })
 

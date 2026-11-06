@@ -5,7 +5,7 @@
  * DOM or network.
  */
 
-import type { DeliveryStatus } from './types'
+import type { ClosedTodaySummary, CustomerHistory, DeliveryStatus } from './types'
 
 /** Statuses that own a column on the board; delivered/cancelled go to "Cerrados hoy". */
 export type BoardColumnStatus = Exclude<DeliveryStatus, 'delivered' | 'cancelled'>
@@ -98,6 +98,197 @@ export function columnRangeLabel(range: ColumnRange, total: number): string {
 /** Short, human reference for an order: the first six characters of its real id. */
 export function shortOrderRef(orderId: string): string {
   return `#${orderId.replace(/-/g, '').slice(0, 6).toUpperCase()}`
+}
+
+/**
+ * "#D-0412" from the order's per-restaurant number (T25); a row without one
+ * (an old cache entry) keeps the short id.
+ */
+export function deliveryOrderRef(order: { orderId: string; orderNumber?: number | null }): string {
+  const n = order.orderNumber
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) return shortOrderRef(order.orderId)
+  return `#D-${String(n).padStart(4, '0')}`
+}
+
+/** Share of `deliveryLateMinutes` from which a delivery is at risk (same rule as the kitchen). */
+export const LATE_RISK_SHARE = 0.6
+
+export type LateTone = 'late' | 'risk'
+
+interface ClockRow {
+  createdAt: string
+  status: DeliveryStatus
+  dispatchedAt?: string | null
+  failedAt?: string | null
+  deliveredAt?: string | null
+  cancelledAt?: string | null
+}
+
+/**
+ * Where the card clock starts (T25, the design's one clock per card): the
+ * kitchen phase (received, preparing, ready) from the order, the road from the
+ * dispatch, a failure from failed_at and a closed one from its end. The
+ * order time stands in for a missing state timestamp.
+ */
+export function stateClockStart(delivery: ClockRow): string {
+  const at =
+    delivery.status === 'out_for_delivery'
+      ? delivery.dispatchedAt
+      : delivery.status === 'failed'
+        ? delivery.failedAt
+        : delivery.status === 'delivered'
+          ? delivery.deliveredAt
+          : delivery.status === 'cancelled'
+            ? delivery.cancelledAt
+            : null
+  return at ?? delivery.createdAt
+}
+
+/**
+ * Late highlighting (T25): the card clock (`stateClockStart`) against the
+ * restaurant's `deliveryLateMinutes`; at risk from 60 % of it (rounded up).
+ * Closed deliveries are never late.
+ */
+export function lateTone(delivery: ClockRow, nowMs: number, lateMinutes: number): LateTone | null {
+  if (delivery.status === 'delivered' || delivery.status === 'cancelled') return null
+  const start = Date.parse(stateClockStart(delivery))
+  if (!Number.isFinite(start) || !(lateMinutes > 0)) return null
+  const minutes = Math.floor((nowMs - start) / 60_000)
+  if (minutes >= lateMinutes) return 'late'
+  if (minutes >= Math.ceil(lateMinutes * LATE_RISK_SHARE)) return 'risk'
+  return null
+}
+
+/** Banner of a lost live connection: its age since the last signal, when known. */
+export function lostConnectionText(ageMs: number | null): string {
+  return ageMs === null ? 'Sin conexión en vivo.' : `Se perdió la conexión en vivo ${signalAgeLabel(ageMs)}.`
+}
+
+/** Age of the last live signal: "hace 2 s", "hace 1 min", "hace 1 h". */
+export function signalAgeLabel(ageMs: number): string {
+  const seconds = Math.max(0, Math.floor(ageMs / 1000))
+  if (seconds < 60) return `hace ${seconds} s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `hace ${minutes} min`
+  return `hace ${Math.floor(minutes / 60)} h`
+}
+
+export interface CourierTrip {
+  /** Deliveries out for delivery. */
+  onRoad: number
+  /** Latest ETA among the trips on the road. */
+  eta: string | null
+  /** Location of the trip dispatched last (or of the last finished trip). */
+  location: string | null
+  /** Delivered or failed trips whose courier has not returned yet. */
+  toReturn: string[]
+}
+
+interface TripRow {
+  delivery: {
+    orderId: string
+    status: DeliveryStatus
+    courierId: string | null
+    courierEta?: string | null
+    courierLocation?: string | null
+    returnedAt?: string | null
+    dispatchedAt?: string | null
+  }
+}
+
+/** Per courier: trips on the road (ETA, location) and finished trips still to return. */
+export function courierTrips(rows: ReadonlyArray<TripRow>): Map<string, CourierTrip> {
+  const trips = new Map<string, CourierTrip & { locationAt: string }>()
+  for (const { delivery } of rows) {
+    if (delivery.courierId === null) continue
+    const onRoad = delivery.status === 'out_for_delivery'
+    const toReturn = (delivery.status === 'delivered' || delivery.status === 'failed') && !delivery.returnedAt
+    if (!onRoad && !toReturn) continue
+    const trip = trips.get(delivery.courierId) ?? { onRoad: 0, eta: null, location: null, toReturn: [], locationAt: '' }
+    if (onRoad) {
+      trip.onRoad += 1
+      const eta = delivery.courierEta ?? null
+      if (eta !== null && (trip.eta === null || Date.parse(eta) > Date.parse(trip.eta))) trip.eta = eta
+    } else {
+      trip.toReturn.push(delivery.orderId)
+    }
+    const at = delivery.dispatchedAt ?? ''
+    if (delivery.courierLocation && (trip.location === null || at >= trip.locationAt)) {
+      trip.location = delivery.courierLocation
+      trip.locationAt = at
+    }
+    trips.set(delivery.courierId, trip)
+  }
+  return new Map([...trips].map(([id, { locationAt: _at, ...trip }]) => [id, trip]))
+}
+
+/** "2 pedidos en ruta · vuelve 19:55 · Laureles", "De regreso · Belén" or "En el local". */
+export function courierStatusLine(trip: CourierTrip | undefined, options: { timeZone?: string } = {}): string {
+  if (!trip || (trip.onRoad === 0 && trip.toReturn.length === 0)) return 'En el local'
+  const parts: string[] = []
+  if (trip.onRoad > 0) {
+    parts.push(`${trip.onRoad} ${trip.onRoad === 1 ? 'pedido' : 'pedidos'} en ruta`)
+    if (trip.eta !== null && Number.isFinite(Date.parse(trip.eta))) {
+      const time = new Intl.DateTimeFormat('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZone: options.timeZone,
+      }).format(new Date(trip.eta))
+      parts.push(`vuelve ${time}`)
+    }
+  } else {
+    parts.push('De regreso')
+  }
+  if (trip.location) parts.push(trip.location)
+  return parts.join(' · ')
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/** "Cerrados hoy" split and average (GET /delivery/closed-today). */
+export function closedTodayLine(summary: ClosedTodaySummary): { counts: string; average: string } {
+  return {
+    counts: [
+      plural(summary.deliveredCount, 'entregado', 'entregados'),
+      plural(summary.cancelledCount, 'cancelado', 'cancelados'),
+      plural(summary.failedCount, 'fallido', 'fallidos'),
+    ].join(' · '),
+    average:
+      summary.averageDeliveryMinutes === null
+        ? 'Promedio de entrega: sin entregas despachadas'
+        : `Promedio de entrega ${summary.averageDeliveryMinutes} min`,
+  }
+}
+
+/** "14 pedidos · último hace 6 días" (whole days since the last delivery). */
+export function customerHistoryLine(history: CustomerHistory, nowMs: number = Date.now()): string {
+  if (history.ordersCount === 0) return 'Sin pedidos anteriores'
+  const count = plural(history.ordersCount, 'pedido', 'pedidos')
+  const last = history.lastOrderAt === null ? Number.NaN : Date.parse(history.lastOrderAt)
+  if (!Number.isFinite(last)) return count
+  const days = Math.max(0, Math.floor((nowMs - last) / 86_400_000))
+  const when = days === 0 ? 'hoy' : days === 1 ? 'ayer' : `hace ${days} días`
+  return `${count} · último ${when}`
+}
+
+type AddressText = { addressLine: string; neighborhood: string | null; reference: string | null }
+
+const sameText = (a: string | null, b: string | null) =>
+  (a ?? '').trim().toLocaleLowerCase('es') === (b ?? '').trim().toLocaleLowerCase('es')
+
+/** The saved address equal to the customer's last one, or null. */
+export function matchSavedAddress(
+  last: AddressText,
+  saved: ReadonlyArray<AddressText & { id: string }>,
+): string | null {
+  const found = saved.find(
+    (a) =>
+      sameText(a.addressLine, last.addressLine) &&
+      sameText(a.neighborhood, last.neighborhood) &&
+      sameText(a.reference, last.reference),
+  )
+  return found?.id ?? null
 }
 
 export type OrderStepId = 'customer' | 'address' | 'products' | 'payment' | 'confirm'

@@ -29,6 +29,7 @@ import type {
   CreateDeliveryOrderInput,
   Customer,
   CustomerAddress,
+  CustomerHistory,
 } from './types'
 
 // -----------------------------------------------------------
@@ -45,6 +46,8 @@ export type CustomerLookup =
       addresses: CustomerAddress[]
       /** The pre-selected address (server says is_default=true wins, otherwise first). */
       defaultAddressId: string
+      /** T25: deliveries so far (GET /delivery/customers `history`). */
+      history?: CustomerHistory
     }
 
 /** A single line on the operator's cart. */
@@ -81,6 +84,8 @@ export interface OrderDraft {
   paymentMode: 'prepaid' | 'cash_on_delivery'
   cashChangeFor: number | null
   notes: string | null
+  /** T25: payment channel of a prepaid order (a payment method id); null when not chosen. */
+  prepaidMethodId: string | null
 }
 
 // -----------------------------------------------------------
@@ -120,6 +125,7 @@ export type OrderDraftAction =
   | { type: 'setItemComments'; lineId: string; comments: string | null }
   | { type: 'setFee'; value: number }
   | { type: 'setPaymentMode'; value: 'prepaid' | 'cash_on_delivery' }
+  | { type: 'setPrepaidMethod'; methodId: string | null }
   | { type: 'setCashChangeFor'; value: number | null }
   | { type: 'setNotes'; value: string | null }
   | { type: 'reset'; suggestedFee: number }
@@ -160,6 +166,7 @@ export function initialOrderDraft(input: InitialOrderDraftInput): OrderDraft {
     paymentMode: 'cash_on_delivery',
     cashChangeFor: null,
     notes: null,
+    prepaidMethodId: null,
   }
 }
 
@@ -310,7 +317,15 @@ export function orderDraftReducer(state: OrderDraft, action: OrderDraftAction): 
       if (action.value === 'prepaid' && state.cashChangeFor !== null) {
         return { ...state, paymentMode: 'prepaid', cashChangeFor: null }
       }
+      if (action.value === 'cash_on_delivery' && state.prepaidMethodId !== null) {
+        return { ...state, paymentMode: 'cash_on_delivery', prepaidMethodId: null }
+      }
       return { ...state, paymentMode: action.value }
+
+    case 'setPrepaidMethod':
+      // Only a prepaid order carries a channel (the server refuses it otherwise).
+      if (state.paymentMode !== 'prepaid') return state
+      return { ...state, prepaidMethodId: action.methodId }
 
     case 'setCashChangeFor': {
       if (action.value === null) return { ...state, cashChangeFor: null }
@@ -528,5 +543,9 @@ export function toCreateInput(draft: OrderDraft): CreateDeliveryOrderInput {
     paymentMode: draft.paymentMode,
     cashChangeFor: draft.cashChangeFor,
     notes,
+    // Only when chosen, so the body without a channel stays as it was.
+    ...(draft.paymentMode === 'prepaid' && draft.prepaidMethodId !== null
+      ? { prepaidMethodId: draft.prepaidMethodId }
+      : {}),
   }
 }

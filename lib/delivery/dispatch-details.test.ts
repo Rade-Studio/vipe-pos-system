@@ -4,6 +4,7 @@ import {
   COURIER_LOCATION_MAX,
   MAX_COURIER_ETA_MINUTES,
   canReturnCourier,
+  courierEtaAt,
   courierEtaIn,
   normalizeCourierLocation,
 } from './dispatch-details'
@@ -59,5 +60,33 @@ describe('canReturnCourier', () => {
     for (const status of ['received', 'preparing', 'ready', 'out_for_delivery', 'cancelled'] as const) {
       expect(canReturnCourier({ ...base, status })).toBe(false)
     }
+  })
+})
+
+describe('courierEtaAt (T25: "vuelve ~19:55" time picker)', () => {
+  // Local wall-clock dates, so the test holds in any time zone.
+  const now = new Date(2026, 10, 6, 18, 0)
+
+  it('turns a time of day into the next instant at that time', () => {
+    expect(courierEtaAt('19:55', now)).toEqual({ ok: true, eta: new Date(2026, 10, 6, 19, 55).toISOString() })
+    expect(courierEtaAt('00:00', new Date(2026, 10, 6, 22, 30))).toEqual({
+      ok: true,
+      eta: new Date(2026, 10, 7, 0, 0).toISOString(),
+    })
+  })
+
+  it('accepts exactly 6 hours ahead and refuses later, now, or an earlier time', () => {
+    expect(courierEtaAt('00:00', now)).toEqual({ ok: true, eta: new Date(2026, 10, 7, 0, 0).toISOString() })
+    const refused = { ok: false, error: 'Elige una hora dentro de las próximas 6 horas.' }
+    expect(courierEtaAt('00:01', now)).toEqual(refused)
+    expect(courierEtaAt('18:00', now)).toEqual(refused)
+    expect(courierEtaAt('17:59', now)).toEqual(refused)
+  })
+
+  it('blank is not captured; a malformed time is refused', () => {
+    expect(courierEtaAt('', now)).toEqual({ ok: true, eta: null })
+    expect(courierEtaAt('  ', now)).toEqual({ ok: true, eta: null })
+    expect(courierEtaAt('25:00', now)).toEqual({ ok: false, error: 'Escribe la hora como 19:55.' })
+    expect(courierEtaAt('7pm', now)).toEqual({ ok: false, error: 'Escribe la hora como 19:55.' })
   })
 })

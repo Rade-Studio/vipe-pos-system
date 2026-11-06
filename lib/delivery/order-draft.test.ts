@@ -706,3 +706,37 @@ describe('lookup replacement', () => {
     expect(input.address).toMatchObject({ addressLine: 'Carrera 9 # 1-2' })
   })
 })
+
+describe('prepaid payment channel (T25)', () => {
+  const prepaidDraft = () => {
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, { type: 'setPaymentMode', value: 'prepaid' })
+    return d
+  }
+
+  it('starts without a method; setPrepaidMethod records it on a prepaid draft', () => {
+    expect(initialOrderDraft({ suggestedFee: 0 }).prepaidMethodId).toBeNull()
+    const d = orderDraftReducer(prepaidDraft(), { type: 'setPrepaidMethod', methodId: 'm-nequi' })
+    expect(d.prepaidMethodId).toBe('m-nequi')
+    expect(orderDraftReducer(d, { type: 'setPrepaidMethod', methodId: null }).prepaidMethodId).toBeNull()
+  })
+
+  it('is ignored on cash on delivery and cleared when switching to it', () => {
+    const cod = initialOrderDraft({ suggestedFee: 0 })
+    expect(orderDraftReducer(cod, { type: 'setPrepaidMethod', methodId: 'm-nequi' })).toBe(cod)
+    const chosen = orderDraftReducer(prepaidDraft(), { type: 'setPrepaidMethod', methodId: 'm-nequi' })
+    expect(orderDraftReducer(chosen, { type: 'setPaymentMode', value: 'cash_on_delivery' }).prepaidMethodId).toBeNull()
+  })
+
+  it('toCreateInput sends prepaidMethodId only when chosen', () => {
+    const chosen = orderDraftReducer(prepaidDraft(), { type: 'setPrepaidMethod', methodId: 'm-nequi' })
+    expect(toCreateInput(chosen).prepaidMethodId).toBe('m-nequi')
+    expect('prepaidMethodId' in toCreateInput(prepaidDraft())).toBe(false)
+    expect('prepaidMethodId' in toCreateInput(initialOrderDraft({ suggestedFee: 0 }))).toBe(false)
+  })
+
+  it('reset clears it', () => {
+    const chosen = orderDraftReducer(prepaidDraft(), { type: 'setPrepaidMethod', methodId: 'm-nequi' })
+    expect(orderDraftReducer(chosen, { type: 'reset', suggestedFee: 0 }).prepaidMethodId).toBeNull()
+  })
+})
