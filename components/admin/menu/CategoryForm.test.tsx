@@ -49,6 +49,9 @@ describe("CategoryForm", () => {
       description: null,
       icon: "Coffee",
       active: true,
+      sortOrder: 0,
+      color: "neutral" as const,
+      hasSubcategories: false,
       createdAt: null,
       updatedAt: null,
     }

@@ -8,7 +8,19 @@ const nullableText = z.string().nullable();
 /** numeric(10,2) columns. */
 const money = z.number().min(0).max(99_999_999.99);
 
+const sortOrder = z.number().int().min(-100_000).max(100_000);
+/** A full reorder: position i gets sort_order i. */
+const orderedIds = z.array(z.guid()).min(1).max(1000).refine((ids) => new Set(ids).size === ids.length, 'Duplicate id');
+
 // ---- Categories -------------------------------------------------------------
+
+/** categories_color_check: the menu tree design tokens plus neutral, the default. */
+export const CATEGORY_COLORS = ['neutral', 'yellow', 'orange', 'sky', 'violet', 'emerald', 'rose'] as const;
+export type CategoryColor = (typeof CATEGORY_COLORS)[number];
+
+export const CATEGORY_MESSAGES = {
+  hasSubcategories: 'La categoría tiene subcategorías; elimínalas primero',
+} as const;
 
 export const categoryListQuerySchema = z.strictObject({ active: booleanQuery.optional() });
 
@@ -17,8 +29,12 @@ export const createCategorySchema = z.strictObject({
   description: nullableText.optional(),
   icon: z.string().trim().min(1).max(50),
   active: z.boolean().optional(),
+  sortOrder: sortOrder.optional(),
+  color: z.enum(CATEGORY_COLORS).optional(),
 });
 export const updateCategorySchema = createCategorySchema.partial();
+
+export const categoryOrderSchema = z.strictObject({ ids: orderedIds });
 
 export class Category {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -26,6 +42,13 @@ export class Category {
   @ApiProperty({ type: String, nullable: true }) description!: string | null;
   @ApiProperty() icon!: string;
   @ApiProperty() active!: boolean;
+  @ApiProperty({ description: 'Menu order; the list is ordered by sortOrder, then name.' }) sortOrder!: number;
+  @ApiProperty({ enum: CATEGORY_COLORS }) color!: CategoryColor;
+  @ApiProperty({
+    description:
+      'Derived: true when any dish of the category (active or not) sits in a subcategory. False is "sin subcategorías": the pickers skip the subcategory step.',
+  })
+  hasSubcategories!: boolean;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) updatedAt!: string | null;
 }
@@ -35,6 +58,8 @@ export class CreateCategoryRequest {
   @ApiPropertyOptional({ type: String, nullable: true }) description?: string | null;
   @ApiProperty({ maxLength: 50 }) icon!: string;
   @ApiPropertyOptional({ default: true }) active?: boolean;
+  @ApiPropertyOptional({ description: 'Omitted: after the last category.' }) sortOrder?: number;
+  @ApiPropertyOptional({ enum: CATEGORY_COLORS, description: 'Omitted: neutral.' }) color?: CategoryColor;
 }
 
 export class UpdateCategoryRequest {
@@ -42,12 +67,80 @@ export class UpdateCategoryRequest {
   @ApiPropertyOptional({ type: String, nullable: true }) description?: string | null;
   @ApiPropertyOptional({ maxLength: 50 }) icon?: string;
   @ApiPropertyOptional() active?: boolean;
+  @ApiPropertyOptional() sortOrder?: number;
+  @ApiPropertyOptional({ enum: CATEGORY_COLORS }) color?: CategoryColor;
+}
+
+export class CategoryOrderRequest {
+  @ApiProperty({ type: [String], description: 'Category ids in menu order; position i gets sortOrder i. Ids left out keep theirs.' })
+  ids!: string[];
+}
+
+// ---- Subcategories ----------------------------------------------------------
+
+export const SUBCATEGORY_MESSAGES = {
+  duplicateName: 'Ya existe una subcategoría con ese nombre en la categoría',
+  hasDishes: 'La subcategoría tiene platos; muévelos primero',
+} as const;
+
+const subcategoryName = z.string().trim().min(1).max(40);
+
+export const subcategoryListQuerySchema = z.strictObject({
+  categoryId: z.guid().optional(),
+  includeInactive: booleanQuery.optional(),
+});
+
+export const createSubcategorySchema = z.strictObject({
+  categoryId: z.guid(),
+  name: subcategoryName,
+  sortOrder: sortOrder.optional(),
+  active: z.boolean().optional(),
+});
+/** A subcategory does not move to another category: its dishes would leave theirs. */
+export const updateSubcategorySchema = createSubcategorySchema.omit({ categoryId: true }).partial();
+
+export const subcategoryOrderSchema = z.strictObject({ categoryId: z.guid(), ids: orderedIds });
+
+export class Subcategory {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) categoryId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty() sortOrder!: number;
+  @ApiProperty() active!: boolean;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) updatedAt!: string | null;
+}
+
+export class CreateSubcategoryRequest {
+  @ApiProperty({ format: 'uuid' }) categoryId!: string;
+  @ApiProperty({ minLength: 1, maxLength: 40, description: 'Unique per category, case-insensitive.' }) name!: string;
+  @ApiPropertyOptional({ description: 'Omitted: after the last subcategory of the category.' }) sortOrder?: number;
+  @ApiPropertyOptional({ description: 'Omitted: true.' }) active?: boolean;
+}
+
+export class UpdateSubcategoryRequest {
+  @ApiPropertyOptional({ minLength: 1, maxLength: 40 }) name?: string;
+  @ApiPropertyOptional() sortOrder?: number;
+  @ApiPropertyOptional() active?: boolean;
+}
+
+export class SubcategoryOrderRequest {
+  @ApiProperty({ format: 'uuid' }) categoryId!: string;
+  @ApiProperty({ type: [String], description: 'Subcategory ids of the category in order; position i gets sortOrder i.' })
+  ids!: string[];
 }
 
 // ---- Dishes -----------------------------------------------------------------
 
+export const DISH_MESSAGES = {
+  otherCategory: 'La subcategoría no pertenece a la categoría del plato',
+  noCategory: 'Un plato sin categoría no puede tener subcategoría',
+  move: 'El plato está en una subcategoría de su categoría actual; elige una subcategoría de la nueva categoría o quítala',
+} as const;
+
 export const dishListQuerySchema = z.strictObject({
   categoryId: z.guid().optional(),
+  subcategoryId: z.guid().optional(),
   active: booleanQuery.optional(),
   pricing: z.enum(['promotions']).optional(),
 });
@@ -57,6 +150,7 @@ export const createDishSchema = z.strictObject({
   description: nullableText.optional(),
   price: money,
   categoryId: z.guid().nullable().optional(),
+  subcategoryId: z.guid().nullable().optional(),
   imageUrl: nullableText.optional(),
   active: z.boolean().optional(),
   allowComments: z.boolean().optional(),
@@ -70,6 +164,8 @@ export class Dish {
   @ApiProperty({ description: 'Price after the best active promotion when pricing=promotions applied one.' })
   price!: number;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) categoryId!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'A subcategory of categoryId, or null.' })
+  subcategoryId!: string | null;
   @ApiProperty({ type: String, nullable: true, description: 'Opaque image reference.' }) imageUrl!: string | null;
   @ApiProperty() active!: boolean;
   @ApiProperty() allowComments!: boolean;
@@ -88,6 +184,13 @@ export class CreateDishRequest {
   @ApiPropertyOptional({ type: String, nullable: true }) description?: string | null;
   @ApiProperty({ minimum: 0 }) price!: number;
   @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) categoryId?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'A subcategory of the dish category. Changing categoryId of a dish in a subcategory needs a new subcategoryId or null.',
+  })
+  subcategoryId?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) imageUrl?: string | null;
   @ApiPropertyOptional({ default: true }) active?: boolean;
   @ApiPropertyOptional({ default: false }) allowComments?: boolean;
@@ -98,9 +201,38 @@ export class UpdateDishRequest {
   @ApiPropertyOptional({ type: String, nullable: true }) description?: string | null;
   @ApiPropertyOptional({ minimum: 0 }) price?: number;
   @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) categoryId?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'A subcategory of the dish category. Changing categoryId of a dish in a subcategory needs a new subcategoryId or null.',
+  })
+  subcategoryId?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) imageUrl?: string | null;
   @ApiPropertyOptional() active?: boolean;
   @ApiPropertyOptional() allowComments?: boolean;
+}
+
+// ---- Menu tree ----------------------------------------------------------------
+
+export class MenuTreeDish extends Dish {
+  @ApiProperty({ description: 'One portion is in stock (the check_dishes_stock rule); always true with inventory control off.' })
+  available!: boolean;
+}
+
+export class MenuTreeCategory extends Category {
+  @ApiProperty({ type: [Subcategory], description: 'Active subcategories by sortOrder, then name.' })
+  subcategories!: Subcategory[];
+  @ApiProperty({
+    type: [MenuTreeDish],
+    description: 'Active dishes by name, priced with the promotions active now; dishes of an inactive subcategory are left out.',
+  })
+  dishes!: MenuTreeDish[];
+}
+
+export class MenuTree {
+  @ApiProperty({ type: [MenuTreeCategory], description: 'Active categories by sortOrder, then name.' })
+  categories!: MenuTreeCategory[];
 }
 
 // ---- Promotions -------------------------------------------------------------
