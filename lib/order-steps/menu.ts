@@ -58,8 +58,8 @@ export const dishCount = (count: number) => plural(count, "plato", "platos")
 export const OTHERS_CATEGORY_ID = "__others__"
 
 /**
- * The menu tree leaves out the active dishes without category, which the
- * waiter could order before T10. They become a last "Otros" category (no
+ * The menu tree leaves out the active dishes without category, which no
+ * waiter screen listed before T10. They become a last "Otros" category (no
  * subcategories, so step 2 is skipped). The dishes list has no stock flag:
  * they read as available and the send still checks the stock server-side.
  */

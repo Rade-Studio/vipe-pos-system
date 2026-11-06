@@ -1,11 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Banknote, HandCoins } from "lucide-react"
 import { formatCurrency } from "@/utils/helpers"
+import { cn } from "@/lib/utils"
+import { Money, focusRing } from "@/components/cashier/cashier-ui"
 
 interface TipControlProps {
   tip: number
@@ -20,12 +19,17 @@ interface TipControlProps {
   onApplySurplus: () => void
 }
 
+export const optionClass = (pressed: boolean) =>
+  cn(
+    "inline-flex min-h-[44px] items-center justify-center gap-1 whitespace-nowrap rounded-pill border px-3 text-sm font-semibold transition-colors motion-reduce:transition-none disabled:opacity-50",
+    focusRing,
+    pressed ? "border-brand bg-brand-tint text-fg" : "border-line bg-surface text-fg hover:bg-surface-2",
+  )
+
 /**
- * Quick-action buttons for the four tip modes the cashier uses most
- * (none, suggested, custom amount, surplus-as-tip) plus a small live
- * label of the current tip. Surplus-as-tip is only rendered when the
- * bill actually has cash change to convert, so the cashier never sees
- * a useless button.
+ * The four tip modes the cashier already had (none, suggested, custom amount,
+ * surplus-as-tip) as option chips, plus the live tip. Surplus-as-tip is only
+ * rendered when the bill actually has cash change to convert.
  */
 export function TipControl({
   tip,
@@ -47,65 +51,59 @@ export function TipControl({
     }
   }
 
+  const isNone = tip === 0
+  const isSuggested = suggestedTip > 0 && tip === suggestedTip
+
   return (
-    <div className="space-y-3 rounded-md border p-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-base font-medium">Propina</Label>
-        <div className="text-lg font-semibold" data-testid="current-tip">
-          {formatCurrency(tip)}
-        </div>
+    <section className="space-y-2" aria-labelledby="tip-heading">
+      <div className="flex items-center justify-between gap-2">
+        <h3 id="tip-heading" className="text-sm font-semibold text-fg">
+          Propina
+        </h3>
+        <Money className="text-base font-bold text-fg">
+          <span data-testid="current-tip">{formatCurrency(tip)}</span>
+        </Money>
       </div>
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onSetNone}
-          disabled={submitting}
-        >
-          <Banknote className="mr-2 h-4 w-4" />
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Propina">
+        <button type="button" className={optionClass(isNone)} aria-pressed={isNone} onClick={onSetNone} disabled={submitting}>
           Sin propina
-        </Button>
-        <Button
+        </button>
+        <button
           type="button"
-          variant="outline"
+          className={optionClass(isSuggested)}
+          aria-pressed={isSuggested}
           onClick={onSetSuggested}
           disabled={submitting || suggestedTip === 0}
         >
-          Sugerida ({formatCurrency(suggestedTip)})
-        </Button>
-        <div className="col-span-2 flex gap-2">
-          <Input
-            type="text"
-            inputMode="numeric"
-            placeholder="Monto"
-            value={customText}
-            onChange={(e) => setCustomText(e.target.value.replace(/[^\d]/g, ""))}
-            onBlur={applyCustom}
-            disabled={submitting}
-            aria-label="Propina personalizada"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={applyCustom}
-            disabled={submitting || customText === ""}
-          >
-            Aplicar
-          </Button>
-        </div>
+          Sugerida (<Money>{formatCurrency(suggestedTip)}</Money>)
+        </button>
+        {showSurplusAsTip && (
+          <button type="button" className={optionClass(false)} onClick={onApplySurplus} disabled={submitting}>
+            El excedente es propina (<Money>{formatCurrency(surplusTipPreview)}</Money>)
+          </button>
+        )}
       </div>
-      {showSurplusAsTip && (
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          onClick={onApplySurplus}
+      <div className="flex gap-2">
+        <Input
+          type="text"
+          inputMode="numeric"
+          placeholder="Otro valor"
+          value={customText}
+          onChange={(e) => setCustomText(e.target.value.replace(/[^\d]/g, ""))}
+          onBlur={applyCustom}
           disabled={submitting}
+          aria-label="Propina personalizada"
+          className="h-11 min-w-0 flex-1 tabular-nums"
+        />
+        <button
+          type="button"
+          className={optionClass(false)}
+          onClick={applyCustom}
+          disabled={submitting || customText === ""}
         >
-          <HandCoins className="mr-2 h-4 w-4" />
-          El excedente es propina ({formatCurrency(surplusTipPreview)})
-        </Button>
-      )}
-    </div>
+          Aplicar
+        </button>
+      </div>
+    </section>
   )
 }

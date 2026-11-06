@@ -2,21 +2,21 @@
 
 import type React from "react"
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useShallow } from "zustand/react/shallow"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { formatCurrency, formatDate } from "@/utils/helpers"
-import { CreditCard, SplitSquareVertical, Trash2, User, RefreshCw } from "lucide-react"
+import { formatCurrency } from "@/utils/helpers"
+import { RefreshCw, WifiOff, AlertTriangle } from "lucide-react"
 import { CashRegisterStatus } from "@/components/cashier/CashRegisterStatus"
-import { PaymentMethodDialog } from "@/components/cashier/PaymentMethodDialog"
+import { PaymentPanel, type PaymentPanelTotals } from "@/components/cashier/PaymentPanel"
+import { CashierQueue, type QueueTab } from "@/components/cashier/CashierQueue"
+import { OrderDetail } from "@/components/cashier/OrderDetail"
+import { Money, focusRing } from "@/components/cashier/cashier-ui"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { PrintableInvoice } from "@/types"
@@ -24,7 +24,6 @@ import { useConfigStore } from "@/store/use-config-store"
 import { PartialPaymentDialog } from "@/components/cashier/PartialPaymentDialog"
 import { toast } from "@/utils/toast"
 import { TransactionsList } from "@/components/cashier/TransactionsList"
-import { Skeleton } from "@/components/ui/skeleton"
 import { realtimeService } from "@/lib/api/realtime"
 import { getByStatus, toOrder } from "@/lib/api/orders"
 import { queryClient } from "@/lib/queryClient"
@@ -41,6 +40,19 @@ import {
   deriveCashierViews,
 } from "@/lib/cashier/orders"
 import { DeliveryPaymentsPanel } from "@/components/cashier/DeliveryPaymentsPanel"
+import { useActiveDeliveries } from "@/hooks/use-active-deliveries"
+import { pendingDeliveryPayments } from "@/lib/delivery/kitchen"
+import {
+  clockTime,
+  entryTotals,
+  groupItems,
+  matchesQueueSearch,
+  partialEntries,
+  tableEntries,
+  type QueueEntry,
+} from "@/lib/cashier/queue"
+import { useOnlineStatus } from "@/lib/cashier/use-online-status"
+import { cn } from "@/lib/utils"
 
 /** Stable empty reference so the query's default value never re-allocates. */
 const NO_ORDERS: Order[] = []
@@ -55,10 +67,17 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const [activeTab, setActiveTab] = useState<"orders" | "transactions">("orders")
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   const [partialPaymentDialogOpen, setPartialPaymentDialogOpen] = useState(false)
-  const [paymentMethodDialogOpen, setPaymentMethodDialogOpen] = useState(false)
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  // T14: the queue row whose detail and payment panel are on screen.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [queueTab, setQueueTab] = useState<QueueTab>("tables")
+  const [query, setQuery] = useState("")
+  // Phone step flow (Órdenes → Detalle → Pago); tablet and desktop show the panes together.
+  const [step, setStep] = useState<"queue" | "detail" | "pay">("queue")
+  const [payTotals, setPayTotals] = useState<PaymentPanelTotals | null>(null)
   const [showCompletedInvoice, setShowCompletedInvoice] = useState(false)
   const [completedInvoiceData, setCompletedInvoiceData] = useState<PrintableInvoice | null>(null)
+  // A paid invoice closes the order when dismissed; a reprint only closes itself.
+  const [invoiceIsPayment, setInvoiceIsPayment] = useState(false)
   const [isSplitting, setIsSplitting] = useState(false)
   const [isUndoingSplit, setIsUndoingSplit] = useState(false)
   // Synchronous gates: the state flags above only drive the UI.
@@ -77,7 +96,13 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   // by-table group that every refresh had to re-sync.
   const fetchCashierOrders = async (): Promise<Order[]> => (await getByStatus(CASHIER_ORDER_STATUSES)).map(toOrder)
 
-  const { data: orders = NO_ORDERS, isLoading, isFetching } = useQuery<Order[]>({
+  const {
+    data: orders = NO_ORDERS,
+    isLoading,
+    isFetching,
+    isError,
+    dataUpdatedAt,
+  } = useQuery<Order[]>({
     queryKey: cashierOrdersQueryKey,
     queryFn: fetchCashierOrders,
   })
@@ -87,13 +112,6 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const { partial: partialOrders, byTable: ordersByTable } = useMemo(
     () => deriveCashierViews(orders),
     [orders],
-  )
-
-  // The order the payment dialog charges: the very row the card rendered, so
-  // opening the dialog never re-reads it.
-  const selectedOrder = useMemo(
-    () => (selectedOrderId ? orders.find((order) => order.id === selectedOrderId) : undefined),
-    [orders, selectedOrderId],
   )
 
   // D6 Rule B: render-path reads project to a primitive (table number) via a
@@ -106,6 +124,41 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     }),
   )
   const profiles = useProfileStore((s) => s.profiles)
+  const online = useOnlineStatus()
+
+  // Deliveries owing money: the same shared query the delivery panel renders,
+  // read here only to count the "Domicilios" tab.
+  const { data: deliveries = [] } = useActiveDeliveries()
+  const pendingDeliveries = useMemo(() => pendingDeliveryPayments(deliveries), [deliveries])
+
+  // The queue rows, derived from the one loaded list. The payment panel bills
+  // the very order the row holds, so selecting it never re-reads it.
+  const waiterName = useCallback((id: string) => profiles?.find((p) => p.id === id)?.name, [profiles])
+  const tableRows = useMemo(
+    () => tableEntries({ byTable: ordersByTable, partial: partialOrders, tableNumberById, waiterName }),
+    [ordersByTable, partialOrders, tableNumberById, waiterName],
+  )
+  const partialRows = useMemo(
+    () => partialEntries({ byTable: ordersByTable, partial: partialOrders, tableNumberById, waiterName }),
+    [ordersByTable, partialOrders, tableNumberById, waiterName],
+  )
+  const tabRows = queueTab === "partials" ? partialRows : tableRows
+  const visibleRows = useMemo(() => tabRows.filter((row) => matchesQueueSearch(row, query)), [tabRows, query])
+  const selectedEntry: QueueEntry | undefined = useMemo(
+    () => [...tableRows, ...partialRows].find((row) => row.key === selectedKey),
+    [tableRows, partialRows, selectedKey],
+  )
+
+  const selectEntry = (entry: QueueEntry) => {
+    if (entry.key !== selectedKey) setPayTotals(null)
+    setSelectedKey(entry.key)
+    setStep("detail")
+  }
+  const clearSelection = () => {
+    setSelectedKey(null)
+    setPayTotals(null)
+    setStep("queue")
+  }
 
   const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
@@ -178,15 +231,6 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     [ordersByTable],
   )
 
-  // Función para obtener el total de una mesa
-  const getTableTotalAmount = useCallback(
-    (tableId: string): number => {
-      const tableOrders = getOrdersByTable(tableId)
-      return tableOrders.reduce((total, order) => total + order.bill.total, 0)
-    },
-    [getOrdersByTable],
-  )
-
   // Función para obtener todos los items de una mesa
   const getAllTableItems = useCallback(
     (tableId: string): CartItem[] => {
@@ -211,32 +255,17 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     [getOrdersByTable],
   )
 
-  // Handle opening payment dialog for a table
-  const handleOpenPaymentDialog = (orderId: string) => {
-    // Verificar si la caja está abierta
-    if (!isRegisterOpen()) {
-      toast.error("Debe abrir la caja antes de procesar pagos")
-      return
-    }
-
-    setSelectedOrderId(orderId)
-    setPaymentMethodDialogOpen(true)
-  }
-
-  // Handle completing payment after method selection
+  // Handle completing payment: the invoice was dismissed, so the order is done.
   const handlePaymentComplete = async () => {
-    if (selectedOrderId) {
-      try {
-        // Limpiar estados
-        setSelectedOrderId(null)
-        setSelectedTableId(null)
-        setPaymentMethodDialogOpen(false)
+    try {
+      // Limpiar estados
+      clearSelection()
+      setSelectedTableId(null)
 
-        // Recargar órdenes (sin parpadeo: la lista sigue montada)
-        await refreshOrders()
-      } catch (error) {
-        log.error("Error al procesar el pago:", { error: String(error) })
-      }
+      // Recargar órdenes (sin parpadeo: la lista sigue montada)
+      await refreshOrders()
+    } catch (error) {
+      log.error("Error al procesar el pago:", { error: String(error) })
     }
   }
 
@@ -432,6 +461,13 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       paymentMethod: (order as any).paymentMethod || "cash"
     }
 
+    setInvoiceIsPayment(false)
+    setCompletedInvoiceData(invoice)
+    setShowCompletedInvoice(true)
+  }
+
+  const handlePaid = (invoice: PrintableInvoice) => {
+    setInvoiceIsPayment(true)
     setCompletedInvoiceData(invoice)
     setShowCompletedInvoice(true)
   }
@@ -527,296 +563,206 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     "5": "Café",
   }
 
+  const detailItems = selectedEntry
+    ? selectedEntry.kind === "table"
+      ? getAllTableItems(selectedEntry.tableId)
+      : groupItems(selectedEntry.payOrder.items)
+    : []
+  const isSingleItemWithQuantityOne = detailItems.length === 1 && detailItems[0].quantity === 1
+  const lastUpdate = dataUpdatedAt ? clockTime(new Date(dataUpdatedAt)) : null
+  const dockAmount = payTotals?.remaining ?? selectedEntry?.total ?? 0
+
+  const pane = "min-w-0 rounded-card border border-line bg-surface min-[1180px]:min-h-0 min-[1180px]:overflow-y-auto"
+  const steps = [
+    { id: "queue", label: "Órdenes" },
+    { id: "detail", label: "Detalle" },
+    { id: "pay", label: "Pago" },
+  ] as const
+
   return (
-    <div className="flex flex-col h-screen p-4">
+    <div className="flex min-h-dvh flex-col bg-canvas px-3 sm:px-4 min-[1180px]:h-dvh">
       <Header
         profile={profile}
         onChangeProfile={onChangeProfile}
         authRole={authRole}
-        title={activeTab === "orders" ? "Caja - Órdenes para Facturar" : "Historial de Transacciones"}
+        title={activeTab === "orders" ? "Caja" : "Resumen del turno"}
       />
-      <div className="flex justify-end mb-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void refreshOrders()}
-          // `isFetching` is the real refetch in flight (first load included);
-          // the spinner shows exactly while a request is running.
-          disabled={isFetching}
-          className="ml-auto"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
-          Actualizar datos
-        </Button>
-      </div>
 
-      <Tabs defaultValue="orders" onValueChange={(value) => setActiveTab(value as any)}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="orders">Órdenes</TabsTrigger>
-          <TabsTrigger value="transactions">Transacciones</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="orders">
-          <div className="mb-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as "orders" | "transactions")}
+        className="flex min-h-0 flex-1 flex-col gap-3 pb-3"
+      >
+        {/* Top bar: real register state and its actions, the shift summary, refresh. */}
+        <div className="flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface p-2 sm:p-3">
+          <div className="min-w-0 flex-1 basis-full lg:basis-auto">
             <CashRegisterStatus />
           </div>
+          <TabsList className="h-11 bg-surface-2">
+            <TabsTrigger value="orders" className="h-9 px-3">
+              Cobro
+            </TabsTrigger>
+            <TabsTrigger value="transactions" className="h-9 px-3">
+              Resumen del turno
+            </TabsTrigger>
+          </TabsList>
+          <Button
+            variant="outline"
+            onClick={() => void refreshOrders()}
+            // `isFetching` is the real refetch in flight (first load included);
+            // the spinner shows exactly while a request is running.
+            disabled={isFetching}
+            aria-label="Actualizar datos"
+            className="h-11 w-11 p-0 sm:w-auto sm:px-3"
+          >
+            <RefreshCw aria-hidden="true" className={cn("h-4 w-4", isFetching && "motion-safe:animate-spin")} />
+            <span className="hidden sm:inline">Actualizar datos</span>
+          </Button>
+        </div>
 
-          {isLoading ? (
-            <div className="space-y-6">
-              <div className="border rounded-lg p-4 bg-muted/10">
-                <div className="flex justify-between items-center mb-4">
-                  <Skeleton className="h-6 w-40" />
-                  <Skeleton className="h-6 w-32" />
-                </div>
-                <Skeleton className="h-4 w-full mb-2" />
-                <Skeleton className="h-4 w-3/4" />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="border rounded-lg overflow-hidden">
-                    <div className="p-4 border-b bg-muted/20">
-                      <div className="flex justify-between items-center">
-                        <Skeleton className="h-5 w-32" />
-                        <Skeleton className="h-5 w-24 rounded-full" />
-                      </div>
-                      <Skeleton className="h-4 w-40 mt-2" />
-                    </div>
-
-                    <div className="p-4 h-48">
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <Skeleton className="h-4 w-32" />
-                          <Skeleton className="h-4 w-20" />
-                        </div>
-                        <div className="flex justify-between">
-                          <Skeleton className="h-4 w-28" />
-                          <Skeleton className="h-4 w-20" />
-                        </div>
-                        <div className="flex justify-between">
-                          <Skeleton className="h-4 w-36" />
-                          <Skeleton className="h-4 w-20" />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 border-t bg-muted/10">
-                      <div className="flex justify-between mb-4">
-                        <Skeleton className="h-5 w-16" />
-                        <Skeleton className="h-5 w-24" />
-                      </div>
-                      <div className="flex gap-2">
-                        <Skeleton className="h-9 w-full rounded-md" />
-                        <Skeleton className="h-9 w-full rounded-md" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        <TabsContent value="orders" className="mt-0 flex min-h-0 flex-1 flex-col gap-3 data-[state=inactive]:hidden">
+          {!online ? (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-card border border-status-danger-line bg-status-danger-bg p-3 text-sm text-status-danger-fg"
+            >
+              <WifiOff aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                <b>Sin conexión.</b>
+                {lastUpdate && ` Última actualización ${lastUpdate}.`} El cobro está pausado para evitar cobros dobles;
+                nada se ha registrado.
+              </p>
             </div>
-          ) : (
-            <>
-              <DeliveryPaymentsPanel onPaid={() => void refreshOrders()} />
+          ) : isError ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-2 rounded-card border border-status-warning-line bg-status-warning-bg p-3 text-sm text-status-warning-fg"
+            >
+              <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <p className="min-w-0 flex-1">
+                No se pudieron actualizar las órdenes.
+                {orders.length > 0 && lastUpdate && ` Se muestra lo cargado a las ${lastUpdate}.`}
+              </p>
+              <Button variant="outline" className="h-11" onClick={() => void refreshOrders()}>
+                Reintentar
+              </Button>
+            </div>
+          ) : null}
 
-              {partialOrders.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold mb-3">Órdenes Parciales</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {partialOrders.map((order) => {
-                        // D6 Rule B: render path only needs the table's number.
-                        const tableNumber = tableNumberById[order.tableId]
-                        const waiter = profiles?.find((p) => p.id === order.waiter)
+          {/* Phone: one pane at a time. */}
+          <nav aria-label="Pasos del cobro" className="grid grid-cols-3 gap-1 rounded-md bg-surface-2 p-1 md:hidden">
+            {steps.map(({ id, label }, index) => (
+              <button
+                key={id}
+                type="button"
+                aria-current={step === id ? "step" : undefined}
+                disabled={id !== "queue" && !selectedEntry}
+                onClick={() => setStep(id)}
+                className={cn(
+                  "inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md text-sm font-semibold disabled:opacity-50",
+                  focusRing,
+                  step === id ? "bg-surface text-fg shadow-sm" : "text-muted-fg",
+                )}
+              >
+                <b className="tabular-nums">{index + 1}</b>
+                {label}
+              </button>
+            ))}
+          </nav>
 
-                        // Agrupar items por nombre y comentarios
-                        const groupedItems: Record<string, CartItem> = {}
-                        order.items.forEach((item) => {
-                          const key = `${item.name}-${item.comments || ""}`
-                          if (!groupedItems[key]) {
-                            groupedItems[key] = { ...item }
-                          } else {
-                            groupedItems[key].quantity += item.quantity
-                          }
-                        })
-                        const displayItems = Object.values(groupedItems)
+          <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2 min-[1180px]:grid-cols-[minmax(320px,360px)_minmax(0,1fr)_minmax(360px,420px)]">
+            <section
+              aria-label="Órdenes por cobrar"
+              className={cn(pane, "md:col-span-2 min-[1180px]:col-span-1", step !== "queue" && "max-md:hidden")}
+            >
+              <CashierQueue
+                tab={queueTab}
+                onTabChange={setQueueTab}
+                counts={{ tables: tableRows.length, deliveries: pendingDeliveries.length, partials: partialRows.length }}
+                query={query}
+                onQueryChange={setQuery}
+                entries={visibleRows}
+                unfilteredCount={tabRows.length}
+                selectedKey={selectedEntry?.key ?? null}
+                onSelect={selectEntry}
+                loading={isLoading}
+                deliveries={<DeliveryPaymentsPanel onPaid={() => void refreshOrders()} />}
+              />
+            </section>
 
-                        return (
-                          <Card key={order.id} className="overflow-hidden border-2 border-primary/30">
-                            <CardContent className="p-0">
-                              <div className="p-4 border-b bg-primary/10">
-                                <div className="flex justify-between items-center">
-                                  <h3 className="font-bold">Mesa {tableNumber} - Orden Parcial</h3>
-                                  <Badge variant="outline" className="bg-primary/20">
-                                    {displayItems.reduce((total, item) => total + item.quantity, 0)} unidades
-                                  </Badge>
-                                </div>
-                                {waiter && (
-                                  <div className="flex items-center mt-1">
-                                    <User className="h-3 w-3 mr-1 text-muted-foreground" />
-                                    <Badge variant="secondary" className="text-xs">
-                                      {waiter.name}
-                                    </Badge>
-                                  </div>
-                                )}
-                                <div className="text-sm text-muted-foreground">
-                                  Creado: {formatDate(order.createdAt)}
-                                </div>
-                              </div>
-
-                              <ScrollArea className="h-48 p-4">
-                                {displayItems.map((item) => (
-                                  <div
-                                    key={`${item.name}-${item.comments || ""}`}
-                                    className="flex flex-col py-2 border-b last:border-0"
-                                  >
-                                    <div className="flex justify-between">
-                                      <div className="font-medium">{item.name}</div>
-                                      <div className="font-medium">
-                                        {formatCurrency(item.price * item.quantity)} ({item.quantity}x)
-                                      </div>
-                                    </div>
-                                    {item.comments && (
-                                      <div className="text-xs italic text-muted-foreground">{item.comments}</div>
-                                    )}
-                                  </div>
-                                ))}
-                              </ScrollArea>
-
-                              <div className="p-4 border-t bg-muted/10">
-                                <div className="flex justify-between font-bold mb-4">
-                                  <span>Total:</span>
-                                  <span>{formatCurrency(order.bill.total)}</span>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant="outline"
-                                    className="flex-1"
-                                    onClick={() => handleDeletePartialOrder(order.id)}
-                                    disabled={isUndoingSplit}
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Eliminar
-                                  </Button>
-                                  <Button className="flex-1" onClick={() => handleOpenPaymentDialog(order.id)}>
-                                    <CreditCard className="mr-2 h-4 w-4" />
-                                    Pago Total
-                                  </Button>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )
-                    })}
-                  </div>
+            <section
+              aria-label="Detalle de la orden"
+              className={cn(pane, step !== "detail" && "max-md:hidden")}
+            >
+              {selectedEntry ? (
+                <OrderDetail
+                  entry={selectedEntry}
+                  items={detailItems}
+                  totals={entryTotals(selectedEntry.orders)}
+                  onSplit={
+                    selectedEntry.kind === "table" ? () => handleOpenPartialPayment(selectedEntry.tableId) : undefined
+                  }
+                  splitDisabledReason={
+                    isSingleItemWithQuantityOne ? "No se puede hacer pago parcial con un solo producto" : undefined
+                  }
+                  onUndoSplit={
+                    selectedEntry.kind === "partial" ? () => handleDeletePartialOrder(selectedEntry.payOrder.id) : undefined
+                  }
+                  undoBusy={isUndoingSplit}
+                  onReprint={() => showInvoice(selectedEntry.payOrder.id)}
+                />
+              ) : (
+                <div className="flex h-full min-h-[10rem] items-center justify-center p-6 text-center text-sm text-muted-fg">
+                  {isLoading ? "Cargando órdenes…" : "Elige una orden de la lista para ver su detalle."}
                 </div>
               )}
+            </section>
 
-              {/* Órdenes Regulares */}
-              <h3 className="text-lg font-semibold mb-3">Órdenes Regulares</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.keys(ordersByTable).length === 0 ? (
-                  <div className="col-span-full text-center py-10 text-muted-foreground">
-                    No hay órdenes pendientes para facturar
-                  </div>
-                ) : (
-                  Object.entries(ordersByTable).map(([tableId, orders]) => {
-                    // D6 Rule B: render path only needs the table's number.
-                    const tableNumber = tableNumberById[tableId]
-                    const tableTotal = getTableTotalAmount(tableId)
+            <section
+              aria-label="Pago"
+              className={cn(pane, "flex flex-col", step !== "pay" && "max-md:hidden")}
+            >
+              {selectedEntry ? (
+                <PaymentPanel
+                  key={selectedEntry.payOrder.id}
+                  layout="inline"
+                  orderId={selectedEntry.payOrder.id}
+                  order={billSourceFromOrder(selectedEntry.payOrder)}
+                  eyebrow={`Cobrar · ${selectedEntry.label}`}
+                  onCancel={clearSelection}
+                  onPaid={handlePaid}
+                  onTotalsChange={setPayTotals}
+                />
+              ) : (
+                <div className="flex h-full min-h-[10rem] flex-col items-center justify-center gap-1 p-6 text-center">
+                  <p className="font-semibold text-fg">Selecciona una orden para cobrar</p>
+                  <p className="text-sm text-muted-fg">El restante, los pagos y el cambio aparecen aquí.</p>
+                </div>
+              )}
+            </section>
+          </div>
 
-                    // Get all items from all orders for this table and group them
-                    const allItems = getAllTableItems(tableId)
-
-                    // Verificar si solo hay un producto con cantidad 1
-                    const isSingleItemWithQuantityOne = allItems.length === 1 && allItems[0].quantity === 1
-
-                    // Get the waiter from the first order
-                    const waiter = profiles?.find((p) => p.id === orders[0].waiter)
-
-                    return (
-                      <Card key={tableId} className="overflow-hidden">
-                        <CardContent className="p-0">
-                          <div className="p-4 border-b bg-muted/20">
-                            <div className="flex justify-between items-center">
-                              <h3 className="font-bold">Mesa {tableNumber}</h3>
-                              <Badge variant="default">
-                                {allItems.reduce((total, item) => total + item.quantity, 0)} unidades
-                              </Badge>
-                            </div>
-                            {waiter && (
-                              <div className="flex items-center mt-1">
-                                <User className="h-3 w-3 mr-1 text-muted-foreground" />
-                                <Badge variant="secondary" className="text-xs">
-                                  {waiter.name}
-                                </Badge>
-                              </div>
-                            )}
-                            <div className="text-sm text-muted-foreground">
-                              Última actualización: {formatDate(orders[orders.length - 1].createdAt)}
-                            </div>
-                          </div>
-
-                          <ScrollArea className="h-48 p-4">
-                            {allItems.map((item) => (
-                              <div
-                                key={`${item.name}-${item.comments || ""}`}
-                                className="flex flex-col py-2 border-b last:border-0"
-                              >
-                                <div className="flex justify-between">
-                                  <div className="font-medium">{item.name}</div>
-                                  <div className="font-medium">
-                                    {formatCurrency(item.price * item.quantity)} ({item.quantity}x)
-                                  </div>
-                                </div>
-                                {item.comments && (
-                                  <div className="text-xs italic text-muted-foreground">{item.comments}</div>
-                                )}
-                              </div>
-                            ))}
-                          </ScrollArea>
-
-                          <div className="p-4 border-t bg-muted/10">
-                            <div className="flex justify-between font-bold mb-4">
-                              <span>Total:</span>
-                              <span>{formatCurrency(tableTotal)}</span>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                className="flex-1"
-                                variant="outline"
-                                onClick={() => handleOpenPartialPayment(tableId)}
-                                disabled={isSingleItemWithQuantityOne}
-                                title={
-                                  isSingleItemWithQuantityOne
-                                    ? "No se puede hacer pago parcial con un solo producto"
-                                    : ""
-                                }
-                              >
-                                <SplitSquareVertical className="mr-2 h-4 w-4" />
-                                Pago Parcial
-                              </Button>
-                              <Button className="flex-1" onClick={() => handleOpenPaymentDialog(orders[0].id)}>
-                                <CreditCard className="mr-2 h-4 w-4" />
-                                Pago Total
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )
-                  })
-                )}
+          {/* Phone: sticky "restante" bar while moving between the steps. */}
+          {selectedEntry && step !== "pay" && (
+            <div className="sticky bottom-0 z-10 flex items-center gap-3 rounded-card border border-line px-3 py-2 shadow-elevated md:hidden [background:linear-gradient(var(--surface),var(--surface)),var(--canvas)]">
+              <div className="min-w-0 flex-1">
+                <small className="block truncate text-xs text-muted-fg">{selectedEntry.label} · restante</small>
+                <Money className="text-lg font-bold text-fg">{formatCurrency(dockAmount)}</Money>
               </div>
-            </>
+              <Button
+                className="h-11 bg-brand text-brand-contrast hover:bg-brand-strong"
+                onClick={() => setStep(step === "queue" ? "detail" : "pay")}
+              >
+                {step === "queue" ? "Ver detalle →" : "Ir a pagar →"}
+              </Button>
+            </div>
           )}
         </TabsContent>
 
-        <TabsContent value="transactions">
-          <CashRegisterStatus />
-          <div className="mt-6">
-            {/* The open register is loaded once, by this screen; the list only
-                renders it and keeps a spinner until it is known. */}
-            <TransactionsList registerLoading={!registerSettled} />
-          </div>
+        <TabsContent value="transactions" className="mt-0">
+          {/* The open register is loaded once, by this screen; the list only
+              renders it and keeps a spinner until it is known. */}
+          <TransactionsList registerLoading={!registerSettled} />
         </TabsContent>
       </Tabs>
 
@@ -831,32 +777,20 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         />
       )}
 
-      {/* Payment Method Dialog */}
-      {selectedOrderId && selectedOrder && (
-        <PaymentMethodDialog
-          open={paymentMethodDialogOpen}
-          onOpenChange={setPaymentMethodDialogOpen}
-          orderId={selectedOrderId}
-          // The card that opened the dialog already holds this order: hand it
-          // over instead of making the dialog read it again (S1). The dialog
-          // only falls back to a fetch when it cannot bill from what it got.
-          order={billSourceFromOrder(selectedOrder)}
-          tableId={selectedOrder.tableId || ""}
-          amount={selectedOrder.bill.total || 0}
-          tableTotal={getTableTotalAmount(selectedOrder.tableId)}
-          onSuccess={handlePaymentComplete}
-          isPartialPayment={selectedOrder.isPartialOrder || false}
-          selectedItems={[]}
-        />
-      )}
-
-      {/* Completed Invoice View */}
+      {/* Paid invoice (closes the order when dismissed) or a reprint */}
       {completedInvoiceData && (
         <InvoicePrintView
           invoice={completedInvoiceData}
           open={showCompletedInvoice}
-          onOpenChange={setShowCompletedInvoice}
-          isPartialPayment={false}
+          onOpenChange={(open) => {
+            setShowCompletedInvoice(open)
+            if (!open && invoiceIsPayment) {
+              setInvoiceIsPayment(false)
+              setCompletedInvoiceData(null)
+              void handlePaymentComplete()
+            }
+          }}
+          {...(invoiceIsPayment ? { isPending: false } : { isPartialPayment: false })}
         />
       )}
     </div>

@@ -1,9 +1,10 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
-import { Trash2 } from "lucide-react"
+import { X } from "lucide-react"
 import { formatCurrency } from "@/utils/helpers"
 import type { ComputedTenderLine } from "@/lib/payments/types"
+import { Money, focusRing } from "@/components/cashier/cashier-ui"
+import { cn } from "@/lib/utils"
 
 interface TenderLinesListProps {
   lines: ComputedTenderLine[]
@@ -14,43 +15,47 @@ interface TenderLinesListProps {
 }
 
 /**
- * Renders the cashier's running list of tender lines (one per row,
- * from oldest to newest). Each row shows the method, the amount the
- * customer handed over (or the amount that will be charged for
- * electronic), the applied amount, and any change. The "applied"
- * column is what the cashier wants to see most: it tells them the
- * line covered its share of the bill.
+ * The cashier's running list of tender lines (oldest first). Each row shows
+ * the method, what the customer handed over and the change; the applied
+ * amount is the figure on the right because it tells the cashier the line
+ * covered its share of the bill.
  */
 export function TenderLinesList({ lines, methodName, onRemove, disabled }: TenderLinesListProps) {
   if (lines.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground italic">
-        Aún no hay líneas de pago. Selecciona un método e ingresa el monto.
-      </p>
+      <p className="text-sm text-muted-fg">Aún no hay líneas de pago. Selecciona un método e ingresa el monto.</p>
     )
   }
   return (
-    <ul className="divide-y rounded-md border">
+    <ul className="divide-y divide-line rounded-card border border-line bg-surface">
       {lines.map((line, index) => (
-        <li key={index} className="flex items-center gap-3 p-3">
-          <div className="flex-1">
-            <div className="font-medium">{methodName(line.methodId)}</div>
-            <div className="text-xs text-muted-foreground">
+        <li key={index} className="flex items-center gap-3 py-1 pl-3 pr-1">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-fg">{methodName(line.methodId)}</div>
+            <div className="text-xs text-muted-fg">
               {line.kind === "cash" ? "Efectivo" : "Electrónico"} · Recibido{" "}
-              {formatCurrency(line.tendered)} · Aplicado {formatCurrency(line.applied)}
-              {line.change > 0 && ` · Cambio ${formatCurrency(line.change)}`}
+              <Money>{formatCurrency(line.tendered)}</Money>
+              {line.change > 0 && (
+                <>
+                  {" "}
+                  · Cambio <Money>{formatCurrency(line.change)}</Money>
+                </>
+              )}
             </div>
           </div>
-          <Button
+          <Money className="text-sm font-bold text-fg">{formatCurrency(line.applied)}</Money>
+          <button
             type="button"
-            variant="ghost"
-            size="icon"
             onClick={() => onRemove(index)}
             disabled={disabled}
             aria-label={`Eliminar línea ${index + 1}`}
+            className={cn(
+              "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-fg hover:bg-surface-2 hover:text-fg disabled:opacity-50",
+              focusRing,
+            )}
           >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+            <X aria-hidden="true" className="h-4 w-4" />
+          </button>
         </li>
       ))}
     </ul>

@@ -105,7 +105,7 @@ describe("StepPicker (T10, S5)", () => {
     expect(undo).toHaveBeenCalledTimes(1)
   })
 
-  it("skips Subcategoría for a category without subcategories and has no note when comments are off", async () => {
+  it("skips Subcategoría for a category without subcategories and still offers the note when comments are off", async () => {
     renderPicker()
     await click(screen.getByRole("button", { name: /Postres/ }))
     expect(heading()).toHaveTextContent("Postres")
@@ -114,7 +114,7 @@ describe("StepPicker (T10, S5)", () => {
     expect(within(crumbs).getByRole("button", { name: /Paso 2, Subcategoría: Sin subcategoría/ })).toBeDisabled()
 
     await click(screen.getByRole("button", { name: /Arroz con leche/ }))
-    expect(screen.queryByLabelText("Nota para cocina (opcional)")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Nota para cocina (opcional)")).toBeInTheDocument()
   })
 
   it("leaves an Agotado dish in place and only toasts", async () => {

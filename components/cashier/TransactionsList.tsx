@@ -237,7 +237,7 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
           </Button>
         </div>
 
-        <div className="flex gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
             size="sm"
@@ -254,7 +254,7 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         {methodCards.slice(0, 4).map((card) => (
           <Card key={card.id}>
             <CardHeader className="pb-2">
