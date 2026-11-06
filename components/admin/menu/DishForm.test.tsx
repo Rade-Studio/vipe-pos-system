@@ -60,6 +60,8 @@ const dish = {
   imageUrl: "https://img/d-1.png",
   active: true,
   allowComments: true,
+  sortOrder: 0,
+  quickNotes: [],
   createdAt: null,
   updatedAt: null,
 }

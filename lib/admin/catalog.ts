@@ -146,16 +146,18 @@ export interface AdminCategoryNode {
 
 const byOrderThenName = <T extends { sortOrder: number; name: string }>(a: T, b: T) =>
   a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "es")
-const byName = (a: DishDto, b: DishDto) => a.name.localeCompare(b.name, "es")
 
-/** Categories → subcategories → dishes, as the waiter steps through them. Dishes without category are left out. */
+/**
+ * Categories → subcategories → dishes, as the waiter steps through them; dishes
+ * by sort order, then name (the API's dish order). Dishes without category are left out.
+ */
 export function buildAdminMenuTree(
   categories: readonly CategoryDto[],
   subcategories: readonly SubcategoryDto[],
   dishes: readonly DishDto[],
 ): AdminCategoryNode[] {
   return [...categories].sort(byOrderThenName).map((category) => {
-    const own = dishes.filter((dish) => dish.categoryId === category.id).sort(byName)
+    const own = dishes.filter((dish) => dish.categoryId === category.id).sort(byOrderThenName)
     const subs = subcategories.filter((s) => s.categoryId === category.id).sort(byOrderThenName)
     const subIds = new Set(subs.map((s) => s.id))
     return {

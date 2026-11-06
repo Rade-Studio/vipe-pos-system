@@ -138,6 +138,29 @@ export const DISH_MESSAGES = {
   move: 'El plato está en una subcategoría de su categoría actual; elige una subcategoría de la nueva categoría o quítala',
 } as const;
 
+export const QUICK_NOTE_MESSAGES = {
+  tooMany: 'Máximo 12 notas rápidas',
+  length: 'Cada nota rápida debe tener entre 1 y 30 caracteres',
+  duplicate: 'Las notas rápidas no se pueden repetir',
+} as const;
+export const QUICK_NOTES_MAX = 12;
+export const QUICK_NOTE_MAX_LENGTH = 30;
+
+/** private.normalize_quick_note: trimmed, every inner run of whitespace one space. */
+const normalizeQuickNote = (note: string) => note.trim().replace(/\s+/g, ' ');
+
+/**
+ * dishes.quick_notes as the 0015 CHECK sees it, with Spanish messages: at most
+ * 12, each 1-30 characters once normalised, no duplicates ignoring case. The
+ * stored value is the normalised one (the database trigger does the same).
+ */
+const quickNotes = z
+  .array(z.string())
+  .max(QUICK_NOTES_MAX, QUICK_NOTE_MESSAGES.tooMany)
+  .transform((notes) => notes.map(normalizeQuickNote))
+  .refine((notes) => notes.every((note) => [...note].length >= 1 && [...note].length <= QUICK_NOTE_MAX_LENGTH), QUICK_NOTE_MESSAGES.length)
+  .refine((notes) => new Set(notes.map((note) => note.toLowerCase())).size === notes.length, QUICK_NOTE_MESSAGES.duplicate);
+
 export const dishListQuerySchema = z.strictObject({
   categoryId: z.guid().optional(),
   subcategoryId: z.guid().optional(),
@@ -154,8 +177,16 @@ export const createDishSchema = z.strictObject({
   imageUrl: nullableText.optional(),
   active: z.boolean().optional(),
   allowComments: z.boolean().optional(),
+  quickNotes: quickNotes.optional(),
 });
 export const updateDishSchema = createDishSchema.partial();
+
+/** A dish group is (categoryId, subcategoryId); null categoryId is the dishes without category. */
+export const dishOrderSchema = z.strictObject({
+  categoryId: z.guid().nullable(),
+  subcategoryId: z.guid().nullable(),
+  ids: orderedIds,
+});
 
 export class Dish {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -169,6 +200,10 @@ export class Dish {
   @ApiProperty({ type: String, nullable: true, description: 'Opaque image reference.' }) imageUrl!: string | null;
   @ApiProperty() active!: boolean;
   @ApiProperty() allowComments!: boolean;
+  @ApiProperty({ description: 'Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name.' })
+  sortOrder!: number;
+  @ApiProperty({ type: [String], description: 'Modifier chips offered when the dish is added (append to the item comment, no price).' })
+  quickNotes!: string[];
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) updatedAt!: string | null;
   @ApiPropertyOptional({ description: 'Only when a promotion applies (pricing=promotions).' }) originalPrice?: number;
@@ -194,6 +229,12 @@ export class CreateDishRequest {
   @ApiPropertyOptional({ type: String, nullable: true }) imageUrl?: string | null;
   @ApiPropertyOptional({ default: true }) active?: boolean;
   @ApiPropertyOptional({ default: false }) allowComments?: boolean;
+  @ApiPropertyOptional({
+    type: [String],
+    maxItems: 12,
+    description: 'At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish).',
+  })
+  quickNotes?: string[];
 }
 
 export class UpdateDishRequest {
@@ -211,6 +252,19 @@ export class UpdateDishRequest {
   @ApiPropertyOptional({ type: String, nullable: true }) imageUrl?: string | null;
   @ApiPropertyOptional() active?: boolean;
   @ApiPropertyOptional() allowComments?: boolean;
+  @ApiPropertyOptional({
+    type: [String],
+    maxItems: 12,
+    description: 'At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish).',
+  })
+  quickNotes?: string[];
+}
+
+export class DishOrderRequest {
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'null: the dishes without category.' }) categoryId!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) subcategoryId!: string | null;
+  @ApiProperty({ type: [String], description: 'Dish ids of the group in order; position i gets sortOrder i. Ids left out keep theirs.' })
+  ids!: string[];
 }
 
 // ---- Menu tree ----------------------------------------------------------------
@@ -225,7 +279,8 @@ export class MenuTreeCategory extends Category {
   subcategories!: Subcategory[];
   @ApiProperty({
     type: [MenuTreeDish],
-    description: 'Active dishes by name, priced with the promotions active now; dishes of an inactive subcategory are left out.',
+    description:
+      'Active dishes by sortOrder, then name, priced with the promotions active now; dishes of an inactive subcategory are left out.',
   })
   dishes!: MenuTreeDish[];
 }
@@ -233,6 +288,24 @@ export class MenuTreeCategory extends Category {
 export class MenuTree {
   @ApiProperty({ type: [MenuTreeCategory], description: 'Active categories by sortOrder, then name.' })
   categories!: MenuTreeCategory[];
+  @ApiProperty({
+    type: [MenuTreeDish],
+    description: 'Active dishes without category ("Otros"), by sortOrder, then name, priced and with availability.',
+  })
+  uncategorized!: MenuTreeDish[];
+}
+
+export const MENU_MESSAGES = {
+  publishForbidden: 'Solo un administrador puede publicar el menú',
+} as const;
+
+export class MenuPublicationStatus {
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Latest publication; null: never published (the live menu is served).' })
+  publishedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Name of the admin who published; null for the deploy backfill or a deleted profile.' })
+  publishedByName!: string | null;
+  @ApiProperty({ description: 'Categories, subcategories and dishes added, removed or changed in structure since then; 0 with no publication.' })
+  pendingChanges!: number;
 }
 
 // ---- Promotions -------------------------------------------------------------

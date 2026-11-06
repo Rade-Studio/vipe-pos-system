@@ -178,7 +178,7 @@ const sub = (id: string, categoryId: string, name: string, sortOrder: number, ac
   createdAt: null,
   updatedAt: null,
 })
-const dish = (id: string, name: string, categoryId: string | null, subcategoryId: string | null = null) => ({
+const dish = (id: string, name: string, categoryId: string | null, subcategoryId: string | null = null, sortOrder = 0) => ({
   id,
   name,
   description: null,
@@ -188,6 +188,8 @@ const dish = (id: string, name: string, categoryId: string | null, subcategoryId
   imageUrl: null,
   active: true,
   allowComments: false,
+  sortOrder,
+  quickNotes: [],
   createdAt: null,
   updatedAt: null,
 })
@@ -251,6 +253,16 @@ describe("buildAdminMenuTree", () => {
     expect(bebidas.subcategories[0].dishes.map((d) => d.name)).toEqual(["Lulo", "Mora"])
     expect(bebidas.looseDishes.map((d) => d.name)).toEqual(["Agua"])
     expect(bebidas.dishCount).toBe(4)
+  })
+
+  it("orders the dishes of a group by sort order, then name (T20 dish reorder)", () => {
+    const ordered = buildAdminMenuTree(
+      [cat("c-1", "Bebidas", 0)],
+      [sub("s-1", "c-1", "Jugos", 0)],
+      [dish("d-1", "Lulo", "c-1", "s-1", 1), dish("d-2", "Mora", "c-1", "s-1", 0), dish("d-3", "Agua", "c-1", null, 1), dish("d-4", "Té", "c-1", null, 0), dish("d-5", "Café", "c-1", null, 1)],
+    )
+    expect(ordered[0].subcategories[0].dishes.map((d) => d.name)).toEqual(["Mora", "Lulo"])
+    expect(ordered[0].looseDishes.map((d) => d.name)).toEqual(["Té", "Agua", "Café"])
   })
 
   it("derives 'sin subcategorías' from the dishes: none of them sits in a subcategory", () => {

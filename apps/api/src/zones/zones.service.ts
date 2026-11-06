@@ -11,6 +11,8 @@ interface ZoneRow {
   sort_order: number;
   labels: Zone['labels'];
   active: boolean;
+  width_m: number | null;
+  depth_m: number | null;
   created_at: Date | string | null;
   updated_at: Date | string | null;
 }
@@ -24,6 +26,8 @@ const toZone = (row: ZoneRow): Zone => ({
   sortOrder: row.sort_order,
   labels: row.labels,
   active: row.active,
+  widthM: row.width_m,
+  depthM: row.depth_m,
   createdAt: iso(row.created_at),
   updatedAt: iso(row.updated_at),
 });
@@ -40,9 +44,10 @@ export class ZonesService {
 
   async create(input: z.infer<typeof createZoneSchema>): Promise<Zone> {
     const [row] = await this.write(sql`
-      INSERT INTO public.zones (name, aspect, sort_order, labels, active)
+      INSERT INTO public.zones (name, aspect, sort_order, labels, active, width_m, depth_m)
       VALUES (${input.name}, ${input.aspect ?? 1.6}, ${input.sortOrder ?? 0},
-              ${JSON.stringify(input.labels ?? [])}::jsonb, ${input.active ?? true})
+              ${JSON.stringify(input.labels ?? [])}::jsonb, ${input.active ?? true},
+              ${input.widthM ?? null}, ${input.depthM ?? null})
       RETURNING id`);
     return this.get(row.id);
   }
@@ -54,6 +59,7 @@ export class ZonesService {
     if (input.sortOrder !== undefined) sets.push(sql`sort_order = ${input.sortOrder}`);
     if (input.labels !== undefined) sets.push(sql`labels = ${JSON.stringify(input.labels)}::jsonb`);
     if (input.active !== undefined) sets.push(sql`active = ${input.active}`);
+    if (input.widthM !== undefined) sets.push(sql`width_m = ${input.widthM}`, sql`depth_m = ${input.depthM ?? null}`);
     const [row] = await this.write(sql`UPDATE public.zones SET ${sql.join(sets, sql`, `)} WHERE id = ${id} RETURNING id`);
     if (!row) {
       throw new NotFoundException('Zone not found');
@@ -84,7 +90,8 @@ export class ZonesService {
 
   private select(tail: SQL): Promise<ZoneRow[]> {
     return this.rows<ZoneRow>(sql`
-      SELECT id, name, aspect::float8 AS aspect, sort_order, labels, active, created_at, updated_at
+      SELECT id, name, aspect::float8 AS aspect, sort_order, labels, active,
+             width_m::float8 AS width_m, depth_m::float8 AS depth_m, created_at, updated_at
         FROM public.zones
        ${tail}`);
   }

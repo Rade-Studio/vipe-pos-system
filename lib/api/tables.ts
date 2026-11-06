@@ -42,6 +42,7 @@ export function toTable(dto: TableDto): Table {
     shape: dto.shape,
     rotation: dto.rotation,
     seats: dto.seats ?? undefined,
+    isActive: dto.isActive,
     updated_at: dto.updatedAt ? new Date(dto.updatedAt) : undefined,
   }
 }
@@ -82,6 +83,11 @@ export async function create(body: { number: number; status?: TableStatus } & Pa
 export async function update(tableId: string, body: UpdateTableBody): Promise<TableDto> {
   const { data } = await api.PATCH("/api/tables/{id}", { ...byId(tableId), body })
   return required(data)
+}
+
+/** Admin. An inactive table takes no new order (409 `La mesa está inactiva`) but stays listed, flagged. */
+export async function setTableActive(tableId: string, isActive: boolean): Promise<TableDto> {
+  return update(tableId, { isActive })
 }
 
 export async function updateTableStatus(tableId: string, status: TableStatus): Promise<TableDto> {

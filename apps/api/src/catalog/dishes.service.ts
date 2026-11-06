@@ -55,8 +55,15 @@ export class DishesService {
   async create(input: z.infer<typeof createDishSchema>): Promise<Dish> {
     await this.assertCategory(input.categoryId);
     await this.assertSubcategory(input, { categoryId: null, subcategoryId: null });
+    // After the last dish of its group, as categories and subcategories are created.
+    const sortOrder = sql`(SELECT COALESCE(max(d.sort_order) + 1, 0) FROM public.dishes d
+       WHERE d.category_id IS NOT DISTINCT FROM ${input.categoryId ?? null}::uuid
+         AND d.subcategory_id IS NOT DISTINCT FROM ${input.subcategoryId ?? null}::uuid)`;
     const [row] = await guardSubcategory(
-      this.uow.db.insert(dishes).values(toColumns(input) as typeof dishes.$inferInsert).returning(),
+      this.uow.db
+        .insert(dishes)
+        .values({ ...(toColumns(input) as typeof dishes.$inferInsert), sortOrder })
+        .returning(),
     );
     return toDish(row);
   }
@@ -83,6 +90,31 @@ export class DishesService {
       throw new NotFoundException('Dish not found');
     }
     return toDish(row);
+  }
+
+  /**
+   * The menu editor's dish reorder inside one (category, subcategory) group:
+   * position i gets sort_order i, in the request transaction, so an id of
+   * another group or restaurant (Unknown dish) rolls back the rows already
+   * written. Returns every dish of the group, inactive included, in the new order.
+   */
+  async reorder(group: { categoryId: string | null; subcategoryId: string | null }, ids: string[]): Promise<Dish[]> {
+    const inGroup = and(
+      sql`${dishes.categoryId} IS NOT DISTINCT FROM ${group.categoryId}::uuid`,
+      sql`${dishes.subcategoryId} IS NOT DISTINCT FROM ${group.subcategoryId}::uuid`,
+    );
+    for (const [index, id] of ids.entries()) {
+      const updated = await this.uow.db
+        .update(dishes)
+        .set({ sortOrder: index, updatedAt: sql`now()` })
+        .where(and(eq(dishes.id, id), inGroup))
+        .returning({ id: dishes.id });
+      if (updated.length === 0) {
+        throw new UnprocessableEntityException('Unknown dish');
+      }
+    }
+    const rows = await this.uow.db.select().from(dishes).where(inGroup).orderBy(dishes.sortOrder, dishes.name, dishes.id);
+    return rows.map(toDish);
   }
 
   async remove(id: string): Promise<void> {

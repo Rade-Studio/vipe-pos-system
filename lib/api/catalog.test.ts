@@ -27,8 +27,12 @@ import {
   fetchDishes,
   fetchPromotionDishes,
   fetchPromotions,
+  getMenuDraft,
+  getMenuPublication,
   getMenuTree,
+  publishMenu,
   reorderCategories,
+  reorderDishes,
   setPromotionDishes,
   updateCategory,
   updateDish,
@@ -191,5 +195,50 @@ describe("menu tree", () => {
   it("throws on a 2xx without body", async () => {
     api.GET.mockResolvedValueOnce({ data: undefined })
     await expect(getMenuTree()).rejects.toMatchObject({ status: 500 })
+  })
+})
+
+describe("menu publication and dish order (T20)", () => {
+  const status = { publishedAt: "2026-11-06T10:00:00.000Z", publishedByName: "Admin A", pendingChanges: 3 }
+
+  it("reads the admin draft tree and the publication status", async () => {
+    const draft = { categories: [], uncategorized: [] }
+    api.GET.mockResolvedValueOnce({ data: draft }).mockResolvedValueOnce({ data: status })
+    await expect(getMenuDraft()).resolves.toEqual(draft)
+    expect(api.GET).toHaveBeenCalledWith("/api/catalog/menu/draft")
+    await expect(getMenuPublication()).resolves.toEqual(status)
+    expect(api.GET).toHaveBeenLastCalledWith("/api/catalog/menu/publication")
+  })
+
+  it("publishes with one POST and returns the new status", async () => {
+    api.POST.mockResolvedValueOnce({ data: { ...status, pendingChanges: 0 } })
+    await expect(publishMenu()).resolves.toEqual({ ...status, pendingChanges: 0 })
+    expect(api.POST).toHaveBeenCalledTimes(1)
+    expect(api.POST).toHaveBeenCalledWith("/api/catalog/menu/publish")
+  })
+
+  it("reorders the dishes of one group with one PUT; null ids are the loose group", async () => {
+    api.PUT.mockResolvedValueOnce({ data: [{ id: "d-2" }, { id: "d-1" }] })
+    await expect(reorderDishes({ categoryId: "c-1", subcategoryId: null }, ["d-2", "d-1"])).resolves.toEqual([
+      { id: "d-2" },
+      { id: "d-1" },
+    ])
+    expect(api.PUT).toHaveBeenCalledWith("/api/catalog/dishes/order", {
+      body: { categoryId: "c-1", subcategoryId: null, ids: ["d-2", "d-1"] },
+    })
+  })
+
+  it("sends quick notes on dish writes as given", async () => {
+    api.PATCH.mockResolvedValueOnce({ data: { id: "d-1", quickNotes: ["Sin cebolla"] } })
+    await updateDish("d-1", { quickNotes: ["Sin cebolla"] })
+    expect(api.PATCH).toHaveBeenCalledWith("/api/catalog/dishes/{id}", {
+      params: { path: { id: "d-1" } },
+      body: { quickNotes: ["Sin cebolla"] },
+    })
+  })
+
+  it("throws on a 2xx without body", async () => {
+    api.POST.mockResolvedValueOnce({ data: undefined })
+    await expect(publishMenu()).rejects.toMatchObject({ status: 500 })
   })
 })
