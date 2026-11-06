@@ -161,9 +161,7 @@ COMMENT ON COLUMN public.zones.width_m IS 'Real width of the zone in metres (> 0
 --> statement-breakpoint
 COMMENT ON COLUMN public.zones.depth_m IS 'Real depth of the zone in metres (> 0, <= 200); set together with width_m or not at all.';
 --> statement-breakpoint
-ALTER TABLE public.profiles
-    ADD CONSTRAINT profiles_restaurant_id_id_key UNIQUE (restaurant_id, id);
---> statement-breakpoint
+-- profiles_restaurant_id_id_key (the same-restaurant publisher key) comes from 0014.
 CREATE TABLE public.menu_publications (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     restaurant_id uuid DEFAULT private.current_restaurant_id() NOT NULL,
