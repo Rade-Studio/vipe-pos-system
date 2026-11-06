@@ -4,7 +4,15 @@ import { useState } from "react"
 import { AlertCircle, ArrowRight, Bike, Check, UtensilsCrossed } from "lucide-react"
 import type { Order } from "@/types"
 import { cn } from "@/lib/utils"
-import { formatElapsed, ticketAge, ticketStartedAt, type TicketTone } from "@/lib/kitchen/ticket"
+import { isServedItem, pendingItems } from "@/lib/kitchen/order"
+import {
+  formatElapsed,
+  newItemIdsOf,
+  ticketAge,
+  ticketStartedAt,
+  type KitchenThresholds,
+  type TicketTone,
+} from "@/lib/kitchen/ticket"
 
 export interface KitchenTicketProps {
   order: Order
@@ -13,11 +21,12 @@ export interface KitchenTicketProps {
   waiterName: string | null
   /** Delivery address; null for a table. */
   address: string | null
-  /** Order-level comment (delivery notes). */
+  /** Order-level comment: the order note (table) or the delivery notes. */
   note: string | null
   /** Clock shared by every ticket, so they all tick together. */
   now: number
-  newItemIds: readonly string[]
+  /** From the business `kitchenLateMinutes`. */
+  thresholds: KitchenThresholds
   onServeItem: (itemId: string) => Promise<void> | void
   onServeAll: () => void
 }
@@ -47,15 +56,18 @@ interface ItemGroup {
   comments?: string
   quantity: number
   ids: string[]
+  served: boolean
 }
 
-// Identical lines (same name, comment and arrival) render as one row; its ✓
-// serves the first line, as the previous kitchen card did.
+// Identical lines (same name, comment, arrival and state) render as one row;
+// its ✓ serves the first line, as the previous kitchen card did. Served lines
+// stay, struck through as "Entregado" (T23).
 function groupItems(order: Order): ItemGroup[] {
   const groups = new Map<string, ItemGroup>()
   for (const item of order.items) {
-    const key = `${item.name}|${item.comments || ""}|${item.addedAt?.getTime()}`
-    const group = groups.get(key) ?? { key, name: item.name, comments: item.comments, quantity: 0, ids: [] }
+    const served = isServedItem(item)
+    const key = `${item.name}|${item.comments || ""}|${item.addedAt?.getTime()}|${served}`
+    const group = groups.get(key) ?? { key, name: item.name, comments: item.comments, quantity: 0, ids: [], served }
     group.quantity += item.quantity
     group.ids.push(item.id)
     groups.set(key, group)
@@ -70,7 +82,7 @@ export function KitchenTicket({
   address,
   note,
   now,
-  newItemIds,
+  thresholds,
   onServeItem,
   onServeAll,
 }: KitchenTicketProps) {
@@ -78,9 +90,15 @@ export function KitchenTicket({
   const delivery = order.orderType === "delivery"
   const startedAt = ticketStartedAt(order)
   const elapsed = now - startedAt
-  const age = ticketAge(elapsed)
+  const age = ticketAge(elapsed, thresholds)
   const groups = groupItems(order)
-  const newCount = order.items.filter((item) => newItemIds.includes(item.id)).length
+  const pendingCount = pendingItems(order).length
+  const newItemIds = newItemIdsOf(order)
+  // "+n nuevos" counts the lines the cook sees (as the artboard), so it always
+  // equals the number of "Nuevo" chips: same-dish rows of one batch are one line.
+  const isNewGroup = (group: ItemGroup) => group.ids.some((id) => newItemIds.includes(id))
+  const newCount = groups.filter(isNewGroup).length
+  const guests = !delivery && order.guests ? `${order.guests} ${order.guests === 1 ? "persona" : "personas"}` : null
   const sentAt = new Date(startedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false })
 
   const serve = async (itemId: string) => {
@@ -132,13 +150,19 @@ export function KitchenTicket({
           {place}
         </h2>
         <p className="mt-1.5 text-sm leading-snug text-muted-fg [overflow-wrap:anywhere]">
-          Orden #{order.id.slice(0, 8)}
+          Orden #{order.orderNumber ?? order.id.slice(0, 8)}
           {delivery ? (
             address && <> · {address}</>
           ) : (
             <>
               {" "}
               · Mesero <b className="font-medium text-fg-2">{waiterName ?? "no asignado"}</b>
+              {guests && (
+                <>
+                  {" "}
+                  · <span className="whitespace-nowrap">{guests}</span>
+                </>
+              )}
             </>
           )}{" "}
           · {sentAt}
@@ -156,18 +180,23 @@ export function KitchenTicket({
 
       <ul className="min-h-0 flex-1 overflow-y-auto px-3 py-1.5">
         {groups.map((group) => {
-          const isNew = group.ids.some((id) => newItemIds.includes(id))
+          const isNew = isNewGroup(group)
           return (
             <li
               key={group.key}
               className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2.5 border-line py-3 [&+&]:border-t"
             >
-              <span className="whitespace-nowrap text-center font-mono text-[22px] font-bold tabular-nums text-brand-strong">
+              <span
+                className={cn(
+                  "whitespace-nowrap text-center font-mono text-[22px] font-bold tabular-nums",
+                  group.served ? "text-muted-fg" : "text-brand-strong",
+                )}
+              >
                 {group.quantity}
                 <span className="ml-px text-sm text-muted-fg">×</span>
               </span>
               <span className="min-w-0 text-[19px] font-medium leading-tight [overflow-wrap:anywhere] xl:text-xl">
-                {group.name}
+                <span className={cn(group.served && "text-muted-fg line-through")}>{group.name}</span>
                 {isNew && (
                   <span
                     className={cn(
@@ -182,6 +211,12 @@ export function KitchenTicket({
                   <span className="mt-1 block text-[15px] font-medium text-status-kitchen-fg">{group.comments}</span>
                 )}
               </span>
+              {group.served ? (
+                <span className={cn(chip, "border-status-ok-line bg-status-ok-bg text-status-ok-fg")}>
+                  <Check className="h-3.5 w-3.5" strokeWidth={2.6} aria-hidden="true" />
+                  Entregado
+                </span>
+              ) : (
               <button
                 type="button"
                 aria-label={`Entregar ${group.quantity} ${group.name}`}
@@ -191,6 +226,7 @@ export function KitchenTicket({
               >
                 <Check className="h-6 w-6" strokeWidth={2.6} aria-hidden="true" />
               </button>
+              )}
             </li>
           )
         })}
@@ -204,7 +240,7 @@ export function KitchenTicket({
           className="group inline-flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-btn px-4 text-[17px] font-semibold text-btn-foreground shadow-glow transition-transform duration-300 hover:scale-[1.02] focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-[3px] focus-visible:outline-focus disabled:opacity-50 motion-reduce:transition-none motion-reduce:hover:scale-100"
         >
           <span className="truncate">{delivery ? "Listo para domicilio" : "Entregar toda"}</span>{" "}
-          <span className="tabular-nums">({order.items.length})</span>
+          <span className="tabular-nums">({pendingCount})</span>
           <ArrowRight
             className="h-5 w-5 flex-none transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
             aria-hidden="true"

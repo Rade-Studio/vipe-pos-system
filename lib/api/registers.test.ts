@@ -18,6 +18,7 @@ import {
   getCashTransactionsByRegisters,
   getCurrentRegister,
   getOpenRegister,
+  getRegisterPaidOrders,
   getRegistersByDate,
   getTransactionsByRegisterId,
   getTransactionsByRegisters,
@@ -34,6 +35,7 @@ const registerDto = (overrides: Record<string, unknown> = {}) => ({
   status: "open",
   createdAt: "2026-11-04T13:00:00.000Z",
   updatedAt: null,
+  openedBy: null,
   ...overrides,
 })
 
@@ -211,5 +213,52 @@ describe("legacy payment_transactions", () => {
     api.GET.mockResolvedValue({ data: registerDto({ transactions: [legacyDto] }) })
     await expect(getTransactionsByRegisters(["r-1"])).resolves.toHaveLength(1)
     await expect(getTransactionsByRegisters([])).resolves.toEqual([])
+  })
+})
+
+describe("T18 register opener", () => {
+  it("maps openedBy {id, name}, null when unknown", async () => {
+    api.GET.mockResolvedValue({ data: registerDto({ openedBy: { id: "p-1", name: "Caja Turno" } }) })
+    expect((await getOpenRegister())?.openedBy).toEqual({ id: "p-1", name: "Caja Turno" })
+    api.GET.mockResolvedValue({ data: registerDto() })
+    expect((await getOpenRegister())?.openedBy).toBeNull()
+  })
+
+  it("openRegister never sends an opener: the server records the caller", async () => {
+    api.POST.mockResolvedValue({ data: registerDto({ openedBy: { id: "p-1", name: "Caja Turno" } }) })
+    await openRegister(1000)
+    expect(api.POST).toHaveBeenCalledWith("/api/registers/open", { body: { initialCash: 1000 } })
+  })
+})
+
+describe("T18 getRegisterPaidOrders", () => {
+  const paidDto = {
+    orderId: "o-1",
+    orderNumber: 41,
+    orderType: "dine_in",
+    tableNumber: 7,
+    zoneName: "Terraza",
+    waiter: { id: "w-1", name: "Waiter A" },
+    paymentId: "p-1",
+    amountDue: 10000,
+    tip: 1000,
+    total: 11000,
+    paidAt: "2026-11-04T15:00:00.000Z",
+    tenders: [{ methodCode: "transfer", methodName: "Transferencia", methodKind: "electronic", amount: 11000, reference: "4821" }],
+  }
+
+  it("GETs the register's paid orders (limit optional) and maps paidAt to a Date", async () => {
+    api.GET.mockResolvedValue({ data: [paidDto] })
+    const rows = await getRegisterPaidOrders("r-1")
+    expect(api.GET).toHaveBeenCalledWith("/api/registers/{id}/paid-orders", { params: { path: { id: "r-1" }, query: {} } })
+    expect(rows).toEqual([{ ...paidDto, paidAt: new Date("2026-11-04T15:00:00.000Z") }])
+    api.GET.mockResolvedValue({ data: [] })
+    await getRegisterPaidOrders("r-1", { limit: 20 })
+    expect(api.GET).toHaveBeenLastCalledWith("/api/registers/{id}/paid-orders", { params: { path: { id: "r-1" }, query: { limit: 20 } } })
+  })
+
+  it("surfaces 403 as not-authorized", async () => {
+    api.GET.mockRejectedValue(new ApiError(403, "Forbidden", "Forbidden resource", { statusCode: 403 }))
+    await expect(getRegisterPaidOrders("r-1")).rejects.toMatchObject({ kind: "not-authorized" })
   })
 })

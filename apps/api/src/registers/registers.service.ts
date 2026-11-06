@@ -3,8 +3,16 @@ import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
 import { toIso } from '../common/validation';
 import { UnitOfWork } from '../db/unit-of-work';
-import type { CashRegister, CashTransaction, CloseRegisterResult, createCashTransactionSchema, RegisterSummary } from './registers.dto';
-import { type RegisterRow, toCashTransaction, toCloseResult, toRegister, toRegisterSummary } from './registers.mappers';
+import {
+  type CashRegister,
+  type CashTransaction,
+  type CloseRegisterResult,
+  type createCashTransactionSchema,
+  PAID_ORDERS_DEFAULT,
+  type RegisterPaidOrder,
+  type RegisterSummary,
+} from './registers.dto';
+import { type RegisterRow, toCashTransaction, toCloseResult, toPaidOrder, toRegister, toRegisterSummary } from './registers.mappers';
 
 type Json = Record<string, unknown>;
 export const ALREADY_OPEN = 'A register is already open';
@@ -50,7 +58,11 @@ export class RegistersService {
     return row ? toRegister(row) : null;
   }
 
-  /** opening_timestamp is the database clock; a second open register is 409 (pre-check, then the index on a race). */
+  /**
+   * opening_timestamp is the database clock and opened_by is left to its
+   * column default (the caller's profile, migration 0014); a second
+   * open register is 409 (pre-check, then the index on a race).
+   */
   async open(initialCash: number): Promise<CashRegister> {
     const [open] = await this.rows(sql`SELECT 1 FROM public.cash_registers WHERE status = 'open' LIMIT 1`);
     if (open) {
@@ -112,6 +124,41 @@ export class RegistersService {
     return toCashTransaction(row.tx);
   }
 
+  /**
+   * The pay_order payments taken on the register, newest first, each with its
+   * order (number, type, table, zone, waiter) and tenders. RLS scopes every
+   * table to the caller's restaurant; an invisible register is 404.
+   */
+  async paidOrders(registerId: string, limit = PAID_ORDERS_DEFAULT): Promise<RegisterPaidOrder[]> {
+    const [register] = await this.rows(sql`SELECT 1 FROM public.cash_registers WHERE id = ${registerId}`);
+    if (!register) {
+      throw new NotFoundException('Register not found');
+    }
+    const rows = await this.rows<{ row: Json }>(sql`
+      SELECT jsonb_build_object(
+               'order_id', o.id, 'order_number', o.order_number, 'order_type', o.order_type,
+               'table_number', t.number, 'zone_name', z.name, 'waiter_id', w.id, 'waiter_name', w.full_name,
+               'payment_id', p.id, 'amount_due', p.amount_due, 'tip_amount', p.tip_amount,
+               'total_charged', p.total_charged, 'paid_at', p.created_at,
+               'tenders', coalesce((
+                 SELECT jsonb_agg(jsonb_build_object(
+                          'method_code', pt.method_code, 'method_name', coalesce(m.name, pt.method_code),
+                          'method_kind', pt.method_kind, 'amount', pt.amount, 'reference', pt.reference)
+                          ORDER BY pt.line_no)
+                   FROM public.payment_tenders pt
+                   LEFT JOIN public.payment_methods m ON m.id = pt.payment_method_id
+                  WHERE pt.payment_id = p.id), '[]'::jsonb)) AS row
+        FROM public.payments p
+        JOIN public.orders o ON o.id = p.order_id
+        LEFT JOIN public.tables t ON t.id = o.table_id
+        LEFT JOIN public.zones z ON z.id = t.zone_id
+        LEFT JOIN public.profiles w ON w.id = o.waiter_id
+       WHERE p.cash_register_id = ${registerId}
+       ORDER BY p.created_at DESC, p.id
+       LIMIT ${limit}`);
+    return rows.map(({ row }) => toPaidOrder(row));
+  }
+
   async listCashTransactions(registerId: string): Promise<CashTransaction[]> {
     return (await this.get(registerId, { cashTransactions: true })).cashTransactions ?? [];
   }
@@ -127,9 +174,10 @@ export class RegistersService {
                         FROM public.cash_transactions ct WHERE ct.cash_register_id = cr.id), '[]'::jsonb)`
       : sql`NULL::jsonb`;
     return this.rows<RegisterRow>(sql`
-      SELECT to_jsonb(cr) AS register, ${transactions} AS transactions, ${cash} AS cash_transactions
+      SELECT to_jsonb(cr) AS register, op.full_name AS opened_by_name, ${transactions} AS transactions, ${cash} AS cash_transactions
         FROM public.cash_registers cr
         JOIN public.restaurants r ON r.id = cr.restaurant_id
+        LEFT JOIN public.profiles op ON op.id = cr.opened_by
        ${where}
        ORDER BY cr.opening_timestamp DESC, cr.id`);
   }

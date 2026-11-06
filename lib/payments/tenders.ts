@@ -205,6 +205,15 @@ export function buildPayOrderTenders(state: PaymentState): PayOrderTenderLine[] 
 }
 
 /**
+ * A tender reference as the API stores it: tabs and line breaks become one
+ * space, then trimmed. Null when nothing is left (the line has no reference).
+ */
+export function normalizeTenderReference(value: string | null | undefined): string | null {
+  const normalized = (value ?? '').replace(/[\t\n\r\f\v]+/g, ' ').trim()
+  return normalized === '' ? null : normalized
+}
+
+/**
  * Cash-register helper: what would the tip become if we asked the customer
  * to round the cash up to the nearest peso instead of taking the change?
  * Returns `tip + totalChange` (clamped to a non-negative integer), so the

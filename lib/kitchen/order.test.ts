@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest"
 import type { Order, OrderItem } from "@/types"
-import { kitchenOrderOf, kitchenOrdersOf } from "./order"
+import { isServedItem, kitchenOrderOf, kitchenOrdersOf, pendingItems } from "./order"
 
 function item(id: string, status: "kitchen" | "served", addedAt: string): OrderItem {
   return {
@@ -40,17 +40,26 @@ function order(overrides: Partial<Order> = {}, items: OrderItem[] = []): Order {
 }
 
 describe("kitchenOrderOf", () => {
-  it("keeps only the kitchen items, oldest first", () => {
+  it("keeps served items on the ticket, marked served, every item oldest first (T23)", () => {
     const mapped = kitchenOrderOf(
       order({}, [
         item("i-2", "kitchen", "2026-10-07T11:02:00.000Z"),
-        item("i-3", "served", "2026-10-07T11:03:00.000Z"),
+        item("i-3", "served", "2026-10-07T11:00:30.000Z"),
         item("i-1", "kitchen", "2026-10-07T11:01:00.000Z"),
       ]),
     )
 
-    expect(mapped?.items.map((i) => i.id)).toEqual(["i-1", "i-2"])
-    expect(mapped?.items[0].addedAt).toEqual(new Date("2026-10-07T11:01:00.000Z"))
+    expect(mapped?.items.map((i) => i.id)).toEqual(["i-3", "i-1", "i-2"])
+    expect(mapped?.items.map(isServedItem)).toEqual([true, false, false])
+    expect(mapped?.items[1].addedAt).toEqual(new Date("2026-10-07T11:01:00.000Z"))
+  })
+
+  it("counts pending work from the kitchen items only (T23)", () => {
+    const mapped = kitchenOrderOf(
+      order({}, [item("i-1", "served", "2026-10-07T11:01:00.000Z"), item("i-2", "kitchen", "2026-10-07T11:02:00.000Z")]),
+    )
+
+    expect(pendingItems(mapped!).map((i) => i.id)).toEqual(["i-2"])
   })
 
   it("returns null when no item is in the kitchen", () => {
