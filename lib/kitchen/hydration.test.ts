@@ -118,6 +118,14 @@ describe("mergeKitchenOrders", () => {
     expect(mergeKitchenOrders(prev, [waiterChanged])).not.toBe(prev)
   })
 
+  it("detects a changed order number, guests or note as changes (T23)", () => {
+    const prev = [order("o-1", { orderNumber: 128, guests: 2, notes: "Cumpleaños" })]
+    expect(mergeKitchenOrders(prev, [refetched(prev[0])])).toBe(prev)
+    for (const change of [{ orderNumber: 129 }, { guests: 3 }, { notes: "Sin cebolla" }]) {
+      expect(mergeKitchenOrders(prev, [{ ...refetched(prev[0]), ...change }])).not.toBe(prev)
+    }
+  })
+
   it("reorders when the queue order changes", () => {
     const prev = [order("o-1"), order("o-2")]
     const next = [refetched(prev[1]), refetched(prev[0])]

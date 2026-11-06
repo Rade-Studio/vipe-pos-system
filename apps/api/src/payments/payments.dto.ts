@@ -52,11 +52,20 @@ export class ReorderPaymentMethodsRequest {
 
 // ---- Payments (pay_order) ---------------------------------------------------
 
+/** Tabs and line breaks become one space, then trim; payment_tenders.reference allows 1..60 chars. */
+export const normalizeTenderReference = (value: string) => value.replace(/[\t\n\r\f\v]+/g, ' ').trim();
+export const TENDER_REFERENCE_MAX = 60;
+const tenderReference = z.string().transform(normalizeTenderReference).pipe(z.string().min(1).max(TENDER_REFERENCE_MAX));
+/** 422 for a reference on a cash line (the RPC would store it). */
+export const CASH_REFERENCE_MESSAGE = 'Una línea en efectivo no lleva referencia';
+
 const tenderInputSchema = z.strictObject({
   paymentMethodId: z.guid(),
   amount: pesos.positive(),
   /** Cash handed over on a cash line; null (or omitted) on an electronic one. */
   cashReceived: pesos.positive().nullable().optional(),
+  /** Manual card/transfer reference (non-cash lines only); null (or omitted) means none. */
+  reference: tenderReference.nullable().optional(),
 });
 
 export const payOrderSchema = z.strictObject({
@@ -80,6 +89,14 @@ export class PayOrderTenderInput {
   @ApiProperty({ minimum: 1, description: 'Applied amount in whole pesos (capped for cash).' }) amount!: number;
   @ApiPropertyOptional({ type: Number, nullable: true, description: 'Cash handed over; required for cash, null for electronic.' })
   cashReceived?: number | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    minLength: 1,
+    maxLength: TENDER_REFERENCE_MAX,
+    description: `Card last digits, approval code or transfer reference, captured by hand. Non-cash lines only (422 \`${CASH_REFERENCE_MESSAGE}\`); tabs and line breaks become spaces, then trimmed to 1..${TENDER_REFERENCE_MAX} chars. Not echoed in the result; read it from the payment tenders.`,
+  })
+  reference?: string | null;
 }
 
 export class PayOrderRequest {
@@ -119,6 +136,8 @@ export class PaymentTender {
   @ApiProperty({ enum: PAYMENT_METHOD_KINDS }) methodKind!: PaymentMethodKind;
   @ApiProperty() amount!: number;
   @ApiProperty({ type: Number, nullable: true }) cashReceived!: number | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Manual reference of a non-cash line; null when none.' })
+  reference!: string | null;
 }
 
 export class Payment {

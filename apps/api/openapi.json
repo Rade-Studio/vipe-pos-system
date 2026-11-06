@@ -2730,6 +2730,60 @@
         ]
       }
     },
+    "/api/registers/{id}/paid-orders": {
+      "get": {
+        "operationId": "RegistersController_paidOrders",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "1..200, default 100.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paid orders of the register (one per pay_order payment), newest payment first; legacy payment_transactions are not listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegisterPaidOrder"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier."
+          },
+          "404": {
+            "description": "Unknown or of another restaurant."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
     "/api/registers/{id}/cash-transactions": {
       "get": {
         "operationId": "RegistersController_cashTransactions",
@@ -6543,7 +6597,7 @@
           },
           "kitchenLateMinutes": {
             "type": "number",
-            "default": 15,
+            "default": 25,
             "minimum": 1,
             "maximum": 240,
             "description": "Minutes after which a kitchen ticket is late."
@@ -6857,6 +6911,11 @@
           "cashReceived": {
             "type": "number",
             "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "description": "Manual reference of a non-cash line; null when none."
           }
         },
         "required": [
@@ -6867,7 +6926,8 @@
           "methodCode",
           "methodKind",
           "amount",
-          "cashReceived"
+          "cashReceived",
+          "reference"
         ]
       },
       "Payment": {
@@ -8074,6 +8134,13 @@
             "type": "number",
             "nullable": true,
             "description": "Cash handed over; required for cash, null for electronic."
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Card last digits, approval code or transfer reference, captured by hand. Non-cash lines only (422 `Una línea en efectivo no lleva referencia`); tabs and line breaks become spaces, then trimmed to 1..60 chars. Not echoed in the result; read it from the payment tenders."
           }
         },
         "required": [
@@ -8291,6 +8358,23 @@
           "parent"
         ]
       },
+      "ProfileRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "profiles.full_name."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
       "CashTransaction": {
         "type": "object",
         "properties": {
@@ -8372,6 +8456,16 @@
             "format": "date-time",
             "nullable": true
           },
+          "openedBy": {
+            "nullable": true,
+            "description": "Who opened it: always the caller's profile at open; null for registers opened before migration 0014 or a deleted profile.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
           "transactions": {
             "description": "Only with include=transactions; legacy payment_transactions, newest first.",
             "type": "array",
@@ -8395,7 +8489,8 @@
           "finalCash",
           "status",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "openedBy"
         ]
       },
       "RegisterMethodSummary": {
@@ -8584,6 +8679,120 @@
           "finalCash",
           "closingTimestamp",
           "summary"
+        ]
+      },
+      "PaidOrderTender": {
+        "type": "object",
+        "properties": {
+          "methodCode": {
+            "type": "string",
+            "description": "Snapshot at payment time."
+          },
+          "methodName": {
+            "type": "string",
+            "description": "Current catalog name of the method."
+          },
+          "methodKind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          },
+          "amount": {
+            "type": "number"
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "methodCode",
+          "methodName",
+          "methodKind",
+          "amount",
+          "reference"
+        ]
+      },
+      "RegisterPaidOrder": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderNumber": {
+            "type": "number",
+            "nullable": true,
+            "description": "Per-restaurant order number."
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ]
+          },
+          "tableNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true
+          },
+          "waiter": {
+            "nullable": true,
+            "description": "The order's waiter.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "paymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amountDue": {
+            "type": "number",
+            "description": "amount_due of the payment."
+          },
+          "tip": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number",
+            "description": "total_charged (amount due + tip)."
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Payment time."
+          },
+          "tenders": {
+            "description": "By line number.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaidOrderTender"
+            }
+          }
+        },
+        "required": [
+          "orderId",
+          "orderNumber",
+          "orderType",
+          "tableNumber",
+          "zoneName",
+          "waiter",
+          "paymentId",
+          "amountDue",
+          "tip",
+          "total",
+          "paidAt",
+          "tenders"
         ]
       },
       "CreateCashTransactionRequest": {
