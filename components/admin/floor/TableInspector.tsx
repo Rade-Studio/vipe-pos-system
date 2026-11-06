@@ -7,6 +7,7 @@ import type { ZoneDto } from "@/lib/api/zones"
 import { cn } from "@/lib/utils"
 import { MAX_SEATS, MAX_SIZE, MIN_SIZE, SHAPE_LABELS, type LayoutEdit } from "@/lib/floor/editor"
 import { TABLE_STATUS } from "@/lib/floor/layout"
+import { fromCm, hasDimensions, sizeText, toCm, yFromCm, yToCm, type ZoneUnits } from "@/lib/admin/floor/units"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -25,6 +26,8 @@ interface TableInspectorProps {
   placed: boolean
   waiters: Profile[]
   onEdit: (edit: LayoutEdit) => void
+  /** Switch "Activa" at once with PATCH /tables/:id (not part of the unsaved layout). */
+  onSetActive: (isActive: boolean) => Promise<void>
   onPlace: () => void
   onSaveData: (data: TableData) => Promise<void>
   onDelete: () => Promise<void>
@@ -93,8 +96,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 /**
  * The selected table: layout (forma, tamaño, rotación, sillas, zona) as
  * unsaved changes of the editor, and its data (número, estado, mesero) saved
- * at once with PATCH /tables/:id, as the table list did. Sizes are % of the
- * zone width: a zone stores no real size (S8).
+ * at once with PATCH /tables/:id, as the table list did. Sizes and positions
+ * are in cm on a zone with `widthM × depthM` (T26), otherwise % of the zone
+ * width with a hint to set the zone's measures.
  */
 export function TableInspector({
   table,
@@ -102,6 +106,7 @@ export function TableInspector({
   placed,
   waiters,
   onEdit,
+  onSetActive,
   onPlace,
   onSaveData,
   onDelete,
@@ -112,6 +117,7 @@ export function TableInspector({
   const [data, setData] = useState<TableData>({ number: table.number, status: table.status, waiterId: table.waiter ?? null })
   const [savingData, setSavingData] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [savingActive, setSavingActive] = useState(false)
 
   useEffect(() => {
     setData({ number: table.number, status: table.status, waiterId: table.waiter ?? null })
@@ -123,16 +129,26 @@ export function TableInspector({
   const hasSeats = typeof table.seats === "number" && table.seats > 0
   const percentOf = (fraction: number | undefined) => Math.round((fraction ?? 0.1) * 1000) / 10
   const zoneValue = table.zoneId && zones.some((zone) => zone.id === table.zoneId) ? table.zoneId : ""
+  const units: ZoneUnits | undefined = zones.find((zone) => zone.id === table.zoneId)
+  const real = !!units && hasDimensions(units)
+  const active = table.isActive !== false
 
   return (
     <section
       aria-labelledby={headingId}
-      className={cn("flex min-w-0 flex-col gap-4 rounded-card-lg border border-line bg-surface p-4 text-fg shadow-lg", className)}
+      // Focus never lands under the sticky save bar: each control keeps the bar's height (plus its offset) clear below it.
+      className={cn(
+        "flex min-w-0 flex-col gap-4 rounded-card-lg border border-line bg-surface p-4 text-fg shadow-lg [&_:is(button,input,select,summary)]:scroll-mb-40",
+        className,
+      )}
     >
       <header className="flex items-center justify-between gap-2">
-        <h2 id={headingId} className="text-base font-semibold">
-          Mesa {table.number}
-        </h2>
+        <div className="min-w-0">
+          <h2 id={headingId} className="text-base font-semibold">
+            Mesa {table.number}
+          </h2>
+          {units && <p className="text-xs tabular-nums text-muted-fg">{sizeText(table, units)}</p>}
+        </div>
         {onClose && (
           <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Cerrar inspector" onClick={onClose}>
             <X className="h-4 w-4" aria-hidden />
@@ -170,21 +186,66 @@ export function TableInspector({
           ))}
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <NumberField
-            label={square ? "Tamaño (% del ancho)" : "Ancho (% del ancho)"}
-            value={percentOf(table.w)}
-            min={MIN_SIZE * 100}
-            max={MAX_SIZE * 100}
-            onValue={(value) => onEdit({ w: value / 100 })}
-          />
-          {!square && (
-            <NumberField
-              label="Alto (% del ancho)"
-              value={percentOf(table.h)}
-              min={MIN_SIZE * 100}
-              max={MAX_SIZE * 100}
-              onValue={(value) => onEdit({ h: value / 100 })}
-            />
+          {real && units ? (
+            <>
+              <NumberField
+                label={square ? "Tamaño (cm)" : "Ancho (cm)"}
+                value={toCm(table.w ?? 0.1, units)}
+                min={Math.ceil(toCm(MIN_SIZE, units))}
+                max={Math.floor(toCm(MAX_SIZE, units))}
+                step={10}
+                onValue={(value) => onEdit({ w: fromCm(value, units) })}
+              />
+              {!square && (
+                <NumberField
+                  label="Alto (cm)"
+                  value={toCm(table.h ?? table.w ?? 0.1, units)}
+                  min={Math.ceil(toCm(MIN_SIZE, units))}
+                  max={Math.floor(toCm(MAX_SIZE, units))}
+                  step={10}
+                  onValue={(value) => onEdit({ h: fromCm(value, units) })}
+                />
+              )}
+              {placed && (
+                <>
+                  <NumberField
+                    label="Posición X (cm)"
+                    value={toCm(table.x ?? 0.5, units)}
+                    min={0}
+                    max={toCm(1, units)}
+                    step={10}
+                    onValue={(value) => onEdit({ x: fromCm(value, units) })}
+                  />
+                  <NumberField
+                    label="Posición Y (cm)"
+                    value={yToCm(table.y ?? 0.5, units)}
+                    min={0}
+                    max={yToCm(1, units)}
+                    step={10}
+                    onValue={(value) => onEdit({ y: yFromCm(value, units) })}
+                  />
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <NumberField
+                label={square ? "Tamaño (% del ancho)" : "Ancho (% del ancho)"}
+                value={percentOf(table.w)}
+                min={MIN_SIZE * 100}
+                max={MAX_SIZE * 100}
+                onValue={(value) => onEdit({ w: value / 100 })}
+              />
+              {!square && (
+                <NumberField
+                  label="Alto (% del ancho)"
+                  value={percentOf(table.h)}
+                  min={MIN_SIZE * 100}
+                  max={MAX_SIZE * 100}
+                  onValue={(value) => onEdit({ h: value / 100 })}
+                />
+              )}
+            </>
           )}
           <NumberField
             label="Rotación (°)"
@@ -195,6 +256,11 @@ export function TableInspector({
             onValue={(value) => onEdit({ rotation: value })}
           />
         </div>
+        {units && !real && (
+          <p className="text-xs text-muted-fg">
+            Medidas en % del ancho de la zona. Indica el ancho y el fondo de la zona en Gestionar zonas para verlas en centímetros.
+          </p>
+        )}
       </Section>
 
       <Section title="Sillas">
@@ -233,6 +299,28 @@ export function TableInspector({
             ))}
           </select>
         </label>
+      </Section>
+
+      <Section title="Disponibilidad">
+        <label className="flex min-h-[44px] items-center justify-between gap-3 text-sm">
+          <span>{active ? "Activa" : "Inactiva"}</span>
+          <Switch
+            aria-label="Activa"
+            checked={active}
+            disabled={savingActive}
+            onCheckedChange={async (checked) => {
+              setSavingActive(true)
+              try {
+                await onSetActive(checked)
+              } finally {
+                setSavingActive(false)
+              }
+            }}
+          />
+        </label>
+        <p className="text-xs text-muted-fg">
+          {active ? "Recibe órdenes y se ve en el mapa del mesero." : "No recibe órdenes nuevas; se ve atenuada en el mapa y conserva su historial."}
+        </p>
       </Section>
 
       <Section title="Datos de la mesa">
