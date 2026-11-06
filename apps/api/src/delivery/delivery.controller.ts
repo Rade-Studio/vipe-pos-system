@@ -14,6 +14,7 @@ import type { AuthenticatedRequest } from '../auth/auth-context';
 import { Roles } from '../auth/roles.decorator';
 import { idParamSchema, parseInput } from '../common/validation';
 import {
+  ClosedTodaySummary,
   Courier,
   courierListQuerySchema,
   CreateCourierRequest,
@@ -34,11 +35,16 @@ import { DeliveryService } from './delivery.service';
 
 /** Roles the customers and couriers RLS policies let read. */
 const REGISTRY_READERS = ['admin', 'cashier', 'delivery_operator'];
+/** Roles the couriers insert/update policies let write (the operator: create and isActive only, T19). */
+const COURIER_WRITERS = ['admin', 'delivery_operator'];
+/** Roles of the operator board (order_deliveries select policy). */
+const BOARD_READERS = ['admin', 'cashier', 'delivery_operator', 'kitchen'];
 
 /**
- * POST /delivery/orders and /status carry no @Roles: create_delivery_order
- * (admin, delivery_operator) and set_delivery_status (kitchen may
- * start_preparing and mark_ready) own the role matrix and answer 42501.
+ * POST /delivery/orders, /status and /return carry no @Roles:
+ * create_delivery_order (admin, delivery_operator), set_delivery_status
+ * (kitchen may start_preparing and mark_ready) and return_courier (admin,
+ * delivery_operator) own the role matrix and answer 42501.
  */
 @ApiTags('delivery')
 @ApiCookieAuth()
@@ -67,22 +73,22 @@ export class DeliveryController {
   }
 
   @Post('couriers')
-  @Roles('admin')
+  @Roles(...COURIER_WRITERS)
   @ApiBody({ type: CreateCourierRequest })
   @ApiCreatedResponse({ type: Courier })
-  @ApiForbiddenResponse()
+  @ApiForbiddenResponse({ description: 'Not admin or delivery_operator.' })
   createCourier(@Body() body: unknown): Promise<Courier> {
     return this.delivery.createCourier(parseInput(createCourierSchema, body));
   }
 
   @Patch('couriers/:id')
-  @Roles('admin')
-  @ApiBody({ type: UpdateCourierRequest })
+  @Roles(...COURIER_WRITERS)
+  @ApiBody({ type: UpdateCourierRequest, description: 'A delivery_operator may send isActive only.' })
   @ApiOkResponse({ type: Courier })
   @ApiNotFoundResponse()
-  @ApiForbiddenResponse()
-  updateCourier(@Param('id') id: string, @Body() body: unknown): Promise<Courier> {
-    return this.delivery.updateCourier(parseInput(idParamSchema, id), parseInput(updateCourierSchema, body));
+  @ApiForbiddenResponse({ description: 'Not admin or delivery_operator, or a delivery_operator sending name or phone.' })
+  updateCourier(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Courier> {
+    return this.delivery.updateCourier(parseInput(idParamSchema, id), parseInput(updateCourierSchema, body), req.profile!);
   }
 
   @Post('orders')
@@ -107,8 +113,25 @@ export class DeliveryController {
     return this.delivery.setStatus(parseInput(idParamSchema, id), parseInput(setDeliveryStatusSchema, body));
   }
 
+  @Post('orders/:id/return')
+  @HttpCode(200)
+  @ApiOkResponse({ type: DeliveryOrder, description: 'return_courier: returnedAt set on a delivered or failed delivery, once.' })
+  @ApiNotFoundResponse({ description: 'P0002: delivery not found.' })
+  @ApiForbiddenResponse({ description: '42501: not admin or delivery_operator.' })
+  returnCourier(@Param('id') id: string): Promise<DeliveryOrder> {
+    return this.delivery.returnCourier(parseInput(idParamSchema, id));
+  }
+
+  @Get('closed-today')
+  @Roles(...BOARD_READERS)
+  @ApiOkResponse({ type: ClosedTodaySummary, description: 'Restaurant day of GET /delivery/active.' })
+  @ApiForbiddenResponse()
+  closedToday(): Promise<ClosedTodaySummary> {
+    return this.delivery.closedToday();
+  }
+
   @Get('active')
-  @Roles('admin', 'cashier', 'delivery_operator', 'kitchen')
+  @Roles(...BOARD_READERS)
   @ApiOkResponse({
     type: [DeliveryOrderWithBill],
     description: "Open deliveries plus those delivered or cancelled today (restaurant timezone), newest update first.",

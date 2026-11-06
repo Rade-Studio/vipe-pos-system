@@ -32,9 +32,9 @@ const d = {
 
 const ANA_PHONE = '3101234567';
 const DELIVERY_KEYS = [
-  'addressLine', 'addressReference', 'cancelledAt', 'cashChangeFor', 'courierId', 'createdAt', 'customerId', 'customerName',
-  'customerPhone', 'deliveredAt', 'deliveryFee', 'dispatchedAt', 'failedAt', 'failureReason', 'neighborhood', 'notes',
-  'orderId', 'paymentMode', 'status', 'updatedAt',
+  'addressLine', 'addressReference', 'cancelledAt', 'cashChangeFor', 'courierEta', 'courierId', 'courierLocation', 'createdAt',
+  'customerId', 'customerName', 'customerPhone', 'deliveredAt', 'deliveryFee', 'dispatchedAt', 'failedAt', 'failureReason',
+  'neighborhood', 'notes', 'orderId', 'paymentMode', 'prepaidMethod', 'returnedAt', 'status', 'updatedAt',
 ];
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -78,6 +78,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       get: (url: string) => server.get(url).set('Cookie', cookie),
       post: (url: string, body?: object) => server.post(url).set('Cookie', cookie).send(body),
       patch: (url: string, body?: object) => server.patch(url).set('Cookie', cookie).send(body),
+      put: (url: string, body?: object) => server.put(url).set('Cookie', cookie).send(body),
     };
   };
   const adminA = () => as(fixtures.adminA.email);
@@ -133,7 +134,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
     it('normalises the phone like the web (+57 mobile prefix and formatting dropped) and returns the addresses, default first', async () => {
       const res = await operatorA().get('/api/delivery/customers').query({ phone: '+57 310-123 4567' });
       expect(res.status).toBe(200);
-      expect(Object.keys(res.body).sort()).toEqual(['addresses', 'customer']);
+      expect(Object.keys(res.body).sort()).toEqual(['addresses', 'customer', 'history']);
       expect(res.body.customer).toEqual({
         id: d.ana,
         phone: ANA_PHONE,
@@ -214,14 +215,16 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       expect(row.restaurant_id).toBe(fixtures.restaurantA);
     });
 
-    it('refuses invalid couriers with 422 and non-admins with 403, writing nothing', async () => {
+    it('refuses invalid couriers with 422 and roles other than admin and delivery_operator with 403, writing nothing', async () => {
       const before = await count('couriers');
       const badPhone = await adminA().post('/api/delivery/couriers', { name: 'X', phone: '123' });
       expect(badPhone.status).toBe(422);
       expect(badPhone.body.message).toBe('phone: Phone must have 7 to 15 digits');
       expect((await adminA().post('/api/delivery/couriers', { name: '   ' })).status).toBe(422);
       expect((await adminA().post('/api/delivery/couriers', { name: 'X', extra: 1 })).status).toBe(422);
-      expect((await operatorA().post('/api/delivery/couriers', { name: 'Op' })).status).toBe(403);
+      for (const caller of [waiterA(), cashierA(), kitchenA()]) {
+        expect((await caller.post('/api/delivery/couriers', { name: 'Op' })).status).toBe(403);
+      }
       expect(await count('couriers')).toBe(before);
     });
 
@@ -232,7 +235,9 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       expect(res.body).toMatchObject({ id: created.body.id, name: 'Fijo', phone: null, isActive: false });
       expect((await adminA().patch(`/api/delivery/couriers/${created.body.id}`, {})).status).toBe(422);
       expect((await adminA().patch(`/api/delivery/couriers/${d.courierB}`, { isActive: false })).status).toBe(404);
-      expect((await operatorA().patch(`/api/delivery/couriers/${d.pedro}`, { isActive: false })).status).toBe(403);
+      for (const caller of [waiterA(), cashierA(), kitchenA()]) {
+        expect((await caller.patch(`/api/delivery/couriers/${d.pedro}`, { isActive: false })).status).toBe(403);
+      }
       const [pedro] = await db<{ is_active: boolean }>('SELECT is_active FROM couriers WHERE id = $1', [d.pedro]);
       expect(pedro.is_active).toBe(true);
     });
@@ -259,6 +264,10 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
         paymentMode: 'cash_on_delivery',
         cashChangeFor: 50000,
         courierId: null,
+        prepaidMethod: null,
+        courierEta: null,
+        courierLocation: null,
+        returnedAt: null,
         status: 'received',
         notes: 'Portería',
         createdAt: expect.stringMatching(ISO),
@@ -633,6 +642,234 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
         });
       });
     }
+  });
+
+  describe('dispatch console details (T19)', () => {
+    const method = async (restaurant: string, code: string) =>
+      (await db<{ id: string }>('SELECT id FROM payment_methods WHERE restaurant_id = $1 AND code = $2', [restaurant, code]))[0].id;
+    const readyOrder = async (extra: object = {}) => {
+      const { orderId } = (await create(extra)).body;
+      await act(orderId, 'mark_ready');
+      return orderId as string;
+    };
+    const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString();
+
+    describe('couriers for the delivery operator', () => {
+      it('the operator creates a courier and switches it off and on', async () => {
+        const created = await operatorA().post('/api/delivery/couriers', { name: ' Nuevo ', phone: '3150009988' });
+        expect(created.status).toBe(201);
+        expect(created.body).toMatchObject({ name: 'Nuevo', phone: '3150009988', isActive: true });
+        const off = await operatorA().patch(`/api/delivery/couriers/${created.body.id}`, { isActive: false });
+        expect(off.status).toBe(200);
+        expect(off.body).toMatchObject({ id: created.body.id, name: 'Nuevo', isActive: false });
+        expect((await operatorA().patch(`/api/delivery/couriers/${created.body.id}`, { isActive: true })).body.isActive).toBe(true);
+        const [row] = await db<{ restaurant_id: string }>('SELECT restaurant_id FROM couriers WHERE id = $1', [created.body.id]);
+        expect(row.restaurant_id).toBe(fixtures.restaurantA);
+      });
+
+      it('the operator may not rename a courier or change its phone (403), and cannot reach another restaurant (404)', async () => {
+        for (const patch of [{ name: 'Otro' }, { phone: '3000000000' }, { name: 'Otro', isActive: false }]) {
+          const res = await operatorA().patch(`/api/delivery/couriers/${d.pedro}`, patch);
+          expect(res.status).toBe(403);
+          expect(res.body).toEqual({ statusCode: 403, error: 'Forbidden', message: 'A delivery operator may only change isActive' });
+        }
+        expect((await operatorA().patch(`/api/delivery/couriers/${d.courierB}`, { isActive: false })).status).toBe(404);
+        const rows = await db<{ name: string; phone: string; is_active: boolean }>(
+          'SELECT name, phone, is_active FROM couriers WHERE id = ANY($1) ORDER BY name', [[d.pedro, d.courierB]]);
+        expect(rows).toEqual([
+          { name: 'Courier B', phone: null, is_active: true },
+          { name: 'Pedro', phone: '3001112233', is_active: true },
+        ]);
+      });
+    });
+
+    describe('prepaid channel and per-order fee', () => {
+      it('a prepaid order records its payment method; the DTO carries {id, name}', async () => {
+        const nequi = await method(fixtures.restaurantA, 'nequi');
+        const res = await create({ paymentMode: 'prepaid', cashChangeFor: null, prepaidMethodId: nequi });
+        expect(res.status).toBe(201);
+        expect(res.body.delivery.prepaidMethod).toEqual({ id: nequi, name: 'Nequi' });
+        const [row] = await db<{ prepaid_method_id: string }>('SELECT prepaid_method_id FROM order_deliveries WHERE order_id = $1', [res.body.orderId]);
+        expect(row.prepaid_method_id).toBe(nequi);
+        const board = (await operatorA().get('/api/delivery/active')).body as { delivery: { orderId: string; prepaidMethod: unknown } }[];
+        expect(board.find((r) => r.delivery.orderId === res.body.orderId)?.delivery.prepaidMethod).toEqual({ id: nequi, name: 'Nequi' });
+      });
+
+      it('a method on cash on delivery, of another restaurant or not a uuid is refused, writing nothing', async () => {
+        const before = await snapshot();
+        const cod = await create({ prepaidMethodId: await method(fixtures.restaurantA, 'nequi') });
+        expect(cod.status).toBe(422);
+        expect(cod.body).toMatchObject({ code: '22023', message: "create_delivery_order: p_prepaid_method_id is only allowed when p_payment_mode = 'prepaid'" });
+        const foreign = await create({ paymentMode: 'prepaid', cashChangeFor: null, prepaidMethodId: await method(fixtures.restaurantB, 'nequi') });
+        expect(foreign.status).toBe(404);
+        expect(foreign.body.code).toBe('P0002');
+        expect((await create({ paymentMode: 'prepaid', cashChangeFor: null, prepaidMethodId: 'nequi' })).status).toBe(422);
+        expect(await snapshot()).toEqual(before);
+      });
+
+      it('the operator sets the fee of the order being created; the restaurant-wide suggested fee stays admin-only', async () => {
+        await db(
+          `INSERT INTO business_config (restaurant_id, key, value) VALUES ($1, 'delivery_default_fee', '5000')
+           ON CONFLICT (restaurant_id, key) DO UPDATE SET value = excluded.value`,
+          [fixtures.restaurantA],
+        );
+        const res = await create({ deliveryFee: 7500 });
+        expect(res.body.delivery.deliveryFee).toBe(7500);
+        const put = await operatorA().put('/api/config', { deliveryDefaultFee: 9000 });
+        expect(put.status).toBe(403);
+        const [cfg] = await db<{ value: string }>(
+          `SELECT value FROM business_config WHERE restaurant_id = $1 AND key = 'delivery_default_fee'`, [fixtures.restaurantA]);
+        expect(cfg.value).toBe('5000');
+      });
+    });
+
+    describe('courier ETA and location at dispatch', () => {
+      it('dispatch stores the ETA and the trimmed location; the old payload stores neither', async () => {
+        const orderId = await readyOrder();
+        const eta = inMinutes(30);
+        const res = await act(orderId, 'dispatch', { courierId: d.pedro, courierEta: eta, courierLocation: '  Laureles ' });
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ status: 'out_for_delivery', courierEta: eta, courierLocation: 'Laureles', returnedAt: null });
+        const old = await act(await readyOrder(), 'dispatch', { courierId: d.pedro });
+        expect(old.body).toMatchObject({ status: 'out_for_delivery', courierEta: null, courierLocation: null });
+      });
+
+      it('refuses an ETA in the past or beyond 6 hours, a long location, and either on another action, changing nothing', async () => {
+        const orderId = await readyOrder();
+        const cases: [object, string][] = [
+          [{ action: 'dispatch', courierId: d.pedro, courierEta: inMinutes(-1) }, 'set_delivery_status: p_courier_eta must be after now and within 6 hours'],
+          [{ action: 'dispatch', courierId: d.pedro, courierEta: inMinutes(6 * 60 + 5) }, 'set_delivery_status: p_courier_eta must be after now and within 6 hours'],
+          [{ action: 'dispatch', courierId: d.pedro, courierLocation: 'x'.repeat(61) }, 'set_delivery_status: p_courier_location must be 1..60 characters'],
+          [{ action: 'cancel', courierLocation: 'Laureles' }, 'set_delivery_status: p_courier_eta and p_courier_location are only allowed with dispatch'],
+        ];
+        for (const [body, message] of cases) {
+          const res = await operatorA().post(`/api/delivery/orders/${orderId}/status`, body);
+          expect(res.status).toBe(422);
+          expect(res.body).toEqual({ statusCode: 422, error: 'Unprocessable Entity', code: '22023', message });
+        }
+        const notADate = await act(orderId, 'dispatch', { courierId: d.pedro, courierEta: 'mañana' });
+        expect(notADate.status).toBe(422);
+        expect(notADate.body.code).toBeUndefined();
+        expect(await deliveryStatus(orderId)).toBe('ready');
+      });
+    });
+
+    describe('POST /delivery/orders/:id/return', () => {
+      it('records the courier back once, on a delivered or failed delivery', async () => {
+        const orderId = await readyOrder();
+        await act(orderId, 'dispatch', { courierId: d.pedro });
+        const early = await operatorA().post(`/api/delivery/orders/${orderId}/return`);
+        expect(early.status).toBe(422);
+        expect(early.body).toEqual({
+          statusCode: 422,
+          error: 'Unprocessable Entity',
+          code: 'P0001',
+          message: `return_courier: delivery for order ${orderId} is in state 'out_for_delivery' (allowed: delivered, failed)`,
+        });
+        await act(orderId, 'deliver');
+        const res = await operatorA().post(`/api/delivery/orders/${orderId}/return`);
+        expect(res.status).toBe(200);
+        expect(Object.keys(res.body).sort()).toEqual(DELIVERY_KEYS);
+        expect(res.body).toMatchObject({ orderId, status: 'delivered', returnedAt: expect.stringMatching(ISO) });
+        const again = await operatorA().post(`/api/delivery/orders/${orderId}/return`);
+        expect(again.body).toMatchObject({ statusCode: 422, code: 'P0001', message: `return_courier: the courier of order ${orderId} already returned` });
+
+        const failedId = await readyOrder();
+        await act(failedId, 'dispatch', { courierId: d.pedro });
+        await act(failedId, 'fail', { reason: 'No contesta' });
+        expect((await adminA().post(`/api/delivery/orders/${failedId}/return`)).body).toMatchObject({ status: 'failed', returnedAt: expect.stringMatching(ISO) });
+      });
+
+      it('waiter, cashier and kitchen get 403 (42501), another restaurant 404, a bad id 422; nothing changes', async () => {
+        const orderId = await readyOrder();
+        await act(orderId, 'dispatch', { courierId: d.pedro });
+        await act(orderId, 'deliver');
+        for (const caller of [waiterA(), cashierA(), kitchenA()]) {
+          const res = await caller.post(`/api/delivery/orders/${orderId}/return`);
+          expect(res.status).toBe(403);
+          expect(res.body).toEqual({ statusCode: 403, error: 'Forbidden', message: 'Permission denied', code: '42501' });
+        }
+        const other = await adminB().post(`/api/delivery/orders/${orderId}/return`);
+        expect(other.status).toBe(404);
+        expect(other.body.code).toBe('P0002');
+        expect((await operatorA().post('/api/delivery/orders/nope/return')).status).toBe(422);
+        const [row] = await db<{ returned_at: string | null }>('SELECT returned_at FROM order_deliveries WHERE order_id = $1', [orderId]);
+        expect(row.returned_at).toBeNull();
+      });
+    });
+
+    describe('GET /delivery/customers history', () => {
+      it('counts the customer\'s deliveries (cancelled ones excluded) with the last date and address', async () => {
+        const { orderId } = (await create({ address: { addressLine: 'Calle Última 9', neighborhood: 'Laureles' } })).body;
+        const cancelled = (await create({ address: { addressLine: 'Cancelada 1' } })).body.orderId;
+        await act(cancelled, 'cancel');
+        const [expected] = await db<{ n: number; last: Date }>(
+          `SELECT count(*)::int AS n, max(created_at) AS last FROM order_deliveries WHERE customer_id = $1 AND delivery_status <> 'cancelled'`,
+          [d.ana],
+        );
+        const res = await operatorA().get('/api/delivery/customers').query({ phone: ANA_PHONE });
+        expect(res.body.history).toEqual({
+          ordersCount: expected.n,
+          lastOrderAt: expected.last.toISOString(),
+          lastAddress: { addressLine: 'Calle Última 9', neighborhood: 'Laureles', reference: null },
+        });
+        const [last] = await db<{ order_id: string }>(
+          `SELECT order_id FROM order_deliveries WHERE customer_id = $1 AND delivery_status <> 'cancelled' ORDER BY created_at DESC, order_id DESC LIMIT 1`, [d.ana]);
+        expect(last.order_id).toBe(orderId);
+      });
+
+      it('a customer without deliveries has an empty history', async () => {
+        await db(`INSERT INTO customers (phone, name, restaurant_id) VALUES ('3221110000', 'Sin pedidos', $1)`, [fixtures.restaurantA]);
+        const res = await operatorA().get('/api/delivery/customers').query({ phone: '3221110000' });
+        expect(res.body.history).toEqual({ ordersCount: 0, lastOrderAt: null, lastAddress: null });
+      });
+    });
+
+    describe('GET /delivery/closed-today', () => {
+      it('counts today\'s delivered, cancelled and failed deliveries and averages dispatched → delivered minutes', async () => {
+        const B = fixtures.restaurantB;
+        const asB = adminB();
+        const newB = async () => {
+          const res = await asB.post('/api/delivery/orders', {
+            customer: { phone: '3207654321' }, address: { addressLine: 'Calle B' }, items: [{ dishId: d.otherDish, quantity: 1 }],
+            deliveryFee: 0, paymentMode: 'cash_on_delivery',
+          });
+          expect(res.status).toBe(201);
+          await asB.post(`/api/delivery/orders/${res.body.orderId}/status`, { action: 'mark_ready' });
+          return res.body.orderId as string;
+        };
+        const out = async (id: string, action: string, extra: object = {}) => {
+          await asB.post(`/api/delivery/orders/${id}/status`, { action: 'dispatch', courierId: d.courierB });
+          await asB.post(`/api/delivery/orders/${id}/status`, { action, ...extra });
+        };
+        const [d30, d20, old, failed, cancelled] = [await newB(), await newB(), await newB(), await newB(), await newB()];
+        await out(d30, 'deliver');
+        await out(d20, 'deliver');
+        await out(old, 'deliver');
+        await out(failed, 'fail', { reason: 'No contesta' });
+        await asB.post(`/api/delivery/orders/${cancelled}/status`, { action: 'cancel' });
+        const pin = (id: string, set: string) =>
+          db(`SET session_replication_role = replica; UPDATE order_deliveries SET ${set} WHERE order_id = '${id}'`);
+        await pin(d30, `dispatched_at = delivered_at - interval '30 minutes'`);
+        await pin(d20, `dispatched_at = delivered_at - interval '20 minutes'`);
+        await pin(old, `dispatched_at = now() - interval '3 days', delivered_at = now() - interval '3 days', updated_at = now() - interval '3 days'`);
+
+        const res = await asB.get('/api/delivery/closed-today');
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ deliveredCount: 2, cancelledCount: 1, failedCount: 1, averageDeliveryMinutes: 25 });
+        const [rows] = await db<{ n: number }>('SELECT count(*)::int AS n FROM order_deliveries WHERE restaurant_id = $1', [B]);
+        expect(rows.n).toBe(5);
+      });
+
+      it('is open to the board readers and forbidden to the waiter', async () => {
+        for (const caller of [operatorA(), cashierA(), kitchenA(), adminA()]) {
+          const res = await caller.get('/api/delivery/closed-today');
+          expect(res.status).toBe(200);
+          expect(Object.keys(res.body).sort()).toEqual(['averageDeliveryMinutes', 'cancelledCount', 'deliveredCount', 'failedCount']);
+        }
+        expect((await waiterA().get('/api/delivery/closed-today')).status).toBe(403);
+      });
+    });
   });
 
   it('OpenAPI states where each create limit is enforced', () => {

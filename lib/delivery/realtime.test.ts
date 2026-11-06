@@ -93,6 +93,25 @@ describe('applyDeliveryRowPatch (order_deliveries realtime push)', () => {
     expect(outcome.rows[0]!.isPaid).toBe(false)
   })
 
+  it('keeps the cached prepaid method name, which a raw row does not carry (T19)', () => {
+    const method = { id: 'm-1', name: 'Nequi' }
+    const cached = boardRow({ payment_mode: 'prepaid', prepaid_method_id: 'm-1' })
+    const prev = [{ ...cached, delivery: { ...cached.delivery, prepaidMethod: method } }]
+    const outcome = applyDeliveryRowPatch(prev, wireRow({ payment_mode: 'prepaid', prepaid_method_id: 'm-1', delivery_status: 'ready' }))
+    expect(outcome.kind).toBe('patched')
+    if (outcome.kind !== 'patched') return
+    expect(outcome.rows[0]!.delivery.prepaidMethod).toBe(method)
+    expect(applyDeliveryRowPatch(prev, wireRow({ payment_mode: 'prepaid', prepaid_method_id: 'm-1' }))).toEqual({ kind: 'unchanged' })
+  })
+
+  it('treats a missing T19 field on a cached row like null (rows cached before the columns existed)', () => {
+    const cached = boardRow()
+    const t19 = ['prepaidMethod', 'courierEta', 'courierLocation', 'returnedAt']
+    const legacy = Object.fromEntries(Object.entries(cached.delivery).filter(([key]) => !t19.includes(key))) as typeof cached.delivery
+    expect(Object.keys(legacy)).not.toContain('returnedAt')
+    expect(applyDeliveryRowPatch([{ ...cached, delivery: legacy }], wireRow())).toEqual({ kind: 'unchanged' })
+  })
+
   it('reports `unchanged` for the echo of a write already in the cache', () => {
     const prev = [boardRow()]
     expect(applyDeliveryRowPatch(prev, wireRow())).toEqual({ kind: 'unchanged' })

@@ -3,14 +3,17 @@ import { ApiError } from "@/lib/api/errors"
 import type { components } from "@/lib/api/schema"
 import { toCourierPayload, validateCourierInput } from "@/lib/delivery/courier-admin"
 import type { CourierInput } from "@/lib/delivery/courier-admin"
+import { normalizeCourierLocation } from "@/lib/delivery/dispatch-details"
 import { normalizePhone } from "@/lib/delivery/phone"
 import type { DeliveryBoardRow } from "@/lib/delivery/realtime"
 import { DeliveryServiceError } from "@/lib/delivery/types"
 import type {
+  ClosedTodaySummary,
   Courier,
   CreateDeliveryOrderInput,
   Customer,
   CustomerAddress,
+  CustomerHistory,
   DeliveryAction,
   DeliveryOrder,
   DeliveryServiceErrorKind,
@@ -34,6 +37,8 @@ type Schemas = components["schemas"]
 export interface CustomerWithAddresses {
   customer: Customer
   addresses: CustomerAddress[]
+  /** Optional for callers that build one by hand; the API always sends it. */
+  history?: CustomerHistory
 }
 
 /** One row of the operator board: the delivery plus the bill of its order. */
@@ -50,6 +55,7 @@ const asDelivery = (dto: Schemas["DeliveryOrder"]): DeliveryOrder => dto
 const asBoardRow = (dto: Schemas["DeliveryOrderWithBill"]): DeliveryOrderWithBill => dto
 const asCourier = (dto: Schemas["Courier"]): Courier => dto
 const asCustomer = (dto: Schemas["CustomerWithAddresses"]): CustomerWithAddresses => dto
+const asClosedToday = (dto: Schemas["ClosedTodaySummary"]): ClosedTodaySummary => dto
 
 export interface UpdateCourierInput {
   name?: string
@@ -159,7 +165,7 @@ export async function listCouriers(options: { activeOnly: boolean }): Promise<Co
   return rows.map(asCourier)
 }
 
-/** Admin only (403 otherwise). Name trimmed, phone normalised or null. */
+/** Admin or delivery operator (403 otherwise). Name trimmed, phone normalised or null. */
 export async function createCourier(input: CourierInput): Promise<Courier> {
   const errors = validateCourierInput(input)
   if (errors.length > 0) throw invalid(`createCourier: ${errors.join("; ")}`)
@@ -168,7 +174,8 @@ export async function createCourier(input: CourierInput): Promise<Courier> {
 }
 
 /**
- * Patch name, phone and/or isActive (admin only). There is no delete:
+ * Patch name, phone and/or isActive. Admins patch every field; a delivery
+ * operator only isActive (403 otherwise, T19). There is no delete:
  * deactivating keeps historical deliveries resolving the courier. A blank
  * phone clears it.
  */
@@ -205,6 +212,9 @@ function validateCreateDeliveryInput(input: CreateDeliveryOrderInput): void {
   if (input.paymentMode === "prepaid" && input.cashChangeFor != null) {
     throw invalid('createDeliveryOrder: cashChangeFor must be null when paymentMode is "prepaid"')
   }
+  if (input.paymentMode !== "prepaid" && input.prepaidMethodId != null) {
+    throw invalid('createDeliveryOrder: prepaidMethodId is only allowed when paymentMode is "prepaid"')
+  }
   if (input.cashChangeFor != null && (!Number.isInteger(input.cashChangeFor) || input.cashChangeFor < 0)) {
     throw invalid("createDeliveryOrder: cashChangeFor must be a non-negative integer when set")
   }
@@ -225,6 +235,8 @@ export async function createDeliveryOrder(input: CreateDeliveryOrderInput): Prom
     paymentMode: input.paymentMode,
     cashChangeFor: input.paymentMode === "cash_on_delivery" ? (input.cashChangeFor ?? null) : null,
     notes: input.notes ?? null,
+    // Sent only when chosen, so the old body stays byte-identical.
+    ...(input.prepaidMethodId != null ? { prepaidMethodId: input.prepaidMethodId } : {}),
   }
   return call("createDeliveryOrder", () => api.POST("/api/delivery/orders", { body }))
 }
@@ -239,6 +251,10 @@ export async function setDeliveryStatus(input: {
   action: DeliveryAction
   courierId?: string | null
   reason?: string | null
+  /** Only with dispatch (T19): ISO instant after now, within 6 hours. */
+  courierEta?: string | null
+  /** Only with dispatch (T19): trimmed 1..60 characters; blank is not sent. */
+  courierLocation?: string | null
 }): Promise<DeliveryOrder> {
   if (!input.orderId) throw invalid("setDeliveryStatus: orderId must not be empty")
   const reason = (input.reason ?? "").trim()
@@ -247,13 +263,44 @@ export async function setDeliveryStatus(input: {
     throw invalid("setDeliveryStatus: fail reason must be <= 200 characters")
   }
   if (input.action === "dispatch" && !input.courierId) throw invalid("setDeliveryStatus: dispatch requires a courierId")
+  if (input.action !== "dispatch" && (input.courierEta != null || input.courierLocation != null)) {
+    throw invalid("setDeliveryStatus: courierEta and courierLocation are only allowed with dispatch")
+  }
+  let courierLocation: string | null
+  try {
+    courierLocation = normalizeCourierLocation(input.courierLocation)
+  } catch {
+    throw invalid("setDeliveryStatus: courierLocation must be 1..60 characters")
+  }
+  // The ETA and location keys are sent only when captured, so the old body stays identical.
+  const body = {
+    action: input.action,
+    courierId: input.courierId ?? null,
+    reason: input.reason ?? null,
+    ...(input.courierEta != null ? { courierEta: input.courierEta } : {}),
+    ...(courierLocation !== null ? { courierLocation } : {}),
+  }
   const row = await call("setDeliveryStatus", () =>
-    api.POST("/api/delivery/orders/{id}/status", {
-      params: { path: { id: input.orderId } },
-      body: { action: input.action, courierId: input.courierId ?? null, reason: input.reason ?? null },
-    }),
+    api.POST("/api/delivery/orders/{id}/status", { params: { path: { id: input.orderId } }, body }),
   )
   return asDelivery(row)
+}
+
+/**
+ * The courier is back at the restaurant (`return_courier`): a delivered or
+ * failed delivery, once; the server's rejection comes back verbatim.
+ */
+export async function returnCourier(orderId: string): Promise<DeliveryOrder> {
+  if (!orderId) throw invalid("returnCourier: orderId must not be empty")
+  const row = await call("returnCourier", () =>
+    api.POST("/api/delivery/orders/{id}/return", { params: { path: { id: orderId } } }),
+  )
+  return asDelivery(row)
+}
+
+/** "Cerrados hoy": delivered, cancelled and failed counts and the average delivery minutes. */
+export async function getClosedTodaySummary(): Promise<ClosedTodaySummary> {
+  return asClosedToday(await call("getClosedTodaySummary", () => api.GET("/api/delivery/closed-today")))
 }
 
 /**

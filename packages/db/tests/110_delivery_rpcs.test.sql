@@ -156,12 +156,12 @@ $$;
 -- ============================================
 SELECT has_function(
   'public', 'create_delivery_order',
-  ARRAY['jsonb','jsonb','jsonb','bigint','text','bigint','text'],
+  ARRAY['jsonb','jsonb','jsonb','bigint','text','bigint','text','uuid'],
   'create_delivery_order exists'
 );
 SELECT has_function(
   'public', 'set_delivery_status',
-  ARRAY['uuid','text','uuid','text'],
+  ARRAY['uuid','text','uuid','text','timestamptz','text'],
   'set_delivery_status exists'
 );
 
@@ -169,17 +169,17 @@ SELECT has_function(
 -- 2. Privileges
 -- ============================================
 SELECT is(
-  has_function_privilege('public', 'public.create_delivery_order(jsonb,jsonb,jsonb,bigint,text,bigint,text)', 'EXECUTE'),
+  has_function_privilege('public', 'public.create_delivery_order(jsonb,jsonb,jsonb,bigint,text,bigint,text,uuid)', 'EXECUTE'),
   false,
   'PUBLIC cannot EXECUTE create_delivery_order'
 );
 SELECT is(
-  has_function_privilege('vipe_api', 'public.create_delivery_order(jsonb,jsonb,jsonb,bigint,text,bigint,text)', 'EXECUTE'),
+  has_function_privilege('vipe_api', 'public.create_delivery_order(jsonb,jsonb,jsonb,bigint,text,bigint,text,uuid)', 'EXECUTE'),
   true,
   'vipe_api keeps EXECUTE on create_delivery_order'
 );
 SELECT is(
-  has_function_privilege('vipe_migrator', 'public.create_delivery_order(jsonb,jsonb,jsonb,bigint,text,bigint,text)', 'EXECUTE'),
+  has_function_privilege('vipe_migrator', 'public.create_delivery_order(jsonb,jsonb,jsonb,bigint,text,bigint,text,uuid)', 'EXECUTE'),
   true,
   'vipe_migrator keeps EXECUTE on create_delivery_order'
 );
@@ -195,17 +195,17 @@ SELECT is(
 );
 
 SELECT is(
-  has_function_privilege('public', 'public.set_delivery_status(uuid,text,uuid,text)', 'EXECUTE'),
+  has_function_privilege('public', 'public.set_delivery_status(uuid,text,uuid,text,timestamptz,text)', 'EXECUTE'),
   false,
   'PUBLIC cannot EXECUTE set_delivery_status'
 );
 SELECT is(
-  has_function_privilege('vipe_api', 'public.set_delivery_status(uuid,text,uuid,text)', 'EXECUTE'),
+  has_function_privilege('vipe_api', 'public.set_delivery_status(uuid,text,uuid,text,timestamptz,text)', 'EXECUTE'),
   true,
   'vipe_api keeps EXECUTE on set_delivery_status'
 );
 SELECT is(
-  has_function_privilege('vipe_migrator', 'public.set_delivery_status(uuid,text,uuid,text)', 'EXECUTE'),
+  has_function_privilege('vipe_migrator', 'public.set_delivery_status(uuid,text,uuid,text,timestamptz,text)', 'EXECUTE'),
   true,
   'vipe_migrator keeps EXECUTE on set_delivery_status'
 );

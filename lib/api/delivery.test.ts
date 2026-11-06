@@ -23,8 +23,10 @@ import {
   createDeliveryOrder,
   deliveryErrorOf,
   findCustomerByPhone,
+  getClosedTodaySummary,
   listActiveDeliveries,
   listCouriers,
+  returnCourier,
   setDeliveryStatus,
   updateCourier,
 } from "./delivery"
@@ -346,6 +348,106 @@ describe("setDeliveryStatus", () => {
       expect(caught.message).toBe(server)
       expect(rejectionMessage(caught.message)).toBe(spanish)
     }
+  })
+})
+
+describe("T19 dispatch console details", () => {
+  const history = { ordersCount: 14, lastOrderAt: "2026-10-31T19:00:00.000Z", lastAddress: { addressLine: "Calle 5", neighborhood: null, reference: null } }
+
+  it("findCustomerByPhone returns the customer history", async () => {
+    api.GET.mockResolvedValue({ data: { customer, addresses: [address], history } })
+    await expect(findCustomerByPhone("3101234567")).resolves.toEqual({ customer, addresses: [address], history })
+  })
+
+  it("createDeliveryOrder sends prepaidMethodId on a prepaid order and refuses it on cash on delivery without a request", async () => {
+    api.POST.mockResolvedValue({ data: createdResult })
+    await createDeliveryOrder({
+      customer: { id: "c-1" },
+      address: { id: "a-1" },
+      items: [{ dishId: "d-1", quantity: 1 }],
+      deliveryFee: 6500,
+      paymentMode: "prepaid",
+      prepaidMethodId: "m-1",
+    })
+    expect(api.POST).toHaveBeenCalledWith("/api/delivery/orders", {
+      body: {
+        customer: { id: "c-1" },
+        address: { id: "a-1" },
+        items: [{ dishId: "d-1", quantity: 1 }],
+        deliveryFee: 6500,
+        paymentMode: "prepaid",
+        cashChangeFor: null,
+        notes: null,
+        prepaidMethodId: "m-1",
+      },
+    })
+    api.POST.mockClear()
+    await expect(
+      kindOf(
+        createDeliveryOrder({
+          customer: { id: "c-1" },
+          address: { id: "a-1" },
+          items: [{ dishId: "d-1", quantity: 1 }],
+          deliveryFee: 0,
+          paymentMode: "cash_on_delivery",
+          prepaidMethodId: "m-1",
+        }),
+      ),
+    ).resolves.toBe("invalid-input")
+    expect(api.POST).not.toHaveBeenCalled()
+  })
+
+  it("setDeliveryStatus sends the courier ETA and trimmed location with dispatch", async () => {
+    api.POST.mockResolvedValue({ data: { ...delivery, status: "out_for_delivery" } })
+    await setDeliveryStatus({
+      orderId: "o-1",
+      action: "dispatch",
+      courierId: "k-1",
+      courierEta: "2026-11-06T18:25:00.000Z",
+      courierLocation: "  Laureles ",
+    })
+    expect(api.POST).toHaveBeenCalledWith("/api/delivery/orders/{id}/status", {
+      params: { path: { id: "o-1" } },
+      body: { action: "dispatch", courierId: "k-1", reason: null, courierEta: "2026-11-06T18:25:00.000Z", courierLocation: "Laureles" },
+    })
+  })
+
+  it("setDeliveryStatus refuses an ETA or location on another action and a location over 60 characters without a request", async () => {
+    await expect(
+      kindOf(setDeliveryStatus({ orderId: "o-1", action: "deliver", courierEta: "2026-11-06T18:25:00.000Z" })),
+    ).resolves.toBe("invalid-input")
+    await expect(kindOf(setDeliveryStatus({ orderId: "o-1", action: "cancel", courierLocation: "Laureles" }))).resolves.toBe(
+      "invalid-input",
+    )
+    await expect(
+      kindOf(setDeliveryStatus({ orderId: "o-1", action: "dispatch", courierId: "k-1", courierLocation: "x".repeat(61) })),
+    ).resolves.toBe("invalid-input")
+    expect(api.POST).not.toHaveBeenCalled()
+  })
+
+  it("returnCourier POSTs /api/delivery/orders/{id}/return and keeps the server rejection verbatim", async () => {
+    api.POST.mockResolvedValue({ data: { ...delivery, status: "delivered", returnedAt: "2026-11-06T18:40:00.000Z" } })
+    await expect(returnCourier("o-1")).resolves.toMatchObject({ returnedAt: "2026-11-06T18:40:00.000Z" })
+    expect(api.POST).toHaveBeenCalledWith("/api/delivery/orders/{id}/return", { params: { path: { id: "o-1" } } })
+    const message = "return_courier: the courier of order o-1 already returned"
+    api.POST.mockRejectedValueOnce(apiError(422, message, "P0001"))
+    const caught = (await returnCourier("o-1").catch((e: unknown) => e)) as DeliveryServiceError
+    expect(caught.kind).toBe("rejected")
+    expect(caught.message).toBe(message)
+    await expect(kindOf(returnCourier(""))).resolves.toBe("invalid-input")
+  })
+
+  it("getClosedTodaySummary reads GET /api/delivery/closed-today", async () => {
+    const summary = { deliveredCount: 12, cancelledCount: 1, failedCount: 2, averageDeliveryMinutes: 28 }
+    api.GET.mockResolvedValue({ data: summary })
+    await expect(getClosedTodaySummary()).resolves.toEqual(summary)
+    expect(api.GET).toHaveBeenCalledWith("/api/delivery/closed-today")
+  })
+
+  it("updateCourier sends isActive alone (what the delivery operator may change)", async () => {
+    api.PATCH.mockResolvedValue({ data: { ...courier, isActive: false } })
+    await updateCourier("k-1", { isActive: false })
+    expect(api.PATCH).toHaveBeenCalledWith("/api/delivery/couriers/{id}", { params: { path: { id: "k-1" } }, body: { isActive: false } })
   })
 })
 
