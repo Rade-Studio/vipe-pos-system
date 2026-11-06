@@ -15,6 +15,8 @@ type Schemas = components["schemas"]
 export type TableDto = Schemas["Table"]
 export type WaiterDto = Schemas["Waiter"]
 export type UpdateTableBody = Schemas["UpdateTableRequest"]
+/** One row of the editor's "Guardar cambios" (PUT /tables/layout). */
+export type TableLayoutDto = Schemas["TableLayout"]
 
 /** A 2xx without the body the contract promises. */
 function required<T>(data: T | undefined): T {
@@ -32,6 +34,14 @@ export function toTable(dto: TableDto): Table {
     status: dto.status,
     waiter: dto.waiterId ?? undefined,
     waiter_name: dto.waiterName ?? undefined,
+    zoneId: dto.zoneId ?? undefined,
+    x: dto.x ?? undefined,
+    y: dto.y ?? undefined,
+    w: dto.w ?? undefined,
+    h: dto.h ?? undefined,
+    shape: dto.shape,
+    rotation: dto.rotation,
+    seats: dto.seats ?? undefined,
     updated_at: dto.updatedAt ? new Date(dto.updatedAt) : undefined,
   }
 }
@@ -44,6 +54,14 @@ export function toTableRow(dto: TableDto): TableRow & { id: string } {
     status: dto.status,
     waiter_id: dto.waiterId,
     waiter_name: dto.waiterName,
+    zone_id: dto.zoneId,
+    x: dto.x,
+    y: dto.y,
+    w: dto.w,
+    h: dto.h,
+    shape: dto.shape,
+    rotation: dto.rotation,
+    seats: dto.seats,
     updated_at: dto.updatedAt,
   }
 }
@@ -54,7 +72,8 @@ export async function getAll(): Promise<TableDto[]> {
   return required(data)
 }
 
-export async function create(body: { number: number; status?: TableStatus }): Promise<TableDto> {
+/** Admin. Without x, y, w, h the server places the table on the next free grid slot of its zone. */
+export async function create(body: { number: number; status?: TableStatus } & Partial<Omit<TableLayoutDto, "id">>): Promise<TableDto> {
   const { data } = await api.POST("/api/tables", { body: body as Schemas["CreateTableRequest"] })
   return required(data)
 }
@@ -67,6 +86,16 @@ export async function update(tableId: string, body: UpdateTableBody): Promise<Ta
 
 export async function updateTableStatus(tableId: string, status: TableStatus): Promise<TableDto> {
   return update(tableId, { status })
+}
+
+/**
+ * Admin. Saves every row in one transaction: an unknown table, a zone of
+ * another restaurant or an invalid value answers 422 and nothing is saved.
+ * Resolves with every table after the save.
+ */
+export async function saveLayout(tables: TableLayoutDto[]): Promise<TableDto[]> {
+  const { data } = await api.PUT("/api/tables/layout", { body: { tables } })
+  return required(data)
 }
 
 /** Admin. 409 `Table has open orders` while any order of the table is not paid. */

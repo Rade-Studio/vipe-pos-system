@@ -7,15 +7,15 @@ import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useOrderStore } from "@/store/useOrderStore"
-import { OrderCard } from "@/components/pos/OrderCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { getByStatus, serveItems, toOrder, type OrderDto } from "@/lib/api/orders"
 import { realtimeService, type ChangeEvent } from "@/lib/api/realtime"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
-import { Bell, RefreshCw, Wifi, WifiOff, Filter } from "lucide-react"
+import { Bell, ChefHat, RefreshCw, Wifi, WifiOff, Filter } from "lucide-react"
 import {
   useActiveDeliveries,
   activeDeliveriesQueryKey,
@@ -28,13 +28,22 @@ import {
   hasTable,
   isDeliveryOrder,
   matchesPlaceFilter,
-  orderHeading,
   orderPlaceText,
   servedOrderMessage,
   shouldMarkDeliveryReady,
   type PlaceFilter,
 } from "@/lib/delivery/kitchen"
-import { DeliveryOrderBanner } from "@/components/kitchen/DeliveryOrderBanner"
+import { KitchenTicket } from "@/components/kitchen/KitchenTicket"
+import { KitchenRail } from "@/components/kitchen/KitchenRail"
+import {
+  countByKind,
+  matchesKindFilter,
+  oldestFirst,
+  ticketAge,
+  ticketStartedAt,
+  type KindFilter,
+} from "@/lib/kitchen/ticket"
+import { cn } from "@/lib/utils"
 import { kitchenOrderOf, kitchenOrdersOf } from "@/lib/kitchen/order"
 import {
   addNewItems,
@@ -85,6 +94,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const [orderToDeliver, setOrderToDeliver] = useState<string | null>(null)
   const [filterWaiter, setFilterWaiter] = useState<string | null>(null)
   const [filterTable, setFilterTable] = useState<PlaceFilter>(null)
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all")
+  // One clock for every ticket timer.
+  const [now, setNow] = useState(() => Date.now())
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
@@ -93,7 +105,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   // for the tables tab (the shell owns the tables).
   const fetchKitchenOrders = async () => kitchenOrdersOf((await getByStatus("kitchen")).map(toOrder))
 
-  const { data: kitchenOrdersData } = useQuery({
+  const { data: kitchenOrdersData, isLoading: loadingOrders, dataUpdatedAt } = useQuery({
     queryKey: ['orders', 'kitchen'],
     queryFn: fetchKitchenOrders,
   })
@@ -146,6 +158,11 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       realtimeService.registerItems(order.id, order.items.map((item) => item.id))
     })
   }, [kitchenOrdersData, setOrders])
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   // Configurar suscripción en tiempo real al montar
   useEffect(() => {
@@ -340,7 +357,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     }
 
     // Filtrar por mesa o domicilios si hay un filtro activo
-    return matchesPlaceFilter(placeOf(order), filterTable)
+    return matchesPlaceFilter(placeOf(order), filterTable) && matchesKindFilter(order, kindFilter)
   })
 
   const waiters = profiles.filter((p) => p.role === "waiter" && p.id !== "waiter-1")
@@ -349,6 +366,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const clearFilters = () => {
     setFilterWaiter(null)
     setFilterTable(null)
+    setKindFilter("all")
   }
 
   // Moves a delivery to "ready" once the kitchen served everything. Never
@@ -604,187 +622,305 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     setNewOrderCount(0)
   }
 
+  // Ticket place: "Mesa N" for a table, the customer for a delivery.
+  const ticketPlace = (order: Order) => {
+    if (!isDeliveryOrder(order)) return `Mesa ${placeOf(order).tableNumber ?? "?"}`
+    const name = deliveriesRef.current.get(order.id)?.delivery.customerName.trim()
+    return name ? name : "Domicilio"
+  }
+
+  const kindCounts = countByKind(kitchenOrders)
+  const railOrders = oldestFirst(filteredOrders)
+  const pendingDelivery = orderToDeliver ? kitchenOrders.find((o) => o.id === orderToDeliver) : undefined
+  const lastSync = dataUpdatedAt
+    ? new Date(dataUpdatedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })
+    : null
+  const pill =
+    "inline-flex min-h-11 flex-none snap-start items-center gap-2 whitespace-nowrap rounded-full border px-3 text-[15px] font-medium md:px-4 focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-[3px] focus-visible:outline-focus"
+  const pillState = (active: boolean) =>
+    active ? "border-transparent bg-btn text-btn-foreground" : "border-line-strong text-fg-2 hover:bg-surface-2"
+  const kindPills: { value: KindFilter; label: string }[] = [
+    { value: "all", label: "Todas" },
+    { value: "dine_in", label: "Mesas" },
+    { value: "delivery", label: "Domicilios" },
+  ]
+
   return (
-    <div className="flex flex-col h-screen p-4">
+    <div className="flex h-dvh flex-col overflow-hidden bg-canvas px-4 text-fg md:px-6">
       <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Cocina" />
 
-      <Tabs defaultValue="orders" onValueChange={(value) => setActiveTab(value as "orders" | "tables")}>
-        <div className="flex items-center mb-4 flex-wrap gap-2">
-          <TabsList className="mr-4">
-            <TabsTrigger value="orders">Órdenes Pendientes</TabsTrigger>
-            <TabsTrigger value="tables">Mesas</TabsTrigger>
+      <Tabs
+        defaultValue="orders"
+        onValueChange={(value) => setActiveTab(value as "orders" | "tables")}
+        className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6"
+      >
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-2 md:px-6">
+          <TabsList className="mr-auto">
+            <TabsTrigger value="orders" className="min-h-9">Órdenes Pendientes</TabsTrigger>
+            <TabsTrigger value="tables" className="min-h-9">Mesas</TabsTrigger>
           </TabsList>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Indicador de conexión en tiempo real */}
-            <Button
-              variant="outline"
-              size="sm"
-              className={`flex items-center gap-2 ${!realtimeConnected ? "text-destructive" : "text-green-500"}`}
-              onClick={handleReconnect}
-              title={realtimeConnected ? "Conectado en tiempo real" : "Sin conexión en tiempo real"}
-            >
-              {realtimeConnected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-              <span className="hidden sm:inline">{realtimeConnected ? "Conectado" : "Desconectado"}</span>
-            </Button>
-
-            {/* Filtros */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="flex items-center gap-2">
-                  <Filter className="h-4 w-4" />
-                  <span>Filtros</span>
-                  {(filterWaiter || filterTable) && (
-                    <Badge variant="secondary" className="ml-1">
-                      {filterWaiter && filterTable ? "2" : "1"}
-                    </Badge>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56">
-                <DropdownMenuLabel>Filtrar órdenes</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Mesero</DropdownMenuLabel>
-                  {waiters.map((waiter) => (
-                    <DropdownMenuItem
-                      key={waiter.id}
-                      className={filterWaiter === waiter.id ? "bg-accent" : ""}
-                      onClick={() => setFilterWaiter(filterWaiter === waiter.id ? null : waiter.id)}
-                    >
-                      {waiter.name}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Mesa</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    className={filterTable === "delivery" ? "bg-accent" : ""}
-                    onClick={() => setFilterTable(filterTable === "delivery" ? null : "delivery")}
-                  >
-                    Domicilios
-                  </DropdownMenuItem>
-                  {tables
-                    .filter((table) => table.status !== "available")
-                    .sort((a, b) => a.number - b.number)
-                    .map((table) => (
-                      <DropdownMenuItem
-                        key={table.id}
-                        className={filterTable === table.number ? "bg-accent" : ""}
-                        onClick={() => setFilterTable(filterTable === table.number ? null : table.number)}
-                      >
-                        Mesa {table.number}
-                      </DropdownMenuItem>
-                    ))}
-                </DropdownMenuGroup>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuItem onClick={clearFilters} disabled={!filterWaiter && !filterTable}>
-                  Limpiar filtros
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {newOrderAlert && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2 animate-pulse"
-                onClick={handleDismissAlert}
-              >
-                <Bell className="h-4 w-4 text-yellow-500" />
-                <span>¡Nuevas órdenes!</span>
-                <Badge variant="secondary" className="ml-1">
-                  {newOrderCount}
-                </Badge>
-              </Button>
+          {/* Indicador de conexión en tiempo real: el estado real del socket; toca para reconectar */}
+          <button
+            type="button"
+            onClick={handleReconnect}
+            title={realtimeConnected ? "Conectado en tiempo real" : "Sin conexión en tiempo real"}
+            className={cn(
+              "inline-flex min-h-11 flex-none items-center gap-2 whitespace-nowrap rounded-full border px-3 text-[13px] font-semibold focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-[3px] focus-visible:outline-focus",
+              realtimeConnected
+                ? "border-status-ok-line bg-status-ok-bg text-status-ok-fg"
+                : "border-status-danger-line bg-status-danger-bg text-status-danger-fg",
             )}
+          >
+            {realtimeConnected ? <Wifi className="h-4 w-4" aria-hidden="true" /> : <WifiOff className="h-4 w-4" aria-hidden="true" />}
+            <span className="hidden sm:inline">{realtimeConnected ? "Conectado en tiempo real" : "Desconectado"}</span>
+            <span className="sm:hidden">{realtimeConnected ? "Conectado" : "Desconectado"}</span>
+          </button>
 
+          {newOrderAlert && (
             <Button
               variant="outline"
-              size="sm"
-              onClick={handleRefreshOrders}
-              disabled={refreshing}
-              className="flex items-center gap-2"
+              className="flex min-h-11 items-center gap-2 rounded-full motion-safe:animate-pulse"
+              onClick={handleDismissAlert}
             >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-              <span>Actualizar</span>
+              <Bell className="h-4 w-4 text-status-warning-fg" aria-hidden="true" />
+              <span>¡Nuevas órdenes!</span>
+              <Badge variant="secondary" className="ml-1">
+                {newOrderCount}
+              </Badge>
             </Button>
-          </div>
+          )}
+
+          <Button
+            variant="outline"
+            onClick={handleRefreshOrders}
+            disabled={refreshing}
+            className="flex min-h-11 items-center gap-2 rounded-full"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "motion-safe:animate-spin" : ""}`} aria-hidden="true" />
+            <span>Actualizar</span>
+          </Button>
         </div>
 
-        <TabsContent value="orders">
-          {/* Mostrar filtros activos */}
+        <TabsContent value="orders" className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+          <div className="flex flex-col gap-2 px-4 pb-2 pt-1 md:flex-row md:items-center md:px-6">
+            <nav
+              aria-label="Filtrar órdenes"
+              className="flex min-w-0 snap-x gap-2 overflow-x-auto p-0.5 [mask-image:linear-gradient(90deg,#000_85%,transparent)] [scrollbar-width:none] md:flex-1 md:[mask-image:none]"
+            >
+              {kindPills.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={kindFilter === value}
+                  onClick={() => setKindFilter(value)}
+                  className={cn(pill, pillState(kindFilter === value))}
+                >
+                  {label}{" "}
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[13px] tabular-nums",
+                      kindFilter === value ? "bg-btn-foreground text-btn" : "bg-surface-2 text-fg-2",
+                    )}
+                  >
+                    {kindCounts[value]}
+                  </span>
+                </button>
+              ))}
+
+              {/* Mesero y mesa */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-pressed={Boolean(filterWaiter || filterTable)}
+                    className={cn(pill, pillState(Boolean(filterWaiter || filterTable)))}
+                  >
+                    <Filter className="h-4 w-4" aria-hidden="true" />
+                    <span>Filtros</span>
+                    {(filterWaiter || filterTable) && (
+                      <span className="rounded-full bg-btn-foreground px-2 py-0.5 text-[13px] text-btn">
+                        {filterWaiter && filterTable ? "2" : "1"}
+                      </span>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56">
+                  <DropdownMenuLabel>Filtrar órdenes</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Mesero</DropdownMenuLabel>
+                    {waiters.map((waiter) => (
+                      <DropdownMenuItem
+                        key={waiter.id}
+                        className={filterWaiter === waiter.id ? "bg-accent" : ""}
+                        onClick={() => setFilterWaiter(filterWaiter === waiter.id ? null : waiter.id)}
+                      >
+                        {waiter.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Mesa</DropdownMenuLabel>
+                    {tables
+                      .filter((table) => table.status !== "available")
+                      .sort((a, b) => a.number - b.number)
+                      .map((table) => (
+                        <DropdownMenuItem
+                          key={table.id}
+                          className={filterTable === table.number ? "bg-accent" : ""}
+                          onClick={() => setFilterTable(filterTable === table.number ? null : table.number)}
+                        >
+                          Mesa {table.number}
+                        </DropdownMenuItem>
+                      ))}
+                  </DropdownMenuGroup>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem onClick={clearFilters} disabled={!filterWaiter && !filterTable}>
+                    Limpiar filtros
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </nav>
+
+            <div className="hidden flex-none gap-3.5 whitespace-nowrap text-[13px] text-muted-fg min-[1400px]:flex" aria-label="Tiempo en cocina">
+              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-reserved-fg" />0–14 min</span>
+              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-kitchen-fg" />15–24 min</span>
+              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-danger-fg" />25+ min</span>
+            </div>
+          </div>
+
+          {/* Filtros activos (mesero / mesa) */}
           {(filterWaiter || filterTable) && (
-            <div className="mb-4 flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Filtros activos:</span>
+            <div className="flex flex-wrap items-center gap-2 px-4 pb-2 md:px-6">
+              <span className="text-sm text-muted-fg">Filtros activos:</span>
               {filterWaiter && (
-                <Badge variant="outline" className="flex items-center gap-1">
+                <span className="inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-full border border-status-occupied-line bg-status-occupied-bg pl-3 text-[13px] font-semibold text-status-occupied-fg">
                   Mesero: {profiles.find((p) => p.id === filterWaiter)?.name}
-                  <button className="ml-1 hover:bg-gray-200 rounded-full p-0.5" onClick={() => setFilterWaiter(null)}>
+                  <button
+                    type="button"
+                    aria-label="Quitar filtro de mesero"
+                    className="grid h-8 w-8 place-items-center rounded-full focus-visible:outline-dashed focus-visible:outline-2 focus-visible:outline-focus"
+                    onClick={() => setFilterWaiter(null)}
+                  >
                     ×
                   </button>
-                </Badge>
+                </span>
               )}
               {filterTable && (
-                <Badge variant="outline" className="flex items-center gap-1">
+                <span className="inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-full border border-status-occupied-line bg-status-occupied-bg pl-3 text-[13px] font-semibold text-status-occupied-fg">
                   {filterTable === "delivery" ? "Domicilios" : `Mesa: ${filterTable}`}
-                  <button className="ml-1 hover:bg-gray-200 rounded-full p-0.5" onClick={() => setFilterTable(null)}>
+                  <button
+                    type="button"
+                    aria-label="Quitar filtro de mesa"
+                    className="grid h-8 w-8 place-items-center rounded-full focus-visible:outline-dashed focus-visible:outline-2 focus-visible:outline-focus"
+                    onClick={() => setFilterTable(null)}
+                  >
                     ×
                   </button>
-                </Badge>
+                </span>
               )}
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 px-2">
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="min-h-11 px-3">
                 Limpiar todos
               </Button>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrders.length === 0 ? (
-              <div className="col-span-full text-center py-10 text-muted-foreground">
-                {kitchenOrders.length === 0
-                  ? "No hay órdenes pendientes en cocina"
-                  : "No hay órdenes que coincidan con los filtros seleccionados"}
-              </div>
-            ) : (
-              filteredOrders.map((order) => {
-                const table = hasTable(order) ? tables.find((t) => t.id === order.tableId) : undefined
-                const waiter = profiles?.find((p) => p.id === order.waiter)
-                const card = (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    table={table}
-                    heading={orderHeading(placeOf(order), deliveriesRef.current.get(order.id)?.delivery)}
-                    waiter={waiter}
-                    onMarkAsDelivered={(itemId) => handleMarkAsDelivered(order.id, itemId)}
-                    onMarkAllAsDelivered={() => handleMarkAllAsDelivered(order.id)}
-                    isKitchenView={true}
-                    newItems={newItems[order.id] || []}
-                  />
-                )
+          {!realtimeConnected && (
+            <div
+              role="alert"
+              className="mx-4 mb-2.5 flex flex-wrap items-center gap-x-3 gap-y-2.5 rounded-card border border-status-danger-line bg-status-danger-bg px-3.5 py-3 text-[15px] leading-snug text-status-danger-fg md:mx-6"
+            >
+              <WifiOff className="h-5 w-5 flex-none" aria-hidden="true" />
+              <span className="min-w-0 flex-[1_1_220px]">
+                <b className="font-semibold">Sin conexión en tiempo real.</b>{" "}
+                {lastSync ? <>Lo que ves es de las <span className="tabular-nums">{lastSync}</span>; las</> : "Las"} órdenes
+                nuevas podrían no aparecer.
+              </span>
+              <Button variant="outline" className="min-h-11 rounded-full" onClick={handleReconnect}>
+                Reconectar
+              </Button>
+            </div>
+          )}
 
-                if (!isDeliveryOrder(order)) return card
-                return (
-                  <div key={order.id}>
-                    <DeliveryOrderBanner
-                      customerName={deliveriesRef.current.get(order.id)?.delivery.customerName ?? null}
+          <h2 className="sr-only">Órdenes pendientes en cocina, de la más antigua a la más nueva</h2>
+
+          {loadingOrders ? (
+            <div
+              data-testid="kitchen-loading"
+              aria-busy="true"
+              aria-label="Cargando órdenes"
+              className="grid min-h-0 flex-1 auto-cols-[100%] grid-flow-col gap-3 overflow-hidden px-4 pb-4 pt-1 md:auto-cols-[calc((100%-16px)/2)] md:gap-4 md:px-6 lg:auto-cols-[calc((100%-32px)/3)] min-[1400px]:auto-cols-[340px]"
+            >
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="flex flex-col gap-3.5 rounded-card-lg border-[1.5px] border-line-strong bg-surface p-4">
+                  <Skeleton className="h-6 w-2/5 bg-surface-2" />
+                  <Skeleton className="h-8 w-3/4 bg-surface-2" />
+                  <Skeleton className="h-4 w-4/5 bg-surface-2" />
+                  <Skeleton className="h-14 bg-surface-2" />
+                  <Skeleton className="h-14 bg-surface-2" />
+                  <Skeleton className="mt-auto h-14 rounded-full bg-surface-2" />
+                </div>
+              ))}
+            </div>
+          ) : railOrders.length === 0 ? (
+            <section className="grid flex-1 place-items-center px-5 pb-12 pt-6 text-center">
+              <div>
+                <div className="mx-auto grid h-[72px] w-[72px] place-items-center rounded-[22px] bg-brand-tint text-brand-strong">
+                  <ChefHat className="h-[34px] w-[34px]" aria-hidden="true" />
+                </div>
+                <h2 className="mb-2 mt-[18px] text-2xl font-semibold tracking-tight md:text-4xl">
+                  {kitchenOrders.length === 0
+                    ? "No hay órdenes pendientes en cocina"
+                    : "No hay órdenes que coincidan con los filtros seleccionados"}
+                </h2>
+                <p className="mx-auto mb-5 max-w-[460px] text-[17px] leading-normal text-muted-fg">
+                  {kitchenOrders.length === 0
+                    ? "Cuando un mesero envíe una comanda aparecerá aquí, la más antigua primero."
+                    : `Hay ${kitchenOrders.length} ${kitchenOrders.length === 1 ? "orden pendiente" : "órdenes pendientes"} con otros filtros.`}
+                </p>
+                {kitchenOrders.length > 0 && (
+                  <Button variant="outline" className="min-h-11 rounded-full" onClick={clearFilters}>
+                    Limpiar filtros
+                  </Button>
+                )}
+              </div>
+            </section>
+          ) : (
+            <KitchenRail
+              tickets={railOrders.map((order) => {
+                const place = ticketPlace(order)
+                const age = ticketAge(now - ticketStartedAt(order))
+                const delivery = isDeliveryOrder(order) ? deliveriesRef.current.get(order.id)?.delivery : undefined
+                return {
+                  key: order.id,
+                  summary: `${place} · ${age.label} · ${age.minutes} min`,
+                  node: (
+                    <KitchenTicket
+                      order={order}
+                      place={place}
+                      waiterName={profiles?.find((p) => p.id === order.waiter)?.name ?? null}
+                      address={delivery?.addressLine ?? null}
+                      note={delivery?.notes?.trim() || null}
+                      now={now}
+                      newItemIds={newItems[order.id] || []}
+                      onServeItem={(itemId) => handleMarkAsDelivered(order.id, itemId)}
+                      onServeAll={() => handleMarkAllAsDelivered(order.id)}
                     />
-                    {card}
-                  </div>
-                )
-              })
-            )}
-          </div>
+                  ),
+                }
+              })}
+            />
+          )}
         </TabsContent>
 
-        <TabsContent value="tables">
+        <TabsContent value="tables" className="min-h-0 flex-1 overflow-y-auto px-4 md:px-6">
           <TablesSection
             activeTable={selectedTable}
             profile={profile}
@@ -806,16 +942,28 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
       {/* Confirm Dialog for Mark All as Delivered */}
       <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-card-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar entrega</AlertDialogTitle>
+            <AlertDialogTitle>¿Entregar toda la orden?</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Está seguro de que desea marcar todos los productos de esta orden como entregados?
+              {pendingDelivery ? `${ticketPlace(pendingDelivery)} · estos productos saldrán de la cocina:` : "Todos los productos de esta orden serán marcados como entregados."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingDelivery && (
+            <ul className="max-h-[40vh] overflow-y-auto rounded-card border border-line">
+              {pendingDelivery.items.map((item) => (
+                <li key={item.id} className="flex gap-2.5 border-line px-3.5 py-2.5 text-base [&+&]:border-t">
+                  <span className="font-mono font-bold tabular-nums text-brand-strong">{item.quantity}×</span>
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{item.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmMarkAllAsDelivered}>Confirmar</AlertDialogAction>
+            <AlertDialogCancel className="min-h-11 rounded-full">Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="min-h-11 rounded-full" onClick={confirmMarkAllAsDelivered}>
+              Confirmar entrega
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
