@@ -68,6 +68,43 @@ describe("CategoryForm", () => {
       description: null,
       icon: "Coffee",
       active: true,
+      color: "neutral",
     })
+  })
+
+  it("offers the closed colour set as labelled swatches and sends the pick (T9 redesign)", async () => {
+    catalog.updateCategory.mockResolvedValue({})
+    const category = {
+      id: "c-1",
+      name: "Bebidas",
+      description: null,
+      icon: "Coffee",
+      active: true,
+      sortOrder: 0,
+      color: "sky" as const,
+      hasSubcategories: false,
+      createdAt: null,
+      updatedAt: null,
+    }
+    render(<CategoryForm category={category} onSuccess={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Cielo" })).toBeChecked())
+
+    const group = screen.getByRole("radiogroup", { name: "Color" })
+    expect(Array.from(group.querySelectorAll("[role=radio]")).map((r) => r.getAttribute("aria-label"))).toEqual([
+      "Neutro",
+      "Amarillo",
+      "Naranja",
+      "Cielo",
+      "Violeta",
+      "Esmeralda",
+      "Rosa",
+    ])
+
+    fireEvent.click(screen.getByRole("radio", { name: "Esmeralda" }))
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("button", { name: "Actualizar" }).closest("form") as HTMLFormElement)
+    })
+
+    await waitFor(() => expect(catalog.updateCategory).toHaveBeenCalledWith("c-1", expect.objectContaining({ color: "emerald" })))
   })
 })

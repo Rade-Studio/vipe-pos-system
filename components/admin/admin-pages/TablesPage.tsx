@@ -1,11 +1,11 @@
 import { PageHeader } from "@/components/admin/common/PageHeader"
-import { TableManagementPanel } from "@/components/admin/tables/TableManagementPanel"
+import { FloorPlanEditor } from "@/components/admin/floor/FloorPlanEditor"
 
 export function TablesPage({ description }: { description: string }) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader title="Mesas" description={description} />
-      <TableManagementPanel />
+      <FloorPlanEditor />
     </div>
   )
 }

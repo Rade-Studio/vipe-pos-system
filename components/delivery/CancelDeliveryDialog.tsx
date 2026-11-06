@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { PHONE_SHEET, PILL_BUTTON, SHEET_FOOTER } from './console-ui'
 
 interface CancelDeliveryDialogProps {
   open: boolean
@@ -32,7 +33,7 @@ export function CancelDeliveryDialog({
 }: CancelDeliveryDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={(next) => !isPending && onOpenChange(next)}>
-      <AlertDialogContent>
+      <AlertDialogContent className={PHONE_SHEET}>
         <AlertDialogHeader>
           <AlertDialogTitle>¿Cancelar el domicilio?</AlertDialogTitle>
           <AlertDialogDescription>
@@ -40,10 +41,10 @@ export function CancelDeliveryDialog({
             registrado no se puede cancelar.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>Volver</AlertDialogCancel>
+        <AlertDialogFooter className={SHEET_FOOTER}>
+          <AlertDialogCancel className={PILL_BUTTON} disabled={isPending}>Volver</AlertDialogCancel>
           {/* Plain button: AlertDialogAction would close the dialog before the result. */}
-          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+          <Button variant="destructive" className={PILL_BUTTON} onClick={onConfirm} disabled={isPending}>
             {isPending ? 'Cancelando…' : 'Cancelar domicilio'}
           </Button>
         </AlertDialogFooter>

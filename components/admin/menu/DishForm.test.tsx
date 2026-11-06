@@ -32,6 +32,9 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver
+Element.prototype.scrollIntoView ??= function () {}
+Element.prototype.hasPointerCapture ??= () => false
+Element.prototype.releasePointerCapture ??= function () {}
 
 const categories = [
   {
@@ -96,6 +99,7 @@ describe("DishForm", () => {
       description: "Del día",
       price: 9500,
       categoryId: "c-1",
+      subcategoryId: null,
       imageUrl: "https://img/d-1.png",
       active: true,
       allowComments: true,
@@ -119,6 +123,7 @@ describe("DishForm", () => {
       description: null,
       price: 4000,
       categoryId: null,
+      subcategoryId: null,
       imageUrl: null,
       active: true,
       allowComments: false,
@@ -214,5 +219,112 @@ describe("DishForm", () => {
     })
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" })))
     expect(storage.deleteImage).not.toHaveBeenCalled()
+  })
+})
+
+// ---- T9 (redesign): the subcategory picker -----------------------------------
+
+const twoCategories = [
+  categories[0],
+  { ...categories[0], id: "c-2", name: "Bebidas", icon: "Coffee", sortOrder: 1 },
+]
+const subcategories = [
+  { id: "s-1", categoryId: "c-1", name: "Sopas", sortOrder: 0, active: true, createdAt: null, updatedAt: null },
+  { id: "s-2", categoryId: "c-1", name: "Cremas", sortOrder: 1, active: true, createdAt: null, updatedAt: null },
+  { id: "s-3", categoryId: "c-2", name: "Jugos", sortOrder: 0, active: true, createdAt: null, updatedAt: null },
+]
+
+/** Opens a Radix select by keyboard and picks an option (jsdom has no pointer layout). */
+async function pick(label: string, option: string) {
+  await act(async () => {
+    fireEvent.keyDown(screen.getByRole("combobox", { name: label }), { key: "Enter" })
+  })
+  await act(async () => {
+    fireEvent.keyDown(await screen.findByRole("option", { name: option }), { key: "Enter" })
+  })
+}
+
+describe("DishForm — subcategory", () => {
+  it("offers only the subcategories of the dish category, plus none", async () => {
+    render(<DishForm dish={dish} categories={twoCategories} subcategories={subcategories} onSuccess={vi.fn()} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("combobox", { name: "Subcategoría" }), { key: "Enter" })
+    })
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent)
+    expect(options).toEqual(["Sin subcategoría", "Sopas", "Cremas"])
+  })
+
+  it("sends the picked subcategory", async () => {
+    const onSuccess = vi.fn()
+    render(<DishForm dish={dish} categories={twoCategories} subcategories={subcategories} onSuccess={onSuccess} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+
+    await pick("Subcategoría", "Cremas")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+    })
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(catalog.updateDish).toHaveBeenCalledWith("d-1", expect.objectContaining({ categoryId: "c-1", subcategoryId: "s-2" }))
+  })
+
+  it("a new dish starts in the given category", async () => {
+    const onSuccess = vi.fn()
+    render(
+      <DishForm categories={twoCategories} subcategories={subcategories} defaultCategoryId="c-2" onSuccess={onSuccess} isNewDish />,
+    )
+    fireEvent.change(screen.getByLabelText("Nombre del plato"), { target: { value: "Mora" } })
+    fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "5000" } })
+    await pick("Subcategoría", "Jugos")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Crear Plato" }))
+    })
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(catalog.createDish).toHaveBeenCalledWith(expect.objectContaining({ categoryId: "c-2", subcategoryId: "s-3" }))
+  })
+
+  it("changing the category clears the subcategory and asks to pick or clear one before saving", async () => {
+    const onSuccess = vi.fn()
+    render(
+      <DishForm dish={{ ...dish, subcategoryId: "s-1" }} categories={twoCategories} subcategories={subcategories} onSuccess={onSuccess} />,
+    )
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+
+    await pick("Categoría", "Bebidas")
+
+    expect(
+      screen.getByText("Cambiaste la categoría: elige una subcategoría de Bebidas o «Sin subcategoría».", { exact: false }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Actualizar Plato" })).toBeDisabled()
+
+    await pick("Subcategoría", "Sin subcategoría")
+    expect(screen.getByRole("button", { name: "Actualizar Plato" })).toBeEnabled()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+    })
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(catalog.updateDish).toHaveBeenCalledWith("d-1", expect.objectContaining({ categoryId: "c-2", subcategoryId: null }))
+  })
+
+  it("shows the API 422 message when the subcategory does not fit", async () => {
+    catalog.updateDish.mockRejectedValue(new Error("La subcategoría no pertenece a la categoría del plato"))
+    render(<DishForm dish={{ ...dish, subcategoryId: "s-1" }} categories={twoCategories} subcategories={subcategories} onSuccess={vi.fn()} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+    })
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "Error al guardar el plato: La subcategoría no pertenece a la categoría del plato",
+        }),
+      ),
+    )
   })
 })

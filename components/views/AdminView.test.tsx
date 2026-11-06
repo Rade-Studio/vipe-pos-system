@@ -32,6 +32,7 @@ vi.mock("@/lib/api/client", () => ({
     GET: async (path: string, init?: any) => {
       state.apiCalls.push({ method: "GET", path, init })
       if (path === "/api/orders") return { data: state.api.orders }
+      if (path === "/api/zones") return { data: [] }
       if (path === "/api/dashboard/summary")
         return { data: { monthSales: 0, kitchenOrders: 0, dailySales: [], popularDishes: [] } }
       throw new Error(`unexpected GET ${path}`)
@@ -52,6 +53,7 @@ vi.mock("@/lib/api/realtime", () => ({
       return () => {}
     },
     subscribeToTables: () => () => {},
+    subscribeToZones: () => () => {},
   },
 }))
 
@@ -244,6 +246,7 @@ describe("AdminView — requests issued while a tab is open", () => {
     expect([...new Set(state.apiCalls.map((call) => `${call.method} ${call.path}`))].sort()).toEqual([
       "GET /api/dashboard/summary",
       "GET /api/inventory/items",
+      "GET /api/zones",
     ])
   })
 
@@ -274,9 +277,11 @@ describe("AdminView — requests issued while a tab is open", () => {
 
     // One click = ONE request on the active statuses (no store `loadOrders` behind it).
     await waitFor(() => expect(state.apiCalls.filter((call) => call.path === "/api/orders")).toHaveLength(2))
-    // Besides the dashboard's summary and low-stock reads, nothing else is requested.
+    // Besides the dashboard's summary, low-stock and zones reads, nothing else is requested.
     expect(
-      state.apiCalls.filter((call) => call.path !== "/api/inventory/items" && call.path !== "/api/dashboard/summary"),
+      state.apiCalls.filter(
+        (call) => call.path !== "/api/inventory/items" && call.path !== "/api/dashboard/summary" && call.path !== "/api/zones",
+      ),
     ).toHaveLength(2)
     expect(state.apiCalls.filter((call) => call.path === "/api/inventory/items")).toHaveLength(1)
     // The manual refresh still reports what it loaded.

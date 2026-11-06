@@ -1,16 +1,17 @@
 'use client'
 
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Phone, MapPin, AlertTriangle, Wallet } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Phone, MapPin, AlertTriangle, Wallet, Clock } from 'lucide-react'
 import type { DeliveryOrderWithBill } from '@/lib/api/delivery'
 import { statusLabel, allowedActions, type DeliveryAction } from '@/lib/delivery/state-machine'
 import type { DeliveryRole } from '@/lib/delivery/types'
 import { formatAddress } from '@/lib/delivery/address'
 import { canRegisterPayment } from '@/lib/delivery/card-actions'
+import { shortOrderRef } from '@/lib/delivery/console'
 import { formatPhone } from '@/lib/delivery/phone'
 import { formatElapsedMinutes } from './elapsed'
+import { CARD_SURFACE, CHIP, MONEY, PILL_BUTTON, STATUS_CHIP, formatMoney } from './console-ui'
 
 interface DeliveryCardProps {
   row: DeliveryOrderWithBill
@@ -25,10 +26,12 @@ interface DeliveryCardProps {
   onRegisterPayment: () => void
   /** While a mutation for this card is in flight: every button is disabled. */
   isPending?: boolean
+  /** Shows the status chip (the tab list and the closed list; a column already names it). */
+  showStatus?: boolean
 }
 
 const ACTION_LABELS: Record<DeliveryAction, string> = {
-  start_preparing: 'En preparación',
+  start_preparing: 'Preparar',
   mark_ready: 'Marcar listo',
   dispatch: 'Despachar',
   deliver: 'Entregado',
@@ -37,12 +40,12 @@ const ACTION_LABELS: Record<DeliveryAction, string> = {
 }
 
 const ACTION_VARIANTS: Record<DeliveryAction, 'default' | 'outline' | 'destructive' | 'ghost'> = {
-  start_preparing: 'outline',
+  start_preparing: 'default',
   mark_ready: 'default',
   dispatch: 'default',
   deliver: 'default',
   fail: 'outline',
-  cancel: 'ghost',
+  cancel: 'outline',
 }
 
 /**
@@ -58,112 +61,120 @@ export function DeliveryCard({
   onAction,
   onRegisterPayment,
   isPending = false,
+  showStatus = false,
 }: DeliveryCardProps) {
   const { delivery, amountDue, subtotal, tax, isPaid } = row
   const actions = allowedActions(delivery.status, role)
   const showPayment = canRegisterPayment({ status: delivery.status, isPaid, role })
-
-  const paymentBadge =
-    delivery.paymentMode === 'prepaid' ? (
-      <Badge variant="default" className="text-[10px]">Anticipado</Badge>
-    ) : (
-      <Badge variant="outline" className="text-[10px]">
-        Contra entrega
-        {delivery.cashChangeFor !== null && delivery.cashChangeFor > 0
-          ? ` · lleva cambio de ${formatMoney(delivery.cashChangeFor)}`
-          : ''}
-      </Badge>
-    )
+  const paymentLine =
+    delivery.paymentMode === 'prepaid'
+      ? 'Anticipado'
+      : `Contra entrega${
+          delivery.cashChangeFor !== null && delivery.cashChangeFor > 0
+            ? ` · lleva cambio de ${formatMoney(delivery.cashChangeFor)}`
+            : ''
+        }`
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="space-y-2 p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{delivery.customerName}</p>
-            <p className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Phone className="h-3 w-3 shrink-0" />
-              {formatPhone(delivery.customerPhone, { withCountryCode: true })}
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            {paymentBadge}
+    <article
+      aria-label={`${delivery.customerName}, ${statusLabel(delivery.status)}`}
+      className={cn(
+        'grid min-w-0 gap-2 rounded-card border border-line p-3 text-sm shadow-sm focus-within:border-brand-line',
+        CARD_SURFACE,
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-fg">
+        <span className="font-mono font-medium text-fg-2">{shortOrderRef(delivery.orderId)}</span>
+        {showStatus && <span className={cn(CHIP, STATUS_CHIP[delivery.status])}>{statusLabel(delivery.status)}</span>}
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap tabular-nums">
+          <Clock className="h-3 w-3" aria-hidden />
+          {formatElapsedMinutes(delivery.updatedAt)}
+        </span>
+      </div>
+
+      <h4 className="line-clamp-2 break-words text-[15px] font-semibold leading-snug text-fg [overflow-wrap:anywhere]">
+        {delivery.customerName}
+      </h4>
+
+      <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-fg">
+        <Phone className="h-3 w-3 shrink-0" aria-hidden />
+        <span className="truncate tabular-nums">{formatPhone(delivery.customerPhone, { withCountryCode: true })}</span>
+      </p>
+
+      <p className="flex min-w-0 items-start gap-1.5 text-fg-2">
+        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-fg" aria-hidden />
+        <span className="line-clamp-2 [overflow-wrap:anywhere]">{safeAddress(delivery)}</span>
+      </p>
+
+      <div className="grid gap-1.5 border-t border-line pt-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3">
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-fg-2">
+            <span className="[overflow-wrap:anywhere]">{paymentLine}</span>
             {delivery.status !== 'cancelled' &&
               (isPaid ? (
-                <Badge className="bg-green-600 text-[10px] hover:bg-green-600">Pagado</Badge>
+                <span className={cn(CHIP, 'border-status-ok-line bg-status-ok-bg text-status-ok-fg')}>Pagado</span>
               ) : (
-                <Badge variant="outline" className="border-amber-400 text-[10px] text-amber-700">
+                <span className={cn(CHIP, 'border-status-warning-line bg-status-warning-bg text-status-warning-fg')}>
                   Pendiente de pago
-                </Badge>
+                </span>
               ))}
-          </div>
-        </div>
-
-        <p className="flex items-start gap-1 text-xs text-muted-foreground">
-          <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
-          <span className="line-clamp-2">
-            {safeAddress(delivery)}
-          </span>
-        </p>
-
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">
-            Subtotal {formatMoney(subtotal)} · Impuestos {formatMoney(tax)} · Domicilio{' '}
-            {formatMoney(delivery.deliveryFee)}
           </span>
           {/* pay_order charges subtotal + tax + delivery fee. */}
-          <span className="font-semibold">{formatMoney(amountDue + delivery.deliveryFee)}</span>
+          <span className={cn(MONEY, 'text-right text-base font-semibold text-fg')}>
+            {formatMoney(amountDue + delivery.deliveryFee)}
+          </span>
         </div>
-
-        {delivery.failureReason && (
-          <p className="flex items-start gap-1 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
-            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-            <span className="line-clamp-2">{delivery.failureReason}</span>
-          </p>
-        )}
-
-        {delivery.notes && delivery.notes.trim().length > 0 && (
-          <p className="rounded-md bg-muted/50 p-2 text-xs italic text-muted-foreground">
-            {delivery.notes}
-          </p>
-        )}
-
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          {statusLabel(delivery.status)} · {formatElapsedMinutes(delivery.updatedAt)}
+        <p className="flex flex-wrap gap-x-2 text-[11px] text-muted-fg">
+          <span className={MONEY}>Subtotal {formatMoney(subtotal)}</span>
+          <span className={MONEY}>Impuestos {formatMoney(tax)}</span>
+          <span className={MONEY}>Domicilio {formatMoney(delivery.deliveryFee)}</span>
         </p>
+      </div>
 
-        {(actions.length > 0 || showPayment) && (
-          <div className="flex flex-wrap gap-2">
-            {actions.map((action) => (
-              <Button
-                key={action}
-                size="sm"
-                variant={ACTION_VARIANTS[action]}
-                className="flex-1"
-                onClick={() => onAction(action)}
-                disabled={isPending}
-              >
-                {action === 'dispatch' && delivery.status === 'failed'
-                  ? 'Reenviar'
-                  : ACTION_LABELS[action]}
-              </Button>
-            ))}
-            {showPayment && (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="flex-1"
-                onClick={onRegisterPayment}
-                disabled={isPending}
-              >
-                <Wallet className="mr-1 h-3 w-3" />
-                Registrar pago
-              </Button>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {delivery.failureReason && (
+        <p className="flex items-start gap-1.5 rounded-lg border border-status-danger-line bg-status-danger-bg p-2 text-xs text-status-danger-fg">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+          <span className="line-clamp-2 [overflow-wrap:anywhere]">{delivery.failureReason}</span>
+        </p>
+      )}
+
+      {delivery.notes && delivery.notes.trim().length > 0 && (
+        <p className="rounded-lg bg-surface-2 p-2 text-xs italic text-muted-fg [overflow-wrap:anywhere] dark:bg-surface">
+          {delivery.notes}
+        </p>
+      )}
+
+      {(actions.length > 0 || showPayment) && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {actions.map((action) => (
+            <Button
+              key={action}
+              size="sm"
+              variant={ACTION_VARIANTS[action]}
+              className={cn(PILL_BUTTON, 'flex-auto')}
+              onClick={() => onAction(action)}
+              disabled={isPending}
+            >
+              {action === 'dispatch' && delivery.status === 'failed'
+                ? 'Reenviar'
+                : ACTION_LABELS[action]}
+            </Button>
+          ))}
+          {showPayment && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className={cn(PILL_BUTTON, 'flex-auto')}
+              onClick={onRegisterPayment}
+              disabled={isPending}
+            >
+              <Wallet className="mr-1 h-3.5 w-3.5" aria-hidden />
+              Registrar pago
+            </Button>
+          )}
+        </div>
+      )}
+    </article>
   )
 }
 
@@ -177,15 +188,4 @@ function safeAddress(d: { addressLine: string; neighborhood: string | null; addr
   } catch {
     return d.addressLine
   }
-}
-
-function formatMoney(n: number): string {
-  // Whole COP, no decimals. formatCurrency() from utils/helpers renders
-  // the locale currency string the cashier sees on the bill.
-  if (!Number.isFinite(n)) return '—'
-  return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    maximumFractionDigits: 0,
-  }).format(n)
 }
