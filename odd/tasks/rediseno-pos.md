@@ -39,7 +39,7 @@ Implement the approved gentle-design redesign of every role view on staging (`de
 - [ ] T18. API cashier: tender reference in pay, register opener, paid orders by register, shift KPIs. (S2, S8) Route: worker; verify (item 1 money). Commit: pending.
 - [ ] T19. API delivery: prepaid channel, courier ETA/location at dispatch, return action, customer history, closed-today metrics, courier create/activate for the operator, operator fee edit. (S8) Route: worker; verify (item 2 permissions). Commit: pending.
 - [ ] T20. API catalog/floor: dish order + reorder, quick notes, table active, zone dimensions, menu publish/diff, stock flag on uncategorised dishes. (S8) Route: worker; verify. Commit: pending.
-- [ ] T21. Global toast at the top centre so it never covers bottom bars (L21 f, L23 d). (S6) Route: inline. Commit: pending.
+- [x] T21. Global toast at the top centre so it never covers bottom bars (L21 f, L23 d). (S6) Route: inline. Commit: 83db9bf. Evidence: toaster test RED 2 → GREEN; web 1568, typecheck, lint clean; on-screen check rides with the T22 visual QA.
 - [ ] T22. Waiter: guests, order note, quick-note chips, sent time, elapsed and waiter on the map, minimap, order number. (S2, S5, S6, S8) Route: worker. Commit: pending.
 - [ ] T23. Kitchen: served lines struck through "Entregado", persisted "+n nuevos", order number, order note, late threshold. (S2, S6, S8) Route: worker. Commit: pending.
 - [ ] T24. Cashier: "Pagadas" tab, guests, zone, folio, tender reference, opener, "precio cambió" banner, "En vivo" pill, 10 s payment undo (pay sent after the window), tip named for the waiter, shift KPIs. (S2, S6, S8) Route: worker; verify (item 1). Commit: pending.
