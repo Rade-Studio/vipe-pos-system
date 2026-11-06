@@ -139,7 +139,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "By sortOrder, then name.",
             "content": {
               "application/json": {
                 "schema": {
@@ -193,6 +193,51 @@
           },
           "422": {
             "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/categories/order": {
+      "put": {
+        "operationId": "CategoriesController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every category after the reorder, by sortOrder, then name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Category"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Unknown category (another restaurant) or a repeated id; nothing is saved."
           }
         },
         "security": [
@@ -275,7 +320,7 @@
             "description": ""
           },
           "409": {
-            "description": "Category has dishes."
+            "description": "Category has dishes, or La categoría tiene subcategorías; elimínalas primero."
           },
           "422": {
             "description": "Invalid input or unknown fields."
@@ -320,6 +365,14 @@
             }
           },
           {
+            "name": "subcategoryId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "categoryId",
             "required": false,
             "in": "query",
@@ -343,7 +396,7 @@
             }
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown category."
+            "description": "Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message)."
           }
         },
         "security": [
@@ -383,7 +436,7 @@
             "description": "Not an admin."
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown category."
+            "description": "Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message)."
           }
         },
         "security": [
@@ -434,7 +487,7 @@
             "description": ""
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown category."
+            "description": "Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message)."
           }
         },
         "security": [
@@ -466,7 +519,7 @@
             "description": ""
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown category."
+            "description": "Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message)."
           }
         },
         "security": [
@@ -750,6 +803,267 @@
           },
           "422": {
             "description": "Invalid input, unknown fields or unknown dish."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/subcategories": {
+      "get": {
+        "operationId": "SubcategoriesController_list",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "required": false,
+            "in": "query",
+            "description": "Admin only.",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": false,
+            "in": "query",
+            "description": "Omitted: every category.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active subcategories (all with includeInactive), by category order, then sortOrder and name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Subcategory"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "includeInactive by a non-admin."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown category."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      },
+      "post": {
+        "operationId": "SubcategoriesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSubcategoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subcategory"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "Ya existe una subcategoría con ese nombre en la categoría"
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown category."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/subcategories/order": {
+      "put": {
+        "operationId": "SubcategoriesController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubcategoryOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every subcategory of the category after the reorder, inactive included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Subcategory"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Unknown subcategory (another category or restaurant) or a repeated id; nothing is saved."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/subcategories/{id}": {
+      "patch": {
+        "operationId": "SubcategoriesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSubcategoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subcategory"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Ya existe una subcategoría con ese nombre en la categoría"
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown category."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      },
+      "delete": {
+        "operationId": "SubcategoriesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "La subcategoría tiene platos; muévelos primero"
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown category."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/menu/tree": {
+      "get": {
+        "operationId": "MenuController_tree",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The waiter and delivery step picker: active categories, active subcategories and active dishes, priced and with availability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenuTree"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5307,6 +5621,26 @@
           "active": {
             "type": "boolean"
           },
+          "sortOrder": {
+            "type": "number",
+            "description": "Menu order; the list is ordered by sortOrder, then name."
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "neutral",
+              "yellow",
+              "orange",
+              "sky",
+              "violet",
+              "emerald",
+              "rose"
+            ]
+          },
+          "hasSubcategories": {
+            "type": "boolean",
+            "description": "Derived: true when any dish of the category (active or not) sits in a subcategory. False is \"sin subcategorías\": the pickers skip the subcategory step."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -5324,6 +5658,9 @@
           "description",
           "icon",
           "active",
+          "sortOrder",
+          "color",
+          "hasSubcategories",
           "createdAt",
           "updatedAt"
         ]
@@ -5346,11 +5683,43 @@
           "active": {
             "type": "boolean",
             "default": true
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "Omitted: after the last category."
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "neutral",
+              "yellow",
+              "orange",
+              "sky",
+              "violet",
+              "emerald",
+              "rose"
+            ],
+            "description": "Omitted: neutral."
           }
         },
         "required": [
           "name",
           "icon"
+        ]
+      },
+      "CategoryOrderRequest": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "Category ids in menu order; position i gets sortOrder i. Ids left out keep theirs.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ids"
         ]
       },
       "UpdateCategoryRequest": {
@@ -5370,6 +5739,21 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "neutral",
+              "yellow",
+              "orange",
+              "sky",
+              "violet",
+              "emerald",
+              "rose"
+            ]
           }
         }
       },
@@ -5395,6 +5779,12 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A subcategory of categoryId, or null."
           },
           "imageUrl": {
             "type": "string",
@@ -5446,6 +5836,7 @@
           "description",
           "price",
           "categoryId",
+          "subcategoryId",
           "imageUrl",
           "active",
           "allowComments",
@@ -5472,6 +5863,12 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A subcategory of the dish category. Changing categoryId of a dish in a subcategory needs a new subcategoryId or null."
           },
           "imageUrl": {
             "type": "string",
@@ -5510,6 +5907,12 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A subcategory of the dish category. Changing categoryId of a dish in a subcategory needs a new subcategoryId or null."
           },
           "imageUrl": {
             "type": "string",
@@ -5673,6 +6076,297 @@
         },
         "required": [
           "dishIds"
+        ]
+      },
+      "Subcategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "categoryId",
+          "name",
+          "sortOrder",
+          "active",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateSubcategoryRequest": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "Unique per category, case-insensitive."
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "Omitted: after the last subcategory of the category."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Omitted: true."
+          }
+        },
+        "required": [
+          "categoryId",
+          "name"
+        ]
+      },
+      "SubcategoryOrderRequest": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ids": {
+            "description": "Subcategory ids of the category in order; position i gets sortOrder i.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "categoryId",
+          "ids"
+        ]
+      },
+      "UpdateSubcategoryRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MenuTreeDish": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "price": {
+            "type": "number",
+            "description": "Price after the best active promotion when pricing=promotions applied one."
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A subcategory of categoryId, or null."
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Opaque image reference."
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "allowComments": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "originalPrice": {
+            "type": "number",
+            "description": "Only when a promotion applies (pricing=promotions)."
+          },
+          "discountAmount": {
+            "type": "number",
+            "description": "Only when a promotion applies."
+          },
+          "discountPercentage": {
+            "type": "number",
+            "nullable": true,
+            "description": "Only when a promotion applies; null for fixed amounts."
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Only when a promotion applies."
+          },
+          "promotionName": {
+            "type": "string",
+            "description": "Only when a promotion applies."
+          },
+          "available": {
+            "type": "boolean",
+            "description": "One portion is in stock (the check_dishes_stock rule); always true with inventory control off."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "price",
+          "categoryId",
+          "subcategoryId",
+          "imageUrl",
+          "active",
+          "allowComments",
+          "createdAt",
+          "updatedAt",
+          "available"
+        ]
+      },
+      "MenuTreeCategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "icon": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "Menu order; the list is ordered by sortOrder, then name."
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "neutral",
+              "yellow",
+              "orange",
+              "sky",
+              "violet",
+              "emerald",
+              "rose"
+            ]
+          },
+          "hasSubcategories": {
+            "type": "boolean",
+            "description": "Derived: true when any dish of the category (active or not) sits in a subcategory. False is \"sin subcategorías\": the pickers skip the subcategory step."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "subcategories": {
+            "description": "Active subcategories by sortOrder, then name.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subcategory"
+            }
+          },
+          "dishes": {
+            "description": "Active dishes by name, priced with the promotions active now; dishes of an inactive subcategory are left out.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuTreeDish"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "icon",
+          "active",
+          "sortOrder",
+          "color",
+          "hasSubcategories",
+          "createdAt",
+          "updatedAt",
+          "subcategories",
+          "dishes"
+        ]
+      },
+      "MenuTree": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "description": "Active categories by sortOrder, then name.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuTreeCategory"
+            }
+          }
+        },
+        "required": [
+          "categories"
         ]
       },
       "BusinessConfig": {
