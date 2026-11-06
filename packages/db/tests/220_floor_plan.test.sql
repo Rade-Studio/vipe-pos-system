@@ -8,7 +8,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(51);
+SELECT plan(54);
 
 -- ============================================
 -- 1. Schema
@@ -78,10 +78,10 @@ SELECT is(
   0::bigint,
   'a restaurant without tables gets no zone');
 SELECT is(
-  (SELECT count(DISTINCT (x, y)) FROM public.tables WHERE restaurant_id = '22000000-0000-0000-0000-0000000000a1' AND seats = 4
+  (SELECT count(DISTINCT (x, y)) FROM public.tables WHERE restaurant_id = '22000000-0000-0000-0000-0000000000a1' AND seats IS NULL
       AND x BETWEEN 0 AND 1 AND y BETWEEN 0 AND 1 AND w > 0 AND h > 0)::bigint,
   2::bigint,
-  'backfilled tables sit on distinct grid cells inside the floor with 4 seats');
+  'backfilled tables sit on distinct grid cells inside the floor with no invented seat count');
 SELECT is(
   (SELECT array_agg(number ORDER BY number) FROM public.tables WHERE restaurant_id = '22000000-0000-0000-0000-0000000000a1'),
   ARRAY[1, 2],
@@ -100,6 +100,9 @@ SELECT throws_ok($$ UPDATE public.tables SET w = 0 WHERE id = '22200000-0000-000
 SELECT throws_ok($$ UPDATE public.tables SET shape = 'oval' WHERE id = '22200000-0000-0000-0000-000000000001' $$, '23514', NULL, 'an unknown shape is refused');
 SELECT throws_ok($$ UPDATE public.tables SET rotation = 360 WHERE id = '22200000-0000-0000-0000-000000000001' $$, '23514', NULL, 'rotation 360 is refused');
 SELECT throws_ok($$ UPDATE public.tables SET seats = 21 WHERE id = '22200000-0000-0000-0000-000000000001' $$, '23514', NULL, 'seats 21 is refused');
+SELECT throws_ok($$ UPDATE public.tables SET rotation = 'NaN' WHERE id = '22200000-0000-0000-0000-000000000001' $$, '23514', NULL, 'rotation NaN is refused');
+SELECT throws_ok($$ UPDATE public.zones SET aspect = 4 WHERE id = '22300000-0000-0000-0000-0000000000b1' $$, '23514', NULL, 'aspect 4 is refused');
+SELECT throws_ok($$ UPDATE public.zones SET restaurant_id = '22000000-0000-0000-0000-0000000000c3' WHERE restaurant_id = '22000000-0000-0000-0000-0000000000a1' AND name = 'Salón principal' $$, '23503', NULL, 'a zone in use cannot move to another restaurant');
 SELECT lives_ok(
   $$ UPDATE public.tables SET shape = 'bar', rotation = 359.5, seats = 0, x = 1, y = 0, w = 1, h = 1 WHERE id = '22200000-0000-0000-0000-000000000001' $$,
   'the boundaries (bar, 359.5, 0 seats, x 1, y 0, w/h 1) are accepted');
