@@ -1292,6 +1292,51 @@
         ]
       }
     },
+    "/api/tables/layout": {
+      "put": {
+        "operationId": "TablesController_saveLayout",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveLayoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every table after the save, ordered by number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Table"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Unknown table (another restaurant), zone of another restaurant or invalid values; nothing is saved."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "tables"
+        ]
+      }
+    },
     "/api/tables/{id}": {
       "patch": {
         "operationId": "TablesController_update",
@@ -1509,6 +1554,187 @@
         ],
         "tags": [
           "staff"
+        ]
+      }
+    },
+    "/api/zones": {
+      "get": {
+        "operationId": "ZonesController_list",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "required": false,
+            "in": "query",
+            "description": "Admin only.",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active zones (all with includeInactive), by sort order then name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Zone"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "includeInactive by a non-admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "zones"
+        ]
+      },
+      "post": {
+        "operationId": "ZonesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateZoneRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "Ya existe una zona con ese nombre"
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "zones"
+        ]
+      }
+    },
+    "/api/zones/{id}": {
+      "patch": {
+        "operationId": "ZonesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateZoneRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Ya existe una zona con ese nombre"
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "zones"
+        ]
+      },
+      "delete": {
+        "operationId": "ZonesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "La zona tiene mesas; muévelas o elimínalas primero"
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "zones"
         ]
       }
     },
@@ -6319,6 +6545,60 @@
             "type": "string",
             "nullable": true
           },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Zone the table sits on."
+          },
+          "x": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Centre, fraction of the zone width."
+          },
+          "y": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Centre, fraction of the zone height."
+          },
+          "w": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1,
+            "description": "Width, fraction of the zone width."
+          },
+          "h": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1,
+            "description": "Height, fraction of the zone height."
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "round",
+              "square",
+              "rect",
+              "bar"
+            ]
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 359.99,
+            "description": "Degrees, 0 <= rotation < 360."
+          },
+          "seats": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 20,
+            "description": "Chairs to draw; null or 0 draws none."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -6337,6 +6617,14 @@
           "status",
           "waiterId",
           "waiterName",
+          "zoneId",
+          "x",
+          "y",
+          "w",
+          "h",
+          "shape",
+          "rotation",
+          "seats",
           "createdAt",
           "updatedAt"
         ]
@@ -6344,6 +6632,54 @@
       "CreateTableRequest": {
         "type": "object",
         "properties": {
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "x": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "x, y, w and h go together."
+          },
+          "y": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "w": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "h": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "round",
+              "square",
+              "rect",
+              "bar"
+            ]
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 359.99
+          },
+          "seats": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 20
+          },
           "number": {
             "type": "number",
             "minimum": 1
@@ -6364,9 +6700,142 @@
           "number"
         ]
       },
+      "TableLayout": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "x": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "x, y, w and h go together."
+          },
+          "y": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "w": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "h": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "round",
+              "square",
+              "rect",
+              "bar"
+            ]
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 359.99
+          },
+          "seats": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "id",
+          "zoneId",
+          "x",
+          "y",
+          "w",
+          "h",
+          "shape",
+          "rotation",
+          "seats"
+        ]
+      },
+      "SaveLayoutRequest": {
+        "type": "object",
+        "properties": {
+          "tables": {
+            "minItems": 1,
+            "maxItems": 500,
+            "description": "Each table once.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TableLayout"
+            }
+          }
+        },
+        "required": [
+          "tables"
+        ]
+      },
       "UpdateTableRequest": {
         "type": "object",
         "properties": {
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "x": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "x, y, w and h go together."
+          },
+          "y": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "w": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "h": {
+            "type": "number",
+            "nullable": true,
+            "maximum": 1
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "round",
+              "square",
+              "rect",
+              "bar"
+            ]
+          },
+          "rotation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 359.99
+          },
+          "seats": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 20
+          },
           "number": {
             "type": "number",
             "minimum": 1
@@ -6432,6 +6901,139 @@
           "name",
           "username"
         ]
+      },
+      "ZoneLabel": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "top",
+              "right",
+              "bottom",
+              "left"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "side"
+        ]
+      },
+      "Zone": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "aspect": {
+            "type": "number",
+            "description": "Width / height of the floor."
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneLabel"
+            }
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "aspect",
+          "sortOrder",
+          "labels",
+          "active",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateZoneRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "Unique per restaurant, case-insensitive."
+          },
+          "aspect": {
+            "type": "number",
+            "default": 1.6,
+            "description": "Width / height, 0.25 < aspect < 4."
+          },
+          "sortOrder": {
+            "type": "number",
+            "default": 0
+          },
+          "labels": {
+            "maxItems": 12,
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneLabel"
+            }
+          },
+          "active": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateZoneRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "aspect": {
+            "type": "number",
+            "description": "Width / height, 0.25 < aspect < 4."
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "labels": {
+            "maxItems": 12,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneLabel"
+            }
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
       },
       "PaymentMethod": {
         "type": "object",

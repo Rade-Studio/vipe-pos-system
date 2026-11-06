@@ -1,5 +1,5 @@
 /** Tables whose changes reach the browser (private.realtime_row's whitelist). */
-export type RealtimeTable = 'orders' | 'order_items' | 'tables' | 'order_deliveries';
+export type RealtimeTable = 'orders' | 'order_items' | 'tables' | 'zones' | 'order_deliveries';
 
 export type ChangeOp = 'INSERT' | 'UPDATE' | 'DELETE';
 
@@ -31,7 +31,7 @@ export interface ChangeEvent {
   errors: null;
 }
 
-const TABLES: readonly string[] = ['orders', 'order_items', 'tables', 'order_deliveries'];
+const TABLES: readonly string[] = ['orders', 'order_items', 'tables', 'zones', 'order_deliveries'];
 const OPS: readonly string[] = ['INSERT', 'UPDATE', 'DELETE'];
 
 /** Parse a NOTIFY payload; undefined when it is not one of ours. */
