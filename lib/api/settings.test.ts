@@ -27,8 +27,8 @@ beforeEach(() => {
 })
 
 describe("late thresholds", () => {
-  it("defaults to kitchen 15 and delivery 45 minutes, the server defaults", () => {
-    expect(DEFAULT_LATE_THRESHOLDS).toEqual({ kitchenLateMinutes: 15, deliveryLateMinutes: 45 })
+  it("defaults to kitchen 25 and delivery 45 minutes, the server defaults", () => {
+    expect(DEFAULT_LATE_THRESHOLDS).toEqual({ kitchenLateMinutes: 25, deliveryLateMinutes: 45 })
   })
 
   it("picks the two thresholds out of the config", () => {

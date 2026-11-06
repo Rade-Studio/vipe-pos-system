@@ -46,6 +46,7 @@ export const createTableSchema = z
     shape: layoutFields.shape.optional(),
     rotation: layoutFields.rotation.optional(),
     seats: layoutFields.seats.optional(),
+    isActive: z.boolean().optional(),
   })
   .refine(allOrNoCoordinates, COORDINATES_MESSAGE);
 
@@ -62,6 +63,7 @@ export const updateTableSchema = z.strictObject({
   shape: layoutFields.shape.optional(),
   rotation: layoutFields.rotation.optional(),
   seats: layoutFields.seats.optional(),
+  isActive: z.boolean().optional(),
 });
 
 export const tableLayoutSchema = z.strictObject({ id: z.guid(), ...layoutFields }).refine(allOrNoCoordinates, COORDINATES_MESSAGE);
@@ -94,6 +96,10 @@ export class Table {
   @ApiProperty({ minimum: 0, maximum: 359.99, description: 'Degrees, 0 <= rotation < 360.' }) rotation!: number;
   @ApiProperty({ type: Number, nullable: true, minimum: 0, maximum: 20, description: 'Chairs to draw; null or 0 draws none.' })
   seats!: number | null;
+  @ApiProperty({
+    description: 'An inactive table takes no new order (409 La mesa está inactiva); it is still listed, flagged, so the map greys it.',
+  })
+  isActive!: boolean;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Set by the server on every write.' })
   updatedAt!: string | null;
@@ -115,6 +121,7 @@ class TableLayoutFields {
 export class CreateTableRequest extends TableLayoutFields {
   @ApiProperty({ minimum: 1 }) number!: number;
   @ApiPropertyOptional({ enum: TABLE_STATUSES, default: 'available' }) status?: TableStatus;
+  @ApiPropertyOptional({ default: true }) isActive?: boolean;
 }
 
 export class UpdateTableRequest extends TableLayoutFields {
@@ -122,6 +129,7 @@ export class UpdateTableRequest extends TableLayoutFields {
   @ApiPropertyOptional({ enum: TABLE_STATUSES, description: 'available also clears the waiter unless waiterId is given.' })
   status?: TableStatus;
   @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) waiterId?: string | null;
+  @ApiPropertyOptional({ description: 'false: no new order on the table; its open orders are unaffected.' }) isActive?: boolean;
 }
 
 export class TableLayout {

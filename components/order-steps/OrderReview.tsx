@@ -4,6 +4,7 @@ import { Check, List, Minus, Plus, Trash2 } from "lucide-react"
 
 import type { CartItem } from "@/types"
 import { cn } from "@/lib/utils"
+import { sentGroups } from "@/lib/order-steps/details"
 import { formatCurrency } from "@/utils/helpers"
 import { Button } from "@/components/ui/button"
 
@@ -20,35 +21,71 @@ function NewChip() {
   )
 }
 
-function SentChip() {
+/** A line already in the kitchen; `addedAt` is its send time (order_items.added_at). */
+export type SentLine = CartItem & { addedAt?: Date }
+
+/** "Enviado a cocina · 19:48" (T22); without a send time, no time. */
+function SentChip({ time }: { time: string | null }) {
   return (
     <span className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full border border-status-ok-line bg-status-ok-bg px-3 text-[13px] font-medium text-status-ok-fg">
       <Check className="h-3 w-3" aria-hidden />
-      Enviado a cocina
+      Enviado a cocina{time ? <span className="tabular-nums"> · {time}</span> : null}
     </span>
   )
 }
 
+const NOTE_MAX = 300
+
 interface OrderReviewProps {
   title: string
+  /** The open order's database number ("#128", T22). */
+  orderNumber?: number
   /** Lines not sent yet: quantity and removal are editable. */
   newLines: readonly CartItem[]
-  /** Lines already in the kitchen: read only. */
-  sentLines: readonly CartItem[]
+  /** Lines already in the kitchen: read only, grouped by send time. */
+  sentLines: readonly SentLine[]
   onChangeQuantity: (lineId: string, change: number) => void
   onRemove: (lineId: string) => void
   onContinue: () => void
+  /** "Nota del pedido" (orders.notes, T22): optional when `onNoteChange` is given. */
+  note?: string
+  onNoteChange?: (note: string) => void
+  /** Open order: save the note now (PATCH); a new order sends it with the order. */
+  onSaveNote?: () => void
+  /** The note differs from the stored one. */
+  noteDirty?: boolean
+  savingNote?: boolean
 }
 
 /** "Ver pedido" of the step flow: what is new (editable) and what the kitchen already has. */
-export function OrderReview({ title, newLines, sentLines, onChangeQuantity, onRemove, onContinue }: OrderReviewProps) {
+export function OrderReview({
+  title,
+  orderNumber,
+  newLines,
+  sentLines,
+  onChangeQuantity,
+  onRemove,
+  onContinue,
+  note,
+  onNoteChange,
+  onSaveNote,
+  noteDirty = false,
+  savingNote = false,
+}: OrderReviewProps) {
   const all = [...sentLines, ...newLines]
   return (
     <div className="grid max-w-[760px] gap-3.5">
       <div className="mx-0.5 flex min-w-0 flex-wrap items-baseline justify-between gap-2">
-        <h2 tabIndex={-1} className="text-[22px] font-semibold leading-tight outline-none xl:text-[26px]">
-          {title}
-        </h2>
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          <h2 tabIndex={-1} className="min-w-0 text-[22px] font-semibold leading-tight outline-none xl:text-[26px]">
+            {title}
+          </h2>
+          {orderNumber != null && (
+            <span className="inline-flex h-7 flex-none items-center whitespace-nowrap rounded-pill border border-line bg-surface-2 px-3 text-[13px] font-semibold tabular-nums text-fg-2">
+              #{orderNumber}
+            </span>
+          )}
+        </span>
         <p className="text-sm tabular-nums text-muted-fg">{lineCount(all)} productos</p>
       </div>
 
@@ -103,22 +140,56 @@ export function OrderReview({ title, newLines, sentLines, onChangeQuantity, onRe
       </section>
 
       {sentLines.length > 0 && (
-        <section aria-label="Enviados">
-          <h3 className="mb-2">
-            <SentChip />
-          </h3>
-          <ul className="overflow-hidden rounded-2xl border border-line bg-surface">
-            {sentLines.map((line) => (
-              <li key={line.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1 border-t border-line px-3.5 py-3 first:border-t-0">
-                <span className="min-w-0 font-medium text-fg-2 [overflow-wrap:anywhere]">
-                  {line.quantity}× {line.name}
-                </span>
-                <span className="text-right font-semibold tabular-nums">{formatCurrency(line.quantity * line.price)}</span>
-                {line.comments && <span className="col-start-1 text-[13px] text-muted-fg">“{line.comments}”</span>}
-              </li>
-            ))}
-          </ul>
+        <section aria-label="Enviados" className="grid gap-3">
+          {sentGroups(sentLines).map((group) => (
+            <div key={group.time ?? "none"}>
+              <h3 className="mb-2">
+                <SentChip time={group.time} />
+              </h3>
+              <ul className="overflow-hidden rounded-2xl border border-line bg-surface">
+                {group.lines.map((line) => (
+                  <li key={line.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1 border-t border-line px-3.5 py-3 first:border-t-0">
+                    <span className="min-w-0 font-medium text-fg-2 [overflow-wrap:anywhere]">
+                      {line.quantity}× {line.name}
+                    </span>
+                    <span className="text-right font-semibold tabular-nums">{formatCurrency(line.quantity * line.price)}</span>
+                    {line.comments && <span className="col-start-1 text-[13px] text-muted-fg">“{line.comments}”</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </section>
+      )}
+
+      {onNoteChange && (
+        <div>
+          <label htmlFor="order-note" className="mb-2 block text-[13px] font-semibold uppercase tracking-wider text-fg-2">
+            Nota del pedido (opcional)
+          </label>
+          <div className="flex min-w-0 flex-wrap gap-2">
+            <textarea
+              id="order-note"
+              rows={2}
+              value={note ?? ""}
+              maxLength={NOTE_MAX}
+              placeholder="Ej.: cumpleaños, alérgico al maní"
+              onChange={(event) => onNoteChange(event.target.value)}
+              className={cn(
+                "min-h-[52px] min-w-0 flex-[1_1_16rem] resize-y rounded-[14px] border border-line-strong bg-card px-3.5 py-3 text-[15px] text-fg placeholder:text-muted-fg",
+                FOCUS,
+              )}
+            />
+            {onSaveNote && (
+              <Button variant="outline" className="h-[52px] flex-none rounded-[14px]" disabled={!noteDirty || savingNote} onClick={onSaveNote}>
+                Guardar nota
+              </Button>
+            )}
+          </div>
+          <p className="mt-1.5 text-[13px] text-muted-fg">
+            {onSaveNote ? "Cocina la ve en el pedido. Se envía también con los productos nuevos." : "Se envía a cocina con el pedido."}
+          </p>
+        </div>
       )}
 
       <div className="flex items-baseline justify-between gap-2 border-t border-line pt-3">
@@ -136,7 +207,7 @@ export function OrderReview({ title, newLines, sentLines, onChangeQuantity, onRe
 interface OrderColumnProps {
   title: string
   newLines: readonly CartItem[]
-  sentLines: readonly CartItem[]
+  sentLines: readonly SentLine[]
   onReview: () => void
 }
 
@@ -170,14 +241,14 @@ export function OrderColumn({ title, newLines, sentLines, onReview }: OrderColum
             <ul>{newLines.map((line) => row(line, false))}</ul>
           )}
         </div>
-        {sentLines.length > 0 && (
-          <div>
+        {sentGroups(sentLines).map((group) => (
+          <div key={group.time ?? "none"}>
             <p className="mb-1">
-              <SentChip />
+              <SentChip time={group.time} />
             </p>
-            <ul>{sentLines.map((line) => row(line, true))}</ul>
+            <ul>{group.lines.map((line) => row(line, true))}</ul>
           </div>
-        )}
+        ))}
       </div>
       <div className="grid gap-2 border-t border-line pt-3">
         <div className="flex items-baseline justify-between">

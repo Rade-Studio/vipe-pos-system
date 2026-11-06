@@ -132,6 +132,9 @@ export function wireRowToPartialOrder(dbRow: unknown): Partial<Order> | null {
     table_id?: unknown
     status?: unknown
     waiter_id?: unknown
+    order_number?: unknown
+    guests?: unknown
+    notes?: unknown
   }
   if (!row.id || !row.status) return null
   return {
@@ -142,5 +145,10 @@ export function wireRowToPartialOrder(dbRow: unknown): Partial<Order> | null {
     orderType: orderTypeFromRow(row),
     status: row.status as Order["status"],
     ...(row.waiter_id !== undefined ? { waiter: row.waiter_id as Order["waiter"] } : {}),
+    // T17: the orders row carries the number, guests and note; a null clears
+    // them, an absent key (partial UPDATE) leaves the merged order's value.
+    ...(typeof row.order_number === "number" ? { orderNumber: row.order_number } : {}),
+    ...(row.guests !== undefined ? { guests: typeof row.guests === "number" ? row.guests : undefined } : {}),
+    ...(row.notes !== undefined ? { notes: typeof row.notes === "string" ? row.notes : undefined } : {}),
   }
 }

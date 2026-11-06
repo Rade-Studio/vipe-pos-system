@@ -449,6 +449,51 @@
         ]
       }
     },
+    "/api/catalog/dishes/order": {
+      "put": {
+        "operationId": "DishesController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DishOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every dish of the group after the reorder, inactive included, by sortOrder, then name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Dish"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Unknown dish (another group or restaurant) or a repeated id; nothing is saved."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/catalog/dishes/{id}": {
       "patch": {
         "operationId": "DishesController_update",
@@ -1056,7 +1101,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "The waiter and delivery step picker: active categories, active subcategories and active dishes, priced and with availability.",
+            "description": "The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and quick notes are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1064,6 +1109,93 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/menu/draft": {
+      "get": {
+        "operationId": "MenuController_draft",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The tree from the live structure: what the next publication serves (admin menu editor preview).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenuTree"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/menu/publication": {
+      "get": {
+        "operationId": "MenuController_publication",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenuPublicationStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/menu/publish": {
+      "post": {
+        "operationId": "MenuController_publish",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "The live structure is now what waiters and delivery see; pendingChanges is 0.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenuPublicationStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Solo un administrador puede publicar el menú"
           }
         },
         "security": [
@@ -2715,6 +2847,60 @@
           },
           "404": {
             "description": "Unknown or of another restaurant (P0002)."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
+    "/api/registers/{id}/paid-orders": {
+      "get": {
+        "operationId": "RegistersController_paidOrders",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "1..200, default 100.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paid orders of the register (one per pay_order payment), newest payment first; legacy payment_transactions are not listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegisterPaidOrder"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier."
+          },
+          "404": {
+            "description": "Unknown or of another restaurant."
           },
           "422": {
             "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
@@ -5929,6 +6115,17 @@
           "allowComments": {
             "type": "boolean"
           },
+          "sortOrder": {
+            "type": "number",
+            "description": "Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name."
+          },
+          "quickNotes": {
+            "description": "Modifier chips offered when the dish is added (append to the item comment, no price).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -5972,6 +6169,8 @@
           "imageUrl",
           "active",
           "allowComments",
+          "sortOrder",
+          "quickNotes",
           "createdAt",
           "updatedAt"
         ]
@@ -6013,11 +6212,47 @@
           "allowComments": {
             "type": "boolean",
             "default": false
+          },
+          "quickNotes": {
+            "maxItems": 12,
+            "description": "At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "name",
           "price"
+        ]
+      },
+      "DishOrderRequest": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "null: the dishes without category."
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "ids": {
+            "description": "Dish ids of the group in order; position i gets sortOrder i. Ids left out keep theirs.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "categoryId",
+          "subcategoryId",
+          "ids"
         ]
       },
       "UpdateDishRequest": {
@@ -6055,6 +6290,14 @@
           },
           "allowComments": {
             "type": "boolean"
+          },
+          "quickNotes": {
+            "maxItems": 12,
+            "description": "At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -6354,6 +6597,17 @@
           "allowComments": {
             "type": "boolean"
           },
+          "sortOrder": {
+            "type": "number",
+            "description": "Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name."
+          },
+          "quickNotes": {
+            "description": "Modifier chips offered when the dish is added (append to the item comment, no price).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -6401,6 +6655,8 @@
           "imageUrl",
           "active",
           "allowComments",
+          "sortOrder",
+          "quickNotes",
           "createdAt",
           "updatedAt",
           "available"
@@ -6464,7 +6720,7 @@
             }
           },
           "dishes": {
-            "description": "Active dishes by name, priced with the promotions active now; dishes of an inactive subcategory are left out.",
+            "description": "Active dishes by sortOrder, then name, priced with the promotions active now; dishes of an inactive subcategory are left out.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MenuTreeDish"
@@ -6495,10 +6751,43 @@
             "items": {
               "$ref": "#/components/schemas/MenuTreeCategory"
             }
+          },
+          "uncategorized": {
+            "description": "Active dishes without category (\"Otros\"), by sortOrder, then name, priced and with availability.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuTreeDish"
+            }
           }
         },
         "required": [
-          "categories"
+          "categories",
+          "uncategorized"
+        ]
+      },
+      "MenuPublicationStatus": {
+        "type": "object",
+        "properties": {
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Latest publication; null: never published (the live menu is served)."
+          },
+          "publishedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name of the admin who published; null for the deploy backfill or a deleted profile."
+          },
+          "pendingChanges": {
+            "type": "number",
+            "description": "Categories, subcategories and dishes added, removed or changed in structure since then; 0 with no publication."
+          }
+        },
+        "required": [
+          "publishedAt",
+          "publishedByName",
+          "pendingChanges"
         ]
       },
       "BusinessConfig": {
@@ -6543,7 +6832,7 @@
           },
           "kitchenLateMinutes": {
             "type": "number",
-            "default": 15,
+            "default": 25,
             "minimum": 1,
             "maximum": 240,
             "description": "Minutes after which a kitchen ticket is late."
@@ -6857,6 +7146,11 @@
           "cashReceived": {
             "type": "number",
             "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "description": "Manual reference of a non-cash line; null when none."
           }
         },
         "required": [
@@ -6867,7 +7161,8 @@
           "methodCode",
           "methodKind",
           "amount",
-          "cashReceived"
+          "cashReceived",
+          "reference"
         ]
       },
       "Payment": {
@@ -7535,6 +7830,10 @@
             "maximum": 20,
             "description": "Chairs to draw; null or 0 draws none."
           },
+          "isActive": {
+            "type": "boolean",
+            "description": "An inactive table takes no new order (409 La mesa está inactiva); it is still listed, flagged, so the map greys it."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -7561,6 +7860,7 @@
           "shape",
           "rotation",
           "seats",
+          "isActive",
           "createdAt",
           "updatedAt"
         ]
@@ -7630,6 +7930,10 @@
               "served"
             ],
             "default": "available"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
           }
         },
         "required": [
@@ -7791,6 +8095,10 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "false: no new order on the table; its open orders are unaffected."
           }
         }
       },
@@ -7887,6 +8195,16 @@
           "active": {
             "type": "boolean"
           },
+          "widthM": {
+            "type": "number",
+            "nullable": true,
+            "description": "Real width in metres; set with depthM or both null."
+          },
+          "depthM": {
+            "type": "number",
+            "nullable": true,
+            "description": "Real depth in metres; set with widthM or both null."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -7905,6 +8223,8 @@
           "sortOrder",
           "labels",
           "active",
+          "widthM",
+          "depthM",
           "createdAt",
           "updatedAt"
         ]
@@ -7938,6 +8258,21 @@
           "active": {
             "type": "boolean",
             "default": true
+          },
+          "widthM": {
+            "type": "number",
+            "nullable": true,
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 200,
+            "description": "Metres; widthM and depthM go together (both numbers or both null)."
+          },
+          "depthM": {
+            "type": "number",
+            "nullable": true,
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 200
           }
         },
         "required": [
@@ -7968,6 +8303,21 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "widthM": {
+            "type": "number",
+            "nullable": true,
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 200,
+            "description": "Metres; widthM and depthM go together (both numbers or both null)."
+          },
+          "depthM": {
+            "type": "number",
+            "nullable": true,
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 200
           }
         }
       },
@@ -8074,6 +8424,13 @@
             "type": "number",
             "nullable": true,
             "description": "Cash handed over; required for cash, null for electronic."
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Card last digits, approval code or transfer reference, captured by hand. Non-cash lines only (422 `Una línea en efectivo no lleva referencia`); tabs and line breaks become spaces, then trimmed to 1..60 chars. Not echoed in the result; read it from the payment tenders."
           }
         },
         "required": [
@@ -8291,6 +8648,23 @@
           "parent"
         ]
       },
+      "ProfileRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "profiles.full_name."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
       "CashTransaction": {
         "type": "object",
         "properties": {
@@ -8372,6 +8746,16 @@
             "format": "date-time",
             "nullable": true
           },
+          "openedBy": {
+            "nullable": true,
+            "description": "Who opened it: always the caller's profile at open; null for registers opened before migration 0014 or a deleted profile.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
           "transactions": {
             "description": "Only with include=transactions; legacy payment_transactions, newest first.",
             "type": "array",
@@ -8395,7 +8779,8 @@
           "finalCash",
           "status",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "openedBy"
         ]
       },
       "RegisterMethodSummary": {
@@ -8584,6 +8969,120 @@
           "finalCash",
           "closingTimestamp",
           "summary"
+        ]
+      },
+      "PaidOrderTender": {
+        "type": "object",
+        "properties": {
+          "methodCode": {
+            "type": "string",
+            "description": "Snapshot at payment time."
+          },
+          "methodName": {
+            "type": "string",
+            "description": "Current catalog name of the method."
+          },
+          "methodKind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          },
+          "amount": {
+            "type": "number"
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "methodCode",
+          "methodName",
+          "methodKind",
+          "amount",
+          "reference"
+        ]
+      },
+      "RegisterPaidOrder": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderNumber": {
+            "type": "number",
+            "nullable": true,
+            "description": "Per-restaurant order number."
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ]
+          },
+          "tableNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true
+          },
+          "waiter": {
+            "nullable": true,
+            "description": "The order's waiter.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "paymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amountDue": {
+            "type": "number",
+            "description": "amount_due of the payment."
+          },
+          "tip": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number",
+            "description": "total_charged (amount due + tip)."
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Payment time."
+          },
+          "tenders": {
+            "description": "By line number.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaidOrderTender"
+            }
+          }
+        },
+        "required": [
+          "orderId",
+          "orderNumber",
+          "orderType",
+          "tableNumber",
+          "zoneName",
+          "waiter",
+          "paymentId",
+          "amountDue",
+          "tip",
+          "total",
+          "paidAt",
+          "tenders"
         ]
       },
       "CreateCashTransactionRequest": {

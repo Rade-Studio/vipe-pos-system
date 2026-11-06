@@ -167,3 +167,61 @@ describe("StepPicker (T10, S5)", () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("StepPicker quick-note chips (T22)", () => {
+  const withNotes = [
+    menuCategory({
+      id: "c-9",
+      name: "Carnes",
+      dishes: [
+        menuDish({ id: "d-9", name: "Churrasco", price: 38000, quickNotes: ["Término medio", "Sin cebolla", "Bien asado"] }),
+        menuDish({ id: "d-8", name: "Limonada", price: 5000 }),
+      ],
+    }),
+  ]
+  const open = async (dish: RegExp) => {
+    const onAdd = vi.fn<(item: StepPickerItem) => (() => void) | void>()
+    render(<StepPicker menu={withNotes} onAdd={onAdd} onExit={vi.fn()} />)
+    await click(screen.getByRole("button", { name: /Carnes/ }))
+    await click(screen.getByRole("button", { name: dish }))
+    return onAdd
+  }
+
+  it("offers the dish's quick notes as toggles and appends them to the comment with the free note", async () => {
+    const onAdd = await open(/^Churrasco,/)
+    const group = screen.getByRole("group", { name: "Indicaciones rápidas" })
+    const chip = (name: string) => within(group).getByRole("button", { name })
+    expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Término medio",
+      "Sin cebolla",
+      "Bien asado",
+    ])
+    await click(chip("Sin cebolla"))
+    await click(chip("Término medio"))
+    await click(chip("Bien asado"))
+    await click(chip("Bien asado"))
+    expect(chip("Sin cebolla")).toHaveAttribute("aria-pressed", "true")
+    expect(chip("Bien asado")).toHaveAttribute("aria-pressed", "false")
+    fireEvent.change(screen.getByLabelText("Nota para cocina (opcional)"), { target: { value: " poca sal " } })
+    // The free note stays as typed: the chips do not write into it.
+    expect(screen.getByLabelText("Nota para cocina (opcional)")).toHaveValue(" poca sal ")
+
+    await click(screen.getByRole("button", { name: /^Agregar 1 ·/ }))
+    expect(onAdd.mock.calls[0][0].comments).toBe("Sin cebolla, Término medio, poca sal")
+  })
+
+  it("chips alone make the comment; a dish without quick notes shows no chips", async () => {
+    const onAdd = await open(/^Churrasco,/)
+    await click(screen.getByRole("button", { name: "Término medio" }))
+    await click(screen.getByRole("button", { name: /^Agregar 1 ·/ }))
+    expect(onAdd.mock.calls[0][0].comments).toBe("Término medio")
+
+    // Back on Categoría after the add, the chips start off.
+    await click(screen.getByRole("button", { name: /Carnes/ }))
+    await click(screen.getByRole("button", { name: /^Churrasco,/ }))
+    expect(screen.getByRole("button", { name: "Término medio" })).toHaveAttribute("aria-pressed", "false")
+    await click(screen.getByRole("button", { name: "Volver al paso anterior" }))
+    await click(screen.getByRole("button", { name: /^Limonada,/ }))
+    expect(screen.queryByRole("group", { name: "Indicaciones rápidas" })).not.toBeInTheDocument()
+  })
+})

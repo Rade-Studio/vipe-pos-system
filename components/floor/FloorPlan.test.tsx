@@ -182,3 +182,50 @@ describe("FloorPlan — zones", () => {
     expect(wrap.style.width).toBe("100%")
   })
 })
+
+describe("FloorPlan — live details (T22)", () => {
+  it("draws the elapsed-time chip and the waiter initials on a table with an open order", () => {
+    renderPlan([placed("t-1", 4, { status: "kitchen", waiter: "w-2" }), placed("t-2", 5, { x: 0.6 })], {
+      elapsedOf: (table) => (table.id === "t-1" ? "18 min" : null),
+    })
+    // The time rides in the status chip under the table, never over the number or the badge (S6).
+    const status = within(tableButton(4)).getByTestId("table-status")
+    expect(status).toHaveTextContent("En cocina")
+    expect(within(status).getByText("18 min")).toBeInTheDocument()
+    expect(within(status).getByText("18m")).toBeInTheDocument()
+    expect(within(tableButton(4)).getAllByText("18 min")).toHaveLength(1)
+    expect(within(tableButton(4)).getByText("CR")).toBeInTheDocument()
+    expect(tableButton(4)).toHaveAccessibleName("Mesa 4, En cocina, sin sillas, Carolina Ruiz, abierta hace 18 min")
+    expect(within(tableButton(5)).queryByText(/min$/)).not.toBeInTheDocument()
+  })
+
+  it("greys an inactive table and says so instead of its status", () => {
+    const { onSelectTable } = renderPlan([placed("t-1", 4, { isActive: false }), placed("t-2", 5, { x: 0.6, isActive: true })])
+    const table = tableButton(4)
+    expect(table).toHaveAccessibleName("Mesa 4, Inactiva, sin sillas")
+    expect(table).toHaveAttribute("data-inactive", "true")
+    expect(within(table).getByText("Inactiva")).toBeInTheDocument()
+    expect(within(table).queryByText("Libre")).not.toBeInTheDocument()
+    expect(tableButton(5)).not.toHaveAttribute("data-inactive")
+    // The consumer decides what a tap on it does (the waiter refuses a new order).
+    act(() => table.click())
+    expect(onSelectTable).toHaveBeenCalledWith("t-1")
+  })
+
+  it("an inactive table without a place is greyed in Sin ubicar too", () => {
+    renderPlan([{ id: "t-9", number: 9, status: "available", isActive: false }])
+    const strip = screen.getByRole("region", { name: "Sin ubicar" })
+    expect(within(strip).getByRole("button", { name: /Mesa 9/ })).toHaveTextContent("Inactiva")
+  })
+
+  it("shows the zone minimap with the visible part once the floor is zoomed (phone/tablet)", () => {
+    renderPlan([placed("t-1", 4), placed("t-2", 5, { x: 0.8, status: "kitchen" })])
+    expect(screen.queryByRole("button", { name: /^Minimapa/ })).not.toBeInTheDocument()
+    act(() => screen.getByRole("button", { name: "Acercar" }).click())
+    const minimap = screen.getByRole("button", { name: "Minimapa de Salón principal: toca para ir a esa parte del plano" })
+    expect(within(minimap).getAllByTestId("minimap-table")).toHaveLength(2)
+    expect(within(minimap).getByTestId("minimap-view")).toBeInTheDocument()
+    act(() => screen.getByRole("button", { name: "Ajustar" }).click())
+    expect(screen.queryByRole("button", { name: /^Minimapa/ })).not.toBeInTheDocument()
+  })
+})

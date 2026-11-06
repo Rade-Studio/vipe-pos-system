@@ -35,9 +35,16 @@ export const cashRegisters = pgTable("cash_registers", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	openedBy: uuid("opened_by").default(sql`private.current_profile_id()`),
 }, (table) => [
+	index("idx_cash_registers_opened_by").using("btree", table.openedBy.asc().nullsLast().op("uuid_ops")),
 	index("idx_cash_registers_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("one_open_register_per_restaurant").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")).where(sql`((status)::text = 'open'::text)`),
+	foreignKey({
+			columns: [table.restaurantId, table.openedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "cash_registers_opened_by_fkey"
+		}).onDelete("set null"),
 	foreignKey({
 			columns: [table.restaurantId],
 			foreignColumns: [restaurants.id],
@@ -197,6 +204,9 @@ export const dishes = pgTable("dishes", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
 	subcategoryId: uuid("subcategory_id"),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	// Normalised by the dishes_normalize_quick_notes trigger; CHECK private.quick_notes_valid() (0015).
+	quickNotes: text("quick_notes").array().default(sql`'{}'::text[]`).notNull(),
 }, (table) => [
 	index("idx_dishes_category").using("btree", table.categoryId.asc().nullsLast().op("uuid_ops")),
 	index("idx_dishes_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
@@ -221,6 +231,8 @@ export const dishes = pgTable("dishes", {
 			name: "dishes_subcategory_id_fkey"
 		}).onDelete("restrict"),
 	check("dishes_subcategory_category_check", sql`(subcategory_id IS NULL) OR (category_id IS NOT NULL)`),
+	index("idx_dishes_menu_order").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.categoryId.asc().nullsLast().op("uuid_ops"), table.subcategoryId.asc().nullsLast().op("uuid_ops"), table.sortOrder.asc().nullsLast().op("int4_ops")),
+	check("dishes_quick_notes_check", sql`private.quick_notes_valid(quick_notes)`),
 ]);
 
 export const ingredientCategories = pgTable("ingredient_categories", {
@@ -748,6 +760,7 @@ export const paymentTenders = pgTable("payment_tenders", {
 	amount: bigint({ mode: "number" }).notNull(),
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
 	cashReceived: bigint("cash_received", { mode: "number" }),
+	reference: text(),
 }, (table) => [
 	index("idx_payment_tenders_restaurant_id_payment_method_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.paymentMethodId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
@@ -773,6 +786,7 @@ export const paymentTenders = pgTable("payment_tenders", {
 	check("payment_tenders_cash_received_check", sql`((method_kind = 'cash'::text) AND (cash_received IS NOT NULL) AND (cash_received >= amount)) OR ((method_kind = 'electronic'::text) AND (cash_received IS NULL))`),
 	check("payment_tenders_line_no_check", sql`line_no >= 1`),
 	check("payment_tenders_method_kind_check", sql`method_kind = ANY (ARRAY['cash'::text, 'electronic'::text])`),
+	check("payment_tenders_reference_check", sql`(length(btrim(reference)) >= 1) AND (length(btrim(reference)) <= 60)`),
 ]);
 
 export const paymentTransactions = pgTable("payment_transactions", {
@@ -1225,6 +1239,8 @@ export const tables = pgTable("tables", {
 	shape: text().default('square').notNull(),
 	rotation: numeric().default('0').notNull(),
 	seats: integer(),
+	// No new order on an inactive table: trigger orders_table_active (23514, 0015).
+	isActive: boolean("is_active").default(true).notNull(),
 }, (table) => [
 	index("idx_tables_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	index("idx_tables_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
@@ -1349,6 +1365,8 @@ export const zones = pgTable("zones", {
 	active: boolean().default(true).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	widthM: numeric("width_m"),
+	depthM: numeric("depth_m"),
 }, (table) => [
 	uniqueIndex("zones_restaurant_id_name_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), sql`lower(name)`),
 	foreignKey({
@@ -1365,6 +1383,33 @@ export const zones = pgTable("zones", {
 	check("zones_aspect_check", sql`(aspect > 0.25) AND (aspect < (4)::numeric)`),
 	// Array of at most 12 {text, side: top|right|bottom|left}; full expression in 0012_floor_plan.sql.
 	check("zones_labels_check", sql`jsonb_typeof(labels) = 'array'::text`),
+	check("zones_dimensions_check", sql`(width_m IS NULL) = (depth_m IS NULL)`),
+	check("zones_width_m_check", sql`(width_m > (0)::numeric) AND (width_m <= (200)::numeric)`),
+	check("zones_depth_m_check", sql`(depth_m > (0)::numeric) AND (depth_m <= (200)::numeric)`),
+]);
+
+/** Published menu structure (0015): insert-only history, the latest row wins; written by public.publish_menu(). */
+export const menuPublications = pgTable("menu_publications", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	publishedAt: timestamp("published_at", { withTimezone: true, mode: 'string' }).default(sql`clock_timestamp()`).notNull(),
+	publishedBy: uuid("published_by"),
+	snapshot: jsonb().notNull(),
+}, (table) => [
+	index("idx_menu_publications_latest").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.publishedAt.desc().nullsFirst().op("timestamptz_ops"), table.id.desc().nullsFirst().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "menu_publications_restaurant_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.publishedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "menu_publications_published_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("menu_publications_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("menu_publications_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	check("menu_publications_snapshot_check", sql`jsonb_typeof(snapshot) = 'object'::text`),
 ]);
 
 export const subcategories = pgTable("subcategories", {

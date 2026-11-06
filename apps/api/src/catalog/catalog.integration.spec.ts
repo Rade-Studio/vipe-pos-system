@@ -22,7 +22,7 @@ const c = {
 } as const;
 
 const DISH_KEYS = [
-  'active', 'allowComments', 'categoryId', 'createdAt', 'description', 'id', 'imageUrl', 'name', 'price', 'subcategoryId', 'updatedAt',
+  'active', 'allowComments', 'categoryId', 'createdAt', 'description', 'id', 'imageUrl', 'name', 'price', 'quickNotes', 'sortOrder', 'subcategoryId', 'updatedAt',
 ];
 
 describe('catalog endpoints (Testcontainers, vipe_api)', () => {

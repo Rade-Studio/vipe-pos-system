@@ -30,7 +30,10 @@ export interface StepState {
   skipped: boolean
   dishId: string | null
   quantity: number
+  /** The free note of step 4. */
   note: string
+  /** The dish's quick-note chips turned on (T22), in tap order. */
+  quickNotes: string[]
 }
 
 export type StepAction =
@@ -39,6 +42,7 @@ export type StepAction =
   | { type: "dish"; id: string; available: boolean }
   | { type: "quantity"; delta: number }
   | { type: "note"; note: string }
+  | { type: "quickNote"; note: string }
   | { type: "crumb"; step: Step }
   | { type: "back" }
   | { type: "added" }
@@ -51,9 +55,10 @@ export const initialStepState: StepState = {
   dishId: null,
   quantity: 1,
   note: "",
+  quickNotes: [],
 }
 
-const PICK_RESET = { dishId: null, quantity: 1, note: "" } as const
+const PICK_RESET = { dishId: null, quantity: 1, note: "", quickNotes: [] as string[] }
 
 /** The state at `step` keeping only what was picked before it. */
 function rewind(state: StepState, step: Step): StepState {
@@ -86,6 +91,13 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
       return { ...state, quantity: Math.max(1, state.quantity + action.delta) }
     case "note":
       return { ...state, note: action.note }
+    case "quickNote":
+      return {
+        ...state,
+        quickNotes: state.quickNotes.includes(action.note)
+          ? state.quickNotes.filter((note) => note !== action.note)
+          : [...state.quickNotes, action.note],
+      }
     case "crumb":
       return canGoToStep(state, action.step) ? rewind(state, action.step) : state
     case "back": {
@@ -100,3 +112,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
 
 export const addedMessage = (quantity: number, name: string) => `✓ ${quantity}× ${name} agregada`
 export const soldOutMessage = (name: string) => `Agotado: ${name} · ofrece otra opción`
+
+/** The line comment: the quick-note chips, then the free note, joined with ", " (empty when none). */
+export const composeComment = (quickNotes: readonly string[], note: string): string =>
+  [...quickNotes, note.trim()].filter(Boolean).join(", ")

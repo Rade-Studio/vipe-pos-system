@@ -246,22 +246,23 @@ describe("AdminView — requests issued while a tab is open", () => {
     expect([...new Set(state.apiCalls.map((call) => `${call.method} ${call.path}`))].sort()).toEqual([
       "GET /api/dashboard/summary",
       "GET /api/inventory/items",
+      "GET /api/orders",
       "GET /api/zones",
     ])
   })
 
-  it("reads the active orders when the Órdenes tab is opened, and not before", async () => {
+  it("Resumen reads the active orders once (T26 mini map) and opening Órdenes within 15 s reuses that cached read", async () => {
     render(wrap(<AdminView profile={profile} onChangeProfile={() => {}} authRole="admin" />))
     await waitFor(() => expect(screen.getByText("Ventas del Mes")).toBeInTheDocument())
-    expect(state.apiCalls.some((call) => call.path === "/api/orders")).toBe(false)
+    await waitFor(() => expect(state.apiCalls.some((call) => call.path === "/api/orders")).toBe(true))
+    // ONE read of the active statuses, with the table and waiter names.
+    const reads = () => state.apiCalls.filter((call) => call.path === "/api/orders")
+    expect(reads()).toHaveLength(1)
+    expect(reads()[0].init).toEqual({ params: { query: { status: "active,kitchen,delivered", include: "table,waiter" } } })
 
     await openSection("orders")
 
-    await waitFor(() => expect(state.apiCalls.some((call) => call.path === "/api/orders")).toBe(true))
-    // ONE read of the active statuses, with the table and waiter names.
-    const reads = state.apiCalls.filter((call) => call.path === "/api/orders")
-    expect(reads).toHaveLength(1)
-    expect(reads[0].init).toEqual({ params: { query: { status: "active,kitchen,delivered", include: "table,waiter" } } })
+    expect(reads()).toHaveLength(1)
   })
 
   it("re-reads the active orders exactly once per refresh click", async () => {

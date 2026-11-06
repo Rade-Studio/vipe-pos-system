@@ -52,14 +52,12 @@ const tree = {
       dishes: [menuDish({ id: "d-3", name: "Limonada", price: 5000, allowComments: false })],
     }),
   ],
+  uncategorized: [menuDish({ id: "d-9", name: "Empanada", price: 3000 })],
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   env.getMenuTree.mockResolvedValue(tree)
-  env.fetchDishes.mockResolvedValue([
-    { id: "d-9", name: "Empanada", price: 3000, categoryId: null, active: true, allowComments: true },
-  ])
   env.createDeliveryOrder.mockResolvedValue({ consumption: { shortages: [] } })
 })
 

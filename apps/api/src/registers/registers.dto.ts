@@ -8,6 +8,9 @@ export const CASH_TRANSACTION_TYPES = ['deposit', 'withdrawal'] as const;
 export type CashTransactionType = (typeof CASH_TRANSACTION_TYPES)[number];
 /** register_summary accepts at most 100 ids. */
 const MAX_SUMMARY_IDS = 100;
+/** GET /registers/:id/paid-orders returns at most this many rows (default 100). */
+export const PAID_ORDERS_MAX = 200;
+export const PAID_ORDERS_DEFAULT = 100;
 /** numeric(10,2) columns. */
 const money = z.number().max(99_999_999.99);
 
@@ -15,7 +18,14 @@ export const registerIncludeQuerySchema = z.strictObject({ include: csvOf(REGIST
 export const registerListQuerySchema = registerIncludeQuerySchema.extend({ date: dateQuery.optional() });
 export const registerSummaryQuerySchema = z.strictObject({ ids: guidListQuery(MAX_SUMMARY_IDS).pipe(z.array(z.guid()).min(1)) });
 
-/** No timestamps from the client: the server stamps opening and cash movements. */
+export const paidOrdersQuerySchema = z.strictObject({
+  limit: z.coerce.number().int().min(1).max(PAID_ORDERS_MAX).optional(),
+});
+/**
+ * No timestamps and no opener from the client: the server stamps the opening
+ * and cash movements, and opened_by defaults to the caller's profile (an
+ * `openedBy` field is an unknown field, 422).
+ */
 export const openRegisterSchema = z.strictObject({ initialCash: money.min(0) });
 export const createCashTransactionSchema = z.strictObject({
   amount: money.positive(),
@@ -32,6 +42,10 @@ export class CashTransaction {
   @ApiProperty({ format: 'date-time', description: 'Server clock.' }) timestamp!: string;
 }
 
+export class ProfileRef {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'profiles.full_name.' }) name!: string;
+}
 export class CashRegister {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'date-time', description: 'Server clock.' }) openingTimestamp!: string;
@@ -41,6 +55,12 @@ export class CashRegister {
   @ApiProperty({ enum: ['open', 'closed'] }) status!: 'open' | 'closed';
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) updatedAt!: string | null;
+  @ApiProperty({
+    type: ProfileRef,
+    nullable: true,
+    description: "Who opened it: always the caller's profile at open; null for registers opened before migration 0014 or a deleted profile.",
+  })
+  openedBy!: ProfileRef | null;
   @ApiPropertyOptional({ type: [LegacyPaymentTransaction], description: 'Only with include=transactions; legacy payment_transactions, newest first.' })
   transactions?: LegacyPaymentTransaction[];
   @ApiPropertyOptional({ type: [CashTransaction], description: 'Only with include=cashTransactions; newest first.' })
@@ -102,4 +122,26 @@ export class CloseRegisterResult {
   @ApiProperty({ format: 'date-time', description: 'Server clock of the close (the original one on a replay).' })
   closingTimestamp!: string;
   @ApiProperty({ type: RegisterSummary }) summary!: RegisterSummary;
+}
+export class PaidOrderTender {
+  @ApiProperty({ description: 'Snapshot at payment time.' }) methodCode!: string;
+  @ApiProperty({ description: 'Current catalog name of the method.' }) methodName!: string;
+  @ApiProperty({ enum: PAYMENT_METHOD_KINDS }) methodKind!: PaymentMethodKind;
+  @ApiProperty() amount!: number;
+  @ApiProperty({ type: String, nullable: true }) reference!: string | null;
+}
+/** One pay_order payment of the register with its order context (legacy payment_transactions are not listed). */
+export class RegisterPaidOrder {
+  @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({ type: Number, nullable: true, description: 'Per-restaurant order number.' }) orderNumber!: number | null;
+  @ApiProperty({ enum: ['dine_in', 'delivery'] }) orderType!: 'dine_in' | 'delivery';
+  @ApiProperty({ type: Number, nullable: true }) tableNumber!: number | null;
+  @ApiProperty({ type: String, nullable: true }) zoneName!: string | null;
+  @ApiProperty({ type: ProfileRef, nullable: true, description: "The order's waiter." }) waiter!: ProfileRef | null;
+  @ApiProperty({ format: 'uuid' }) paymentId!: string;
+  @ApiProperty({ description: 'amount_due of the payment.' }) amountDue!: number;
+  @ApiProperty() tip!: number;
+  @ApiProperty({ description: 'total_charged (amount due + tip).' }) total!: number;
+  @ApiProperty({ format: 'date-time', description: 'Payment time.' }) paidAt!: string;
+  @ApiProperty({ type: [PaidOrderTender], description: 'By line number.' }) tenders!: PaidOrderTender[];
 }

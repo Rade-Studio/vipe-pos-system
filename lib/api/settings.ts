@@ -9,7 +9,7 @@ import { type BusinessConfig, fetchConfig, saveConfig } from "./config"
 export type LateThresholds = Pick<BusinessConfig, "kitchenLateMinutes" | "deliveryLateMinutes">
 
 /** The server defaults, for screens that render before the config loads. */
-export const DEFAULT_LATE_THRESHOLDS: LateThresholds = { kitchenLateMinutes: 15, deliveryLateMinutes: 45 }
+export const DEFAULT_LATE_THRESHOLDS: LateThresholds = { kitchenLateMinutes: 25, deliveryLateMinutes: 45 }
 
 export const lateThresholdsOf = (config: LateThresholds): LateThresholds => ({
   kitchenLateMinutes: config.kitchenLateMinutes,

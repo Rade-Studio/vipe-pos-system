@@ -57,7 +57,12 @@ const env = vi.hoisted(() => {
     setDeliveryStatusCalls: [] as { orderId: string; action: string }[],
     /** Realtime state the subscription reports. */
     connected: true,
+    /** `GET /api/config` answer; null makes the read fail. */
+    config: null as null | Record<string, unknown>,
+    configReads: 0,
     reset() {
+      this.config = null
+      this.configReads = 0
       this.statusReads = []
       this.kitchenRows = []
       this.pendingRead = null
@@ -96,6 +101,11 @@ vi.mock("@/lib/api/client", async () => {
           return { data: rows }
         }
         return { data: env.kitchenRows }
+      }
+      case "GET /api/config": {
+        env.configReads += 1
+        if (!env.config) throw new ApiError(500, "Internal Server Error", "config down")
+        return { data: env.config }
       }
       case "POST /api/orders/{id}/items/served": {
         const ids: string[] = init.body.itemIds
@@ -391,7 +401,9 @@ describe("kitchen board realtime batches", () => {
 
     expect(storeOrder("o-9")?.items).toHaveLength(5)
     expect(screen.getByText("Nuevo 0")).toBeInTheDocument()
-    expect(screen.getAllByText("+5 nuevos")).toHaveLength(1)
+    // T23: "+n nuevos" comes from the persisted send time; five items sent
+    // together are the order's first send, not additions.
+    expect(screen.queryByText(/^\+\d+ nuevos$/)).toBeNull()
     expect(env.toasts.filter((t) => t.title === "¡Nueva orden!")).toHaveLength(1)
     expect(screen.getByText("¡Nuevas órdenes!")).toBeInTheDocument()
     expect(env.statusReads).toEqual(["kitchen"])
@@ -427,7 +439,7 @@ describe("kitchen board realtime batches", () => {
     act(() => {
       env.onBatch?.({
         orderId: "o-1",
-        order: mapped(row("o-1", { items: [item("o-1-i-1"), { ...item("o-1-i-2"), name: "Postrezo" }] })),
+        order: mapped(row("o-1", { items: [item("o-1-i-1"), { ...item("o-1-i-2", "kitchen", 5), name: "Postrezo" }] })),
         newItemIds: ["o-1-i-2"],
         servedItemIds: [],
         isNewOrder: false,
@@ -436,6 +448,7 @@ describe("kitchen board realtime batches", () => {
 
     expect(storeOrder("o-1")?.items.map((i) => i.name)).toEqual(["O-1-I-1", "Postrezo"])
     expect(screen.getByText("Postrezo")).toBeInTheDocument()
+    expect(screen.getByText("+1 nuevos")).toBeInTheDocument()
     expect(env.toasts.filter((t) => t.title === "¡Nuevo producto en cocina!")).toHaveLength(1)
     expect(env.statusReads).toEqual(["kitchen"])
   })
@@ -485,7 +498,12 @@ describe("kitchen board local writes", () => {
     })
 
     expect(env.itemWrites).toEqual([{ orderId: "o-1", ids: ["o-1-i-1"] }])
-    expect(storeOrder("o-1")?.items.map((line) => line.id)).toEqual(["o-1-i-2"])
+    // T23: the served line stays on the ticket, marked served.
+    expect(storeOrder("o-1")?.items.map((line) => [line.id, line.status])).toEqual([
+      ["o-1-i-1", "served"],
+      ["o-1-i-2", "kitchen"],
+    ])
+    expect(screen.getByRole("button", { name: "Entregar toda (1)" })).toBeInTheDocument()
     expect(env.orderUpdates).toEqual([])
   })
 
@@ -747,5 +765,163 @@ describe("kitchen ticket rail (rediseno-pos T13)", () => {
     await act(async () => resolve([]))
     expect(await screen.findByText("No hay órdenes pendientes en cocina")).toBeInTheDocument()
     expect(screen.queryByTestId("kitchen-loading")).toBeNull()
+  })
+})
+
+describe("kitchen ticket real data (rediseno-pos T23)", () => {
+  // One clock reading per test, so rows of the same send share their time exactly.
+  let clock = Date.now()
+  beforeEach(() => {
+    clock = Date.now()
+  })
+  const minutesAgo = (minutes: number) => new Date(clock - minutes * 60_000).toISOString()
+  const recent = (id: string, minutes: number, status: "kitchen" | "served" = "kitchen") => ({
+    ...item(id, status),
+    addedAt: minutesAgo(minutes),
+  })
+
+  it("shows the real order number, the order note and the guests in the header", async () => {
+    env.kitchenRows = [{ ...row("o-1"), orderNumber: 128, guests: 4, notes: "Cumpleaños: traer el postre con vela" }]
+    renderKitchen()
+    const ticket = await screen.findByRole("article")
+
+    expect(within(ticket).getByText(/Orden #128/)).toBeInTheDocument()
+    expect(within(ticket).queryByText(/#o-1/)).toBeNull()
+    expect(within(ticket).getByText(/4 personas/)).toBeInTheDocument()
+    expect(within(ticket).getByText("Cumpleaños: traer el postre con vela")).toBeInTheDocument()
+    expect(within(ticket).getByText("Comentario:")).toBeInTheDocument()
+  })
+
+  it("shows no guests and no note when the order has none, and 1 persona in the singular", async () => {
+    env.kitchenRows = [{ ...row("o-1"), orderNumber: 7, guests: 1, notes: null }, { ...row("o-2"), orderNumber: 8, guests: null }]
+    renderKitchen()
+    await screen.findByText("O-1-I-1")
+    const [first, second] = screen.getAllByRole("article")
+
+    expect(within(first).getByText(/1 persona\b/)).toBeInTheDocument()
+    expect(within(first).queryByText("Comentario:")).toBeNull()
+    expect(within(second).queryByText(/persona/)).toBeNull()
+    expect(within(second).getByText(/Orden #8/)).toBeInTheDocument()
+  })
+
+  it("keeps a delivery's customer heading and Domicilio tag next to its number", async () => {
+    env.deliveries = [
+      { delivery: { orderId: "d-1", status: "preparing", customerName: "Carolina Gómez", addressLine: "Cra. 43A", notes: null, fee: 0 }, isPaid: false, order: { total: 100 } },
+    ]
+    env.kitchenRows = [{ ...row("d-1", { orderType: "delivery", tableId: null }), orderNumber: 131 }]
+    renderKitchen()
+    const ticket = await screen.findByRole("article")
+
+    expect(within(ticket).getByRole("heading", { name: "Carolina Gómez" })).toBeInTheDocument()
+    expect(within(ticket).getByText("Domicilio")).toBeInTheDocument()
+    expect(within(ticket).getByText(/Orden #131/)).toBeInTheDocument()
+  })
+
+  it("keeps served lines struck through as Entregado without counting them as pending", async () => {
+    env.kitchenRows = [
+      row("o-1", { items: [{ ...item("o-1-i-1", "served"), name: "Limonada" }, { ...item("o-1-i-2"), name: "Bandeja" }] }),
+    ]
+    renderKitchen()
+    const ticket = await screen.findByRole("article")
+
+    const served = within(ticket).getByText("Limonada")
+    expect(served.closest("li")).toHaveTextContent("Entregado")
+    expect(served).toHaveClass("line-through")
+    expect(within(ticket).queryByRole("button", { name: /Entregar 1 Limonada/ })).toBeNull()
+    expect(within(ticket).getByRole("button", { name: "Entregar 1 Bandeja" })).toBeInTheDocument()
+    expect(within(ticket).getByRole("button", { name: "Entregar toda (1)" })).toBeInTheDocument()
+
+    act(() => within(ticket).getByRole("button", { name: "Entregar toda (1)" }).click())
+    const dialog = await screen.findByRole("alertdialog")
+    expect(within(dialog).queryByText("Limonada")).toBeNull()
+    await act(async () => within(dialog).getByRole("button", { name: "Confirmar entrega" }).click())
+    expect(env.itemWrites).toEqual([{ orderId: "o-1", ids: ["o-1-i-2"] }])
+    expect(storeOrder("o-1")).toBeUndefined()
+  })
+
+  it("counts +n nuevos from the persisted send time, so it survives a remount", async () => {
+    env.kitchenRows = [
+      row("o-1", { items: [recent("o-1-i-1", 20, "served"), recent("o-1-i-2", 20), recent("o-1-i-3", 3), recent("o-1-i-4", 3)] }),
+    ]
+    const first = renderKitchen()
+    const ticket = await screen.findByRole("article")
+    expect(within(ticket).getByText("+2 nuevos")).toBeInTheDocument()
+    expect(within(ticket).getAllByText("Nuevo")).toHaveLength(2)
+
+    first.view.unmount()
+    useOrderStore.setState({ orders: [] })
+    renderKitchen()
+    expect(await screen.findByText("+2 nuevos")).toBeInTheDocument()
+  })
+
+  it("counts +n nuevos as the new lines the cook sees, each carrying Nuevo (same dish in one later batch is one line)", async () => {
+    env.kitchenRows = [
+      row("o-1", {
+        items: [
+          { ...recent("o-1-i-1", 20), name: "Bandeja" },
+          { ...recent("o-1-i-2", 4), name: "Empanadas" },
+          { ...recent("o-1-i-3", 4), name: "Empanadas" },
+          { ...recent("o-1-i-4", 4), name: "Arroz" },
+        ],
+      }),
+    ]
+    renderKitchen()
+    const ticket = await screen.findByRole("article")
+
+    expect(within(ticket).getByText("+2 nuevos")).toBeInTheDocument()
+    const chips = within(ticket).getAllByText("Nuevo")
+    expect(chips).toHaveLength(2)
+    expect(chips.map((chip) => chip.closest("li")?.textContent)).toEqual([
+      expect.stringContaining("Empanadas"),
+      expect.stringContaining("Arroz"),
+    ])
+    expect(within(ticket).getByText("Bandeja").closest("li")).not.toHaveTextContent("Nuevo")
+  })
+
+  it("shows one line for the same dish sent together even when its rows straddle a millisecond", async () => {
+    const at = (ms: number) => new Date(clock - 4 * 60_000 + ms).toISOString()
+    env.kitchenRows = [
+      row("o-1", {
+        items: [
+          { ...recent("o-1-i-1", 20), name: "Bandeja" },
+          { ...item("o-1-i-2"), name: "Empanadas", addedAt: at(0) },
+          { ...item("o-1-i-3"), name: "Empanadas", addedAt: at(1) },
+        ],
+      }),
+    ]
+    renderKitchen()
+    const ticket = await screen.findByRole("article")
+    expect(within(ticket).getByText("+1 nuevos")).toBeInTheDocument()
+    expect(within(ticket).getAllByText("Empanadas")).toHaveLength(1)
+  })
+
+  it("reads kitchenLateMinutes once per session: at risk from 60% of it, late at it", async () => {
+    env.config = { kitchenLateMinutes: 20, deliveryLateMinutes: 45 }
+    env.kitchenRows = [row("o-1", { items: [recent("o-1-i-1", 13)] }), row("o-2", { items: [recent("o-2-i-1", 21)] })]
+    renderKitchen()
+    await waitFor(() => expect(screen.getAllByText("En riesgo")).toHaveLength(1))
+    // Oldest first: o-2 (21 min) is late, o-1 (13 min) is at risk.
+    const [late, risk] = screen.getAllByRole("article")
+    expect(within(late).getByText("Atrasada")).toBeInTheDocument()
+    expect(within(risk).getByText("En riesgo")).toBeInTheDocument()
+    expect(screen.getByText("0–11 min")).toBeInTheDocument()
+    expect(screen.getByText("12–19 min")).toBeInTheDocument()
+    expect(screen.getByText("20+ min")).toBeInTheDocument()
+
+    await act(async () => screen.getByRole("button", { name: "Actualizar" }).click())
+    expect(env.configReads).toBe(1)
+  })
+
+  it("falls back to the 25-minute default when the config read fails", async () => {
+    env.config = null
+    env.kitchenRows = [row("o-1", { items: [recent("o-1-i-1", 13)] }), row("o-2", { items: [recent("o-2-i-1", 16)] })]
+    renderKitchen()
+    await screen.findAllByRole("article")
+    await waitFor(() => expect(env.configReads).toBe(1))
+    const [older, newer] = screen.getAllByRole("article")
+    expect(within(older).getByText("En riesgo")).toBeInTheDocument()
+    expect(within(newer).getByText("A tiempo")).toBeInTheDocument()
+    expect(screen.getByText("0–14 min")).toBeInTheDocument()
+    expect(screen.getByText("25+ min")).toBeInTheDocument()
   })
 })

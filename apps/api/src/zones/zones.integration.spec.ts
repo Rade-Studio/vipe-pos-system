@@ -13,7 +13,9 @@ const z = {
   hallTable: 'fa100000-0000-0000-0000-000000000001',
 } as const;
 
-const ZONE_KEYS = ['active', 'aspect', 'createdAt', 'id', 'labels', 'name', 'sortOrder', 'updatedAt'];
+const ZONE_KEYS = ['active', 'aspect', 'createdAt', 'depthM', 'id', 'labels', 'name', 'sortOrder', 'updatedAt', 'widthM'];
+const DIMENSIONS_TOGETHER = 'El ancho y el fondo de la zona se indican juntos';
+const DIMENSIONS_RANGE = 'Las medidas de la zona deben ser mayores que 0 y de máximo 200 metros';
 const HAS_TABLES = 'La zona tiene mesas; muévelas o elimínalas primero';
 
 describe('zones endpoints (Testcontainers, vipe_api)', () => {
@@ -146,6 +148,47 @@ describe('zones endpoints (Testcontainers, vipe_api)', () => {
       expect(await db('SELECT 1 FROM zones WHERE id = $1', [z.closed])).toHaveLength(1);
       expect((await adminA().delete(`/api/zones/${z.closed}`)).status).toBe(204);
       expect(await db('SELECT 1 FROM zones WHERE id = $1', [z.closed])).toHaveLength(0);
+    });
+  });
+
+  describe('zone dimensions', () => {
+    it('creates and updates a zone with both dimensions, and clears them together', async () => {
+      const res = await adminA().post('/api/zones', { name: 'Con medidas', widthM: 12.5, depthM: 8 });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ widthM: 12.5, depthM: 8 });
+      const updated = await adminA().patch(`/api/zones/${res.body.id}`, { widthM: 200, depthM: 0.5 });
+      expect(updated.body).toMatchObject({ widthM: 200, depthM: 0.5 });
+      expect((await adminA().patch(`/api/zones/${res.body.id}`, { name: 'Con medidas 2' })).body).toMatchObject({ widthM: 200, depthM: 0.5 });
+      const cleared = await adminA().patch(`/api/zones/${res.body.id}`, { widthM: null, depthM: null });
+      expect(cleared.body).toMatchObject({ widthM: null, depthM: null });
+      await adminA().delete(`/api/zones/${res.body.id}`);
+    });
+
+    it('lists zones without dimensions as null', async () => {
+      const res = await waiterA().get('/api/zones');
+      expect(res.body.find((row: { id: string }) => row.id === z.hall)).toMatchObject({ widthM: null, depthM: null });
+    });
+
+    it.each([
+      [{ widthM: 10 }, DIMENSIONS_TOGETHER],
+      [{ widthM: 10, depthM: null }, DIMENSIONS_TOGETHER],
+      [{ widthM: 0, depthM: 5 }, DIMENSIONS_RANGE],
+      [{ widthM: 10, depthM: 200.5 }, DIMENSIONS_RANGE],
+      [{ widthM: -1, depthM: 5 }, DIMENSIONS_RANGE],
+    ])('refuses %o with 422 in Spanish and stores nothing', async (dimensions, message) => {
+      const before = await zoneCount();
+      const res = await adminA().post('/api/zones', { name: 'Medidas', ...dimensions });
+      expect(res.status).toBe(422);
+      expect(res.body.message).toContain(message);
+      expect(await zoneCount()).toBe(before);
+      const patch = await adminA().patch(`/api/zones/${z.terrace}`, dimensions);
+      expect(patch.status).toBe(422);
+      expect(patch.body.message).toContain(message);
+      expect(await db('SELECT width_m, depth_m FROM zones WHERE id = $1', [z.terrace])).toEqual([{ width_m: null, depth_m: null }]);
+    });
+
+    it('refuses dimensions from a waiter', async () => {
+      expect((await waiterA().patch(`/api/zones/${z.terrace}`, { widthM: 5, depthM: 5 })).status).toBe(403);
     });
   });
 });

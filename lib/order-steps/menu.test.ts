@@ -58,21 +58,23 @@ describe("menu tree helpers of the step picker (T10)", () => {
     expect(dishesOf(flagOnly, null, true).map((dish) => dish.id)).toEqual(["d-9"])
   })
 
-  it("adds the active dishes without category as a last Otros category", () => {
-    const loose = [
-      { ...menuDish({ id: "d-6", name: "Propina voluntaria" }), available: undefined },
-      { ...menuDish({ id: "d-7", name: "Plato de otra categoría", categoryId: "c-1" }), available: undefined },
-      { ...menuDish({ id: "d-8", name: "Inactivo", active: false }), available: undefined },
+  it("adds the tree's dishes without category as a last Otros category with their real availability (T22)", () => {
+    const uncategorized = [
+      menuDish({ id: "d-6", name: "Propina voluntaria" }),
+      menuDish({ id: "d-7", name: "Porción de arroz", available: false }),
     ]
-    const merged = withUncategorized([split, direct], loose)
+    const merged = withUncategorized([split, direct], uncategorized)
     expect(merged.map((category) => category.name)).toEqual(["Platos fuertes", "Postres", "Otros"])
     const others = merged[2]
     expect(others.id).toBe(OTHERS_CATEGORY_ID)
     expect(others.subcategories).toEqual([])
-    expect(others.dishes.map((dish) => [dish.id, dish.available])).toEqual([["d-6", true]])
+    expect(others.dishes.map((dish) => [dish.id, dish.available, dish.subcategoryId])).toEqual([
+      ["d-6", true, null],
+      ["d-7", false, null],
+    ])
     expect(skipsSubcategories(others)).toBe(true)
 
     expect(withUncategorized([split], [])).toEqual([split])
-    expect(withUncategorized([split], loose.slice(1))).toEqual([split])
+    expect(withUncategorized([split], undefined)).toEqual([split])
   })
 })

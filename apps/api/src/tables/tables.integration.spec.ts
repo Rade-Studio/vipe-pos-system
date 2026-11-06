@@ -25,6 +25,7 @@ const TABLE_KEYS = [
   'createdAt',
   'h',
   'id',
+  'isActive',
   'number',
   'rotation',
   'seats',
@@ -282,6 +283,45 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
     it('answers 404 for a table of another restaurant', async () => {
       expect((await adminB().post(`/api/tables/${t.kitchen}/release`, { force: true })).status).toBe(404);
       expect(await tableRow(t.kitchen)).toMatchObject({ status: 'kitchen' });
+    });
+  });
+
+  describe('inactive tables', () => {
+    const insertOrder = (tableId: string) =>
+      db(`INSERT INTO orders (table_id, status, subtotal, tax, tax_percentage, total, restaurant_id) VALUES ($1, 'active', 0, 0, 0, 0, $2)`, [
+        tableId,
+        fixtures.restaurantA,
+      ]);
+
+    it('lets the admin deactivate a table with PATCH; lists keep it, flagged', async () => {
+      const res = await adminA().patch(`/api/tables/${t.reserved}`, { isActive: false });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ id: t.reserved, isActive: false, status: 'reserved', number: 5 });
+      const list = await waiterA().get('/api/tables');
+      expect(list.body.find((row: { id: string }) => row.id === t.reserved)).toMatchObject({ isActive: false });
+      expect(list.body.filter((row: { isActive: boolean }) => row.isActive).length).toBe(list.body.length - 1);
+      await expect(insertOrder(t.reserved)).rejects.toMatchObject({ code: '23514' });
+    });
+
+    it('keeps the flag on a PATCH without isActive and turns it back on', async () => {
+      expect((await adminA().patch(`/api/tables/${t.reserved}`, { seats: 6 })).body).toMatchObject({ isActive: false, seats: 6 });
+      expect((await adminA().patch(`/api/tables/${t.reserved}`, { isActive: true })).body.isActive).toBe(true);
+    });
+
+    it('refuses the toggle from a waiter and a non-boolean value', async () => {
+      expect((await waiterA().patch(`/api/tables/${t.free}`, { isActive: false })).status).toBe(403);
+      expect((await adminA().patch(`/api/tables/${t.free}`, { isActive: 'no' })).status).toBe(422);
+      expect(await db('SELECT is_active FROM tables WHERE id = $1', [t.free])).toEqual([{ is_active: true }]);
+    });
+
+    it('creates a table inactive on request and active by default', async () => {
+      const off = await adminA().post('/api/tables', { number: 77, isActive: false });
+      expect(off.status).toBe(201);
+      expect(off.body.isActive).toBe(false);
+      const on = await adminA().post('/api/tables', { number: 78 });
+      expect(on.body.isActive).toBe(true);
+      await adminA().delete(`/api/tables/${off.body.id}`);
+      await adminA().delete(`/api/tables/${on.body.id}`);
     });
   });
 

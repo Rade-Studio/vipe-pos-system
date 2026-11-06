@@ -49,6 +49,7 @@ interface TableRow {
   shape: TableShape;
   rotation: number;
   seats: number | null;
+  is_active: boolean;
   created_at: Date | string | null;
   updated_at: Date | string | null;
 }
@@ -70,6 +71,7 @@ const toTable = (row: TableRow): Table => ({
   shape: row.shape,
   rotation: row.rotation,
   seats: row.seats,
+  isActive: row.is_active,
   createdAt: iso(row.created_at),
   updatedAt: iso(row.updated_at),
 });
@@ -96,12 +98,12 @@ export class TablesService {
     const placed = input.x !== undefined && input.x !== null;
     const slot = !placed && zoneId ? await this.freeSlot(zoneId) : undefined;
     const [row] = await this.rows<{ id: string }>(sql`
-      INSERT INTO public.tables (number, status, zone_id, x, y, w, h, shape, rotation, seats)
+      INSERT INTO public.tables (number, status, zone_id, x, y, w, h, shape, rotation, seats, is_active)
       VALUES (${input.number}, ${input.status ?? 'available'}, ${zoneId},
               ${slot?.x ?? input.x ?? null}, ${slot?.y ?? input.y ?? null},
               ${slot ? SLOT_SIZE : (input.w ?? null)}, ${slot ? SLOT_SIZE : (input.h ?? null)},
               ${input.shape ?? 'square'}, ${input.rotation ?? 0},
-              ${input.seats !== undefined ? input.seats : null})
+              ${input.seats !== undefined ? input.seats : null}, ${input.isActive ?? true})
       RETURNING id`);
     return this.get(row.id);
   }
@@ -138,6 +140,7 @@ export class TablesService {
     if (input.number !== undefined) sets.push(sql`number = ${input.number}`);
     if (input.status !== undefined) sets.push(sql`status = ${input.status}`);
     if (waiterId !== undefined) sets.push(sql`waiter_id = ${waiterId}`);
+    if (input.isActive !== undefined) sets.push(sql`is_active = ${input.isActive}`);
     for (const key of LAYOUT_COLUMNS) {
       if (input[key] !== undefined) sets.push(sql`${COLUMN[key]} = ${input[key]}`);
     }
@@ -231,7 +234,7 @@ export class TablesService {
     return this.rows<TableRow>(sql`
       SELECT t.id, t.number, t.status, t.waiter_id, p.full_name AS waiter_name,
              t.zone_id, t.x::float8 AS x, t.y::float8 AS y, t.w::float8 AS w, t.h::float8 AS h,
-             t.shape, t.rotation::float8 AS rotation, t.seats, t.created_at, t.updated_at
+             t.shape, t.rotation::float8 AS rotation, t.seats, t.is_active, t.created_at, t.updated_at
         FROM public.tables t
         LEFT JOIN public.profiles p ON p.id = t.waiter_id
        ${tail}`);

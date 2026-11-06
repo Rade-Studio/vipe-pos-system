@@ -12,6 +12,8 @@ export function menuDish(overrides: Partial<MenuTreeDishDto>): MenuTreeDishDto {
     imageUrl: null,
     active: true,
     allowComments: true,
+    sortOrder: 0,
+    quickNotes: [],
     createdAt: null,
     updatedAt: null,
     available: true,
