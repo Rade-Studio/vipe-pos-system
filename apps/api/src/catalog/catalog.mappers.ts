@@ -30,6 +30,8 @@ export const toDish = (row: DishRow): Dish => ({
   imageUrl: row.imageUrl,
   active: row.active,
   allowComments: row.allowComments,
+  sortOrder: row.sortOrder,
+  quickNotes: row.quickNotes,
   createdAt: toIso(row.createdAt),
   updatedAt: toIso(row.updatedAt),
 });

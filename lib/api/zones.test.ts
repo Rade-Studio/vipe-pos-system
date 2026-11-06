@@ -10,7 +10,7 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock("@/lib/api/client", () => ({ api }))
 
-import { create, delete as deleteZone, getAll, update, type ZoneDto } from "./zones"
+import { create, delete as deleteZone, getAll, setZoneDimensions, update, type ZoneDto } from "./zones"
 
 const zone: ZoneDto = {
   id: "z-1",
@@ -19,6 +19,8 @@ const zone: ZoneDto = {
   sortOrder: 1,
   labels: [{ text: "Entrada", side: "bottom" }],
   active: true,
+  widthM: null,
+  depthM: null,
   createdAt: "2026-11-04T11:00:00.000Z",
   updatedAt: "2026-11-04T12:00:00.000Z",
 }
@@ -48,6 +50,15 @@ describe("zones requests", () => {
     api.DELETE.mockResolvedValueOnce({ data: undefined })
     await deleteZone("z-1")
     expect(api.DELETE).toHaveBeenCalledWith("/api/zones/{id}", byId)
+  })
+
+  it("sends the real dimensions together, and clears them together", async () => {
+    await create({ name: "Patio", widthM: 12.5, depthM: 8 })
+    expect(api.POST).toHaveBeenCalledWith("/api/zones", { body: { name: "Patio", widthM: 12.5, depthM: 8 } })
+    await setZoneDimensions("z-1", { widthM: 10, depthM: 6 })
+    expect(api.PATCH).toHaveBeenCalledWith("/api/zones/{id}", { ...byId, body: { widthM: 10, depthM: 6 } })
+    await setZoneDimensions("z-1", null)
+    expect(api.PATCH).toHaveBeenLastCalledWith("/api/zones/{id}", { ...byId, body: { widthM: null, depthM: null } })
   })
 
   it("throws on a 2xx without body", async () => {

@@ -108,3 +108,21 @@ describe("CategoryForm", () => {
     await waitFor(() => expect(catalog.updateCategory).toHaveBeenCalledWith("c-1", expect.objectContaining({ color: "emerald" })))
   })
 })
+
+describe("CategoryForm — tile name hint (T27, L19 e)", () => {
+  it("shows a live n/22 count and a soft warning above 22, without blocking the save", async () => {
+    catalog.createCategory.mockResolvedValue({})
+    render(<CategoryForm onSuccess={vi.fn()} />)
+    const name = screen.getByPlaceholderText("Nombre de la categoría")
+
+    expect(screen.getByText("0/22")).toBeInTheDocument()
+    fireEvent.change(name, { target: { value: "Bebidas" } })
+    expect(screen.getByText("7/22")).toBeInTheDocument()
+    expect(screen.queryByText(/puede cortarse/)).not.toBeInTheDocument()
+
+    fireEvent.change(name, { target: { value: "Bebidas calientes y frías" } })
+    expect(screen.getByText("25/22")).toBeInTheDocument()
+    expect(screen.getByText("Más de 22 caracteres: puede cortarse en el botón del mesero.")).toBeInTheDocument()
+    expect(name).not.toHaveAttribute("maxLength")
+  })
+})

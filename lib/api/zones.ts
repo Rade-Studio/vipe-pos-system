@@ -40,6 +40,11 @@ export async function update(zoneId: string, body: UpdateZoneBody): Promise<Zone
   return required(data)
 }
 
+/** Admin. Real size in metres (0 < m <= 200), both or neither; null clears both. */
+export async function setZoneDimensions(zoneId: string, dimensions: { widthM: number; depthM: number } | null): Promise<ZoneDto> {
+  return update(zoneId, dimensions ?? { widthM: null, depthM: null })
+}
+
 async function deleteZone(zoneId: string): Promise<void> {
   await api.DELETE("/api/zones/{id}", byId(zoneId))
 }
