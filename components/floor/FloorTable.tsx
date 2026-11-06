@@ -4,10 +4,10 @@ import type { CSSProperties, KeyboardEvent, PointerEvent } from "react"
 import { Bookmark, Check, Clock, ConciergeBell, User, type LucideIcon } from "lucide-react"
 import type { Table, TableStatus } from "@/types"
 import { cn } from "@/lib/utils"
-import { chairPositions, initials, seatsText, tableAccessibleName, tableBox } from "@/lib/floor/layout"
+import { chairPositions, initials, isInactive, seatsText, tableAccessibleName, tableBox } from "@/lib/floor/layout"
 import { SHAPE_LABELS } from "@/lib/floor/editor"
 import { StatusChip } from "./StatusChip"
-import { toneClasses } from "./tones"
+import { INACTIVE_TONE, toneClasses } from "./tones"
 
 interface FloorTableProps {
   table: Table
@@ -17,6 +17,8 @@ interface FloorTableProps {
   /** The signed-in waiter's table: "Tú" badge. */
   mine: boolean
   waiterName?: string
+  /** Time since the open order started ("18 min", T22); top-right chip in live mode. */
+  elapsed?: string | null
   onSelect: (tableId: string) => void
   /** live: status chip and waiter badge; edit: shape and chairs only (admin editor); mini: number and a status icon. */
   mode?: FloorMode
@@ -38,6 +40,9 @@ const STATUS_ICON: Record<TableStatus, LucideIcon> = {
 export const editAccessibleName = (table: Table): string =>
   [`Mesa ${table.number}`, SHAPE_LABELS[table.shape ?? "square"], seatsText(table.seats)].join(", ")
 
+/** "18 min" → "18m", "1 h 05" → "1h05": the floor chip on small tables. */
+const shortElapsed = (label: string) => label.replace(" min", "m").replace(" h ", "h")
+
 const TOP_RADIUS = { round: "rounded-full", bar: "rounded-pill", square: "rounded-[18px]", rect: "rounded-[18px]" } as const
 
 /**
@@ -52,6 +57,7 @@ export function FloorTable({
   selected,
   mine,
   waiterName,
+  elapsed,
   onSelect,
   mode = "live",
   onPointerDown,
@@ -59,7 +65,9 @@ export function FloorTable({
 }: FloorTableProps) {
   const box = tableBox(table, aspect)
   const chairs = chairPositions(table.shape, table.seats)
-  const tone = toneClasses(table.status)
+  const inactive = isInactive(table)
+  const tone = inactive ? INACTIVE_TONE : toneClasses(table.status)
+  const elapsedChip = mode === "live" && !inactive ? elapsed : null
   const shadow = [
     selected ? "0 0 0 3px var(--floor), 0 0 0 6px var(--accent)" : null,
     "0 6px 0 -1px var(--thick)",
@@ -68,7 +76,7 @@ export function FloorTable({
   ]
     .filter(Boolean)
     .join(", ")
-  const badge = mode !== "live" ? null : mine ? "Tú" : table.waiter ? initials(waiterName) : null
+  const badge = mode !== "live" ? null : mine ? "Tú" : table.waiter || waiterName ? initials(waiterName) : null
   const StatusIcon = STATUS_ICON[table.status]
   // The mini map only shows: its tables are pictures, not (too small) buttons.
   const interactive = mode !== "mini"
@@ -79,7 +87,8 @@ export function FloorTable({
     // around the tabletop on purpose (design/system.md); the floor is checked.
     <Root
       data-qa-ignore
-      aria-label={mode === "edit" ? editAccessibleName(table) : tableAccessibleName(table, waiterName)}
+      aria-label={mode === "edit" ? editAccessibleName(table) : tableAccessibleName(table, waiterName, elapsedChip)}
+      data-inactive={inactive && mode !== "edit" ? "true" : undefined}
       {...(interactive
         ? {
             type: "button" as const,
@@ -93,6 +102,7 @@ export function FloorTable({
         "group absolute grid place-items-center -translate-x-1/2 -translate-y-1/2 rounded-[18px] text-fg focus-visible:outline-none",
         mode === "mini" ? "min-h-[24px] min-w-[24px]" : "min-h-[44px] min-w-[44px]",
         mode === "edit" && "cursor-grab touch-none select-none active:cursor-grabbing",
+        inactive && mode !== "edit" && "opacity-70",
       )}
       style={{ ...box, "--cs": "clamp(10px, 2.6cqi, 22px)" } as CSSProperties}
     >
@@ -137,7 +147,7 @@ export function FloorTable({
       {badge && (
         <span
           className={cn(
-            "absolute -left-2 -top-2 z-20 grid h-6 min-w-6 place-items-center rounded-full border px-1 text-[11px] font-semibold leading-none sm:h-7 sm:min-w-7",
+            "absolute -left-2 -top-2 z-30 grid h-6 min-w-6 place-items-center rounded-full border px-1 text-[11px] font-semibold leading-none sm:h-7 sm:min-w-7",
             mine ? "border-brand bg-brand text-brand-contrast" : "border-line-strong bg-surface-2 text-fg",
           )}
         >
@@ -145,8 +155,21 @@ export function FloorTable({
         </span>
       )}
 
+      {/* Top-right, under the waiter badge; below 1024 px the short label ("18m") keeps it off the badge of a small table. */}
+      {elapsedChip && (
+        <span
+          aria-hidden
+          className="absolute -right-2 -top-2 z-20 inline-flex h-6 flex-none items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-card px-1.5 text-[11px] font-semibold leading-none tabular-nums text-fg shadow-sm sm:h-7 sm:px-2 sm:text-xs"
+        >
+          <Clock className="hidden h-3 w-3 flex-none xl:block" strokeWidth={2.4} />
+          <span className="lg:hidden">{shortElapsed(elapsedChip)}</span>
+          <span className="hidden lg:inline">{elapsedChip}</span>
+        </span>
+      )}
+
       {mode === "live" && <StatusChip
         status={table.status}
+        inactive={inactive}
         className={cn(
           "absolute left-1/2 top-full z-20 -translate-x-1/2 px-1.5 text-[11px] shadow-sm sm:text-xs",
           chairs.length > 0 ? "mt-[calc(var(--cs)*1.3+4px)]" : "mt-2",

@@ -239,12 +239,23 @@ const flush = async () => {
   }
 }
 
-/** "Agregar productos" of the table panel opens the full-screen step flow (T10). */
+/**
+ * "Agregar productos" of the table panel opens the full-screen step flow
+ * (T10); a table without an open order is first asked its guests (T22),
+ * answered "Sin indicar" so the write path stays the T10 one.
+ */
 const openOrderFlow = async () => {
   await act(async () => {
     screen.getByRole("button", { name: "Agregar productos" }).click()
   })
   await flush()
+  const skip = screen.queryByRole("button", { name: "Sin indicar" })
+  if (skip) {
+    await act(async () => {
+      skip.click()
+    })
+    await flush()
+  }
 }
 
 const tap = async (name: string | RegExp) => {

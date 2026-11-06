@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTableStore } from "@/store/useTableStore"
@@ -10,6 +10,7 @@ import type { Profile, Order, CommandPayload } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { TablePanel } from "@/components/floor/TablePanel"
+import { GuestsStepper } from "@/components/floor/GuestsStepper"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { CartSidebar } from "@/components/pos/CartSidebar"
 import { StepPicker, type StepPickerItem } from "@/components/order-steps/StepPicker"
@@ -29,10 +30,14 @@ import {
   orderDtoFromWire,
   orderItemsFromCart,
   toOrder,
+  updateDetails,
   type DishPrice,
+  type OrderDetails,
   type OrderDto,
 } from "@/lib/api/orders"
-import { conflictMessage } from "@/lib/api/errors"
+import { ApiError, conflictMessage } from "@/lib/api/errors"
+import { elapsedLabel, openOrdersByTable } from "@/lib/floor/live"
+import { guestsText } from "@/lib/order-steps/details"
 import { realtimeService } from "@/lib/api/realtime"
 import { sendCommand } from "@/lib/api/print"
 import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
@@ -65,6 +70,13 @@ import { ordersForWaiter } from "@/lib/delivery/kitchen"
 // Importar el hook para detectar dispositivos móviles
 import { useIsMobile } from "@/hooks/use-mobile"
 import {animated, useSpring} from "@react-spring/web"
+
+/** A per-table record without one table (T22 order drafts). */
+function withoutTable<T>(record: Record<string, T>, tableId: string): Record<string, T> {
+  const rest = { ...record }
+  delete rest[tableId]
+  return rest
+}
 
 // Definir un ancho personalizado para el sidebar
 const CUSTOM_SIDEBAR_WIDTH = "22rem" // Ajustado para optimizar espacio
@@ -117,6 +129,14 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // "Ver pedido" inside it swaps the steps for the order review.
   const [orderFlowOpen, setOrderFlowOpen] = useState(false)
   const [orderReviewOpen, setOrderReviewOpen] = useState(false)
+  // T22: the details of the order being taken on each table. `asked` once the
+  // guests question was answered (guests null: "Sin indicar"); `notes` is the
+  // "Nota del pedido" draft (undefined: untouched, the stored note shows).
+  const [orderDrafts, setOrderDrafts] = useState<Record<string, { asked?: boolean; guests?: number | null; notes?: string }>>({})
+  const [guestsPrompt, setGuestsPrompt] = useState<{ tableId: string; guests: number } | null>(null)
+  const [savingDetails, setSavingDetails] = useState(false)
+  // The map's elapsed-time chips move with the clock.
+  const [now, setNow] = useState(() => new Date())
   const [cartStyle, cartApi] = useSpring(() => ({ scale: 1 }))
 
   // Referencias
@@ -177,6 +197,17 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     queryKey: ['orders'],
     queryFn: fetchOrders,
   })
+  // T22: the open order of each table, from the orders this screen already
+  // reads (the table record has no start time).
+  const openByTable = useMemo(() => openOrdersByTable(ordersData), [ordersData])
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+  const elapsedOf = useCallback(
+    (table: { id: string }) => elapsedLabel(openByTable.get(table.id)?.createdAt, now),
+    [openByTable, now],
+  )
 
   // Individual store selectors
   // Single owner (S3, D1): tables are read directly from useTableStore —
@@ -416,6 +447,14 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // Manejar selección de mesa
   const handleTableSelect = useCallback(
     (tableId: string | null) => {
+      // T22: no new order on an inactive table (the API answers 409 too); an
+      // order opened before it was deactivated stays reachable.
+      const picked = tableId ? tables.find((t) => t.id === tableId) : undefined
+      if (picked && picked.isActive === false && !openByTable.has(picked.id)) {
+        toast({ title: "La mesa está inactiva", description: "No se pueden abrir pedidos nuevos en esta mesa." })
+        return
+      }
+
       if (activeTable && tableId !== activeTable) {
         checkEmptyCartAndReleaseTable(activeTable)
       }
@@ -482,7 +521,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         setShowTableSheet(true)
       }
     },
-    [activeTable, checkEmptyCartAndReleaseTable, tables, isMobile, profile],
+    [activeTable, checkEmptyCartAndReleaseTable, tables, isMobile, profile, openByTable, toast],
   )
 
   // Manejar selección de mesero
@@ -598,6 +637,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
         // Actualizar directamente en el store (single owner, S3).
         useTableStore.getState().releaseTable(tableId)
+        // The next party on this table is asked its guests again (T22).
+        setOrderDrafts((prev) => withoutTable(prev, tableId))
 
         if (activeTable === tableId) {
           setActiveTable(null)
@@ -714,6 +755,16 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       const waiterId = table.waiter || profile.id
       const items = orderItemsFromCart(cartItems)
       const existingOrder = checkExistingOrder(activeTable)
+      // T22: the new order carries the guests and note captured for it; an
+      // open order carries a note changed and not saved yet.
+      const draft = orderDrafts[activeTable] ?? {}
+      const draftNote = draft.notes?.trim() ?? ""
+      const newDetails: OrderDetails = {
+        ...(typeof draft.guests === "number" ? { guests: draft.guests } : {}),
+        ...(draftNote ? { notes: draftNote } : {}),
+      }
+      const openDetails: OrderDetails =
+        existingOrder && draft.notes !== undefined && draftNote !== (existingOrder.notes ?? "") ? { notes: draftNote || null } : {}
 
       // The API moves the table to the kitchen in the same transaction: mark
       // it before the request, its echo may arrive before the response.
@@ -724,20 +775,20 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       let added = null as OrderDto | null
       try {
         if (existingOrder) {
-          added = await addItemsToOrder(existingOrder.id, items, { force })
+          added = await addItemsToOrder(existingOrder.id, items, { force, ...openDetails })
         } else {
           try {
             created = await createOrder(
               force
-                ? { tableId: activeTable, orderType: "dine_in", items, force: true }
-                : { tableId: activeTable, orderType: "dine_in", items },
+                ? { tableId: activeTable, orderType: "dine_in", items, ...newDetails, force: true }
+                : { tableId: activeTable, orderType: "dine_in", items, ...newDetails },
             )
           } catch (error) {
             // Another terminal opened an order on this table first: the cart
             // goes to that order instead of failing.
             const conflict = orderConflictOf(error)
             if (conflict?.kind !== "openOrder") throw error
-            added = await addItemsToOrder(conflict.orderId, items, { force })
+            added = await addItemsToOrder(conflict.orderId, items, { force, ...newDetails })
           }
         }
       } catch (error) {
@@ -750,7 +801,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       if (marksTable) useTableStore.getState().updateTableStatus(activeTable, "kitchen")
       refreshStockAfterSending()
 
-      const orderNumber = `${Math.floor(Math.random() * 9000) + 1000}`
+      // The database number (T15/T17); an order read without one keeps the old print number.
+      const storedNumber = created?.orderNumber ?? added?.orderNumber ?? existingOrder?.orderNumber
+      const orderNumber = storedNumber != null ? String(storedNumber) : `${Math.floor(Math.random() * 9000) + 1000}`
       const kitchenOrder: CommandPayload = {
         invoiceNumber: orderNumber,
         table: table.number,
@@ -773,6 +826,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
       void sendCommand(kitchenOrder)
       clearCart(activeTable)
+      const sentTable = activeTable
+      setOrderDrafts((prev) => withoutTable(prev, sentTable))
 
       toast(
         created
@@ -813,9 +868,11 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         })
       } else {
         log.error("Error al enviar la orden a cocina:", { error: String(error) })
+        // T22: the 0015 trigger's refusal, mapped by the API (409).
+        const inactive = error instanceof ApiError && error.status === 409 && error.message === "La mesa está inactiva"
         toast({
           title: "Error",
-          description: "No se pudo enviar la orden a cocina. Intente nuevamente.",
+          description: inactive ? error.message : "No se pudo enviar la orden a cocina. Intente nuevamente.",
           variant: "destructive",
         })
       }
@@ -829,6 +886,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     tables,
     profile.id,
     checkExistingOrder,
+    orderDrafts,
     refreshStockAfterSending,
     repriceCart,
     waiters,
@@ -878,12 +936,77 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     ? floorZones?.find((zone) => zone.id === activeTableRow.zoneId)?.name
     : undefined
 
-  // "Agregar productos": the full-screen step flow (T10, S5).
-  const handleAddItems = () => {
+  // "Agregar productos": the full-screen step flow (T10, S5). The first one
+  // on a table without an open order asks the guests (T22).
+  const activeOrder = activeTable ? checkExistingOrder(activeTable) : null
+  const activeDraft = activeTable ? (orderDrafts[activeTable] ?? {}) : {}
+  const openOrderFlow = () => {
     setShowTableSheet(false)
     setShowMobileCart(false)
     setOrderReviewOpen(false)
     setOrderFlowOpen(true)
+  }
+  const handleAddItems = () => {
+    if (activeTableRow && !activeOrder && !activeDraft.asked) {
+      setShowTableSheet(false)
+      setGuestsPrompt({ tableId: activeTableRow.id, guests: activeTableRow.seats && activeTableRow.seats > 0 ? activeTableRow.seats : 2 })
+      return
+    }
+    openOrderFlow()
+  }
+  const answerGuests = (guests: number | null) => {
+    if (!guestsPrompt) return
+    const { tableId } = guestsPrompt
+    setOrderDrafts((prev) => ({ ...prev, [tableId]: { ...prev[tableId], asked: true, guests } }))
+    setGuestsPrompt(null)
+    if (tableId === activeTable) openOrderFlow()
+  }
+
+  // An answer from PATCH /orders/:id replaces the listed order.
+  const applyOrderDto = (dto: OrderDto) => {
+    const updated = toOrder(dto)
+    queryClient.setQueryData<Order[]>(["orders"], (prev: Order[] = []) =>
+      prev.some((order) => order.id === updated.id) ? mergeOrdersList(prev, { eventType: "UPDATE", new: updated }) : [...prev, updated],
+    )
+  }
+  const saveDetails = async (orderId: string, details: OrderDetails) => {
+    setSavingDetails(true)
+    try {
+      applyOrderDto(await updateDetails(orderId, details))
+      return true
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: conflictMessage(err, "No se pudieron guardar los datos del pedido. Intente nuevamente."),
+        variant: "destructive",
+      })
+      return false
+    } finally {
+      setSavingDetails(false)
+    }
+  }
+  const activeGuests = activeOrder ? activeOrder.guests : activeDraft.guests
+  const changeGuests = (guests: number) => {
+    if (!activeTable) return
+    if (activeOrder) void saveDetails(activeOrder.id, { guests })
+    else {
+      const tableId = activeTable
+      setOrderDrafts((prev) => ({ ...prev, [tableId]: { ...prev[tableId], asked: true, guests } }))
+    }
+  }
+  const noteValue = activeDraft.notes ?? activeOrder?.notes ?? ""
+  const noteDirty = activeOrder ? noteValue.trim() !== (activeOrder.notes ?? "") : false
+  const changeNote = (notes: string) => {
+    if (!activeTable) return
+    const tableId = activeTable
+    setOrderDrafts((prev) => ({ ...prev, [tableId]: { ...prev[tableId], notes } }))
+  }
+  const saveNote = async () => {
+    if (!activeOrder || !activeTable) return
+    const tableId = activeTable
+    if (await saveDetails(activeOrder.id, { notes: noteValue.trim() || null })) {
+      setOrderDrafts((prev) => ({ ...prev, [tableId]: { ...prev[tableId], notes: undefined } }))
+    }
   }
 
   // A dish picked through the steps goes into the same table cart as before;
@@ -962,11 +1085,15 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       onRelease={handleReleaseTable}
       onShowOrder={onShowOrder}
       orderCount={cartItems.reduce((sum, item) => sum + item.quantity, 0)}
+      orderNumber={activeOrder?.orderNumber}
+      guests={activeGuests}
+      onChangeGuests={activeOrder || activeDraft.asked ? changeGuests : undefined}
+      guestsBusy={savingDetails}
     />
   )
 
   // T10: the full-screen step flow of the selected table.
-  const sentLines = activeTable ? (checkExistingOrder(activeTable)?.items ?? []) : []
+  const sentLines = activeOrder?.items ?? []
   const newCount = lineCount(cartItems)
   const tableCount = lineCount(sentLines) + newCount
   const tableTotal = lineTotal(sentLines) + cartTotal
@@ -1004,7 +1131,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                 {activeTableNumber}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-base font-semibold">Mesa {activeTableNumber} · Agregar productos</p>
+                <p className="truncate text-base font-semibold">
+                  Mesa {activeTableNumber} · {guestsText(activeGuests) ?? "Agregar productos"}
+                </p>
                 {flowDetails && <p className="mt-0.5 truncate text-[12.5px] text-muted-fg">{flowDetails}</p>}
               </div>
             </>
@@ -1042,6 +1171,12 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
             orderReviewOpen ? (
               <OrderReview
                 title={orderTitle}
+                orderNumber={activeOrder?.orderNumber}
+                note={noteValue}
+                onNoteChange={changeNote}
+                onSaveNote={activeOrder ? () => void saveNote() : undefined}
+                noteDirty={noteDirty}
+                savingNote={savingDetails}
                 newLines={cartItems}
                 sentLines={sentLines}
                 onChangeQuantity={handleUpdateQuantity}
@@ -1132,7 +1267,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                   onReserveTable={handleReserveTable}
                   onReleaseTable={handleReleaseTable}
                   isTableAccessible={checkTableAccess}
-                  floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id }}
+                  floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id, elapsedOf }}
                 />
 
               </TabsContent>
@@ -1248,6 +1383,32 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
         </>
       )}
+
+      {/* T22: guests of a new order, asked on its first "Agregar productos" */}
+      <Dialog open={guestsPrompt !== null} onOpenChange={(open) => !open && setGuestsPrompt(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>¿Cuántas personas?</DialogTitle>
+            <DialogDescription>
+              Mesa {tables.find((t) => t.id === guestsPrompt?.tableId)?.number} · se guarda con el pedido y se puede cambiar desde la mesa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center py-2">
+            <GuestsStepper
+              value={guestsPrompt?.guests}
+              onChange={(guests) => setGuestsPrompt((prompt) => (prompt ? { ...prompt, guests } : prompt))}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" className="h-11" onClick={() => answerGuests(null)}>
+              Sin indicar
+            </Button>
+            <Button className="h-11" onClick={() => answerGuests(guestsPrompt?.guests ?? null)}>
+              Continuar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal para selección de mesero */}
       <WaiterSelectionModal

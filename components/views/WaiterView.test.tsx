@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 
@@ -23,6 +23,7 @@ const STOCK_DISH = "d1d1d1d1-0000-4000-8000-000000000001"
 
 const env = vi.hoisted(() => ({
   addItems: vi.fn(),
+  updateDetails: vi.fn(),
   tableGetAll: vi.fn(),
   zoneGetAll: vi.fn(),
   orderGetByStatus: vi.fn(),
@@ -47,6 +48,7 @@ const env = vi.hoisted(() => ({
   orderCallbacks: [] as ((payload: unknown) => void)[],
   reset() {
     this.addItems.mockReset()
+    this.updateDetails.mockReset()
     this.tableGetAll.mockReset()
     this.zoneGetAll.mockReset()
     this.orderGetByStatus.mockReset()
@@ -82,6 +84,7 @@ const env = vi.hoisted(() => ({
     this.releaseTable.mockResolvedValue({ ...table, status: "available", waiterId: null })
     this.orderCreate.mockImplementation(async () => orderDto("o-new", "t-1"))
     this.addItems.mockImplementation(async (id: string) => orderDto(id, "t-1"))
+    this.updateDetails.mockImplementation(async (id: string, body: object) => ({ ...orderDto(id, "t-1"), ...body }))
     this.checkDishesStock.mockResolvedValue({ ok: true, enabled: true, shortages: [] })
     this.consumeOrderStock.mockResolvedValue({ orderId: "o-new", enabled: true, consumedItems: 1, totalCost: 0, shortages: [] })
     this.checkStockForDishes.mockImplementation(async () =>
@@ -117,6 +120,8 @@ vi.mock("@/lib/api/client", () => {
         return { data: await env.orderCreate(body) }
       case "POST /api/orders/{id}/items":
         return { data: await env.addItems(id, body) }
+      case "PATCH /api/orders/{id}":
+        return { data: await env.updateDetails(id, body) }
       default:
         throw new Error(`unexpected ${method} ${path}`)
     }
@@ -239,12 +244,23 @@ const flush = async () => {
   }
 }
 
-/** "Agregar productos" of the table panel opens the full-screen step flow (T10). */
+/**
+ * "Agregar productos" of the table panel opens the full-screen step flow
+ * (T10). On a table without an open order it first asks the guests (T22):
+ * "Sin indicar" keeps the create body as it was.
+ */
 const openOrderFlow = async () => {
   await act(async () => {
     screen.getByRole("button", { name: "Agregar productos" }).click()
   })
   await flush()
+  const skip = screen.queryByRole("button", { name: "Sin indicar" })
+  if (skip) {
+    await act(async () => {
+      skip.click()
+    })
+    await flush()
+  }
 }
 
 const tap = async (name: string | RegExp) => {
@@ -1020,11 +1036,16 @@ describe("WaiterView — step order flow (T10)", () => {
     expect(env.sendCommand).toHaveBeenCalledTimes(1)
   })
 
-  it("offers the active dishes without category under Otros", async () => {
+  it("offers the tree's dishes without category under Otros with their real stock (T22)", async () => {
     const LOOSE = "55555555-5555-4555-8555-555555555555"
-    env.dishesByCategory.mockResolvedValue([
-      { ...menuDish({ id: LOOSE, name: "Porción de arroz", price: 4000 }), available: undefined },
-    ])
+    const GONE = "66666666-6666-4666-8666-666666666666"
+    env.menuTree.mockResolvedValue({
+      ...menu,
+      uncategorized: [
+        menuDish({ id: LOOSE, name: "Porción de arroz", price: 4000 }),
+        menuDish({ id: GONE, name: "Empanada", price: 3000, available: false }),
+      ],
+    })
     renderView()
     await flush()
     await act(async () => {
@@ -1034,9 +1055,12 @@ describe("WaiterView — step order flow (T10)", () => {
     await openOrderFlow()
 
     await tap(/^Otros/)
+    expect(screen.getByRole("button", { name: /^Empanada, .*agotado$/ })).toHaveAttribute("aria-disabled", "true")
     await tap(/^Porción de arroz,/)
     await tap(/^Agregar 1 ·/)
     expect(useCartStore.getState().cartItems["t-1"].map((item) => item.name)).toEqual(["Porción de arroz"])
+    // The dishes list is not read any more for "Otros".
+    expect(env.dishesByCategory).not.toHaveBeenCalled()
   })
 
   it("undoes an add from the toast", async () => {
@@ -1092,5 +1116,202 @@ describe("WaiterView — step order flow (T10)", () => {
     expect(env.addItems).toHaveBeenCalledWith("o-1", {
       items: [items[0], { ...items[1], quantity: 2 }],
     })
+  })
+})
+
+describe("WaiterView — guests, order note, sent time and order number (T22)", () => {
+  const BANDEJA = "33333333-3333-4333-8333-333333333333"
+  const menu = {
+    categories: [
+      menuCategory({ id: "cat-2", name: "Postres", dishes: [menuDish({ id: BANDEJA, name: "Arroz con leche", price: 7000 })] }),
+    ],
+    uncategorized: [],
+  }
+  const item = { dishId: BANDEJA, quantity: 1, unitPrice: 7000, comments: null }
+  const sentAt = new Date(2026, 10, 6, 19, 48, 12)
+  const openOrder = () => ({
+    ...orderDto("o-1", "t-1"),
+    orderNumber: 128,
+    guests: 4,
+    notes: "Cumpleaños",
+    items: [
+      {
+        id: "i-1",
+        orderId: "o-1",
+        dishId: BANDEJA,
+        name: "Ajiaco",
+        price: 28000,
+        quantity: 1,
+        status: "kitchen",
+        comments: null,
+        addedAt: sentAt.toISOString(),
+      },
+    ],
+  })
+
+  beforeEach(() => {
+    env.tableGetAll.mockResolvedValue([{ ...tableRow("t-1", 1, "occupied", "w-1"), seats: 4 }])
+    env.menuTree.mockResolvedValue(menu)
+    env.orderCreate.mockImplementation(async () => ({ ...orderDto("o-new", "t-1"), orderNumber: 129 }))
+  })
+
+  const selectTable = async () => {
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+  }
+  const addOne = async () => {
+    await tap(/Postres/)
+    await tap(/^Arroz con leche,/)
+    await tap(/^Agregar 1 ·/)
+  }
+
+  it("asks the guests with a stepper on the first Agregar productos and sends them with the new order", async () => {
+    await selectTable()
+    await tap("Agregar productos")
+
+    const dialog = screen.getByRole("dialog", { name: "¿Cuántas personas?" })
+    // Starts at the table's chairs.
+    expect(within(dialog).getByRole("status")).toHaveTextContent("4")
+    await act(async () => {
+      within(dialog).getByRole("button", { name: "Sumar una persona" }).click()
+    })
+    expect(within(dialog).getByRole("status")).toHaveTextContent("5")
+    await act(async () => {
+      within(dialog).getByRole("button", { name: "Continuar" }).click()
+    })
+    await flush()
+
+    expect(screen.getByText("Mesa 1 · 5 personas")).toBeInTheDocument()
+    await addOne()
+    await tap("Enviar a cocina (1)")
+    expect(env.orderCreate).toHaveBeenCalledWith({ tableId: "t-1", orderType: "dine_in", items: [item], guests: 5 })
+    // The toast names the database order number, not an invented one.
+    expect(env.toastFn).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Orden enviada", description: "La orden #129 ha sido enviada a cocina." }),
+    )
+  })
+
+  it("Sin indicar sends the new order without guests and does not ask again while the cart is open", async () => {
+    await selectTable()
+    await openOrderFlow()
+    await tap("Volver al mapa del salón")
+    await tap("Agregar productos")
+    expect(screen.queryByRole("dialog", { name: "¿Cuántas personas?" })).not.toBeInTheDocument()
+    await addOne()
+    await tap("Enviar a cocina (1)")
+    expect(env.orderCreate).toHaveBeenCalledWith({ tableId: "t-1", orderType: "dine_in", items: [item] })
+  })
+
+  it("sends the order note typed in Ver pedido with the new order", async () => {
+    await selectTable()
+    await openOrderFlow()
+    await addOne()
+    await tap(/Ver pedido/)
+    const note = screen.getByLabelText("Nota del pedido (opcional)")
+    await act(async () => {
+      fireEvent.change(note, { target: { value: "  Alérgico al maní " } })
+    })
+    await tap("Enviar a cocina (1)")
+    expect(env.orderCreate).toHaveBeenCalledWith({ tableId: "t-1", orderType: "dine_in", items: [item], notes: "Alérgico al maní" })
+  })
+
+  it("an open order shows its number, guests and note, and edits them through PATCH /orders/:id", async () => {
+    env.orderGetByStatus.mockResolvedValue([openOrder()])
+    env.updateDetails.mockImplementation(async (_id: string, body: object) => ({ ...openOrder(), ...body }))
+    await selectTable()
+
+    const panel = screen.getByRole("region", { name: "Mesa 1" })
+    expect(panel).toHaveTextContent("#128")
+    expect(within(panel).getByRole("status")).toHaveTextContent("4")
+    await act(async () => {
+      within(panel).getByRole("button", { name: "Sumar una persona" }).click()
+    })
+    await flush()
+    expect(env.updateDetails).toHaveBeenCalledWith("o-1", { guests: 5 })
+    expect(within(screen.getByRole("region", { name: "Mesa 1" })).getByRole("status")).toHaveTextContent("5")
+
+    // No guests question: the order exists.
+    await tap("Agregar productos")
+    expect(screen.queryByRole("dialog", { name: "¿Cuántas personas?" })).not.toBeInTheDocument()
+    expect(screen.getByText("Mesa 1 · 5 personas")).toBeInTheDocument()
+
+    await tap(/Ver pedido/)
+    expect(screen.getByText("#128")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Enviados" })).toHaveTextContent("Enviado a cocina · 19:48")
+    const note = screen.getByLabelText("Nota del pedido (opcional)")
+    expect(note).toHaveValue("Cumpleaños")
+    expect(screen.getByRole("button", { name: "Guardar nota" })).toBeDisabled()
+    await act(async () => {
+      fireEvent.change(note, { target: { value: "Cumpleaños, traer vela" } })
+    })
+    await tap("Guardar nota")
+    expect(env.updateDetails).toHaveBeenLastCalledWith("o-1", { notes: "Cumpleaños, traer vela" })
+    expect(env.addItems).not.toHaveBeenCalled()
+  })
+
+  it("an unsaved note change on an open order goes with the add-items send", async () => {
+    env.orderGetByStatus.mockResolvedValue([openOrder()])
+    await selectTable()
+    await tap("Agregar productos")
+    await addOne()
+    await tap(/Ver pedido/)
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Nota del pedido (opcional)"), { target: { value: "Sin prisa" } })
+    })
+    await tap("Enviar a cocina (1)")
+    expect(env.addItems).toHaveBeenCalledWith("o-1", { items: [item], notes: "Sin prisa" })
+  })
+
+  it("refuses a new order on an inactive table without assigning it", async () => {
+    env.tableGetAll.mockResolvedValue([{ ...tableRow("t-1", 1), isActive: false }])
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByRole("button", { name: /^Mesa 1/ }).click()
+    })
+    await flush()
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "La mesa está inactiva" }))
+    expect(screen.queryByRole("button", { name: "Agregar productos" })).not.toBeInTheDocument()
+  })
+
+  it("shows the API refusal of an inactive table on send", async () => {
+    env.orderCreate.mockRejectedValueOnce(new ApiError(409, "Conflict", "La mesa está inactiva", { message: "La mesa está inactiva" }))
+    await selectTable()
+    await openOrderFlow()
+    await addOne()
+    await tap("Enviar a cocina (1)")
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ description: "La mesa está inactiva" }))
+  })
+})
+
+describe("WaiterView — elapsed time on the map (T22)", () => {
+  it("draws the minutes since the open order started on its table", async () => {
+    env.zoneGetAll.mockResolvedValue([
+      { id: "z-1", name: "Salón principal", aspect: 1.6, sortOrder: 0, labels: [], active: true, createdAt: null, updatedAt: null },
+    ])
+    const placed = (id: string, number: number, status: string, waiterId: string | null) => ({
+      ...tableRow(id, number, status, waiterId),
+      zoneId: "z-1",
+      x: number / 4,
+      y: 0.4,
+      w: 0.1,
+      h: 0.1,
+      shape: "round",
+      rotation: 0,
+      seats: 4,
+    })
+    env.tableGetAll.mockResolvedValue([placed("t-1", 1, "kitchen", "w-1"), placed("t-2", 2, "available", null)])
+    env.orderGetByStatus.mockResolvedValue([
+      { ...orderDto("o-1", "t-1"), createdAt: new Date(Date.now() - 18 * 60_000 - 5_000).toISOString() },
+    ])
+    renderView()
+    await flush()
+    expect(screen.getByRole("button", { name: /^Mesa 1, En cocina, .*abierta hace 18 min$/ })).toHaveTextContent("18 min")
+    expect(screen.getByRole("button", { name: /^Mesa 2,/ })).not.toHaveTextContent("min")
   })
 })

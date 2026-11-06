@@ -4,8 +4,9 @@ import type { ReactNode } from "react"
 import { LockIcon, Plus, ShoppingCart, UnlockIcon } from "lucide-react"
 import type { Table } from "@/types"
 import { cn } from "@/lib/utils"
-import { seatsText } from "@/lib/floor/layout"
+import { isInactive, seatsText } from "@/lib/floor/layout"
 import { Button } from "@/components/ui/button"
+import { GuestsStepper } from "./GuestsStepper"
 import { StatusChip } from "./StatusChip"
 import { toneClasses } from "./tones"
 
@@ -19,6 +20,12 @@ interface TablePanelProps {
   /** Phone: open the order (cart) sheet; it shows the current number of lines. */
   onShowOrder?: () => void
   orderCount?: number
+  /** The open order's database number ("#128", T22). */
+  orderNumber?: number
+  /** Guests of the open order (or of the new one being taken), with its stepper when `onChangeGuests` is given. */
+  guests?: number | null
+  onChangeGuests?: (guests: number) => void
+  guestsBusy?: boolean
   className?: string
   children?: ReactNode
 }
@@ -40,6 +47,10 @@ export function TablePanel({
   onRelease,
   onShowOrder,
   orderCount = 0,
+  orderNumber,
+  guests,
+  onChangeGuests,
+  guestsBusy,
   className,
   children,
 }: TablePanelProps) {
@@ -52,6 +63,7 @@ export function TablePanel({
     )
   }
 
+  const inactive = isInactive(table)
   const tone = toneClasses(table.status)
   const reserved = table.status === "reserved"
   const canRelease = !LOCKED.has(table.status)
@@ -72,10 +84,24 @@ export function TablePanel({
           {table.number}
         </span>
         <div className="min-w-0">
-          <StatusChip status={table.status} />
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <StatusChip status={table.status} inactive={inactive} />
+            {orderNumber != null && (
+              <span className="inline-flex h-6 flex-none items-center whitespace-nowrap rounded-pill border border-line bg-surface-2 px-2 text-xs font-semibold tabular-nums text-fg-2">
+                #{orderNumber}
+              </span>
+            )}
+          </span>
           <p className="mt-1 truncate text-sm text-muted-fg">{details}</p>
         </div>
       </div>
+
+      {onChangeGuests && (
+        <div className="flex min-w-0 items-center justify-between gap-2 rounded-card border border-line bg-surface px-3 py-1.5">
+          <span className="text-sm font-medium text-fg-2">Personas</span>
+          <GuestsStepper value={guests} onChange={onChangeGuests} disabled={guestsBusy} />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <Button className="col-span-2 h-11" onClick={onAddItems}>

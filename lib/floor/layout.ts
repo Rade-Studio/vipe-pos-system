@@ -122,7 +122,20 @@ export function initials(name: string | undefined): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase()
 }
 
-/** "Mesa 4, En cocina, 4 sillas, Carolina Ruiz". */
-export function tableAccessibleName(table: Table, waiterName?: string): string {
-  return [`Mesa ${table.number}`, statusLabel(table.status), seatsText(table.seats), waiterName].filter(Boolean).join(", ")
+/** isActive false (T16/T20): no new order on the table, drawn greyed. Absent reads as active. */
+export const isInactive = (table: Table): boolean => table.isActive === false
+
+export const INACTIVE_LABEL = "Inactiva"
+
+/** "Mesa 4, En cocina, 4 sillas, Carolina Ruiz, abierta hace 18 min"; an inactive table says "Inactiva" for its status. */
+export function tableAccessibleName(table: Table, waiterName?: string, elapsed?: string | null): string {
+  return [
+    `Mesa ${table.number}`,
+    isInactive(table) ? INACTIVE_LABEL : statusLabel(table.status),
+    seatsText(table.seats),
+    waiterName,
+    elapsed ? `abierta hace ${elapsed}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ")
 }

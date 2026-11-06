@@ -15,6 +15,8 @@ export interface FloorMapProps {
   onSelectTable: (tableId: string) => void
   currentWaiterId?: string
   waiterNameOf?: (table: Table) => string | undefined
+  /** Live mode: time since the table's open order started (T22). */
+  elapsedOf?: (table: Table) => string | null | undefined
   /** Lean the floor back (2.5D). Flat under prefers-reduced-motion and in edit mode. */
   tilt?: boolean
   mode?: FloorMode
@@ -46,6 +48,7 @@ export function FloorMap({
   onSelectTable,
   currentWaiterId,
   waiterNameOf,
+  elapsedOf,
   tilt = true,
   mode = "live",
   onMoveTable,
@@ -133,6 +136,7 @@ export function FloorMap({
             selected={selectedTableId === table.id}
             mine={!!currentWaiterId && table.waiter === currentWaiterId}
             waiterName={waiterNameOf?.(table)}
+            elapsed={elapsedOf?.(table)}
             onSelect={onSelectTable}
             mode={mode}
             onPointerDown={onMoveTable ? startDrag : undefined}

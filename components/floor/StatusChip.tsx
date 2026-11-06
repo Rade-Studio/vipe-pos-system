@@ -1,11 +1,11 @@
 import type { TableStatus } from "@/types"
 import { cn } from "@/lib/utils"
-import { statusLabel } from "@/lib/floor/layout"
-import { toneClasses } from "./tones"
+import { INACTIVE_LABEL, statusLabel } from "@/lib/floor/layout"
+import { INACTIVE_TONE, toneClasses } from "./tones"
 
-/** Status in words on its tint (never colour alone). */
-export function StatusChip({ status, className }: { status: TableStatus; className?: string }) {
-  const tone = toneClasses(status)
+/** Status in words on its tint (never colour alone); `inactive` says "Inactiva" on the neutral tint. */
+export function StatusChip({ status, inactive, className }: { status: TableStatus; inactive?: boolean; className?: string }) {
+  const tone = inactive ? INACTIVE_TONE : toneClasses(status)
   return (
     <span
       className={cn(
@@ -15,7 +15,7 @@ export function StatusChip({ status, className }: { status: TableStatus; classNa
       )}
     >
       <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone.dot)} />
-      {statusLabel(status)}
+      {inactive ? INACTIVE_LABEL : statusLabel(status)}
     </span>
   )
 }

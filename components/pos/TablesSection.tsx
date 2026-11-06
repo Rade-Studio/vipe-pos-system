@@ -20,7 +20,12 @@ interface TablesSectionProps {
    * T6: the zone floor map instead of the grid. `zones` undefined while they
    * load; the screens without it (kitchen) keep the grid.
    */
-  floor?: { zones: FloorZone[] | undefined; currentWaiterId?: string }
+  floor?: {
+    zones: FloorZone[] | undefined
+    currentWaiterId?: string
+    /** T22: time since each table's open order started ("18 min"). */
+    elapsedOf?: (table: Table) => string | null | undefined
+  }
 }
 
 export function TablesSection({
@@ -69,6 +74,7 @@ export function TablesSection({
         onSelectTable={selectTable}
         currentWaiterId={floor.currentWaiterId ?? profile.id}
         waiterNameOf={waiterNameOf}
+        elapsedOf={floor.elapsedOf}
       />
     )
   }
