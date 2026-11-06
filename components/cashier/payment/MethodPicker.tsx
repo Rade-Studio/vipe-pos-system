@@ -1,69 +1,51 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
-import { Banknote, CreditCard, Smartphone, Wallet } from "lucide-react"
+import { Banknote, CreditCard, Smartphone } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { formatCurrency } from "@/utils/helpers"
 import type { PaymentMethodOption } from "@/lib/payments/types"
+import { focusRing } from "@/components/cashier/cashier-ui"
 
 interface MethodPickerProps {
   methods: PaymentMethodOption[]
   selectedMethodId: string | null
-  /** Pre-filled amount suggestion (the remaining on the bill). */
-  quickFillAmount: number
   onSelectMethod: (methodId: string) => void
-  onQuickFill: (amount: number) => void
+  disabled?: boolean
 }
 
 /**
- * Renders one row per active payment method from the catalog. Each row
- * is a clickable button that selects the method; once selected, the
- * "Usar restante" button fills the amount input with the bill's
- * remaining. Icons are picked by `kind`: cash = banknote, electronic =
- * credit card; the catalog `name` is the visible label.
+ * One tile per active payment method from the catalog. Icons are picked by
+ * `kind`: cash = banknote, electronic = credit card; the catalog `name` is
+ * the visible (and accessible) label, the kind line is decoration.
  */
-export function MethodPicker({
-  methods,
-  selectedMethodId,
-  quickFillAmount,
-  onSelectMethod,
-  onQuickFill,
-}: MethodPickerProps) {
+export function MethodPicker({ methods, selectedMethodId, onSelectMethod, disabled }: MethodPickerProps) {
   return (
-    <div className="grid gap-2">
+    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Método de pago">
       {methods.map((method) => {
         const selected = selectedMethodId === method.id
         const Icon = method.kind === "cash" ? Banknote : method.code === "nequi" ? Smartphone : CreditCard
         return (
-          <div
+          <button
             key={method.id}
+            type="button"
+            aria-pressed={selected}
+            disabled={disabled}
+            onClick={() => onSelectMethod(method.id)}
             className={cn(
-              "flex items-center gap-2 rounded-md border p-3 transition-colors",
-              selected ? "border-primary bg-primary/5 ring-2 ring-primary" : "hover:bg-muted",
+              "flex min-h-[56px] min-w-0 items-center gap-2 rounded-card border px-3 py-2 text-left text-sm font-semibold transition-colors motion-reduce:transition-none disabled:opacity-50",
+              focusRing,
+              selected
+                ? "border-brand bg-brand-tint text-fg shadow-glow"
+                : "border-line bg-surface text-fg hover:bg-surface-2",
             )}
           >
-            <Button
-              type="button"
-              variant={selected ? "default" : "outline"}
-              className="flex-1 justify-start"
-              onClick={() => onSelectMethod(method.id)}
-            >
-              <Icon className="mr-2 h-5 w-5" />
-              {method.name}
-            </Button>
-            {selected && quickFillAmount > 0 && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => onQuickFill(quickFillAmount)}
-                title="Usar el restante"
-              >
-                <Wallet className="mr-2 h-4 w-4" />
-                Usar restante ({formatCurrency(quickFillAmount)})
-              </Button>
-            )}
-          </div>
+            <Icon aria-hidden="true" className={cn("h-5 w-5 shrink-0", selected ? "text-brand" : "text-muted-fg")} />
+            <span className="min-w-0">
+              <span className="block truncate">{method.name}</span>
+              <small aria-hidden="true" className="block truncate text-xs font-normal text-muted-fg">
+                {method.kind === "cash" ? "con cambio" : "electrónico"}
+              </small>
+            </span>
+          </button>
         )
       })}
     </div>

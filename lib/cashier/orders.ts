@@ -257,6 +257,23 @@ export function billSourceFromOrder(order: Order): CashierBillSource {
  * A realtime INSERT stub (or a caller that passes nothing) has no items, so the
  * dialog still falls back to `GET /orders/:id` in that case.
  */
+/**
+ * Everything the payment panel bills from, as one comparable string. Two
+ * copies of the same order with the same signature charge the same amount;
+ * a different signature means the bill changed (split, refresh, realtime).
+ */
+export function billSignature(source: CashierBillSource | null | undefined): string | null {
+  if (!hasBillableItems(source)) return null
+  return JSON.stringify([
+    source!.order_items.map((it) => [it.id, it.price, it.quantity]),
+    source!.tax_percentage,
+    source!.tip_percentage,
+    source!.subtotal,
+    source!.tax,
+    source!.tip,
+  ])
+}
+
 export function hasBillableItems(source: CashierBillSource | null | undefined): boolean {
   return !!source && Array.isArray(source.order_items) && source.order_items.length > 0
 }
