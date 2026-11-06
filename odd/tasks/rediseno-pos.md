@@ -15,7 +15,7 @@ Implement the approved gentle-design redesign of every role view on staging (`de
 
 ## Tasks
 
-- [ ] T1. Theme tokens: `design/system.md` light/dark semantic tokens into `app/globals.css` (`:root`, `.dark`) and `tailwind.config.ts`; remove the duplicate `components/theme-provider.tsx`. (S6, S7) Route: worker. Commit: pending.
+- [x] T1. Theme tokens: `design/system.md` light/dark semantic tokens into `app/globals.css` (`:root`, `.dark`) and `tailwind.config.ts`; remove the duplicate `components/theme-provider.tsx`. (S6, S7) Route: worker. Commit: 87760d1. RED: `lib/theme/tokens.test.ts` 6/6 failed (tokens missing, sidebar ≠ background, sidebar-primary not violet). GREEN: 6/6; suite 1351/1351, typecheck, lint (0 errors), build pass. Notes: shadcn quiet fill renamed `--accent-quiet` (`bg-accent` unchanged) because `--accent` is now the semantic violet, exposed in Tailwind as `brand`; text tokens as `fg`/`muted-fg`.
 - [ ] T2. Admin shell: unified-canvas sidebar (same background, violet active item, VipePOS name, icon rail on tablet, drawer on phone) on `components/admin/shell/**`; overview "Sala en vivo" waits for T6. (S2, S6, S7) Route: worker. Commit: pending.
 - [ ] T3. Floor plan DB: migration 0012 `zones` (name, aspect, sort order, labels jsonb) + `tables` layout columns (`zone_id`, `x`, `y`, `w`, `h`, `shape`, `rotation`, nullable `seats`), RLS/grants, pgTAP `220_*`, Drizzle schema; existing tables land in a default zone. (S4) Route: worker + verify. Risk: item 1 (schema change on live data). Commit: pending.
 - [ ] T4. Floor plan API: zones CRUD, table layout fields in DTOs and realtime merge, integration spec, regenerated OpenAPI + `schema.d.ts`. (S4) Route: worker + verify. Risk: item 3 (API contract). Commit: pending.
