@@ -9,6 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
+import { PHONE_SHEET, PILL_BUTTON, SHEET_FOOTER } from './console-ui'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -37,7 +39,7 @@ export function FailDialog({ open, onOpenChange, isPending, onConfirm }: FailDia
 
   return (
     <Dialog open={open} onOpenChange={(next) => !isPending && onOpenChange(next)}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={cn('sm:max-w-md', PHONE_SHEET)}>
         <DialogHeader>
           <DialogTitle>Domicilio fallido</DialogTitle>
           <DialogDescription>
@@ -62,12 +64,13 @@ export function FailDialog({ open, onOpenChange, isPending, onConfirm }: FailDia
           {touched && !check.ok && <p className="text-sm text-destructive">{check.message}</p>}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+        <DialogFooter className={SHEET_FOOTER}>
+          <Button variant="outline" className={PILL_BUTTON} onClick={() => onOpenChange(false)} disabled={isPending}>
             Cerrar
           </Button>
           <Button
             variant="destructive"
+            className={PILL_BUTTON}
             onClick={() => check.ok && onConfirm(check.reason)}
             disabled={isPending || !check.ok}
           >

@@ -303,6 +303,30 @@ describe("pos_changes dispatch", () => {
   })
 })
 
+describe("zones subscription (T6)", () => {
+  it("hands zones events to zone subscribers only, and closes the socket with the last one", () => {
+    const seen: unknown[] = []
+    const tables: unknown[] = []
+    const unsubscribe = realtimeService.subscribeToZones((payload) => seen.push(payload))
+    const stopTables = realtimeService.subscribeToTables((payload) => tables.push(payload))
+
+    const zoneRow = change("zones", "UPDATE", { id: "z-1", name: "Terraza", aspect: 2 })
+    env.serverEmit("pos_changes", zoneRow)
+    env.serverEmit("pos_changes", change("tables", "UPDATE", { id: "t-1" }))
+
+    expect(seen).toEqual([zoneRow])
+    expect(tables).toHaveLength(1)
+    expect(env.ioCalls).toHaveLength(1)
+    expect(realtimeService.getChannelsStatus().channels.map((c) => c.id)).toEqual(["tables", "zones"])
+
+    stopTables()
+    unsubscribe()
+    expect(env.socket.disconnects).toBe(1)
+    env.serverEmit("pos_changes", zoneRow)
+    expect(seen).toHaveLength(1)
+  })
+})
+
 describe("delivery subscription (T11)", () => {
   it("hands order_deliveries events and delivery orders events to delivery subscribers, nothing else", () => {
     const seen: unknown[] = []
@@ -379,7 +403,7 @@ describe("delivery subscription (T11)", () => {
 })
 
 describe("resync and reconnect", () => {
-  const KEYS = [["orders"], ["orders", "kitchen"], ["tables"], ["active-deliveries"]]
+  const KEYS = [["orders"], ["orders", "kitchen"], ["tables"], ["zones"], ["active-deliveries"]]
 
   it("invalidates the order, kitchen, table and delivery queries on resync", () => {
     const unsubscribe = realtimeService.subscribeToOrders(() => {})
