@@ -23,6 +23,7 @@ interface Client {
 
 const ORDER_ID = '60000000-0000-0000-0000-000000000001';
 const TABLE_ID = '60000000-0000-0000-0000-000000000002';
+const ZONE_ID = '60000000-0000-0000-0000-000000000003';
 
 /** Poll until `check` holds or fail after `timeoutMs`. */
 async function eventually(check: () => boolean, timeoutMs = 5_000): Promise<void> {
@@ -151,6 +152,41 @@ describe('realtime gateway and listener (Testcontainers, vipe_api)', () => {
       errors: null,
     });
     a.socket.close();
+  });
+
+  it('fans out tables layout columns and zones changes to the restaurant only', async () => {
+    const a = await connect(fixtures.waiterA.email);
+    const b = await connect(fixtures.adminB.email);
+    await superuserQuery(
+      database.superuserUrl,
+      `INSERT INTO public.zones (id, name, aspect, labels, restaurant_id)
+       VALUES ($1, 'Terraza', 2, '[{"text": "Entrada", "side": "bottom"}]', $2)`,
+      [ZONE_ID, fixtures.restaurantA],
+    );
+    await superuserQuery(
+      database.superuserUrl,
+      `UPDATE public.tables SET zone_id = $2, x = 0.25, y = 0.5, w = 0.1, h = 0.2, shape = 'round', rotation = 45, seats = 6
+        WHERE id = $1`,
+      [TABLE_ID, ZONE_ID],
+    );
+    await eventually(() => a.changes.length >= 2);
+    await settle();
+    expect(b.changes).toHaveLength(0);
+    expect(a.changes[0]).toMatchObject({
+      schema: 'public',
+      table: 'zones',
+      eventType: 'INSERT',
+      new: { id: ZONE_ID, name: 'Terraza', aspect: 2, labels: [{ text: 'Entrada', side: 'bottom' }], restaurant_id: fixtures.restaurantA },
+      old: {},
+      errors: null,
+    });
+    expect(a.changes[1]).toMatchObject({
+      table: 'tables',
+      eventType: 'UPDATE',
+      new: { id: TABLE_ID, zone_id: ZONE_ID, x: 0.25, y: 0.5, w: 0.1, h: 0.2, shape: 'round', rotation: 45, seats: 6 },
+    });
+    a.socket.close();
+    b.socket.close();
   });
 
   it('sends nothing for a rolled-back change', async () => {

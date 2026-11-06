@@ -21,6 +21,7 @@ import {
   getAll,
   getWaiters,
   releaseTable,
+  saveLayout,
   toTable,
   toTableRow,
   update,
@@ -34,6 +35,14 @@ const table: TableDto = {
   status: "occupied",
   waiterId: "w-1",
   waiterName: "Ana",
+  zoneId: "z-1",
+  x: 0.25,
+  y: 0.5,
+  w: 0.1,
+  h: 0.2,
+  shape: "round",
+  rotation: 45,
+  seats: 6,
   createdAt: "2026-11-04T11:00:00.000Z",
   updatedAt: "2026-11-04T12:00:00.000Z",
 }
@@ -52,14 +61,31 @@ describe("mapping", () => {
       status: "occupied",
       waiter: "w-1",
       waiter_name: "Ana",
+      zoneId: "z-1",
+      x: 0.25,
+      y: 0.5,
+      w: 0.1,
+      h: 0.2,
+      shape: "round",
+      rotation: 45,
+      seats: 6,
       updated_at: new Date("2026-11-04T12:00:00.000Z"),
     })
-    expect(toTable({ ...table, waiterId: null, waiterName: null, updatedAt: null })).toEqual({
+    const unplaced = { zoneId: null, x: null, y: null, w: null, h: null, seats: null }
+    expect(toTable({ ...table, ...unplaced, waiterId: null, waiterName: null, updatedAt: null })).toStrictEqual({
       id: "t-1",
       number: 4,
       status: "occupied",
       waiter: undefined,
       waiter_name: undefined,
+      zoneId: undefined,
+      x: undefined,
+      y: undefined,
+      w: undefined,
+      h: undefined,
+      shape: "round",
+      rotation: 45,
+      seats: undefined,
       updated_at: undefined,
     })
   })
@@ -71,6 +97,14 @@ describe("mapping", () => {
       status: "occupied",
       waiter_id: "w-1",
       waiter_name: "Ana",
+      zone_id: "z-1",
+      x: 0.25,
+      y: 0.5,
+      w: 0.1,
+      h: 0.2,
+      shape: "round",
+      rotation: 45,
+      seats: 6,
       updated_at: "2026-11-04T12:00:00.000Z",
     })
   })
@@ -100,6 +134,13 @@ describe("requests", () => {
     api.DELETE.mockResolvedValueOnce({ data: undefined })
     await deleteTable("t-1")
     expect(api.DELETE).toHaveBeenCalledWith("/api/tables/{id}", byId)
+  })
+
+  it("saves the floor plan layout in one PUT and returns every table", async () => {
+    const row = { id: "t-1", zoneId: "z-1", x: 0.25, y: 0.5, w: 0.1, h: 0.2, shape: "round" as const, rotation: 45, seats: 6 }
+    api.PUT.mockResolvedValueOnce({ data: [table] })
+    await expect(saveLayout([row])).resolves.toEqual([table])
+    expect(api.PUT).toHaveBeenCalledWith("/api/tables/layout", { body: { tables: [row] } })
   })
 
   it("assigns a waiter and releases through the floor actions", async () => {

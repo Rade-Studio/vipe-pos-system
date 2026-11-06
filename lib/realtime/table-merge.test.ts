@@ -154,6 +154,41 @@ describe("toTable", () => {
     expect(result?.updated_at).toBeUndefined()
   })
 
+  it("keeps the floor plan layout of the row (T4)", () => {
+    const row: TableRow = {
+      id: "t-1",
+      number: 1,
+      status: "available",
+      zone_id: "z-1",
+      x: 0.25,
+      y: 0.5,
+      w: 0.1,
+      h: 0.2,
+      shape: "round",
+      rotation: 45,
+      seats: 6,
+    }
+    expect(toTable(row)).toMatchObject({ zoneId: "z-1", x: 0.25, y: 0.5, w: 0.1, h: 0.2, shape: "round", rotation: 45, seats: 6 })
+    const unplaced = toTable({ id: "t-2", zone_id: null, x: null, y: null, w: null, h: null, seats: null })!
+    expect([unplaced.zoneId, unplaced.x, unplaced.y, unplaced.w, unplaced.h, unplaced.seats]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ])
+  })
+
+  it("an UPDATE that moves a table replaces its layout in the merged list", () => {
+    const prev = [toTable({ id: "t-1", number: 1, status: "available", zone_id: "z-1", x: 0.1, y: 0.1, w: 0.1, h: 0.1, shape: "square", rotation: 0, seats: 4 })!]
+    const result = mergeTableList(prev, {
+      eventType: "UPDATE",
+      new: { id: "t-1", number: 1, status: "available", zone_id: "z-2", x: 0.9, y: 0.8, w: 0.2, h: 0.1, shape: "bar", rotation: 90, seats: null },
+    })
+    expect(result[0]).toMatchObject({ zoneId: "z-2", x: 0.9, y: 0.8, w: 0.2, h: 0.1, shape: "bar", rotation: 90, seats: undefined })
+  })
+
   it("returns null when id is absent", () => {
     const result = toTable({ id: null, number: 1, status: "available" })
 
