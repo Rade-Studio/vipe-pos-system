@@ -20,7 +20,9 @@
     "demo": "bash seed/demo/demo-db.sh",
     "create-restaurant": "bash seed/bootstrap/create-restaurant.sh",
     "test:seeds": "bash seed/test.sh",
-    "rehearse-migration": "bash migration-from-supabase/rehearse.sh"
+    "rehearse-migration": "bash migration-from-supabase/rehearse.sh",
+    "rehearse-real": "bash migration-from-supabase/rehearse-real.sh",
+    "rehearse-real-test": "bash migration-from-supabase/rehearsal/rehearse-real.test.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1162.0",

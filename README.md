@@ -297,6 +297,7 @@ Personaliza la información que aparece en las facturas:
 | `pnpm db:typecheck` | Paquete de base de datos y herramientas de migración | — |
 | `pnpm test:db` | Base de datos: RLS, permisos, RPCs y triggers (pgTAP sobre Postgres 16) | Docker |
 | `pnpm db:rehearse-migration` | Ensayo completo de la migración de datos con contenedores desechables | Docker |
+| `pnpm db:rehearse-real` | Ensayo de la migración con datos reales de Supabase (`SUPABASE_DB_URL`) hacia contenedores desechables | Docker |
 | `python3 -m unittest discover -s pos` | Servicio de impresión (sin impresora ni red) | Python 3.11 |
 
 Otras verificaciones: `pnpm build` (web).
