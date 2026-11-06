@@ -1,0 +1,140 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`T24 only > reference only on the card line, normalised; cash never > ref 1`] = `
+[
+  {
+    "cashRegisterId": "reg-1",
+    "idempotencyKey": "string",
+    "orderId": "o-1",
+    "tenders": [
+      {
+        "amount": 30000,
+        "paymentMethodId": "pm-card",
+        "reference": "AP 4821",
+      },
+      {
+        "amount": 17600,
+        "cashReceived": 20000,
+        "paymentMethodId": "pm-cash",
+      },
+    ],
+    "tipAmount": 0,
+  },
+]
+`;
+
+exports[`T24 only > whitespace-only and 61-char references > ref-bounds 1`] = `
+[
+  {
+    "cashRegisterId": "reg-1",
+    "idempotencyKey": "string",
+    "orderId": "o-1",
+    "tenders": [
+      {
+        "amount": 10000,
+        "paymentMethodId": "pm-card",
+      },
+      {
+        "amount": 37600,
+        "paymentMethodId": "pm-card",
+        "reference": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      },
+    ],
+    "tipAmount": 0,
+  },
+]
+`;
+
+exports[`parity > cash change > cash-change 1`] = `
+[
+  {
+    "cashRegisterId": "reg-1",
+    "idempotencyKey": "string",
+    "orderId": "o-1",
+    "tenders": [
+      {
+        "amount": 47600,
+        "cashReceived": 100000,
+        "paymentMethodId": "pm-cash",
+      },
+    ],
+    "tipAmount": 0,
+  },
+]
+`;
+
+exports[`parity > cash exact > cash-exact 1`] = `
+[
+  {
+    "cashRegisterId": "reg-1",
+    "idempotencyKey": "string",
+    "orderId": "o-1",
+    "tenders": [
+      {
+        "amount": 47600,
+        "cashReceived": 47600,
+        "paymentMethodId": "pm-cash",
+      },
+    ],
+    "tipAmount": 0,
+  },
+]
+`;
+
+exports[`parity > mixed > mixed 1`] = `
+[
+  {
+    "cashRegisterId": "reg-1",
+    "idempotencyKey": "string",
+    "orderId": "o-1",
+    "tenders": [
+      {
+        "amount": 30000,
+        "paymentMethodId": "pm-card",
+      },
+      {
+        "amount": 17600,
+        "cashReceived": 20000,
+        "paymentMethodId": "pm-cash",
+      },
+    ],
+    "tipAmount": 0,
+  },
+]
+`;
+
+exports[`parity > partial child > child 1`] = `
+[
+  {
+    "cashRegisterId": "reg-1",
+    "idempotencyKey": "string",
+    "orderId": "o-child",
+    "tenders": [
+      {
+        "amount": 23800,
+        "cashReceived": 23800,
+        "paymentMethodId": "pm-cash",
+      },
+    ],
+    "tipAmount": 0,
+  },
+]
+`;
+
+exports[`parity > tip > tip 1`] = `
+[
+  {
+    "cashRegisterId": "reg-1",
+    "idempotencyKey": "string",
+    "orderId": "o-1",
+    "tenders": [
+      {
+        "amount": 51600,
+        "cashReceived": 51600,
+        "paymentMethodId": "pm-cash",
+      },
+    ],
+    "tipAmount": 4000,
+  },
+]
+`;

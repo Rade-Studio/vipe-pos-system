@@ -442,6 +442,36 @@ describe("resync and reconnect", () => {
     expect(realtimeService.getChannelsStatus()).toMatchObject({ isConnected: true, totalChannels: 1 })
     unsubscribe()
   })
+
+  it("T24: reports the connection state to a public status subscriber, starting with the current one", () => {
+    const orders = realtimeService.subscribeToOrders(() => {})
+    const seen: boolean[] = []
+    const stop = realtimeService.subscribeToConnectionStatus((connected) => seen.push(connected))
+    expect(seen).toEqual([false])
+    env.serverEmit("connect")
+    env.serverEmit("disconnect", "transport close")
+    expect(seen).toEqual([false, true, false])
+
+    stop()
+    env.serverEmit("connect")
+    expect(seen).toEqual([false, true, false])
+    // A status listener alone does not keep the socket open.
+    const disconnectsBefore = env.socket.disconnects
+    orders()
+    expect(env.socket.disconnects).toBe(disconnectsBefore + 1)
+  })
+
+  it("T24: the kitchen keeps its status callback next to a public status subscriber", () => {
+    const kitchen = subscribeKitchen()
+    const seen: boolean[] = []
+    const stop = realtimeService.subscribeToConnectionStatus((connected) => seen.push(connected))
+    env.serverEmit("connect")
+    stop()
+    env.serverEmit("disconnect", "transport close")
+    expect(seen).toEqual([false, true])
+    expect(kitchen.status).toEqual([true, false])
+    kitchen.unsubscribe()
+  })
 })
 
 describe("kitchen read budget", () => {

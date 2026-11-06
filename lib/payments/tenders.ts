@@ -151,6 +151,7 @@ export function computePaymentState(input: ComputePaymentStateInput): PaymentSta
         tendered: tender.tendered,
         applied: lineApplied,
         change: 0,
+        ...(tender.reference ? { reference: tender.reference } : {}),
       })
       applied += lineApplied
     } else {
@@ -197,10 +198,12 @@ export function buildPayOrderTenders(state: PaymentState): PayOrderTenderLine[] 
       'buildPayOrderTenders: cannot build a pay_order payload from a state that is not submittable',
     )
   }
+  // A line without reference keeps the pre-T24 keys exactly; cash never carries one.
   return state.lines.map((line) => ({
     payment_method_id: line.methodId,
     amount: line.applied,
     cash_received: line.kind === 'cash' ? line.tendered : null,
+    ...(line.kind !== 'cash' && line.reference ? { reference: line.reference } : {}),
   }))
 }
 

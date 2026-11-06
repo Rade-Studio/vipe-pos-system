@@ -20,7 +20,7 @@
  * `addLine` rejects non-integers before they reach the helper.
  */
 
-import { applySurplusAsTip, computePaymentState } from './tenders'
+import { applySurplusAsTip, computePaymentState, normalizeTenderReference } from './tenders'
 import type {
   PayOrderResult,
   PaymentMethodOption,
@@ -49,6 +49,8 @@ export interface PaymentDraftState {
   selectedMethodId: string | null
   /** Raw text the cashier typed for the next line; '' = no line in progress. */
   amountInput: string
+  /** Optional card/transfer reference for the next line (T24), at most 60 characters. */
+  referenceInput: string
   /** Stable for the whole dialog session. Rotated only by a new draft (new order). */
   idempotencyKey: string
   /** True between `startSubmit` and `submitSucceeded`/`submitFailed`. */
@@ -66,7 +68,9 @@ export interface PaymentDraftState {
 export type PaymentDraftAction =
   | { type: 'selectMethod'; methodId: string }
   | { type: 'setAmountInput'; value: string }
-  | { type: 'addLine' }
+  | { type: 'setReferenceInput'; value: string }
+  /** `methodKind` of the selected method: a cash line never takes the reference. */
+  | { type: 'addLine'; methodKind?: 'cash' | 'electronic' }
   | { type: 'removeLine'; lineIndex: number }
   | { type: 'setTipNone' }
   | { type: 'setTipSuggested' }
@@ -75,6 +79,8 @@ export type PaymentDraftAction =
   | { type: 'submitSucceeded'; result: PayOrderResult }
   | { type: 'submitFailed'; error: string }
   | { type: 'clearLastError' }
+  /** A new pay attempt (T24 undo): fresh key, tenders and tip kept. */
+  | { type: 'newAttempt'; idempotencyKey: string }
 
 // -----------------------------------------------------------
 // Public factories
@@ -112,6 +118,7 @@ export function initialPaymentDraft(input: InitialPaymentDraftInput): PaymentDra
     tenders: [],
     selectedMethodId: null,
     amountInput: '',
+    referenceInput: '',
     idempotencyKey: input.idempotencyKey,
     submitting: false,
     lastError: null,
@@ -129,6 +136,9 @@ export function initialPaymentDraft(input: InitialPaymentDraftInput): PaymentDra
  * We re-parse on every action so the same regex backs every entry path
  * (typed digits, keypad press, programmatic add).
  */
+/** The API's limit for a tender reference (T18). */
+export const REFERENCE_MAX_LENGTH = 60
+
 function parseAmountInput(raw: string): number | null {
   if (raw === '') return null
   // Reject anything that is not a non-empty run of digits.
@@ -158,16 +168,28 @@ export function paymentDraftReducer(
       return { ...state, amountInput: sanitized }
     }
 
+    case 'setReferenceInput': {
+      if (state.submitting) return state
+      return { ...state, referenceInput: action.value.slice(0, REFERENCE_MAX_LENGTH) }
+    }
+
     case 'addLine': {
       if (state.submitting) return state
       if (state.selectedMethodId === null) return state
       const tendered = parseAmountInput(state.amountInput)
       if (tendered === null) return state
+      const reference = action.methodKind === 'cash' ? null : normalizeTenderReference(state.referenceInput)
       return {
         ...state,
-        tenders: [...state.tenders, { methodId: state.selectedMethodId, tendered }],
+        tenders: [
+          ...state.tenders,
+          reference === null
+            ? { methodId: state.selectedMethodId, tendered }
+            : { methodId: state.selectedMethodId, tendered, reference },
+        ],
         selectedMethodId: null,
         amountInput: '',
+        referenceInput: '',
       }
     }
 
@@ -208,6 +230,10 @@ export function paymentDraftReducer(
 
     case 'clearLastError':
       return { ...state, lastError: null }
+
+    case 'newAttempt':
+      if (state.submitting) return state
+      return { ...state, idempotencyKey: action.idempotencyKey, lastError: null }
   }
 }
 

@@ -366,3 +366,25 @@ describe('applySurplusAsTip', () => {
     })).toBe(2000)
   })
 })
+
+describe('buildPayOrderTenders with references (T24)', () => {
+  it('adds the reference only to non-cash lines that carry one', () => {
+    const state = computePaymentState({
+      amountDue: 47000,
+      tip: 0,
+      methods: METHODS,
+      tenders: [
+        { methodId: NEQUI.id, tendered: 20000, reference: 'M48211' },
+        { methodId: TRANSFER.id, tendered: 10000 },
+        { methodId: CASH.id, tendered: 17000, reference: 'never' },
+      ],
+    })
+    expect(state.lines.map((l) => l.reference)).toEqual(['M48211', undefined, undefined])
+    expect(buildPayOrderTenders(state)).toEqual([
+      { payment_method_id: NEQUI.id, amount: 20000, cash_received: null, reference: 'M48211' },
+      { payment_method_id: TRANSFER.id, amount: 10000, cash_received: null },
+      { payment_method_id: CASH.id, amount: 17000, cash_received: 17000 },
+    ])
+    expect(Object.keys(buildPayOrderTenders(state)[1]!)).toEqual(['payment_method_id', 'amount', 'cash_received'])
+  })
+})

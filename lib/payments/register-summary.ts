@@ -299,6 +299,11 @@ export interface ShiftKpis {
   averageTicket: number
   /** Efectivo esperado in the drawer (tips still inside). */
   expectedCash: number
+  /**
+   * Ventas en efectivo: what the cash tenders applied to bills (change already
+   * out). initial + cashSales + deposits - withdrawals = expectedCash.
+   */
+  cashSales: number
   /** Por método, as the close dialog shows them. */
   methods: RegisterMethodSummary[]
 }
@@ -316,6 +321,7 @@ export function shiftKpis(summary: RegisterSummary): ShiftKpis {
     tickets,
     averageTicket: tickets > 0 ? Math.round(summary.totalBilled / tickets) : 0,
     expectedCash: summary.expectedCash,
+    cashSales: summary.methods.filter((m) => m.kind === 'cash').reduce((sum, m) => sum + m.total, 0),
     methods: summaryRows(summary),
   }
 }

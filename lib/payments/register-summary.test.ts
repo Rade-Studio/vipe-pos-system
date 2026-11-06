@@ -309,8 +309,16 @@ describe('shiftKpis (T18: the shift sheet)', () => {
       tickets: 3,
       averageTicket: 47000,
       expectedCash: summary.expectedCash,
+      cashSales: 100000,
       methods: summaryRows(summary),
     })
+  })
+
+  it('cash sales close the arqueo: initial + cash sales + deposits - withdrawals = expected cash', () => {
+    const summary = parseRegisterSummary(SAMPLE_RAW)
+    const { cashSales } = shiftKpis(summary)
+    expect(summary.initialCash + cashSales + summary.cashDeposits - summary.cashWithdrawals).toBe(summary.expectedCash)
+    expect(summary.expectedCash - summary.tipsPayout).toBe(summary.expectedCashAfterTips)
   })
 
   it('rounds the average to whole pesos and answers 0 without tickets', () => {
