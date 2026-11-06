@@ -1,4 +1,4 @@
-import type { Table } from "@/types"
+import type { Table, TableShape } from "@/types"
 
 /**
  * A `public.tables` row as it arrives inside a postgres_changes payload.
@@ -11,6 +11,15 @@ export interface TableRow {
   status?: string | null
   waiter_id?: string | null
   waiter_name?: string | null
+  /** Floor plan columns (migration 0012); numeric columns arrive as JSON numbers. */
+  zone_id?: string | null
+  x?: number | null
+  y?: number | null
+  w?: number | null
+  h?: number | null
+  shape?: string | null
+  rotation?: number | null
+  seats?: number | null
   updated_at?: string | null
 }
 
@@ -50,6 +59,14 @@ export function toTable(row: TableRow): Table | null {
     status: row.status as Table["status"],
     waiter: row.waiter_id || undefined,
     waiter_name: row.waiter_name || undefined,
+    zoneId: row.zone_id ?? undefined,
+    x: row.x ?? undefined,
+    y: row.y ?? undefined,
+    w: row.w ?? undefined,
+    h: row.h ?? undefined,
+    shape: (row.shape as TableShape | null) ?? undefined,
+    rotation: row.rotation ?? undefined,
+    seats: row.seats ?? undefined,
     // D4: makes the out-of-order guard live for the first time — see design.md
     updated_at: row.updated_at ? new Date(row.updated_at) : undefined,
   }
