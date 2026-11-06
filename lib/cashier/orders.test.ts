@@ -266,3 +266,14 @@ describe("billSourceFromOrder (S1: the dialog reuses the loaded order)", () => {
     expect(hasBillableItems(undefined)).toBe(false)
   })
 })
+
+describe("toCashierOrder (T24 review: include=waiter)", () => {
+  it("keeps waiterName from the DTO and leaves it out when absent", async () => {
+    const { toCashierOrder, CASHIER_ORDER_INCLUDES } = await import("./orders")
+    const dto = orderDtoFromWire({ id: "o-1", status: "active", order_items: [] })!
+    expect(CASHIER_ORDER_INCLUDES).toEqual(["waiter"])
+    expect(toCashierOrder({ ...dto, waiterName: "Ana" }).waiterName).toBe("Ana")
+    expect(toCashierOrder({ ...dto, waiterName: null })).toEqual(toOrder(dto))
+    expect(toCashierOrder(dto)).toEqual(toOrder(dto))
+  })
+})

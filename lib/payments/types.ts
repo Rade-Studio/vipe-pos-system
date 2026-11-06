@@ -46,6 +46,8 @@ export interface PaymentMethodOption {
 export interface TenderDraft {
   methodId: string
   tendered: number
+  /** Normalized card/transfer reference (T24); never set on cash. */
+  reference?: string
 }
 
 // -----------------------------------------------------------
@@ -82,6 +84,8 @@ export interface ComputedTenderLine {
   applied: number
   /** cash: tendered - applied; electronic: 0. */
   change: number
+  /** Electronic lines only: the reference the cashier typed (T24). */
+  reference?: string
 }
 
 export interface PaymentState {

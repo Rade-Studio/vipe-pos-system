@@ -11,7 +11,7 @@ import { useShallow } from "zustand/react/shallow"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
-import { RefreshCw, WifiOff, AlertTriangle } from "lucide-react"
+import { RefreshCw, WifiOff, AlertTriangle, BarChart3 } from "lucide-react"
 import { CashRegisterStatus } from "@/components/cashier/CashRegisterStatus"
 import { PaymentPanel, type PaymentPanelTotals } from "@/components/cashier/PaymentPanel"
 import { CashierQueue, type QueueTab } from "@/components/cashier/CashierQueue"
@@ -25,7 +25,7 @@ import { PartialPaymentDialog } from "@/components/cashier/PartialPaymentDialog"
 import { toast } from "@/utils/toast"
 import { TransactionsList } from "@/components/cashier/TransactionsList"
 import { realtimeService } from "@/lib/api/realtime"
-import { getByStatus, toOrder } from "@/lib/api/orders"
+import { getByStatus } from "@/lib/api/orders"
 import { queryClient } from "@/lib/queryClient"
 import { log } from "@/lib/log"
 import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
@@ -33,13 +33,22 @@ import { createSingleFlight } from "@/lib/payments/single-flight"
 import { splitOrder, undoSplit } from "@/lib/api/payments"
 import { PaymentServiceError } from "@/lib/payments/types"
 import {
+  CASHIER_ORDER_INCLUDES,
   CASHIER_ORDER_STATUSES,
   applyCashierOrderEvent,
   billSourceFromOrder,
   cashierOrdersQueryKey,
   deriveCashierViews,
+  toCashierOrder,
 } from "@/lib/cashier/orders"
+import { BillChangedBanner } from "@/components/cashier/BillChangedBanner"
+import { usePhone } from "@/lib/cashier/use-phone"
 import { DeliveryPaymentsPanel } from "@/components/cashier/DeliveryPaymentsPanel"
+import { PaidOrdersList } from "@/components/cashier/PaidOrdersList"
+import { ShiftSummarySheet } from "@/components/cashier/ShiftSummarySheet"
+import { LivePill } from "@/components/cashier/LivePill"
+import { useZones } from "@/hooks/use-zones"
+import type { CashRegisterWithOpener } from "@/lib/api/registers"
 import { useActiveDeliveries } from "@/hooks/use-active-deliveries"
 import { pendingDeliveryPayments } from "@/lib/delivery/kitchen"
 import {
@@ -84,6 +93,11 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const [splitGate] = useState(createSingleFlight)
   const [undoGate] = useState(createSingleFlight)
   const [partialParentItems, setPartialParentItems] = useState<CartItem[]>([])
+  const [shiftSheetOpen, setShiftSheetOpen] = useState(false)
+  // "Precio cambió" (T24): reported by the payment panel, shown over the detail
+  // pane (on phone at the top of the current step), as in the design.
+  const [billNotice, setBillNotice] = useState<string | null>(null)
+  const phone = usePhone()
 
   // The whole screen renders from ONE loaded list (mount, "Actualizar" and the
   // realtime patch share this cache slot); every bucket the view shows is
@@ -94,7 +108,9 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   // ONE request for the three statuses the cashier lists (S1). It used to be
   // three `getByStatus` calls, one per status, feeding three arrays plus a
   // by-table group that every refresh had to re-sync.
-  const fetchCashierOrders = async (): Promise<Order[]> => (await getByStatus(CASHIER_ORDER_STATUSES)).map(toOrder)
+  // T24: with the waiter's name (include=waiter); the profile store is the fallback.
+  const fetchCashierOrders = async (): Promise<Order[]> =>
+    (await getByStatus(CASHIER_ORDER_STATUSES, { include: CASHIER_ORDER_INCLUDES })).map(toCashierOrder)
 
   const {
     data: orders = NO_ORDERS,
@@ -123,6 +139,24 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       return map
     }),
   )
+  // T24: the zone each table sits in, by name, for the queue and the detail.
+  const zoneIdByTableId = useTableStore(
+    useShallow((s) => {
+      const map: Record<string, string> = {}
+      for (const t of s.tables) if (t.zoneId) map[t.id] = t.zoneId
+      return map
+    }),
+  )
+  const { data: zones } = useZones()
+  const zoneNameByTableId = useMemo(() => {
+    const names = new Map((zones ?? []).map((z) => [z.id, z.name] as const))
+    const map: Record<string, string> = {}
+    for (const [tableId, zoneId] of Object.entries(zoneIdByTableId)) {
+      const name = names.get(zoneId)
+      if (name) map[tableId] = name
+    }
+    return map
+  }, [zones, zoneIdByTableId])
   const profiles = useProfileStore((s) => s.profiles)
   const online = useOnlineStatus()
 
@@ -135,12 +169,12 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   // the very order the row holds, so selecting it never re-reads it.
   const waiterName = useCallback((id: string) => profiles?.find((p) => p.id === id)?.name, [profiles])
   const tableRows = useMemo(
-    () => tableEntries({ byTable: ordersByTable, partial: partialOrders, tableNumberById, waiterName }),
-    [ordersByTable, partialOrders, tableNumberById, waiterName],
+    () => tableEntries({ byTable: ordersByTable, partial: partialOrders, tableNumberById, zoneNameByTableId, waiterName }),
+    [ordersByTable, partialOrders, tableNumberById, zoneNameByTableId, waiterName],
   )
   const partialRows = useMemo(
-    () => partialEntries({ byTable: ordersByTable, partial: partialOrders, tableNumberById, waiterName }),
-    [ordersByTable, partialOrders, tableNumberById, waiterName],
+    () => partialEntries({ byTable: ordersByTable, partial: partialOrders, tableNumberById, zoneNameByTableId, waiterName }),
+    [ordersByTable, partialOrders, tableNumberById, zoneNameByTableId, waiterName],
   )
   const tabRows = queueTab === "partials" ? partialRows : tableRows
   const visibleRows = useMemo(() => tabRows.filter((row) => matchesQueueSearch(row, query)), [tabRows, query])
@@ -150,17 +184,24 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   )
 
   const selectEntry = (entry: QueueEntry) => {
-    if (entry.key !== selectedKey) setPayTotals(null)
+    if (entry.key !== selectedKey) {
+      setPayTotals(null)
+      setBillNotice(null)
+    }
     setSelectedKey(entry.key)
     setStep("detail")
   }
   const clearSelection = () => {
     setSelectedKey(null)
+    setBillNotice(null)
     setPayTotals(null)
     setStep("queue")
   }
 
-  const { isRegisterOpen, loadCurrentRegister } = useCashRegisterStore()
+  const { isRegisterOpen, loadCurrentRegister, currentRegister } = useCashRegisterStore()
+  const openRegisterId = isRegisterOpen() ? (currentRegister?.id ?? null) : null
+  const openerName = (currentRegister as Partial<CashRegisterWithOpener> | null)?.openedBy?.name ?? null
+  const registerOpenedAt = currentRegister?.openingTimestamp ? clockTime(new Date(currentRegister.openingTimestamp)) : null
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
 
   // Función para refrescar manualmente los datos
@@ -606,6 +647,16 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
               Resumen del turno
             </TabsTrigger>
           </TabsList>
+          <LivePill />
+          <Button
+            variant="outline"
+            onClick={() => setShiftSheetOpen(true)}
+            aria-label="Cifras del turno"
+            className="h-11 w-11 p-0 sm:w-auto sm:px-3"
+          >
+            <BarChart3 aria-hidden="true" className="h-4 w-4" />
+            <span className="hidden sm:inline">Cifras del turno</span>
+          </Button>
           <Button
             variant="outline"
             onClick={() => void refreshOrders()}
@@ -670,6 +721,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
             ))}
           </nav>
 
+          {phone && billNotice && <BillChangedBanner notice={billNotice} onDismiss={() => setBillNotice(null)} />}
+
           <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2 min-[1180px]:grid-cols-[minmax(320px,360px)_minmax(0,1fr)_minmax(360px,420px)]">
             <section
               aria-label="Órdenes por cobrar"
@@ -687,6 +740,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                 onSelect={selectEntry}
                 loading={isLoading}
                 deliveries={<DeliveryPaymentsPanel onPaid={() => void refreshOrders()} />}
+                paid={<PaidOrdersList registerId={openRegisterId} />}
               />
             </section>
 
@@ -694,6 +748,11 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
               aria-label="Detalle de la orden"
               className={cn(pane, step !== "detail" && "max-md:hidden")}
             >
+              {!phone && billNotice && (
+                <div className="p-3 pb-0 sm:p-4 sm:pb-0">
+                  <BillChangedBanner notice={billNotice} onDismiss={() => setBillNotice(null)} />
+                </div>
+              )}
               {selectedEntry ? (
                 <OrderDetail
                   entry={selectedEntry}
@@ -732,6 +791,10 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                   onCancel={clearSelection}
                   onPaid={handlePaid}
                   onTotalsChange={setPayTotals}
+                  waiterName={selectedEntry.waiterName}
+                  undoWindow
+                  onBillStale={() => void refreshOrders()}
+                  onBillNotice={setBillNotice}
                 />
               ) : (
                 <div className="flex h-full min-h-[10rem] flex-col items-center justify-center gap-1 p-6 text-center">
@@ -765,6 +828,19 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
           <TransactionsList registerLoading={!registerSettled} />
         </TabsContent>
       </Tabs>
+
+      <ShiftSummarySheet
+        open={shiftSheetOpen}
+        onOpenChange={setShiftSheetOpen}
+        registerId={openRegisterId}
+        openerName={openerName}
+        openedAt={registerOpenedAt}
+        pendingCount={tableRows.length + partialRows.length + pendingDeliveries.length}
+        onShowMovements={() => {
+          setShiftSheetOpen(false)
+          setActiveTab("transactions")
+        }}
+      />
 
       {/* Partial Payment Dialog */}
       {selectedTableId && (

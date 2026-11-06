@@ -209,6 +209,19 @@ export const realtimeService = {
   /** `zones` changes (name, aspect, order, wall labels, active). */
   subscribeToZones: (callback: ChangeCallback) => listen(zoneListeners, callback),
 
+  /**
+   * Socket connection state (T24 "En vivo" pill): called now with the current
+   * state, then on every change. It does not open or keep the socket by itself;
+   * the screen's data subscriptions do.
+   */
+  subscribeToConnectionStatus: (callback: ConnectionStatusCallback) => {
+    statusListeners.add(callback)
+    callback(realtimeService.isConnected)
+    return () => {
+      statusListeners.delete(callback)
+    }
+  },
+
   /** `orders` changes; INSERT and UPDATE rows carry `order_items`. */
   subscribeToOrders: (callback: ChangeCallback) => listen(orderListeners, callback),
 

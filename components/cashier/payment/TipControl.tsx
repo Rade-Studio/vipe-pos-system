@@ -13,6 +13,8 @@ interface TipControlProps {
   /** Amount the tip would become if the cashier applied "el excedente es propina". */
   surplusTipPreview: number
   submitting: boolean
+  /** The order's waiter, when known: "Propina para Ana". */
+  waiterName?: string
   onSetNone: () => void
   onSetSuggested: () => void
   onSetCustom: (amount: number) => void
@@ -37,6 +39,7 @@ export function TipControl({
   showSurplusAsTip,
   surplusTipPreview,
   submitting,
+  waiterName,
   onSetNone,
   onSetSuggested,
   onSetCustom,
@@ -57,8 +60,14 @@ export function TipControl({
   return (
     <section className="space-y-2" aria-labelledby="tip-heading">
       <div className="flex items-center justify-between gap-2">
-        <h3 id="tip-heading" className="text-sm font-semibold text-fg">
+        <h3 id="tip-heading" className="min-w-0 truncate text-sm font-semibold text-fg">
           Propina
+          {waiterName && (
+            <>
+              {" "}
+              <span className="font-normal text-muted-fg">para {waiterName}</span>
+            </>
+          )}
         </h3>
         <Money className="text-base font-bold text-fg">
           <span data-testid="current-tip">{formatCurrency(tip)}</span>

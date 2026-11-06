@@ -1,9 +1,10 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { AlertTriangle, Check, WifiOff, Wallet } from "lucide-react"
+import { AlertTriangle, Check, Undo2, WifiOff, Wallet } from "lucide-react"
+import { BillChangedBanner } from "./BillChangedBanner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -34,6 +35,8 @@ import { queryClient } from "@/lib/queryClient"
 import { billSignature, billSourceFromOrder, hasBillableItems, type CashierBillSource } from "@/lib/cashier/orders"
 import { quickCashAmounts } from "@/lib/cashier/quick-cash"
 import { useOnlineStatus } from "@/lib/cashier/use-online-status"
+import { PAY_UNDO_MS, countdownLabel, keepPendingDraft, takePendingDraft } from "@/lib/cashier/pay-undo"
+import { REFERENCE_MAX_LENGTH } from "@/lib/payments/draft"
 import { MethodPicker } from "./payment/MethodPicker"
 import { TenderLinesList } from "./payment/TenderLinesList"
 import { TipControl, optionClass } from "./payment/TipControl"
@@ -77,7 +80,25 @@ export interface PaymentPanelProps {
   onPaid: (invoice: PrintableInvoice) => void
   onSubmittingChange?: (submitting: boolean) => void
   onTotalsChange?: (totals: PaymentPanelTotals) => void
+  /** The order's waiter: the tip is named for them ("Propina para Ana"). */
+  waiterName?: string
+  /**
+   * T24: "Registrar" opens a 10 s window with "Deshacer" / "Cerrar ahora"; the
+   * pay request goes out only when it ends. The cashier's inline panel uses
+   * it; the delivery dialog keeps sending at once.
+   */
+  undoWindow?: boolean
+  /** pay_order answered with another total: the caller re-reads the order. */
+  onBillStale?: () => void
+  /**
+   * The "Precio cambió" notice (null = none). When set, the caller shows the
+   * banner (the cashier puts it over the detail pane) and the panel does not.
+   */
+  onBillNotice?: (notice: string | null) => void
 }
+
+/** pay_order's total mismatch (the bill changed on the server since it was read). */
+const TOTAL_MISMATCH = /tenders sum to (\d+) but amount_due \+ tip = (\d+)/
 
 interface OrderForBill extends CashierBillSource {
   order_items: Array<{ id: string; name: string; price: number; quantity: number; comments?: string | null }>
@@ -132,6 +153,10 @@ export function PaymentPanel({
   onPaid,
   onSubmittingChange,
   onTotalsChange,
+  waiterName,
+  undoWindow = false,
+  onBillStale,
+  onBillNotice,
 }: PaymentPanelProps) {
   const [draft, setDraft] = useState<PaymentDraftState>(() =>
     initialPaymentDraft({ amountDue: 0, suggestedTip: 0, idempotencyKey: uuid() }),
@@ -147,6 +172,10 @@ export function PaymentPanel({
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [billChangedNotice, setBillChangedNotice] = useState<string | null>(null)
+  // T24 undo window: when it ends the payment is sent; null = no window open.
+  const [pendingUntil, setPendingUntil] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+  const pendingRef = useRef(false)
   const online = useOnlineStatus()
 
   const { isRegisterOpen, currentRegister } = useCashRegisterStore()
@@ -236,10 +265,21 @@ export function PaymentPanel({
     )
     const amountDue = bill.amountDue + deliveryFee
     seededForRef.current = { orderId, signature, amountDue }
+    // A bill change closes an open undo window: the old amount is never sent.
+    pendingRef.current = false
+    setPendingUntil(null)
     const rebill = previous?.orderId === orderId
+    // The cashier left this order during an undo window: same bill, same tenders.
+    const kept = rebill ? null : takePendingDraft<PaymentDraftState>(orderId, signature)
+    if (kept) {
+      setBillChangedNotice(null)
+      setDraft(kept)
+      setSubmitError(null)
+      return
+    }
     setBillChangedNotice(
       rebill && draft.tenders.length > 0
-        ? `La cuenta cambió (de ${formatCurrency(previous.amountDue)} a ${formatCurrency(amountDue)}); vuelve a registrar los pagos`
+        ? `La cuenta sin propina cambió de ${formatCurrency(previous.amountDue)} a ${formatCurrency(amountDue)}; vuelve a registrar los pagos`
         : null,
     )
     setDraft(
@@ -253,7 +293,29 @@ export function PaymentPanel({
     setSubmitError(null)
   }, [active, orderData, orderId, deliveryFee, draft.submitting, draft.tenders.length])
 
+  useEffect(() => {
+    onBillNotice?.(billChangedNotice)
+  }, [billChangedNotice, onBillNotice])
+
   const dispatch = (action: PaymentDraftAction) => setDraft((current) => paymentDraftReducer(current, action))
+
+  // Leaving the screen or switching order during the window sends nothing and
+  // keeps the draft (with a fresh key: the next attempt is a new one).
+  const draftRef = useRef(draft)
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
+  useEffect(
+    () => () => {
+      const seeded = seededForRef.current
+      if (!pendingRef.current || !seeded) return
+      pendingRef.current = false
+      keepPendingDraft(seeded.orderId, seeded.signature, {
+        ...paymentDraftReducer(draftRef.current, { type: "newAttempt", idempotencyKey: uuid() }),
+      })
+    },
+    [],
+  )
 
   const view = useMemo(() => (orderData ? selectView(draft, allMethods) : null), [draft, allMethods, orderData])
 
@@ -268,6 +330,25 @@ export function PaymentPanel({
     if (remaining === undefined || totalToCharge === undefined || change === undefined) return
     onTotalsChange?.({ remaining, totalToCharge, change })
   }, [remaining, totalToCharge, change, onTotalsChange])
+
+  // The window's countdown and its end. The confirm handler is read through a
+  // ref: it is redefined on every render.
+  const confirmRef = useRef<() => Promise<void>>(async () => {})
+  const sendPending = useCallback(() => {
+    if (!pendingRef.current) return
+    pendingRef.current = false
+    setPendingUntil(null)
+    void confirmRef.current()
+  }, [])
+  useEffect(() => {
+    if (pendingUntil === null) return
+    const tick = setInterval(() => setNow(Date.now()), 250)
+    const end = setTimeout(sendPending, Math.max(0, pendingUntil - Date.now()))
+    return () => {
+      clearInterval(tick)
+      clearTimeout(end)
+    }
+  }, [pendingUntil, sendPending])
 
   const header = (title: string, description?: string) => (
     <div className="min-w-0">
@@ -333,6 +414,7 @@ export function PaymentPanel({
       // efectivo esperado de la caja: el resumen se vuelve a leer.
       queryClient.invalidateQueries({ queryKey: registerSummaryQueryKey(summaryIds) })
       queryClient.invalidateQueries({ queryKey: registerPaymentsQueryKey(summaryIds) })
+      queryClient.invalidateQueries({ queryKey: ["register-paid-orders"] })
 
       if (result.alreadyPaid) {
         toast.success("Esta orden ya estaba pagada. Mostrando factura.")
@@ -399,7 +481,41 @@ export function PaymentPanel({
       dispatch({ type: "submitFailed", error: msg })
       setSubmitError(msg)
       toast.error(msg)
+      const mismatch = err instanceof PaymentServiceError ? TOTAL_MISMATCH.exec(err.message) : null
+      if (mismatch) {
+        setBillChangedNotice(
+          `El total a cobrar (con propina) cambió de ${formatCurrency(Number(mismatch[1]))} a ${formatCurrency(Number(mismatch[2]))}; la orden se vuelve a leer, revisa los pagos`,
+        )
+        onBillStale?.()
+      }
     }
+  }
+  confirmRef.current = handleConfirm
+
+  const pending = pendingUntil !== null
+  const busy = draft.submitting || pending
+
+  const handleRegister = () => {
+    if (!undoWindow) {
+      void handleConfirm()
+      return
+    }
+    if (pendingRef.current || !view.canConfirm || !online) return
+    if (!isRegisterOpen()) {
+      toast.error("Debes abrir la caja antes de procesar pagos")
+      return
+    }
+    pendingRef.current = true
+    const until = Date.now() + PAY_UNDO_MS
+    setNow(Date.now())
+    setPendingUntil(until)
+  }
+
+  const handleUndo = () => {
+    if (!pendingRef.current) return
+    pendingRef.current = false
+    setPendingUntil(null)
+    dispatch({ type: "newAttempt", idempotencyKey: uuid() })
   }
 
   const amountLabel = selectedMethod?.kind === "cash" ? "Recibido en efectivo" : "Monto"
@@ -469,14 +585,8 @@ export function PaymentPanel({
           </div>
         )}
 
-        {billChangedNotice && (
-          <p
-            role="status"
-            className="flex items-start gap-2 rounded-card border border-status-warning-line bg-status-warning-bg p-3 text-sm text-status-warning-fg"
-          >
-            <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{billChangedNotice}</span>
-          </p>
+        {billChangedNotice && !onBillNotice && (
+          <BillChangedBanner notice={billChangedNotice} onDismiss={() => setBillChangedNotice(null)} />
         )}
 
         <section className="space-y-2" aria-labelledby="applied-heading">
@@ -487,7 +597,7 @@ export function PaymentPanel({
             lines={view.lines}
             methodName={methodName}
             onRemove={(lineIndex) => dispatch({ type: "removeLine", lineIndex })}
-            disabled={draft.submitting}
+            disabled={busy}
           />
         </section>
 
@@ -506,7 +616,7 @@ export function PaymentPanel({
               methods={activeMethods}
               selectedMethodId={draft.selectedMethodId}
               onSelectMethod={(methodId) => dispatch({ type: "selectMethod", methodId })}
-              disabled={draft.submitting}
+              disabled={busy}
             />
           )}
           <div className="space-y-2">
@@ -519,7 +629,7 @@ export function PaymentPanel({
                 placeholder="0"
                 value={draft.amountInput}
                 onChange={(e) => dispatch({ type: "setAmountInput", value: e.target.value.replace(/[^\d]/g, "") })}
-                disabled={draft.submitting}
+                disabled={busy}
                 className="h-11 min-w-[8rem] flex-1 text-right text-lg tabular-nums"
               />
               {draft.selectedMethodId !== null && view.quickFillSuggestion > 0 && (
@@ -549,6 +659,21 @@ export function PaymentPanel({
                 ))}
               </div>
             )}
+            {selectedMethod && selectedMethod.kind !== "cash" && (
+              <div className="space-y-1">
+                <Label htmlFor={`tender-reference-${layout}`}>Referencia / últimos 4</Label>
+                <Input
+                  id={`tender-reference-${layout}`}
+                  autoComplete="off"
+                  placeholder="Opcional · aprobación, últimos 4 o ref. de la transferencia"
+                  maxLength={REFERENCE_MAX_LENGTH}
+                  value={draft.referenceInput}
+                  onChange={(e) => dispatch({ type: "setReferenceInput", value: e.target.value })}
+                  disabled={busy}
+                  className="h-11"
+                />
+              </div>
+            )}
             {layout === "dialog" && (
               <NumericKeypad
                 value={draft.amountInput}
@@ -560,9 +685,9 @@ export function PaymentPanel({
               type="button"
               variant="outline"
               className="h-11 w-full"
-              onClick={() => dispatch({ type: "addLine" })}
+              onClick={() => dispatch({ type: "addLine", methodKind: selectedMethod?.kind })}
               disabled={
-                draft.submitting ||
+                busy ||
                 draft.selectedMethodId === null ||
                 draft.amountInput === "" ||
                 Number(draft.amountInput) <= 0
@@ -578,7 +703,8 @@ export function PaymentPanel({
           suggestedTip={draft.suggestedTip}
           showSurplusAsTip={view.showSurplusAsTip}
           surplusTipPreview={computeSurplusAsTip(draft, allMethods)}
-          submitting={draft.submitting}
+          submitting={busy}
+          waiterName={waiterName}
           onSetNone={() => dispatch({ type: "setTipNone" })}
           onSetSuggested={() => dispatch({ type: "setTipSuggested" })}
           onSetCustom={(amount) => dispatch({ type: "setTipCustom", amount })}
@@ -637,6 +763,35 @@ export function PaymentPanel({
             <span>{blockedReason}</span>
           </p>
         )}
+        {pending ? (
+          <div
+            role="status"
+            aria-label="Cobro pendiente"
+            className="space-y-2 rounded-card border border-brand bg-brand-tint p-3 text-sm text-fg"
+          >
+            <p>
+              <b>
+                Registrando <Money>{formatCurrency(view.totalToCharge)}</Money>
+              </b>{" "}
+              <span className="text-muted-fg">
+                · se envía en <Money>{countdownLabel((pendingUntil ?? now) - now)}</Money>
+              </span>
+            </p>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="h-12 flex-1 bg-surface" onClick={handleUndo}>
+                <Undo2 aria-hidden="true" className="h-4 w-4" />
+                Deshacer
+              </Button>
+              <Button
+                type="button"
+                className="h-12 flex-1 bg-brand text-brand-contrast hover:bg-brand-strong"
+                onClick={sendPending}
+              >
+                Cerrar ahora
+              </Button>
+            </div>
+          </div>
+        ) : (
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -650,7 +805,7 @@ export function PaymentPanel({
           <Button
             type="button"
             className="h-12 min-w-0 flex-1 bg-brand text-brand-contrast hover:bg-brand-strong"
-            onClick={handleConfirm}
+            onClick={handleRegister}
             disabled={!view.canConfirm || !registerOpen || !online}
           >
             <Check aria-hidden="true" className="h-4 w-4" />
@@ -664,6 +819,10 @@ export function PaymentPanel({
             )}
           </Button>
         </div>
+        )}
+        {undoWindow && !pending && !draft.submitting && (
+          <p className="text-center text-xs text-muted-fg">Podrás deshacerlo durante 10 s</p>
+        )}
       </div>
     </div>
   )

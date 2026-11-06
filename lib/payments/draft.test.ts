@@ -428,3 +428,46 @@ describe('end-to-end mixed-tender draft', () => {
     expect(v.canConfirm).toBe(true)
   })
 })
+
+// -----------------------------------------------------------
+// T24: tender reference and a new attempt after undo
+// -----------------------------------------------------------
+describe('tender reference (T24)', () => {
+  const withLine = (methodId: string, kind: 'cash' | 'electronic', reference: string) => {
+    let s = newDraft(47000, 0)
+    s = paymentDraftReducer(s, { type: 'selectMethod', methodId })
+    s = paymentDraftReducer(s, { type: 'setAmountInput', value: '30000' })
+    s = paymentDraftReducer(s, { type: 'setReferenceInput', value: reference })
+    return paymentDraftReducer(s, { type: 'addLine', methodKind: kind })
+  }
+
+  it('stores the normalized reference on a non-cash line and clears the input', () => {
+    const s = withLine(NEQUI.id, 'electronic', '  M48\t211 \n')
+    expect(s.tenders).toEqual([{ methodId: NEQUI.id, tendered: 30000, reference: 'M48 211' }])
+    expect(s.referenceInput).toBe('')
+  })
+
+  it('a blank reference leaves the line exactly as before (no reference key)', () => {
+    const s = withLine(NEQUI.id, 'electronic', '   ')
+    expect(s.tenders).toEqual([{ methodId: NEQUI.id, tendered: 30000 }])
+  })
+
+  it('never stores a reference on a cash line', () => {
+    const s = withLine(CASH.id, 'cash', '4821')
+    expect(s.tenders).toEqual([{ methodId: CASH.id, tendered: 30000 }])
+    expect(s.referenceInput).toBe('')
+  })
+
+  it('keeps at most 60 characters in the input', () => {
+    const s = paymentDraftReducer(newDraft(), { type: 'setReferenceInput', value: 'x'.repeat(80) })
+    expect(s.referenceInput).toHaveLength(60)
+  })
+
+  it('newAttempt replaces the idempotency key and keeps the tenders and tip', () => {
+    const s0 = withLine(NEQUI.id, 'electronic', '4821')
+    const s1 = paymentDraftReducer({ ...s0, tip: 1000 }, { type: 'newAttempt', idempotencyKey: 'key-2' })
+    expect(s1.idempotencyKey).toBe('key-2')
+    expect(s1.tenders).toEqual(s0.tenders)
+    expect(s1.tip).toBe(1000)
+  })
+})
