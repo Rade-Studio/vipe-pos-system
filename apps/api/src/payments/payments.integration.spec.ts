@@ -51,7 +51,7 @@ const PAYMENT_KEYS = [
   'amountDue', 'cashRegisterId', 'cashierProfileId', 'changeGiven', 'createdAt', 'id', 'idempotencyKey', 'orderId',
   'tenders', 'tipAmount', 'totalCharged',
 ];
-const TENDER_KEYS = ['amount', 'cashReceived', 'id', 'lineNo', 'methodCode', 'methodKind', 'paymentId', 'paymentMethodId'];
+const TENDER_KEYS = ['amount', 'cashReceived', 'id', 'lineNo', 'methodCode', 'methodKind', 'paymentId', 'paymentMethodId', 'reference'];
 const LEGACY_KEYS = [
   'amount', 'cashChange', 'cashReceived', 'cashRegisterId', 'id', 'method', 'orderId', 'tableId', 'timestamp',
   'tipAmount', 'totalDiscounts', 'waiterId',

@@ -1,19 +1,30 @@
 import { toIso } from '../common/validation';
 import type { PaymentMethodKind } from '../payments/payments.dto';
 import { numOrNull, req, toLegacyTransaction } from '../payments/payments.mappers';
-import type { CashRegister, CashTransaction, CashTransactionType, CloseRegisterResult, RegisterSummary } from './registers.dto';
+import type {
+  CashRegister,
+  CashTransaction,
+  CashTransactionType,
+  CloseRegisterResult,
+  ProfileRef,
+  RegisterPaidOrder,
+  RegisterSummary,
+} from './registers.dto';
 
 type Json = Record<string, unknown>;
 
 /** One row of RegistersService.select: the register and its optional embeds as jsonb (null when not requested). */
 export interface RegisterRow {
   register: Json;
+  opened_by_name: string | null;
   transactions: Json[] | null;
   cash_transactions: Json[] | null;
 }
 
 const text = (value: unknown) => (value === null || value === undefined ? null : String(value));
 const time = (value: unknown) => toIso(text(value));
+const profileRef = (id: unknown, name: unknown): ProfileRef | null =>
+  id === null || id === undefined ? null : { id: String(id), name: text(name) ?? '' };
 
 export const toCashTransaction = (row: Json): CashTransaction => ({
   id: String(row.id),
@@ -35,6 +46,7 @@ export function toRegister(row: RegisterRow): CashRegister {
     status: r.status as CashRegister['status'],
     createdAt: time(r.created_at),
     updatedAt: time(r.updated_at),
+    openedBy: profileRef(r.opened_by, row.opened_by_name),
   };
   if (row.transactions) {
     register.transactions = row.transactions.map(toLegacyTransaction);
@@ -89,4 +101,25 @@ export const toCloseResult = (row: Json, closingTimestamp: string): CloseRegiste
   finalCash: req(row, 'final_cash'),
   closingTimestamp,
   summary: toRegisterSummary(row.summary as Json),
+});
+/** One row of RegistersService.paidOrders (a jsonb object built in SQL). */
+export const toPaidOrder = (row: Json): RegisterPaidOrder => ({
+  orderId: String(row.order_id),
+  orderNumber: numOrNull(row.order_number),
+  orderType: row.order_type as RegisterPaidOrder['orderType'],
+  tableNumber: numOrNull(row.table_number),
+  zoneName: text(row.zone_name),
+  waiter: profileRef(row.waiter_id, row.waiter_name),
+  paymentId: String(row.payment_id),
+  amountDue: req(row, 'amount_due'),
+  tip: req(row, 'tip_amount'),
+  total: req(row, 'total_charged'),
+  paidAt: time(row.paid_at)!,
+  tenders: ((row.tenders as Json[] | null) ?? []).map((tender) => ({
+    methodCode: String(tender.method_code),
+    methodName: String(tender.method_name),
+    methodKind: tender.method_kind as PaymentMethodKind,
+    amount: req(tender, 'amount'),
+    reference: text(tender.reference),
+  })),
 });

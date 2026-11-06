@@ -1,11 +1,34 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
 import { UnitOfWork } from '../db/unit-of-work';
-import type { Payment, payOrderSchema, PayOrderResult, SplitOrderResult, splitOrderSchema, UndoSplitResult } from './payments.dto';
+import {
+  CASH_REFERENCE_MESSAGE,
+  type Payment,
+  type payOrderSchema,
+  type PayOrderResult,
+  type SplitOrderResult,
+  type splitOrderSchema,
+  type UndoSplitResult,
+} from './payments.dto';
 import { paymentJson, toPayment, toPayOrderResult, toSplitResult, toUndoSplitResult } from './payments.mappers';
 
 type Json = Record<string, unknown>;
+type TenderInput = z.infer<typeof payOrderSchema>['tenders'][number];
+
+/**
+ * The p_tenders jsonb of pay_order. Without a reference a line keeps the exact
+ * pre-0014 keys (payment_method_id, amount, cash_received), so old payloads
+ * reach the RPC byte-identical; a reference is appended last.
+ */
+export function toPayOrderTenders(tenders: TenderInput[]): Json[] {
+  return tenders.map((tender) => ({
+    payment_method_id: tender.paymentMethodId,
+    amount: tender.amount,
+    cash_received: tender.cashReceived ?? null,
+    ...(tender.reference ? { reference: tender.reference } : {}),
+  }));
+}
 
 /**
  * Settlement over the plpgsql core. Money is computed only by the RPCs
@@ -18,15 +41,28 @@ export class PaymentsService {
   constructor(private readonly uow: UnitOfWork) {}
 
   async pay(input: z.infer<typeof payOrderSchema>): Promise<PayOrderResult> {
-    const tenders = input.tenders.map((tender) => ({
-      payment_method_id: tender.paymentMethodId,
-      amount: tender.amount,
-      cash_received: tender.cashReceived ?? null,
-    }));
+    await this.refuseCashReferences(input.tenders);
+    const tenders = toPayOrderTenders(input.tenders);
     const result = await this.rpc(sql`
       SELECT public.pay_order(${input.orderId}::uuid, ${input.cashRegisterId}::uuid, ${input.tipAmount}::bigint,
                               ${JSON.stringify(tenders)}::jsonb, ${input.idempotencyKey}::uuid) AS result`);
     return toPayOrderResult(result);
+  }
+
+  /**
+   * A reference only describes a card/transfer line: one on a cash method is
+   * 422 before pay_order runs. Unknown or foreign methods are left to the RPC.
+   */
+  private async refuseCashReferences(tenders: TenderInput[]): Promise<void> {
+    const ids = tenders.filter((tender) => tender.reference).map((tender) => tender.paymentMethodId);
+    if (!ids.length) {
+      return;
+    }
+    const { rows } = await this.uow.db.execute(sql`
+      SELECT 1 FROM public.payment_methods WHERE id = ANY(${sql.param(ids)}::uuid[]) AND kind = 'cash' LIMIT 1`);
+    if (rows.length) {
+      throw new UnprocessableEntityException(CASH_REFERENCE_MESSAGE);
+    }
   }
 
   /** Payments with their tenders, newest first; an empty id list answers [] without a query. */

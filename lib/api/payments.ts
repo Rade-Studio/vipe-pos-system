@@ -3,6 +3,7 @@ import { ApiError } from "./errors"
 import type { components } from "./schema"
 import { PaymentServiceError, type PaymentServiceErrorKind } from "@/lib/payments/types"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
+import { normalizeTenderReference } from "@/lib/payments/tenders"
 import type { PaymentRow } from "@/lib/payments/payment-list"
 import type {
   PayOrderResult,
@@ -149,15 +150,21 @@ export interface PayOrderInput {
 }
 
 /**
- * Atomic checkout over `pay_order`. `cashReceived` travels only on cash lines;
- * a replay with the same key answers `alreadyPaid: true`.
+ * Atomic checkout over `pay_order`. `cashReceived` travels only on cash lines
+ * and `reference` (normalized, non-empty) only on the others, so a line
+ * without a reference sends the same body as before; a replay with the same
+ * key answers `alreadyPaid: true`.
  */
 export function payOrder(input: PayOrderInput): Promise<PayOrderResult> {
-  const tenders: Schemas["PayOrderTenderInput"][] = input.tenders.map((line) =>
-    line.cash_received === null
+  const tenders: Schemas["PayOrderTenderInput"][] = input.tenders.map((line) => {
+    if (line.cash_received !== null) {
+      return { paymentMethodId: line.payment_method_id, amount: line.amount, cashReceived: line.cash_received }
+    }
+    const reference = normalizeTenderReference(line.reference)
+    return reference === null
       ? { paymentMethodId: line.payment_method_id, amount: line.amount }
-      : { paymentMethodId: line.payment_method_id, amount: line.amount, cashReceived: line.cash_received },
-  )
+      : { paymentMethodId: line.payment_method_id, amount: line.amount, reference }
+  })
   return call(async () => {
     const { data } = await api.POST("/api/payments", {
       body: {

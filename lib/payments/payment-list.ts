@@ -60,6 +60,8 @@ export interface PaymentTenderLine {
   methodKind: PaymentMethodKind
   amount: number
   cashReceived: number | null
+  /** Manual reference of a non-cash line (T18); null when none. */
+  reference?: string | null
 }
 
 export interface PaymentRow {

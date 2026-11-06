@@ -22,11 +22,15 @@ import {
   createCashTransactionSchema,
   OpenRegisterRequest,
   openRegisterSchema,
+  PAID_ORDERS_DEFAULT,
+  PAID_ORDERS_MAX,
+  paidOrdersQuerySchema,
   REGISTER_INCLUDES,
   registerIncludeQuerySchema,
   registerListQuerySchema,
   RegisterSummary,
   registerSummaryQuerySchema,
+  RegisterPaidOrder,
 } from './registers.dto';
 import { type RegisterIncludes, RegistersService } from './registers.service';
 
@@ -102,6 +106,18 @@ export class RegistersController {
     return this.registers.close(parseInput(idParamSchema, id));
   }
 
+  @Get(':id/paid-orders')
+  @Roles(...DRAWER_ROLES)
+  @ApiQuery({ name: 'limit', required: false, description: `1..${PAID_ORDERS_MAX}, default ${PAID_ORDERS_DEFAULT}.` })
+  @ApiOkResponse({
+    type: [RegisterPaidOrder],
+    description: 'Paid orders of the register (one per pay_order payment), newest payment first; legacy payment_transactions are not listed.',
+  })
+  @ApiNotFoundResponse({ description: 'Unknown or of another restaurant.' })
+  @ApiForbiddenResponse({ description: 'Not admin or cashier.' })
+  paidOrders(@Param('id') id: string, @Query() query: unknown): Promise<RegisterPaidOrder[]> {
+    return this.registers.paidOrders(parseInput(idParamSchema, id), parseInput(paidOrdersQuerySchema, query).limit);
+  }
   @Get(':id/cash-transactions')
   @ApiOkResponse({ type: [CashTransaction], description: 'Newest first.' })
   @ApiNotFoundResponse()

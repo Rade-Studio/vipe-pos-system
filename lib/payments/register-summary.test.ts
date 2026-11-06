@@ -4,6 +4,7 @@ import {
   hasLegacy,
   parseRegisterSummary,
   registerSummaryQueryKey,
+  shiftKpis,
   summaryRows,
   tipsShortfall,
   validateRegisterSummaryShape,
@@ -297,5 +298,25 @@ describe('registerSummaryQueryKey', () => {
 
   it('returns the prefix only when given an empty array', () => {
     expect(registerSummaryQueryKey([])).toEqual(['register-summary'])
+  })
+})
+describe('shiftKpis (T18: the shift sheet)', () => {
+  it('derives ventas, propinas, tickets, ticket promedio, cash expected and the method rows', () => {
+    const summary = parseRegisterSummary(SAMPLE_RAW)
+    expect(shiftKpis(summary)).toEqual({
+      sales: 141000,
+      tips: 10000,
+      tickets: 3,
+      averageTicket: 47000,
+      expectedCash: summary.expectedCash,
+      methods: summaryRows(summary),
+    })
+  })
+
+  it('rounds the average to whole pesos and answers 0 without tickets', () => {
+    const odd = parseRegisterSummary({ ...SAMPLE_RAW, payments_count: 7, total_billed: 100000 })
+    expect(shiftKpis(odd).averageTicket).toBe(14286)
+    const none = parseRegisterSummary({ ...SAMPLE_RAW, payments_count: 0, total_billed: 0, total_tips: 0 })
+    expect(shiftKpis(none)).toMatchObject({ sales: 0, tips: 0, tickets: 0, averageTicket: 0 })
   })
 })

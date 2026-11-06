@@ -20,7 +20,7 @@ const r = {
   cashTx: '9a000000-0000-0000-0000-000000000031',
 } as const;
 
-const REGISTER_KEYS = ['closingTimestamp', 'createdAt', 'finalCash', 'id', 'initialCash', 'openingTimestamp', 'status', 'updatedAt'];
+const REGISTER_KEYS = ['closingTimestamp', 'createdAt', 'finalCash', 'id', 'initialCash', 'openedBy', 'openingTimestamp', 'status', 'updatedAt'];
 const CASH_TX_KEYS = ['amount', 'cashRegisterId', 'description', 'id', 'timestamp', 'type'];
 const LEGACY_KEYS = [
   'amount', 'cashChange', 'cashReceived', 'cashRegisterId', 'id', 'method', 'orderId', 'tableId', 'timestamp',
