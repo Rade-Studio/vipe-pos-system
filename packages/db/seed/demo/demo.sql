@@ -504,9 +504,29 @@ BEGIN
   INSERT INTO public.promotion_dishes (promotion_id, dish_id, restaurant_id)
   SELECT v_promo, m.dish_id, v_rid FROM demo_menu m WHERE m.grp = 'postre';
 
-  -- 12 tables (the schema has no zones).
-  INSERT INTO public.tables (number, status, restaurant_id)
-  SELECT n, 'available', v_rid FROM generate_series(1, 12) n;
+  -- 12 tables on three zones of the floor plan (x, y = centre, normalized).
+  -- Bar stools 11 and 12 draw no chairs.
+  INSERT INTO public.zones (restaurant_id, name, aspect, sort_order, labels) VALUES
+    (v_rid, 'Salón principal', 1.6, 0, '[{"text": "Entrada", "side": "bottom"}, {"text": "Cocina →", "side": "right"}, {"text": "Ventanal", "side": "top"}]'),
+    (v_rid, 'Terraza', 1.8, 1, '[{"text": "Jardín", "side": "bottom"}]'),
+    (v_rid, 'Barra', 2.2, 2, '[{"text": "Barra de servicio", "side": "top"}]');
+  INSERT INTO public.tables (number, status, restaurant_id, zone_id, x, y, w, h, shape, rotation, seats)
+  SELECT l.n, 'available', v_rid, z.id, l.x, l.y, l.w, l.h, l.shape, l.rot, l.seats
+    FROM (VALUES
+      (1, 'Salón principal', 0.14, 0.22, 0.11, 0.11, 'round', 0, 4),
+      (2, 'Salón principal', 0.42, 0.22, 0.11, 0.11, 'round', 0, 4),
+      (3, 'Salón principal', 0.76, 0.22, 0.22, 0.11, 'rect', 0, 6),
+      (4, 'Salón principal', 0.14, 0.52, 0.11, 0.11, 'square', 0, 4),
+      (5, 'Salón principal', 0.46, 0.52, 0.24, 0.11, 'rect', 0, 8),
+      (6, 'Salón principal', 0.82, 0.52, 0.10, 0.10, 'round', 0, 2),
+      (7, 'Salón principal', 0.20, 0.80, 0.11, 0.11, 'square', 45, 4),
+      (8, 'Terraza', 0.18, 0.30, 0.11, 0.11, 'round', 0, 4),
+      (9, 'Terraza', 0.50, 0.30, 0.11, 0.11, 'round', 0, 4),
+      (10, 'Terraza', 0.80, 0.62, 0.22, 0.11, 'rect', 0, 6),
+      (11, 'Barra', 0.30, 0.45, 0.36, 0.08, 'bar', 0, 0),
+      (12, 'Barra', 0.72, 0.45, 0.36, 0.08, 'bar', 0, NULL)
+    ) AS l(n, zone, x, y, w, h, shape, rot, seats)
+    JOIN public.zones z ON z.restaurant_id = v_rid AND z.name = l.zone;
   INSERT INTO demo_tables SELECT t.number, t.id FROM public.tables t WHERE t.restaurant_id = v_rid;
 
   INSERT INTO demo_methods SELECT m.code, m.id FROM public.payment_methods m WHERE m.restaurant_id = v_rid;

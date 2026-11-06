@@ -63,13 +63,24 @@ INSERT INTO public.dishes (id, name, description, price, category_id, active, al
   ('f0000000-0000-0000-0000-000000000006', 'Café', 'Tinto', 3000, 'c0000000-0000-0000-0000-000000000003', true, false, 'a0eebc99-0000-0000-0000-000000000000')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO public.tables (id, number, status, restaurant_id) VALUES
-  ('b1000000-0000-0000-0000-000000000001', 1, 'available', 'a0eebc99-0000-0000-0000-000000000000'),
-  ('b1000000-0000-0000-0000-000000000002', 2, 'available', 'a0eebc99-0000-0000-0000-000000000000'),
-  ('b1000000-0000-0000-0000-000000000003', 3, 'available', 'a0eebc99-0000-0000-0000-000000000000'),
-  ('b1000000-0000-0000-0000-000000000004', 4, 'available', 'a0eebc99-0000-0000-0000-000000000000'),
-  ('b1000000-0000-0000-0000-000000000005', 5, 'available', 'a0eebc99-0000-0000-0000-000000000000'),
-  ('b1000000-0000-0000-0000-000000000006', 6, 'available', 'a0eebc99-0000-0000-0000-000000000000')
+-- On a dev database migrated before this seed, 0012 already created
+-- "Salón principal": any conflict keeps it, and tables resolve zones by name.
+INSERT INTO public.zones (id, restaurant_id, name, aspect, sort_order, labels) VALUES
+  ('b0000000-0000-0000-0000-000000000001', 'a0eebc99-0000-0000-0000-000000000000', 'Salón principal', 1.6, 0, '[{"text": "Entrada", "side": "bottom"}]'),
+  ('b0000000-0000-0000-0000-000000000002', 'a0eebc99-0000-0000-0000-000000000000', 'Barra', 2.2, 1, '[]')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.tables (id, number, status, restaurant_id, zone_id, x, y, w, h, shape, seats)
+SELECT l.id::uuid, l.n, 'available', z.restaurant_id, z.id, l.x, l.y, l.w, l.h, l.shape, l.seats
+  FROM (VALUES
+    ('b1000000-0000-0000-0000-000000000001', 1, 'Salón principal', 0.2, 0.3, 0.11, 0.11, 'round', 4),
+    ('b1000000-0000-0000-0000-000000000002', 2, 'Salón principal', 0.5, 0.3, 0.11, 0.11, 'square', 4),
+    ('b1000000-0000-0000-0000-000000000003', 3, 'Salón principal', 0.8, 0.3, 0.22, 0.11, 'rect', 6),
+    ('b1000000-0000-0000-0000-000000000004', 4, 'Salón principal', 0.3, 0.72, 0.11, 0.11, 'round', 2),
+    ('b1000000-0000-0000-0000-000000000005', 5, 'Salón principal', 0.7, 0.72, 0.11, 0.11, 'square', 4),
+    ('b1000000-0000-0000-0000-000000000006', 6, 'Barra', 0.5, 0.5, 0.5, 0.09, 'bar', 0)
+  ) AS l(id, n, zone, x, y, w, h, shape, seats)
+  JOIN public.zones z ON z.restaurant_id = 'a0eebc99-0000-0000-0000-000000000000' AND z.name = l.zone
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.printer_tokens (id, restaurant_id, name, token_hash) VALUES
