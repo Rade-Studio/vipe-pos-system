@@ -22,7 +22,7 @@ import { getById, toOrder } from "./orders"
  *   `orders` rows bring `order_items` (no per-client item read any more) and
  *   `tables` rows bring `waiter_name`.
  * - `resync` (the API lost its database listener) and every reconnect
- *   invalidate the order, table and delivery queries: a change made while the
+ *   invalidate the order, table, zone and delivery queries: a change made while the
  *   socket was down is refetched instead of lost.
  * - A silent auth refresh reconnects the socket, so the next handshake carries
  *   the new access cookie.
@@ -34,7 +34,7 @@ import { getById, toOrder } from "./orders"
 /** Supabase-shaped change event, as emitted by the API gateway. */
 export interface ChangeEvent {
   schema: "public"
-  table: "orders" | "order_items" | "tables" | "order_deliveries"
+  table: "orders" | "order_items" | "tables" | "zones" | "order_deliveries"
   commit_timestamp: string
   eventType: "INSERT" | "UPDATE" | "DELETE"
   new: Record<string, any>
@@ -47,7 +47,7 @@ export const CHANGE_EVENT = "pos_changes"
 export const RESYNC_EVENT = "resync"
 
 /** What a missed notification can leave stale. `['orders']` also covers the per-screen order keys. */
-export const RESYNC_QUERY_KEYS = [["orders"], ["orders", "kitchen"], ["tables"], ["active-deliveries"]] as const
+export const RESYNC_QUERY_KEYS = [["orders"], ["orders", "kitchen"], ["tables"], ["zones"], ["active-deliveries"]] as const
 
 type ChangeCallback = (payload: ChangeEvent) => void
 type ConnectionStatusCallback = (status: boolean) => void
@@ -57,6 +57,8 @@ type KitchenOrderDeleteCallback = (payload: ChangeEvent) => void
 type KitchenItemBatchCallback = (batch: KitchenItemBatch<Order>) => void
 
 const tableListeners = new Set<ChangeCallback>()
+/** Floor plan zones (T6): an admin's zone edit reaches every open map. */
+const zoneListeners = new Set<ChangeCallback>()
 const orderListeners = new Set<ChangeCallback>()
 /** Kitchen subscriptions see orders and order_items events. */
 const kitchenListeners = new Set<ChangeCallback>()
@@ -78,7 +80,7 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null
 export const REFUSED_HANDSHAKE_RETRY_MS = 2_000
 
 const subscriberCount = () =>
-  tableListeners.size + orderListeners.size + kitchenListeners.size + deliveryListeners.size
+  tableListeners.size + zoneListeners.size + orderListeners.size + kitchenListeners.size + deliveryListeners.size
 
 /** `orders.order_type` is on `new` for INSERT/UPDATE and on `old` for DELETE. */
 const isDeliveryOrder = (event: ChangeEvent): boolean =>
@@ -99,15 +101,17 @@ function dispatch(event: ChangeEvent): void {
   const targets =
     event.table === "tables"
       ? [tableListeners]
-      : event.table === "orders"
-        ? isDeliveryOrder(event)
-          ? [orderListeners, kitchenListeners, deliveryListeners]
-          : [orderListeners, kitchenListeners]
-        : event.table === "order_items"
-          ? [kitchenListeners]
-          : event.table === "order_deliveries"
-            ? [deliveryListeners]
-            : []
+      : event.table === "zones"
+        ? [zoneListeners]
+        : event.table === "orders"
+          ? isDeliveryOrder(event)
+            ? [orderListeners, kitchenListeners, deliveryListeners]
+            : [orderListeners, kitchenListeners]
+          : event.table === "order_items"
+            ? [kitchenListeners]
+            : event.table === "order_deliveries"
+              ? [deliveryListeners]
+              : []
   // The payload is shared by reference across every consumer: read it, never mutate it.
   for (const listeners of targets) {
     for (const listener of [...listeners]) {
@@ -201,6 +205,9 @@ export const realtimeService = {
 
   /** `tables` changes, `waiter_name` included. The role is kept for call-site compatibility. */
   subscribeToTables: (callback: ChangeCallback, _role = "waiter") => listen(tableListeners, callback),
+
+  /** `zones` changes (name, aspect, order, wall labels, active). */
+  subscribeToZones: (callback: ChangeCallback) => listen(zoneListeners, callback),
 
   /** `orders` changes; INSERT and UPDATE rows carry `order_items`. */
   subscribeToOrders: (callback: ChangeCallback) => listen(orderListeners, callback),
@@ -308,6 +315,7 @@ export const realtimeService = {
   getChannelsStatus: () => {
     const channels = [
       ...(tableListeners.size ? ["tables"] : []),
+      ...(zoneListeners.size ? ["zones"] : []),
       ...(orderListeners.size ? ["orders"] : []),
       ...(kitchenListeners.size ? ["kitchen"] : []),
       ...(deliveryListeners.size ? ["deliveries"] : []),
@@ -355,6 +363,7 @@ export const realtimeService = {
   /** Drop every subscription and close the socket. */
   unsubscribeAll: () => {
     tableListeners.clear()
+    zoneListeners.clear()
     orderListeners.clear()
     kitchenListeners.clear()
     deliveryListeners.clear()
