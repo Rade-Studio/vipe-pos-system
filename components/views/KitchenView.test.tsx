@@ -17,7 +17,7 @@
  * database directly.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { Profile } from "@/types"
 
@@ -55,6 +55,8 @@ const env = vi.hoisted(() => {
     deliveries: [] as any[],
     listActiveDeliveriesCalls: 0,
     setDeliveryStatusCalls: [] as { orderId: string; action: string }[],
+    /** Realtime state the subscription reports. */
+    connected: true,
     reset() {
       this.statusReads = []
       this.kitchenRows = []
@@ -76,6 +78,7 @@ const env = vi.hoisted(() => {
       this.deliveries = []
       this.listActiveDeliveriesCalls = 0
       this.setDeliveryStatusCalls = []
+      this.connected = true
     },
   }
 })
@@ -134,7 +137,7 @@ vi.mock("@/lib/api/realtime", () => ({
       env.subscribeCalls += 1
       env.onDelete = onDelete
       env.onBatch = onBatch
-      onStatus(true)
+      onStatus(env.connected)
       return () => {
         env.unsubscribeCalls += 1
       }
@@ -388,7 +391,7 @@ describe("kitchen board realtime batches", () => {
 
     expect(storeOrder("o-9")?.items).toHaveLength(5)
     expect(screen.getByText("Nuevo 0")).toBeInTheDocument()
-    expect(screen.getAllByText("¡Nuevos productos agregados!")).toHaveLength(1)
+    expect(screen.getAllByText("+5 nuevos")).toHaveLength(1)
     expect(env.toasts.filter((t) => t.title === "¡Nueva orden!")).toHaveLength(1)
     expect(screen.getByText("¡Nuevas órdenes!")).toBeInTheDocument()
     expect(env.statusReads).toEqual(["kitchen"])
@@ -478,7 +481,7 @@ describe("kitchen board local writes", () => {
     expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
 
     await act(async () => {
-      screen.getAllByRole("button", { name: "Entregar" })[0].click()
+      screen.getAllByRole("button", { name: /^Entregar \d/ })[0].click()
     })
 
     expect(env.itemWrites).toEqual([{ orderId: "o-1", ids: ["o-1-i-1"] }])
@@ -492,7 +495,7 @@ describe("kitchen board local writes", () => {
     expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
     const untouched = storeOrder("o-1")
 
-    const buttons = screen.getAllByRole("button", { name: "Entregar" })
+    const buttons = screen.getAllByRole("button", { name: /^Entregar \d/ })
     expect(buttons).toHaveLength(2)
     await act(async () => {
       buttons[1].click()
@@ -518,7 +521,7 @@ describe("kitchen board local writes", () => {
     expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
 
     await act(async () => {
-      screen.getAllByRole("button", { name: "Entregar" })[0].click()
+      screen.getAllByRole("button", { name: /^Entregar \d/ })[0].click()
     })
 
     expect(env.markedLocal).toEqual([["o-1-i-1"]])
@@ -536,7 +539,7 @@ describe("kitchen board local writes", () => {
     expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
 
     await act(async () => {
-      screen.getAllByRole("button", { name: "Entregar" })[0].click()
+      screen.getAllByRole("button", { name: /^Entregar \d/ })[0].click()
     })
 
     expect(env.markedLocal).toEqual([["o-1-i-1"]])
@@ -553,14 +556,10 @@ describe("kitchen board local writes", () => {
     expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
 
     act(() => {
-      screen.getByRole("button", { name: /Entregar Orden Completa/i }).click()
+      screen.getByRole("button", { name: /^Entregar toda/ }).click()
     })
     await act(async () => {
-      const deliverAll = await screen.findByRole("button", { name: /Entregar Todo/i })
-      deliverAll.click()
-    })
-    await act(async () => {
-      const confirm = await screen.findByRole("button", { name: /^Confirmar$/i })
+      const confirm = await screen.findByRole("button", { name: "Confirmar entrega" })
       confirm.click()
     })
 
@@ -575,17 +574,13 @@ describe("kitchen board local writes", () => {
     renderKitchen()
     expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
 
-    // OrderCard confirms first ("Entregar Todo"), the view confirms the batch
-    // ("Confirmar"): two confirmation steps, as on the base.
+    // T13: one confirmation (the ticket rail's "¿Entregar toda la orden?"),
+    // listing the items; the base asked twice (card, then view).
     act(() => {
-      screen.getByRole("button", { name: /Entregar Orden Completa/i }).click()
+      screen.getByRole("button", { name: /^Entregar toda/ }).click()
     })
     await act(async () => {
-      const deliverAll = await screen.findByRole("button", { name: /Entregar Todo/i })
-      deliverAll.click()
-    })
-    await act(async () => {
-      const confirm = await screen.findByRole("button", { name: /^Confirmar$/i })
+      const confirm = await screen.findByRole("button", { name: "Confirmar entrega" })
       confirm.click()
     })
 
@@ -595,7 +590,7 @@ describe("kitchen board local writes", () => {
     expect(env.orderUpdates).toEqual([])
   })
 
-  it("keeps the DOMICILIO banner and marks the delivery ready without re-reading the deliveries", async () => {
+  it("keeps the delivery tag and marks the delivery ready without re-reading the deliveries", async () => {
     env.deliveries = [
       { delivery: { orderId: "d-1", status: "preparing", customerName: "Ana", fee: 3000 }, isPaid: false, order: { total: 100 } },
     ]
@@ -605,15 +600,16 @@ describe("kitchen board local writes", () => {
     const { queryClient } = renderKitchen()
 
     expect(await screen.findByText("Combo")).toBeInTheDocument()
-    expect(screen.getByText("DOMICILIO")).toBeInTheDocument()
-    expect(screen.getByText("DOMICILIO · Ana")).toBeInTheDocument()
+    // T13: the ticket tags it "Domicilio" and names the customer as its place.
+    expect(screen.getByText("Domicilio")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Ana" })).toBeInTheDocument()
     // No "Mesa ?" / "Mesa N" heading for a delivery (domicilios S14).
     expect(screen.queryByText("Mesa ?")).toBeNull()
     expect(screen.queryByText(/^Mesa \d/)).toBeNull()
 
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
     await act(async () => {
-      screen.getAllByRole("button", { name: "Entregar" })[0].click()
+      screen.getAllByRole("button", { name: /^Entregar \d/ })[0].click()
     })
 
     expect(env.setDeliveryStatusCalls).toEqual([{ orderId: "d-1", action: "mark_ready" }])
@@ -644,10 +640,112 @@ describe("kitchen board local writes", () => {
     expect(await screen.findByText("Combo")).toBeInTheDocument()
 
     await act(async () => {
-      screen.getAllByRole("button", { name: "Entregar" })[0].click()
+      screen.getAllByRole("button", { name: /^Entregar \d/ })[0].click()
     })
 
     expect(env.setDeliveryStatusCalls).toEqual([])
     expect(env.toasts.map((t) => t.description)).toContain("Todos los productos fueron entregados.")
+  })
+})
+
+describe("kitchen ticket rail (rediseno-pos T13)", () => {
+  const delivery = (orderId: string, extra: Record<string, unknown> = {}) => ({
+    delivery: { orderId, status: "preparing", customerName: "Carolina Gómez", addressLine: "Cra. 43A #18-95", notes: null, fee: 0, ...extra },
+    isPaid: false,
+    order: { total: 100 },
+  })
+
+  it("renders one ticket per order, oldest first, with place tag, order number, waiter and age", async () => {
+    env.kitchenRows = [
+      row("o-2", { items: [item("o-2-i-1", "kitchen", 5)] }),
+      row("o-1", { items: [item("o-1-i-1", "kitchen", 1)] }),
+    ]
+    renderKitchen()
+    expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
+
+    const tickets = screen.getAllByRole("article")
+    expect(tickets).toHaveLength(2)
+    expect(within(tickets[0]).getByRole("heading", { name: "Mesa 1" })).toBeInTheDocument()
+    expect(within(tickets[1]).getByRole("heading", { name: "Mesa 2" })).toBeInTheDocument()
+    expect(within(tickets[0]).getByText("Mesa", { selector: "span" })).toBeInTheDocument()
+    expect(within(tickets[0]).getByText(/Orden #o-1/)).toBeInTheDocument()
+    expect(within(tickets[0]).getByText("Ana")).toBeInTheDocument()
+    // The fixtures are from 2026-10-07: long past the late threshold.
+    expect(within(tickets[0]).getByText("Atrasada")).toBeInTheDocument()
+    expect(within(tickets[0]).getByRole("timer").textContent).toMatch(/^\d{2,}:\d{2}$/)
+    expect(within(tickets[0]).getByRole("button", { name: "Entregar toda (1)" })).toBeInTheDocument()
+  })
+
+  it("shows a delivery with the customer as place, its address and its comment", async () => {
+    env.deliveries = [delivery("d-1", { notes: "Alérgica al maní" })]
+    env.kitchenRows = [row("d-1", { orderType: "delivery", tableId: null, items: [{ ...item("d-1-i-1"), name: "Combo" }] })]
+    renderKitchen()
+    expect(await screen.findByText("Combo")).toBeInTheDocument()
+
+    const ticket = screen.getByRole("article")
+    expect(within(ticket).getByRole("heading", { name: "Carolina Gómez" })).toBeInTheDocument()
+    expect(within(ticket).getByText("Domicilio")).toBeInTheDocument()
+    expect(within(ticket).getByText(/Cra\. 43A #18-95/)).toBeInTheDocument()
+    expect(within(ticket).getByText("Alérgica al maní")).toBeInTheDocument()
+    expect(within(ticket).getByRole("button", { name: "Listo para domicilio (1)" })).toBeInTheDocument()
+  })
+
+  it("filters Todas / Mesas / Domicilios with counts", async () => {
+    env.deliveries = [delivery("d-1")]
+    env.kitchenRows = [
+      row("o-1"),
+      row("d-1", { orderType: "delivery", tableId: null, items: [{ ...item("d-1-i-1"), name: "Combo" }] }),
+    ]
+    renderKitchen()
+    expect(await screen.findByText("Combo")).toBeInTheDocument()
+
+    expect(screen.getByRole("button", { name: "Todas 2" })).toHaveAttribute("aria-pressed", "true")
+    act(() => screen.getByRole("button", { name: "Mesas 1" }).click())
+    expect(screen.getByRole("button", { name: "Mesas 1" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.queryByText("Combo")).toBeNull()
+    expect(screen.getByText("O-1-I-1")).toBeInTheDocument()
+
+    act(() => screen.getByRole("button", { name: "Domicilios 1" }).click())
+    expect(screen.queryByText("O-1-I-1")).toBeNull()
+    expect(screen.getByText("Combo")).toBeInTheDocument()
+  })
+
+  it("confirms the whole order once, listing its items, with the existing bulk write", async () => {
+    env.kitchenRows = [row("o-1", { items: [item("o-1-i-1", "kitchen", 0), { ...item("o-1-i-2"), name: "Bebida" }] })]
+    renderKitchen()
+    expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
+
+    act(() => screen.getByRole("button", { name: "Entregar toda (2)" }).click())
+    const dialog = await screen.findByRole("alertdialog")
+    expect(within(dialog).getByText("¿Entregar toda la orden?")).toBeInTheDocument()
+    expect(within(dialog).getByText("Bebida")).toBeInTheDocument()
+    await act(async () => within(dialog).getByRole("button", { name: "Confirmar entrega" }).click())
+
+    expect(env.itemWrites).toEqual([{ orderId: "o-1", ids: ["o-1-i-1", "o-1-i-2"] }])
+    expect(storeOrder("o-1")).toBeUndefined()
+  })
+
+  it("shows the offline banner from the real realtime state and reconnects from it", async () => {
+    env.connected = false
+    env.kitchenRows = [row("o-1")]
+    renderKitchen()
+    expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Sin conexión en tiempo real.")
+    expect(screen.getByRole("button", { name: /Desconectado/ })).toBeInTheDocument()
+    act(() => within(screen.getByRole("alert")).getByRole("button", { name: "Reconectar" }).click())
+    await waitFor(() => expect(env.subscribeCalls).toBe(2))
+  })
+
+  it("shows a loading skeleton until the first read and then the empty state", async () => {
+    let resolve: (rows: Row[]) => void = () => {}
+    env.pendingRead = { resolve: (rows) => resolve(rows), promise: new Promise<Row[]>((r) => (resolve = r)) }
+    renderKitchen()
+
+    expect(await screen.findByTestId("kitchen-loading")).toBeInTheDocument()
+    expect(screen.queryByText("No hay órdenes pendientes en cocina")).toBeNull()
+    await act(async () => resolve([]))
+    expect(await screen.findByText("No hay órdenes pendientes en cocina")).toBeInTheDocument()
+    expect(screen.queryByTestId("kitchen-loading")).toBeNull()
   })
 })
