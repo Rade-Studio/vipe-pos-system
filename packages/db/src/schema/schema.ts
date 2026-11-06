@@ -1185,6 +1185,14 @@ export const tables = pgTable("tables", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	zoneId: uuid("zone_id"),
+	x: numeric(),
+	y: numeric(),
+	w: numeric(),
+	h: numeric(),
+	shape: text().default('square').notNull(),
+	rotation: numeric().default('0').notNull(),
+	seats: integer(),
 }, (table) => [
 	index("idx_tables_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	index("idx_tables_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
@@ -1198,11 +1206,25 @@ export const tables = pgTable("tables", {
 			foreignColumns: [profiles.id],
 			name: "tables_waiter_id_fkey"
 		}),
+	index("idx_tables_zone_id").using("btree", table.zoneId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId, table.zoneId],
+			foreignColumns: [zones.restaurantId, zones.id],
+			name: "tables_zone_id_fkey"
+		}).onDelete("restrict"),
 	unique("tables_restaurant_id_number_key").on(table.number, table.restaurantId),
 	pgPolicy("tables_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("tables_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("tables_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("tables_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	check("tables_layout_check", sql`num_nulls(x, y, w, h) = ANY (ARRAY[0, 4])`),
+	check("tables_x_check", sql`(x >= (0)::numeric) AND (x <= (1)::numeric)`),
+	check("tables_y_check", sql`(y >= (0)::numeric) AND (y <= (1)::numeric)`),
+	check("tables_w_check", sql`(w > (0)::numeric) AND (w <= (1)::numeric)`),
+	check("tables_h_check", sql`(h > (0)::numeric) AND (h <= (1)::numeric)`),
+	check("tables_shape_check", sql`shape = ANY (ARRAY['round'::text, 'square'::text, 'rect'::text, 'bar'::text])`),
+	check("tables_rotation_check", sql`(rotation >= (0)::numeric) AND (rotation < (360)::numeric)`),
+	check("tables_seats_check", sql`(seats >= 0) AND (seats <= 20)`),
 ]);
 
 export const users = pgTable("users", {
@@ -1283,4 +1305,32 @@ export const printJobs = pgTable("print_jobs", {
 	pgPolicy("print_jobs_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("print_jobs_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	check("print_jobs_kind_check", sql`kind = ANY (ARRAY['invoice'::text, 'command'::text])`),
+]);
+
+export const zones = pgTable("zones", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	name: text().notNull(),
+	aspect: numeric().default('1.6').notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	labels: jsonb().default([]).notNull(),
+	active: boolean().default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	uniqueIndex("zones_restaurant_id_name_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), sql`lower(name)`),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "zones_restaurant_id_fkey"
+		}),
+	unique("zones_restaurant_id_id_key").on(table.restaurantId, table.id),
+	pgPolicy("zones_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("zones_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	pgPolicy("zones_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	pgPolicy("zones_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	check("zones_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 40)`),
+	check("zones_aspect_check", sql`(aspect > 0.25) AND (aspect < (4)::numeric)`),
+	// Array of at most 12 {text, side: top|right|bottom|left}; full expression in 0012_floor_plan.sql.
+	check("zones_labels_check", sql`jsonb_typeof(labels) = 'array'::text`),
 ]);

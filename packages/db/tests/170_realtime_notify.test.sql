@@ -32,15 +32,16 @@ SELECT is(
 );
 
 -- 5. No other table notifies: the fan-out whitelist and the triggers agree
--- (order_items joined in T8a, 180_order_items_notify).
+-- (order_items joined in T8a, 180_order_items_notify; zones in
+-- odd/tasks/rediseno-pos.md T3, 220_floor_plan).
 SELECT is(
   (SELECT count(*)
      FROM pg_trigger t
      JOIN pg_proc p ON p.oid = t.tgfoid
      JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'private' AND p.proname = 'notify_change')::bigint,
-  4::bigint,
-  'only the realtime tables (and order_items since T8a) use private.notify_change'
+  5::bigint,
+  'only the realtime tables (order_items since T8a, zones since the floor plan) use private.notify_change'
 );
 
 -- 6. Both payload functions pin search_path to the empty string.
