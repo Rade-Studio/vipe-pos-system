@@ -18,7 +18,8 @@ export function Toaster() {
           <ToastClose />
         </Toast>
       ))}
-      <ToastViewport className="fixed top-0 right-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:max-w-[420px]" />
+      {/* Top centre on every size: bottom action bars (send, step picker, payment) stay visible (T21). */}
+      <ToastViewport className="sm:max-w-[420px]" />
     </ToastProvider>
   )
 }
