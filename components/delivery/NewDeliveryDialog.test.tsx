@@ -78,7 +78,8 @@ describe("NewDeliveryDialog — no blank form while the suggested fee loads", ()
 
     // The fee read is still in flight: the operator must already see the form.
     expect(screen.getByLabelText("Teléfono")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Crear domicilio" })).toBeInTheDocument()
+    // T12: the form opens on its first step; "Crear domicilio" lives on Confirmar.
+    expect(screen.getByRole("navigation", { name: "Pasos del domicilio" })).toBeInTheDocument()
 
     await act(async () => {
       resolveFee(5000)

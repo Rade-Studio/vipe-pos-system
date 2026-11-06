@@ -2,12 +2,12 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { CONFIG_QUERY_KEY, fetchConfig } from '@/lib/api/config'
 import { useConfigStore } from '@/store/use-config-store'
 import { refreshActiveDeliveries } from '@/hooks/use-active-deliveries'
@@ -19,7 +19,8 @@ interface NewDeliveryDialogProps {
 }
 
 /**
- * Sheet-style wrapper for the new-order form.
+ * Wide right drawer for the new-order form (T12: full width on phones; the
+ * form inside is the step layout with its persistent summary).
  *
  * T10 (S2): the suggested delivery fee used to be read through a
  * `useEffect` + local state on EVERY open, and the form was only mounted once
@@ -50,14 +51,17 @@ export function NewDeliveryDialog({ open, onOpenChange }: NewDeliveryDialogProps
   })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Nuevo domicilio</DialogTitle>
-          <DialogDescription>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="flex h-[100dvh] w-full max-w-none flex-col gap-0 border-line bg-canvas p-0 sm:w-[min(1000px,100vw)] sm:max-w-none motion-reduce:data-[state=open]:animate-none motion-reduce:data-[state=closed]:animate-none"
+      >
+        <SheetHeader className="space-y-0.5 border-b border-line px-4 py-3 pr-14 text-left md:px-6">
+          <SheetTitle className="text-lg">Nuevo domicilio</SheetTitle>
+          <SheetDescription className="text-xs">
             Captura el cliente, los productos y el domicilio. El servidor recalcula los precios y la propina.
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
         {open && (
           <DeliveryOrderForm
             suggestedFee={config?.deliveryDefaultFee ?? 0}
@@ -69,7 +73,7 @@ export function NewDeliveryDialog({ open, onOpenChange }: NewDeliveryDialogProps
             }}
           />
         )}
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   )
 }
