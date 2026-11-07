@@ -44,7 +44,8 @@ const identity = (id: string, name: string, role = "waiter") => ({
   expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
   profile: { id, name, role },
 })
-const LOCK = "2026-11-07T17:49:00.000Z"
+// Always in the future, whenever the suite runs: a fixed timestamp expires.
+const LOCK = new Date(Date.now() + 60 * 60_000).toISOString()
 
 /**
  * The order screen the terminal wraps (WaiterView in the app): it writes an
