@@ -93,6 +93,18 @@ describe("ProfileSelection (station launcher)", () => {
     expect(selectedRoles(onSelect)).toEqual(["waiter"])
   })
 
+  it("arrow keys work right after opening, with no row focused: the first arrow focuses the current profile", () => {
+    renderPicker()
+    const list = rows()
+    expect(document.activeElement).toBe(document.body)
+    fireEvent.keyDown(document.body, { key: "ArrowDown" })
+    expect(list[4]).toHaveFocus() // Administrador, the current profile
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" })
+    expect(list[0]).toHaveFocus()
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" })
+    expect(list[4]).toHaveFocus()
+  })
+
   it("Esc returns to the admin panel", () => {
     const onSelect = renderPicker()
     fireEvent.keyDown(document, { key: "Escape" })
