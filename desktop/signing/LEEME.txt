@@ -1,0 +1,27 @@
+﻿VIPE POS - Certificado para instalar la app de escritorio
+=========================================================
+
+Para que Windows confíe en la app VIPE (y no muestre "Editor desconocido"),
+instala este certificado UNA sola vez en cada computador del restaurante,
+antes de instalar la app.
+
+Pasos
+1. Copia esta carpeta completa al computador (por ejemplo, con una USB).
+2. Clic derecho en "Instalar-certificado.cmd" > "Ejecutar como administrador".
+3. Debe decir: "Listo: este computador confía en las apps firmadas por VIPE POS."
+4. Instala la app VIPE. Las actualizaciones llegan solas despues.
+
+Comprobar que el archivo es el correcto (no instala nada)
+  Abre PowerShell en esta carpeta y ejecuta:
+  powershell -ExecutionPolicy Bypass -File .\Install-VipeCertificate.ps1 -Check
+  La huella debe ser: C594FA9787C8B198635461CC517B7E228ED260E4
+
+Quitar el certificado de un computador
+  Clic derecho > Ejecutar como administrador sobre "Quitar-certificado.cmd".
+
+Datos del certificado
+  Nombre: VIPE POS Code Signing (Rade Studio, CO)
+  Vence:  2031-11-07
+
+Este certificado es PUBLICO: se puede copiar sin riesgo. Las claves privadas
+nunca se entregan ni se copian a los computadores de los restaurantes.
