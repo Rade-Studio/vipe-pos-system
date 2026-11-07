@@ -2,11 +2,12 @@
 
 import type { ReactNode } from "react"
 import { LockIcon, Plus, ShoppingCart, UnlockIcon } from "lucide-react"
-import type { Table } from "@/types"
+import type { Order, Table } from "@/types"
 import { cn } from "@/lib/utils"
 import { isInactive, seatsText } from "@/lib/floor/layout"
 import { Button } from "@/components/ui/button"
 import { GuestsStepper } from "./GuestsStepper"
+import { OrderInProgress } from "./OrderInProgress"
 import { StatusChip } from "./StatusChip"
 import { toneClasses } from "./tones"
 
@@ -26,6 +27,8 @@ interface TablePanelProps {
   guests?: number | null
   onChangeGuests?: (guests: number) => void
   guestsBusy?: boolean
+  /** The table's open order: its sent lines show read only ("Pedido en curso", T29). */
+  order?: Order | null
   className?: string
   children?: ReactNode
 }
@@ -51,6 +54,7 @@ export function TablePanel({
   guests,
   onChangeGuests,
   guestsBusy,
+  order,
   className,
   children,
 }: TablePanelProps) {
@@ -102,6 +106,8 @@ export function TablePanel({
           <GuestsStepper value={guests} onChange={onChangeGuests} disabled={guestsBusy} />
         </div>
       )}
+
+      {order && <OrderInProgress order={order} />}
 
       <div className="grid grid-cols-2 gap-2">
         <Button className="col-span-2 h-11" onClick={onAddItems}>
