@@ -148,11 +148,15 @@ export class TablesService {
     return this.get(id);
   }
 
-  /** 409 while any order of the table is not paid (was a client-side check in tableService.delete). */
+  /**
+   * 409 while an order of the table is open (active, kitchen or delivered); paid
+   * and cancelled orders are history (F1 keeps cancelled orders instead of
+   * deleting them). Was a client-side check in tableService.delete.
+   */
   async remove(id: string): Promise<void> {
     await this.lock(id);
     const [open] = await this.rows(sql`
-      SELECT 1 FROM public.orders WHERE table_id = ${id} AND status <> 'paid' LIMIT 1`);
+      SELECT 1 FROM public.orders WHERE table_id = ${id} AND status IN ('active', 'kitchen', 'delivered') LIMIT 1`);
     if (open) {
       throw new ConflictException('Table has open orders');
     }

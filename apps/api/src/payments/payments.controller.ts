@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import {
   ApiBody,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -31,6 +32,9 @@ import {
   UndoSplitResult,
   UpdatePaymentMethodRequest,
   updatePaymentMethodSchema,
+  PaymentVoid,
+  VoidPaymentRequest,
+  voidPaymentSchema,
 } from './payments.dto';
 import { PaymentsService } from './payments.service';
 
@@ -109,6 +113,23 @@ export class PaymentsController {
   @ApiForbiddenResponse({ description: 'Not admin, cashier or delivery_operator.' })
   pay(@Body() body: unknown): Promise<PayOrderResult> {
     return this.payments.pay(parseInput(payOrderSchema, body));
+  }
+
+  @Post(':id/void')
+  @Roles(...SPLITTERS)
+  @HttpCode(200)
+  @ApiBody({ type: VoidPaymentRequest })
+  @ApiOkResponse({
+    type: PaymentVoid,
+    description: 'Voided, never deleted: the payment counts in no total and is no longer listed; the order is open again (delivered).',
+  })
+  @ApiForbiddenResponse({
+    description: 'Not admin or cashier, or 403 `authorization_required`, `authorization_invalid` or `self_authorization_not_allowed` (body `code`).',
+  })
+  @ApiConflictResponse({ description: '`payment_voided` or `register_closed` (the drawer of the payment is closed).' })
+  @ApiNotFoundResponse({ description: '`payment_not_found`.' })
+  void(@Param('id') id: string, @Body() body: unknown): Promise<PaymentVoid> {
+    return this.payments.void(parseInput(idParamSchema, id), parseInput(voidPaymentSchema, body));
   }
 }
 

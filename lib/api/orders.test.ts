@@ -20,8 +20,10 @@ vi.mock("@/lib/api/client", () => ({ api }))
 
 import {
   addItemsToOrder,
+  cancelOrder,
   create,
   deleteOrder,
+  getCancelledOrders,
   getById,
   getByStatus,
   orderConflictOf,
@@ -30,6 +32,7 @@ import {
   toOrder,
   updateDetails,
   updateStatus,
+  voidOrderItems,
   type OrderDto,
 } from "./orders"
 
@@ -277,6 +280,58 @@ describe("requests", () => {
 
     await deleteOrder("o-1")
     expect(api.DELETE).toHaveBeenCalledWith("/api/orders/{id}", { params: { path: { id: "o-1" } } })
+  })
+})
+
+describe("cancellations and voids (F1)", () => {
+  beforeEach(() => {
+    api.POST.mockReset()
+    api.GET.mockReset()
+    api.DELETE.mockReset()
+  })
+
+  it("cancels with POST /orders/:id/cancel, sending the reason and the supervisor authorization", async () => {
+    const cancelled = { ...dto({ status: "cancelled" }), cancellation: { reason: "customer_left", total: 23600 } }
+    api.POST.mockResolvedValueOnce({ data: cancelled })
+    await expect(cancelOrder("o-1", { reason: "customer_left", authorizationId: "a-1" })).resolves.toEqual(cancelled)
+    expect(api.POST).toHaveBeenCalledWith("/api/orders/{id}/cancel", {
+      params: { path: { id: "o-1" } },
+      body: { reason: "customer_left", authorizationId: "a-1" },
+    })
+    api.POST.mockResolvedValueOnce({ data: cancelled })
+    await cancelOrder("o-1", { reason: "other", reasonText: "Mesa equivocada" })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/orders/{id}/cancel", {
+      params: { path: { id: "o-1" } },
+      body: { reason: "other", reasonText: "Mesa equivocada" },
+    })
+  })
+
+  it("voids units of lines with POST /orders/:id/items/void and returns the order", async () => {
+    api.POST.mockResolvedValueOnce({ data: dto() })
+    await expect(
+      voidOrderItems("o-1", { items: [{ itemId: "i-1", quantity: 2 }], reason: "dish_returned", authorizationId: "a-2" }),
+    ).resolves.toEqual(dto())
+    expect(api.POST).toHaveBeenCalledWith("/api/orders/{id}/items/void", {
+      params: { path: { id: "o-1" } },
+      body: { items: [{ itemId: "i-1", quantity: 2 }], reason: "dish_returned", authorizationId: "a-2" },
+    })
+  })
+
+  it("lists the day's cancelled orders for admin with GET /orders/cancelled", async () => {
+    api.GET.mockResolvedValueOnce({ data: [] })
+    await expect(getCancelledOrders("2026-11-07")).resolves.toEqual([])
+    expect(api.GET).toHaveBeenCalledWith("/api/orders/cancelled", { params: { query: { date: "2026-11-07" } } })
+  })
+
+  it("DELETE carries the cancellation body when given (the old call shape is unchanged)", async () => {
+    api.DELETE.mockResolvedValue({})
+    await deleteOrder("o-1", { reason: "waiter_error", authorizationId: "a-3" })
+    expect(api.DELETE).toHaveBeenLastCalledWith("/api/orders/{id}", {
+      params: { path: { id: "o-1" } },
+      body: { reason: "waiter_error", authorizationId: "a-3" },
+    })
+    await deleteOrder("o-1")
+    expect(api.DELETE).toHaveBeenLastCalledWith("/api/orders/{id}", { params: { path: { id: "o-1" } } })
   })
 })
 

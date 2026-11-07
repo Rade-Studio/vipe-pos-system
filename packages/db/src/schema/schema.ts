@@ -24,6 +24,7 @@ export const businessConfig = pgTable("business_config", {
 	pgPolicy("business_config_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("business_config_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("business_config_waiter_access_mode", sql`((key)::text <> 'waiter_access_mode'::text) OR (value = ANY (ARRAY['own_accounts'::text, 'shared_terminal'::text]))`),
+	check("business_config_allow_self_authorization", sql`((key)::text <> 'allow_self_authorization'::text) OR (value = ANY (ARRAY['true'::text, 'false'::text]))`),
 ]);
 
 export const cashRegisters = pgTable("cash_registers", {
@@ -665,6 +666,9 @@ export const orderItems = pgTable("order_items", {
 	pgPolicy("order_items_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("order_items_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("order_items_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	unique("order_items_restaurant_id_id_key").on(table.restaurantId, table.id),
+	check("order_items_quantity_check", sql`quantity >= 0`),
+	check("order_items_cancelled_quantity_check", sql`((status)::text = 'cancelled'::text) = (quantity = 0)`),
 ]);
 
 export const orders = pgTable("orders", {
@@ -732,6 +736,7 @@ export const orders = pgTable("orders", {
 	check("orders_guests_check", sql`(guests >= 1) AND (guests <= 99)`),
 	check("orders_notes_check", sql`(length(btrim(notes)) >= 1) AND (length(btrim(notes)) <= 300)`),
 	check("orders_status_check", sql`status = ANY (ARRAY['active'::text, 'kitchen'::text, 'delivered'::text, 'cancelled'::text, 'paid'::text])`),
+	unique("orders_restaurant_id_id_key").on(table.restaurantId, table.id),
 ]);
 
 export const paymentMethods = pgTable("payment_methods", {
@@ -870,7 +875,10 @@ export const payments = pgTable("payments", {
 	changeGiven: bigint("change_given", { mode: "number" }).default(0).notNull(),
 	idempotencyKey: uuid("idempotency_key").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	voidedAt: timestamp("voided_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
+	index("idx_payments_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
+	uniqueIndex("payments_order_id_live_key").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")).where(sql`(voided_at IS NULL)`),
 	index("idx_payments_restaurant_id_cash_register_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.cashRegisterId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
 			columns: [table.cashRegisterId],
@@ -893,7 +901,7 @@ export const payments = pgTable("payments", {
 			name: "payments_restaurant_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 	unique("payments_restaurant_id_idempotency_key_key").on(table.restaurantId, table.idempotencyKey),
-	unique("payments_order_id_key").on(table.orderId),
+	unique("payments_restaurant_id_id_key").on(table.restaurantId, table.id),
 	pgPolicy("payments_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("payments_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("payments_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
@@ -1525,4 +1533,273 @@ export const subcategories = pgTable("subcategories", {
 	pgPolicy("subcategories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("subcategories_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("subcategories_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 40)`),
+]);
+
+export const auditLog = pgTable("audit_log", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	eventType: text("event_type").notNull(),
+	orderId: uuid("order_id").notNull(),
+	paymentId: uuid("payment_id"),
+	actorProfileId: uuid("actor_profile_id"),
+	actorName: text("actor_name").notNull(),
+	authorizedByProfileId: uuid("authorized_by_profile_id"),
+	authorizedByName: text("authorized_by_name"),
+	authorizationId: uuid("authorization_id"),
+	selfAuthorized: boolean("self_authorized").default(false).notNull(),
+	reasonCode: text("reason_code").notNull(),
+	reasonText: text("reason_text"),
+	amount: numeric({ precision: 12, scale:  2 }).notNull(),
+	details: jsonb().default({}).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("audit_log_authorization_id_key").using("btree", table.authorizationId.asc().nullsLast().op("uuid_ops")).where(sql`(authorization_id IS NOT NULL)`),
+	index("idx_audit_log_restaurant_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("idx_audit_log_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "audit_log_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.orderId],
+			foreignColumns: [orders.restaurantId, orders.id],
+			name: "audit_log_order_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.paymentId],
+			foreignColumns: [payments.restaurantId, payments.id],
+			name: "audit_log_payment_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.actorProfileId],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "audit_log_actor_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.authorizedByProfileId],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "audit_log_authorizer_fkey"
+		}).onDelete("set null"),
+	pgPolicy("audit_log_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("audit_log_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("audit_log_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	check("audit_log_event_type_check", sql`event_type = ANY (ARRAY['order_cancelled'::text, 'items_voided'::text, 'payment_voided'::text])`),
+	check("audit_log_amount_check", sql`amount >= (0)::numeric`),
+	check("audit_log_reason_code_check", sql`reason_code = ANY (ARRAY['waiter_error'::text, 'customer_left'::text, 'dish_returned'::text, 'duplicate_charge'::text, 'wrong_payment_method'::text, 'other'::text])`),
+	check("audit_log_reason_text_check", sql`(reason_text IS NULL) OR ((length(btrim(reason_text)) >= 3) AND (length(btrim(reason_text)) <= 200))`),
+	check("audit_log_other_reason_check", sql`(reason_code <> 'other'::text) OR (reason_text IS NOT NULL)`),
+	check("audit_log_payment_check", sql`(event_type = 'payment_voided'::text) = (payment_id IS NOT NULL)`),
+	check("audit_log_authorizer_check", sql`(authorization_id IS NULL) = (authorized_by_name IS NULL)`),
+	check("audit_log_self_check", sql`(NOT self_authorized) OR (authorization_id IS NOT NULL)`),
+	check("audit_log_self_match_check", sql`(authorized_by_profile_id IS NULL) OR (actor_profile_id IS NULL) OR (self_authorized = (authorized_by_profile_id = actor_profile_id))`),
+	check("audit_log_details_check", sql`jsonb_typeof(details) = 'object'::text`),
+]);
+
+export const orderCancellations = pgTable("order_cancellations", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	orderId: uuid("order_id").notNull(),
+	auditId: uuid("audit_id").notNull(),
+	previousStatus: text("previous_status").notNull(),
+	reasonCode: text("reason_code").notNull(),
+	reasonText: text("reason_text"),
+	cancelledBy: uuid("cancelled_by"),
+	cancelledByName: text("cancelled_by_name").notNull(),
+	authorizedBy: uuid("authorized_by"),
+	authorizedByName: text("authorized_by_name"),
+	authorizationId: uuid("authorization_id"),
+	selfAuthorized: boolean("self_authorized").default(false).notNull(),
+	subtotal: numeric({ precision: 10, scale:  2 }).notNull(),
+	tax: numeric({ precision: 10, scale:  2 }).notNull(),
+	tip: numeric({ precision: 10, scale:  2 }).notNull(),
+	total: numeric({ precision: 10, scale:  2 }).notNull(),
+	items: jsonb().notNull(),
+	sentItems: integer("sent_items").notNull(),
+	cancelledAt: timestamp("cancelled_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_order_cancellations_restaurant_id_cancelled_at").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.cancelledAt.asc().nullsLast().op("timestamptz_ops")),
+	unique("order_cancellations_order_id_key").on(table.orderId),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "order_cancellations_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.auditId],
+			foreignColumns: [auditLog.id],
+			name: "order_cancellations_audit_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.orderId],
+			foreignColumns: [orders.restaurantId, orders.id],
+			name: "order_cancellations_order_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.cancelledBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "order_cancellations_cancelled_by_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.authorizedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "order_cancellations_authorized_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("order_cancellations_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("order_cancellations_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("order_cancellations_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	check("order_cancellations_previous_status_check", sql`previous_status = ANY (ARRAY['active'::text, 'kitchen'::text, 'delivered'::text])`),
+	check("order_cancellations_sent_items_check", sql`sent_items >= 0`),
+	check("order_cancellations_reason_code_check", sql`reason_code = ANY (ARRAY['waiter_error'::text, 'customer_left'::text, 'dish_returned'::text, 'duplicate_charge'::text, 'wrong_payment_method'::text, 'other'::text])`),
+	check("order_cancellations_reason_text_check", sql`(reason_text IS NULL) OR ((length(btrim(reason_text)) >= 3) AND (length(btrim(reason_text)) <= 200))`),
+	check("order_cancellations_other_reason_check", sql`(reason_code <> 'other'::text) OR (reason_text IS NOT NULL)`),
+	check("order_cancellations_amounts_check", sql`(subtotal >= (0)::numeric) AND (tax >= (0)::numeric) AND (tip >= (0)::numeric) AND (total >= (0)::numeric)`),
+	check("order_cancellations_items_check", sql`jsonb_typeof(items) = 'array'::text`),
+	check("order_cancellations_authorizer_check", sql`(authorization_id IS NULL) = (authorized_by_name IS NULL)`),
+	check("order_cancellations_self_check", sql`(NOT self_authorized) OR (authorization_id IS NOT NULL)`),
+	check("order_cancellations_self_match_check", sql`(authorized_by IS NULL) OR (cancelled_by IS NULL) OR (self_authorized = (authorized_by = cancelled_by))`),
+]);
+
+export const orderItemVoids = pgTable("order_item_voids", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	orderId: uuid("order_id").notNull(),
+	orderItemId: uuid("order_item_id").notNull(),
+	auditId: uuid("audit_id").notNull(),
+	dishId: uuid("dish_id"),
+	itemName: text("item_name").notNull(),
+	quantity: integer().notNull(),
+	remainingQuantity: integer("remaining_quantity").notNull(),
+	unitPrice: numeric("unit_price", { precision: 10, scale:  2 }).notNull(),
+	amount: numeric({ precision: 12, scale:  2 }).notNull(),
+	sentToKitchen: boolean("sent_to_kitchen").notNull(),
+	stockConsumed: boolean("stock_consumed").notNull(),
+	reasonCode: text("reason_code").notNull(),
+	reasonText: text("reason_text"),
+	voidedBy: uuid("voided_by"),
+	voidedByName: text("voided_by_name").notNull(),
+	authorizedBy: uuid("authorized_by"),
+	authorizedByName: text("authorized_by_name"),
+	authorizationId: uuid("authorization_id"),
+	selfAuthorized: boolean("self_authorized").default(false).notNull(),
+	voidedAt: timestamp("voided_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_order_item_voids_restaurant_id_voided_at").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.voidedAt.asc().nullsLast().op("timestamptz_ops")),
+	index("idx_order_item_voids_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "order_item_voids_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.auditId],
+			foreignColumns: [auditLog.id],
+			name: "order_item_voids_audit_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.orderId],
+			foreignColumns: [orders.restaurantId, orders.id],
+			name: "order_item_voids_order_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.orderItemId],
+			foreignColumns: [orderItems.restaurantId, orderItems.id],
+			name: "order_item_voids_item_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.voidedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "order_item_voids_voided_by_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.authorizedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "order_item_voids_authorized_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("order_item_voids_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("order_item_voids_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("order_item_voids_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	check("order_item_voids_quantity_check", sql`quantity >= 1`),
+	check("order_item_voids_remaining_check", sql`remaining_quantity >= 0`),
+	check("order_item_voids_unit_price_check", sql`unit_price >= (0)::numeric`),
+	check("order_item_voids_amount_check", sql`amount >= (0)::numeric`),
+	check("order_item_voids_reason_code_check", sql`reason_code = ANY (ARRAY['waiter_error'::text, 'customer_left'::text, 'dish_returned'::text, 'duplicate_charge'::text, 'wrong_payment_method'::text, 'other'::text])`),
+	check("order_item_voids_reason_text_check", sql`(reason_text IS NULL) OR ((length(btrim(reason_text)) >= 3) AND (length(btrim(reason_text)) <= 200))`),
+	check("order_item_voids_other_reason_check", sql`(reason_code <> 'other'::text) OR (reason_text IS NOT NULL)`),
+	check("order_item_voids_authorizer_check", sql`(authorization_id IS NULL) = (authorized_by_name IS NULL)`),
+	check("order_item_voids_sent_check", sql`(NOT sent_to_kitchen) OR (authorization_id IS NOT NULL)`),
+	check("order_item_voids_self_check", sql`(NOT self_authorized) OR (authorization_id IS NOT NULL)`),
+	check("order_item_voids_self_match_check", sql`(authorized_by IS NULL) OR (voided_by IS NULL) OR (self_authorized = (authorized_by = voided_by))`),
+]);
+
+export const paymentVoids = pgTable("payment_voids", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	paymentId: uuid("payment_id").notNull(),
+	orderId: uuid("order_id").notNull(),
+	cashRegisterId: uuid("cash_register_id").notNull(),
+	auditId: uuid("audit_id").notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	amountDue: bigint("amount_due", { mode: "number" }).notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	tipAmount: bigint("tip_amount", { mode: "number" }).notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	totalCharged: bigint("total_charged", { mode: "number" }).notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	changeGiven: bigint("change_given", { mode: "number" }).notNull(),
+	methods: text().notNull(),
+	tenders: jsonb().notNull(),
+	paidAt: timestamp("paid_at", { withTimezone: true, mode: 'string' }).notNull(),
+	reasonCode: text("reason_code").notNull(),
+	reasonText: text("reason_text"),
+	voidedBy: uuid("voided_by"),
+	voidedByName: text("voided_by_name").notNull(),
+	authorizedBy: uuid("authorized_by"),
+	authorizedByName: text("authorized_by_name").notNull(),
+	authorizationId: uuid("authorization_id").notNull(),
+	selfAuthorized: boolean("self_authorized").default(false).notNull(),
+	voidedAt: timestamp("voided_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_payment_voids_restaurant_id_voided_at").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.voidedAt.asc().nullsLast().op("timestamptz_ops")),
+	index("idx_payment_voids_cash_register_id").using("btree", table.cashRegisterId.asc().nullsLast().op("uuid_ops")),
+	unique("payment_voids_payment_id_key").on(table.paymentId),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "payment_voids_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.auditId],
+			foreignColumns: [auditLog.id],
+			name: "payment_voids_audit_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.paymentId],
+			foreignColumns: [payments.restaurantId, payments.id],
+			name: "payment_voids_payment_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.orderId],
+			foreignColumns: [orders.restaurantId, orders.id],
+			name: "payment_voids_order_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.voidedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "payment_voids_voided_by_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.authorizedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "payment_voids_authorized_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("payment_voids_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("payment_voids_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("payment_voids_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	check("payment_voids_amounts_check", sql`(amount_due >= 0) AND (tip_amount >= 0) AND (change_given >= 0) AND (total_charged = (amount_due + tip_amount))`),
+	check("payment_voids_tenders_check", sql`(jsonb_typeof(tenders) = 'array'::text) AND (jsonb_array_length(tenders) >= 1)`),
+	check("payment_voids_reason_code_check", sql`reason_code = ANY (ARRAY['waiter_error'::text, 'customer_left'::text, 'dish_returned'::text, 'duplicate_charge'::text, 'wrong_payment_method'::text, 'other'::text])`),
+	check("payment_voids_reason_text_check", sql`(reason_text IS NULL) OR ((length(btrim(reason_text)) >= 3) AND (length(btrim(reason_text)) <= 200))`),
+	check("payment_voids_other_reason_check", sql`(reason_code <> 'other'::text) OR (reason_text IS NOT NULL)`),
+	check("payment_voids_self_match_check", sql`(authorized_by IS NULL) OR (voided_by IS NULL) OR (self_authorized = (authorized_by = voided_by))`),
 ]);

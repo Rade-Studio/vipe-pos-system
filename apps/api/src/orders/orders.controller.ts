@@ -19,6 +19,9 @@ import { idParamSchema, parseInput } from '../common/validation';
 import {
   AddOrderItemsRequest,
   addOrderItemsSchema,
+  CancelledOrder,
+  CancelOrderRequest,
+  cancelOrderSchema,
   CompletedOrder,
   completedOrdersQuerySchema,
   CreateOrderRequest,
@@ -37,11 +40,15 @@ import {
   updateOrderDetailsSchema,
   UpdateOrderStatusRequest,
   updateOrderStatusSchema,
+  VoidOrderItemsRequest,
+  voidOrderItemsSchema,
 } from './orders.dto';
 import { type OrderListFilter, OrdersService } from './orders.service';
 
 /** Roles that take orders; consume_order_stock accepts exactly these (and delivery_operator, T11). */
 const ORDER_TAKERS = ['admin', 'waiter', 'cashier'];
+const VOID_REFUSALS =
+  '403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`.';
 
 const includeFilter = (include: readonly string[] = []): OrderListFilter => ({
   withTable: include.includes('table'),
@@ -74,6 +81,16 @@ export class OrdersController {
   @ApiOkResponse({ type: [CompletedOrder], description: 'Newest first, with the payment and tenders or the legacy payment_transactions rows.' })
   completed(@Query() query: unknown): Promise<CompletedOrder[]> {
     return this.orders.completed(parseInput(completedOrdersQuerySchema, query).date);
+  }
+
+  /** Declared before :id so `cancelled` is not read as an order id. */
+  @Get('cancelled')
+  @Roles('admin')
+  @ApiQuery({ name: 'date', required: true, description: "YYYY-MM-DD: orders cancelled that day in the restaurant's timezone." })
+  @ApiOkResponse({ type: [CancelledOrder], description: 'Newest cancellation first, with the bill at that moment, reason, actor and supervisor.' })
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  cancelled(@Query() query: unknown): Promise<CancelledOrder[]> {
+    return this.orders.cancelledOn(parseInput(completedOrdersQuerySchema, query).date);
   }
 
   @Get(':id')
@@ -143,13 +160,43 @@ export class OrdersController {
     return this.orders.serveItems(parseInput(idParamSchema, id), parseInput(serveOrderItemsSchema, body).itemIds);
   }
 
+  @Post(':id/cancel')
+  @Roles(...ORDER_TAKERS)
+  @HttpCode(200)
+  @ApiBody({ type: CancelOrderRequest })
+  @ApiOkResponse({ type: CancelledOrder, description: 'Cancelled, never deleted: reason, actor, supervisor and the bill are stored; the table is freed when no other open order remains.' })
+  @ApiForbiddenResponse({ description: `Not admin, waiter or cashier, or ${VOID_REFUSALS}` })
+  @ApiConflictResponse({ description: '`order_cancelled`, `order_paid` (void the payment first) or `delivery_order`.' })
+  @ApiNotFoundResponse({ description: '`order_not_found`.' })
+  cancel(@Param('id') id: string, @Body() body: unknown): Promise<CancelledOrder> {
+    return this.orders.cancel(parseInput(idParamSchema, id), parseInput(cancelOrderSchema, body));
+  }
+
+  @Post(':id/items/void')
+  @Roles(...ORDER_TAKERS)
+  @HttpCode(200)
+  @ApiBody({ type: VoidOrderItemsRequest })
+  @ApiOkResponse({ type: Order, description: 'The order with the voided units removed and the bill recomputed; stock already consumed stays consumed.' })
+  @ApiForbiddenResponse({ description: `Not admin, waiter or cashier, or ${VOID_REFUSALS}` })
+  @ApiConflictResponse({ description: '`order_closed` (paid or cancelled).' })
+  @ApiNotFoundResponse({ description: '`order_not_found`.' })
+  voidItems(@Param('id') id: string, @Body() body: unknown): Promise<Order> {
+    return this.orders.voidItems(parseInput(idParamSchema, id), parseInput(voidOrderItemsSchema, body));
+  }
+
   @Delete(':id')
-  @Roles('admin')
+  @Roles(...ORDER_TAKERS)
   @HttpCode(204)
-  @ApiNoContentResponse({ description: 'Order and items deleted (delete_order_with_items); the table is freed when no other open order remains.' })
-  @ApiConflictResponse({ description: 'Order is paid.' })
-  @ApiNotFoundResponse()
-  remove(@Param('id') id: string): Promise<void> {
-    return this.orders.remove(parseInput(idParamSchema, id));
+  @ApiBody({ type: CancelOrderRequest, required: false })
+  @ApiNoContentResponse({
+    description:
+      'The audited cancellation of POST /orders/:id/cancel (orders are never deleted). Without a body only an order with nothing on it is cancelled (reason other, "Cancelada sin motivo indicado").',
+  })
+  @ApiForbiddenResponse({ description: `Not admin, waiter or cashier, or ${VOID_REFUSALS}` })
+  @ApiConflictResponse({ description: '`order_cancelled`, `order_paid` or `delivery_order`.' })
+  @ApiNotFoundResponse({ description: '`order_not_found`.' })
+  async remove(@Param('id') id: string, @Body() body: unknown): Promise<void> {
+    const hasBody = body !== undefined && body !== null && !(typeof body === 'object' && Object.keys(body).length === 0);
+    await this.orders.remove(parseInput(idParamSchema, id), hasBody ? parseInput(cancelOrderSchema, body) : undefined);
   }
 }

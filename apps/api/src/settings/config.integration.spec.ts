@@ -17,6 +17,7 @@ const DEFAULTS = {
   kitchenLateMinutes: 25,
   deliveryLateMinutes: 45,
   waiterAccessMode: 'own_accounts',
+  allowSelfAuthorization: false,
 };
 
 describe('business config endpoints (Testcontainers, vipe_api)', () => {
@@ -157,6 +158,20 @@ describe('business config endpoints (Testcontainers, vipe_api)', () => {
     expect((await put(fixtures.waiterA, { waiterAccessMode: 'shared_terminal' })).status).toBe(403);
     expect((await put(fixtures.adminA, { waiterAccessMode: 'mixed' })).status).toBe(422);
     expect(await rows(fixtures.restaurantA)).toEqual(before);
+  });
+
+  it('stores allowSelfAuthorization for the admin only (default false) and serves it to staff, per restaurant', async () => {
+    const before = await rows(fixtures.restaurantA);
+    expect((await put(fixtures.waiterA, { allowSelfAuthorization: true })).status).toBe(403);
+    expect((await put(fixtures.adminA, { allowSelfAuthorization: 'yes' })).status).toBe(422);
+    expect(await rows(fixtures.restaurantA)).toEqual(before);
+    const res = await put(fixtures.adminA, { allowSelfAuthorization: true });
+    expect(res.status).toBe(200);
+    expect(res.body.allowSelfAuthorization).toBe(true);
+    expect(await rows(fixtures.restaurantA)).toContainEqual({ key: 'allow_self_authorization', value: 'true' });
+    expect((await get(fixtures.waiterA)).body.allowSelfAuthorization).toBe(true);
+    expect((await get(fixtures.adminB)).body.allowSelfAuthorization).toBe(false);
+    expect((await put(fixtures.adminA, { allowSelfAuthorization: false })).body.allowSelfAuthorization).toBe(false);
   });
 
   it('rejects a waiter writing a late threshold with 403', async () => {

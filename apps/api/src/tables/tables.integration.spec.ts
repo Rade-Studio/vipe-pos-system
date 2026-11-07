@@ -15,6 +15,7 @@ const t = {
   served: 'f9000000-0000-0000-0000-000000000004',
   reserved: 'f9000000-0000-0000-0000-000000000005',
   paidOnly: 'f9000000-0000-0000-0000-000000000006',
+  cancelledOnly: 'f9000000-0000-0000-0000-000000000007',
   otherTable: 'f9000000-0000-0000-0000-0000000000b1',
   hall: 'f9100000-0000-0000-0000-000000000001',
   terrace: 'f9100000-0000-0000-0000-000000000002',
@@ -144,6 +145,19 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       expect(res.status).toBe(409);
       expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: 'Table has open orders' });
       expect(await tableRow(t.kitchen)).toBeDefined();
+    });
+
+    it('deletes a table whose orders are all paid or cancelled (F1: cancelled orders are kept, not deleted)', async () => {
+      await db(`INSERT INTO tables (id, number, status, restaurant_id) VALUES ($1, 61, 'available', $2)`, [t.cancelledOnly, fixtures.restaurantA]);
+      await db(
+        `INSERT INTO orders (table_id, status, subtotal, tax, tax_percentage, total, restaurant_id) VALUES
+           ($1, 'cancelled', 10, 0, 0, 10, $2), ($1, 'paid', 10, 0, 0, 10, $2)`,
+        [t.cancelledOnly, fixtures.restaurantA],
+      );
+      const res = await adminA().delete(`/api/tables/${t.cancelledOnly}`);
+      expect(res.status).toBe(204);
+      expect(await tableRow(t.cancelledOnly)).toBeUndefined();
+      expect(await db('SELECT status FROM orders WHERE table_id IS NULL AND status = $1', ['cancelled'])).toHaveLength(1);
     });
 
     it('deletes a table whose orders are all paid', async () => {

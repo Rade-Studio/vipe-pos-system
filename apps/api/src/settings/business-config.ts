@@ -46,6 +46,8 @@ export const CONFIG_KEYS = {
   deliveryLateMinutes: { key: 'delivery_late_minutes', fallback: 45, read: minutes(45) },
   /** own_accounts (default, a login per waiter) | shared_terminal (order writes need a PIN identification). */
   waiterAccessMode: { key: 'waiter_access_mode', fallback: 'own_accounts' as WaiterAccessMode, read: accessMode },
+  /** F1 (L14): a supervisor may authorize their own cancellation or void; off by default, such events are flagged self_authorized. */
+  allowSelfAuthorization: { key: 'allow_self_authorization', fallback: false, read: (v: string) => v === 'true' },
 } as const;
 
 export type ConfigField = keyof typeof CONFIG_KEYS;
@@ -67,6 +69,7 @@ export const updateConfigSchema = z.strictObject({
   kitchenLateMinutes: lateMinutes.optional(),
   deliveryLateMinutes: lateMinutes.optional(),
   waiterAccessMode: z.enum(WAITER_ACCESS_MODES).optional(),
+  allowSelfAuthorization: z.boolean().optional(),
 });
 
 /** Typed config built from the stored rows; missing or unreadable keys take the default. */
@@ -100,6 +103,12 @@ export class BusinessConfig {
     description: 'own_accounts: each waiter logs in; shared_terminal: a terminal session takes orders and each write needs the PIN identification.',
   })
   waiterAccessMode!: WaiterAccessMode;
+  @ApiProperty({
+    default: false,
+    description:
+      'Permitir que el supervisor se autorice a sí mismo: when true, an admin or cashier may authorize their own cancellation or void with their PIN and the event is flagged selfAuthorized; when false another supervisor must authorize (403 self_authorization_not_allowed).',
+  })
+  allowSelfAuthorization!: boolean;
 }
 
 export class UpdateBusinessConfigRequest {
@@ -115,4 +124,5 @@ export class UpdateBusinessConfigRequest {
   @ApiPropertyOptional({ minimum: 1, maximum: 240, type: 'integer' }) kitchenLateMinutes?: number;
   @ApiPropertyOptional({ minimum: 1, maximum: 240, type: 'integer' }) deliveryLateMinutes?: number;
   @ApiPropertyOptional({ enum: WAITER_ACCESS_MODES }) waiterAccessMode?: WaiterAccessMode;
+  @ApiPropertyOptional({ description: 'Admin only, like every key.' }) allowSelfAuthorization?: boolean;
 }

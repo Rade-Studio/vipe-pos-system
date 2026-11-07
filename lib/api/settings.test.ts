@@ -8,9 +8,11 @@ vi.mock("@/lib/api/client", () => ({ api }))
 import {
   DEFAULT_LATE_THRESHOLDS,
   DEFAULT_WAITER_ACCESS_MODE,
+  fetchAllowSelfAuthorization,
   fetchLateThresholds,
   fetchWaiterAccessMode,
   lateThresholdsOf,
+  saveAllowSelfAuthorization,
   saveLateThresholds,
   saveWaiterAccessMode,
 } from "./settings"
@@ -28,6 +30,7 @@ const config = {
   kitchenLateMinutes: 20,
   deliveryLateMinutes: 60,
   waiterAccessMode: "shared_terminal",
+  allowSelfAuthorization: false,
 }
 
 beforeEach(() => {
@@ -75,5 +78,19 @@ describe("waiter access mode (F2)", () => {
     api.PUT.mockResolvedValueOnce({ data: { ...config, waiterAccessMode: "own_accounts" } })
     await expect(saveWaiterAccessMode("own_accounts")).resolves.toBe("own_accounts")
     expect(api.PUT).toHaveBeenCalledWith("/api/config", { body: { waiterAccessMode: "own_accounts" } })
+  })
+})
+
+describe("self-authorization (F1, L14)", () => {
+  it("reads it with GET /config (off by default on the server)", async () => {
+    api.GET.mockResolvedValueOnce({ data: config })
+    await expect(fetchAllowSelfAuthorization()).resolves.toBe(false)
+    expect(api.GET).toHaveBeenCalledWith("/api/config")
+  })
+
+  it("saves only the setting with PUT /config", async () => {
+    api.PUT.mockResolvedValueOnce({ data: { ...config, allowSelfAuthorization: true } })
+    await expect(saveAllowSelfAuthorization(true)).resolves.toBe(true)
+    expect(api.PUT).toHaveBeenCalledWith("/api/config", { body: { allowSelfAuthorization: true } })
   })
 })

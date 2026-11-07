@@ -1583,6 +1583,49 @@
         ]
       }
     },
+    "/api/orders/cancelled": {
+      "get": {
+        "operationId": "OrdersController_cancelled",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "description": "YYYY-MM-DD: orders cancelled that day in the restaurant's timezone.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest cancellation first, with the bill at that moment, reason, actor and supervisor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CancelledOrder"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/orders/{id}": {
       "get": {
         "operationId": "OrdersController_get",
@@ -1697,15 +1740,28 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelOrderRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
-            "description": "Order and items deleted (delete_order_with_items); the table is freed when no other open order remains."
+            "description": "The audited cancellation of POST /orders/:id/cancel (orders are never deleted). Without a body only an order with nothing on it is cancelled (reason other, \"Cancelada sin motivo indicado\")."
+          },
+          "403": {
+            "description": "Not admin, waiter or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`."
           },
           "404": {
-            "description": ""
+            "description": "`order_not_found`."
           },
           "409": {
-            "description": "Order is paid."
+            "description": "`order_cancelled`, `order_paid` or `delivery_order`."
           },
           "422": {
             "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
@@ -1880,6 +1936,203 @@
         ],
         "tags": [
           "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}/cancel": {
+      "post": {
+        "operationId": "OrdersController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancelled, never deleted: reason, actor, supervisor and the bill are stored; the table is freed when no other open order remains.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelledOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, waiter or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`."
+          },
+          "404": {
+            "description": "`order_not_found`."
+          },
+          "409": {
+            "description": "`order_cancelled`, `order_paid` (void the payment first) or `delivery_order`."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}/items/void": {
+      "post": {
+        "operationId": "OrdersController_voidItems",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidOrderItemsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The order with the voided units removed and the bill recomputed; stock already consumed stays consumed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, waiter or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`."
+          },
+          "404": {
+            "description": "`order_not_found`."
+          },
+          "409": {
+            "description": "`order_closed` (paid or cancelled)."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "operationId": "AuditController_list",
+        "parameters": [
+          {
+            "name": "selfAuthorized",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorizerId",
+            "required": false,
+            "in": "query",
+            "description": "Supervisor who authorized.",
+            "schema": {}
+          },
+          {
+            "name": "actorId",
+            "required": false,
+            "in": "query",
+            "description": "Profile who cancelled or voided.",
+            "schema": {}
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated: order_cancelled, items_voided, payment_voided.",
+            "schema": {}
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "YYYY-MM-DD: events up to that day included (restaurant's timezone).",
+            "schema": {}
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "YYYY-MM-DD: events from that day (restaurant's timezone).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancellations and voids, newest first, at most 500.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditEvent"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid filter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "audit"
         ]
       }
     },
@@ -2647,6 +2900,63 @@
           },
           "404": {
             "description": "Order not found (P0002)."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/payments/{id}/void": {
+      "post": {
+        "operationId": "PaymentsController_void",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidPaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Voided, never deleted: the payment counts in no total and is no longer listed; the order is open again (delivered).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentVoid"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier, or 403 `authorization_required`, `authorization_invalid` or `self_authorization_not_allowed` (body `code`)."
+          },
+          "404": {
+            "description": "`payment_not_found`."
+          },
+          "409": {
+            "description": "`payment_voided` or `register_closed` (the drawer of the payment is closed)."
           },
           "422": {
             "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023."
@@ -7260,6 +7570,11 @@
             ],
             "default": "own_accounts",
             "description": "own_accounts: each waiter logs in; shared_terminal: a terminal session takes orders and each write needs the PIN identification."
+          },
+          "allowSelfAuthorization": {
+            "type": "boolean",
+            "default": false,
+            "description": "Permitir que el supervisor se autorice a sí mismo: when true, an admin or cashier may authorize their own cancellation or void with their PIN and the event is flagged selfAuthorized; when false another supervisor must authorize (403 self_authorization_not_allowed)."
           }
         },
         "required": [
@@ -7274,7 +7589,8 @@
           "deliveryDefaultFee",
           "kitchenLateMinutes",
           "deliveryLateMinutes",
-          "waiterAccessMode"
+          "waiterAccessMode",
+          "allowSelfAuthorization"
         ]
       },
       "UpdateBusinessConfigRequest": {
@@ -7333,6 +7649,10 @@
               "own_accounts",
               "shared_terminal"
             ]
+          },
+          "allowSelfAuthorization": {
+            "type": "boolean",
+            "description": "Admin only, like every key."
           }
         }
       },
@@ -7496,7 +7816,7 @@
             "nullable": true
           },
           "items": {
-            "description": "Always embedded, oldest first.",
+            "description": "Always embedded, oldest first; fully voided lines (quantity 0) are left out.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OrderItem"
@@ -7812,7 +8132,7 @@
             "nullable": true
           },
           "items": {
-            "description": "Always embedded, oldest first.",
+            "description": "Always embedded, oldest first; fully voided lines (quantity 0) are left out.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OrderItem"
@@ -7869,6 +8189,244 @@
           "items",
           "payment",
           "legacyTransactions"
+        ]
+      },
+      "StaffRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Null when the profile was removed; the name stays."
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "OrderCancellation": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "waiter_error",
+              "customer_left",
+              "dish_returned",
+              "duplicate_charge",
+              "wrong_payment_method",
+              "other"
+            ]
+          },
+          "reasonLabel": {
+            "type": "string",
+            "description": "Spanish label of the reason."
+          },
+          "reasonText": {
+            "type": "string",
+            "nullable": true
+          },
+          "cancelledBy": {
+            "$ref": "#/components/schemas/StaffRef"
+          },
+          "authorizedBy": {
+            "nullable": true,
+            "description": "Null when no authorization was needed (an order with nothing on it).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StaffRef"
+              }
+            ]
+          },
+          "selfAuthorized": {
+            "type": "boolean"
+          },
+          "previousStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "kitchen",
+              "delivered"
+            ]
+          },
+          "subtotal": {
+            "type": "number",
+            "description": "Bill at the moment of the cancellation."
+          },
+          "tax": {
+            "type": "number"
+          },
+          "tip": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "sentItems": {
+            "type": "number",
+            "description": "Lines that had been sent to the kitchen (their stock stays consumed)."
+          },
+          "cancelledAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "reason",
+          "reasonLabel",
+          "reasonText",
+          "cancelledBy",
+          "authorizedBy",
+          "selfAuthorized",
+          "previousStatus",
+          "subtotal",
+          "tax",
+          "tip",
+          "total",
+          "sentItems",
+          "cancelledAt"
+        ]
+      },
+      "CancelledOrder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderNumber": {
+            "type": "number",
+            "description": "Per-restaurant order number assigned by the database (1, 2, ...); never set by the client."
+          },
+          "guests": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 99,
+            "description": "Guests at the table; null when not captured."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Order-level note for the kitchen; null when none."
+          },
+          "tableId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "waiterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Waiter profile id."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "kitchen",
+              "delivered",
+              "cancelled",
+              "paid"
+            ]
+          },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ]
+          },
+          "subtotal": {
+            "type": "number"
+          },
+          "tax": {
+            "type": "number"
+          },
+          "taxPercentage": {
+            "type": "number"
+          },
+          "tip": {
+            "type": "number"
+          },
+          "tipPercentage": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "totalDiscounts": {
+            "type": "number"
+          },
+          "isPartialOrder": {
+            "type": "boolean"
+          },
+          "parentOrderId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "items": {
+            "description": "Always embedded, oldest first; fully voided lines (quantity 0) are left out.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          },
+          "tableNumber": {
+            "type": "number",
+            "nullable": true,
+            "description": "Only with include=table."
+          },
+          "waiterName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Only with include=waiter."
+          },
+          "cancellation": {
+            "$ref": "#/components/schemas/OrderCancellation"
+          }
+        },
+        "required": [
+          "id",
+          "orderNumber",
+          "guests",
+          "notes",
+          "tableId",
+          "waiterId",
+          "status",
+          "orderType",
+          "subtotal",
+          "tax",
+          "taxPercentage",
+          "tip",
+          "tipPercentage",
+          "total",
+          "totalDiscounts",
+          "isPartialOrder",
+          "parentOrderId",
+          "createdAt",
+          "updatedAt",
+          "items",
+          "cancellation"
         ]
       },
       "StockShortage": {
@@ -8169,6 +8727,199 @@
         },
         "required": [
           "itemIds"
+        ]
+      },
+      "CancelOrderRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "waiter_error",
+              "customer_left",
+              "dish_returned",
+              "duplicate_charge",
+              "wrong_payment_method",
+              "other"
+            ],
+            "description": "Fixed list: waiter_error (Error del mesero), customer_left (El cliente se fue), dish_returned (Plato devuelto), duplicate_charge (Cobro duplicado), wrong_payment_method (Método de pago equivocado), other (Otro). other needs reasonText."
+          },
+          "reasonText": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 3,
+            "maxLength": 200,
+            "description": "Free text; required for other. Spaces collapsed and trimmed."
+          },
+          "authorizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "POST /auth/authorize id for action cancel_order. Required when the order has a live item or any payment."
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "VoidOrderItemInput": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 999,
+            "description": "Units to void; at most what the line has."
+          }
+        },
+        "required": [
+          "itemId",
+          "quantity"
+        ]
+      },
+      "VoidOrderItemsRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Each line once.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoidOrderItemInput"
+            }
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "waiter_error",
+              "customer_left",
+              "dish_returned",
+              "duplicate_charge",
+              "wrong_payment_method",
+              "other"
+            ],
+            "description": "Fixed list: waiter_error (Error del mesero), customer_left (El cliente se fue), dish_returned (Plato devuelto), duplicate_charge (Cobro duplicado), wrong_payment_method (Método de pago equivocado), other (Otro). other needs reasonText."
+          },
+          "reasonText": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 3,
+            "maxLength": 200
+          },
+          "authorizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "POST /auth/authorize id for action void_item. Required: every line the server holds was sent to the kitchen."
+          }
+        },
+        "required": [
+          "items",
+          "reason"
+        ]
+      },
+      "AuditEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": [
+              "order_cancelled",
+              "items_voided",
+              "payment_voided"
+            ]
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "paymentId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Only for payment_voided."
+          },
+          "actor": {
+            "description": "Who cancelled or voided.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StaffRef"
+              }
+            ]
+          },
+          "authorizedBy": {
+            "nullable": true,
+            "description": "The supervisor whose PIN authorized it; null when none was needed.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StaffRef"
+              }
+            ]
+          },
+          "selfAuthorized": {
+            "type": "boolean",
+            "description": "The actor authorized their own action (only with allowSelfAuthorization)."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "waiter_error",
+              "customer_left",
+              "dish_returned",
+              "duplicate_charge",
+              "wrong_payment_method",
+              "other"
+            ]
+          },
+          "reasonLabel": {
+            "type": "string",
+            "description": "Spanish label of the reason: Error del mesero, El cliente se fue, Plato devuelto, Cobro duplicado, Método de pago equivocado, Otro."
+          },
+          "reasonText": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "description": "Money removed: order total, voided lines (price x quantity) or payment total charged."
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items; items_voided: lines; payment_voided: amounts, methods, tenders."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "eventType",
+          "orderId",
+          "orderNumber",
+          "paymentId",
+          "actor",
+          "authorizedBy",
+          "selfAuthorized",
+          "reason",
+          "reasonLabel",
+          "reasonText",
+          "amount",
+          "details",
+          "createdAt"
         ]
       },
       "Table": {
@@ -8979,6 +9730,178 @@
           "drawerWarning",
           "drawerCashBefore",
           "tenders"
+        ]
+      },
+      "VoidPaymentRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "waiter_error",
+              "customer_left",
+              "dish_returned",
+              "duplicate_charge",
+              "wrong_payment_method",
+              "other"
+            ],
+            "description": "Fixed list: waiter_error (Error del mesero), customer_left (El cliente se fue), dish_returned (Plato devuelto), duplicate_charge (Cobro duplicado), wrong_payment_method (Método de pago equivocado), other (Otro). other needs reasonText."
+          },
+          "reasonText": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 3,
+            "maxLength": 200
+          },
+          "authorizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "POST /auth/authorize id for action void_payment (403 authorization_required without it)."
+          }
+        },
+        "required": [
+          "reason",
+          "authorizationId"
+        ]
+      },
+      "VoidedTender": {
+        "type": "object",
+        "properties": {
+          "lineNo": {
+            "type": "number"
+          },
+          "paymentMethodId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "methodCode": {
+            "type": "string"
+          },
+          "methodKind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          },
+          "amount": {
+            "type": "number"
+          },
+          "cashReceived": {
+            "type": "number",
+            "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "lineNo",
+          "paymentMethodId",
+          "methodCode",
+          "methodKind",
+          "amount",
+          "cashReceived",
+          "reference"
+        ]
+      },
+      "PaymentVoid": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "paymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cashRegisterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amountDue": {
+            "type": "number"
+          },
+          "tipAmount": {
+            "type": "number"
+          },
+          "totalCharged": {
+            "type": "number"
+          },
+          "changeGiven": {
+            "type": "number"
+          },
+          "methods": {
+            "type": "string",
+            "description": "Method codes of the tender lines, comma-separated."
+          },
+          "tenders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoidedTender"
+            }
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "waiter_error",
+              "customer_left",
+              "dish_returned",
+              "duplicate_charge",
+              "wrong_payment_method",
+              "other"
+            ]
+          },
+          "reasonLabel": {
+            "type": "string"
+          },
+          "reasonText": {
+            "type": "string",
+            "nullable": true
+          },
+          "voidedBy": {
+            "$ref": "#/components/schemas/StaffRef"
+          },
+          "authorizedBy": {
+            "$ref": "#/components/schemas/StaffRef"
+          },
+          "selfAuthorized": {
+            "type": "boolean"
+          },
+          "voidedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "paymentId",
+          "orderId",
+          "cashRegisterId",
+          "amountDue",
+          "tipAmount",
+          "totalCharged",
+          "changeGiven",
+          "methods",
+          "tenders",
+          "paidAt",
+          "reason",
+          "reasonLabel",
+          "reasonText",
+          "voidedBy",
+          "authorizedBy",
+          "selfAuthorized",
+          "voidedAt"
         ]
       },
       "SplitOrderItemInput": {

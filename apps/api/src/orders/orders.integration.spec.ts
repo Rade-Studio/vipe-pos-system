@@ -466,34 +466,45 @@ describe('orders endpoints (Testcontainers, vipe_api)', () => {
       expect(await tableRow(o.t5)).toEqual({ status: 'available', waiter_id: null });
     });
 
-    it('keeps the table when another open order remains, and refuses to delete a paid order', async () => {
+    it('keeps the table when another open order remains, and refuses to cancel a paid order', async () => {
       const res = await adminA().delete(`/api/orders/${o.t9a}`);
       expect(res.status).toBe(204);
       expect(await tableRow(o.t9)).toEqual({ status: 'kitchen', waiter_id: fixtures.waiterA.profileId });
       const paid = await adminA().delete(`/api/orders/${o.paidOrder}`);
       expect(paid.status).toBe(409);
-      expect(paid.body.message).toBe('Order is paid');
+      expect(paid.body).toMatchObject({ message: 'La orden ya está pagada: anula primero el pago', code: 'order_paid' });
       expect(await db('SELECT 1 FROM orders WHERE id = $1', [o.paidOrder])).toHaveLength(1);
       expect(await tableRow(o.t10)).toMatchObject({ status: 'served' });
     });
   });
 
-  describe('DELETE /orders/:id', () => {
-    it('is admin only', async () => {
+  describe('DELETE /orders/:id (F1: the audited cancellation, never a delete)', () => {
+    it('answers 403 authorization_required without an authorization for an order with sent items, also for the waiter', async () => {
       const [{ id }] = await ordersOf(o.t4);
-      const res = await waiterA().delete(`/api/orders/${String(id)}`);
-      expect(res.status).toBe(403);
-      expect(await ordersOf(o.t4)).toHaveLength(1);
+      for (const caller of [waiterA(), adminA()]) {
+        const res = await caller.delete(`/api/orders/${String(id)}`);
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('authorization_required');
+      }
+      expect(await db('SELECT status FROM orders WHERE id = $1', [id])).toEqual([{ status: 'kitchen' }]);
     });
 
-    it('deletes the order and its items and frees the table, in one transaction', async () => {
+    it('with a reason and a supervisor authorization cancels the order, keeps it and its items and frees the table', async () => {
       const [{ id }] = await ordersOf(o.t4);
       expect((await adminB().delete(`/api/orders/${String(id)}`)).status).toBe(404);
-      const res = await adminA().delete(`/api/orders/${String(id)}`);
+      const [auth] = await db<{ id: string }>(
+        `INSERT INTO supervisor_authorizations (restaurant_id, action, supervisor_profile_id, created_at, expires_at)
+         VALUES ($1, 'cancel_order', $2, now(), now() + interval '2 minutes') RETURNING id`,
+        [fixtures.restaurantA, fixtures.bcryptUser.profileId],
+      );
+      const res = await adminA().delete(`/api/orders/${String(id)}`).send({ reason: 'customer_left', authorizationId: auth.id });
       expect(res.status).toBe(204);
-      expect(await db('SELECT 1 FROM orders WHERE id = $1', [id])).toHaveLength(0);
-      expect(await db('SELECT 1 FROM order_items WHERE order_id = $1', [id])).toHaveLength(0);
+      expect(await db('SELECT status FROM orders WHERE id = $1', [id])).toEqual([{ status: 'cancelled' }]);
+      expect((await db('SELECT 1 FROM order_items WHERE order_id = $1', [id])).length).toBeGreaterThan(0);
       expect(await tableRow(o.t4)).toEqual({ status: 'available', waiter_id: null });
+      expect(await db('SELECT event_type, authorized_by_profile_id FROM audit_log WHERE order_id = $1', [id])).toEqual([
+        { event_type: 'order_cancelled', authorized_by_profile_id: fixtures.bcryptUser.profileId },
+      ]);
     });
   });
 });
