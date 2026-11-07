@@ -42,7 +42,9 @@
 -- attempts within 15 minutes lock every claimed scope for 5 minutes, so at
 -- most 5 PINs are ever verified per scope and window, also in parallel. The
 -- API passes its clock as p_now, so timing is testable; constants live in
--- private.claim_pin_attempt.
+-- private.claim_pin_attempt. Lock order everywhere: pin_attempts rows (in
+-- (scope, subject) order) before staff_pins, so a claim followed by a PIN
+-- write never deadlocks with an admin set or clear of the same PIN.
 --
 -- Every helper pins search_path = '' (150_api_role_hardening). 42501/P0002
 -- texts are internal: the API answers with its own Spanish messages.
@@ -199,12 +201,13 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = p_profile_id AND p.restaurant_id = v_restaurant) THEN
     RAISE EXCEPTION 'staff profile not found' USING ERRCODE = 'P0002';
   END IF;
+  -- Lock order: pin_attempts before staff_pins, as in claim_pin_attempt -> change_own_pin.
+  DELETE FROM private.pin_attempts WHERE scope = 'profile' AND subject_id = p_profile_id;
   INSERT INTO public.staff_pins (profile_id, restaurant_id, pin_hash, pin_pepper_version, set_by, set_at, updated_at)
   VALUES (p_profile_id, v_restaurant, p_pin_hash, p_pepper_version, private.current_profile_id(), pg_catalog.now(), pg_catalog.now())
   ON CONFLICT (profile_id) DO UPDATE
      SET pin_hash = excluded.pin_hash, pin_pepper_version = excluded.pin_pepper_version,
          set_by = excluded.set_by, set_at = excluded.set_at, updated_at = excluded.updated_at;
-  DELETE FROM private.pin_attempts WHERE scope = 'profile' AND subject_id = p_profile_id;
 END;
 $$;
 --> statement-breakpoint
@@ -221,8 +224,9 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = p_profile_id AND p.restaurant_id = v_restaurant) THEN
     RAISE EXCEPTION 'staff profile not found' USING ERRCODE = 'P0002';
   END IF;
-  DELETE FROM public.staff_pins WHERE profile_id = p_profile_id AND restaurant_id = v_restaurant;
+  -- Lock order: pin_attempts before staff_pins (see set_staff_pin).
   DELETE FROM private.pin_attempts WHERE scope = 'profile' AND subject_id = p_profile_id;
+  DELETE FROM public.staff_pins WHERE profile_id = p_profile_id AND restaurant_id = v_restaurant;
 END;
 $$;
 --> statement-breakpoint

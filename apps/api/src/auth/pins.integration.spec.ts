@@ -1,5 +1,6 @@
 import { Body, Controller, HttpCode, type INestApplication, Post } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import { createDb } from '@vipe/db';
 import { decodeJwt } from 'jose';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -604,6 +605,53 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
       } finally {
         if (previous === undefined) delete process.env.PIN_PEPPER;
         else process.env.PIN_PEPPER = previous;
+      }
+    });
+  });
+  describe('lock order between staff_pins and pin_attempts', () => {
+    it('a claim + own change and an admin reset of the same profile never deadlock (40P01)', async () => {
+      const hash = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHRzYWx0c2FsdA$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g';
+      const profile = ids.waiter2;
+      const { pool } = createDb(database.apiUrl, { max: 2 });
+      const t1 = await pool.connect();
+      const t2 = await pool.connect();
+      const as = async (client: typeof t1, userId: string) => {
+        await client.query('BEGIN');
+        await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+      };
+      await db(
+        `INSERT INTO staff_pins (profile_id, restaurant_id, pin_hash) VALUES ($1, $2, $3) ON CONFLICT (profile_id) DO NOTHING`,
+        [profile, A, hash],
+      );
+      try {
+        // An existing counter row for the profile.
+        await as(t1, ids.waiter2User);
+        await t1.query("SELECT private.claim_pin_attempt(NULL, $1, ARRAY['profile'], now())", [profile]);
+        await t1.query('COMMIT');
+
+        // T1 claims (locks the pin_attempts row) ...
+        await as(t1, ids.waiter2User);
+        await t1.query("SELECT private.claim_pin_attempt(NULL, $1, ARRAY['profile'], now())", [profile]);
+        // ... T2, an admin reset of the same PIN, starts and waits ...
+        await as(t2, fixtures.adminA.userId);
+        const reset = t2.query('SELECT private.set_staff_pin($1, $2, 1::smallint)', [profile, hash]).then(
+          () => 'ok',
+          (error: { code?: string }) => error.code ?? 'error',
+        );
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        // ... then T1 writes staff_pins (the own change after a correct PIN).
+        const change = await t1.query('SELECT private.change_own_pin($1, 1::smallint)', [hash]).then(
+          () => 'ok',
+          (error: { code?: string }) => error.code ?? 'error',
+        );
+        await t1.query(change === 'ok' ? 'COMMIT' : 'ROLLBACK');
+        const resetResult = await reset;
+        await t2.query(resetResult === 'ok' ? 'COMMIT' : 'ROLLBACK');
+        expect({ change, reset: resetResult }).toEqual({ change: 'ok', reset: 'ok' });
+      } finally {
+        t1.release();
+        t2.release();
+        await pool.end();
       }
     });
   });
