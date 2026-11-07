@@ -708,6 +708,18 @@ describe("kitchen ticket rail (rediseno-pos T13)", () => {
     expect(within(ticket).getByRole("button", { name: "Listo para domicilio (1)" })).toBeInTheDocument()
   })
 
+  it("shows only the ticket rail: no tables tab and no table grid", async () => {
+    env.kitchenRows = [row("o-1")]
+    renderKitchen()
+    expect(await screen.findByText("O-1-I-1")).toBeInTheDocument()
+
+    expect(screen.queryByRole("tab")).toBeNull()
+    expect(screen.queryByRole("tablist")).toBeNull()
+    expect(screen.queryByText("Distribución de Mesas")).toBeNull()
+    expect(screen.getByRole("button", { name: "Mesas 1" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Actualizar/ })).toBeInTheDocument()
+  })
+
   it("filters Todas / Mesas / Domicilios with counts", async () => {
     env.deliveries = [delivery("d-1")]
     env.kitchenRows = [

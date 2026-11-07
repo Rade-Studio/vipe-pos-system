@@ -7,10 +7,7 @@ import { Header } from "@/components/layout/Header"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useOrderStore } from "@/store/useOrderStore"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { TablesSection } from "@/components/pos/TablesSection"
-import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { getByStatus, serveItems, toOrder, type OrderDto } from "@/lib/api/orders"
 import { realtimeService, type ChangeEvent } from "@/lib/api/realtime"
 import { log } from "@/lib/log"
@@ -78,9 +75,6 @@ interface KitchenViewProps {
 }
 
 export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewProps) {
-  const [activeTab, setActiveTab] = useState<"orders" | "tables">("orders")
-  const [selectedTable, setSelectedTable] = useState<string | null>(null)
-  const [showWaiterDialog, setShowWaiterDialog] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [newOrderAlert, setNewOrderAlert] = useState(false)
   const [newOrderCount, setNewOrderCount] = useState(0)
@@ -96,8 +90,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const queryClient = useQueryClient()
 
   // The kitchen queue, and ONLY the kitchen queue: an order that reaches the
-  // kitchen with something left to cook. No `delivered` read and no read at all
-  // for the tables tab (the shell owns the tables).
+  // kitchen with something left to cook. No `delivered` read and no tables
+  // read (the shell owns the tables).
   const fetchKitchenOrders = async () => kitchenOrdersOf((await getByStatus("kitchen")).map(toOrder))
 
   const { data: kitchenOrdersData, isLoading: loadingOrders, dataUpdatedAt } = useQuery({
@@ -138,8 +132,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const tablesRef = useRef(tables)
   tablesRef.current = tables
   const updateTableStatus = useTableStore((s) => s.updateTableStatus)
-  const assignWaiterToTable = useTableStore((s) => s.assignWaiterToTable)
-  const setActiveTable = useTableStore((s) => s.setActiveTable)
 
   const orders = useOrderStore((s) => s.orders)
   const setOrders = useOrderStore((s) => s.setOrders)
@@ -588,29 +580,6 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     }
   }
 
-  // Handle table selection
-  const handleTableSelect = (tableId: string | null) => {
-    if (!tableId) {
-      setSelectedTable(null)
-      return
-    }
-
-    setSelectedTable(tableId)
-    setShowWaiterDialog(true)
-  }
-
-  // Handle waiter selection
-  const handleWaiterSelect = (waiterId: string) => {
-    if (selectedTable && waiterId) {
-      assignWaiterToTable(selectedTable, waiterId)
-      setActiveTable(selectedTable)
-      setShowWaiterDialog(false)
-    }
-  }
-
-  // All tables are accessible from kitchen view
-  const isTableAccessible = () => true
-
   // Desactivar la alerta de nuevas órdenes
   const handleDismissAlert = () => {
     setNewOrderAlert(false)
@@ -644,64 +613,12 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     <div className="flex h-dvh flex-col overflow-hidden bg-canvas px-4 text-fg md:px-6">
       <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Cocina" />
 
-      <Tabs
-        defaultValue="orders"
-        onValueChange={(value) => setActiveTab(value as "orders" | "tables")}
-        className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6"
-      >
-        <div className="flex flex-wrap items-center gap-2 px-4 pb-2 md:px-6">
-          <TabsList className="mr-auto">
-            <TabsTrigger value="orders" className="min-h-9">Órdenes Pendientes</TabsTrigger>
-            <TabsTrigger value="tables" className="min-h-9">Mesas</TabsTrigger>
-          </TabsList>
-
-          {/* Indicador de conexión en tiempo real: el estado real del socket; toca para reconectar */}
-          <button
-            type="button"
-            onClick={handleReconnect}
-            title={realtimeConnected ? "Conectado en tiempo real" : "Sin conexión en tiempo real"}
-            className={cn(
-              "inline-flex min-h-11 flex-none items-center gap-2 whitespace-nowrap rounded-full border px-3 text-[13px] font-semibold focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-[3px] focus-visible:outline-focus",
-              realtimeConnected
-                ? "border-status-ok-line bg-status-ok-bg text-status-ok-fg"
-                : "border-status-danger-line bg-status-danger-bg text-status-danger-fg",
-            )}
-          >
-            {realtimeConnected ? <Wifi className="h-4 w-4" aria-hidden="true" /> : <WifiOff className="h-4 w-4" aria-hidden="true" />}
-            <span className="hidden sm:inline">{realtimeConnected ? "Conectado en tiempo real" : "Desconectado"}</span>
-            <span className="sm:hidden">{realtimeConnected ? "Conectado" : "Desconectado"}</span>
-          </button>
-
-          {newOrderAlert && (
-            <Button
-              variant="outline"
-              className="flex min-h-11 items-center gap-2 rounded-full motion-safe:animate-pulse"
-              onClick={handleDismissAlert}
-            >
-              <Bell className="h-4 w-4 text-status-warning-fg" aria-hidden="true" />
-              <span>¡Nuevas órdenes!</span>
-              <Badge variant="secondary" className="ml-1">
-                {newOrderCount}
-              </Badge>
-            </Button>
-          )}
-
-          <Button
-            variant="outline"
-            onClick={handleRefreshOrders}
-            disabled={refreshing}
-            className="flex min-h-11 items-center gap-2 rounded-full"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? "motion-safe:animate-spin" : ""}`} aria-hidden="true" />
-            <span>Actualizar</span>
-          </Button>
-        </div>
-
-        <TabsContent value="orders" className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-          <div className="flex flex-col gap-2 px-4 pb-2 pt-1 md:flex-row md:items-center md:px-6">
+      <div className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex flex-col gap-2 px-4 pb-2 pt-1 md:px-6 lg:flex-row lg:items-center">
             <nav
               aria-label="Filtrar órdenes"
-              className="flex min-w-0 snap-x gap-2 overflow-x-auto p-0.5 [mask-image:linear-gradient(90deg,#000_85%,transparent)] [scrollbar-width:none] md:flex-1 md:[mask-image:none]"
+              className="flex min-w-0 snap-x gap-2 overflow-x-auto p-0.5 [mask-image:linear-gradient(90deg,#000_85%,transparent)] [scrollbar-width:none] md:[mask-image:none] lg:flex-1"
             >
               {kindPills.map(({ value, label }) => (
                 <button
@@ -788,6 +705,50 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
               <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-reserved-fg" />0–{thresholds.riskFrom - 1} min</span>
               <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-kitchen-fg" />{thresholds.riskFrom}–{thresholds.lateFrom - 1} min</span>
               <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-[3px] bg-status-danger-fg" />{thresholds.lateFrom}+ min</span>
+            </div>
+
+            {/* Estado en vivo y Actualizar: misma fila que los filtros */}
+            <div className="flex flex-none flex-wrap items-center gap-2">
+              {/* Indicador de conexión en tiempo real: el estado real del socket; toca para reconectar */}
+              <button
+                type="button"
+                onClick={handleReconnect}
+                title={realtimeConnected ? "Conectado en tiempo real" : "Sin conexión en tiempo real"}
+                className={cn(
+                  "inline-flex min-h-11 flex-none items-center gap-2 whitespace-nowrap rounded-full border px-3 text-[13px] font-semibold focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-[3px] focus-visible:outline-focus",
+                  realtimeConnected
+                    ? "border-status-ok-line bg-status-ok-bg text-status-ok-fg"
+                    : "border-status-danger-line bg-status-danger-bg text-status-danger-fg",
+                )}
+              >
+                {realtimeConnected ? <Wifi className="h-4 w-4" aria-hidden="true" /> : <WifiOff className="h-4 w-4" aria-hidden="true" />}
+                <span className="hidden xl:inline">{realtimeConnected ? "Conectado en tiempo real" : "Desconectado"}</span>
+                <span className="xl:hidden">{realtimeConnected ? "Conectado" : "Desconectado"}</span>
+              </button>
+
+              {newOrderAlert && (
+                <Button
+                  variant="outline"
+                  className="flex min-h-11 items-center gap-2 rounded-full motion-safe:animate-pulse"
+                  onClick={handleDismissAlert}
+                >
+                  <Bell className="h-4 w-4 text-status-warning-fg" aria-hidden="true" />
+                  <span>¡Nuevas órdenes!</span>
+                  <Badge variant="secondary" className="ml-1">
+                    {newOrderCount}
+                  </Badge>
+                </Button>
+              )}
+
+              <Button
+                variant="outline"
+                onClick={handleRefreshOrders}
+                disabled={refreshing}
+                className="flex min-h-11 items-center gap-2 rounded-full"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? "motion-safe:animate-spin" : ""}`} aria-hidden="true" />
+                <span>Actualizar</span>
+              </Button>
             </div>
           </div>
 
@@ -913,27 +874,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
               })}
             />
           )}
-        </TabsContent>
-
-        <TabsContent value="tables" className="min-h-0 flex-1 overflow-y-auto px-4 md:px-6">
-          <TablesSection
-            activeTable={selectedTable}
-            profile={profile}
-            profiles={profiles}
-            onSelectTable={handleTableSelect}
-            onReserveTable={() => {}}
-            onReleaseTable={() => {}}
-            isTableAccessible={isTableAccessible}
-          />
-        </TabsContent>
-      </Tabs>
-
-      {/* Waiter Selection Dialog */}
-      <WaiterSelectionModal
-        open={showWaiterDialog}
-        onOpenChange={setShowWaiterDialog}
-        onSelect={handleWaiterSelect}
-      />
+        </div>
+      </div>
 
       {/* Confirm Dialog for Mark All as Delivered */}
       <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
