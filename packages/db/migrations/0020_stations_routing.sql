@@ -224,13 +224,16 @@ CREATE FUNCTION private.route_order_item()
     SET search_path TO ''
     AS $$
 BEGIN
+  -- Shared form of the lock public.delete_station takes exclusively: a line
+  -- sent while a station is being deleted waits, then routes to the target.
+  PERFORM pg_catalog.pg_advisory_xact_lock_shared(pg_catalog.hashtextextended('stations:' || NEW.restaurant_id::text, 0));
   SELECT r.station_id, r.source INTO NEW.station_id, NEW.station_source
     FROM private.route_dish_in(NEW.restaurant_id, NEW.dish_id) r;
   RETURN NEW;
 END
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.route_order_item() IS 'order_items BEFORE INSERT: a new line takes its station from private.route_dish_in; the caller''s value is ignored.';
+COMMENT ON FUNCTION private.route_order_item() IS 'order_items BEFORE INSERT: a new line takes its station from private.route_dish_in (after the shared stations:<restaurant> lock, so it waits for a delete_station in flight); the caller''s value is ignored.';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.route_order_item() FROM PUBLIC;
 --> statement-breakpoint
@@ -275,7 +278,7 @@ BEGIN
   END IF;
   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('stations:' || v_restaurant::text, 0));
   SELECT * INTO v_station FROM public.stations s
-   WHERE s.id = p_station_id AND s.restaurant_id = v_restaurant FOR UPDATE;
+   WHERE s.id = p_station_id AND s.restaurant_id = v_restaurant FOR NO KEY UPDATE;
   IF v_station.id IS NULL THEN
     RAISE EXCEPTION 'delete_station: station_not_found' USING ERRCODE = 'P0002';
   END IF;
@@ -289,7 +292,7 @@ BEGIN
     END IF;
   ELSE
     SELECT * INTO v_target FROM public.stations s
-     WHERE s.id = p_move_to AND s.restaurant_id = v_restaurant AND s.kind = 'prep' AND s.id <> p_station_id FOR UPDATE;
+     WHERE s.id = p_move_to AND s.restaurant_id = v_restaurant AND s.kind = 'prep' AND s.id <> p_station_id FOR NO KEY UPDATE;
     IF v_target.id IS NULL THEN
       RAISE EXCEPTION 'delete_station: target_invalid' USING ERRCODE = '22023';
     END IF;

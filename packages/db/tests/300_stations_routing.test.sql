@@ -9,7 +9,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(68);
+SELECT plan(70);
 
 -- ============================================
 -- 1. Schema
@@ -161,6 +161,13 @@ SELECT is((SELECT row(station_id, station_source)::text FROM public.order_items 
   row('30600000-0000-0000-0000-000000000001'::uuid, 'fallback')::text, 'a dish of a category without station goes to the default station, flagged fallback');
 SELECT is((SELECT row(station_id, station_source)::text FROM public.order_items WHERE id = '30500000-0000-0000-0000-000000000001'),
   row(NULL::uuid, NULL::text)::text, 'a line written before the stations keeps no station');
+-- A send waits for a delete_station in flight (the exclusive form of the same lock), so it lands on the target.
+SELECT ok(EXISTS (SELECT 1 FROM pg_locks l WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid() AND l.mode = 'ShareLock' AND l.granted
+    AND ((l.classid::bigint << 32) | l.objid::bigint) = hashtextextended('stations:30000000-0000-0000-0000-0000000000a1', 0)),
+  'routing a new line holds the shared stations:<restaurant> lock');
+SELECT ok(pg_get_functiondef('public.delete_station(uuid, uuid)'::regprocedure) ~ 'FOR NO KEY UPDATE'
+    AND pg_get_functiondef('public.delete_station(uuid, uuid)'::regprocedure) !~ '\mFOR UPDATE\M',
+  'delete_station locks its stations FOR NO KEY UPDATE (no 40P01 with the FK share locks of route writes)');
 
 SET LOCAL ROLE vipe_api;
 SELECT set_config('app.user_id', '30000000-0000-0000-0000-000000000002', true);

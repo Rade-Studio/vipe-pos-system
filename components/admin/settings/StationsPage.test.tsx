@@ -171,4 +171,16 @@ describe("StationsPage", () => {
     await waitFor(() => expect(configApi.saveConfig).toHaveBeenCalledWith({ printingEnabled: false }))
     await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "false"))
   })
+
+  it("gives the printing switch a 44 px label hit area that toggles it (S6)", async () => {
+    renderPage()
+    const toggle = await screen.findByRole("switch", { name: "Este restaurante usa impresoras térmicas" })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    const label = toggle.closest("label")
+    expect(label).not.toBeNull()
+    expect(label).toHaveClass("min-h-11")
+    expect(label).toHaveTextContent("Este restaurante usa impresoras térmicas")
+    fireEvent.click(within(label as HTMLElement).getByText("Este restaurante usa impresoras térmicas"))
+    await waitFor(() => expect(configApi.saveConfig).toHaveBeenCalledWith({ printingEnabled: false }))
+  })
 })

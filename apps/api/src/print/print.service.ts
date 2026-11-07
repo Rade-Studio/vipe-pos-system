@@ -109,12 +109,17 @@ export class PrintService implements OnApplicationBootstrap {
    * station; a line without a dish goes to the default) and `station`
    * {id, name}; the response is the first job plus `jobs`. `dishIds` (same
    * order as the lines) routes server-built comandas whose lines carry no
-   * dish (DeliveryService) without changing their payload.
+   * dish (DeliveryService) without changing their payload. It first takes
+   * the shared form of the `stations:<restaurant>` lock public.delete_station
+   * takes exclusively, so a comanda sent during a delete lands on the target.
    */
   async printCommand(
     input: z.infer<typeof commandPrintSchema>,
     dishIds?: readonly (string | null)[],
   ): Promise<PrintJobCreated | PrintJobsCreated> {
+    await this.uow.db.execute(
+      sql`SELECT pg_advisory_xact_lock_shared(hashtextextended('stations:' || private.current_restaurant_id()::text, 0))`,
+    );
     const stations = await this.rows<StationRef>(sql`
       SELECT id, name, is_default FROM public.stations WHERE kind = 'prep' ORDER BY sort_order, lower(name), id`);
     if (stations.length === 0) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
-import { Bike, Printer, RefreshCw, Search } from "lucide-react"
+import { Bike, Printer, Receipt, RefreshCw, Search } from "lucide-react"
 import { formatCurrency } from "@/utils/helpers"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
@@ -23,6 +23,7 @@ import {
 import { invoicePlaceLabel, isDeliveryOrder } from "@/lib/delivery/kitchen"
 import { log } from "@/lib/log"
 import { useToast } from "@/components/ui/use-toast"
+import { usePrintingEnabled } from "@/lib/api/printing"
 import { completedTotals, normalizeSearch } from "@/lib/admin/orders"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Pagination } from "@/components/ui/pagination"
@@ -56,6 +57,7 @@ export function CompletedOrdersTable({ selectedDate, toolbar }: CompletedOrdersT
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast } = useToast()
 
+  const printingEnabled = usePrintingEnabled()
   const [selectedInvoice, setSelectedInvoice] = useState<PrintableInvoice | null>(null)
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -349,7 +351,11 @@ export function CompletedOrdersTable({ selectedDate, toolbar }: CompletedOrdersT
                       className="min-h-[44px]"
                       onClick={() => handlePrintInvoice(order)}
                     >
-                      <Printer className="h-4 w-4 mr-1" />
+                      {printingEnabled ? (
+                        <Printer className="h-4 w-4 mr-1" />
+                      ) : (
+                        <Receipt aria-hidden="true" className="h-4 w-4 mr-1" />
+                      )}
                       Factura
                     </Button>
                   </span>

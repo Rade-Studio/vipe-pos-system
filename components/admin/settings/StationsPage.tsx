@@ -93,24 +93,25 @@ export function StationsPage() {
         ) : null
       }
     >
-      <section aria-labelledby="printing-h" className="flex items-center gap-4 rounded-card border border-line bg-surface p-4 sm:px-5">
-        <div className="min-w-0 flex-1">
-          <h2 id="printing-h" className="font-semibold">
+      <section aria-labelledby="printing-h" className="rounded-card border border-line bg-surface p-4 sm:px-5">
+        {/* The label is the 44 px hit area of the 24 px switch (S6). */}
+        <label className="flex min-h-11 cursor-pointer items-center gap-4">
+          <span id="printing-h" role="heading" aria-level={2} className="min-w-0 flex-1 font-semibold">
             Este restaurante usa impresoras térmicas
-          </h2>
-          <p className="mt-1 text-sm text-muted-fg">
-            {configQuery.data?.printingEnabled === false
-              ? "Apagado: no se ofrece imprimir; la cocina usa su pantalla y la factura se comparte digital."
-              : "Las comandas y facturas se envían a la Estación VIPE; sin impresora, la estación las ve en su pantalla."}
-          </p>
-        </div>
-        <Switch
-          aria-labelledby="printing-h"
-          checked={configQuery.data?.printingEnabled ?? true}
-          disabled={!configQuery.data || printing.isPending}
-          onCheckedChange={(checked) => printing.mutate(checked)}
-          className="flex-none"
-        />
+          </span>
+          <Switch
+            aria-labelledby="printing-h"
+            checked={configQuery.data?.printingEnabled ?? true}
+            disabled={!configQuery.data || printing.isPending}
+            onCheckedChange={(checked) => printing.mutate(checked)}
+            className="flex-none"
+          />
+        </label>
+        <p className="mt-1 text-sm text-muted-fg">
+          {configQuery.data?.printingEnabled === false
+            ? "Apagado: no se ofrece imprimir; la cocina usa su pantalla y la factura se comparte digital."
+            : "Las comandas y facturas se envían a la Estación VIPE; sin impresora, la estación las ve en su pantalla."}
+        </p>
       </section>
 
       {loading ? (
