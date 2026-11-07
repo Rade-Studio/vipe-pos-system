@@ -26,6 +26,8 @@ const csvOf = <T extends string>(values: readonly [T, ...T[]]) =>
 export const orderListQuerySchema = z.strictObject({
   status: csvOf(ORDER_STATUSES).optional(),
   include: csvOf(ORDER_INCLUDES).optional(),
+  /** F6 kitchen screen: only the orders with a live line of this station, each with only those lines. */
+  stationId: z.guid().optional(),
 });
 
 const orderItemInputSchema = z.strictObject({
@@ -112,6 +114,15 @@ export class OrderItem {
   @ApiProperty() quantity!: number;
   @ApiProperty({ type: String, nullable: true }) comments!: string | null;
   @ApiProperty({ enum: ORDER_ITEM_STATUSES }) status!: string;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Station the line was routed to when sent (F6); null without stations.' })
+  stationId!: string | null;
+  @ApiProperty({
+    type: String,
+    enum: ['dish', 'category', 'fallback'],
+    nullable: true,
+    description: 'dish: the dish exception; category: its default; fallback: no route, sent to the default station.',
+  })
+  stationSource!: 'dish' | 'category' | 'fallback' | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) addedAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) updatedAt!: string | null;
@@ -163,7 +174,8 @@ export class CancelOrderRequest {
   reasonText?: string | null;
   @ApiPropertyOptional({
     format: 'uuid',
-    description: 'POST /auth/authorize id for action cancel_order. Required when the order has a live item or any payment.',
+    description:
+      'POST /auth/authorize id for action cancel_order. Required when a table order has a live item or any payment, and when a delivery has a live payment (voided with it).',
   })
   authorizationId?: string;
 }
@@ -184,17 +196,23 @@ export class VoidOrderItemsRequest {
   authorizationId?: string;
 }
 
-/** How and by whom an order was cancelled (public.order_cancellations). */
+/** Reason label of a delivery cancelled before the audit existed (0019): no reason or actor was recorded. */
+export const LEGACY_CANCELLATION_LABEL = 'Sin motivo registrado (antes de la auditoría)';
+
+/** How and by whom an order was cancelled (public.order_cancellations, or a legacy delivery). */
 export class OrderCancellation {
-  @ApiProperty({ enum: VOID_REASON_CODES }) reason!: VoidReason;
-  @ApiProperty({ description: 'Spanish label of the reason.' }) reasonLabel!: string;
+  @ApiProperty({ enum: VOID_REASON_CODES, nullable: true, description: 'Null only for a legacy delivery.' }) reason!: VoidReason | null;
+  @ApiProperty({ description: `Spanish label of the reason; "${LEGACY_CANCELLATION_LABEL}" for a legacy delivery.` }) reasonLabel!: string;
   @ApiProperty({ type: String, nullable: true }) reasonText!: string | null;
-  @ApiProperty({ type: StaffRef }) cancelledBy!: StaffRef;
-  @ApiProperty({ type: StaffRef, nullable: true, description: 'Null when no authorization was needed (an order with nothing on it).' })
+  @ApiProperty({ type: StaffRef, nullable: true, description: 'Null only for a legacy delivery (no actor was recorded).' })
+  cancelledBy!: StaffRef | null;
+  @ApiProperty({ type: StaffRef, nullable: true, description: 'Null when no authorization was needed (an order with nothing on it, an unpaid delivery).' })
   authorizedBy!: StaffRef | null;
   @ApiProperty() selfAuthorized!: boolean;
-  @ApiProperty({ enum: ['active', 'kitchen', 'delivered'] }) previousStatus!: string;
-  @ApiProperty({ description: 'Bill at the moment of the cancellation.' }) subtotal!: number;
+  @ApiProperty({ type: String, enum: ['active', 'kitchen', 'delivered', 'paid'], nullable: true, description: 'paid: a prepaid delivery; null for a legacy delivery.' })
+  previousStatus!: string | null;
+  @ApiProperty({ description: 'A delivery cancelled before cancellations were audited (no reason, actor or authorization recorded).' }) legacy!: boolean;
+  @ApiProperty({ description: 'Bill at the moment of the cancellation (a delivery: total includes the delivery fee).' }) subtotal!: number;
   @ApiProperty() tax!: number;
   @ApiProperty() tip!: number;
   @ApiProperty() total!: number;
@@ -202,9 +220,16 @@ export class OrderCancellation {
   @ApiProperty({ format: 'date-time' }) cancelledAt!: string;
 }
 
+/** The delivery of a cancelled order. */
+export class CancelledDelivery {
+  @ApiProperty() customerName!: string;
+  @ApiProperty() deliveryFee!: number;
+}
+
 /** A cancelled order with its lines as they were and the cancellation. */
 export class CancelledOrder extends Order {
   @ApiProperty({ type: OrderCancellation }) cancellation!: OrderCancellation;
+  @ApiProperty({ type: CancelledDelivery, nullable: true, description: 'Only for a delivery (orderType delivery).' }) delivery!: CancelledDelivery | null;
 }
 
 export class OrderItemInput {

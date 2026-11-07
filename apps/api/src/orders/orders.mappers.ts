@@ -1,7 +1,7 @@
 import { authorizer, reasonOf, staffRef } from '../audit/audit.mappers';
 import { toIso } from '../common/validation';
 import { toLegacyTransaction, toPayment } from '../payments/payments.mappers';
-import type { CancelledOrder, CompletedOrder, Order, OrderItem, OrderStatus, OrderType, StockShortage } from './orders.dto';
+import { type CancelledOrder, type CompletedOrder, LEGACY_CANCELLATION_LABEL, type Order, type OrderItem, type OrderStatus, type OrderType, type StockShortage } from './orders.dto';
 
 type Json = Record<string, unknown>;
 
@@ -27,6 +27,8 @@ export const toOrderItem = (row: Json): OrderItem => ({
   quantity: num(row.quantity),
   comments: text(row.comments),
   status: String(row.status ?? 'kitchen'),
+  stationId: text(row.station_id),
+  stationSource: (text(row.station_source) as OrderItem['stationSource']) ?? null,
   addedAt: time(row.added_at),
   createdAt: time(row.created_at),
   updatedAt: time(row.updated_at),
@@ -77,21 +79,28 @@ export const toCompletedOrder = (row: CompletedOrderRow): CompletedOrder => ({
   legacyTransactions: row.legacy_transactions.map(toLegacyTransaction),
 });
 
-/** A row of OrdersService.cancelledRows: an OrderRow plus the order_cancellations row as jsonb. */
+/**
+ * A row of OrdersService.cancelledRows: an OrderRow plus the order_cancellations
+ * row as jsonb (`legacy: true` and no reason or actor for a delivery cancelled
+ * before 0019) and the delivery's customer and fee.
+ */
 export interface CancelledOrderRow extends OrderRow {
   cancellation: Json;
+  delivery: Json | null;
 }
 
 export const toCancelledOrder = (row: CancelledOrderRow): CancelledOrder => {
   const c = row.cancellation;
+  const legacy = c.legacy === true;
   return {
     ...toOrder(row, { withTable: true, withWaiter: true }),
     cancellation: {
-      ...reasonOf(c),
-      cancelledBy: staffRef(c.cancelled_by, c.cancelled_by_name),
+      ...(legacy ? { reason: null, reasonLabel: LEGACY_CANCELLATION_LABEL, reasonText: null } : reasonOf(c)),
+      cancelledBy: legacy ? null : staffRef(c.cancelled_by, c.cancelled_by_name),
       authorizedBy: authorizer(c.authorized_by, c.authorized_by_name),
       selfAuthorized: c.self_authorized === true,
-      previousStatus: String(c.previous_status),
+      previousStatus: text(c.previous_status),
+      legacy,
       subtotal: num(c.subtotal),
       tax: num(c.tax),
       tip: num(c.tip),
@@ -99,6 +108,7 @@ export const toCancelledOrder = (row: CancelledOrderRow): CancelledOrder => {
       sentItems: num(c.sent_items),
       cancelledAt: time(c.cancelled_at)!,
     },
+    delivery: row.delivery ? { customerName: String(row.delivery.customer_name), deliveryFee: num(row.delivery.delivery_fee) } : null,
   };
 };
 

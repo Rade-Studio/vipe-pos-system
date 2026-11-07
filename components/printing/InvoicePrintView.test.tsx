@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const env = vi.hoisted(() => ({ sendFactura: vi.fn(), success: vi.fn(), error: vi.fn() }))
 vi.mock("@/lib/api/print", () => ({ sendFactura: env.sendFactura }))
+const printing = vi.hoisted(() => ({ enabled: true }))
+vi.mock("@/lib/api/printing", () => ({ usePrintingEnabled: () => printing.enabled }))
 vi.mock("@/utils/toast", () => ({ toast: { success: env.success, error: env.error } }))
 
 import { InvoicePrintView } from "./InvoicePrintView"
@@ -28,6 +30,7 @@ const invoice = {
 } as unknown as PrintableInvoice
 
 beforeEach(() => {
+  printing.enabled = true
   env.sendFactura.mockReset()
   env.success.mockReset()
 })
@@ -44,5 +47,21 @@ describe("InvoicePrintView", () => {
     expect(sent).toBe(invoice)
     expect(lines).toEqual([expect.objectContaining({ id: "d-1", name: "Ajiaco", quantity: 2 })])
     expect(env.success).toHaveBeenCalledWith("Imprimiendo factura...")
+  })
+
+  it("keeps the invoice on screen without any print action when the restaurant does not use printers (F6, S2)", () => {
+    printing.enabled = false
+    render(<InvoicePrintView invoice={invoice} open onOpenChange={() => {}} />)
+
+    expect(screen.getAllByText("F-0001").length).toBeGreaterThan(0)
+    expect(screen.queryByRole("button", { name: /Imprimir/ })).not.toBeInTheDocument()
+    expect(screen.queryByText("Imprimir factura")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cerrar" })).toBeInTheDocument()
+    expect(env.sendFactura).not.toHaveBeenCalled()
+  })
+
+  it("offers the three print actions when printing is on", () => {
+    render(<InvoicePrintView invoice={invoice} open onOpenChange={() => {}} />)
+    expect(screen.getAllByRole("button", { name: /Imprimir/ }).length).toBeGreaterThanOrEqual(2)
   })
 })

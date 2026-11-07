@@ -1485,6 +1485,13 @@
         "operationId": "OrdersController_list",
         "parameters": [
           {
+            "name": "stationId",
+            "required": false,
+            "in": "query",
+            "description": "Kitchen filter (F6): orders with a live line of this station, each with only those lines.",
+            "schema": {}
+          },
+          {
             "name": "include",
             "required": false,
             "in": "query",
@@ -1641,7 +1648,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Newest cancellation first, with the bill at that moment, reason, actor and supervisor.",
+            "description": "Newest cancellation first, with the bill at that moment, reason, actor and supervisor; deliveries carry `delivery`, and those cancelled before the audit (0019) come as `legacy` with no reason or actor.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2024,7 +2031,7 @@
             "description": "`order_not_found`."
           },
           "409": {
-            "description": "`order_cancelled`, `order_paid` (void the payment first) or `delivery_order`."
+            "description": "`order_cancelled`, `order_paid` (a table order: void the payment first), `delivery_order` (a cashier or waiter on a delivery), `delivery_not_cancellable` or `register_closed` (a paid delivery of a closed drawer)."
           },
           "422": {
             "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
@@ -5354,7 +5361,7 @@
         },
         "responses": {
           "201": {
-            "description": "Queued; sent to the restaurant printers after commit.",
+            "description": "Queued; sent to the restaurant printers after commit. Tagged to Caja when it exists.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5362,6 +5369,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "`printing_disabled`: the restaurant does not use printers."
           },
           "422": {
             "description": "Invalid input or unknown fields."
@@ -5393,14 +5403,17 @@
         },
         "responses": {
           "201": {
-            "description": "Queued kitchen command; its id is the payload invoiceNumber.",
+            "description": "Queued kitchen command; its id is the payload invoiceNumber. With stations: one job per station and `jobs`; without: the single legacy job (no `jobs`).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PrintJobCreated"
+                  "$ref": "#/components/schemas/PrintJobsCreated"
                 }
               }
             }
+          },
+          "409": {
+            "description": "`printing_disabled`: the restaurant does not use printers."
           },
           "422": {
             "description": "Invalid input or unknown fields."
@@ -5874,7 +5887,65 @@
             "description": "P0002: delivery or courier not found."
           },
           "422": {
-            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+            "description": "RPC rejection with its message verbatim and `code`; action cancel is refused (P0001): use POST /delivery/orders/:id/cancel."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/orders/{id}/cancel": {
+      "post": {
+        "operationId": "DeliveryController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "authorizationId (POST /auth/authorize, action cancel_order, target this order) only when the delivery has a live payment.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The audited cancellation (cancel_order): reason, actor and supervisor stored in order_cancellations and the audit log; the order and the delivery become cancelled; a live payment is voided under the same authorization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or delivery_operator; 403 `authorization_required` (paid), `authorization_invalid` or `self_authorization_not_allowed`."
+          },
+          "404": {
+            "description": "`order_not_found`."
+          },
+          "409": {
+            "description": "`order_cancelled`, `delivery_not_cancellable` (out for delivery or delivered) or `register_closed` (the payment's drawer is closed)."
+          },
+          "422": {
+            "description": "`reason_invalid` or `reason_text_required` (Spanish message, `code`)."
           }
         },
         "security": [
@@ -6489,6 +6560,338 @@
         ],
         "tags": [
           "storage"
+        ]
+      }
+    },
+    "/api/stations": {
+      "get": {
+        "operationId": "StationsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Every staff member reads them (the kitchen screen filters by station). Prep stations first, then Caja.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Station"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the body carries `code` for station refusals."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "stations"
+        ]
+      },
+      "post": {
+        "operationId": "StationsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The first prep station becomes the default one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Station"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "`station_name_taken`, `cashier_exists` or `too_many_stations` (20)."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the body carries `code` for station refusals."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "stations"
+        ]
+      }
+    },
+    "/api/stations/starter": {
+      "post": {
+        "operationId": "StationsController_createStarter",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Cocina (default), Barra and Caja.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Station"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "`stations_exist`: the restaurant already has stations."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the body carries `code` for station refusals."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "stations"
+        ]
+      }
+    },
+    "/api/stations/routes": {
+      "get": {
+        "operationId": "StationsController_routes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Category routes, dish exceptions with the station each dish goes to now, and the dishes without a route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationRoutes"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the body carries `code` for station refusals."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "stations"
+        ]
+      }
+    },
+    "/api/stations/routes/categories/{id}": {
+      "put": {
+        "operationId": "StationsController_setCategoryRoute",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRouteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The category routes to the station (null clears it)."
+          },
+          "404": {
+            "description": "`category_not_found`."
+          },
+          "422": {
+            "description": "`cashier_route` (Caja) or `station_invalid`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "stations"
+        ]
+      }
+    },
+    "/api/stations/routes/dishes/{id}": {
+      "put": {
+        "operationId": "StationsController_setDishRoute",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRouteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The dish exception (null: same as its category)."
+          },
+          "404": {
+            "description": "`dish_not_found`."
+          },
+          "422": {
+            "description": "`cashier_route` (Caja) or `station_invalid`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "stations"
+        ]
+      }
+    },
+    "/api/stations/{id}": {
+      "patch": {
+        "operationId": "StationsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Station"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`station_not_found`."
+          },
+          "409": {
+            "description": "`station_name_taken`."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the body carries `code` for station refusals."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "stations"
+        ]
+      },
+      "delete": {
+        "operationId": "StationsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteStationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Deleted after moving its categories, dish exceptions and sent lines to moveTo (the default passes to it)."
+          },
+          "404": {
+            "description": "`station_not_found`."
+          },
+          "409": {
+            "description": "`cashier_station`: Caja cannot be deleted."
+          },
+          "422": {
+            "description": "`move_required` (another prep station exists) or `target_invalid`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "stations"
         ]
       }
     }
@@ -7740,6 +8143,11 @@
             "type": "boolean",
             "default": false,
             "description": "Permitir que el supervisor se autorice a sí mismo: when true, an admin or cashier may authorize their own cancellation or void with their PIN and the event is flagged selfAuthorized; when false another supervisor must authorize (403 self_authorization_not_allowed)."
+          },
+          "printingEnabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Este restaurante usa impresoras térmicas: when false, POST /print/commands and /print/invoices answer 409 printing_disabled and the screens offer no print action."
           }
         },
         "required": [
@@ -7755,7 +8163,8 @@
           "kitchenLateMinutes",
           "deliveryLateMinutes",
           "waiterAccessMode",
-          "allowSelfAuthorization"
+          "allowSelfAuthorization",
+          "printingEnabled"
         ]
       },
       "UpdateBusinessConfigRequest": {
@@ -7818,6 +8227,9 @@
           "allowSelfAuthorization": {
             "type": "boolean",
             "description": "Admin only, like every key."
+          },
+          "printingEnabled": {
+            "type": "boolean"
           }
         }
       },
@@ -7859,6 +8271,22 @@
               "served"
             ]
           },
+          "stationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Station the line was routed to when sent (F6); null without stations."
+          },
+          "stationSource": {
+            "type": "string",
+            "enum": [
+              "dish",
+              "category",
+              "fallback"
+            ],
+            "nullable": true,
+            "description": "dish: the dish exception; category: its default; fallback: no route, sent to the default station."
+          },
           "addedAt": {
             "type": "string",
             "format": "date-time",
@@ -7884,6 +8312,8 @@
           "quantity",
           "comments",
           "status",
+          "stationId",
+          "stationSource",
           "addedAt",
           "createdAt",
           "updatedAt"
@@ -8386,22 +8816,31 @@
               "duplicate_charge",
               "wrong_payment_method",
               "other"
-            ]
+            ],
+            "nullable": true,
+            "description": "Null only for a legacy delivery."
           },
           "reasonLabel": {
             "type": "string",
-            "description": "Spanish label of the reason."
+            "description": "Spanish label of the reason; \"Sin motivo registrado (antes de la auditoría)\" for a legacy delivery."
           },
           "reasonText": {
             "type": "string",
             "nullable": true
           },
           "cancelledBy": {
-            "$ref": "#/components/schemas/StaffRef"
+            "nullable": true,
+            "description": "Null only for a legacy delivery (no actor was recorded).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StaffRef"
+              }
+            ]
           },
           "authorizedBy": {
             "nullable": true,
-            "description": "Null when no authorization was needed (an order with nothing on it).",
+            "description": "Null when no authorization was needed (an order with nothing on it, an unpaid delivery).",
             "type": "object",
             "allOf": [
               {
@@ -8417,12 +8856,19 @@
             "enum": [
               "active",
               "kitchen",
-              "delivered"
-            ]
+              "delivered",
+              "paid"
+            ],
+            "nullable": true,
+            "description": "paid: a prepaid delivery; null for a legacy delivery."
+          },
+          "legacy": {
+            "type": "boolean",
+            "description": "A delivery cancelled before cancellations were audited (no reason, actor or authorization recorded)."
           },
           "subtotal": {
             "type": "number",
-            "description": "Bill at the moment of the cancellation."
+            "description": "Bill at the moment of the cancellation (a delivery: total includes the delivery fee)."
           },
           "tax": {
             "type": "number"
@@ -8450,12 +8896,28 @@
           "authorizedBy",
           "selfAuthorized",
           "previousStatus",
+          "legacy",
           "subtotal",
           "tax",
           "tip",
           "total",
           "sentItems",
           "cancelledAt"
+        ]
+      },
+      "CancelledDelivery": {
+        "type": "object",
+        "properties": {
+          "customerName": {
+            "type": "string"
+          },
+          "deliveryFee": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "customerName",
+          "deliveryFee"
         ]
       },
       "CancelledOrder": {
@@ -8568,6 +9030,16 @@
           },
           "cancellation": {
             "$ref": "#/components/schemas/OrderCancellation"
+          },
+          "delivery": {
+            "nullable": true,
+            "description": "Only for a delivery (orderType delivery).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CancelledDelivery"
+              }
+            ]
           }
         },
         "required": [
@@ -8591,7 +9063,8 @@
           "createdAt",
           "updatedAt",
           "items",
-          "cancellation"
+          "cancellation",
+          "delivery"
         ]
       },
       "StockShortage": {
@@ -8919,7 +9392,7 @@
           "authorizationId": {
             "type": "string",
             "format": "uuid",
-            "description": "POST /auth/authorize id for action cancel_order. Required when the order has a live item or any payment."
+            "description": "POST /auth/authorize id for action cancel_order. Required when a table order has a live item or any payment, and when a delivery has a live payment (voided with it)."
           }
         },
         "required": [
@@ -9009,6 +9482,14 @@
             "type": "number",
             "nullable": true
           },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ],
+            "description": "delivery: a Domicilio (cancelled from Domicilios, F3b)."
+          },
           "paymentId": {
             "type": "string",
             "format": "uuid",
@@ -9058,12 +9539,12 @@
           },
           "amount": {
             "type": "number",
-            "description": "Money removed: order total, voided lines (price x quantity) or payment total charged."
+            "description": "Money removed: order total (a delivery: with its fee), voided lines (price x quantity) or payment total charged."
           },
           "details": {
             "type": "object",
             "additionalProperties": true,
-            "description": "order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items; items_voided: lines; payment_voided: amounts, methods, tenders."
+            "description": "order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items (a delivery adds order_type, delivery_fee, customer_name, delivery_status, payment_mode, payments_voided); items_voided: lines; payment_voided: amounts, methods, tenders (voided by a delivery cancellation: cancellation_audit_id)."
           },
           "createdAt": {
             "type": "string",
@@ -9075,6 +9556,7 @@
           "eventType",
           "orderId",
           "orderNumber",
+          "orderType",
           "paymentId",
           "actor",
           "authorizedBy",
@@ -12880,6 +13362,40 @@
           "waiter"
         ]
       },
+      "PrintJobsCreated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Also the invoiceNumber of a command payload."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "invoice",
+              "command"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "jobs": {
+            "description": "One comanda per station, in station order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrintJobCreated"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "createdAt",
+          "jobs"
+        ]
+      },
       "PendingPrintJob": {
         "type": "object",
         "properties": {
@@ -12897,7 +13413,7 @@
           "payload": {
             "type": "object",
             "additionalProperties": true,
-            "description": "invoice: {invoiceNumber, invoice, displayItems}; command: {invoiceNumber (job id), items, waiter, table?, delivery?}."
+            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
           },
           "createdAt": {
             "type": "string",
@@ -13561,7 +14077,9 @@
             ]
           },
           "printJob": {
-            "description": "Kitchen command job; its id is the command invoiceNumber.",
+            "nullable": true,
+            "description": "Kitchen command job (the first one with stations); its id is the command invoiceNumber. null when the restaurant does not use printers.",
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/PrintJobCreated"
@@ -14015,6 +14533,286 @@
         "required": [
           "publicUrl"
         ]
+      },
+      "Station": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "prep",
+              "cashier"
+            ],
+            "description": "prep: receives comanda lines; cashier: Caja, facturas and precuentas."
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "kitchen",
+              "served",
+              "occupied",
+              "free",
+              "reserved"
+            ]
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "isDefault": {
+            "type": "boolean",
+            "description": "The prep station that receives dishes without a route (the first one created)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "color",
+          "sortOrder",
+          "isDefault",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateStationRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "prep",
+              "cashier"
+            ],
+            "default": "prep",
+            "description": "One cashier station per restaurant."
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "kitchen",
+              "served",
+              "occupied",
+              "free",
+              "reserved"
+            ],
+            "default": "kitchen"
+          },
+          "sortOrder": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000,
+            "description": "Default: after the last station."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CategoryRoute": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "stationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Default station; null = no route."
+          },
+          "dishCount": {
+            "type": "number",
+            "description": "Dishes of the category, active or not."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "stationId",
+          "dishCount"
+        ]
+      },
+      "DishRoute": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "stationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The exception; null = same as the category."
+          },
+          "routedStationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Where its lines go now; null without prep stations."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "dish",
+              "category",
+              "fallback"
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "categoryId",
+          "active",
+          "stationId",
+          "routedStationId",
+          "source"
+        ]
+      },
+      "UnroutedDish": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "categoryName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "categoryId",
+          "categoryName"
+        ]
+      },
+      "StationRoutes": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "description": "Menu order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryRoute"
+            }
+          },
+          "dishes": {
+            "description": "By category order, then dish order and name.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DishRoute"
+            }
+          },
+          "unroutedDishes": {
+            "description": "Active dishes that go to the default station only because nothing routes them.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnroutedDish"
+            }
+          }
+        },
+        "required": [
+          "categories",
+          "dishes",
+          "unroutedDishes"
+        ]
+      },
+      "SetRouteRequest": {
+        "type": "object",
+        "properties": {
+          "stationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "A prep station; null clears the route."
+          }
+        },
+        "required": [
+          "stationId"
+        ]
+      },
+      "UpdateStationRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "kitchen",
+              "served",
+              "occupied",
+              "free",
+              "reserved"
+            ]
+          },
+          "sortOrder": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000
+          }
+        }
+      },
+      "DeleteStationRequest": {
+        "type": "object",
+        "properties": {
+          "moveTo": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Prep station that takes the routes."
+          }
+        }
       }
     }
   }

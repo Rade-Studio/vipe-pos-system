@@ -6,7 +6,7 @@ import { Acts, NextButton, Opt } from './common';
 
 export const CHANNEL_LABEL = { stable: 'Estable', pilot: 'Piloto' } as const;
 
-/** Step 8: start with Windows, automatic updates out of service, channel (read-only, L26). */
+/** Step 8: start with Windows, automatic updates out of service, channel (read-only, L32). */
 export function Startup({ ctx }: { ctx: StepContext }) {
   const { autostart, autoUpdate, channel, restaurant, printers } = ctx.settings;
   const [error, setError] = useState<string | null>(null);

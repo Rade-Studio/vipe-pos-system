@@ -464,6 +464,50 @@ describe("OrdersPage — F3 Canceladas", () => {
     expect(screen.getByText(/2 órdenes canceladas · \$\s63\.100/)).toBeInTheDocument()
   })
 
+  // F3b: Domicilios cancelled through the audited path, and those cancelled before it.
+  it("shows deliveries with a Domicilio label, who cancelled them, and legacy ones without inventing an actor", async () => {
+    cancelled.rows = [
+      cancelledRow("d", 41, 37000, {
+        orderType: "delivery",
+        tableNumber: null,
+        waiterName: null,
+        delivery: { customerName: "Ana Ruiz", deliveryFee: 5000 },
+        cancellation: { ...cancelledRow("d", 41, 37000).cancellation, cancelledBy: { id: "op", name: "Operadora Ana" }, authorizedBy: null },
+      }),
+      cancelledRow("l", 40, 12000, {
+        orderType: "delivery",
+        tableNumber: null,
+        waiterName: null,
+        delivery: { customerName: "Bea Gil", deliveryFee: 3000 },
+        cancellation: {
+          ...cancelledRow("l", 40, 12000).cancellation,
+          reason: null,
+          reasonLabel: "Sin motivo registrado (antes de la auditoría)",
+          cancelledBy: null,
+          authorizedBy: null,
+          previousStatus: null,
+          legacy: true,
+        },
+      }),
+    ]
+    renderPage({ selectedDate: new Date(2026, 10, 7) })
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Canceladas\s*2/ })).toBeInTheDocument())
+    act(() => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /Canceladas/ }))
+    })
+    const table = await screen.findByRole("table", { name: "Órdenes canceladas" })
+    expect(within(table).getByRole("columnheader", { name: "Canceló" })).toBeInTheDocument()
+    const rows = within(table).getAllByRole("row")
+    expect(rows[1]).toHaveTextContent(/Domicilio\s*Ana Ruiz/)
+    expect(rows[1]).toHaveTextContent("Operadora Ana")
+    expect(rows[1]).toHaveTextContent("No hizo falta")
+    expect(rows[1]).toHaveTextContent(/37\.000/)
+    expect(rows[2]).toHaveTextContent(/Domicilio\s*Bea Gil/)
+    expect(rows[2]).toHaveTextContent("Sin motivo registrado (antes de la auditoría)")
+    expect(within(rows[2]).getAllByText("Sin registro")).toHaveLength(2)
+    expect(rows[2]).not.toHaveTextContent("No hizo falta")
+  })
+
   it("says so when nothing was cancelled", async () => {
     cancelled.rows = []
     renderPage()

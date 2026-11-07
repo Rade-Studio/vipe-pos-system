@@ -125,6 +125,9 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
   /** Move a delivery through the RPC as the operator. */
   const act = (orderId: string, action: string, extra: object = {}) =>
     operatorA().post(`/api/delivery/orders/${orderId}/status`, { action, ...extra });
+  /** The audited cancellation (F3b): reason required, no supervisor for an unpaid delivery. */
+  const cancelDelivery = (orderId: string, caller = operatorA()) =>
+    caller.post(`/api/delivery/orders/${orderId}/cancel`, { reason: 'customer_left' });
 
   it('answers 401 without the access cookie', async () => {
     expect((await request(app.getHttpServer()).get('/api/delivery/active')).status).toBe(401);
@@ -481,7 +484,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
 
     it('cancel moves the delivery and the order to cancelled', async () => {
       const { orderId } = (await create()).body;
-      const res = await act(orderId, 'cancel');
+      const res = await cancelDelivery(orderId);
       expect(res.body).toMatchObject({ status: 'cancelled', cancelledAt: expect.stringMatching(ISO) });
       const [row] = await db<{ status: string }>('SELECT status FROM orders WHERE id = $1', [orderId]);
       expect(row.status).toBe('cancelled');
@@ -524,16 +527,15 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       expect(await deliveryStatus(orderId)).toBe('out_for_delivery');
     });
 
-    it('refuses to cancel a paid order with the verbatim "already has a payment" message', async () => {
+    it('the status action cancel is refused verbatim: deliveries are cancelled through the audited endpoint (F3b)', async () => {
       const { orderId } = (await create()).body;
-      await db(`SET session_replication_role = replica; UPDATE orders SET status = 'paid' WHERE id = '${orderId}'`);
       const res = await act(orderId, 'cancel');
       expect(res.status).toBe(422);
       expect(res.body).toEqual({
         statusCode: 422,
         error: 'Unprocessable Entity',
         code: 'P0001',
-        message: `set_delivery_status: order ${orderId} already has a payment (refunds are out of scope)`,
+        message: 'set_delivery_status: cancel goes through cancel_order (a reason is required)',
       });
       expect(await deliveryStatus(orderId)).toBe('received');
     });
@@ -589,7 +591,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       const ids: Record<string, string> = {};
       for (const name of Object.keys(rows)) {
         ids[name] = (await create()).body.orderId;
-        await act(ids[name], 'cancel');
+        await cancelDelivery(ids[name]);
       }
       await db(`UPDATE restaurants SET timezone = 'America/Bogota' WHERE id = '${fixtures.restaurantA}'`);
       for (const [name, at] of Object.entries(rows)) {
@@ -857,7 +859,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       it('counts the customer\'s deliveries (cancelled ones excluded) with the last date and address', async () => {
         const { orderId } = (await create({ address: { addressLine: 'Calle Última 9', neighborhood: 'Laureles' } })).body;
         const cancelled = (await create({ address: { addressLine: 'Cancelada 1' } })).body.orderId;
-        await act(cancelled, 'cancel');
+        await cancelDelivery(cancelled);
         const [expected] = await db<{ n: number; last: Date }>(
           `SELECT count(*)::int AS n, max(created_at) AS last FROM order_deliveries WHERE customer_id = $1 AND delivery_status <> 'cancelled'`,
           [d.ana],
@@ -902,7 +904,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
         await out(d20, 'deliver');
         await out(old, 'deliver');
         await out(failed, 'fail', { reason: 'No contesta' });
-        await asB.post(`/api/delivery/orders/${cancelled}/status`, { action: 'cancel' });
+        await asB.post(`/api/delivery/orders/${cancelled}/cancel`, { reason: 'customer_left' });
         const pin = (id: string, set: string) =>
           db(`SET session_replication_role = replica; UPDATE order_deliveries SET ${set} WHERE order_id = '${id}'`);
         await pin(d30, `dispatched_at = delivered_at - interval '30 minutes'`);
@@ -968,6 +970,57 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
     } finally {
       sockets.forEach((socket) => socket.close());
     }
+  });
+  describe('stations and printing (F6)', () => {
+    const kitchen = 'f6d00000-0000-0000-0000-000000000001';
+    const bar = 'f6d00000-0000-0000-0000-000000000002';
+    afterEach(async () => {
+      await db(`DELETE FROM business_config WHERE key = 'printing_enabled'`);
+    });
+
+    it('splits the delivery comanda per station with the same rule as table orders, storing each line station', async () => {
+      await db(`INSERT INTO stations (id, restaurant_id, name, color, sort_order) VALUES ($1, $3, 'Cocina', 'kitchen', 0), ($2, $3, 'Barra', 'served', 1)`, [
+        kitchen, bar, fixtures.restaurantA,
+      ]);
+      await db('UPDATE dishes SET station_id = $1 WHERE id = $2', [bar, d.jugo]);
+      try {
+        const res = await create();
+        expect(res.status).toBe(201);
+        const jobs = await db<{ id: string; station_id: string; payload: { items: { name: string }[]; station: { name: string }; delivery: unknown } }>(
+          `SELECT id, station_id, payload FROM print_jobs WHERE payload->>'waiter' = 'Delivery A' AND station_id IS NOT NULL ORDER BY created_at, id`,
+        );
+        expect(jobs.map((j) => [j.station_id, j.payload.station.name, j.payload.items.map((i) => i.name)])).toEqual([
+          [kitchen, 'Cocina', ['Arepa']],
+          [bar, 'Barra', ['Jugo']],
+        ]);
+        expect(jobs.every((j) => j.payload.delivery)).toBe(true);
+        expect(JSON.stringify(jobs[0].payload.items)).not.toContain('dishId');
+        expect(res.body.printJob.id).toBe(jobs[0].id);
+        const lines = await db<{ name: string; station_id: string; station_source: string }>(
+          'SELECT name, station_id, station_source FROM order_items WHERE order_id = $1 ORDER BY name', [res.body.orderId],
+        );
+        expect(lines).toEqual([
+          { name: 'Arepa', station_id: kitchen, station_source: 'fallback' },
+          { name: 'Jugo', station_id: bar, station_source: 'dish' },
+        ]);
+      } finally {
+        await db(`DELETE FROM print_jobs WHERE station_id IS NOT NULL`);
+        await db('UPDATE dishes SET station_id = NULL WHERE id = $1', [d.jugo]);
+        await db('UPDATE order_items SET station_id = NULL, station_source = NULL WHERE station_id IS NOT NULL');
+        await db('DELETE FROM stations WHERE restaurant_id = $1', [fixtures.restaurantA]);
+      }
+    });
+
+    it('queues no comanda when the restaurant does not use printers, and still creates the delivery', async () => {
+      await db(`INSERT INTO business_config (restaurant_id, key, value) VALUES ($1, 'printing_enabled', 'false')`, [fixtures.restaurantA]);
+      const before = await snapshot();
+      const res = await create();
+      expect(res.status).toBe(201);
+      expect(res.body.printJob).toBeNull();
+      const after = await snapshot();
+      expect(after.jobs).toBe(before.jobs);
+      expect(after.orders).toBe(before.orders + 1);
+    });
   });
 });
 

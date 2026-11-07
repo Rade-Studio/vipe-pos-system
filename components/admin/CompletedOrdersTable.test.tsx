@@ -12,6 +12,9 @@ vi.mock("@/lib/api/payments", () => ({
   listPaymentMethods: (...args: unknown[]) => listPaymentMethods(...args),
 }))
 
+const printing = vi.hoisted(() => ({ enabled: true }))
+vi.mock("@/lib/api/printing", () => ({ usePrintingEnabled: () => printing.enabled }))
+
 // The toast store renders nothing without a mounted <Toaster/>; the contract
 // under test is "a failed read is reported", so assert the dispatch itself.
 const toastMock = vi.hoisted(() => vi.fn())
@@ -76,6 +79,7 @@ function paidOrder(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  printing.enabled = true
   getOrdersByDate.mockReset()
   listPaymentMethods.mockReset()
   getOrdersByDate.mockResolvedValue([paidOrder()])
@@ -185,5 +189,20 @@ describe("CompletedOrdersTable — one read per date, shared with every revisit"
 
     await waitFor(() => expect(screen.getByText("Mesa:")).toBeInTheDocument())
     expect(screen.getByText("Mesa:").nextElementSibling).toHaveTextContent("DOMICILIO")
+  })
+
+  it("shows Factura with a printer icon while printing is on (S2)", async () => {
+    renderTable(<CompletedOrdersTable selectedDate={DAY} />)
+    const button = await screen.findByRole("button", { name: /Factura/i })
+    expect(button.querySelector("svg.lucide-printer")).not.toBeNull()
+    expect(button.querySelector("svg.lucide-receipt")).toBeNull()
+  })
+
+  it("shows Factura with an on-screen receipt icon, no printer, while printing is off (S2)", async () => {
+    printing.enabled = false
+    renderTable(<CompletedOrdersTable selectedDate={DAY} />)
+    const button = await screen.findByRole("button", { name: /Factura/i })
+    expect(button.querySelector("svg.lucide-receipt")).not.toBeNull()
+    expect(button.querySelector("svg.lucide-printer")).toBeNull()
   })
 })

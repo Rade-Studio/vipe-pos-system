@@ -157,6 +157,8 @@ vi.mock("@/hooks/use-toast", () => {
 })
 
 vi.mock("@/lib/api/print", () => ({ sendCommand: env.sendCommand }))
+const printing = vi.hoisted(() => ({ enabled: true }))
+vi.mock("@/lib/api/printing", () => ({ usePrintingEnabled: () => printing.enabled }))
 
 vi.mock("@/lib/api/realtime", () => ({
   realtimeService: {
@@ -701,6 +703,18 @@ describe("WaiterView — sending through the API (T8b)", () => {
     })
     await flush()
   }
+
+  it("sends the order but queues no comanda when the restaurant does not use printers (F6, S2)", async () => {
+    printing.enabled = false
+    try {
+      await send()
+      expect(env.orderCreate).toHaveBeenCalledTimes(1)
+      expect(env.sendCommand).not.toHaveBeenCalled()
+      expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden enviada" }))
+    } finally {
+      printing.enabled = true
+    }
+  })
 
   it("creates a dine-in order with the table, the shown prices and no client stock RPCs", async () => {
     await send()

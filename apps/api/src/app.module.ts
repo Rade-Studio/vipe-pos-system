@@ -17,6 +17,7 @@ import { PrintModule } from './print/print.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { RegistersModule } from './registers/registers.module';
 import { SettingsModule } from './settings/settings.module';
+import { StationsModule } from './stations/stations.module';
 import { StaffModule } from './staff/staff.module';
 import { StorageModule } from './storage/storage.module';
 import { TablesModule } from './tables/tables.module';
@@ -46,6 +47,7 @@ import { ZonesModule } from './zones/zones.module';
     DashboardModule,
     StorageModule,
     AuditModule,
+    StationsModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

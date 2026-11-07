@@ -7,6 +7,7 @@ import { formatCurrency } from "@/utils/helpers"
 import { format } from "date-fns"
 import { toast } from "@/utils/toast"
 import { sendFactura } from "@/lib/api/print"
+import { usePrintingEnabled } from "@/lib/api/printing"
 import { Printer, Check, X, ArrowLeft, Receipt, Tag } from "lucide-react"
 import { renderInvoice } from "@/lib/print/renderKitchenOrder"
 import type { PrintableInvoice } from "@/types"
@@ -34,6 +35,8 @@ export function InvoicePrintView({
   const [isOpen, setIsOpen] = useState(open)
   const [isPrinting, setIsPrinting] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
+  // S2 (F6): without thermal printers the invoice stays on screen with no print action.
+  const printingEnabled = usePrintingEnabled()
 
   useEffect(() => {
     setIsOpen(open)
@@ -51,7 +54,7 @@ export function InvoicePrintView({
   }, [invoice, isPending])
 
   const handlePrint = () => {
-    if (!printRef.current) return
+    if (!printRef.current || !printingEnabled) return
 
     try {
       setIsPrinting(true)
@@ -136,10 +139,12 @@ export function InvoicePrintView({
             <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
               <h2 className="text-lg font-semibold">{isPending ? "Vista previa de factura" : "Factura"}</h2>
               {/* Siempre mostrar el botón de imprimir en el encabezado */}
-              <Button size="sm" onClick={handlePrint} disabled={isPrinting}>
-                <Printer className="mr-2 h-4 w-4" />
-                Imprimir
-              </Button>
+              {printingEnabled && (
+                <Button size="sm" onClick={handlePrint} disabled={isPrinting}>
+                  <Printer className="mr-2 h-4 w-4" />
+                  Imprimir
+                </Button>
+              )}
             </div>
 
             <div className="p-6 bg-white dark:bg-gray-900">
@@ -392,6 +397,7 @@ export function InvoicePrintView({
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {printingEnabled && (
                     <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-900 mb-4">
                       <h4 className="font-medium text-blue-800 dark:text-blue-400 mb-2">Imprimir factura</h4>
                       <p className="text-sm text-blue-700 dark:text-blue-300 mb-4">
@@ -403,6 +409,7 @@ export function InvoicePrintView({
                         Imprimir factura
                       </Button>
                     </div>
+                    )}
 
                     <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
                       <h4 className="font-medium mb-2">Detalles del pago</h4>
@@ -452,10 +459,12 @@ export function InvoicePrintView({
                   Cerrar
                 </Button>
                 {/* Siempre mostrar el botón de imprimir en la parte inferior */}
-                <Button onClick={handlePrint} disabled={isPrinting} className="w-full">
-                  <Printer className="mr-2 h-4 w-4" />
-                  Imprimir
-                </Button>
+                {printingEnabled && (
+                  <Button onClick={handlePrint} disabled={isPrinting} className="w-full">
+                    <Printer className="mr-2 h-4 w-4" />
+                    Imprimir
+                  </Button>
+                )}
               </div>
             </div>
           </div>

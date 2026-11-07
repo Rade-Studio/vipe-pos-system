@@ -19,6 +19,7 @@ import { useRegisterPayments } from "@/hooks/use-register-payments"
 import { totalsByMethod, methodLabel, toCsvRows, csvEscape } from "@/lib/payments/payment-list"
 import type { PaymentRow } from "@/lib/payments/payment-list"
 import { listPaymentMethods } from "@/lib/api/payments"
+import { usePrintingEnabled } from "@/lib/api/printing"
 import type { PaymentMethodOption } from "@/lib/payments/types"
 import type { PaymentTransaction } from "@/types/cash-register"
 
@@ -37,6 +38,8 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
   const { profiles } = useProfileStore()
   const { toast } = useToast()
   const [legacyOpen, setLegacyOpen] = useState(false)
+  // S2 (F6): without thermal printers the order id is not a reprint action.
+  const printingEnabled = usePrintingEnabled()
 
   // Función para obtener el nombre del mesero por ID
   const getWaiterName = (waiterId: string | null | undefined) => {
@@ -327,13 +330,17 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
                               {formatDateTime(new Date(payment.createdAt))}
                             </TableCell>
                             <TableCell>
-                              <button
-                                type="button"
-                                className="underline-offset-2 hover:underline"
-                                onClick={() => reprintInvoice(payment.orderId)}
-                              >
-                                {payment.orderId.substring(0, 8)}
-                              </button>
+                              {printingEnabled ? (
+                                <button
+                                  type="button"
+                                  className="underline-offset-2 hover:underline"
+                                  onClick={() => reprintInvoice(payment.orderId)}
+                                >
+                                  {payment.orderId.substring(0, 8)}
+                                </button>
+                              ) : (
+                                payment.orderId.substring(0, 8)
+                              )}
                             </TableCell>
                             <TableCell>{getWaiterName(payment.cashierProfileId)}</TableCell>
                             <TableCell>

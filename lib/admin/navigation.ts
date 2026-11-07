@@ -48,6 +48,12 @@ export const ADMIN_SECTIONS = [
   { id: "settings/delivery", group: "settings", label: "Domicilios", description: "Repartidores y tarifa de domicilio." },
   { id: "settings/staff", group: "settings", label: "Personal", description: "Usuarios y roles del equipo." },
   { id: "settings/access", group: "settings", label: "Acceso de meseros", description: "Cuenta propia o terminal compartida, y el PIN del personal." },
+  {
+    id: "settings/stations",
+    group: "settings",
+    label: "Estaciones y rutas",
+    description: "Qué estación prepara cada categoría y plato, y si el restaurante usa impresoras.",
+  },
   { id: "settings/printers", group: "settings", label: "Impresoras", description: "Estaciones de impresión y sus tokens." },
 ] as const satisfies readonly { id: string; group: AdminNavGroupId; label: string; description: string }[]
 

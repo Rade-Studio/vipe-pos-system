@@ -253,7 +253,7 @@ $$;
 
 -- A delivery taken by the operator (create_delivery_order), prepared by the
 -- kitchen and dispatched, delivered and collected by the operator
--- (set_delivery_status, pay_order). p_stage stops it early for live orders:
+-- (set_delivery_status, pay_order; a cancellation through cancel_order). p_stage stops it early for live orders:
 -- received | preparing | ready | out_for_delivery | delivered | cancelled | retried.
 CREATE FUNCTION pg_temp.demo_delivery(p_stage text, p_at timestamptz, p_register uuid) RETURNS uuid
 LANGUAGE plpgsql AS $$
@@ -305,7 +305,8 @@ BEGIN
 
   IF p_stage = 'cancelled' THEN
     PERFORM pg_temp.demo_as(pg_temp.demo_profile('delivery_operator'));
-    PERFORM public.set_delivery_status(v_order, 'cancel', NULL, 'El cliente canceló por teléfono');
+    -- The audited cancellation (0019): a reason, no supervisor for an unpaid delivery.
+    PERFORM public.cancel_order(v_order, 'other', 'El cliente canceló por teléfono');
     RETURN v_order;
   END IF;
   IF p_stage = 'received' THEN RETURN v_order; END IF;
@@ -350,6 +351,9 @@ BEGIN
          failed_at = CASE WHEN failed_at IS NOT NULL THEN p_at + interval '40 minutes' END,
          cancelled_at = CASE WHEN cancelled_at IS NOT NULL THEN p_at + interval '6 minutes' END;
   UPDATE demo_od SET updated_at = cancelled_at WHERE cancelled_at IS NOT NULL;
+  -- Its audited cancellation happened at the same moment (vipe_migrator passes the append-only guard).
+  UPDATE public.order_cancellations c SET cancelled_at = od.cancelled_at FROM demo_od od WHERE c.order_id = od.order_id;
+  UPDATE public.audit_log a SET created_at = od.cancelled_at FROM demo_od od WHERE a.order_id = od.order_id AND od.cancelled_at IS NOT NULL;
   DELETE FROM public.order_deliveries WHERE order_id = p_order;
   INSERT INTO public.order_deliveries SELECT * FROM demo_od;
   TRUNCATE demo_od;

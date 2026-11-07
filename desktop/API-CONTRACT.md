@@ -89,7 +89,7 @@ on the computer.
 `POST /api/desktop/drawer-events` `{ printerId, openedAt, reason: "manual" | "cash_payment", profileId? }`
 → 204. "Abrir cajón" opens at once and records the event (L10).
 
-## 7. Updates (L26)
+## 7. Updates (L32)
 
 Tauri updater endpoint, per restaurant channel (Piloto receives versions a week
 before Estable), served from VIPE storage:

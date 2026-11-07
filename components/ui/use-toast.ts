@@ -4,8 +4,12 @@ import * as React from "react"
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast"
 
-const TOAST_LIMIT = 5
-const TOAST_REMOVE_DELAY = 1000000
+// L24: a deck of at most three; older toasts are dropped.
+const TOAST_LIMIT = 3
+// Time a closed toast stays in the store so its exit animation can finish.
+const TOAST_REMOVE_DELAY = 1000
+const TOAST_DURATION = 4000
+const DESTRUCTIVE_TOAST_DURATION = 8000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -135,6 +139,7 @@ function toast({ ...props }: Toast) {
     toast: {
       ...props,
       id,
+      duration: props.duration ?? (props.variant === "destructive" ? DESTRUCTIVE_TOAST_DURATION : TOAST_DURATION),
       open: true,
       onOpenChange: (open) => {
         if (!open) dismiss()

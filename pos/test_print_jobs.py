@@ -207,6 +207,17 @@ class PrintJobHandlerTests(unittest.TestCase):
         self.assertFalse(handler.handle("not a job"))
         self.assertEqual(comandas.raw, [])
 
+    def test_station_key_ignored_same_bytes(self):
+        """F6: the API tags comandas and facturas with `station`; the tickets do not change."""
+        station = {"id": "22222222-2222-2222-2222-222222222222", "name": "Cocina"}
+        for job, kind in ((COMMAND_JOB, "comandas"), (DELIVERY_COMMAND_JOB, "comandas"), (INVOICE_JOB, "facturas")):
+            tagged = {**job, "payload": {**job["payload"], "station": station}}
+            legacy_printer, tagged_printer = FakePrinter(), FakePrinter()
+            self.assertTrue(make_handler(**{kind: legacy_printer}).handle(job), job["id"])
+            self.assertTrue(make_handler(**{kind: tagged_printer}).handle(tagged), job["id"])
+            self.assertTrue(legacy_printer.ticket, job["id"])
+            self.assertEqual(tagged_printer.ticket, legacy_printer.ticket, job["id"])
+
 
 NOW = _datetime.datetime(2026, 11, 4, 15, 0, 52, tzinfo=_datetime.timezone.utc)
 

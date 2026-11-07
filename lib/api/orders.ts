@@ -36,8 +36,8 @@ export type CreateOrderBody = Omit<Schemas["CreateOrderRequest"], "orderType" | 
   force?: boolean
 }
 
-/** A domain item that also carries its dish (the API always sends it). */
-export type ApiOrderItem = OrderItem & { dishId?: string }
+/** A domain item that also carries its dish (the API always sends it) and, with stations (F6), its station. */
+export type ApiOrderItem = OrderItem & { dishId?: string; stationId?: string }
 
 export const ORDER_INCLUDES = ["table", "waiter"] as const
 export type OrderInclude = (typeof ORDER_INCLUDES)[number]
@@ -60,6 +60,7 @@ function toOrderItem(item: OrderItemDto): ApiOrderItem {
   return {
     id: item.id,
     dishId: item.dishId ?? undefined,
+    stationId: item.stationId ?? undefined,
     name: item.name,
     price: item.price,
     quantity: item.quantity,
@@ -103,6 +104,8 @@ type WireRow = Record<string, unknown>
 const str = (value: unknown): string | null => (typeof value === "string" ? value : null)
 const num = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : Number(value) || 0)
 
+const STATION_SOURCES = ["dish", "category", "fallback"] as const
+
 function itemDtoFromWire(row: WireRow): OrderItemDto {
   return {
     id: String(row.id),
@@ -113,6 +116,8 @@ function itemDtoFromWire(row: WireRow): OrderItemDto {
     quantity: num(row.quantity) || 1,
     comments: str(row.comments),
     status: row.status === "served" ? "served" : "kitchen",
+    stationId: str(row.station_id),
+    stationSource: STATION_SOURCES.find((source) => source === row.station_source) ?? null,
     addedAt: str(row.added_at),
     createdAt: str(row.created_at),
     updatedAt: str(row.updated_at),
@@ -194,11 +199,13 @@ export function orderConflictOf(error: unknown): OrderConflict | null {
 /** Orders in any of `statuses`, newest first, in ONE request (the API caps at 500). */
 export async function getByStatus(
   statuses: OrderStatus | readonly OrderStatus[],
-  options: { include?: readonly OrderInclude[] } = {},
+  options: { include?: readonly OrderInclude[]; stationId?: string } = {},
 ): Promise<OrderDto[]> {
   const status = (Array.isArray(statuses) ? statuses : [statuses]).join(",")
   const query: Record<string, string> = { status }
   if (options.include?.length) query.include = options.include.join(",")
+  // F6: only the orders with a line of this station, each with only those lines.
+  if (options.stationId) query.stationId = options.stationId
   const { data } = await api.GET("/api/orders", { params: { query } })
   return required(data)
 }
