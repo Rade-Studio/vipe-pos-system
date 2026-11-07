@@ -15,6 +15,7 @@ export type StaffMember = Schemas["StaffMember"]
 export type CreateStaffAccountInput = Schemas["CreateStaffRequest"]
 export type UpdateStaffInput = Schemas["UpdateStaffRequest"]
 export type StaffRole = CreateStaffAccountInput["role"]
+export type StaffSupervisor = Schemas["StaffSupervisor"]
 
 export type StaffServiceErrorKind = "invalid" | "forbidden" | "duplicate" | "not-found" | "unknown"
 
@@ -106,4 +107,13 @@ export function unlockStaffPin(id: string): Promise<void> {
   return staffCall(async () => {
     await api.DELETE("/api/staff/{id}/pin/lock", byId(id))
   })
+}
+
+/**
+ * Active admins and cashiers of the restaurant, by name (admin, cashier,
+ * waiter, delivery and a shared terminal may read it). `pinLockedUntil` is
+ * only filled for an admin caller.
+ */
+export function listSupervisors(): Promise<StaffSupervisor[]> {
+  return staffCall(async () => required((await api.GET("/api/staff/supervisors")).data))
 }

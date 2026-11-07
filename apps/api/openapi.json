@@ -5722,6 +5722,41 @@
         ]
       }
     },
+    "/api/staff/supervisors": {
+      "get": {
+        "operationId": "StaffController_supervisors",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Active admins and cashiers of the caller's restaurant, by name (close a shared terminal, authorize a void). Also a terminal read route. pinLockedUntil only for an admin caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StaffSupervisor"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      }
+    },
     "/api/staff/{id}": {
       "patch": {
         "operationId": "StaffController_update",
@@ -12689,6 +12724,43 @@
           "role",
           "active",
           "createdAt",
+          "hasPin",
+          "pinLockedUntil"
+        ]
+      },
+      "StaffSupervisor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Profile id (POST /auth/identify, POST /auth/authorize)."
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "cashier"
+            ]
+          },
+          "hasPin": {
+            "type": "boolean",
+            "description": "The supervisor has a PIN."
+          },
+          "pinLockedUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "End of a running PIN lockout, for an admin caller only (always null for other callers); null when not locked."
+          }
+        },
+        "required": [
+          "id",
+          "fullName",
+          "role",
           "hasPin",
           "pinLockedUntil"
         ]

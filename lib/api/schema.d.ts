@@ -1604,6 +1604,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/supervisors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["StaffController_supervisors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/{id}": {
         parameters: {
             query?: never;
@@ -3810,6 +3826,23 @@ export interface components {
             /**
              * Format: date-time
              * @description End of a running PIN lockout (5 failures lock 5 minutes); null when not locked.
+             */
+            pinLockedUntil: string | null;
+        };
+        StaffSupervisor: {
+            /**
+             * Format: uuid
+             * @description Profile id (POST /auth/identify, POST /auth/authorize).
+             */
+            id: string;
+            fullName: string;
+            /** @enum {string} */
+            role: "admin" | "cashier";
+            /** @description The supervisor has a PIN. */
+            hasPin: boolean;
+            /**
+             * Format: date-time
+             * @description End of a running PIN lockout, for an admin caller only (always null for other callers); null when not locked.
              */
             pinLockedUntil: string | null;
         };
@@ -8844,6 +8877,40 @@ export interface operations {
             };
             /** @description Ya existe una cuenta con ese correo electrónico */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_supervisors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active admins and cashiers of the caller's restaurant, by name (close a shared terminal, authorize a void). Also a terminal read route. pinLockedUntil only for an admin caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffSupervisor"][];
+                };
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

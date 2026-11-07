@@ -24,6 +24,7 @@ import {
   SetStaffPinRequest,
   setStaffPasswordSchema,
   StaffMember,
+  StaffSupervisor,
   UpdateStaffRequest,
   updateStaffSchema,
 } from './staff.dto';
@@ -50,6 +51,17 @@ export class StaffController {
   @ApiOkResponse({ type: [StaffMember], description: "Every profile of the caller's restaurant, by name." })
   list(): Promise<StaffMember[]> {
     return this.staff.list();
+  }
+
+  @Get('supervisors')
+  @Roles('admin', 'cashier', 'waiter', 'delivery_operator')
+  @ApiOkResponse({
+    type: [StaffSupervisor],
+    description:
+      "Active admins and cashiers of the caller's restaurant, by name (close a shared terminal, authorize a void). Also a terminal read route. pinLockedUntil only for an admin caller.",
+  })
+  supervisors(@Req() req: AuthenticatedRequest): Promise<StaffSupervisor[]> {
+    return this.staff.supervisors(req.profile!.role);
   }
 
   @Post()

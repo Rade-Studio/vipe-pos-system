@@ -14,6 +14,11 @@ vi.mock("@/lib/api/tables", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/tables")>()),
   ...tables,
 }))
+const staff = vi.hoisted(() => ({ listSupervisors: vi.fn() }))
+vi.mock("@/lib/api/staff", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/staff")>()),
+  ...staff,
+}))
 const auth = vi.hoisted(() => ({ identifyStaff: vi.fn(), signOutAndReload: vi.fn() }))
 vi.mock("@/lib/api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/auth")>()),
@@ -91,6 +96,11 @@ beforeEach(() => {
     { id: "p-vale", name: "Valentina Ríos", username: null },
   ])
   auth.identifyStaff.mockReset().mockImplementation(async (id: string) => identity(id, id === "p-andres" ? "Andrés" : "Laura Gómez"))
+  staff.listSupervisors.mockReset().mockResolvedValue([
+    { id: "p-carlos", fullName: "Carlos Pérez", role: "admin", hasPin: true, pinLockedUntil: null },
+    { id: "p-laura", fullName: "Laura Gómez", role: "cashier", hasPin: true, pinLockedUntil: null },
+    { id: "p-sofia", fullName: "Sofía Ruiz", role: "cashier", hasPin: false, pinLockedUntil: null },
+  ])
   auth.signOutAndReload.mockReset().mockResolvedValue(undefined)
   useCartStore.setState({ cartItems: {} })
   useProfileStore.setState({ authProfile: null, selectedProfile: null })
@@ -211,31 +221,48 @@ describe("TerminalView", () => {
     expect(within(screen.getByRole("button", { name: /^Valentina Ríos/ })).getByText(`Bloqueado hasta ${clockTime(LOCK)}`)).toBeInTheDocument()
   })
 
-  it("closes the terminal only with the PIN of the admin or cashier who opened it", async () => {
+  it("closes the terminal with the PIN of any active admin or cashier, picked from their tiles", async () => {
     renderTerminal()
     await screen.findByRole("button", { name: /^Andrés/ })
     fireEvent.click(screen.getByRole("button", { name: "Cerrar terminal" }))
-    expect(screen.getByRole("heading", { name: "Cerrar terminal" })).toBeInTheDocument()
-    expect(screen.getByText(/Laura Gómez \(Caja\) escribe su PIN/)).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "¿Quién cierra la terminal?" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: /^Carlos Pérez/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Laura Gómez/ })).toBeInTheDocument()
+    // A supervisor without PIN cannot close it.
+    const sofia = screen.getByRole("button", { name: /^Sofía Ruiz/ })
+    expect(sofia).toBeDisabled()
+    expect(within(sofia).getByText("Sin PIN")).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole("button", { name: /^Carlos Pérez/ }))
+    expect(screen.getByText(/Carlos Pérez \(Administrador\) escribe su PIN/)).toBeInTheDocument()
     auth.identifyStaff.mockRejectedValueOnce(new ApiError(403, "Forbidden", "PIN incorrecto", { code: "pin_invalid" }))
     typePin("1111")
     await enter()
-    expect(auth.identifyStaff).toHaveBeenLastCalledWith("p-laura", "1111")
+    expect(auth.identifyStaff).toHaveBeenLastCalledWith("p-carlos", "1111")
     expect(auth.signOutAndReload).not.toHaveBeenCalled()
     expect(screen.getByRole("alert")).toHaveTextContent("PIN incorrecto.")
 
     typePin("582046")
     await enter()
-    expect(auth.identifyStaff).toHaveBeenLastCalledWith("p-laura", "582046")
+    expect(auth.identifyStaff).toHaveBeenLastCalledWith("p-carlos", "582046")
     expect(auth.signOutAndReload).toHaveBeenCalledTimes(1)
     expect(actingToken()).toBeNull()
+  })
+
+  it("keeps the wrong-PIN copy without a count: the API does not return attempts left", async () => {
+    auth.identifyStaff.mockRejectedValueOnce(new ApiError(403, "Forbidden", "PIN incorrecto", { code: "pin_invalid" }))
+    renderTerminal()
+    await identifyAs("Andrés", "1111")
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/Te quedan/)
   })
 
   it("goes back from closing without logging out", async () => {
     renderTerminal()
     await screen.findByRole("button", { name: /^Andrés/ })
     fireEvent.click(screen.getByRole("button", { name: "Cerrar terminal" }))
+    fireEvent.click(await screen.findByRole("button", { name: /^Laura Gómez/ }))
+    fireEvent.click(screen.getByRole("button", { name: "No soy Laura Gómez" }))
+    expect(screen.getByRole("heading", { name: "¿Quién cierra la terminal?" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Volver" }))
     expect(screen.getByRole("heading", { name: "¿Quién toma el pedido?" })).toBeInTheDocument()
     expect(auth.signOutAndReload).not.toHaveBeenCalled()

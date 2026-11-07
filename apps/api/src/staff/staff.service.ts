@@ -3,7 +3,8 @@ import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
 import { PasswordsService } from '../auth/passwords.service';
 import { UnitOfWork } from '../db/unit-of-work';
-import { type createStaffSchema, STAFF_MESSAGES, type StaffMember, type updateStaffSchema } from './staff.dto';
+import { SUPERVISOR_ROLES } from '../auth/pins';
+import { type createStaffSchema, STAFF_MESSAGES, type StaffMember, type StaffSupervisor, type updateStaffSchema } from './staff.dto';
 
 interface StaffRow {
   id: string;
@@ -47,6 +48,35 @@ export class StaffService {
 
   async list(): Promise<StaffMember[]> {
     return (await this.select(sql`ORDER BY p.full_name, p.id`)).map(toStaffMember);
+  }
+
+  /**
+   * Active admins and cashiers (SUPERVISOR_ROLES) of the caller's restaurant,
+   * by name: who can close a shared terminal or authorize a void. The lock
+   * end comes from private.staff_pin_locks, which only an admin may run (it
+   * raises otherwise and would abort the request), so other callers get null.
+   */
+  async supervisors(callerRole: string): Promise<StaffSupervisor[]> {
+    const roles = sql.join(SUPERVISOR_ROLES.map((role) => sql`${role}`), sql`, `);
+    const locks =
+      callerRole === 'admin'
+        ? sql`LEFT JOIN private.staff_pin_locks(now()) l ON l.profile_id = p.id`
+        : sql`LEFT JOIN (SELECT NULL::uuid AS profile_id, NULL::timestamptz AS locked_until) l ON false`;
+    const rows = await this.rows<{ id: string; full_name: string; role: string; has_pin: boolean; locked_until: Date | string | null }>(sql`
+      SELECT p.id, p.full_name, p.role, sp.profile_id IS NOT NULL AS has_pin, l.locked_until
+        FROM public.profiles p
+        JOIN public.users u ON u.id = p.user_id
+        LEFT JOIN public.staff_pins sp ON sp.profile_id = p.id
+        ${locks}
+       WHERE p.active AND u.is_active AND p.role IN (${roles})
+       ORDER BY p.full_name, p.id`);
+    return rows.map((row) => ({
+      id: row.id,
+      fullName: row.full_name,
+      role: row.role,
+      hasPin: row.has_pin,
+      pinLockedUntil: row.locked_until === null ? null : new Date(row.locked_until).toISOString(),
+    }));
   }
 
   async create(input: z.infer<typeof createStaffSchema>): Promise<StaffMember> {

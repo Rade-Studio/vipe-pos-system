@@ -518,6 +518,68 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
     });
   });
 
+  describe('GET /staff/supervisors (close a terminal, F3 authorizations)', () => {
+    const supervisorsOf = async (restaurant: string) =>
+      db<{ id: string; full_name: string; role: string }>(
+        `SELECT p.id, p.full_name, p.role FROM profiles p JOIN users u ON u.id = p.user_id
+          WHERE p.restaurant_id = $1 AND p.active AND u.is_active AND p.role IN ('admin', 'cashier')
+          ORDER BY p.full_name, p.id`,
+        [restaurant],
+      );
+
+    it('lists the active admins and cashiers of the caller restaurant, by name, with the PIN state', async () => {
+      const expected = await supervisorsOf(A);
+      expect(expected.map((p) => p.id)).toEqual(expect.arrayContaining([fixtures.adminA.profileId, ids.cashier]));
+      const res = await admin().get('/api/staff/supervisors');
+      expect(res.status).toBe(200);
+      expect(res.body.map((p: { id: string }) => p.id)).toEqual(expected.map((p) => p.id));
+      for (const member of res.body) {
+        expect(Object.keys(member).sort()).toEqual(['fullName', 'hasPin', 'id', 'pinLockedUntil', 'role']);
+      }
+      expect(res.body.find((p: { id: string }) => p.id === ids.cashier)).toEqual({
+        id: ids.cashier,
+        fullName: 'Cashier A',
+        role: 'cashier',
+        hasPin: true,
+        pinLockedUntil: null,
+      });
+    });
+
+    it('is readable by admin, cashier, waiter and a terminal; not by the kitchen', async () => {
+      const cashier = as(await freshLogin(emails.cashier));
+      const terminal = as(await openTerminal(emails.cashier));
+      for (const caller of [admin(), cashier, waiter(), terminal]) {
+        expect((await caller.get('/api/staff/supervisors')).status).toBe(200);
+      }
+      expect((await as(cookies.cook).get('/api/staff/supervisors')).status).toBe(403);
+    });
+
+    it('never crosses restaurants and leaves inactive supervisors out', async () => {
+      const b = await as(cookies.adminB).get('/api/staff/supervisors');
+      expect(b.body.map((p: { id: string }) => p.id)).toEqual((await supervisorsOf(B)).map((p) => p.id));
+      expect(b.body.map((p: { id: string }) => p.id)).not.toContain(ids.cashier);
+      await db('UPDATE profiles SET active = false WHERE id = $1', [ids.cashier]);
+      try {
+        expect((await admin().get('/api/staff/supervisors')).body.map((p: { id: string }) => p.id)).not.toContain(ids.cashier);
+      } finally {
+        await db('UPDATE profiles SET active = true WHERE id = $1', [ids.cashier]);
+      }
+    });
+
+    it('shows a running lock to an admin; other callers get null (private.staff_pin_locks is admin-only)', async () => {
+      const t = await openTerminal(emails.cashier);
+      for (let i = 0; i < 5; i++) {
+        await identify(t, ids.cashier, '808080');
+      }
+      const locked = (await pinRow(ids.cashier)).locked_until!;
+      const forAdmin = (await admin().get('/api/staff/supervisors')).body.find((p: { id: string }) => p.id === ids.cashier);
+      expect(forAdmin.pinLockedUntil).toBe(new Date(locked).toISOString());
+      const forTerminal = (await as(t).get('/api/staff/supervisors')).body.find((p: { id: string }) => p.id === ids.cashier);
+      expect(forTerminal).toMatchObject({ hasPin: true, pinLockedUntil: null });
+      expect((await admin().delete(`/api/staff/${ids.cashier}/pin/lock`)).status).toBe(204);
+    });
+  });
+
   describe('supervisor authorization', () => {
     const authorize = (cookie: string, body: object) => as(cookie).post('/api/auth/authorize', body);
     const consume = (cookie: string, authorizationId: string, action: string) =>

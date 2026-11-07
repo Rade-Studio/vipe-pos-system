@@ -1,7 +1,9 @@
 "use client"
 
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { LogOut, UserCog } from "lucide-react"
+import { KeyRound, LogOut, UserCog } from "lucide-react"
+import { ChangeOwnPinDialog } from "@/components/auth/ChangeOwnPinDialog"
 import type { Profile } from "@/types"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
 import { signOutAndReload } from "@/lib/api/auth"
@@ -22,6 +24,8 @@ export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }
 
   // Revokes the API session, then a hard reload clears stores, queries and realtime subs.
   const handleLogout = () => signOutAndReload()
+  // F4: every role changes its own PIN here (a shared terminal shows its own bar instead of this header).
+  const [pinOpen, setPinOpen] = useState(false)
 
   return (
     <header className="flex justify-between items-center mb-6 sticky top-0 z-10 bg-background pb-2 pt-4">
@@ -45,12 +49,17 @@ export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }
             <span className="sm:hidden">Cambiar</span>
           </Button>
         )}
+        <Button variant="outline" size="sm" aria-label="Cambiar mi PIN" onClick={() => setPinOpen(true)}>
+          <KeyRound className="h-4 w-4 sm:mr-2" aria-hidden />
+          <span className="hidden sm:inline">Cambiar mi PIN</span>
+        </Button>
         <Button variant="outline" size="sm" onClick={handleLogout}>
           <LogOut className="mr-2 h-4 w-4" />
           <span className="hidden sm:inline">Cerrar Sesión</span>
           <span className="sm:hidden">Salir</span>
         </Button>
       </div>
+      <ChangeOwnPinDialog open={pinOpen} onOpenChange={setPinOpen} who={`${profile.name} · ${getRoleLabel(profile.role)}`} />
     </header>
   )
 }

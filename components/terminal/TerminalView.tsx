@@ -1,12 +1,14 @@
 "use client"
 
 import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Delete, LogOut, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
 import { useWaiters } from "@/hooks/use-waiters"
 import { identifyStaff, pinFailureOf, signOutAndReload, type Session } from "@/lib/api/auth"
+import { listSupervisors } from "@/lib/api/staff"
 import { roleLabel } from "@/lib/auth/roles"
 import { clearActingToken, setActingToken } from "@/lib/terminal/acting"
 import { clockTime, countdown, initialsOf } from "@/lib/terminal/format"
@@ -35,6 +37,7 @@ type Screen =
   | { kind: "orders" }
   | { kind: "expired" }
   | { kind: "close"; back: Screen }
+  | { kind: "closePin"; person: Person; back: Screen }
 
 interface TerminalViewProps {
   /** The terminal session (POST /auth/terminal/login): its profile is the admin or cashier who opened it. */
@@ -56,7 +59,8 @@ const toProfile = (person: Person): Profile => ({
  * 5 minutes the order screen runs as them: the store's profile is theirs and
  * the API client adds their acting claim to every write. When the time is up
  * the order screen stays mounted under a dialog and the cart (useCartStore)
- * is kept, unsent. Closing the terminal asks the PIN of whoever opened it.
+ * is kept, unsent. Closing it asks any active admin or cashier to tap their
+ * name and type their PIN (GET /staff/supervisors, then POST /auth/identify).
  */
 export function TerminalView({ session, children }: TerminalViewProps) {
   const opener: Person = { id: session.profile.id, name: session.profile.name, role: session.profile.role }
@@ -68,6 +72,11 @@ export function TerminalView({ session, children }: TerminalViewProps) {
   /** Lock ends the API reported in this terminal, per profile (ISO). */
   const [locks, setLocks] = useState<Record<string, string>>({})
   const [now, setNow] = useState(() => Date.now())
+  const supervisors = useQuery({
+    queryKey: ["terminal", "supervisors"],
+    queryFn: listSupervisors,
+    enabled: screen.kind === "close",
+  })
 
   const endIdentity = useCallback(() => {
     clearActingToken()
@@ -223,14 +232,68 @@ export function TerminalView({ session, children }: TerminalViewProps) {
             )}
 
             {screen.kind === "close" && (
+              <section aria-labelledby="terminal-close-h" className="w-full max-w-4xl">
+                <h1 id="terminal-close-h" className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  ¿Quién cierra la terminal?
+                </h1>
+                <p className="mb-5 mt-1 text-muted-foreground">
+                  Solo un admin o la caja la cierra, con su PIN. Los pedidos sin enviar se pierden.
+                </p>
+                {supervisors.isLoading ? (
+                  <p className="text-muted-foreground">Cargando…</p>
+                ) : supervisors.isError ? (
+                  <p className="text-destructive">No se pudo cargar quién puede cerrarla. Revisa la conexión.</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
+                    {(supervisors.data ?? []).map((supervisor) => {
+                      const until = lockOf(supervisor.id) ?? supervisor.pinLockedUntil ?? undefined
+                      const role = roleLabel(supervisor.role) ?? supervisor.role
+                      return (
+                        <button
+                          key={supervisor.id}
+                          type="button"
+                          disabled={!supervisor.hasPin}
+                          onClick={() =>
+                            setScreen({
+                              kind: "closePin",
+                              person: { id: supervisor.id, name: supervisor.fullName, role: supervisor.role },
+                              back: screen.back,
+                            })
+                          }
+                          className="flex min-h-40 flex-col items-center justify-center gap-2.5 rounded-card border bg-card p-4 text-center transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:bg-muted disabled:hover:border-border"
+                        >
+                          <Avatar name={supervisor.fullName} className="h-16 w-16 text-2xl" />
+                          <b className="text-lg leading-tight">{supervisor.fullName}</b>
+                          {!supervisor.hasPin ? (
+                            <span className="text-sm text-muted-foreground">Sin PIN</span>
+                          ) : until && Date.parse(until) > Date.now() ? (
+                            <span className="rounded-pill border border-status-danger-line bg-status-danger-bg px-2.5 py-0.5 text-xs font-medium text-status-danger-fg">
+                              Bloqueado hasta {clockTime(until)}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">{role}</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                <Button variant="outline" className="mt-5 min-h-11" onClick={() => setScreen(screen.back)}>
+                  Volver
+                </Button>
+              </section>
+            )}
+
+            {screen.kind === "closePin" && (
               <PinScreen
-                person={opener}
+                key={screen.person.id}
+                person={screen.person}
                 title="Cerrar terminal"
-                hint={`${opener.name} (${roleLabel(opener.role) ?? opener.role}) escribe su PIN para cerrar esta terminal. Los pedidos sin enviar se pierden.`}
-                lockedUntil={lockOf(opener.id)}
-                onLocked={(until) => remember(opener.id, until)}
-                onBack={() => setScreen(screen.back)}
-                backLabel="Volver"
+                hint={`${screen.person.name} (${roleLabel(screen.person.role) ?? screen.person.role}) escribe su PIN para cerrar esta terminal. Los pedidos sin enviar se pierden.`}
+                lockedUntil={lockOf(screen.person.id)}
+                onLocked={(until) => remember(screen.person.id, until)}
+                onBack={() => setScreen({ kind: "close", back: screen.back })}
+                backLabel={`No soy ${screen.person.name}`}
                 onSuccess={async () => {
                   endIdentity()
                   await signOutAndReload()
@@ -239,7 +302,7 @@ export function TerminalView({ session, children }: TerminalViewProps) {
             )}
           </main>
 
-          {screen.kind !== "close" && (
+          {screen.kind !== "close" && screen.kind !== "closePin" && (
             <footer className="flex flex-wrap items-center gap-3 border-t px-4 py-2.5 text-sm text-muted-foreground">
               <span className="min-w-0 flex-1">Terminal de pedidos: sin acceso a ajustes, personal ni reportes.</span>
               <Button variant="outline" className="min-h-11" onClick={() => setScreen({ kind: "close", back: screen })}>
