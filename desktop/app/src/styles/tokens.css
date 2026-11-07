@@ -1,0 +1,51 @@
+/* Design tokens copied from design/estacion-vipe/01-panel-con-menu.html and
+   design/instalador-vipe/02-asistente.html (see design/system.md). */
+:root {
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ease: cubic-bezier(.16,1,.3,1);
+  --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-xl: 12px; --r-2xl: 16px; --r-3xl: 24px; --r-full: 999px;
+}
+[data-theme=dark] {
+  color-scheme: dark;
+  --canvas: #07060d; --surface: rgba(24,24,27,.7); --surface-solid: #131317; --surface-2: #09090b;
+  --line: rgba(255,255,255,.10); --line-strong: rgba(255,255,255,.15);
+  --text: #ffffff; --text-2: #d4d4d8; --text-muted: #a1a1aa;
+  --accent: #a78bfa; --accent-strong: #c4b5fd; --accent-contrast: #09090b; --accent-tint: rgba(139,92,246,.15); --accent-line: rgba(167,139,250,.5);
+  --focus: #7dd3fc;
+  --btn-bg: #ffffff; --btn-fg: #09090b; --glow: 0 0 40px -8px rgba(167,139,250,.8);
+  --app-bg: radial-gradient(60% 40% at 50% -10%, rgba(124,58,237,.30), transparent 70%);
+  --elev: 0 40px 120px -30px rgba(124,58,237,.6); --scrim: rgba(7,6,13,.7);
+  --s-ok-bg: #0e1c19; --s-ok-fg: #bbf7d0; --s-ok-line: rgba(74,222,128,.4);
+  --s-occupied-bg: #1b1330; --s-occupied-fg: #ddd6fe; --s-occupied-line: rgba(167,139,250,.5);
+  --s-kitchen-bg: #2b160e; --s-kitchen-fg: #fed7aa; --s-kitchen-line: rgba(251,146,60,.5);
+  --s-served-bg: #081e2e; --s-served-fg: #bae6fd; --s-served-line: rgba(56,189,248,.5);
+  --s-reserved-bg: #16161d; --s-reserved-fg: #d4d4d8; --s-reserved-line: rgba(161,161,170,.3);
+  --s-danger-bg: #2b0f19; --s-danger-fg: #fecdd3; --s-danger-line: rgba(251,113,133,.5);
+  --s-warning-bg: #1f1a0e; --s-warning-fg: #fef08a; --s-warning-line: rgba(250,204,21,.4);
+}
+[data-theme=light] {
+  color-scheme: light;
+  --canvas: #fafafa; --surface: #ffffff; --surface-solid: #ffffff; --surface-2: #f4f4f5;
+  --line: #e4e4e7; --line-strong: #d4d4d8;
+  --text: #09090b; --text-2: #3f3f46; --text-muted: #52525b;
+  --accent: #7c3aed; --accent-strong: #6d28d9; --accent-contrast: #ffffff; --accent-tint: #ede9fe; --accent-line: #c4b5fd;
+  --focus: #0369a1;
+  --btn-bg: #7c3aed; --btn-fg: #ffffff; --glow: 0 10px 30px -10px rgba(124,58,237,.55);
+  --app-bg: none;
+  --elev: 0 30px 80px -30px rgba(24,24,27,.35); --scrim: rgba(9,9,11,.4);
+  --s-ok-bg: #dcfce7; --s-ok-fg: #166534; --s-ok-line: #86efac;
+  --s-occupied-bg: #ede9fe; --s-occupied-fg: #5b21b6; --s-occupied-line: #c4b5fd;
+  --s-kitchen-bg: #ffedd5; --s-kitchen-fg: #9a3412; --s-kitchen-line: #fdba74;
+  --s-served-bg: #e0f2fe; --s-served-fg: #075985; --s-served-line: #7dd3fc;
+  --s-reserved-bg: #f4f4f5; --s-reserved-fg: #3f3f46; --s-reserved-line: #d4d4d8;
+  --s-danger-bg: #ffe4e6; --s-danger-fg: #9f1239; --s-danger-line: #fda4af;
+  --s-warning-bg: #fef9c3; --s-warning-fg: #854d0e; --s-warning-line: #fde047;
+}
+.s-ok { --bg: var(--s-ok-bg); --fg: var(--s-ok-fg); --ln: var(--s-ok-line); }
+.s-occupied { --bg: var(--s-occupied-bg); --fg: var(--s-occupied-fg); --ln: var(--s-occupied-line); }
+.s-kitchen { --bg: var(--s-kitchen-bg); --fg: var(--s-kitchen-fg); --ln: var(--s-kitchen-line); }
+.s-served { --bg: var(--s-served-bg); --fg: var(--s-served-fg); --ln: var(--s-served-line); }
+.s-reserved { --bg: var(--s-reserved-bg); --fg: var(--s-reserved-fg); --ln: var(--s-reserved-line); }
+.s-danger { --bg: var(--s-danger-bg); --fg: var(--s-danger-fg); --ln: var(--s-danger-line); }
+.s-warning { --bg: var(--s-warning-bg); --fg: var(--s-warning-fg); --ln: var(--s-warning-line); }
