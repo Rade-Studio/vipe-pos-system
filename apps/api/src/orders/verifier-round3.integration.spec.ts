@@ -75,7 +75,7 @@ describe('verifier probes F1 round 3', () => {
 
   let tableIndex = 0;
   /** An order in the kitchen with its lines (all sent: the server only holds sent lines), on a fresh table. */
-  const newOrder = async (lines: { name: string; price: number; quantity: number; status?: string }[] = [], restaurant = A) => {
+  const newOrder = async (lines: { name: string; price: number; quantity: number; status?: string }[] = [], restaurant: string = A) => {
     const tableId = ids.tables[tableIndex++];
     const subtotal = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
     await db(`INSERT INTO tables (id, number, status, waiter_id, restaurant_id) VALUES ($1, $2, 'kitchen', $3, $4)`, [
