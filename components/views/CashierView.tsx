@@ -44,7 +44,10 @@ import {
 import { BillChangedBanner } from "@/components/cashier/BillChangedBanner"
 import { usePhone } from "@/lib/cashier/use-phone"
 import { DeliveryPaymentsPanel } from "@/components/cashier/DeliveryPaymentsPanel"
-import { PaidOrdersList } from "@/components/cashier/PaidOrdersList"
+import { PaidOrdersList, registerPaidOrdersQueryKey } from "@/components/cashier/PaidOrdersList"
+import { VoidFlow } from "@/components/voids/VoidFlow"
+import type { VoidLine, VoidTarget } from "@/components/voids/flow"
+import type { PaidOrderRow } from "@/lib/cashier/paid-orders"
 import { ShiftSummarySheet } from "@/components/cashier/ShiftSummarySheet"
 import { LivePill } from "@/components/cashier/LivePill"
 import { useZones } from "@/hooks/use-zones"
@@ -98,6 +101,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   // pane (on phone at the top of the current step), as in the design.
   const [billNotice, setBillNotice] = useState<string | null>(null)
   const phone = usePhone()
+  // F3: the cancellation / void being taken through the step sheet.
+  const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
 
   // The whole screen renders from ONE loaded list (mount, "Actualizar" and the
   // realtime patch share this cache slot); every bucket the view shows is
@@ -613,6 +618,26 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const lastUpdate = dataUpdatedAt ? clockTime(new Date(dataUpdatedAt)) : null
   const dockAmount = payTotals?.remaining ?? selectedEntry?.total ?? 0
 
+  // F3: the voids act on the order the payment panel charges (`payOrder`).
+  const voidLabel = (entry: QueueEntry) =>
+    [entry.payOrder.orderNumber ? `#${entry.payOrder.orderNumber}` : null, entry.label].filter(Boolean).join(" · ")
+  const voidLines = (order: Order): VoidLine[] =>
+    order.items.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, comments: item.comments }))
+  const openPaymentVoid = (row: PaidOrderRow) =>
+    setVoidTarget({
+      action: "payment",
+      orderId: row.orderId,
+      label: [row.folio, row.place].filter(Boolean).join(" · "),
+      payments: [{ id: row.key, title: row.methods, detail: row.time, amount: row.total }],
+      paymentId: row.key,
+    })
+  const handleVoided = () => {
+    void refreshOrders()
+    void queryClient.invalidateQueries({ queryKey: registerPaidOrdersQueryKey(openRegisterId ?? "") })
+    void queryClient.invalidateQueries({ queryKey: ["register-summary"] })
+    void queryClient.invalidateQueries({ queryKey: ["register-payments"] })
+  }
+
   const pane = "min-w-0 rounded-card border border-line bg-surface min-[1180px]:min-h-0 min-[1180px]:overflow-y-auto min-[1180px]:[scrollbar-gutter:stable]"
   const steps = [
     { id: "queue", label: "Órdenes" },
@@ -742,7 +767,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                 onSelect={selectEntry}
                 loading={isLoading}
                 deliveries={<DeliveryPaymentsPanel onPaid={() => void refreshOrders()} />}
-                paid={<PaidOrdersList registerId={openRegisterId} />}
+                paid={<PaidOrdersList registerId={openRegisterId} onVoid={openPaymentVoid} />}
               />
             </section>
 
@@ -771,6 +796,26 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                   }
                   undoBusy={isUndoingSplit}
                   onReprint={() => showInvoice(selectedEntry.payOrder.id)}
+                  onVoidItem={
+                    selectedEntry.payOrder.items.length > 0
+                      ? () =>
+                          setVoidTarget({
+                            action: "item",
+                            orderId: selectedEntry.payOrder.id,
+                            label: voidLabel(selectedEntry),
+                            lines: voidLines(selectedEntry.payOrder),
+                          })
+                      : undefined
+                  }
+                  onCancelOrder={() =>
+                    setVoidTarget({
+                      action: "order",
+                      orderId: selectedEntry.payOrder.id,
+                      label: voidLabel(selectedEntry),
+                      lines: voidLines(selectedEntry.payOrder),
+                      total: selectedEntry.payOrder.bill.total,
+                    })
+                  }
                 />
               ) : (
                 <div className="flex h-full min-h-[10rem] items-center justify-center p-6 text-center text-sm text-muted-fg">
@@ -843,6 +888,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
           setActiveTab("transactions")
         }}
       />
+
+      <VoidFlow target={voidTarget} onClose={() => setVoidTarget(null)} onDone={handleVoided} />
 
       {/* Partial Payment Dialog */}
       {selectedTableId && (

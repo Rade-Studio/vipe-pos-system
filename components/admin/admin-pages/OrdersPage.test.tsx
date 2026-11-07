@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type React from "react"
+import { createPortal } from "react-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -56,6 +57,32 @@ vi.mock("@/lib/api/realtime", () => ({
 }))
 vi.mock("@/lib/api/completed-orders", () => ({ getOrdersByDate: async () => api.completed }))
 vi.mock("@/lib/api/payments", () => ({ listPaymentMethods: async () => [] }))
+const cancelled = vi.hoisted(() => ({ rows: [] as unknown[], dates: [] as string[] }))
+vi.mock("@/lib/api/orders", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getCancelledOrders: async (date: string) => {
+    cancelled.dates.push(date)
+    return cancelled.rows
+  },
+}))
+// F3: the step sheet has its own suite; here only the target the panel opens.
+const voidFlow = vi.hoisted(() => ({ last: null as null | { target: any; onDone?: (r: unknown) => void } }))
+vi.mock("@/components/voids/VoidFlow", () => ({
+  VoidFlow: (props: { target: any; onDone?: (r: unknown) => void }) => {
+    voidFlow.last = props
+    // A portal, like the real sheet: the detail overlay hides everything rendered before it.
+    return props.target
+      ? createPortal(
+          <div role="alertdialog" aria-label="Hoja de anulación">
+            <button type="button" onClick={() => props.onDone?.({ action: props.target.action, orderId: props.target.orderId })}>
+              Simular anulación
+            </button>
+          </div>,
+          document.body,
+        )
+      : null
+  },
+}))
 
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
@@ -123,7 +150,7 @@ const ORDERS: Order[] = [
 
 function renderPage(props: Partial<React.ComponentProps<typeof OrdersPage>> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const onDelete = vi.fn()
+  const onVoided = vi.fn()
   const onRefresh = vi.fn()
   render(
     <QueryClientProvider client={client}>
@@ -135,14 +162,14 @@ function renderPage(props: Partial<React.ComponentProps<typeof OrdersPage>> = {}
         realtimeConnected
         newOrdersCount={0}
         onRefresh={onRefresh}
-        onDelete={onDelete}
+        onVoided={onVoided}
         selectedDate={new Date()}
         onDateChange={() => {}}
         {...props}
       />
     </QueryClientProvider>,
   )
-  return { onDelete, onRefresh }
+  return { onVoided, onRefresh }
 }
 
 /** Order labels of the table rows, top to bottom. */
@@ -339,54 +366,111 @@ describe("OrdersPage — selection and detail panel", () => {
   })
 })
 
-describe("OrdersPage — cancel with typed confirmation", () => {
-  async function openCancel() {
+describe("OrdersPage — F3 anular plato y cancelar orden (hoja por pasos)", () => {
+  async function openPanel() {
     const utils = renderPage()
     fireEvent.click(within(screen.getByTestId("admin-order-a")).getByRole("button", { name: /Abrir orden 128/ }))
     const panel = await screen.findByRole("dialog", { name: /#128/ })
-    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar orden…" }))
     return { ...utils, panel }
   }
 
-  it("keeps the button disabled until the order number is typed, then cancels that order once", async () => {
-    const { onDelete, panel } = await openCancel()
-
-    expect(within(panel).getByText("¿Cancelar la orden #128?")).toBeInTheDocument()
-    const input = within(panel).getByLabelText("Escribe 128 para confirmar")
-    const go = within(panel).getByRole("button", { name: "Cancelar orden #128" })
-    expect(go).toBeDisabled()
-
-    fireEvent.change(input, { target: { value: "12" } })
-    expect(go).toBeDisabled()
-    fireEvent.change(input, { target: { value: "127" } })
-    expect(go).toBeDisabled()
-    fireEvent.change(input, { target: { value: " 128 " } })
-    expect(go).toBeEnabled()
-
-    await act(async () => {
-      fireEvent.click(go)
+  it("'Cancelar orden' opens the step sheet for that order; no typed order number any more", async () => {
+    const { onVoided, panel } = await openPanel()
+    expect(within(panel).queryByLabelText(/para confirmar/)).toBeNull()
+    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar orden" }))
+    expect(voidFlow.last?.target).toEqual({
+      action: "order",
+      orderId: "a",
+      label: "#128 · Mesa 8",
+      lines: [
+        { id: "Bandeja paisa-i", name: "Bandeja paisa", price: 1000, quantity: 2, comments: "Una sin chicharrón" },
+        { id: "Limonada de coco-i", name: "Limonada de coco", price: 1000, quantity: 2, comments: undefined },
+      ],
+      total: 130744,
     })
-    expect(onDelete).toHaveBeenCalledTimes(1)
-    expect(onDelete).toHaveBeenCalledWith("a")
+    fireEvent.click(screen.getByRole("button", { name: "Simular anulación" }))
+    expect(onVoided).toHaveBeenCalledWith({ action: "order", orderId: "a" })
   })
 
-  it("Volver leaves without cancelling and gives the focus back to the trigger", async () => {
-    const { onDelete, panel } = await openCancel()
-
-    fireEvent.click(within(panel).getByRole("button", { name: "Volver" }))
-    expect(within(panel).queryByText("¿Cancelar la orden #128?")).toBeNull()
-    expect(within(panel).getByRole("button", { name: "Cancelar orden…" })).toHaveFocus()
-    expect(onDelete).not.toHaveBeenCalled()
+  it("'Anular plato' opens the item sheet with the order's lines", async () => {
+    const { panel } = await openPanel()
+    fireEvent.click(within(panel).getByRole("button", { name: "Anular plato" }))
+    expect(voidFlow.last?.target).toMatchObject({ action: "item", orderId: "a", label: "#128 · Mesa 8" })
+    expect(voidFlow.last?.target.lines).toHaveLength(2)
   })
 
-  it("Escape closes the confirmation first, without cancelling", async () => {
-    const { onDelete, panel } = await openCancel()
+  it("a delivery is cancelled from Domicilios, not from here", async () => {
+    renderPage()
+    fireEvent.click(within(screen.getByTestId("admin-order-b")).getByRole("button", { name: /Abrir orden 127/ }))
+    const panel = await screen.findByRole("dialog", { name: /#127/ })
+    expect(within(panel).queryByRole("button", { name: "Cancelar orden" })).toBeNull()
+    expect(within(panel).getByText("Los domicilios se cancelan desde Domicilios.")).toBeInTheDocument()
+  })
+})
 
-    fireEvent.keyDown(within(panel).getByLabelText("Escribe 128 para confirmar"), { key: "Escape" })
-    expect(within(panel).queryByText("¿Cancelar la orden #128?")).toBeNull()
-    expect(screen.getByRole("dialog", { name: /#128/ })).toBeInTheDocument()
-    expect(within(panel).getByRole("button", { name: "Cancelar orden…" })).toHaveFocus()
-    expect(onDelete).not.toHaveBeenCalled()
+describe("OrdersPage — F3 Canceladas", () => {
+  const cancelledRow = (id: string, orderNumber: number, total: number, over: Record<string, unknown> = {}) => ({
+    id,
+    orderNumber,
+    tableNumber: 11,
+    waiterName: "Valentina Cardona",
+    items: [],
+    cancellation: {
+      reason: "customer_left",
+      reasonLabel: "El cliente se fue",
+      reasonText: null,
+      cancelledBy: { id: "w2", name: "Valentina Cardona" },
+      authorizedBy: { id: "c1", name: "Laura Gómez" },
+      selfAuthorized: false,
+      previousStatus: "kitchen",
+      subtotal: total,
+      tax: 0,
+      tip: 0,
+      total,
+      sentItems: 3,
+      cancelledAt: new Date(2026, 10, 7, 11, 58).toISOString(),
+    },
+    ...over,
+  })
+
+  it("lists the day's cancelled orders with their amounts from GET /orders/cancelled and the total", async () => {
+    cancelled.rows = [
+      cancelledRow("x", 130, 23800),
+      cancelledRow("y", 127, 39300, {
+        tableNumber: 4,
+        cancellation: {
+          ...cancelledRow("y", 127, 39300).cancellation,
+          reasonLabel: "Error del mesero",
+          authorizedBy: { id: "c1", name: "Laura Gómez" },
+          selfAuthorized: true,
+        },
+      }),
+    ]
+    renderPage({ selectedDate: new Date(2026, 10, 7) })
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Canceladas\s*2/ })).toBeInTheDocument())
+    act(() => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /Canceladas/ }))
+    })
+    expect(cancelled.dates).toContain("2026-11-07")
+    const table = await screen.findByRole("table", { name: "Órdenes canceladas" })
+    const rows = within(table).getAllByRole("row")
+    expect(rows[1]).toHaveTextContent("#130")
+    expect(rows[1]).toHaveTextContent("Mesa 11")
+    expect(rows[1]).toHaveTextContent("El cliente se fue")
+    expect(rows[1]).toHaveTextContent("Laura Gómez")
+    expect(rows[1]).toHaveTextContent(/23\.800/)
+    expect(rows[2]).toHaveTextContent("Autoautorizada")
+    expect(rows[3]).toHaveTextContent(/Total cancelado.*63\.100/)
+    expect(screen.getByText(/2 órdenes canceladas · \$\s63\.100/)).toBeInTheDocument()
+  })
+
+  it("says so when nothing was cancelled", async () => {
+    cancelled.rows = []
+    renderPage()
+    act(() => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /Canceladas/ }))
+    })
+    expect(await screen.findByText("No hay órdenes canceladas este día.")).toBeInTheDocument()
   })
 })
 

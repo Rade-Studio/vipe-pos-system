@@ -181,6 +181,21 @@ vi.mock("@/components/layout/Header", () => ({
   Header: ({ title }: { title?: string }) => <h1>{title}</h1>,
 }))
 
+// F3: the step sheet has its own suite (components/voids); here only the target each entry point opens and the refresh after it.
+const voidFlow = vi.hoisted(() => ({ last: null as null | { target: any; onDone?: (r: unknown) => void } }))
+vi.mock("@/components/voids/VoidFlow", () => ({
+  VoidFlow: (props: { target: any; onDone?: (r: unknown) => void; onClose: () => void }) => {
+    voidFlow.last = props
+    return props.target ? (
+      <div role="dialog" aria-label="Hoja de anulación">
+        <button type="button" onClick={() => props.onDone?.({ action: props.target.action, orderId: props.target.orderId })}>
+          Simular anulación
+        </button>
+      </div>
+    ) : null
+  },
+}))
+
 import { realtimeService } from "@/lib/api/realtime"
 import { toast } from "@/utils/toast"
 import { PaymentServiceError } from "@/lib/payments/types"
@@ -1374,5 +1389,59 @@ describe("queue tabs keep one layout (S6: no tab row shift on selection or scrol
     // scroller around it keeps the gutter reserved.
     expect(screen.getByRole("region", { name: "Órdenes por cobrar" }).className).toContain("[scrollbar-gutter:stable]")
     expect((container.firstElementChild as HTMLElement).className).toMatch(/overflow-y-auto.*\[scrollbar-gutter:stable\]/)
+  })
+})
+
+describe("F3 cashier voids", () => {
+  it("'Cancelar orden' opens the sheet for the charged order with its lines and total", async () => {
+    getByStatus.mockResolvedValue([dbRow({ order_number: 128 })])
+    renderCashier()
+    fireEvent.click(await queueRow("Mesa 1"))
+    fireEvent.click(await screen.findByRole("button", { name: "Cancelar orden" }))
+    expect(voidFlow.last?.target).toEqual({
+      action: "order",
+      orderId: "o-1",
+      label: "#128 · Mesa 1",
+      lines: [{ id: "oi-1", name: "Bandeja paisa", price: 20_000, quantity: 2, comments: undefined }],
+      total: 47_600,
+    })
+    const reads = getByStatus.mock.calls.length
+    fireEvent.click(screen.getByRole("button", { name: "Simular anulación" }))
+    await waitFor(() => expect(getByStatus.mock.calls.length).toBeGreaterThan(reads))
+  })
+
+  it("'Anular plato' opens the item sheet on the same order", async () => {
+    renderCashier()
+    fireEvent.click(await queueRow("Mesa 1"))
+    fireEvent.click(await screen.findByRole("button", { name: "Anular plato" }))
+    expect(voidFlow.last?.target).toMatchObject({ action: "item", orderId: "o-1", label: "Mesa 1" })
+    expect(voidFlow.last?.target.lines.map((l: { id: string }) => l.id)).toEqual(["oi-1"])
+  })
+
+  it("Pagadas: 'Anular' opens the payment sheet; the voided payment leaves the list", async () => {
+    getRegisterPaidOrders.mockResolvedValueOnce([paidRow()]).mockResolvedValueOnce([])
+    renderCashier()
+    await screen.findByText(/Caja abierta por/)
+    fireEvent.click(screen.getByRole("tab", { name: /^Pagadas/ }))
+    fireEvent.click(await screen.findByRole("button", { name: "Anular pago #128 Mesa 12 · Terraza" }))
+    expect(voidFlow.last?.target).toEqual({
+      action: "payment",
+      orderId: "o-9",
+      label: "#128 · Mesa 12 · Terraza",
+      payments: [{ id: "p-1", title: "Tarjeta · Ref. 4821", detail: "14:05", amount: 44_000 }],
+      paymentId: "p-1",
+    })
+    const reads = getByStatus.mock.calls.length
+    fireEvent.click(screen.getByRole("button", { name: "Simular anulación" }))
+    expect(await screen.findByText("Aún no hay cuentas pagadas")).toBeInTheDocument()
+    expect(getRegisterPaidOrders).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(getByStatus.mock.calls.length).toBeGreaterThan(reads))
+  })
+
+  it("keeps Dividir and Reimprimir in the detail (PRESERVE)", async () => {
+    renderCashier()
+    fireEvent.click(await queueRow("Mesa 1"))
+    expect(await screen.findByRole("button", { name: "Dividir" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Reimprimir" })).toBeInTheDocument()
   })
 })

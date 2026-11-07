@@ -717,3 +717,28 @@ describe("unsubscribeAll", () => {
     unsubscribe()
   })
 })
+
+describe("F3: a cancelled order leaves the kitchen board live", () => {
+  it("an orders UPDATE into 'cancelled' removes the order, with no read", async () => {
+    realtimeService.registerItems("o-1", ["i-1"])
+    const { batches, deletes, unsubscribe } = subscribeKitchen()
+    const event = change("orders", "UPDATE", { id: "o-1", status: "cancelled" }, { id: "o-1" })
+    env.serverEmit("pos_changes", event)
+    await flush()
+    expect(deletes).toEqual([{ ...event, old: { id: "o-1" } }])
+    expect(env.orderReads).toEqual([])
+    expect(batches).toEqual([])
+    expect(realtimeService.knownItems["o-1"]).toBeUndefined()
+    unsubscribe()
+  })
+
+  it("an orders UPDATE to any other status keeps today's behaviour: ignored (PRESERVE)", async () => {
+    const { batches, deletes, unsubscribe } = subscribeKitchen()
+    env.serverEmit("pos_changes", change("orders", "UPDATE", { id: "o-1", status: "delivered" }, { id: "o-1" }))
+    await flush()
+    expect(deletes).toEqual([])
+    expect(env.orderReads).toEqual([])
+    expect(batches).toEqual([])
+    unsubscribe()
+  })
+})

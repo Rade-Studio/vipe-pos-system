@@ -286,6 +286,10 @@ export const realtimeService = {
         } else if (payload.eventType === "DELETE" && payload.old?.id) {
           delete realtimeService.knownItems[payload.old.id]
           orderDeleteCallback(payload)
+        } else if (payload.eventType === "UPDATE" && payload.new?.status === "cancelled" && payload.new.id) {
+          // F3: a cancelled order is never deleted, but it leaves the board like one.
+          delete realtimeService.knownItems[payload.new.id]
+          orderDeleteCallback({ ...payload, old: { id: payload.new.id } })
         }
         return
       }

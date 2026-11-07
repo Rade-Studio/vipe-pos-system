@@ -6,7 +6,9 @@ import type { RegisterPaidOrder } from "@/lib/api/registers"
 import { clockTime, folio } from "./queue"
 
 export interface PaidOrderRow {
+  /** The payment id. */
   key: string
+  orderId: string
   folio: string | null
   /** "Mesa 12 · Terraza" or "Domicilio". */
   place: string
@@ -23,6 +25,7 @@ export function paidOrderRows(rows: readonly RegisterPaidOrder[]): PaidOrderRow[
     .sort((a, b) => b.paidAt.getTime() - a.paidAt.getTime())
     .map((row) => ({
       key: row.paymentId,
+      orderId: row.orderId,
       folio: row.orderNumber ? folio(row.orderNumber) : null,
       place:
         row.orderType === "delivery"

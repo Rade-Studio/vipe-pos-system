@@ -6,6 +6,8 @@ import { CircleCheck, ReceiptText, RefreshCw, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { OrderDetailPanel } from "@/components/admin/orders/OrderDetailPanel"
+import { VoidFlow, type VoidResult } from "@/components/voids/VoidFlow"
+import type { VoidTarget } from "@/components/voids/flow"
 import { OrdersTable } from "@/components/admin/orders/OrdersTable"
 import { OrdersToolbar } from "@/components/admin/orders/OrdersToolbar"
 import { DOCKED_PANEL_FROM, TABLE_FROM, useWindowWidth } from "@/components/admin/orders/order-ui"
@@ -27,7 +29,8 @@ interface ActiveOrdersGridProps {
   orders: AdminOrder[]
   /** First load (nothing to show yet). A REFETCH keeps the rows on screen. */
   isLoading: boolean
-  onDelete: (orderId: string) => void | Promise<void>
+  /** F3: a cancellation or void was stored through the step sheet. */
+  onVoided: (result: VoidResult) => void
   onRefresh: () => void
 }
 
@@ -52,7 +55,7 @@ function EmptyCard({ icon, title, text, action }: { icon: React.ReactNode; title
  * below (full screen on a phone). Two earlier invariants hold: a refresh never
  * blanks the list, and a row never pulses forever.
  */
-export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: ActiveOrdersGridProps) {
+export function ActiveOrdersGrid({ orders, isLoading, onVoided, onRefresh }: ActiveOrdersGridProps) {
   const nowMs = useTickingNow(true, 10_000)
   const rows = useOrderRows(orders, nowMs)
   const width = useWindowWidth()
@@ -63,7 +66,7 @@ export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: Act
   const [sort, setSort] = useState<RowSort>(DEFAULT_ROW_SORT)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [overlayOpen, setOverlayOpen] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+  const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
   const titleId = useId()
 
   // The pulse set is recomputed from the data and the clock, never from the render timestamp.
@@ -73,10 +76,6 @@ export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: Act
 
   // Docked, the panel always shows an order: the selected one, else the first visible.
   const panelRow = visible.find((row) => row.id === selectedId) ?? (docked ? (visible[0] ?? null) : null)
-
-  useEffect(() => {
-    setConfirming(false)
-  }, [panelRow?.id])
 
   // The order left the list (cancelled, paid): close its overlay.
   useEffect(() => {
@@ -135,9 +134,7 @@ export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: Act
         row={panelRow}
         titleId={titleId}
         onClose={overlay ? () => setOverlayOpen(false) : undefined}
-        onCancel={onDelete}
-        confirming={confirming}
-        onConfirmingChange={setConfirming}
+        onVoid={setVoidTarget}
       />
     ) : null
 
@@ -213,12 +210,6 @@ export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: Act
             <DialogPrimitive.Content
               aria-labelledby={titleId}
               aria-describedby={undefined}
-              onEscapeKeyDown={(event) => {
-                if (confirming) {
-                  event.preventDefault()
-                  setConfirming(false)
-                }
-              }}
               onCloseAutoFocus={(event) => {
                 event.preventDefault()
                 focusRow(panelRow?.id ?? selectedId ?? undefined)
@@ -231,6 +222,8 @@ export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: Act
           </DialogPrimitive.Portal>
         </DialogPrimitive.Root>
       )}
+
+      <VoidFlow target={voidTarget} onClose={() => setVoidTarget(null)} onDone={onVoided} />
     </div>
   )
 }

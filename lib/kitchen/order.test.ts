@@ -95,3 +95,15 @@ describe("kitchenOrdersOf", () => {
     expect(mapped.map((o) => o.id)).toEqual(["o-1"])
   })
 })
+
+describe("F3: cancelled orders and voided lines leave the board", () => {
+  it("a cancelled order is not on the board even with kitchen items", () => {
+    expect(kitchenOrderOf(order({ status: "cancelled" }, [item("i-1", "kitchen", "2026-10-07T11:01:00.000Z")]))).toBeNull()
+  })
+
+  it("a 0-unit line is dropped from the ticket", () => {
+    const zero = { ...item("i-0", "kitchen", "2026-10-07T11:00:00.000Z"), quantity: 0 }
+    const mapped = kitchenOrderOf(order({}, [zero, item("i-1", "kitchen", "2026-10-07T11:01:00.000Z")]))
+    expect(mapped?.items.map((i) => i.id)).toEqual(["i-1"])
+  })
+})

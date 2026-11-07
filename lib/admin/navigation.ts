@@ -24,6 +24,12 @@ export const ADMIN_NAV_GROUPS: readonly AdminNavGroup[] = [
 export const ADMIN_SECTIONS = [
   { id: "overview", group: "general", label: "Resumen", description: "Ventas, cocina, mesas y personal de un vistazo." },
   { id: "orders", group: "general", label: "Órdenes", description: "Órdenes en curso y completadas." },
+  {
+    id: "orders/voids",
+    group: "general",
+    label: "Anulaciones",
+    description: "Todo lo cancelado o anulado, con motivo, quién lo pidió y quién lo autorizó. Nada se borra.",
+  },
   { id: "tables", group: "general", label: "Mesas", description: "Estado y asignación de mesas." },
   { id: "cash", group: "general", label: "Caja", description: "Resumen, transacciones e historial de cajas." },
   { id: "menu", group: "catalog", label: "Menú", description: "Categorías, platos y promociones." },

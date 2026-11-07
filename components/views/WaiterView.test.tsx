@@ -1434,3 +1434,126 @@ describe("WaiterView — elapsed time on the map (T22)", () => {
     expect(screen.getByRole("button", { name: /^Mesa 2,/ })).not.toHaveTextContent("min")
   })
 })
+
+describe("WaiterView — F3 anular plato y cancelar orden", () => {
+  const zoneRow = (id: string, name: string, sortOrder: number) => ({
+    id, name, aspect: 1.6, sortOrder, labels: [], active: true, createdAt: null, updatedAt: null,
+  })
+  const placedRow = (id: string, number: number, zoneId: string, status: string, waiterId: string) => ({
+    ...tableRow(id, number, status, waiterId), zoneId, x: 0.3, y: 0.4, w: 0.1, h: 0.1, shape: "round", rotation: 0, seats: 4,
+  })
+  const sentItem = (id: string, name: string, quantity: number) => ({
+    id,
+    orderId: "o-1",
+    dishId: STOCK_DISH,
+    name,
+    price: 32900,
+    quantity,
+    comments: null,
+    status: "kitchen",
+    addedAt: "2026-10-07T00:01:00.000Z",
+    createdAt: null,
+    updatedAt: null,
+  })
+
+  it("offers 'Anular plato' per sent line and 'Cancelar orden', each opening the step sheet", async () => {
+    env.zoneGetAll.mockResolvedValue([zoneRow("z-1", "Salón principal", 0)])
+    env.tableGetAll.mockResolvedValue([placedRow("t-1", 1, "z-1", "kitchen", "w-1")])
+    env.waiterGetAll.mockResolvedValue(waiterRows)
+    env.orderGetByStatus.mockResolvedValue([{ ...orderDto("o-1", "t-1"), orderNumber: 128, items: [sentItem("i-1", "Bandeja paisa", 2)] }])
+    renderView()
+    await flush()
+    await tap(/^Mesa 1,/)
+
+    await tap("Anular Bandeja paisa")
+    expect(screen.getByRole("heading", { name: "¿Qué plato y por qué?" })).toBeInTheDocument()
+    expect(screen.getByText("Anular plato · #128 · Mesa 1")).toBeInTheDocument()
+    await tap("Cerrar")
+
+    await tap("Cancelar orden")
+    expect(screen.getByRole("heading", { name: "¿Por qué se cancela?" })).toBeInTheDocument()
+  })
+
+  it("does not offer voids on a table without a sent order (PRESERVE)", async () => {
+    env.zoneGetAll.mockResolvedValue([zoneRow("z-1", "Salón principal", 0)])
+    env.tableGetAll.mockResolvedValue([placedRow("t-1", 1, "z-1", "occupied", "w-1")])
+    env.waiterGetAll.mockResolvedValue(waiterRows)
+    renderView()
+    await flush()
+    await tap(/^Mesa 1,/)
+    expect(screen.getByRole("button", { name: "Agregar productos" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Cancelar orden" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^Anular / })).not.toBeInTheDocument()
+  })
+
+  it("a realtime UPDATE with its lines drops the voided one live", async () => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "kitchen", "w-1")])
+    env.orderGetByStatus.mockResolvedValue([
+      { ...orderDto("o-1", "t-1"), items: [sentItem("i-1", "Bandeja paisa", 2), sentItem("i-2", "Limonada", 1)] },
+    ])
+    renderView()
+    await flush()
+    await act(async () => {
+      for (const cb of env.orderCallbacks) {
+        await cb({
+          eventType: "UPDATE",
+          new: {
+            id: "o-1",
+            status: "kitchen",
+            table_id: "t-1",
+            order_items: [
+              { ...sentItem("i-1", "Bandeja paisa", 2), order_id: "o-1" },
+              { ...sentItem("i-2", "Limonada", 0), order_id: "o-1", status: "cancelled" },
+            ],
+          },
+          old: {},
+        })
+      }
+    })
+    await flush()
+    const cached = queryClient.getQueryData(["orders"]) as { id: string; items: { id: string }[] }[]
+    expect(cached.find((order) => order.id === "o-1")?.items.map((item) => item.id)).toEqual(["i-1"])
+  })
+
+  it("a realtime UPDATE without lines keeps the loaded ones (PRESERVE)", async () => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "kitchen", "w-1")])
+    env.orderGetByStatus.mockResolvedValue([{ ...orderDto("o-1", "t-1"), items: [sentItem("i-1", "Bandeja paisa", 2)] }])
+    renderView()
+    await flush()
+    const before = (queryClient.getQueryData(["orders"]) as { id: string; items: unknown[] }[])[0].items
+    await act(async () => {
+      for (const cb of env.orderCallbacks) await cb({ eventType: "UPDATE", new: { id: "o-1", status: "delivered", table_id: "t-1" }, old: {} })
+    })
+    await flush()
+    const after = (queryClient.getQueryData(["orders"]) as { id: string; items: unknown[]; status: string }[])[0]
+    expect(after.items).toBe(before)
+    expect(after.status).toBe("delivered")
+  })
+
+  it("a realtime INSERT never paints a 0-unit cancelled line", async () => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1)])
+    renderView()
+    await flush()
+    await act(async () => {
+      for (const cb of env.orderCallbacks) {
+        await cb({
+          eventType: "INSERT",
+          new: {
+            id: "o-9",
+            status: "kitchen",
+            order_type: "dine_in",
+            table_id: "t-1",
+            order_items: [
+              { id: "live", name: "Ajiaco", price: 1, quantity: 1, status: "kitchen" },
+              { id: "gone", name: "Limonada", price: 1, quantity: 0, status: "cancelled" },
+            ],
+          },
+          old: {},
+        })
+      }
+    })
+    await flush()
+    const cached = queryClient.getQueryData(["orders"]) as { id: string; items: { id: string }[] }[]
+    expect(cached.find((order) => order.id === "o-9")?.items.map((item) => item.id)).toEqual(["live"])
+  })
+})

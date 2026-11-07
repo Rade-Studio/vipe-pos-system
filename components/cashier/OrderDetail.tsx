@@ -1,6 +1,6 @@
 "use client"
 
-import { Printer, SplitSquareVertical, Trash2 } from "lucide-react"
+import { Ban, Printer, SplitSquareVertical, Trash2, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
 import type { CartItem } from "@/types"
@@ -18,6 +18,9 @@ interface OrderDetailProps {
   onUndoSplit?: () => void
   undoBusy?: boolean
   onReprint: () => void
+  /** F3: open the step sheet to void dishes of the charged order / cancel it. */
+  onVoidItem?: () => void
+  onCancelOrder?: () => void
 }
 
 /** Centre pane: what the customer ordered and what the bill adds up to. */
@@ -30,6 +33,8 @@ export function OrderDetail({
   onUndoSplit,
   undoBusy,
   onReprint,
+  onVoidItem,
+  onCancelOrder,
 }: OrderDetailProps) {
   const header = entryHeader(entry)
   return (
@@ -66,6 +71,22 @@ export function OrderDetail({
             <Printer aria-hidden="true" className="h-4 w-4" />
             Reimprimir
           </Button>
+          {onVoidItem && (
+            <Button variant="outline" className="h-11" onClick={onVoidItem}>
+              <Undo2 aria-hidden="true" className="h-4 w-4" />
+              Anular plato
+            </Button>
+          )}
+          {onCancelOrder && (
+            <Button
+              variant="outline"
+              className="h-11 border-status-danger-line text-status-danger-fg hover:bg-status-danger-bg hover:text-status-danger-fg"
+              onClick={onCancelOrder}
+            >
+              <Ban aria-hidden="true" className="h-4 w-4" />
+              Cancelar orden
+            </Button>
+          )}
         </div>
       </div>
 
