@@ -1,17 +1,21 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
+import { toVoidException } from '../audit/voids';
+import { VoidsService } from '../audit/voids.service';
 import { UnitOfWork } from '../db/unit-of-work';
 import {
   CASH_REFERENCE_MESSAGE,
   type Payment,
+  type PaymentVoid,
   type payOrderSchema,
   type PayOrderResult,
   type SplitOrderResult,
   type splitOrderSchema,
   type UndoSplitResult,
+  type voidPaymentSchema,
 } from './payments.dto';
-import { paymentJson, toPayment, toPayOrderResult, toSplitResult, toUndoSplitResult } from './payments.mappers';
+import { paymentJson, toPayment, toPaymentVoid, toPayOrderResult, toSplitResult, toUndoSplitResult } from './payments.mappers';
 
 type Json = Record<string, unknown>;
 type TenderInput = z.infer<typeof payOrderSchema>['tenders'][number];
@@ -38,7 +42,10 @@ export function toPayOrderTenders(tenders: TenderInput[]): Json[] {
  */
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly uow: UnitOfWork) {}
+  constructor(
+    private readonly uow: UnitOfWork,
+    private readonly voids: VoidsService,
+  ) {}
 
   async pay(input: z.infer<typeof payOrderSchema>): Promise<PayOrderResult> {
     await this.refuseCashReferences(input.tenders);
@@ -79,6 +86,21 @@ export class PaymentsService {
     return (result.rows as { payment: Json }[]).map((row) => toPayment(row.payment));
   }
 
+  /**
+   * POST /payments/:id/void: public.void_payment, always with a supervisor
+   * authorization. The payment row stays (voided_at) but counts in no total
+   * and is no longer listed; the order is open again to be paid or cancelled.
+   */
+  async void(paymentId: string, input: z.infer<typeof voidPaymentSchema>): Promise<PaymentVoid> {
+    await this.voids.run(
+      'void_payment',
+      input.authorizationId,
+      sql`SELECT public.void_payment(${paymentId}::uuid, ${input.reason}, ${input.reasonText ?? null}, ${input.authorizationId ?? null}::uuid) AS result`,
+    );
+    const { rows } = await this.uow.db.execute(sql`SELECT to_jsonb(v) AS row FROM public.payment_voids v WHERE v.payment_id = ${paymentId}`);
+    return toPaymentVoid((rows[0] as { row: Json }).row);
+  }
+
   async split(parentOrderId: string, input: z.infer<typeof splitOrderSchema>): Promise<SplitOrderResult> {
     const items = input.items.map((item) => ({ order_item_id: item.orderItemId, quantity: item.quantity }));
     return toSplitResult(
@@ -86,8 +108,13 @@ export class PaymentsService {
     );
   }
 
+  /** A split whose lines have void history is not undone: 409 split_has_voids (the void rows reference them). */
   async undoSplit(childOrderId: string): Promise<UndoSplitResult> {
-    return toUndoSplitResult(await this.rpc(sql`SELECT public.undo_split(${childOrderId}::uuid) AS result`));
+    try {
+      return toUndoSplitResult(await this.rpc(sql`SELECT public.undo_split(${childOrderId}::uuid) AS result`));
+    } catch (error) {
+      throw toVoidException(error) ?? error;
+    }
   }
 
   private async rpc(query: SQL): Promise<Json> {

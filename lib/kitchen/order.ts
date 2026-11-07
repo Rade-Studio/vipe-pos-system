@@ -24,8 +24,11 @@ export const pendingItems = (order: Order) => order.items.filter((item) => !isSe
 
 /** One board order, or null when the order has nothing left for the kitchen. */
 export function kitchenOrderOf(order: Order): Order | null {
-  if (!order.items.some((item) => !isServedItem(item))) return null
-  const items = [...order.items].sort((a, b) => addedAtMs(a) - addedAtMs(b))
+  // F3: a cancelled order and a fully voided (0-unit) line are off the board.
+  if (order.status === "cancelled") return null
+  const live = order.items.filter((item) => item.quantity > 0)
+  if (!live.some((item) => !isServedItem(item))) return null
+  const items = [...live].sort((a, b) => addedAtMs(a) - addedAtMs(b))
   return { ...order, items }
 }
 

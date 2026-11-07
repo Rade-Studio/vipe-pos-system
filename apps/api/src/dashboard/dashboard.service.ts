@@ -52,6 +52,7 @@ export class DashboardService {
         FROM public.order_items oi
         JOIN public.orders o ON o.id = oi.order_id, bounds b
        WHERE o.status = 'paid' AND o.created_at >= b.since
+         AND oi.status IS DISTINCT FROM 'cancelled'
        GROUP BY oi.name
        ORDER BY count DESC, oi.name
        LIMIT ${POPULAR_DISHES_LIMIT}`);

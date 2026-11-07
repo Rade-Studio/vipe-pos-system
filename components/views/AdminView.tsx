@@ -6,13 +6,14 @@ import type { Order, Profile } from "@/types"
 import { useOrderStore } from "@/store/useOrderStore"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
-import { deleteOrder, orderDtoFromWire } from "@/lib/api/orders"
-import { conflictMessage } from "@/lib/api/errors"
+import { orderDtoFromWire } from "@/lib/api/orders"
+import type { VoidResult } from "@/components/voids/VoidFlow"
+import { VoidsPage } from "@/components/admin/admin-pages/VoidsPage"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { realtimeService } from "@/lib/api/realtime"
 import { isDeliveryOrder, orderTypeFromRow } from "@/lib/delivery/kitchen"
-import { mergeOrdersList, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
+import { mergeOrdersList, wireRowToPartialOrder, withoutVoidedWireLines, type OrderChange } from "@/lib/realtime/order-merge"
 import { AdminShell } from "@/components/admin/shell/AdminShell"
 import { OverviewPage } from "@/components/admin/admin-pages/OverviewPage"
 import { OrdersPage } from "@/components/admin/admin-pages/OrdersPage"
@@ -136,40 +137,25 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
     })
   }
 
-  const handleDeleteOrder = async (orderId: string) => {
-    try {
-      // Verificar si la orden existe
-      const order = combinedActiveOrders.find((candidate) => candidate.id === orderId)
-      if (!order) return
-
-      // Eliminar la orden: the API deletes it with its items and frees the
-      // table when no other open order remains, in one transaction.
-      await deleteOrder(orderId)
-
-      // Actualizar la lista que se está pintando (la del query, en su cache).
-      // The store copy, if there is one, is dropped by the same patch.
+  /**
+   * F3: a cancellation or void stored through the step sheet. A cancelled order
+   * leaves the list at once (nothing is deleted: it moves to "Canceladas"); an
+   * item void re-reads the list for the new bill.
+   */
+  const handleVoided = (result: VoidResult) => {
+    void queryClient.invalidateQueries({ queryKey: ["orders", "cancelled"] })
+    void queryClient.invalidateQueries({ queryKey: ["audit"] })
+    if (result.action === "order") {
       queryClient.setQueryData<AdminOrder[]>(
         adminOrdersQueryKey,
-        (prev: AdminOrder[] | undefined) => (prev ? withoutOrder(prev, orderId) : prev),
+        (prev: AdminOrder[] | undefined) => (prev ? withoutOrder(prev, result.orderId) : prev),
       )
       useOrderStore.setState((state) => ({
-        orders: withoutOrder(state.orders, orderId),
+        orders: withoutOrder(state.orders, result.orderId),
       }))
-
-      // Mantener este toast ya que es una acción importante iniciada por el usuario
-      toast({
-        title: "Orden eliminada",
-        description: "La orden ha sido eliminada correctamente",
-      })
-    } catch (error) {
-      log.error("Error al eliminar la orden:", { error: String(error) })
-
-      // Mantener este toast ya que es un error importante
-      toast({
-        title: "Error",
-        description: conflictMessage(error, "No se pudo eliminar la orden. Intente nuevamente."),
-        variant: "destructive",
-      })
+      toast({ title: "Orden cancelada", description: "La orden pasó a Canceladas con su motivo." })
+    } else {
+      void refetchActiveOrders()
     }
   }
 
@@ -228,7 +214,8 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
           // INSERT takes them from the shell stores the admin loaded at
           // startup, and the card is named at once (odd/tasks/
           // staging-polish.md S2) instead of "N/A" / "Desconocido".
-          const wire = payload.eventType === "INSERT" ? orderDtoFromWire(payload.new) : null
+          // F3: 0-unit cancelled lines still ride on the wire row; they never paint.
+          const wire = payload.eventType === "INSERT" ? orderDtoFromWire(withoutVoidedWireLines(payload.new)) : null
           const inserted = wire
             ? {
                 ...wire,
@@ -236,7 +223,12 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
                 waiterName: useProfileStore.getState().profiles.find((p) => p.id === wire.waiterId)?.name ?? null,
               }
             : null
-          const conv: OrderChange = {
+          // F3: a cancellation on another device arrives as an UPDATE into
+          // cancelled; it leaves Activas like a DELETE (as on the kitchen board).
+          const cancelled = payload.eventType === "UPDATE" && payload.new?.status === "cancelled"
+          const conv: OrderChange = cancelled
+            ? { eventType: "DELETE", new: null, old: { id: payload.new.id } }
+            : {
             eventType: payload.eventType,
             new: inserted
               ? adminOrderFromDto(inserted)
@@ -305,11 +297,14 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
             realtimeConnected={realtimeConnected}
             newOrdersCount={newOrdersCount}
             onRefresh={handleRefreshActiveOrders}
-            onDelete={handleDeleteOrder}
+            onVoided={handleVoided}
+            onOpenAudit={() => navigate("orders/voids")}
             selectedDate={selectedDate}
             onDateChange={setSelectedDate}
           />
         )
+      case "orders/voids":
+        return <VoidsPage description={meta.description} />
       case "tables":
         return <TablesPage description={meta.description} />
       case "cash":

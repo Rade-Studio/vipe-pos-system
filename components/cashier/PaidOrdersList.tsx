@@ -5,7 +5,8 @@ import { useQuery } from "@tanstack/react-query"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/utils/helpers"
 import { getRegisterPaidOrders } from "@/lib/api/registers"
-import { paidOrderRows } from "@/lib/cashier/paid-orders"
+import { paidOrderRows, type PaidOrderRow } from "@/lib/cashier/paid-orders"
+import { Button } from "@/components/ui/button"
 import { Money } from "./cashier-ui"
 
 export const registerPaidOrdersQueryKey = (registerId: string) => ["register-paid-orders", registerId] as const
@@ -14,7 +15,14 @@ export const registerPaidOrdersQueryKey = (registerId: string) => ["register-pai
  * The "Pagadas" queue tab (T24): the open register's paid orders, newest
  * first. Read when the tab opens and on every return to it.
  */
-export function PaidOrdersList({ registerId }: { registerId: string | null }) {
+export function PaidOrdersList({
+  registerId,
+  onVoid,
+}: {
+  registerId: string | null
+  /** F3: "Anular" a payment through the step sheet. */
+  onVoid?: (row: PaidOrderRow) => void
+}) {
   const { data = [], isLoading, isError } = useQuery({
     queryKey: registerPaidOrdersQueryKey(registerId ?? ""),
     queryFn: () => getRegisterPaidOrders(registerId!),
@@ -74,6 +82,18 @@ export function PaidOrdersList({ registerId }: { registerId: string | null }) {
             </p>
           ) : (
             row.waiterName && <p className="mt-1 truncate text-xs text-muted-fg">{row.waiterName} · sin propina</p>
+          )}
+          {onVoid && (
+            <div className="mt-2 flex justify-end">
+              <Button
+                variant="outline"
+                className="h-11 px-3"
+                aria-label={`Anular pago ${[row.folio, row.place].filter(Boolean).join(" ")}`}
+                onClick={() => onVoid(row)}
+              >
+                Anular
+              </Button>
+            </div>
           )}
         </li>
       ))}

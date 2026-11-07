@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import type React from "react"
+import { createPortal } from "react-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { queryClient } from "@/lib/queryClient"
@@ -40,6 +41,7 @@ vi.mock("@/lib/api/client", () => ({
       if (path === "/api/delivery/active" || path === "/api/delivery/couriers" || path === "/api/orders/completed")
         return { data: [] }
       if (path === "/api/config") return { data: { kitchenLateMinutes: 25, deliveryLateMinutes: 45 } }
+      if (path === "/api/orders/cancelled") return { data: [] }
       throw new Error(`unexpected GET ${path}`)
     },
     DELETE: async (path: string, init?: any) => {
@@ -64,10 +66,29 @@ vi.mock("@/lib/api/realtime", () => ({
 }))
 
 /** T28: the Órdenes reads that name the rows (not the active-orders read itself). */
-const ORDERS_PAGE_READS = new Set(["/api/delivery/active", "/api/delivery/couriers", "/api/config", "/api/orders/completed"])
+const ORDERS_PAGE_READS = new Set([
+  "/api/delivery/active",
+  "/api/delivery/couriers",
+  "/api/config",
+  "/api/orders/completed",
+  // F3: the "Canceladas" tab count.
+  "/api/orders/cancelled",
+])
 
 const toastMock = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
+// F3: the step sheet has its own suite; here only what the view does once a void is stored.
+vi.mock("@/components/voids/VoidFlow", () => ({
+  VoidFlow: (props: { target: any; onDone?: (r: unknown) => void }) =>
+    props.target
+      ? createPortal(
+          <button type="button" onClick={() => props.onDone?.({ action: props.target.action, orderId: props.target.orderId })}>
+            Simular anulación
+          </button>,
+          document.body,
+        )
+      : null,
+}))
 
 // The panel renders every other admin screen inside its tabs; they are covered
 // by their own suites, so they are stubbed here to keep this one about the
@@ -149,13 +170,13 @@ afterEach(() => {
 describe("ActiveOrdersGrid", () => {
   it("shows skeletons only before the first data arrives", () => {
     const { rerender } = render(
-      wrap(<ActiveOrdersGrid orders={[]} isLoading onDelete={() => {}} onRefresh={() => {}} />),
+      wrap(<ActiveOrdersGrid orders={[]} isLoading onVoided={() => {}} onRefresh={() => {}} />),
     )
 
     expect(screen.getByTestId("admin-orders-skeleton")).toBeInTheDocument()
 
     rerender(
-      wrap(<ActiveOrdersGrid orders={[order({ id: "o-1" })]} isLoading onDelete={() => {}} onRefresh={() => {}} />),
+      wrap(<ActiveOrdersGrid orders={[order({ id: "o-1" })]} isLoading onVoided={() => {}} onRefresh={() => {}} />),
     )
 
     expect(screen.getByTestId("admin-order-o-1")).toBeInTheDocument()
@@ -167,7 +188,7 @@ describe("ActiveOrdersGrid", () => {
         <ActiveOrdersGrid
           orders={[order({ id: "o-1" }), order({ id: "o-2" })]}
           isLoading={false}
-          onDelete={() => {}}
+          onVoided={() => {}}
           onRefresh={() => {}}
         />,
       ),
@@ -185,7 +206,7 @@ describe("ActiveOrdersGrid", () => {
     vi.setSystemTime(now)
 
     const orders = [order({ id: "fresh", createdAt: new Date(now - 5_000) }), order({ id: "old" })]
-    render(wrap(<ActiveOrdersGrid orders={orders} isLoading={false} onDelete={() => {}} onRefresh={() => {}} />))
+    render(wrap(<ActiveOrdersGrid orders={orders} isLoading={false} onVoided={() => {}} onRefresh={() => {}} />))
 
     expect(screen.getByTestId("admin-order-fresh")).toHaveClass("animate-pulse-light")
     expect(screen.getByTestId("admin-order-old")).not.toHaveClass("animate-pulse-light")
@@ -207,7 +228,7 @@ describe("ActiveOrdersGrid", () => {
         <ActiveOrdersGrid
           orders={[order({ id: "d-1", orderType: "delivery", tableId: "" })]}
           isLoading={false}
-          onDelete={() => {}}
+          onVoided={() => {}}
           onRefresh={() => {}}
         />,
       ),
@@ -219,7 +240,7 @@ describe("ActiveOrdersGrid", () => {
 
   it("offers the empty-state refresh when there is nothing to show", async () => {
     const onRefresh = vi.fn()
-    render(wrap(<ActiveOrdersGrid orders={[]} isLoading={false} onDelete={() => {}} onRefresh={onRefresh} />))
+    render(wrap(<ActiveOrdersGrid orders={[]} isLoading={false} onVoided={() => {}} onRefresh={onRefresh} />))
 
     expect(screen.getByText("No hay órdenes activas")).toBeInTheDocument()
     await act(async () => {
@@ -305,31 +326,15 @@ describe("AdminView — requests issued while a tab is open", () => {
     )
   })
 
-  it("deletes through DELETE /orders/:id and leaves the table to the server", async () => {
+  it("a cancellation stored through the step sheet takes the order off the list", async () => {
     state.api.orders = [activeOrderDto("o-1")]
     render(wrap(<AdminView profile={profile} onChangeProfile={() => {}} authRole="admin" />))
     await openSection("orders")
-    await deleteFromGrid()
+    await cancelFromGrid()
 
-    expect(state.apiCalls.filter((call) => call.method === "DELETE")).toEqual([
-      { method: "DELETE", path: "/api/orders/{id}", init: { params: { path: { id: "o-1" } } } },
-    ])
-    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden eliminada" }))
+    expect(state.apiCalls.filter((call) => call.method === "DELETE")).toEqual([])
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden cancelada" }))
     await waitFor(() => expect(screen.queryByTestId("admin-order-o-1")).toBeNull())
-  })
-
-  it("shows the API message when the delete is refused with 409", async () => {
-    const { ApiError } = await import("@/lib/api/errors")
-    state.api.orders = [activeOrderDto("o-1")]
-    state.api.deleteError = new ApiError(409, "Conflict", "Order is paid")
-    render(wrap(<AdminView profile={profile} onChangeProfile={() => {}} authRole="admin" />))
-    await openSection("orders")
-    await deleteFromGrid()
-
-    expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Error", description: "Order is paid", variant: "destructive" }),
-    )
-    expect(screen.getByTestId("admin-order-o-1")).toBeInTheDocument()
   })
 })
 
@@ -395,6 +400,16 @@ describe("AdminView — realtime on the Órdenes tab (S3)", () => {
     expect(await screen.findByTestId("admin-order-o-2")).toBeInTheDocument()
     expect(await openRow("o-2")).toHaveTextContent("Bandeja paisa")
     expect(screen.getByTestId("admin-order-o-1")).toBeInTheDocument()
+  })
+
+  it("F3: a realtime INSERT never paints a 0-unit cancelled line", async () => {
+    await openOrdersWith([activeOrderDto("o-1")])
+    const row = insertedRow("o-2")
+    row.order_items.push({ ...row.order_items[0], id: "i-0", name: "Limonada", quantity: 0, status: "cancelled" })
+    await emit({ eventType: "INSERT", new: row, old: {} })
+    await screen.findByTestId("admin-order-o-2")
+    const cached = (queryClient.getQueryData(["orders", "admin"]) as any[]).find((o) => o.id === "o-2")
+    expect(cached.items.map((item: { id: string }) => item.id)).toEqual(["i-1"])
   })
 
   it("shows the table number and waiter name of a realtime INSERT at once (S2)", async () => {
@@ -486,17 +501,41 @@ async function openRow(id: string) {
   return screen.findByRole("dialog")
 }
 
-/** T28: "Cancelar orden…" in the detail panel, type the number, then "Cancelar orden #1". */
-async function deleteFromGrid() {
+/** F3: "Cancelar orden" in the detail panel opens the step sheet; its stored result is simulated. */
+async function cancelFromGrid() {
   const panel = await openRow("o-1")
   await act(async () => {
-    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar orden…" }))
+    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar orden" }))
   })
-  fireEvent.change(within(panel).getByLabelText("Escribe 1 para confirmar"), { target: { value: "1" } })
   await act(async () => {
-    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar orden #1" }))
+    fireEvent.click(screen.getByRole("button", { name: "Simular anulación" }))
   })
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
 }
+
+describe("F3 — a cancellation made on another device", () => {
+  it("a realtime UPDATE into cancelled takes the order off Activas", async () => {
+    state.api.orders = [activeOrderDto("o-1"), activeOrderDto("o-2")]
+    render(wrap(<AdminView profile={{ id: "p-1", name: "Admin", role: "admin" }} onChangeProfile={() => {}} authRole="admin" />))
+    await openSection("orders")
+    await screen.findByTestId("admin-order-o-1")
+    await act(async () => {
+      state.realtime.subscribeToOrders?.({ eventType: "UPDATE", new: { id: "o-1", status: "cancelled", order_items: [] }, old: { id: "o-1" } })
+    })
+    await waitFor(() => expect(screen.queryByTestId("admin-order-o-1")).not.toBeInTheDocument())
+    expect(screen.getByTestId("admin-order-o-2")).toBeInTheDocument()
+  })
+
+  it("closes the detail panel that showed the cancelled order", async () => {
+    state.api.orders = [activeOrderDto("o-1"), activeOrderDto("o-2")]
+    render(wrap(<AdminView profile={{ id: "p-1", name: "Admin", role: "admin" }} onChangeProfile={() => {}} authRole="admin" />))
+    await openSection("orders")
+    const panel = await openRow("o-1")
+    await act(async () => {
+      state.realtime.subscribeToOrders?.({ eventType: "UPDATE", new: { id: "o-1", status: "cancelled", order_items: [] }, old: { id: "o-1" } })
+    })
+    await waitFor(() => expect(panel).not.toBeInTheDocument())
+  })
+})

@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react"
-import { Bike, Check, Clock, MapPin, ReceiptText, StickyNote, Trash2, TriangleAlert, X } from "lucide-react"
+import type { ReactNode } from "react"
+import { Ban, Bike, Check, Clock, MapPin, ReceiptText, StickyNote, Undo2, X } from "lucide-react"
 import { Chip, Money, focusRing } from "@/components/cashier/cashier-ui"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/utils/helpers"
 import type { AdminOrderRow } from "@/lib/admin/orders"
+import type { VoidLine, VoidTarget } from "@/components/voids/flow"
 import { OrderStatusPill, clockTime } from "./order-ui"
 
 interface OrderDetailPanelProps {
@@ -15,11 +16,8 @@ interface OrderDetailPanelProps {
   titleId: string
   /** Shown in the overlay (below 1280 px): "Cerrar detalle". */
   onClose?: () => void
-  /** The page's existing cancel (DELETE /orders/:id), unchanged. */
-  onCancel: (orderId: string) => void | Promise<void>
-  /** The confirmation open/closed, owned by the caller so Escape can close it first. */
-  confirming: boolean
-  onConfirmingChange: (open: boolean) => void
+  /** F3: open the step sheet (design/anulaciones/01) for this order. */
+  onVoid: (target: VoidTarget) => void
 }
 
 function Meta({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean }) {
@@ -33,48 +31,23 @@ function Meta({ label, children, wide }: { label: string; children: ReactNode; w
 
 const missing = (text: string) => <span className="text-muted-fg">{text}</span>
 
-/** "#128 · En cocina", place, people, items with their state, totals and the guarded cancel. */
-export function OrderDetailPanel({ row, titleId, onClose, onCancel, confirming, onConfirmingChange }: OrderDetailPanelProps) {
+/** "#128 · En cocina", place, people, items with their state, totals, "Anular plato" and "Cancelar orden". */
+export function OrderDetailPanel({ row, titleId, onClose, onVoid }: OrderDetailPanelProps) {
   const { order } = row
   const items = order.items ?? []
   const count = items.reduce((sum, item) => sum + item.quantity, 0)
   const pending = items.reduce((sum, item) => sum + (item.status === "served" ? 0 : item.quantity), 0)
-  const served = count - pending
   const opened = `${clockTime(order.createdAt)} · hace ${row.minutes} min`
   const bill = order.bill
 
-  const token = row.number !== null ? String(row.number) : row.label.slice(1)
-  const [typed, setTyped] = useState("")
-  const [sending, setSending] = useState(false)
-  const inputId = useId()
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const wasConfirming = useRef(confirming)
-
-  // Opening the confirmation focuses its input; closing it gives the focus back to "Cancelar orden…".
-  useEffect(() => {
-    if (confirming) inputRef.current?.focus()
-    else if (wasConfirming.current) triggerRef.current?.focus()
-    wasConfirming.current = confirming
-    if (!confirming) setTyped("")
-  }, [confirming])
-
-  // Another order selected: start over.
-  useEffect(() => {
-    setTyped("")
-  }, [row.id])
-
-  const matches = typed.trim() === token
-
-  const confirm = async () => {
-    if (!matches || sending) return
-    setSending(true)
-    try {
-      await onCancel(order.id)
-    } finally {
-      setSending(false)
-    }
-  }
+  const voidLabel = row.isDelivery ? row.label : `${row.label} · ${row.place}`
+  const lines: VoidLine[] = items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    price: item.price,
+    quantity: item.quantity,
+    comments: item.comments,
+  }))
 
   return (
     <div className="flex flex-col gap-5">
@@ -214,74 +187,44 @@ export function OrderDetailPanel({ row, titleId, onClose, onCancel, confirming, 
         </div>
       </dl>
 
-      {confirming ? (
-        <section
-          role="group"
-          aria-labelledby={`${inputId}-title`}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.stopPropagation()
-              onConfirmingChange(false)
-            }
-          }}
-          className="space-y-3 rounded-card border border-status-danger-line bg-status-danger-bg p-4 text-status-danger-fg"
-        >
-          <p id={`${inputId}-title`} className="flex items-center gap-2 font-bold">
-            <TriangleAlert aria-hidden className="h-4 w-4 flex-none" />
-            ¿Cancelar la orden {row.label}?
-          </p>
-          <p className="text-sm">
-            {row.place} · {formatCurrency(bill.total)}.{" "}
-            {served > 0 && `${served} de ${count} platos ya se sirvieron. `}
-            Esta acción no se puede deshacer.
-          </p>
-          <label htmlFor={inputId} className="block text-sm">
-            Escribe <b className="tabular-nums">{token}</b> para confirmar
-          </label>
-          <input
-            ref={inputRef}
-            id={inputId}
-            inputMode="numeric"
-            autoComplete="off"
-            value={typed}
-            onChange={(event) => setTyped(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void confirm()
-            }}
-            className={cn("h-11 w-full rounded-lg border border-line-strong bg-surface px-3 text-base text-fg", focusRing)}
-          />
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="outline" className="min-h-[44px] px-3" onClick={() => onConfirmingChange(false)}>
-              Volver
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="min-h-[44px] px-3"
-              disabled={!matches || sending}
-              onClick={() => void confirm()}
-            >
-              <Trash2 aria-hidden className="mr-1.5 h-4 w-4" />
-              Cancelar orden {row.label}
-            </Button>
-          </div>
-        </section>
+      {row.isDelivery ? (
+        <p className="flex items-start gap-2 border-t border-line pt-4 text-xs text-muted-fg">
+          <ReceiptText aria-hidden className="mt-0.5 h-3.5 w-3.5 flex-none" />
+          Los domicilios se cancelan desde Domicilios.
+        </p>
+      ) : order.status === "paid" ? (
+        <p className="flex items-start gap-2 border-t border-line pt-4 text-xs text-muted-fg">
+          <ReceiptText aria-hidden className="mt-0.5 h-3.5 w-3.5 flex-none" />
+          Para corregir una orden pagada, anula su pago en Caja → Pagadas.
+        </p>
       ) : (
-        <section aria-label="Acción irreversible" className="space-y-2 border-t border-line pt-4">
+        <section aria-label="Anular o cancelar" className="space-y-2 border-t border-line pt-4">
           <p className="flex items-start gap-2 text-xs text-muted-fg">
             <ReceiptText aria-hidden className="mt-0.5 h-3.5 w-3.5 flex-none" />
-            Cancelar quita la orden de cocina y de caja. Pide confirmación.
+            Nada se borra: queda en Anulaciones con su motivo y quién autorizó.
           </p>
-          <Button
-            ref={triggerRef}
-            type="button"
-            variant="outline"
-            className="min-h-[44px] border-status-danger-line text-status-danger-fg hover:bg-status-danger-bg hover:text-status-danger-fg"
-            onClick={() => onConfirmingChange(true)}
-          >
-            <Trash2 aria-hidden className="mr-1.5 h-4 w-4" />
-            Cancelar orden…
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {lines.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-[44px]"
+                onClick={() => onVoid({ action: "item", orderId: order.id, label: voidLabel, lines })}
+              >
+                <Undo2 aria-hidden className="mr-1.5 h-4 w-4" />
+                Anular plato
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-[44px] border-status-danger-line text-status-danger-fg hover:bg-status-danger-bg hover:text-status-danger-fg"
+              onClick={() => onVoid({ action: "order", orderId: order.id, label: voidLabel, lines, total: bill.total })}
+            >
+              <Ban aria-hidden className="mr-1.5 h-4 w-4" />
+              Cancelar orden
+            </Button>
+          </div>
         </section>
       )}
     </div>

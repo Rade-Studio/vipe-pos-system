@@ -148,7 +148,7 @@ export class AuthController {
   @ApiUnprocessableEntityResponse({ description: 'Unknown action or malformed PIN.' })
   async authorize(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
     const input = parsePinInput(authorizeSchema, body);
-    this.sendAfterCommit(res, 201, await this.pins.authorize(req.auth!, input.action, input.pin, input.profileId));
+    this.sendAfterCommit(res, 201, await this.pins.authorize(req.auth!, input.action, input.pin, input.profileId, input));
   }
 
   /**

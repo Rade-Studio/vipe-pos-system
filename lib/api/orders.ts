@@ -25,6 +25,10 @@ export type StockShortage = Schemas["StockShortage"]
 export type DishPrice = Schemas["DishPrice"]
 /** PATCH /orders/:id: guests and/or the order note; null (or a blank note) clears. */
 export type OrderDetails = Schemas["UpdateOrderDetailsRequest"]
+/** F1: reason (fixed list), optional text and the supervisor authorization of a cancellation. */
+export type CancelOrderBody = Schemas["CancelOrderRequest"]
+export type VoidOrderItemsBody = Schemas["VoidOrderItemsRequest"]
+export type CancelledOrderDto = Schemas["CancelledOrder"]
 
 /** The contract marks the defaulted fields as required; the API does not. */
 export type CreateOrderBody = Omit<Schemas["CreateOrderRequest"], "orderType" | "force"> & {
@@ -245,7 +249,36 @@ export async function serveItems(orderId: string, itemIds: string[]): Promise<Or
   return required(data)
 }
 
-/** Admin: deletes the order and its items; frees the table when no other open order remains. 409 when paid. */
-export async function deleteOrder(orderId: string): Promise<void> {
-  await api.DELETE("/api/orders/{id}", byId(orderId))
+/**
+ * F1: the order is cancelled, never deleted (reason, actor, supervisor and
+ * bill are stored) and the table freed when no other open order remains. A
+ * supervisor authorization (`authorizeSupervisor`, action cancel_order) is
+ * required when the order has items or payments; refusals carry a `code`
+ * (`voidRefusalOf`): 403 authorization_required / authorization_invalid /
+ * self_authorization_not_allowed, 409 order_paid / order_cancelled.
+ */
+export async function cancelOrder(orderId: string, body: CancelOrderBody): Promise<CancelledOrderDto> {
+  const { data } = await api.POST("/api/orders/{id}/cancel", { ...byId(orderId), body })
+  return required(data)
+}
+
+/** F1: voids units of lines (authorization void_item: every server line was sent); returns the order with the bill recomputed. */
+export async function voidOrderItems(orderId: string, body: VoidOrderItemsBody): Promise<OrderDto> {
+  const { data } = await api.POST("/api/orders/{id}/items/void", { ...byId(orderId), body })
+  return required(data)
+}
+
+/** Admin: orders cancelled on `date` (YYYY-MM-DD, restaurant day) with the bill at that moment and who cancelled. */
+export async function getCancelledOrders(date: string): Promise<CancelledOrderDto[]> {
+  const { data } = await api.GET("/api/orders/cancelled", { params: { query: { date } } })
+  return required(data)
+}
+
+/**
+ * Old call kept: DELETE is now the same audited cancellation as `cancelOrder`.
+ * Without a body only an order with nothing on it is cancelled; otherwise 403
+ * authorization_required.
+ */
+export async function deleteOrder(orderId: string, body?: CancelOrderBody): Promise<void> {
+  await api.DELETE("/api/orders/{id}", body ? { ...byId(orderId), body } : byId(orderId))
 }

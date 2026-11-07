@@ -45,7 +45,13 @@ export const PIN_MESSAGES = {
   actingRequired: 'Identifícate con tu PIN para registrar el pedido',
   opener: 'Solo un administrador o cajero puede abrir una terminal compartida',
   authorization: 'La autorización del supervisor no es válida, expiró o ya fue usada',
+  target: 'Indica la orden o el pago que se va a anular',
 } as const;
+
+/** What an authorization is for (F1): an order for cancel_order and void_item, a payment for void_payment. */
+export const AUTHORIZATION_TARGETS = ['order', 'payment'] as const;
+export type AuthorizationTarget = (typeof AUTHORIZATION_TARGETS)[number];
+export const targetTypeOf = (action: SupervisorAction): AuthorizationTarget => (action === 'void_payment' ? 'payment' : 'order');
 
 /**
  * Easy to guess: one repeated digit (1111), a run up or down where 9 wraps
@@ -80,7 +86,9 @@ export const authorizeSchema = strict({
   pin: enteredPin,
   action: z.enum(SUPERVISOR_ACTIONS, { error: PIN_MESSAGES.action }),
   profileId: z.guid({ error: PIN_MESSAGES.profile }).optional(),
-});
+  targetType: z.enum(AUTHORIZATION_TARGETS, { error: PIN_MESSAGES.target }),
+  targetId: z.guid({ error: PIN_MESSAGES.target }),
+}).refine((input) => input.targetType === targetTypeOf(input.action), { error: PIN_MESSAGES.target, path: ['targetType'] });
 
 /** 422 with the first issue's Spanish text alone, as the staff forms expect. */
 export function parsePinInput<T extends z.ZodType>(schema: T, input: unknown): z.infer<T> {

@@ -42,6 +42,8 @@ describe("paidOrderRows", () => {
     expect(rows.map((r) => r.key)).toEqual(["p-1", "p-d", "p-old"])
     expect(rows[0]).toEqual({
       key: "p-1",
+      // F3: the order the payment belongs to (its void reopens it).
+      orderId: "o-1",
       folio: "#128",
       place: "Mesa 12 · Terraza",
       waiterName: "Carlos Pérez",

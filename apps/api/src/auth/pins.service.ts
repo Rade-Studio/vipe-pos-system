@@ -6,7 +6,7 @@ import { ENV, type Env } from '../config/env';
 import { UnitOfWork } from '../db/unit-of-work';
 import type { AuthContext, CallerProfile } from './auth-context';
 import { PasswordsService } from './passwords.service';
-import { ACTING_ROLES, ACTING_TTL_MS, PIN_MESSAGES, SUPERVISOR_ROLES, type SupervisorAction } from './pins';
+import { ACTING_ROLES, ACTING_TTL_MS, type AuthorizationTarget, PIN_MESSAGES, SUPERVISOR_ROLES, type SupervisorAction } from './pins';
 import { TokensService } from './tokens.service';
 
 /** Counters an attempt claims (private.claim_pin_attempt, 0017). */
@@ -38,6 +38,8 @@ export interface ActingIdentity {
 export interface SupervisorAuthorization {
   authorizationId: string;
   action: SupervisorAction;
+  targetType: AuthorizationTarget;
+  targetId: string;
   supervisor: { id: string; name: string };
   expiresAt: string;
 }
@@ -193,7 +195,8 @@ export class PinsService {
     auth: AuthContext,
     action: SupervisorAction,
     pin: string,
-    profileId?: string,
+    profileId: string | undefined,
+    target: { targetType: AuthorizationTarget; targetId: string },
   ): Promise<SupervisorAuthorization | PinRefusal> {
     let supervisorId: string | undefined;
     if (profileId) {
@@ -229,7 +232,8 @@ export class PinsService {
       supervisorId = match!.profile_id;
     }
     const [created] = await this.rows<{ id: string }>(sql`
-      SELECT private.create_supervisor_authorization(${supervisorId}::uuid, ${action}, ${this.clock.now().toISOString()}::timestamptz) AS id`);
+      SELECT private.create_target_authorization(${supervisorId}::uuid, ${action}, ${this.clock.now().toISOString()}::timestamptz,
+                                                 ${target.targetType}, ${target.targetId}::uuid) AS id`);
     // A row written by a function is not visible to the statement that called it: read it next.
     const [row] = await this.rows<{ id: string; expires_at: Date | string; name: string }>(sql`
       SELECT a.id, a.expires_at, p.full_name AS name
@@ -239,6 +243,8 @@ export class PinsService {
     return {
       authorizationId: row.id,
       action,
+      targetType: target.targetType,
+      targetId: target.targetId,
       supervisor: { id: supervisorId, name: row.name },
       expiresAt: new Date(row.expires_at).toISOString(),
     };

@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  Ban,
   BookOpen,
   Boxes,
   Building2,
@@ -28,6 +29,7 @@ import type { AdminSectionId } from "@/lib/admin/navigation"
 export const SECTION_ICONS: Record<AdminSectionId, LucideIcon> = {
   overview: LayoutDashboard,
   orders: ReceiptText,
+  "orders/voids": Ban,
   tables: Table2,
   cash: Wallet,
   menu: BookOpen,

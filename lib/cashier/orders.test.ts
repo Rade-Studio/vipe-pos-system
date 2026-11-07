@@ -277,3 +277,32 @@ describe("toCashierOrder (T24 review: include=waiter)", () => {
     expect(toCashierOrder(dto)).toEqual(toOrder(dto))
   })
 })
+
+describe("F3: voided lines leave the cashier live", () => {
+  const list = [order({ id: "o-1" })]
+  const line = (id: string, quantity: number, status = "kitchen") => ({ id, name: id, price: 5_000, quantity, comments: null, status })
+
+  it("an UPDATE drops the 0-unit cancelled lines it carries", () => {
+    const next = applyCashierOrderEvent(list, {
+      eventType: "UPDATE",
+      new: { id: "o-1", status: "kitchen", order_items: [line("keep", 1), line("gone", 0, "cancelled")] } as never,
+    })
+    expect(next[0].items.map((i) => i.id)).toEqual(["keep"])
+  })
+
+  it("an UPDATE whose every line was voided empties the order's lines", () => {
+    const next = applyCashierOrderEvent(list, {
+      eventType: "UPDATE",
+      new: { id: "o-1", status: "kitchen", order_items: [line("gone", 0, "cancelled")] } as never,
+    })
+    expect(next[0].items).toEqual([])
+  })
+
+  it("an INSERT paints only the live lines", () => {
+    const next = applyCashierOrderEvent([], {
+      eventType: "INSERT",
+      new: row({ id: "o-2", order_items: [line("keep", 2), line("gone", 0, "cancelled")] as never }),
+    })
+    expect(next[0].items.map((i) => [i.id, i.quantity])).toEqual([["keep", 2]])
+  })
+})

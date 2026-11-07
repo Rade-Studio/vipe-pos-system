@@ -152,3 +152,21 @@ export function wireRowToPartialOrder(dbRow: unknown): Partial<Order> | null {
     ...(row.notes !== undefined ? { notes: typeof row.notes === "string" ? row.notes : undefined } : {}),
   }
 }
+
+/**
+ * F3: a void lowers a line's quantity and a fully voided line (quantity 0)
+ * becomes status `cancelled`; the API reads leave those lines out, but the
+ * realtime rows still carry them (odd/tasks/fase3-operacion.md L15). The wire
+ * mapper reads a 0 quantity as 1, so they are dropped from the raw
+ * `order_items` BEFORE mapping. Returns the same row when nothing is dropped.
+ */
+export function withoutVoidedWireLines<T>(row: T): T {
+  if (row === null || typeof row !== "object") return row
+  const lines = (row as { order_items?: unknown }).order_items
+  if (!Array.isArray(lines)) return row
+  const live = lines.filter((line) => {
+    const { quantity, status } = (line ?? {}) as { quantity?: unknown; status?: unknown }
+    return status !== "cancelled" && !(Number(quantity) <= 0)
+  })
+  return live.length === lines.length ? row : { ...row, order_items: live }
+}

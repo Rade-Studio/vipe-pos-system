@@ -272,13 +272,18 @@ SELECT is(
   'true'::text,
   'RLS is enabled on payment_tenders');
 
--- One payment settles one order: the unique index is the idempotency the app
--- needs (a retry of the same checkout cannot double-pay an order).
+-- One live payment settles one order: the unique index is the idempotency the
+-- app needs (a retry of the same checkout cannot double-pay an order). Since
+-- 0018 it is partial, so an order is paid again after its payment is voided
+-- (behaviour pinned by 280_audited_voids).
 SELECT is(
-  (SELECT count(*)::bigint FROM pg_constraint
-    WHERE conrelid = to_regclass('public.payments')
-      AND contype = 'u' AND pg_get_constraintdef(oid) LIKE '%(order_id)%'), 1::bigint,
-  'payments is unique per order');
+  (SELECT count(*)::bigint FROM pg_index i
+    WHERE i.indrelid = to_regclass('public.payments')
+      AND i.indexrelid = to_regclass('public.payments_order_id_live_key')
+      AND i.indisunique
+      AND pg_get_indexdef(i.indexrelid) LIKE '%(order_id)%'
+      AND pg_get_expr(i.indpred, i.indrelid) = '(voided_at IS NULL)'), 1::bigint,
+  'payments is unique per order among live payments');
 
 SELECT is(
   (SELECT count(*)::bigint FROM pg_constraint

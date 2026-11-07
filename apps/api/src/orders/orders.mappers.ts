@@ -1,6 +1,7 @@
+import { authorizer, reasonOf, staffRef } from '../audit/audit.mappers';
 import { toIso } from '../common/validation';
 import { toLegacyTransaction, toPayment } from '../payments/payments.mappers';
-import type { CompletedOrder, Order, OrderItem, OrderStatus, OrderType, StockShortage } from './orders.dto';
+import type { CancelledOrder, CompletedOrder, Order, OrderItem, OrderStatus, OrderType, StockShortage } from './orders.dto';
 
 type Json = Record<string, unknown>;
 
@@ -75,6 +76,31 @@ export const toCompletedOrder = (row: CompletedOrderRow): CompletedOrder => ({
   payment: row.payment ? toPayment(row.payment) : null,
   legacyTransactions: row.legacy_transactions.map(toLegacyTransaction),
 });
+
+/** A row of OrdersService.cancelledRows: an OrderRow plus the order_cancellations row as jsonb. */
+export interface CancelledOrderRow extends OrderRow {
+  cancellation: Json;
+}
+
+export const toCancelledOrder = (row: CancelledOrderRow): CancelledOrder => {
+  const c = row.cancellation;
+  return {
+    ...toOrder(row, { withTable: true, withWaiter: true }),
+    cancellation: {
+      ...reasonOf(c),
+      cancelledBy: staffRef(c.cancelled_by, c.cancelled_by_name),
+      authorizedBy: authorizer(c.authorized_by, c.authorized_by_name),
+      selfAuthorized: c.self_authorized === true,
+      previousStatus: String(c.previous_status),
+      subtotal: num(c.subtotal),
+      tax: num(c.tax),
+      tip: num(c.tip),
+      total: num(c.total),
+      sentItems: num(c.sent_items),
+      cancelledAt: time(c.cancelled_at)!,
+    },
+  };
+};
 
 /** check_dishes_stock shortage (snake_case jsonb) as the 409 body entry. */
 export const toShortage = (row: Json): StockShortage => ({

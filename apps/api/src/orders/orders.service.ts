@@ -1,24 +1,40 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
+import { VoidsService } from '../audit/voids.service';
 import { DishesService } from '../catalog/dishes.service';
 import { UnitOfWork } from '../db/unit-of-work';
 import { paymentJson } from '../payments/payments.mappers';
 import { ConfigService } from '../settings/config.service';
 import {
   type addOrderItemsSchema,
+  type cancelOrderSchema,
+  type CancelledOrder,
   type CompletedOrder,
   type createOrderSchema,
+  DELETE_DEFAULT_REASON,
   type Order,
   ORDER_LIST_LIMIT,
   type OrderStatus,
   type StockShortage,
   type updateOrderDetailsSchema,
+  type voidOrderItemsSchema,
 } from './orders.dto';
-import { type CompletedOrderRow, type OrderRow, toCompletedOrder, toOrder, toShortage } from './orders.mappers';
+import {
+  type CancelledOrderRow,
+  type CompletedOrderRow,
+  type OrderRow,
+  toCancelledOrder,
+  toCompletedOrder,
+  toOrder,
+  toShortage,
+} from './orders.mappers';
 
 type ItemInput = z.infer<typeof createOrderSchema>['items'][number];
 type OrderDetails = z.infer<typeof updateOrderDetailsSchema>;
+type CancelInput = z.infer<typeof cancelOrderSchema>;
+/** Live lines: a fully voided line (quantity 0, status cancelled) is history, not part of the order. */
+const LIVE_ITEMS = sql`oi.status IS DISTINCT FROM 'cancelled'`;
 /** Order statuses that keep a table busy. */
 const OPEN_STATUSES = ['active', 'kitchen', 'delivered'];
 /** Roles a profile must have to own an order or a table. */
@@ -43,6 +59,7 @@ export class OrdersService {
     private readonly uow: UnitOfWork,
     private readonly config: ConfigService,
     private readonly dishes: DishesService,
+    private readonly voids: VoidsService,
   ) {}
 
   async list(filter: OrderListFilter): Promise<Order[]> {
@@ -71,7 +88,7 @@ export class OrdersService {
              NULL AS table_number,
              NULL AS waiter_name,
              coalesce((SELECT jsonb_agg(to_jsonb(oi) ORDER BY oi.added_at, oi.created_at, oi.id)
-                         FROM public.order_items oi WHERE oi.order_id = o.id), '[]'::jsonb) AS items,
+                         FROM public.order_items oi WHERE oi.order_id = o.id AND ${LIVE_ITEMS}), '[]'::jsonb) AS items,
              (SELECT ${paymentJson} FROM public.payments p WHERE p.order_id = o.id) AS payment,
              CASE WHEN EXISTS (SELECT 1 FROM public.payments p WHERE p.order_id = o.id) THEN '[]'::jsonb
                   ELSE coalesce((SELECT jsonb_agg(to_jsonb(pt) ORDER BY pt.timestamp, pt.id)
@@ -211,22 +228,73 @@ export class OrdersService {
   }
 
   /**
-   * DELETE /orders/:id (admin): delete_order_with_items; the table is freed
-   * only when no other open order remains on it. Paid orders are history.
+   * POST /orders/:id/cancel: public.cancel_order. Never deletes: the order
+   * becomes cancelled with its reason, actor, supervisor and bill, and the
+   * table is freed when no other open order remains. Needs the supervisor
+   * authorization (cancel_order) when the order has a live line or any payment.
    */
-  async remove(id: string): Promise<void> {
-    const order = await this.lockOrder(id);
-    if (order.status === 'paid') {
-      throw new ConflictException('Order is paid');
-    }
-    await this.uow.db.execute(sql`SELECT public.delete_order_with_items(${id}::uuid)`);
-    if (order.table_id) {
-      await this.uow.db.execute(sql`
-        UPDATE public.tables SET status = 'available', waiter_id = NULL, updated_at = now()
-         WHERE id = ${order.table_id}
-           AND NOT EXISTS (SELECT 1 FROM public.orders o
-                            WHERE o.table_id = ${order.table_id} AND o.status = ANY(${sql.param(OPEN_STATUSES)}::text[]))`);
-    }
+  async cancel(id: string, input: CancelInput): Promise<CancelledOrder> {
+    await this.voids.run(
+      'cancel_order',
+      input.authorizationId,
+      sql`SELECT public.cancel_order(${id}::uuid, ${input.reason}, ${input.reasonText ?? null}, ${input.authorizationId ?? null}::uuid) AS result`,
+    );
+    const [row] = await this.cancelledRows(sql`o.id = ${id}`);
+    return toCancelledOrder(row);
+  }
+
+  /**
+   * DELETE /orders/:id: kept for old callers, now the audited cancellation.
+   * Without a body it cancels only an order with nothing on it (reason
+   * DELETE_DEFAULT_REASON); an order with a live line or a payment answers
+   * 403 authorization_required unless the body brings the reason and the
+   * authorization, exactly as POST /orders/:id/cancel.
+   */
+  async remove(id: string, input: CancelInput | undefined): Promise<void> {
+    await this.cancel(id, input ?? DELETE_DEFAULT_REASON);
+  }
+
+  /**
+   * POST /orders/:id/items/void: public.void_order_items. Each line loses the
+   * voided units (0 = cancelled, left out of `items`), the bill is
+   * recomputed, and a kitchen order with no kitchen line left is delivered.
+   * Stock is not given back (a sent dish was prepared; the void records it).
+   */
+  async voidItems(id: string, input: z.infer<typeof voidOrderItemsSchema>): Promise<Order> {
+    const items = input.items.map((item) => ({ order_item_id: item.itemId, quantity: item.quantity }));
+    await this.voids.run(
+      'void_item',
+      input.authorizationId,
+      sql`SELECT public.void_order_items(${id}::uuid, ${JSON.stringify(items)}::jsonb, ${input.reason},
+                                        ${input.reasonText ?? null}, ${input.authorizationId ?? null}::uuid) AS result`,
+    );
+    return this.get(id);
+  }
+
+  /** GET /orders/cancelled?date=: orders cancelled that day (restaurant timezone), newest first, with their amounts. */
+  async cancelledOn(date: string): Promise<CancelledOrder[]> {
+    const rows = await this.cancelledRows(sql`
+      c.cancelled_at >= (${date}::date::timestamp AT TIME ZONE r.timezone)
+      AND c.cancelled_at < ((${date}::date + 1)::timestamp AT TIME ZONE r.timezone)`);
+    return rows.map(toCancelledOrder);
+  }
+
+  private cancelledRows(where: SQL): Promise<CancelledOrderRow[]> {
+    return this.rows<CancelledOrderRow>(sql`
+      SELECT to_jsonb(o) AS "order",
+             t.number AS table_number,
+             p.full_name AS waiter_name,
+             coalesce((SELECT jsonb_agg(to_jsonb(oi) ORDER BY oi.added_at, oi.created_at, oi.id)
+                         FROM public.order_items oi WHERE oi.order_id = o.id AND ${LIVE_ITEMS}), '[]'::jsonb) AS items,
+             to_jsonb(c) AS cancellation
+        FROM public.order_cancellations c
+        JOIN public.orders o ON o.id = c.order_id
+        JOIN public.restaurants r ON r.id = c.restaurant_id
+        LEFT JOIN public.tables t ON t.id = o.table_id
+        LEFT JOIN public.profiles p ON p.id = o.waiter_id
+       WHERE ${where}
+       ORDER BY c.cancelled_at DESC, o.id
+       LIMIT ${ORDER_LIST_LIMIT}`);
   }
 
   private async deliver(id: string, tableId: string | null): Promise<void> {
@@ -340,7 +408,7 @@ export class OrdersService {
              t.number AS table_number,
              p.full_name AS waiter_name,
              coalesce((SELECT jsonb_agg(to_jsonb(oi) ORDER BY oi.added_at, oi.created_at, oi.id)
-                         FROM public.order_items oi WHERE oi.order_id = o.id), '[]'::jsonb) AS items
+                         FROM public.order_items oi WHERE oi.order_id = o.id AND ${LIVE_ITEMS}), '[]'::jsonb) AS items
         FROM public.orders o
         LEFT JOIN public.tables t ON t.id = o.table_id
         LEFT JOIN public.profiles p ON p.id = o.waiter_id

@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { z } from 'zod';
+import { StaffRef } from '../audit/audit.dto';
+import { OTHER_TEXT_ISSUE, requireOtherText, VOID_REASON_CODES, VOID_REASONS, voidReasonFields, type VoidReason } from '../audit/voids';
 import { guidListQuery } from '../common/validation';
 
 export const PAYMENT_METHOD_KINDS = ['cash', 'electronic'] as const;
@@ -204,4 +206,54 @@ export class SplitOrderResult {
 
 export class UndoSplitResult {
   @ApiProperty({ type: OrderBillSummary }) parent!: OrderBillSummary;
+}
+
+// ---- Payment void ------------------------------------------------------------
+
+/** POST /payments/:id/void: always with a supervisor authorization (void_payment). */
+export const voidPaymentSchema = z.strictObject(voidReasonFields).refine(requireOtherText, OTHER_TEXT_ISSUE);
+
+export class VoidPaymentRequest {
+  @ApiProperty({
+    enum: VOID_REASON_CODES,
+    description: `Fixed list: ${Object.entries(VOID_REASONS)
+      .map(([code, label]) => `${code} (${label})`)
+      .join(', ')}. other needs reasonText.`,
+  })
+  reason!: VoidReason;
+  @ApiPropertyOptional({ type: String, nullable: true, minLength: 3, maxLength: 200 }) reasonText?: string | null;
+  @ApiProperty({ format: 'uuid', description: 'POST /auth/authorize id for action void_payment (403 authorization_required without it).' })
+  authorizationId!: string;
+}
+
+export class VoidedTender {
+  @ApiProperty() lineNo!: number;
+  @ApiProperty({ format: 'uuid' }) paymentMethodId!: string;
+  @ApiProperty() methodCode!: string;
+  @ApiProperty({ enum: PAYMENT_METHOD_KINDS }) methodKind!: PaymentMethodKind;
+  @ApiProperty() amount!: number;
+  @ApiProperty({ type: Number, nullable: true }) cashReceived!: number | null;
+  @ApiProperty({ type: String, nullable: true }) reference!: string | null;
+}
+
+/** A voided payment (public.payment_voids): it no longer counts in any total; the order is open again. */
+export class PaymentVoid {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) paymentId!: string;
+  @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({ format: 'uuid' }) cashRegisterId!: string;
+  @ApiProperty() amountDue!: number;
+  @ApiProperty() tipAmount!: number;
+  @ApiProperty() totalCharged!: number;
+  @ApiProperty() changeGiven!: number;
+  @ApiProperty({ description: 'Method codes of the tender lines, comma-separated.' }) methods!: string;
+  @ApiProperty({ type: [VoidedTender] }) tenders!: VoidedTender[];
+  @ApiProperty({ format: 'date-time' }) paidAt!: string;
+  @ApiProperty({ enum: VOID_REASON_CODES }) reason!: VoidReason;
+  @ApiProperty() reasonLabel!: string;
+  @ApiProperty({ type: String, nullable: true }) reasonText!: string | null;
+  @ApiProperty({ type: StaffRef }) voidedBy!: StaffRef;
+  @ApiProperty({ type: StaffRef }) authorizedBy!: StaffRef;
+  @ApiProperty() selfAuthorized!: boolean;
+  @ApiProperty({ format: 'date-time' }) voidedAt!: string;
 }

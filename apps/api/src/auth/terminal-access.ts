@@ -22,7 +22,6 @@ const TERMINAL_ROUTES: Readonly<Record<string, TerminalRoute>> = {
   'GET /api/auth/me': read,
   'POST /api/auth/identify': read,
   'GET /api/staff/supervisors': read,
-  'POST /api/auth/authorize': read,
   'GET /api/config': read,
   'GET /api/staff/waiters': read,
   'GET /api/tables': read,
@@ -46,6 +45,13 @@ const TERMINAL_ROUTES: Readonly<Record<string, TerminalRoute>> = {
   'POST /api/tables/:id/assign': write,
   'POST /api/tables/:id/release': write,
   'POST /api/print/commands': write,
+  // F1: the identified staff member asks for the supervisor authorization and
+  // cancels or voids with it (it is bound to the requester). Payment voids are
+  // not terminal routes (cashier and admin only).
+  'POST /api/auth/authorize': write,
+  'POST /api/orders/:id/cancel': write,
+  'POST /api/orders/:id/items/void': write,
+  'DELETE /api/orders/:id': write,
 };
 
 /** The terminal rule of a route, or undefined when a terminal may not call it. */

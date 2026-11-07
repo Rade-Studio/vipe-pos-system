@@ -32,6 +32,7 @@ import {
   splitOrder,
   undoSplit,
   updatePaymentMethod,
+  voidPayment,
 } from "./payments"
 
 const method = { id: "m-1", code: "cash", name: "Efectivo", kind: "cash", isActive: true, sortOrder: 0 }
@@ -278,5 +279,25 @@ describe("error kind mapping", () => {
 
   it("an unknown code on a 422 still follows the code (unknown)", () => {
     expect(paymentErrorOf(apiError(422, "x", "99999"))).toMatchObject({ kind: "unknown" })
+  })
+})
+
+describe("voidPayment (F1)", () => {
+  it("posts the reason and the authorization to /payments/:id/void and returns the stored void", async () => {
+    const voided = { id: "v-1", paymentId: "p-1", totalCharged: 8000, reason: "duplicate_charge" }
+    api.POST.mockResolvedValueOnce({ data: voided })
+    await expect(voidPayment("p-1", { reason: "duplicate_charge", authorizationId: "a-1" })).resolves.toEqual(voided)
+    expect(api.POST).toHaveBeenLastCalledWith("/api/payments/{id}/void", {
+      params: { path: { id: "p-1" } },
+      body: { reason: "duplicate_charge", authorizationId: "a-1" },
+    })
+  })
+
+  it("keeps the API refusal (code and Spanish message) instead of a payment toast kind", async () => {
+    const refusal = new ApiError(403, "Forbidden", "Esta acción necesita la autorización de un supervisor", {
+      code: "authorization_required",
+    })
+    api.POST.mockRejectedValueOnce(refusal)
+    await expect(voidPayment("p-1", { reason: "duplicate_charge", authorizationId: "a-1" })).rejects.toBe(refusal)
   })
 })

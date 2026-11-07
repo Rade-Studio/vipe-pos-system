@@ -43,7 +43,8 @@ import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
 import type { TableChange } from "@/lib/realtime/table-merge"
 import { createLocalChangeRegistry } from "@/lib/kitchen/realtime"
 import { mergeOrdersList } from "@/lib/realtime/order-merge"
-import { mergeOrdersForWaiter, wireRowToPartialOrder, type OrderChange } from "@/lib/realtime/order-merge"
+import { mergeOrdersForWaiter, wireRowToPartialOrder, withoutVoidedWireLines, type OrderChange } from "@/lib/realtime/order-merge"
+import { WaiterVoidActions } from "@/components/waiter/WaiterVoidActions"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { useWaiters } from "@/hooks/use-waiters"
@@ -299,10 +300,17 @@ export function WaiterView({ profile, onChangeProfile, authRole, header }: Waite
       // preserved by mergeOrdersList's no-op-on-id-miss contract. An INSERT
       // arrives with its `order_items` (API enrichment), so the new card is
       // the full order from the shared mapper.
-      const inserted = payload.eventType === "INSERT" ? orderDtoFromWire(payload.new) : null
+      // F3: 0-unit cancelled lines still ride on the wire row; they never paint.
+      const inserted = payload.eventType === "INSERT" ? orderDtoFromWire(withoutVoidedWireLines(payload.new)) : null
+      // An UPDATE that carries its lines (a void, F3) replaces them, without the voided ones.
+      const updatedLines =
+        payload.eventType === "UPDATE" && Array.isArray((payload.new as any)?.order_items)
+          ? orderDtoFromWire(withoutVoidedWireLines(payload.new))
+          : null
+      const patch = payload.new ? wireRowToPartialOrder(payload.new) : null
       const conv: OrderChange = {
         eventType: payload.eventType,
-        new: inserted ? toOrder(inserted) : payload.new ? wireRowToPartialOrder(payload.new) : null,
+        new: inserted ? toOrder(inserted) : patch && updatedLines ? { ...patch, items: toOrder(updatedLines).items } : patch,
         old: (payload.old as any)?.id ? { id: (payload.old as any).id } : null,
       }
       // S13 through the realtime path: a domicilio never reaches the waiter's
@@ -1088,7 +1096,15 @@ export function WaiterView({ profile, onChangeProfile, authRole, header }: Waite
       onChangeGuests={activeOrder || activeDraft.asked ? changeGuests : undefined}
       guestsBusy={savingDetails}
       order={activeOrder}
-    />
+    >
+      {activeOrder && (
+        <WaiterVoidActions
+          order={activeOrder}
+          tableNumber={activeTableNumber}
+          onDone={() => void queryClient.invalidateQueries({ queryKey: ['orders'] })}
+        />
+      )}
+    </TablePanel>
   )
 
   // T10: the full-screen step flow of the selected table.

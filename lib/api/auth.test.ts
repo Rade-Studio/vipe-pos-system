@@ -57,16 +57,22 @@ describe("PINs", () => {
     expect(api.PUT).toHaveBeenCalledWith("/api/auth/pin", { body: { currentPin: "4829", pin: "73914" } })
   })
 
-  it("asks a supervisor authorization for one action, optionally for one supervisor", async () => {
+  it("asks a supervisor authorization for one action on one target, optionally for one supervisor", async () => {
     const answer = {
       authorizationId: "a-1",
       action: "void_item",
+      targetType: "order",
+      targetId: "o-1",
       supervisor: { id: "p-1", name: "Caja" },
       expiresAt: "2026-11-07T12:02:00.000Z",
     }
     api.POST.mockResolvedValueOnce({ data: answer })
-    await expect(authorizeSupervisor({ pin: "582046", action: "void_item" })).resolves.toEqual(answer)
-    expect(api.POST).toHaveBeenCalledWith("/api/auth/authorize", { body: { pin: "582046", action: "void_item" } })
+    await expect(
+      authorizeSupervisor({ pin: "582046", action: "void_item", targetType: "order", targetId: "o-1" }),
+    ).resolves.toEqual(answer)
+    expect(api.POST).toHaveBeenCalledWith("/api/auth/authorize", {
+      body: { pin: "582046", action: "void_item", targetType: "order", targetId: "o-1" },
+    })
   })
 
   it("maps the PIN answers to kinds with the server's Spanish text", () => {

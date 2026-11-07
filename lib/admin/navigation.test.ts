@@ -24,7 +24,7 @@ describe("admin navigation registry", () => {
   it("places every section of the design in its group, in order", () => {
     const labels = (groupId: string) => sectionsInGroup(groupId as never).map((section) => section.label)
 
-    expect(labels("general")).toEqual(["Resumen", "Órdenes", "Mesas", "Caja"])
+    expect(labels("general")).toEqual(["Resumen", "Órdenes", "Anulaciones", "Mesas", "Caja"])
     expect(labels("catalog")).toEqual(["Menú", "Fórmulas"])
     expect(labels("inventory")).toEqual([
       "Resumen",
@@ -103,5 +103,12 @@ describe("parseSectionHash / serializeSectionHash", () => {
       expect(serializeSectionHash(section.id)).toBe(`#${section.id}`)
       expect(parseSectionHash(serializeSectionHash(section.id))).toBe(section.id)
     }
+  })
+})
+
+describe("F3 Anulaciones section", () => {
+  it("opens from #orders/voids, under General", () => {
+    expect(parseSectionHash("#orders/voids")).toBe("orders/voids")
+    expect(groupOfSection("orders/voids").label).toBe("General")
   })
 })

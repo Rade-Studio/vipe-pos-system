@@ -3,6 +3,11 @@
 import { format, isSameDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { RefreshCw } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { CancelledOrdersTable } from "@/components/admin/orders/CancelledOrdersTable"
+import type { VoidResult } from "@/components/voids/VoidFlow"
+import { localDayKey } from "@/lib/admin/dates"
+import { getCancelledOrders } from "@/lib/api/orders"
 import { CompletedOrdersTable } from "@/components/admin/CompletedOrdersTable"
 import { useCompletedOrders } from "@/components/admin/orders/use-completed-orders"
 import { Chip, Eyebrow, focusRing } from "@/components/cashier/cashier-ui"
@@ -22,13 +27,18 @@ interface OrdersPageProps {
   realtimeConnected: boolean
   newOrdersCount: number
   onRefresh: () => void
-  onDelete: (orderId: string) => void | Promise<void>
+  /** F3: a cancellation or void was stored through the step sheet. */
+  onVoided: (result: VoidResult) => void
+  /** Opens admin Anulaciones. */
+  onOpenAudit?: () => void
   selectedDate: Date | undefined
   onDateChange: (date: Date | undefined) => void
 }
 
+export const cancelledOrdersQueryKey = (day: string) => ["orders", "cancelled", day] as const
+
 const TAB_CLASS = cn(
-  "inline-flex min-h-[40px] flex-1 items-center gap-1.5 whitespace-nowrap rounded-pill px-3.5 text-sm font-medium text-muted-fg data-[state=active]:bg-surface data-[state=active]:text-fg data-[state=active]:shadow-sm sm:flex-none",
+  "inline-flex min-h-11 flex-1 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-sm font-medium text-muted-fg data-[state=active]:bg-surface data-[state=active]:text-fg data-[state=active]:shadow-sm sm:flex-none",
   focusRing,
 )
 
@@ -45,7 +55,8 @@ export function OrdersPage({
   realtimeConnected,
   newOrdersCount,
   onRefresh,
-  onDelete,
+  onVoided,
+  onOpenAudit = () => {},
   selectedDate,
   onDateChange,
 }: OrdersPageProps) {
@@ -53,6 +64,9 @@ export function OrdersPage({
   const rows = useOrderRows(orders, nowMs)
   const { orders: completed } = useCompletedOrders(selectedDate)
   const today = new Date(nowMs)
+  const day = localDayKey(selectedDate ?? today)
+  const cancelled = useQuery({ queryKey: cancelledOrdersQueryKey(day), queryFn: () => getCancelledOrders(day) })
+  const cancelledLabel = !selectedDate || isSameDay(selectedDate, today) ? "Canceladas" : `Canceladas ${format(selectedDate, "dd/MM")}`
   const completedLabel =
     !selectedDate || isSameDay(selectedDate, today) ? "Completadas hoy" : `Completadas ${format(selectedDate, "dd/MM")}`
 
@@ -81,24 +95,36 @@ export function OrdersPage({
               </span>
             )}
           </Button>
-          <TabsList className="h-auto w-full rounded-pill border border-line bg-surface-2 p-1 sm:w-auto">
+          <TabsList className="h-auto w-full rounded-full border border-line bg-surface-2 p-1 sm:w-auto">
             <TabsTrigger value="active" className={TAB_CLASS}>
               Activas <span className="text-xs tabular-nums text-muted-fg">{rows.length}</span>
             </TabsTrigger>
             <TabsTrigger value="completed" className={TAB_CLASS}>
               {completedLabel} <span className="text-xs tabular-nums text-muted-fg">{completed.length}</span>
             </TabsTrigger>
+            <TabsTrigger value="cancelled" className={TAB_CLASS}>
+              {cancelledLabel} <span className="text-xs tabular-nums text-muted-fg">{cancelled.data?.length ?? 0}</span>
+            </TabsTrigger>
           </TabsList>
         </div>
       </div>
 
       <TabsContent value="active" className="mt-0 min-w-0">
-        <ActiveOrdersGrid orders={orders} isLoading={isLoading} onDelete={onDelete} onRefresh={onRefresh} />
+        <ActiveOrdersGrid orders={orders} isLoading={isLoading} onVoided={onVoided} onRefresh={onRefresh} />
       </TabsContent>
       <TabsContent value="completed" className="mt-0 min-w-0">
         <CompletedOrdersTable
           selectedDate={selectedDate}
           toolbar={<DatePicker date={selectedDate} onDateChange={onDateChange} />}
+        />
+      </TabsContent>
+      <TabsContent value="cancelled" className="mt-0 min-w-0 space-y-3">
+        <DatePicker date={selectedDate} onDateChange={onDateChange} />
+        <CancelledOrdersTable
+          orders={cancelled.data ?? []}
+          isLoading={cancelled.isLoading}
+          isError={cancelled.isError}
+          onOpenAudit={onOpenAudit}
         />
       </TabsContent>
     </Tabs>

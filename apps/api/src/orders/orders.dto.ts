@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { z } from 'zod';
+import { StaffRef } from '../audit/audit.dto';
+import { OTHER_TEXT_ISSUE, requireOtherText, VOID_REASON_CODES, VOID_REASONS, voidReasonFields, type VoidReason } from '../audit/voids';
 import { dateQuery } from '../common/validation';
 import { LegacyPaymentTransaction, Payment } from '../payments/payments.dto';
 
@@ -73,7 +75,7 @@ export const updateOrderDetailsSchema = z
   .strictObject(orderDetails)
   .refine((value) => value.guests !== undefined || value.notes !== undefined, { error: 'Send guests or notes' });
 
-/** Only kitchen -> delivered; paid goes through pay_order, cancellations are not an API action yet. */
+/** Only kitchen -> delivered; paid goes through pay_order, cancellations through POST /orders/:id/cancel. */
 export const updateOrderStatusSchema = z.strictObject({
   status: z.literal('delivered', { error: 'Only delivered can be set; paid goes through payments' }),
 });
@@ -82,6 +84,24 @@ export const updateOrderStatusSchema = z.strictObject({
 export const completedOrdersQuerySchema = z.strictObject({ date: dateQuery });
 
 export const serveOrderItemsSchema = z.strictObject({ itemIds: z.array(z.guid()).min(1).max(MAX_ITEMS) });
+
+/** POST /orders/:id/cancel and the body of DELETE /orders/:id. */
+export const cancelOrderSchema = z.strictObject(voidReasonFields).refine(requireOtherText, OTHER_TEXT_ISSUE);
+
+/** DELETE /orders/:id without a body: an order with nothing on it, cancelled with this reason. */
+export const DELETE_DEFAULT_REASON = { reason: 'other', reasonText: 'Cancelada sin motivo indicado' } as const;
+
+/** POST /orders/:id/items/void: units of live lines, each line once. */
+export const voidOrderItemsSchema = z
+  .strictObject({
+    items: z
+      .array(z.strictObject({ itemId: z.guid(), quantity: z.number().int().min(1).max(999) }))
+      .min(1)
+      .max(MAX_ITEMS)
+      .refine((items) => new Set(items.map((item) => item.itemId)).size === items.length, { error: 'Each item once' }),
+    ...voidReasonFields,
+  })
+  .refine(requireOtherText, OTHER_TEXT_ISSUE);
 
 export class OrderItem {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -120,7 +140,7 @@ export class Order {
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) parentOrderId!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) updatedAt!: string | null;
-  @ApiProperty({ type: [OrderItem], description: 'Always embedded, oldest first.' }) items!: OrderItem[];
+  @ApiProperty({ type: [OrderItem], description: 'Always embedded, oldest first; fully voided lines (quantity 0) are left out.' }) items!: OrderItem[];
   @ApiPropertyOptional({ type: Number, nullable: true, description: 'Only with include=table.' }) tableNumber?: number | null;
   @ApiPropertyOptional({ type: String, nullable: true, description: 'Only with include=waiter.' }) waiterName?: string | null;
 }
@@ -131,6 +151,60 @@ export class CompletedOrder extends Order {
   payment!: Payment | null;
   @ApiProperty({ type: [LegacyPaymentTransaction], description: 'Legacy payment_transactions rows, only when payment is null.' })
   legacyTransactions!: LegacyPaymentTransaction[];
+}
+
+const REASON_DESCRIPTION = `Fixed list: ${Object.entries(VOID_REASONS)
+  .map(([code, label]) => `${code} (${label})`)
+  .join(', ')}. other needs reasonText.`;
+
+export class CancelOrderRequest {
+  @ApiProperty({ enum: VOID_REASON_CODES, description: REASON_DESCRIPTION }) reason!: VoidReason;
+  @ApiPropertyOptional({ type: String, nullable: true, minLength: 3, maxLength: 200, description: 'Free text; required for other. Spaces collapsed and trimmed.' })
+  reasonText?: string | null;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'POST /auth/authorize id for action cancel_order. Required when the order has a live item or any payment.',
+  })
+  authorizationId?: string;
+}
+
+export class VoidOrderItemInput {
+  @ApiProperty({ format: 'uuid' }) itemId!: string;
+  @ApiProperty({ minimum: 1, maximum: 999, description: 'Units to void; at most what the line has.' }) quantity!: number;
+}
+
+export class VoidOrderItemsRequest {
+  @ApiProperty({ type: [VoidOrderItemInput], minItems: 1, maxItems: MAX_ITEMS, description: 'Each line once.' }) items!: VoidOrderItemInput[];
+  @ApiProperty({ enum: VOID_REASON_CODES, description: REASON_DESCRIPTION }) reason!: VoidReason;
+  @ApiPropertyOptional({ type: String, nullable: true, minLength: 3, maxLength: 200 }) reasonText?: string | null;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'POST /auth/authorize id for action void_item. Required: every line the server holds was sent to the kitchen.',
+  })
+  authorizationId?: string;
+}
+
+/** How and by whom an order was cancelled (public.order_cancellations). */
+export class OrderCancellation {
+  @ApiProperty({ enum: VOID_REASON_CODES }) reason!: VoidReason;
+  @ApiProperty({ description: 'Spanish label of the reason.' }) reasonLabel!: string;
+  @ApiProperty({ type: String, nullable: true }) reasonText!: string | null;
+  @ApiProperty({ type: StaffRef }) cancelledBy!: StaffRef;
+  @ApiProperty({ type: StaffRef, nullable: true, description: 'Null when no authorization was needed (an order with nothing on it).' })
+  authorizedBy!: StaffRef | null;
+  @ApiProperty() selfAuthorized!: boolean;
+  @ApiProperty({ enum: ['active', 'kitchen', 'delivered'] }) previousStatus!: string;
+  @ApiProperty({ description: 'Bill at the moment of the cancellation.' }) subtotal!: number;
+  @ApiProperty() tax!: number;
+  @ApiProperty() tip!: number;
+  @ApiProperty() total!: number;
+  @ApiProperty({ description: 'Lines that had been sent to the kitchen (their stock stays consumed).' }) sentItems!: number;
+  @ApiProperty({ format: 'date-time' }) cancelledAt!: string;
+}
+
+/** A cancelled order with its lines as they were and the cancellation. */
+export class CancelledOrder extends Order {
+  @ApiProperty({ type: OrderCancellation }) cancellation!: OrderCancellation;
 }
 
 export class OrderItemInput {

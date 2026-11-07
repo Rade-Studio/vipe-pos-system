@@ -260,5 +260,16 @@ export function getPaymentsByOrderIds(orderIds: string[]): Promise<PaymentRow[]>
   })
 }
 
+/**
+ * F1: voids a payment (always with a supervisor authorization, action
+ * void_payment). It no longer counts in any total and the order is open again.
+ * The ApiError is not turned into a PaymentServiceError, so `voidRefusalOf`
+ * reads its `code` (authorization_required, payment_voided, register_closed...).
+ */
+export async function voidPayment(paymentId: string, body: Schemas["VoidPaymentRequest"]): Promise<Schemas["PaymentVoid"]> {
+  const { data } = await api.POST("/api/payments/{id}/void", { ...byId(paymentId), body })
+  return required(data)
+}
+
 export { PaymentServiceError } from "@/lib/payments/types"
 export type { PaymentServiceErrorKind } from "@/lib/payments/types"

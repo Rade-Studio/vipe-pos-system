@@ -1,4 +1,5 @@
 import { sql } from '@vipe/db';
+import { reasonOf, staffRef } from '../audit/audit.mappers';
 import { toIso } from '../common/validation';
 import type {
   LegacyPaymentTransaction,
@@ -7,6 +8,7 @@ import type {
   PaymentMethod,
   PaymentMethodKind,
   PaymentTender,
+  PaymentVoid,
   PayOrderResult,
   SplitOrderResult,
   UndoSplitResult,
@@ -128,3 +130,31 @@ export const toSplitResult = (row: Json): SplitOrderResult => ({
 });
 
 export const toUndoSplitResult = (row: Json): UndoSplitResult => ({ parent: toBill(row.parent as Json) });
+
+/** One public.payment_voids row (to_jsonb) with its tender snapshot. */
+export const toPaymentVoid = (row: Json): PaymentVoid => ({
+  id: String(row.id),
+  paymentId: String(row.payment_id),
+  orderId: String(row.order_id),
+  cashRegisterId: String(row.cash_register_id),
+  amountDue: req(row, 'amount_due'),
+  tipAmount: req(row, 'tip_amount'),
+  totalCharged: req(row, 'total_charged'),
+  changeGiven: req(row, 'change_given'),
+  methods: String(row.methods),
+  tenders: ((row.tenders as Json[] | null) ?? []).map((t) => ({
+    lineNo: req(t, 'line_no'),
+    paymentMethodId: String(t.payment_method_id),
+    methodCode: String(t.method_code),
+    methodKind: t.method_kind as PaymentMethodKind,
+    amount: req(t, 'amount'),
+    cashReceived: numOrNull(t.cash_received),
+    reference: text(t.reference),
+  })),
+  paidAt: time(row.paid_at)!,
+  ...reasonOf(row),
+  voidedBy: staffRef(row.voided_by, row.voided_by_name),
+  authorizedBy: staffRef(row.authorized_by, row.authorized_by_name),
+  selfAuthorized: row.self_authorized === true,
+  voidedAt: time(row.voided_at)!,
+});

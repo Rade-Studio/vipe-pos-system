@@ -44,3 +44,19 @@ export async function fetchWaiterAccessMode(): Promise<WaiterAccessMode> {
 export async function saveWaiterAccessMode(mode: WaiterAccessMode): Promise<WaiterAccessMode> {
   return (await saveConfig({ waiterAccessMode: mode })).waiterAccessMode
 }
+
+/**
+ * "Permitir que el supervisor se autorice a sí mismo" (F1, L14) in
+ * business_config `allow_self_authorization`: off by default, so another
+ * supervisor authorizes every cancellation or void; when on, a supervisor may
+ * use their own PIN and the event is flagged self-authorized in the audit.
+ * Read by every role, written by the admin through `PUT /config`.
+ */
+export async function fetchAllowSelfAuthorization(): Promise<boolean> {
+  return (await fetchConfig()).allowSelfAuthorization
+}
+
+/** Admin: saves only the setting and returns it. */
+export async function saveAllowSelfAuthorization(allow: boolean): Promise<boolean> {
+  return (await saveConfig({ allowSelfAuthorization: allow })).allowSelfAuthorization
+}

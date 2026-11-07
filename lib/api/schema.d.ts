@@ -468,6 +468,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orders/cancelled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OrdersController_cancelled"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/orders/{id}": {
         parameters: {
             query?: never;
@@ -526,6 +542,54 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["OrdersController_serve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["OrdersController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}/items/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["OrdersController_voidItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AuditController_list"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -718,6 +782,22 @@ export interface paths {
         get: operations["PaymentsController_list"];
         put?: never;
         post: operations["PaymentsController_pay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PaymentsController_void"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1805,6 +1885,16 @@ export interface components {
              * @description Only this supervisor is tried; omitted, every supervisor with a PIN.
              */
             profileId?: string;
+            /**
+             * @description order for cancel_order and void_item, payment for void_payment (else 422).
+             * @enum {string}
+             */
+            targetType: "order" | "payment";
+            /**
+             * Format: uuid
+             * @description The order or payment to cancel or void. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member).
+             */
+            targetId: string;
         };
         AuthorizationSupervisor: {
             /** Format: uuid */
@@ -1814,11 +1904,15 @@ export interface components {
         AuthorizeResponse: {
             /**
              * Format: uuid
-             * @description Single use, bound to the action and the restaurant.
+             * @description Single use, bound to the action, the target, the caller and the restaurant.
              */
             authorizationId: string;
             /** @enum {string} */
             action: "cancel_order" | "void_item" | "void_payment";
+            /** @enum {string} */
+            targetType: "order" | "payment";
+            /** Format: uuid */
+            targetId: string;
             supervisor: components["schemas"]["AuthorizationSupervisor"];
             /**
              * Format: date-time
@@ -2159,6 +2253,11 @@ export interface components {
              * @enum {string}
              */
             waiterAccessMode: "own_accounts" | "shared_terminal";
+            /**
+             * @description Permitir que el supervisor se autorice a sí mismo: when true, an admin or cashier may authorize their own cancellation or void with their PIN and the event is flagged selfAuthorized; when false another supervisor must authorize (403 self_authorization_not_allowed).
+             * @default false
+             */
+            allowSelfAuthorization: boolean;
         };
         UpdateBusinessConfigRequest: {
             taxPercentage?: number;
@@ -2174,6 +2273,8 @@ export interface components {
             deliveryLateMinutes?: number;
             /** @enum {string} */
             waiterAccessMode?: "own_accounts" | "shared_terminal";
+            /** @description Admin only, like every key. */
+            allowSelfAuthorization?: boolean;
         };
         OrderItem: {
             /** Format: uuid */
@@ -2230,7 +2331,7 @@ export interface components {
             createdAt: string | null;
             /** Format: date-time */
             updatedAt: string | null;
-            /** @description Always embedded, oldest first. */
+            /** @description Always embedded, oldest first; fully voided lines (quantity 0) are left out. */
             items: components["schemas"]["OrderItem"][];
             /** @description Only with include=table. */
             tableNumber?: number | null;
@@ -2329,7 +2430,7 @@ export interface components {
             createdAt: string | null;
             /** Format: date-time */
             updatedAt: string | null;
-            /** @description Always embedded, oldest first. */
+            /** @description Always embedded, oldest first; fully voided lines (quantity 0) are left out. */
             items: components["schemas"]["OrderItem"][];
             /** @description Only with include=table. */
             tableNumber?: number | null;
@@ -2339,6 +2440,78 @@ export interface components {
             payment: components["schemas"]["Payment"] | null;
             /** @description Legacy payment_transactions rows, only when payment is null. */
             legacyTransactions: components["schemas"]["LegacyPaymentTransaction"][];
+        };
+        StaffRef: {
+            /**
+             * Format: uuid
+             * @description Null when the profile was removed; the name stays.
+             */
+            id: string | null;
+            name: string;
+        };
+        OrderCancellation: {
+            /** @enum {string} */
+            reason: "waiter_error" | "customer_left" | "dish_returned" | "duplicate_charge" | "wrong_payment_method" | "other";
+            /** @description Spanish label of the reason. */
+            reasonLabel: string;
+            reasonText: string | null;
+            cancelledBy: components["schemas"]["StaffRef"];
+            /** @description Null when no authorization was needed (an order with nothing on it). */
+            authorizedBy: components["schemas"]["StaffRef"] | null;
+            selfAuthorized: boolean;
+            /** @enum {string} */
+            previousStatus: "active" | "kitchen" | "delivered";
+            /** @description Bill at the moment of the cancellation. */
+            subtotal: number;
+            tax: number;
+            tip: number;
+            total: number;
+            /** @description Lines that had been sent to the kitchen (their stock stays consumed). */
+            sentItems: number;
+            /** Format: date-time */
+            cancelledAt: string;
+        };
+        CancelledOrder: {
+            /** Format: uuid */
+            id: string;
+            /** @description Per-restaurant order number assigned by the database (1, 2, ...); never set by the client. */
+            orderNumber: number;
+            /** @description Guests at the table; null when not captured. */
+            guests: number | null;
+            /** @description Order-level note for the kitchen; null when none. */
+            notes: string | null;
+            /** Format: uuid */
+            tableId: string | null;
+            /**
+             * Format: uuid
+             * @description Waiter profile id.
+             */
+            waiterId: string | null;
+            /** @enum {string} */
+            status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
+            /** @enum {string} */
+            orderType: "dine_in" | "delivery";
+            subtotal: number;
+            tax: number;
+            taxPercentage: number;
+            tip: number;
+            tipPercentage: number;
+            total: number;
+            totalDiscounts: number;
+            isPartialOrder: boolean;
+            /** Format: uuid */
+            parentOrderId: string | null;
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+            /** @description Always embedded, oldest first; fully voided lines (quantity 0) are left out. */
+            items: components["schemas"]["OrderItem"][];
+            /** @description Only with include=table. */
+            tableNumber?: number | null;
+            /** @description Only with include=waiter. */
+            waiterName?: string | null;
+            cancellation: components["schemas"]["OrderCancellation"];
         };
         StockShortage: {
             /** Format: uuid */
@@ -2439,6 +2612,74 @@ export interface components {
         };
         ServeOrderItemsRequest: {
             itemIds: string[];
+        };
+        CancelOrderRequest: {
+            /**
+             * @description Fixed list: waiter_error (Error del mesero), customer_left (El cliente se fue), dish_returned (Plato devuelto), duplicate_charge (Cobro duplicado), wrong_payment_method (Método de pago equivocado), other (Otro). other needs reasonText.
+             * @enum {string}
+             */
+            reason: "waiter_error" | "customer_left" | "dish_returned" | "duplicate_charge" | "wrong_payment_method" | "other";
+            /** @description Free text; required for other. Spaces collapsed and trimmed. */
+            reasonText?: string | null;
+            /**
+             * Format: uuid
+             * @description POST /auth/authorize id for action cancel_order. Required when the order has a live item or any payment.
+             */
+            authorizationId?: string;
+        };
+        VoidOrderItemInput: {
+            /** Format: uuid */
+            itemId: string;
+            /** @description Units to void; at most what the line has. */
+            quantity: number;
+        };
+        VoidOrderItemsRequest: {
+            /** @description Each line once. */
+            items: components["schemas"]["VoidOrderItemInput"][];
+            /**
+             * @description Fixed list: waiter_error (Error del mesero), customer_left (El cliente se fue), dish_returned (Plato devuelto), duplicate_charge (Cobro duplicado), wrong_payment_method (Método de pago equivocado), other (Otro). other needs reasonText.
+             * @enum {string}
+             */
+            reason: "waiter_error" | "customer_left" | "dish_returned" | "duplicate_charge" | "wrong_payment_method" | "other";
+            reasonText?: string | null;
+            /**
+             * Format: uuid
+             * @description POST /auth/authorize id for action void_item. Required: every line the server holds was sent to the kitchen.
+             */
+            authorizationId?: string;
+        };
+        AuditEvent: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            eventType: "order_cancelled" | "items_voided" | "payment_voided";
+            /** Format: uuid */
+            orderId: string;
+            orderNumber: number | null;
+            /**
+             * Format: uuid
+             * @description Only for payment_voided.
+             */
+            paymentId: string | null;
+            /** @description Who cancelled or voided. */
+            actor: components["schemas"]["StaffRef"];
+            /** @description The supervisor whose PIN authorized it; null when none was needed. */
+            authorizedBy: components["schemas"]["StaffRef"] | null;
+            /** @description The actor authorized their own action (only with allowSelfAuthorization). */
+            selfAuthorized: boolean;
+            /** @enum {string} */
+            reason: "waiter_error" | "customer_left" | "dish_returned" | "duplicate_charge" | "wrong_payment_method" | "other";
+            /** @description Spanish label of the reason: Error del mesero, El cliente se fue, Plato devuelto, Cobro duplicado, Método de pago equivocado, Otro. */
+            reasonLabel: string;
+            reasonText: string | null;
+            /** @description Money removed: order total, voided lines (price x quantity) or payment total charged. */
+            amount: number;
+            /** @description order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items; items_voided: lines; payment_voided: amounts, methods, tenders. */
+            details: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
         };
         Table: {
             /** Format: uuid */
@@ -2687,6 +2928,58 @@ export interface components {
             drawerWarning: boolean;
             drawerCashBefore: number;
             tenders: components["schemas"]["PayOrderTenderEcho"][];
+        };
+        VoidPaymentRequest: {
+            /**
+             * @description Fixed list: waiter_error (Error del mesero), customer_left (El cliente se fue), dish_returned (Plato devuelto), duplicate_charge (Cobro duplicado), wrong_payment_method (Método de pago equivocado), other (Otro). other needs reasonText.
+             * @enum {string}
+             */
+            reason: "waiter_error" | "customer_left" | "dish_returned" | "duplicate_charge" | "wrong_payment_method" | "other";
+            reasonText?: string | null;
+            /**
+             * Format: uuid
+             * @description POST /auth/authorize id for action void_payment (403 authorization_required without it).
+             */
+            authorizationId: string;
+        };
+        VoidedTender: {
+            lineNo: number;
+            /** Format: uuid */
+            paymentMethodId: string;
+            methodCode: string;
+            /** @enum {string} */
+            methodKind: "cash" | "electronic";
+            amount: number;
+            cashReceived: number | null;
+            reference: string | null;
+        };
+        PaymentVoid: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            paymentId: string;
+            /** Format: uuid */
+            orderId: string;
+            /** Format: uuid */
+            cashRegisterId: string;
+            amountDue: number;
+            tipAmount: number;
+            totalCharged: number;
+            changeGiven: number;
+            /** @description Method codes of the tender lines, comma-separated. */
+            methods: string;
+            tenders: components["schemas"]["VoidedTender"][];
+            /** Format: date-time */
+            paidAt: string;
+            /** @enum {string} */
+            reason: "waiter_error" | "customer_left" | "dish_returned" | "duplicate_charge" | "wrong_payment_method" | "other";
+            reasonLabel: string;
+            reasonText: string | null;
+            voidedBy: components["schemas"]["StaffRef"];
+            authorizedBy: components["schemas"]["StaffRef"];
+            selfAuthorized: boolean;
+            /** Format: date-time */
+            voidedAt: string;
         };
         SplitOrderItemInput: {
             /** Format: uuid */
@@ -5293,6 +5586,43 @@ export interface operations {
             };
         };
     };
+    OrdersController_cancelled: {
+        parameters: {
+            query: {
+                /** @description YYYY-MM-DD: orders cancelled that day in the restaurant's timezone. */
+                date: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest cancellation first, with the bill at that moment, reason, actor and supervisor. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelledOrder"][];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     OrdersController_get: {
         parameters: {
             query?: {
@@ -5339,22 +5669,34 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CancelOrderRequest"];
+            };
+        };
         responses: {
-            /** @description Order and items deleted (delete_order_with_items); the table is freed when no other open order remains. */
+            /** @description The audited cancellation of POST /orders/:id/cancel (orders are never deleted). Without a body only an order with nothing on it is cancelled (reason other, "Cancelada sin motivo indicado"). */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Not admin, waiter or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_not_found`. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Order is paid. */
+            /** @description `order_cancelled`, `order_paid` or `delivery_order`. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5553,6 +5895,160 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Cancelled, never deleted: reason, actor, supervisor and the bill are stored; the table is freed when no other open order remains. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelledOrder"];
+                };
+            };
+            /** @description Not admin, waiter or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_cancelled`, `order_paid` (void the payment first) or `delivery_order`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_voidItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidOrderItemsRequest"];
+            };
+        };
+        responses: {
+            /** @description The order with the voided units removed and the bill recomputed; stock already consumed stays consumed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Not admin, waiter or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_closed` (paid or cancelled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuditController_list: {
+        parameters: {
+            query?: {
+                selfAuthorized?: "true" | "false";
+                /** @description Supervisor who authorized. */
+                authorizerId?: unknown;
+                /** @description Profile who cancelled or voided. */
+                actorId?: unknown;
+                /** @description Comma-separated: order_cancelled, items_voided, payment_voided. */
+                type?: unknown;
+                /** @description YYYY-MM-DD: events up to that day included (restaurant's timezone). */
+                to?: unknown;
+                /** @description YYYY-MM-DD: events from that day (restaurant's timezone). */
+                from?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancellations and voids, newest first, at most 500. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEvent"][];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid filter. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -6221,6 +6717,60 @@ export interface operations {
             };
             /** @description Order not found (P0002). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PaymentsController_void: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidPaymentRequest"];
+            };
+        };
+        responses: {
+            /** @description Voided, never deleted: the payment counts in no total and is no longer listed; the order is open again (delivered). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentVoid"];
+                };
+            };
+            /** @description Not admin or cashier, or 403 `authorization_required`, `authorization_invalid` or `self_authorization_not_allowed` (body `code`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `payment_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `payment_voided` or `register_closed` (the drawer of the payment is closed). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

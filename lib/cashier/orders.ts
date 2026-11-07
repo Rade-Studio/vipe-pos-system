@@ -27,7 +27,7 @@
  */
 import { orderDtoFromWire, toOrder, type OrderDto } from "@/lib/api/orders"
 import { groupDineInOrdersByTable } from "@/lib/delivery/kitchen"
-import { mergeOrdersList, wireRowToPartialOrder } from "@/lib/realtime/order-merge"
+import { mergeOrdersList, wireRowToPartialOrder, withoutVoidedWireLines } from "@/lib/realtime/order-merge"
 import type { Order } from "@/types"
 
 /**
@@ -94,7 +94,7 @@ export function toCashierOrder(dto: OrderDto): CashierOrder {
 }
 
 function orderFromRow(row: unknown): Order | null {
-  const dto = orderDtoFromWire(row)
+  const dto = orderDtoFromWire(withoutVoidedWireLines(row))
   return dto ? toOrder(dto) : null
 }
 
@@ -176,7 +176,9 @@ function cashierPatchFromRow(row: unknown): Partial<Order> | null {
   // which on the cashier screen would drop the card out of the by-table view.
   // Only carry the fields the broadcast actually sent (D7 consequence 2).
   if (!("table_id" in source)) delete patch.tableId
-  if (Array.isArray(source.order_items) && mapped.items.length > 0) patch.items = mapped.items
+  // A row whose lines were all voided (F3) empties them; otherwise an empty list is not trusted.
+  const voidedAll = Array.isArray(source.order_items) && source.order_items.length > 0 && mapped.items.length === 0
+  if (Array.isArray(source.order_items) && (mapped.items.length > 0 || voidedAll)) patch.items = mapped.items
   if (carriesMoney(source)) patch.bill = mapped.bill
   return patch
 }
@@ -198,7 +200,7 @@ export function applyCashierOrderEvent(orders: readonly Order[], payload: Cashie
   if (payload.eventType === "INSERT") {
     const row = payload.new as CashierOrderRow | null | undefined
     if (!row || !row.id || !row.status) return prev
-    if (!Array.isArray(row.order_items) || row.order_items.length === 0) return prev
+    if (!Array.isArray(row.order_items) || withoutVoidedWireLines(row).order_items?.length === 0) return prev
     const order = orderFromRow(row)
     return order ? mergeOrdersList(prev, { eventType: "INSERT", new: order }) : prev
   }

@@ -9,7 +9,7 @@
  */
 import { describe, expect, test } from "vitest"
 import type { Order, OrderItem } from "@/types"
-import { mergeOrdersForWaiter, mergeOrdersList, wireRowToPartialOrder } from "./order-merge"
+import { mergeOrdersForWaiter, mergeOrdersList, wireRowToPartialOrder, withoutVoidedWireLines } from "./order-merge"
 
 // Minimal OrderItem factory. `image` is required by the `OrderItem` type, and
 // `status` is `OrderItemStatus = "kitchen" | "served"` — defaults to "kitchen"
@@ -297,5 +297,32 @@ describe("mergeOrdersForWaiter — a delivery order never enters the waiter list
     // not drop or copy anything, so the consumer sees one state transition.
     expect(result).toEqual(mergeOrdersList(prev, { eventType: "UPDATE", new: patch }))
     expect(result[0].status).toBe("kitchen")
+  })
+})
+
+describe("withoutVoidedWireLines (F3: realtime still carries 0-unit cancelled lines)", () => {
+  test("drops lines with quantity 0 or status cancelled, keeps the rest of the row", () => {
+    const row = {
+      id: "o-1",
+      status: "kitchen",
+      order_items: [
+        { id: "a", quantity: 2, status: "kitchen" },
+        { id: "b", quantity: 0, status: "cancelled" },
+        { id: "c", quantity: 1, status: "cancelled" },
+        { id: "d", quantity: 1, status: "served" },
+      ],
+    }
+    const out = withoutVoidedWireLines(row) as typeof row
+    expect(out.order_items.map((l) => l.id)).toEqual(["a", "d"])
+    expect(out.status).toBe("kitchen")
+    expect(row.order_items).toHaveLength(4)
+  })
+
+  test("returns the same row when nothing is voided or there are no lines", () => {
+    const live = { id: "o-1", status: "kitchen", order_items: [{ id: "a", quantity: 1, status: "kitchen" }] }
+    expect(withoutVoidedWireLines(live)).toBe(live)
+    const bare = { id: "o-1", status: "kitchen" }
+    expect(withoutVoidedWireLines(bare)).toBe(bare)
+    expect(withoutVoidedWireLines(null)).toBeNull()
   })
 })
