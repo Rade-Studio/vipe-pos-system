@@ -127,3 +127,17 @@ export class SetStaffPinRequest {
 export class SetStaffPasswordRequest {
   @ApiProperty({ minLength: 8, maxLength: MAX_PASSWORD }) password!: string;
 }
+
+export class StaffSupervisor {
+  @ApiProperty({ format: 'uuid', description: 'Profile id (POST /auth/identify, POST /auth/authorize).' }) id!: string;
+  @ApiProperty() fullName!: string;
+  @ApiProperty({ enum: ['admin', 'cashier'] }) role!: string;
+  @ApiProperty({ description: 'The supervisor has a PIN.' }) hasPin!: boolean;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'End of a running PIN lockout, for an admin caller only (always null for other callers); null when not locked.',
+  })
+  pinLockedUntil!: string | null;
+}

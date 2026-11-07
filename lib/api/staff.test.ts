@@ -17,7 +17,9 @@ import {
   listStaff,
   removeStaffPin,
   setStaffPassword,
+  listSupervisors,
   setStaffPin,
+  unlockStaffPin,
   updateStaff,
 } from "./staff"
 
@@ -150,8 +152,32 @@ describe("staff PINs (F2)", () => {
     expect(api.DELETE).toHaveBeenCalledWith("/api/staff/{id}/pin", { params: { path: { id: "p-1" } } })
   })
 
+  it("unlocks a locked PIN early with DELETE /api/staff/{id}/pin/lock", async () => {
+    await expect(unlockStaffPin("p-1")).resolves.toBeUndefined()
+    expect(api.DELETE).toHaveBeenCalledWith("/api/staff/{id}/pin/lock", { params: { path: { id: "p-1" } } })
+  })
+
+  it("maps a refused unlock like the other staff calls", async () => {
+    api.DELETE.mockRejectedValueOnce(new ApiError(404, "Not Found", "Staff member not found"))
+    await expect(kindOf(unlockStaffPin("p-9"))).resolves.toEqual({ kind: "not-found", message: "El integrante no existe" })
+  })
+
   it("keeps the server's Spanish text for a weak PIN", async () => {
     api.PUT.mockRejectedValueOnce(new ApiError(422, "Unprocessable Entity", "El PIN es muy fácil de adivinar"))
     await expect(kindOf(setStaffPin("p-1", "1234"))).resolves.toEqual({ kind: "invalid", message: "El PIN es muy fácil de adivinar" })
+  })
+})
+
+describe("listSupervisors (F4 close terminal, F3 authorizations)", () => {
+  it("reads GET /api/staff/supervisors and returns the list", async () => {
+    const list = [{ id: "p-1", fullName: "Laura", role: "cashier", hasPin: true, pinLockedUntil: null }]
+    api.GET.mockResolvedValueOnce({ data: list })
+    await expect(listSupervisors()).resolves.toEqual(list)
+    expect(api.GET).toHaveBeenCalledWith("/api/staff/supervisors")
+  })
+
+  it("maps a refusal like the other staff calls", async () => {
+    api.GET.mockRejectedValueOnce(new ApiError(403, "Forbidden", "Forbidden"))
+    await expect(kindOf(listSupervisors())).resolves.toEqual({ kind: "forbidden", message: "No tienes permiso para gestionar el personal" })
   })
 })

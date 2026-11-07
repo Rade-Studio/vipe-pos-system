@@ -7,6 +7,7 @@ import { KitchenView } from "@/components/views/KitchenView"
 import { CashierView } from "@/components/views/CashierView"
 import { AdminView } from "@/components/views/AdminView"
 import { DeliveryView } from "@/components/views/DeliveryView"
+import { TerminalView } from "@/components/terminal/TerminalView"
 import { LoginView } from "@/components/auth/LoginView"
 import { Loader2 } from "lucide-react"
 import { useConfigStore } from "@/store/use-config-store"
@@ -77,6 +78,9 @@ export default function Home() {
   const loadAllRegisters = useCashRegisterStore((s) => s.loadAllRegisters)
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  // F4: a shared order-taking terminal (POST /auth/terminal/login) shows the
+  // terminal flow instead of the opener's role view.
+  const [terminalSession, setTerminalSession] = useState<Session | null>(null)
   // `profileResolved` separates "we have not asked yet" from "there is no
   // profile row", so the startup loads never run twice for one identity.
   const [profileResolved, setProfileResolved] = useState(false)
@@ -94,6 +98,7 @@ export default function Home() {
   // Role and restaurant come from the API session (`me` or the login body).
   const applySession = (session: Session) => {
     const profile = profileFromSession(session)
+    setTerminalSession(session.sessionKind === "terminal" ? session : null)
     setAuthProfile(profile)     // identidad real (UUID válido)
     setSelectedProfile(profile) // vista inicial = tu rol real
     setProfileResolved(true)
@@ -101,6 +106,7 @@ export default function Home() {
   }
 
   const clearSession = () => {
+    setTerminalSession(null)
     setAuthProfile(null)
     setSelectedProfile(null)
     setProfileResolved(true)
@@ -173,8 +179,11 @@ export default function Home() {
     // Keep the full-screen loader until the identity is known: running the loads
     // now and again one tick later (when `authProfile` lands) doubled them.
     if (!profileResolved) return
+    const isTerminal = terminalSession !== null
 
-    const role = startupRole({
+    // A terminal reaches only the order-taking routes: it loads what a waiter
+    // loads, whoever opened it or is identified on it.
+    const role = isTerminal ? "waiter" : startupRole({
       authRole,
       // Read without subscribing: impersonating a role must not re-run this.
       selectedRole: useProfileStore.getState().selectedProfile?.role,
@@ -244,6 +253,7 @@ export default function Home() {
     isAuthenticated,
     initialCheckDone,
     profileResolved,
+    terminalSession,
     authRole,
     loadConfigFromDB,
     loadAllRegisters,
@@ -273,6 +283,16 @@ export default function Home() {
           applySession(session)
         }}
       />
+    )
+  }
+
+  if (terminalSession) {
+    return (
+      <TerminalView session={terminalSession}>
+        {(bar) =>
+          selectedProfile && <WaiterView profile={selectedProfile} onChangeProfile={() => {}} header={bar} />
+        }
+      </TerminalView>
     )
   }
 

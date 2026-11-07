@@ -1,6 +1,7 @@
 import { toast } from "@/components/ui/use-toast"
 import { api } from "./client"
 import { ApiError } from "./errors"
+import { ACTING_HEADER } from "@/lib/terminal/acting"
 import type { components } from "./schema"
 import type { Profile, ProfileRole } from "@/types"
 
@@ -65,8 +66,8 @@ export type AuthorizeRequest = components["schemas"]["AuthorizeRequest"]
 export type AuthorizeResponse = components["schemas"]["AuthorizeResponse"]
 export type SupervisorAction = AuthorizeRequest["action"]
 
-/** Header of the acting claim on a terminal's order writes. */
-export const ACTING_HEADER = "X-Vipe-Acting"
+/** Header of the acting claim on a terminal's order writes (added by the API client). */
+export { ACTING_HEADER }
 
 /** `POST /api/auth/terminal/login`: the API sets the cookies of a terminal session. */
 export async function terminalLogin(email: string, password: string): Promise<Session> {
@@ -101,12 +102,24 @@ export async function authorizeSupervisor(input: AuthorizeRequest): Promise<Auth
 
 export type PinFailureKind = "wrong" | "locked" | "invalid" | "acting-required" | "unknown"
 
+export interface PinFailure {
+  kind: PinFailureKind
+  message: string
+  /** Locked: when the lock ends (ISO), when the API said. */
+  lockedUntil?: string
+}
+
 /** A failed PIN call as a kind and the server's Spanish text (the screens show it verbatim). */
-export function pinFailureOf(error: unknown): { kind: PinFailureKind; message: string } {
+export function pinFailureOf(error: unknown): PinFailure {
   if (error instanceof ApiError) {
     const code = error.body.code
     if (code === "pin_invalid") return { kind: "wrong", message: error.message }
-    if (code === "pin_locked" || error.status === 429) return { kind: "locked", message: error.message }
+    if (code === "pin_locked" || error.status === 429) {
+      const until = error.body.lockedUntil
+      return typeof until === "string"
+        ? { kind: "locked", message: error.message, lockedUntil: until }
+        : { kind: "locked", message: error.message }
+    }
     if (code === "acting_required") return { kind: "acting-required", message: error.message }
     if (error.status === 422) return { kind: "invalid", message: error.message }
   }

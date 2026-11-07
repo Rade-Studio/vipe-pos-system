@@ -1604,6 +1604,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/supervisors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["StaffController_supervisors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/{id}": {
         parameters: {
             query?: never;
@@ -1647,6 +1663,22 @@ export interface paths {
         put: operations["StaffController_setPin"];
         post?: never;
         delete: operations["StaffController_removePin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/{id}/pin/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["StaffController_unlockPin"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3797,6 +3829,23 @@ export interface components {
              */
             pinLockedUntil: string | null;
         };
+        StaffSupervisor: {
+            /**
+             * Format: uuid
+             * @description Profile id (POST /auth/identify, POST /auth/authorize).
+             */
+            id: string;
+            fullName: string;
+            /** @enum {string} */
+            role: "admin" | "cashier";
+            /** @description The supervisor has a PIN. */
+            hasPin: boolean;
+            /**
+             * Format: date-time
+             * @description End of a running PIN lockout, for an admin caller only (always null for other callers); null when not locked.
+             */
+            pinLockedUntil: string | null;
+        };
         CreateStaffRequest: {
             /**
              * Format: email
@@ -4067,7 +4116,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description 5 failures lock the profile and the session 5 minutes (code pin_locked). */
+            /** @description 5 failures lock the profile and the session 5 minutes (code pin_locked; lockedUntil: when the lock ends). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4105,7 +4154,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The profile or this terminal is locked for 5 minutes (code pin_locked). */
+            /** @description The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4150,7 +4199,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The session or the named supervisor is locked for 5 minutes (code pin_locked). */
+            /** @description The session or the named supervisor is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8842,6 +8891,40 @@ export interface operations {
             };
         };
     };
+    StaffController_supervisors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active admins and cashiers of the caller's restaurant, by name (close a shared terminal, authorize a void). Also a terminal read route. pinLockedUntil only for an admin caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffSupervisor"][];
+                };
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     StaffController_remove: {
         parameters: {
             query?: never;
@@ -9031,6 +9114,47 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description PIN removed (no-op when the member has none). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a profile of the caller's restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_unlockPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ends the member's PIN lockout early and clears its failed attempts; the PIN stays (no-op when not locked). Logged. */
             204: {
                 headers: {
                     [name: string]: unknown;

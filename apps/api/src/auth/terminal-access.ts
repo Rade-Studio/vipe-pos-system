@@ -21,6 +21,7 @@ const write: TerminalRoute = { acting: true };
 const TERMINAL_ROUTES: Readonly<Record<string, TerminalRoute>> = {
   'GET /api/auth/me': read,
   'POST /api/auth/identify': read,
+  'GET /api/staff/supervisors': read,
   'POST /api/auth/authorize': read,
   'GET /api/config': read,
   'GET /api/staff/waiters': read,

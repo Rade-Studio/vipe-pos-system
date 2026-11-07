@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { ForbiddenException, Inject, Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import { Clock } from '../common/clock';
 import { ENV, type Env } from '../config/env';
@@ -49,15 +49,22 @@ export interface SupervisorAuthorization {
 export class PinRefusal {
   private constructor(
     readonly status: 403 | 429,
-    readonly body: { statusCode: number; error: string; message: string; code: string },
+    readonly body: { statusCode: number; error: string; message: string; code: string; lockedUntil?: string },
   ) {}
 
   static wrong(): PinRefusal {
     return new PinRefusal(403, { statusCode: 403, error: 'Forbidden', message: PIN_MESSAGES.wrong, code: 'pin_invalid' });
   }
 
-  static locked(): PinRefusal {
-    return new PinRefusal(429, { statusCode: 429, error: 'Too Many Requests', message: PIN_MESSAGES.locked, code: 'pin_locked' });
+  /** `lockedUntil`: the latest end of the claimed locks, for the terminal's "Bloqueado hasta hh:mm". */
+  static locked(until: Date | string): PinRefusal {
+    return new PinRefusal(429, {
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: PIN_MESSAGES.locked,
+      code: 'pin_locked',
+      lockedUntil: new Date(until).toISOString(),
+    });
   }
 }
 
@@ -118,6 +125,21 @@ export class PinsService {
   /** Admin: remove a PIN (no-op when none). */
   async clearForStaff(profileId: string): Promise<void> {
     await this.uow.db.execute(sql`SELECT private.clear_staff_pin(${profileId}::uuid)`);
+  }
+
+  /**
+   * Admin: end a profile's PIN lockout before its 5 minutes and forget its
+   * failed attempts; the PIN stays. Only the profile counter is cleared (a
+   * terminal that guessed stays locked on its own). 404 for a profile of
+   * another restaurant; the unlock is logged with both profile ids.
+   */
+  async unlockForStaff(admin: CallerProfile, profileId: string): Promise<void> {
+    const [profile] = await this.rows<{ id: string }>(sql`SELECT id FROM public.profiles WHERE id = ${profileId}::uuid`);
+    if (!profile) {
+      throw new NotFoundException('Staff member not found');
+    }
+    await this.uow.db.execute(sql`SELECT private.clear_pin_attempts(NULL, ${profileId}::uuid, ARRAY['profile']::text[])`);
+    this.logger.log(`PIN unlocked early: profile ${profileId} by admin ${admin.id}`);
   }
 
   /** The caller changes their own PIN with the current one. */
@@ -257,7 +279,7 @@ export class PinsService {
       SELECT private.claim_pin_attempt(${auth.sessionId}::uuid, ${profileId}::uuid, ${scopeList},
                                        ${this.clock.now().toISOString()}::timestamptz) AS locked_until`);
     if (claim.locked_until !== null) {
-      return PinRefusal.locked();
+      return PinRefusal.locked(claim.locked_until);
     }
     if (!(await verify())) {
       return PinRefusal.wrong();

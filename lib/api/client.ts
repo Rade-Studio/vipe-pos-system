@@ -1,5 +1,6 @@
 import createClient from "openapi-fetch"
 import { emitAuthEvent } from "@/lib/shell/auth-events"
+import { ACTING_HEADER, actingToken } from "@/lib/terminal/acting"
 import { ApiError } from "./errors"
 import type { paths } from "./schema"
 
@@ -15,6 +16,9 @@ import type { paths } from "./schema"
  * (401/403) and the retry is still 401. A refresh that rotated the cookies is
  * announced with `onSessionRefreshed`, so the realtime socket reconnects with
  * the new access cookie (its handshake is only checked once).
+ *
+ * On a shared terminal every write also carries the acting claim of the
+ * identified staff member (lib/terminal/acting.ts); reads never do.
  */
 
 /** Auth routes answer 401 on their own terms; refreshing them would loop. */
@@ -97,6 +101,11 @@ export function createApiClient(options: ApiClientOptions = {}) {
     fetch: fetchWithRefresh,
   })
   client.use({
+    onRequest({ request }) {
+      const token = actingToken()
+      if (token && request.method !== "GET") request.headers.set(ACTING_HEADER, token)
+      return request
+    },
     async onResponse({ response }) {
       if (!response.ok) throw await ApiError.fromResponse(response)
       return undefined
