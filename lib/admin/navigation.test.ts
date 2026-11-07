@@ -42,8 +42,15 @@ describe("admin navigation registry", () => {
       "Métodos de pago",
       "Domicilios",
       "Personal",
+      "Acceso de meseros",
       "Impresoras",
     ])
+  })
+
+  it("has the Acceso de meseros page under Configuración (F4)", () => {
+    expect(getAdminSection("settings/access")).toMatchObject({ id: "settings/access", group: "settings", label: "Acceso de meseros" })
+    expect(groupOfSection("settings/access").label).toBe("Configuración")
+    expect(parseSectionHash("#settings/access")).toBe("settings/access")
   })
 
   it("has unique section ids and every section belongs to a declared group", () => {

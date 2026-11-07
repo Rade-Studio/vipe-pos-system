@@ -1652,6 +1652,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/{id}/pin/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["StaffController_unlockPin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dashboard/summary": {
         parameters: {
             query?: never;
@@ -4067,7 +4083,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description 5 failures lock the profile and the session 5 minutes (code pin_locked). */
+            /** @description 5 failures lock the profile and the session 5 minutes (code pin_locked; lockedUntil: when the lock ends). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4105,7 +4121,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The profile or this terminal is locked for 5 minutes (code pin_locked). */
+            /** @description The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4150,7 +4166,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The session or the named supervisor is locked for 5 minutes (code pin_locked). */
+            /** @description The session or the named supervisor is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9031,6 +9047,47 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description PIN removed (no-op when the member has none). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a profile of the caller's restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_unlockPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ends the member's PIN lockout early and clears its failed attempts; the PIN stays (no-op when not locked). Logged. */
             204: {
                 headers: {
                     [name: string]: unknown;

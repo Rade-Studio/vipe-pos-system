@@ -160,7 +160,7 @@
             "description": "Weak or malformed new PIN, or no PIN yet (Spanish message)."
           },
           "429": {
-            "description": "5 failures lock the profile and the session 5 minutes (code pin_locked)."
+            "description": "5 failures lock the profile and the session 5 minutes (code pin_locked; lockedUntil: when the lock ends)."
           }
         },
         "security": [
@@ -202,7 +202,7 @@
             "description": "Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike."
           },
           "429": {
-            "description": "The profile or this terminal is locked for 5 minutes (code pin_locked)."
+            "description": "The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends)."
           }
         },
         "security": [
@@ -247,7 +247,7 @@
             "description": "Unknown action or malformed PIN."
           },
           "429": {
-            "description": "The session or the named supervisor is locked for 5 minutes (code pin_locked)."
+            "description": "The session or the named supervisor is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends)."
           }
         },
         "security": [
@@ -5919,6 +5919,43 @@
         "responses": {
           "204": {
             "description": "PIN removed (no-op when the member has none)."
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "404": {
+            "description": "Not a profile of the caller's restaurant."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      }
+    },
+    "/api/staff/{id}/pin/lock": {
+      "delete": {
+        "operationId": "StaffController_unlockPin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Ends the member's PIN lockout early and clears its failed attempts; the PIN stays (no-op when not locked). Logged."
           },
           "403": {
             "description": "Not an active admin, or the target is an admin or the caller."

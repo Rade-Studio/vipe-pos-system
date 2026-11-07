@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Req } from '@nestjs/common';
 import {
   ApiBody,
   ApiConflictResponse,
@@ -11,6 +11,7 @@ import {
   ApiTags,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
+import type { AuthenticatedRequest } from '../auth/auth-context';
 import { parsePinInput, setPinSchema } from '../auth/pins';
 import { PinsService } from '../auth/pins.service';
 import { Roles } from '../auth/roles.decorator';
@@ -91,6 +92,16 @@ export class StaffController {
   @ApiNotFoundResponse({ description: "Not a profile of the caller's restaurant." })
   removePin(@Param('id') id: string): Promise<void> {
     return this.pins.clearForStaff(parseInput(idParamSchema, id));
+  }
+
+  @Delete(':id/pin/lock')
+  @HttpCode(204)
+  @ApiNoContentResponse({
+    description: "Ends the member's PIN lockout early and clears its failed attempts; the PIN stays (no-op when not locked). Logged.",
+  })
+  @ApiNotFoundResponse({ description: "Not a profile of the caller's restaurant." })
+  unlockPin(@Req() req: AuthenticatedRequest, @Param('id') id: string): Promise<void> {
+    return this.pins.unlockForStaff(req.profile!, parseInput(idParamSchema, id));
   }
 
   @Delete(':id')

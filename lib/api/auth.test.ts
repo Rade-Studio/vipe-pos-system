@@ -82,4 +82,12 @@ describe("PINs", () => {
     expect(pinFailureOf(acting)).toEqual({ kind: "acting-required", message: acting.message })
     expect(pinFailureOf(new Error("boom"))).toEqual({ kind: "unknown", message: "No se pudo verificar el PIN. Inténtalo de nuevo." })
   })
+
+  it("keeps when a lock ends (429 lockedUntil) for the terminal's \"Bloqueado hasta\"", () => {
+    const locked = new ApiError(429, "Too Many Requests", "Demasiados intentos fallidos. Espera 5 minutos e inténtalo de nuevo", {
+      code: "pin_locked",
+      lockedUntil: "2026-11-07T17:49:00.000Z",
+    })
+    expect(pinFailureOf(locked)).toEqual({ kind: "locked", message: locked.message, lockedUntil: "2026-11-07T17:49:00.000Z" })
+  })
 })

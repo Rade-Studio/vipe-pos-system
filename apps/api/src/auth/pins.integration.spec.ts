@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, type INestApplication, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, type INestApplication, Logger, Post } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { createDb } from '@vipe/db';
 import { decodeJwt } from 'jose';
@@ -429,6 +429,8 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
       const locked = await identify(t1, ids.waiter2, PINS.waiter2);
       expect(locked.status).toBe(429);
       expect(locked.body).toMatchObject({ statusCode: 429, message: MESSAGES.locked, code: 'pin_locked' });
+      // F4: the terminal shows "Bloqueado hasta hh:mm" from the answer itself.
+      expect(locked.body.lockedUntil).toBe(new Date(t0.getTime() + 5 * 60_000).toISOString());
       // Per profile: another terminal is refused for that profile, not for others.
       expect((await identify(t2, ids.waiter2, PINS.waiter2)).status).toBe(429);
       expect((await identify(t2, fixtures.waiterA.profileId, PINS.waiter)).status).toBe(200);
@@ -460,6 +462,59 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
       expect(list.body.find((m: { id: string }) => m.id === fixtures.waiterA.profileId).pinLockedUntil).not.toBeNull();
       expect((await setPin(fixtures.waiterA.profileId, PINS.waiter)).status).toBe(204);
       expect((await identify(t5, fixtures.waiterA.profileId, PINS.waiter)).status).toBe(200);
+    });
+
+    it('an admin unlocks a locked PIN early, keeping the PIN, and the unlock is logged', async () => {
+      const t6 = await openTerminal(emails.cashier);
+      const t7 = await openTerminal(emails.cashier);
+      for (let i = 0; i < 5; i++) {
+        await identify(t6, fixtures.waiterA.profileId, '808080');
+      }
+      expect((await identify(t7, fixtures.waiterA.profileId, PINS.waiter)).status).toBe(429);
+      const before = await pinRow(fixtures.waiterA.profileId);
+      expect(before.locked_until).not.toBeNull();
+      const logged = vi.spyOn(Logger.prototype, 'log');
+      const res = await admin().delete(`/api/staff/${fixtures.waiterA.profileId}/pin/lock`);
+      expect(res.status).toBe(204);
+      expect(res.text).toBe('');
+      const after = await pinRow(fixtures.waiterA.profileId);
+      expect(after).toEqual({ ...before, failed_attempts: 0, locked_until: null });
+      expect(logged).toHaveBeenCalledWith(
+        `PIN unlocked early: profile ${fixtures.waiterA.profileId} by admin ${fixtures.adminA.profileId}`,
+      );
+      const list = await admin().get('/api/staff');
+      expect(list.body.find((m: { id: string }) => m.id === fixtures.waiterA.profileId).pinLockedUntil).toBeNull();
+      expect((await identify(t7, fixtures.waiterA.profileId, PINS.waiter)).status).toBe(200);
+      // Idempotent: nothing to unlock is still 204.
+      expect((await admin().delete(`/api/staff/${fixtures.waiterA.profileId}/pin/lock`)).status).toBe(204);
+    });
+
+    it('an early unlock also clears failures below the lock threshold', async () => {
+      const t8 = await openTerminal(emails.cashier);
+      for (let i = 0; i < 3; i++) {
+        await identify(t8, ids.waiter2, '808080');
+      }
+      expect(await pinRow(ids.waiter2)).toMatchObject({ failed_attempts: 3, locked_until: null });
+      expect((await admin().delete(`/api/staff/${ids.waiter2}/pin/lock`)).status).toBe(204);
+      expect(await pinRow(ids.waiter2)).toMatchObject({ failed_attempts: 0, locked_until: null });
+    });
+
+    it('an early unlock is admin only and never crosses restaurants', async () => {
+      const t9 = await openTerminal(emails.cashier);
+      for (let i = 0; i < 5; i++) {
+        await identify(t9, ids.waiter2, '808080');
+      }
+      const before = await pinRow(ids.waiter2);
+      expect(before.locked_until).not.toBeNull();
+      expect((await waiter().delete(`/api/staff/${ids.waiter2}/pin/lock`)).status).toBe(403);
+      expect((await as(cookies.cook).delete(`/api/staff/${ids.waiter2}/pin/lock`)).status).toBe(403);
+      const foreign = await as(cookies.adminB).delete(`/api/staff/${ids.waiter2}/pin/lock`);
+      expect(foreign.status).toBe(404);
+      expect(await pinRow(ids.waiter2)).toEqual(before);
+      expect((await admin().delete(`/api/staff/${ids.unknown}/pin/lock`)).status).toBe(404);
+      expect((await as(t9).delete(`/api/staff/${ids.waiter2}/pin/lock`)).status).toBe(403);
+      expect(await pinRow(ids.waiter2)).toEqual(before);
+      expect((await admin().delete(`/api/staff/${ids.waiter2}/pin/lock`)).status).toBe(204);
     });
   });
 

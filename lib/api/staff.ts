@@ -100,3 +100,10 @@ export function removeStaffPin(id: string): Promise<void> {
     await api.DELETE("/api/staff/{id}/pin", byId(id))
   })
 }
+
+/** Ends the member's PIN lockout early and clears its failed attempts; the PIN stays. */
+export function unlockStaffPin(id: string): Promise<void> {
+  return staffCall(async () => {
+    await api.DELETE("/api/staff/{id}/pin/lock", byId(id))
+  })
+}

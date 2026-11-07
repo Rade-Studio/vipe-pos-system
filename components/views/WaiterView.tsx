@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
@@ -82,6 +82,8 @@ interface WaiterViewProps {
   profile: Profile
   onChangeProfile: () => void
   authRole?: string
+  /** F4: on a shared terminal, its bar (identified waiter, "Cambiar mesero") replaces the header and its logout. */
+  header?: ReactNode
 }
 
 // S5: the shared wire→app mapping (`wireRowToPartialOrder`) turns the
@@ -91,7 +93,7 @@ interface WaiterViewProps {
 // reference-stable contract) and returns null when the row lacks the minimum
 // id+status shape the merge needs. See its call site in the orders handler.
 
-export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewProps) {
+export function WaiterView({ profile, onChangeProfile, authRole, header }: WaiterViewProps) {
   // Estados principales
   const [activeTable, setActiveTable] = useState<string | null>(null)
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
@@ -1241,7 +1243,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       {/* Contenido principal */}
       <div className="flex-1 overflow-auto bg-muted/20 p-0">
         <div className="p-1 md:p-2">
-          <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
+          {header ?? <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />}
 
           <div className="mb-1">
             <TablesSection

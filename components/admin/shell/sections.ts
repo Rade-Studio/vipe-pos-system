@@ -8,6 +8,7 @@ import {
   CreditCard,
   Factory,
   FlaskConical,
+  KeyRound,
   LayoutDashboard,
   Package,
   Percent,
@@ -44,5 +45,6 @@ export const SECTION_ICONS: Record<AdminSectionId, LucideIcon> = {
   "settings/payment-methods": CreditCard,
   "settings/delivery": Truck,
   "settings/staff": Users,
+  "settings/access": KeyRound,
   "settings/printers": Printer,
 }
