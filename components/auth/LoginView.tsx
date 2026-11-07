@@ -127,7 +127,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             animationComplete ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0",
           )}
         >
-          <div className="absolute inset-0 border border-white/20 dark:border-white/10 rounded-lg"></div>
+          <div className="pointer-events-none absolute inset-0 border border-white/20 dark:border-white/10 rounded-lg"></div>
           <div className="absolute -top-5 -right-5">
             <div className="relative">
               <div
