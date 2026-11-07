@@ -1,4 +1,4 @@
-import { and, type Database, eq, gt, isNull, schema, sql } from '@vipe/db';
+import { and, type Database, eq, schema, sql } from '@vipe/db';
 import type { CallerProfile } from './auth-context';
 
 export interface Identity {
@@ -8,21 +8,13 @@ export interface Identity {
 
 /**
  * Is the token's session still live (not revoked by logout, not expired)?
- * Read inside a request transaction; RLS on auth_sessions already limits this
- * to the caller's own rows.
+ * For an acting session its terminal must be live too. Read inside a request
+ * transaction through private.session_is_live (0017), which only answers for
+ * the caller's own sessions.
  */
 export async function hasLiveSession(db: Database, sessionId: string): Promise<boolean> {
-  const [session] = await db
-    .select({ id: schema.authSessions.id })
-    .from(schema.authSessions)
-    .where(
-      and(
-        eq(schema.authSessions.id, sessionId),
-        isNull(schema.authSessions.revokedAt),
-        gt(schema.authSessions.expiresAt, sql`now()`),
-      ),
-    );
-  return session !== undefined;
+  const { rows } = await db.execute(sql`SELECT private.session_is_live(${sessionId}::uuid) AS live`);
+  return rows[0]?.live === true;
 }
 
 /**

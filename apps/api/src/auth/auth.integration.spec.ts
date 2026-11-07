@@ -32,6 +32,7 @@ describe('auth endpoints (Testcontainers, vipe_api)', () => {
       expect(res.body).toEqual({
         user: { id: fixtures.adminA.userId, email: fixtures.adminA.email },
         profile: { id: fixtures.adminA.profileId, name: 'Admin A', role: 'admin', restaurantId: fixtures.restaurantA },
+        sessionKind: 'user',
       });
       const cookies = setCookies(res);
       expect(cookies.vipe_access).toMatch(/^vipe_access=[^;]+; Max-Age=900; Path=\/; Expires=[^;]+; HttpOnly; SameSite=Lax$/);

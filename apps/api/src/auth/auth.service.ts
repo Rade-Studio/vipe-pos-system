@@ -5,12 +5,16 @@ import { UnitOfWork } from '../db/unit-of-work';
 import { NO_PROFILE_MESSAGE } from './auth-context';
 import { type Identity, loadIdentity } from './identity';
 import { PasswordsService } from './passwords.service';
+import { PIN_MESSAGES, TERMINAL_OPENER_ROLES } from './pins';
 import { TokensService } from './tokens.service';
 
 export interface IssuedTokens {
   accessToken: string;
   refreshToken: string;
 }
+
+/** Body of login, terminal login and me. */
+export type SessionIdentity = Identity & { sessionKind: 'user' | 'terminal' };
 
 const INVALID_CREDENTIALS = 'Invalid credentials';
 const INVALID_REFRESH = 'Invalid refresh token';
@@ -36,7 +40,33 @@ export class AuthService {
     private readonly tokens: TokensService,
   ) {}
 
-  async login(email: string, password: string): Promise<{ identity: Identity; tokens: IssuedTokens }> {
+  async login(email: string, password: string): Promise<{ identity: SessionIdentity; tokens: IssuedTokens }> {
+    const { user, identity } = await this.verifyCredentials(email, password);
+    return { identity: { ...identity, sessionKind: 'user' }, tokens: await this.openSession(user.id) };
+  }
+
+  /**
+   * A shared order-taking device (F2): the same credential check, then only
+   * an active admin or cashier (TERMINAL_OPENER_ROLES) opens a terminal
+   * session; anyone else gets 403 and no session.
+   */
+  async terminalLogin(email: string, password: string): Promise<{ identity: SessionIdentity; tokens: IssuedTokens }> {
+    const { user, identity } = await this.verifyCredentials(email, password);
+    if (!(TERMINAL_OPENER_ROLES as readonly string[]).includes(identity.profile.role)) {
+      throw new ForbiddenException(PIN_MESSAGES.opener);
+    }
+    const refresh = this.tokens.newRefreshToken();
+    const { rows } = await this.client.pool.query<{ id: string }>(
+      'SELECT private.create_terminal_session($1, $2, $3) AS id',
+      [user.id, refresh.hash, refresh.expiresAt],
+    );
+    return {
+      identity: { ...identity, sessionKind: 'terminal' },
+      tokens: { accessToken: await this.tokens.signAccess(user.id, rows[0].id, 'terminal'), refreshToken: refresh.token },
+    };
+  }
+
+  private async verifyCredentials(email: string, password: string): Promise<{ user: LoginRow; identity: Identity }> {
     const { rows } = await this.client.pool.query<LoginRow>(
       'SELECT id, password_hash, password_algo, is_active FROM private.find_user_for_login($1)',
       [email],
@@ -64,7 +94,7 @@ export class AuthService {
     if (!identity) {
       throw new ForbiddenException(NO_PROFILE_MESSAGE);
     }
-    return { identity, tokens: await this.openSession(user.id) };
+    return { user, identity };
   }
 
   /** Rotate the session behind a refresh token; the old token never matches again. */
@@ -73,18 +103,19 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_REFRESH);
     }
     const next = this.tokens.newRefreshToken();
-    const { rows } = await this.client.pool.query<{ id: string; user_id: string }>(
-      'SELECT id, user_id FROM private.rotate_session($1, $2, $3)',
+    const { rows } = await this.client.pool.query<{ id: string; user_id: string; kind: string }>(
+      'SELECT id, user_id, kind FROM private.rotate_session($1, $2, $3)',
       [this.tokens.hashRefresh(refreshToken), next.hash, next.expiresAt],
     );
     const session = rows[0];
     if (!session) {
       throw new UnauthorizedException(INVALID_REFRESH);
     }
-    return { accessToken: await this.tokens.signAccess(session.user_id, session.id), refreshToken: next.token };
+    const kind = session.kind === 'terminal' ? 'terminal' : undefined;
+    return { accessToken: await this.tokens.signAccess(session.user_id, session.id, kind), refreshToken: next.token };
   }
 
-  /** Revoke by the refresh cookie, else by the sid of a valid access token. */
+  /** Revoke by the refresh cookie, else by the sid of a valid access token; a terminal's acting sessions go with it. */
   async logout(refreshToken: string | undefined, accessToken: string | undefined): Promise<void> {
     if (refreshToken) {
       await this.client.pool.query('SELECT private.revoke_session($1)', [this.tokens.hashRefresh(refreshToken)]);
@@ -99,12 +130,12 @@ export class AuthService {
   }
 
   /** Body of GET /auth/me, inside the request unit of work. */
-  async me(userId: string): Promise<Identity> {
+  async me(userId: string, kind: 'user' | 'terminal'): Promise<SessionIdentity> {
     const identity = await loadIdentity(this.uow.db, userId);
     if (!identity) {
       throw new ForbiddenException(NO_PROFILE_MESSAGE);
     }
-    return identity;
+    return { ...identity, sessionKind: kind };
   }
 
   private async openSession(userId: string): Promise<IssuedTokens> {

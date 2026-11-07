@@ -5,7 +5,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const api = vi.hoisted(() => ({ GET: vi.fn(), PUT: vi.fn() }))
 vi.mock("@/lib/api/client", () => ({ api }))
 
-import { DEFAULT_LATE_THRESHOLDS, fetchLateThresholds, lateThresholdsOf, saveLateThresholds } from "./settings"
+import {
+  DEFAULT_LATE_THRESHOLDS,
+  DEFAULT_WAITER_ACCESS_MODE,
+  fetchLateThresholds,
+  fetchWaiterAccessMode,
+  lateThresholdsOf,
+  saveLateThresholds,
+  saveWaiterAccessMode,
+} from "./settings"
 
 const config = {
   taxPercentage: 10,
@@ -19,6 +27,7 @@ const config = {
   deliveryDefaultFee: 0,
   kitchenLateMinutes: 20,
   deliveryLateMinutes: 60,
+  waiterAccessMode: "shared_terminal",
 }
 
 beforeEach(() => {
@@ -48,5 +57,23 @@ describe("late thresholds", () => {
       deliveryLateMinutes: 60,
     })
     expect(api.PUT).toHaveBeenCalledWith("/api/config", { body: { kitchenLateMinutes: 10 } })
+  })
+})
+
+describe("waiter access mode (F2)", () => {
+  it("defaults to own accounts, the server default", () => {
+    expect(DEFAULT_WAITER_ACCESS_MODE).toBe("own_accounts")
+  })
+
+  it("reads it with GET /config", async () => {
+    api.GET.mockResolvedValueOnce({ data: config })
+    await expect(fetchWaiterAccessMode()).resolves.toBe("shared_terminal")
+    expect(api.GET).toHaveBeenCalledWith("/api/config")
+  })
+
+  it("saves only the mode with PUT /config", async () => {
+    api.PUT.mockResolvedValueOnce({ data: { ...config, waiterAccessMode: "own_accounts" } })
+    await expect(saveWaiterAccessMode("own_accounts")).resolves.toBe("own_accounts")
+    expect(api.PUT).toHaveBeenCalledWith("/api/config", { body: { waiterAccessMode: "own_accounts" } })
   })
 })

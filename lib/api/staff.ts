@@ -86,3 +86,17 @@ export function setStaffPassword(id: string, password: string): Promise<void> {
     await api.POST("/api/staff/{id}/password", { ...byId(id), body: { password } })
   })
 }
+
+/** Sets or resets the member's PIN (4-6 digits, not weak); clears its lockout. */
+export function setStaffPin(id: string, pin: string): Promise<void> {
+  return staffCall(async () => {
+    await api.PUT("/api/staff/{id}/pin", { ...byId(id), body: { pin } })
+  })
+}
+
+/** Removes the member's PIN (no-op when none). */
+export function removeStaffPin(id: string): Promise<void> {
+  return staffCall(async () => {
+    await api.DELETE("/api/staff/{id}/pin", byId(id))
+  })
+}

@@ -38,6 +38,43 @@
         ]
       }
     },
+    "/api/auth/terminal/login": {
+      "post": {
+        "operationId": "AuthController_terminalLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Opens a shared order-taking terminal (sessionKind terminal): only the order-taking routes, no admin screens. Sets the same cookies.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials."
+          },
+          "403": {
+            "description": "Solo un administrador o cajero puede abrir una terminal compartida (or no active profile)."
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/refresh": {
       "post": {
         "operationId": "AuthController_refresh",
@@ -86,6 +123,131 @@
           },
           "401": {
             "description": "No valid access cookie."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/pin": {
+      "put": {
+        "operationId": "AuthController_changeOwnPin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeOwnPinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The caller's PIN is replaced (the current one was right)."
+          },
+          "403": {
+            "description": "PIN incorrecto (code pin_invalid; the failure counts), or a terminal session."
+          },
+          "422": {
+            "description": "Weak or malformed new PIN, or no PIN yet (Spanish message)."
+          },
+          "429": {
+            "description": "5 failures lock the profile and the session 5 minutes (code pin_locked)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/identify": {
+      "post": {
+        "operationId": "AuthController_identify",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Terminal only: the acting-staff claim, valid 5 minutes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentifyResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike."
+          },
+          "429": {
+            "description": "The profile or this terminal is locked for 5 minutes (code pin_locked)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/authorize": {
+      "post": {
+        "operationId": "AuthController_authorize",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Single-use supervisor authorization for the action, valid 2 minutes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizeResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "PIN incorrecto (code pin_invalid): no admin or cashier of the restaurant has that PIN."
+          },
+          "422": {
+            "description": "Unknown action or malformed PIN."
+          },
+          "429": {
+            "description": "The session or the named supervisor is locked for 5 minutes (code pin_locked)."
           }
         },
         "security": [
@@ -5696,6 +5858,88 @@
         ]
       }
     },
+    "/api/staff/{id}/pin": {
+      "put": {
+        "operationId": "StaffController_setPin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStaffPinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "PIN set or reset (stored as an argon2id hash); its lockout is cleared. Any profile of the restaurant, the admin included."
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "404": {
+            "description": "Not a profile of the caller's restaurant."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      },
+      "delete": {
+        "operationId": "StaffController_removePin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "PIN removed (no-op when the member has none)."
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "404": {
+            "description": "Not a profile of the caller's restaurant."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      }
+    },
     "/api/dashboard/summary": {
       "get": {
         "operationId": "DashboardController_summary",
@@ -5908,11 +6152,175 @@
           },
           "profile": {
             "$ref": "#/components/schemas/SessionProfile"
+          },
+          "sessionKind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "terminal"
+            ],
+            "description": "user: a personal login; terminal: a shared order-taking device (POST /auth/terminal/login)."
           }
         },
         "required": [
           "user",
+          "profile",
+          "sessionKind"
+        ]
+      },
+      "ChangeOwnPinRequest": {
+        "type": "object",
+        "properties": {
+          "currentPin": {
+            "type": "string",
+            "pattern": "^\\d{4,6}$",
+            "description": "The current PIN."
+          },
+          "pin": {
+            "type": "string",
+            "pattern": "^\\d{4,6}$",
+            "description": "4-6 digits; not one repeated digit, a run (1234, 4321) or a repeated block (1212)."
+          }
+        },
+        "required": [
+          "currentPin",
+          "pin"
+        ]
+      },
+      "IdentifyRequest": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Profile picked on the terminal."
+          },
+          "pin": {
+            "type": "string",
+            "pattern": "^\\d{4,6}$"
+          }
+        },
+        "required": [
+          "profileId",
+          "pin"
+        ]
+      },
+      "ActingProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "example": "waiter"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role"
+        ]
+      },
+      "IdentifyResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Send as the X-Vipe-Acting header on the order writes of this terminal."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "5 minutes after the identification."
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ActingProfile"
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt",
           "profile"
+        ]
+      },
+      "AuthorizeRequest": {
+        "type": "object",
+        "properties": {
+          "pin": {
+            "type": "string",
+            "pattern": "^\\d{4,6}$",
+            "description": "PIN of an admin or cashier of the restaurant."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "cancel_order",
+              "void_item",
+              "void_payment"
+            ]
+          },
+          "profileId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Only this supervisor is tried; omitted, every supervisor with a PIN."
+          }
+        },
+        "required": [
+          "pin",
+          "action"
+        ]
+      },
+      "AuthorizationSupervisor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "AuthorizeResponse": {
+        "type": "object",
+        "properties": {
+          "authorizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Single use, bound to the action and the restaurant."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "cancel_order",
+              "void_item",
+              "void_payment"
+            ]
+          },
+          "supervisor": {
+            "$ref": "#/components/schemas/AuthorizationSupervisor"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "2 minutes after the authorization."
+          }
+        },
+        "required": [
+          "authorizationId",
+          "action",
+          "supervisor",
+          "expiresAt"
         ]
       },
       "HealthResponse": {
@@ -6843,6 +7251,15 @@
             "minimum": 1,
             "maximum": 240,
             "description": "Minutes after which an open delivery is late."
+          },
+          "waiterAccessMode": {
+            "type": "string",
+            "enum": [
+              "own_accounts",
+              "shared_terminal"
+            ],
+            "default": "own_accounts",
+            "description": "own_accounts: each waiter logs in; shared_terminal: a terminal session takes orders and each write needs the PIN identification."
           }
         },
         "required": [
@@ -6856,7 +7273,8 @@
           "inventoryControlEnabled",
           "deliveryDefaultFee",
           "kitchenLateMinutes",
-          "deliveryLateMinutes"
+          "deliveryLateMinutes",
+          "waiterAccessMode"
         ]
       },
       "UpdateBusinessConfigRequest": {
@@ -6908,6 +7326,13 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 240
+          },
+          "waiterAccessMode": {
+            "type": "string",
+            "enum": [
+              "own_accounts",
+              "shared_terminal"
+            ]
           }
         }
       },
@@ -12206,6 +12631,16 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "hasPin": {
+            "type": "boolean",
+            "description": "The member has a PIN (shared terminal, supervisor authorization)."
+          },
+          "pinLockedUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "End of a running PIN lockout (5 failures lock 5 minutes); null when not locked."
           }
         },
         "required": [
@@ -12216,7 +12651,9 @@
           "email",
           "role",
           "active",
-          "createdAt"
+          "createdAt",
+          "hasPin",
+          "pinLockedUntil"
         ]
       },
       "CreateStaffRequest": {
@@ -12303,6 +12740,19 @@
         },
         "required": [
           "password"
+        ]
+      },
+      "SetStaffPinRequest": {
+        "type": "object",
+        "properties": {
+          "pin": {
+            "type": "string",
+            "pattern": "^\\d{4,6}$",
+            "description": "4-6 digits; not one repeated digit, a run (1234, 4321) or a repeated block (1212)."
+          }
+        },
+        "required": [
+          "pin"
         ]
       },
       "DailySales": {
