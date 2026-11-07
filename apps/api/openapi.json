@@ -1641,7 +1641,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Newest cancellation first, with the bill at that moment, reason, actor and supervisor.",
+            "description": "Newest cancellation first, with the bill at that moment, reason, actor and supervisor; deliveries carry `delivery`, and those cancelled before the audit (0019) come as `legacy` with no reason or actor.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2024,7 +2024,7 @@
             "description": "`order_not_found`."
           },
           "409": {
-            "description": "`order_cancelled`, `order_paid` (void the payment first) or `delivery_order`."
+            "description": "`order_cancelled`, `order_paid` (a table order: void the payment first), `delivery_order` (a cashier or waiter on a delivery), `delivery_not_cancellable` or `register_closed` (a paid delivery of a closed drawer)."
           },
           "422": {
             "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
@@ -5874,7 +5874,65 @@
             "description": "P0002: delivery or courier not found."
           },
           "422": {
-            "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
+            "description": "RPC rejection with its message verbatim and `code`; action cancel is refused (P0001): use POST /delivery/orders/:id/cancel."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "delivery"
+        ]
+      }
+    },
+    "/api/delivery/orders/{id}/cancel": {
+      "post": {
+        "operationId": "DeliveryController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "authorizationId (POST /auth/authorize, action cancel_order, target this order) only when the delivery has a live payment.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The audited cancellation (cancel_order): reason, actor and supervisor stored in order_cancellations and the audit log; the order and the delivery become cancelled; a live payment is voided under the same authorization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOrder"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or delivery_operator; 403 `authorization_required` (paid), `authorization_invalid` or `self_authorization_not_allowed`."
+          },
+          "404": {
+            "description": "`order_not_found`."
+          },
+          "409": {
+            "description": "`order_cancelled`, `delivery_not_cancellable` (out for delivery or delivered) or `register_closed` (the payment's drawer is closed)."
+          },
+          "422": {
+            "description": "`reason_invalid` or `reason_text_required` (Spanish message, `code`)."
           }
         },
         "security": [
@@ -8386,22 +8444,31 @@
               "duplicate_charge",
               "wrong_payment_method",
               "other"
-            ]
+            ],
+            "nullable": true,
+            "description": "Null only for a legacy delivery."
           },
           "reasonLabel": {
             "type": "string",
-            "description": "Spanish label of the reason."
+            "description": "Spanish label of the reason; \"Sin motivo registrado (antes de la auditoría)\" for a legacy delivery."
           },
           "reasonText": {
             "type": "string",
             "nullable": true
           },
           "cancelledBy": {
-            "$ref": "#/components/schemas/StaffRef"
+            "nullable": true,
+            "description": "Null only for a legacy delivery (no actor was recorded).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StaffRef"
+              }
+            ]
           },
           "authorizedBy": {
             "nullable": true,
-            "description": "Null when no authorization was needed (an order with nothing on it).",
+            "description": "Null when no authorization was needed (an order with nothing on it, an unpaid delivery).",
             "type": "object",
             "allOf": [
               {
@@ -8417,12 +8484,19 @@
             "enum": [
               "active",
               "kitchen",
-              "delivered"
-            ]
+              "delivered",
+              "paid"
+            ],
+            "nullable": true,
+            "description": "paid: a prepaid delivery; null for a legacy delivery."
+          },
+          "legacy": {
+            "type": "boolean",
+            "description": "A delivery cancelled before cancellations were audited (no reason, actor or authorization recorded)."
           },
           "subtotal": {
             "type": "number",
-            "description": "Bill at the moment of the cancellation."
+            "description": "Bill at the moment of the cancellation (a delivery: total includes the delivery fee)."
           },
           "tax": {
             "type": "number"
@@ -8450,12 +8524,28 @@
           "authorizedBy",
           "selfAuthorized",
           "previousStatus",
+          "legacy",
           "subtotal",
           "tax",
           "tip",
           "total",
           "sentItems",
           "cancelledAt"
+        ]
+      },
+      "CancelledDelivery": {
+        "type": "object",
+        "properties": {
+          "customerName": {
+            "type": "string"
+          },
+          "deliveryFee": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "customerName",
+          "deliveryFee"
         ]
       },
       "CancelledOrder": {
@@ -8568,6 +8658,16 @@
           },
           "cancellation": {
             "$ref": "#/components/schemas/OrderCancellation"
+          },
+          "delivery": {
+            "nullable": true,
+            "description": "Only for a delivery (orderType delivery).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CancelledDelivery"
+              }
+            ]
           }
         },
         "required": [
@@ -8591,7 +8691,8 @@
           "createdAt",
           "updatedAt",
           "items",
-          "cancellation"
+          "cancellation",
+          "delivery"
         ]
       },
       "StockShortage": {
@@ -8919,7 +9020,7 @@
           "authorizationId": {
             "type": "string",
             "format": "uuid",
-            "description": "POST /auth/authorize id for action cancel_order. Required when the order has a live item or any payment."
+            "description": "POST /auth/authorize id for action cancel_order. Required when a table order has a live item or any payment, and when a delivery has a live payment (voided with it)."
           }
         },
         "required": [
@@ -9009,6 +9110,14 @@
             "type": "number",
             "nullable": true
           },
+          "orderType": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ],
+            "description": "delivery: a Domicilio (cancelled from Domicilios, F3b)."
+          },
           "paymentId": {
             "type": "string",
             "format": "uuid",
@@ -9058,12 +9167,12 @@
           },
           "amount": {
             "type": "number",
-            "description": "Money removed: order total, voided lines (price x quantity) or payment total charged."
+            "description": "Money removed: order total (a delivery: with its fee), voided lines (price x quantity) or payment total charged."
           },
           "details": {
             "type": "object",
             "additionalProperties": true,
-            "description": "order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items; items_voided: lines; payment_voided: amounts, methods, tenders."
+            "description": "order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items (a delivery adds order_type, delivery_fee, customer_name, delivery_status, payment_mode, payments_voided); items_voided: lines; payment_voided: amounts, methods, tenders (voided by a delivery cancellation: cancellation_audit_id)."
           },
           "createdAt": {
             "type": "string",
@@ -9075,6 +9184,7 @@
           "eventType",
           "orderId",
           "orderNumber",
+          "orderType",
           "paymentId",
           "actor",
           "authorizedBy",

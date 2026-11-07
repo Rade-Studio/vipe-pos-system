@@ -33,6 +33,19 @@ beforeEach(() => {
   toast.mockReset()
 })
 
+describe("LoginView — card overlay", () => {
+  // The decorative card border is positioned over the whole card; it must not
+  // take clicks, or it covers the unpositioned "Abrir esta tablet como terminal" toggle.
+  it("lets clicks through the decorative card border to the terminal toggle", () => {
+    const { container } = render(<LoginView onLoginSuccess={vi.fn()} />)
+    const overlays = Array.from(container.querySelectorAll<HTMLElement>("div.absolute.inset-0.border"))
+    expect(overlays.length).toBeGreaterThan(0)
+    for (const overlay of overlays) expect(overlay.className).toMatch(/\bpointer-events-none\b/)
+    fireEvent.click(screen.getByRole("button", { name: "Abrir esta tablet como terminal" }))
+    expect(screen.getByRole("button", { name: "Volver a iniciar sesión" })).toBeInTheDocument()
+  })
+})
+
 describe("LoginView", () => {
   it("posts the credentials to /api/auth/login and hands the session to the shell", async () => {
     api.POST.mockResolvedValue({ data: session })

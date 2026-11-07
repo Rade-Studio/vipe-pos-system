@@ -19,6 +19,7 @@ vi.mock("@/lib/api/client", () => ({ api }))
 
 import {
   DeliveryServiceError,
+  cancelDelivery,
   createCourier,
   createDeliveryOrder,
   deliveryErrorOf,
@@ -435,6 +436,16 @@ describe("T19 dispatch console details", () => {
     expect(caught.kind).toBe("rejected")
     expect(caught.message).toBe(message)
     await expect(kindOf(returnCourier(""))).resolves.toBe("invalid-input")
+  })
+
+  it("cancelDelivery POSTs the audited cancel with the reason and the authorization, and keeps the ApiError code (F3b)", async () => {
+    api.POST.mockResolvedValue({ data: { ...delivery, status: "cancelled" } })
+    const body = { reason: "customer_left" as const, reasonText: null, authorizationId: "auth-1" }
+    await expect(cancelDelivery("o-1", body)).resolves.toMatchObject({ status: "cancelled" })
+    expect(api.POST).toHaveBeenCalledWith("/api/delivery/orders/{id}/cancel", { params: { path: { id: "o-1" } }, body })
+    const refusal = new ApiError(403, "Forbidden", "Esta acción necesita la autorización de un supervisor", { code: "authorization_required" })
+    api.POST.mockRejectedValueOnce(refusal)
+    await expect(cancelDelivery("o-1", { reason: "customer_left" })).rejects.toBe(refusal)
   })
 
   it("getClosedTodaySummary reads GET /api/delivery/closed-today", async () => {

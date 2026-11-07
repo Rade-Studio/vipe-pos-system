@@ -5,7 +5,7 @@ import { UnitOfWork } from '../db/unit-of-work';
 import { AUDIT_LIST_LIMIT, type AuditEvent, type auditQuerySchema } from './audit.dto';
 import { toAuditEvent } from './audit.mappers';
 
-/** The append-only public.audit_log of the caller's restaurant (RLS); written only by the 0018 functions. */
+/** The append-only public.audit_log of the caller's restaurant (RLS); written only by the 0018/0019 functions. */
 @Injectable()
 export class AuditService {
   constructor(private readonly uow: UnitOfWork) {}
@@ -31,9 +31,10 @@ export class AuditService {
       where.push(sql`a.self_authorized = ${query.selfAuthorized}`);
     }
     const { rows } = await this.uow.db.execute(sql`
-      SELECT to_jsonb(a) AS event
+      SELECT to_jsonb(a) || jsonb_build_object('order_type', o.order_type) AS event
         FROM public.audit_log a
         JOIN public.restaurants r ON r.id = a.restaurant_id
+        JOIN public.orders o ON o.id = a.order_id
        WHERE ${sql.join(where, sql` AND `)}
        ORDER BY a.created_at DESC, a.id
        LIMIT ${AUDIT_LIST_LIMIT}`);

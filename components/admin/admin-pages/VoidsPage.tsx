@@ -196,7 +196,15 @@ export function VoidsPage({ description }: { description: string }) {
                       </td>
                       <td className={TD}>
                         <b className="tabular-nums">{subject.title}</b>
+                        {event.orderType === "delivery" && (
+                          <Chip tone="reserved" className="ml-1.5">
+                            Domicilio
+                          </Chip>
+                        )}
                         {subject.detail && <small className="block break-words text-xs text-muted-fg">{subject.detail}</small>}
+                        {event.orderType === "delivery" && typeof event.details.customer_name === "string" && (
+                          <small className="block break-words text-xs text-muted-fg">{event.details.customer_name}</small>
+                        )}
                       </td>
                       <td className={`${TD} max-w-[16rem] break-words`}>{auditReason(event)}</td>
                       <td className={TD}>{event.actor.name}</td>

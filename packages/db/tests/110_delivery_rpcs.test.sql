@@ -933,29 +933,30 @@ SELECT is(
   NULL::text,
   'set_delivery_status: re-dispatch clears failure_reason');
 
--- 9g. cancel: a fresh delivery, then cancel received -> cancelled + orders.status='cancelled'.
+-- 9g. cancel: a fresh delivery is cancelled through the audited cancel_order
+-- with a reason (0019) -> delivery and orders.status 'cancelled'.
 SELECT is(
   pg_temp.dr_text($q$
-    SELECT (public.set_delivery_status(
+    SELECT (public.cancel_order(
       pg_temp.dr_fresh_delivery('3010000003', 'aaaaaaaa-0000-4000-8000-00000000a001', 1,
                                  0, 'prepaid', NULL),
-      'cancel', NULL, NULL
-    ))->>'delivery_status'
+      'customer_left'
+    ))->>'payments_voided'
   $q$),
-  'cancelled'::text,
-  'set_delivery_status: cancel received -> cancelled');
+  '0'::text,
+  'cancel_order: cancel received with a reason (no payment, no supervisor)');
 
 SELECT is(
   pg_temp.dr_text($q$
-    SELECT o.status
+    SELECT o.status || '/' || od.delivery_status
       FROM public.orders o
       JOIN public.order_deliveries od ON od.order_id = o.id
      WHERE o.restaurant_id = 'aaaaaaaa-0000-4000-8000-0000000000d3'
        AND od.delivery_status = 'cancelled'
      ORDER BY od.created_at DESC LIMIT 1
   $q$),
-  'cancelled'::text,
-  'set_delivery_status: cancel also sets orders.status to cancelled');
+  'cancelled/cancelled'::text,
+  'cancel_order: the delivery and orders.status are cancelled together');
 
 RESET ROLE;
 

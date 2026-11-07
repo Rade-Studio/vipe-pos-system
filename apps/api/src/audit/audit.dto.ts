@@ -31,6 +31,7 @@ export class AuditEvent {
   @ApiProperty({ enum: AUDIT_EVENT_TYPES }) eventType!: AuditEventType;
   @ApiProperty({ format: 'uuid' }) orderId!: string;
   @ApiProperty({ type: Number, nullable: true }) orderNumber!: number | null;
+  @ApiProperty({ enum: ['dine_in', 'delivery'], description: 'delivery: a Domicilio (cancelled from Domicilios, F3b).' }) orderType!: 'dine_in' | 'delivery';
   @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Only for payment_voided.' }) paymentId!: string | null;
   @ApiProperty({ type: StaffRef, description: 'Who cancelled or voided.' }) actor!: StaffRef;
   @ApiProperty({ type: StaffRef, nullable: true, description: 'The supervisor whose PIN authorized it; null when none was needed.' })
@@ -39,11 +40,12 @@ export class AuditEvent {
   @ApiProperty({ enum: VOID_REASON_CODES }) reason!: VoidReason;
   @ApiProperty({ description: `Spanish label of the reason: ${Object.values(VOID_REASONS).join(', ')}.` }) reasonLabel!: string;
   @ApiProperty({ type: String, nullable: true }) reasonText!: string | null;
-  @ApiProperty({ description: 'Money removed: order total, voided lines (price x quantity) or payment total charged.' }) amount!: number;
+  @ApiProperty({ description: 'Money removed: order total (a delivery: with its fee), voided lines (price x quantity) or payment total charged.' }) amount!: number;
   @ApiProperty({
     type: 'object',
     additionalProperties: true,
-    description: 'order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items; items_voided: lines; payment_voided: amounts, methods, tenders.',
+    description:
+      'order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items (a delivery adds order_type, delivery_fee, customer_name, delivery_status, payment_mode, payments_voided); items_voided: lines; payment_voided: amounts, methods, tenders (voided by a delivery cancellation: cancellation_audit_id).',
   })
   details!: Record<string, unknown>;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
