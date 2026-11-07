@@ -1,4 +1,5 @@
 import { type INestApplication, Logger } from '@nestjs/common';
+import { createDb } from '@vipe/db';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Clock } from '../common/clock';
@@ -276,6 +277,118 @@ describe('F4b shared terminal: PIN-only identify, unique PINs, tablet unlock (Te
       expect([ownRes.status, resetRes.status]).toEqual([204, 204]);
       expect((await setPin(ids.waiter2, PINS.waiter2)).status).toBe(204);
     }, 30_000);
+  });
+
+  describe('verifier round 2 (P3d, stale hash, P1b)', () => {
+    /** Pause the first call of a PinsService method until `release()`; `reached` resolves when it is paused. */
+    const pauseFirst = (method: string) => {
+      const service = app.get(PinsService) as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+      const original = service[method].bind(service);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let paused!: () => void;
+      const reached = new Promise<void>((resolve) => (paused = resolve));
+      let first = true;
+      vi.spyOn(service, method as never).mockImplementation((async (...args: unknown[]) => {
+        if (first) {
+          first = false;
+          paused();
+          await gate;
+        }
+        return original(...args);
+      }) as never);
+      return { reached, release };
+    };
+    const terminalSession = async (email: string) =>
+      (await db<{ id: string }>(
+        `SELECT s.id FROM auth_sessions s JOIN users u ON u.id = s.user_id WHERE u.email = $1 AND s.kind = 'terminal' ORDER BY s.created_at DESC LIMIT 1`,
+        [email],
+      ))[0].id;
+
+    it('P3d: a PIN-only identify and an unlock on the same tablet never deadlock', async () => {
+      const t = await openTerminal(emails.cashier);
+      expect((await identify(t, '808080')).status).toBe(403);
+      expect((await unlock(t, fixtures.adminA.profileId, '530000')).status).toBe(403);
+      const { reached, release } = pauseFirst('matches');
+      const who = identify(t, PINS.admin).then((r) => r);
+      await reached;
+      const lift = unlock(t, fixtures.adminA.profileId, PINS.admin).then((r) => r);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      release();
+      const [whoRes, liftRes] = await Promise.all([who, lift]);
+      expect([whoRes.status, liftRes.status]).toEqual([200, 204]);
+    }, 30_000);
+
+    it('P3d at the SQL level: both paths take the terminal lock first, so no 40P01', async () => {
+      const t = await openTerminal(emails.cashier);
+      expect((await identify(t, '808080')).status).toBe(403);
+      expect((await unlock(t, fixtures.adminA.profileId, '530000')).status).toBe(403);
+      const sess = await terminalSession(emails.cashier);
+      const { pool } = createDb(database.apiUrl, { max: 2 });
+      const a = await pool.connect();
+      const b = await pool.connect();
+      const terminalLock = `SELECT pg_advisory_xact_lock(hashtextextended('vipe.terminal_pin:' || $1::text, 0))`;
+      const settle = (q: Promise<unknown>, name: string) => q.then(() => `${name} ok`, (e: { code?: string }) => `${name} ${e.code}`);
+      const timeout = () => new Promise<string>((resolve) => setTimeout(() => resolve('still waiting after 3 s'), 3000));
+      const res: string[] = [];
+      try {
+        for (const x of [a, b]) {
+          await x.query('BEGIN');
+          await x.query("SELECT set_config('app.user_id', $1, true)", [ids.cashierUser]);
+        }
+        await a.query(terminalLock, [sess]);
+        await a.query("SELECT private.claim_pin_attempt($1::uuid, NULL, ARRAY['session']::text[], now())", [sess]);
+        const bAll = settle(
+          b.query(terminalLock, [sess]).then(async () => {
+            await b.query("SELECT private.claim_pin_attempt($1::uuid, $2::uuid, ARRAY['profile']::text[], now())", [sess, fixtures.adminA.profileId]);
+            await b.query("SELECT private.clear_pin_attempts($1::uuid, NULL, ARRAY['session']::text[])", [sess]);
+          }),
+          'unlock',
+        );
+        const aNext = settle(
+          a.query("SELECT private.claim_pin_attempt($1::uuid, $2::uuid, ARRAY['profile']::text[], now())", [sess, fixtures.adminA.profileId]).then(() => a.query('COMMIT')),
+          'identify',
+        );
+        res.push(await Promise.race([aNext, timeout()]), await Promise.race([bAll, timeout()]));
+      } finally {
+        await a.query('ROLLBACK').catch(() => undefined);
+        await b.query('ROLLBACK').catch(() => undefined);
+        a.release();
+        b.release();
+        await pool.end();
+      }
+      expect(res).toEqual(['identify ok', 'unlock ok']);
+    }, 30_000);
+
+    it('changing one own PIN rereads the PIN after the write lock: an admin reset in between wins', async () => {
+      expect((await setPin(ids.waiter2, PINS.waiter2)).status).toBe(204);
+      const { reached, release } = pauseFirst('lockPinWrites');
+      const own = as(cookies.waiter2).put('/api/auth/pin', { currentPin: PINS.waiter2, pin: '640273' }).then((r) => r);
+      await reached;
+      vi.restoreAllMocks();
+      expect((await setPin(ids.waiter2, '640275')).status).toBe(204);
+      release();
+      const ownRes = await own;
+      expect(ownRes.status).toBe(403);
+      expect(ownRes.body.code).toBe('pin_invalid');
+      await db('DELETE FROM private.pin_attempts');
+      expect((await as(cookies.waiter2).put('/api/auth/pin', { currentPin: '640275', pin: PINS.waiter2 })).status).toBe(204);
+    }, 30_000);
+
+    it('P1b: a successful profile-less authorize in between does not reset the pin_taken bound', async () => {
+      expect((await setPin(ids.waiter2, PINS.waiter2)).status).toBe(204);
+      const TAKEN_CODE = 'pin_taken';
+      for (let i = 0; i < 4; i++) expect((await as(cookies.waiter2).put('/api/auth/pin', { currentPin: PINS.waiter2, pin: PINS.waiter })).body.code).toBe(TAKEN_CODE);
+      const authorized = await as(cookies.waiter2).post('/api/auth/authorize', {
+        pin: PINS.cashier,
+        action: 'void_item',
+        targetType: 'order',
+        targetId: '60000000-0000-0000-0000-0000000000a1',
+      });
+      expect(authorized.status).toBe(201);
+      expect((await as(cookies.waiter2).put('/api/auth/pin', { currentPin: PINS.waiter2, pin: PINS.waiter })).body.code).toBe(TAKEN_CODE);
+      expect((await as(cookies.waiter2).put('/api/auth/pin', { currentPin: PINS.waiter2, pin: PINS.waiter })).status).toBe(429);
+    });
   });
 
   describe('verifier fixes (F-b, F-e)', () => {

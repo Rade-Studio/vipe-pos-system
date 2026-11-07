@@ -183,16 +183,20 @@ export class PinsService {
    * the same lockout.
    */
   async changeOwn(auth: AuthContext, caller: CallerProfile, currentPin: string, pin: string): Promise<PinRefusal | undefined> {
+    // Lock order of every PIN write: restaurant advisory lock, then the
+    // pin_attempts claims, then staff_pins (B2: no 40P01 with an admin reset).
+    // The current hash is read under that lock, so an admin reset committed
+    // just before is the one checked (never overwritten by the old PIN).
+    await this.lockPinWrites(caller.id);
     const target = await this.target(caller.id);
     if (!target) {
       throw new UnprocessableEntityException(PIN_MESSAGES.noPin);
     }
-    // Lock order of every PIN write: restaurant advisory lock, then the
-    // pin_attempts claims, then staff_pins (B2: no 40P01 with an admin reset).
-    await this.lockPinWrites(caller.id);
     await this.checkable(caller.id);
-    // `caller` is claimed too and never cleared by a success, so pin_taken
-    // probes stay at 5 per window even with a free change in between (B1).
+    // `caller` is claimed too and a success clears only `session` and
+    // `profile` (F2), so pin_taken probes stay at 5 per window with a free
+    // change in between (B1); an authorize in between clears `caller` but not
+    // `profile` (P1b).
     const scopes: Scope[] = ['session', 'profile'];
     const locked = await this.claim(auth, caller.id, [...scopes, 'caller']);
     if (locked) {
@@ -222,6 +226,7 @@ export class PinsService {
     if (auth.kind !== 'terminal') {
       throw new ForbiddenException(PIN_MESSAGES.terminalOnly);
     }
+    await this.lockTerminal(auth);
     if (profileId) {
       const target = await this.target(profileId);
       const usable = target && target.eligible && (ACTING_ROLES as readonly string[]).includes(target.role) ? target : undefined;
@@ -267,6 +272,7 @@ export class PinsService {
     if (auth.kind !== 'terminal') {
       throw new ForbiddenException(PIN_MESSAGES.terminalOnly);
     }
+    await this.lockTerminal(auth);
     const target = await this.target(profileId);
     const usable = target && target.eligible && (SUPERVISOR_ROLES as readonly string[]).includes(target.role) ? target : undefined;
     const refusal = await this.attempt(auth, profileId, ['profile'], () => this.matches(pin, usable));
@@ -440,6 +446,15 @@ export class PinsService {
    */
   private async taken(profileId: string, pin: string): Promise<boolean> {
     return (await this.matching(pin, null, profileId)).length > 0;
+  }
+
+  /**
+   * P3d: identify and unlock on one terminal touch its session row and a
+   * profile row in opposite orders; this transaction lock per terminal
+   * session, taken first by both, serializes them (no 40P01).
+   */
+  private async lockTerminal(auth: AuthContext): Promise<void> {
+    await this.uow.db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('vipe.terminal_pin:' || ${auth.sessionId}::text, 0))`);
   }
 
   /** The per-restaurant transaction lock every PIN write takes first. */
