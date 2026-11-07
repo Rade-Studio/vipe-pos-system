@@ -125,6 +125,40 @@ describe('first-run setup (design/instalador-vipe/02-asistente.html)', () => {
     expect(await screen.findByText(/Sin conexión a internet/)).toBeTruthy();
   });
 
+  it('pasting the copied code fills the six boxes', async () => {
+    const ctx = setup();
+    await mount(ctx);
+    await click(/Empezar/);
+    // VIPE web copies "481207"; people also paste it as shown, "481 207".
+    for (const [box, pasted] of [[1, '481207'], [4, '481 207']] as const) {
+      fireEvent.paste(screen.getByLabelText(`Dígito ${box}`), { clipboardData: { getData: () => pasted } });
+      expect(['1', '2', '3', '4', '5', '6'].map((n) => (screen.getByLabelText(`Dígito ${n}`) as HTMLInputElement).value).join('')).toBe('481207');
+    }
+    expect((screen.getByRole('button', { name: 'Revisar código' }) as HTMLButtonElement).disabled).toBe(false);
+    await click('Revisar código');
+    expect(await screen.findByText('Casa Guadua · Sede Laureles')).toBeTruthy();
+  });
+
+  it('typing a digit moves to the next box', async () => {
+    const ctx = setup();
+    await mount(ctx);
+    await click(/Empezar/);
+    const first = screen.getByLabelText('Dígito 1') as HTMLInputElement;
+    first.focus();
+    fireEvent.change(first, { target: { value: '2' } });
+    expect(document.activeElement).toBe(screen.getByLabelText('Dígito 2'));
+    fireEvent.change(screen.getByLabelText('Dígito 3'), { target: { value: '0' } });
+    expect(document.activeElement).toBe(screen.getByLabelText('Dígito 4'));
+  });
+
+  it('a paste with fewer digits fills from the box it lands on', async () => {
+    const ctx = setup();
+    await mount(ctx);
+    await click(/Empezar/);
+    fireEvent.paste(screen.getByLabelText('Dígito 3'), { clipboardData: { getData: () => '12' } });
+    expect(['1', '2', '3', '4', '5', '6'].map((n) => (screen.getByLabelText(`Dígito ${n}`) as HTMLInputElement).value)).toEqual(['', '', '1', '2', '', '']);
+  });
+
   it('"Configurar después" saves where it stopped and leaves the setup', async () => {
     const ctx = setup('resume');
     await mount(ctx);
