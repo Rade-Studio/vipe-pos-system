@@ -95,10 +95,10 @@ vi.mock("@/components/views/KitchenView", () => ({ KitchenView: () => <div>kitch
 vi.mock("@/components/views/CashierView", () => ({ CashierView: () => <div>cashier-view</div> }))
 vi.mock("@/components/views/AdminView", () => ({ AdminView: () => <div>admin-view</div> }))
 vi.mock("@/components/terminal/TerminalView", () => ({
-  TerminalView: ({ children }: { children: (bar: unknown) => unknown }) => (
+  TerminalView: ({ children }: { children: React.ReactNode }) => (
     <div>
       terminal-view
-      {children(null) as never}
+      {children}
     </div>
   ),
 }))
@@ -600,7 +600,7 @@ describe("a login around the initial session check (D3 smoke)", () => {
   })
 })
 
-describe("shared terminal session (F4)", () => {
+describe("shared terminal session (F4, F4b)", () => {
   const asTerminal = (role: string) => {
     const base = env.apiGet.getMockImplementation()!
     env.apiGet.mockImplementation(async (path: string, init?: unknown) =>
@@ -613,6 +613,8 @@ describe("shared terminal session (F4)", () => {
     asTerminal("admin")
     render(<Home />)
     expect(await screen.findByText(/terminal-view/)).toBeInTheDocument()
+    // F4b: inside it, the normal waiter view.
+    expect(await screen.findByText("waiter-view")).toBeInTheDocument()
     expect(screen.queryByText("admin-view")).toBeNull()
     await waitFor(() => expect(env.loadConfig).toHaveBeenCalled())
     expect(env.getAllRegisters).not.toHaveBeenCalled()

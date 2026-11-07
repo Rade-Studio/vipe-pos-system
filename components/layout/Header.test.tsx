@@ -12,6 +12,7 @@ vi.mock("@/components/ui/use-toast", () => ({ toast, useToast: () => ({ toast })
 vi.mock("@/hooks/use-toast", () => ({ toast, useToast: () => ({ toast }) }))
 
 import { Header } from "./Header"
+import { TerminalContext } from "@/components/terminal/terminal-context"
 
 const original = window.location
 
@@ -55,6 +56,12 @@ describe("Header sign-out", () => {
     expect(window.location.href).toBe("/portal/x")
   })
 
+  it("F4b: on a terminal, Salir is at least 44 px", () => {
+    const terminal = { identity: null, now: 0, ensureIdentity: vi.fn(), endIdentity: vi.fn(), requestLogout: vi.fn() }
+    render(<TerminalContext.Provider value={terminal}><Header profile={profile} onChangeProfile={() => {}} /></TerminalContext.Provider>)
+    expect(screen.getByRole("button", { name: /Salir|Cerrar Sesión/ }).className).toMatch(/\bmin-h-11\b/)
+  })
+
   it("keeps the Cambiar Perfil button for the real admin", () => {
     render(<Header profile={profile} onChangeProfile={vi.fn()} authRole="admin" />)
     expect(screen.getByRole("button", { name: /cambiar perfil/i })).toBeInTheDocument()
@@ -63,8 +70,8 @@ describe("Header sign-out", () => {
 
 /**
  * F4 (L14 (3), L15): every role changes its own PIN from the header of its
- * view (waiter, cashier, kitchen, delivery) after typing the current one. A
- * shared terminal never renders this header (WaiterView shows its bar).
+ * view (waiter, cashier, kitchen, delivery) after typing the current one. On a
+ * shared terminal (F4b) the same header hides it.
  */
 describe("Header — Cambiar mi PIN", () => {
   const cashier = { id: "p-2", name: "Laura Gómez", role: "cashier" as const }
@@ -102,6 +109,20 @@ describe("Header — Cambiar mi PIN", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Cambiar PIN" }))
     })
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("PIN incorrecto")
+  })
+
+  it("F4b: shows a PIN another member has with the server text (pin_taken, never whose)", async () => {
+    api.PUT.mockRejectedValue(new ApiError(409, "Conflict", "Ese PIN no está disponible, elige otro", { code: "pin_taken" }))
+    render(<Header profile={cashier} onChangeProfile={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: "Cambiar mi PIN" }))
+    const dialog = await screen.findByRole("dialog", { name: "Cambiar mi PIN" })
+    fireEvent.change(within(dialog).getByLabelText("PIN actual"), { target: { value: "2580" } })
+    fireEvent.change(within(dialog).getByLabelText("PIN nuevo"), { target: { value: "73914" } })
+    fireEvent.change(within(dialog).getByLabelText("Repite el PIN nuevo"), { target: { value: "73914" } })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cambiar PIN" }))
+    })
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Ese PIN no está disponible, elige otro")
   })
 
   it.each(["waiter", "kitchen", "delivery_operator"] as const)("is offered to the %s role", (role) => {

@@ -156,6 +156,9 @@
           "403": {
             "description": "PIN incorrecto (code pin_invalid; the failure counts), or a terminal session."
           },
+          "409": {
+            "description": "Ese PIN no está disponible, elige otro (code pin_taken): another active member has the new PIN; never says whose. The attempt counts, also on a counter a later success does not clear. Code pin_check_unavailable above 200 PIN holders."
+          },
           "422": {
             "description": "Weak or malformed new PIN, or no PIN yet (Spanish message)."
           },
@@ -189,7 +192,7 @@
         },
         "responses": {
           "200": {
-            "description": "Terminal only: the acting-staff claim, valid 5 minutes.",
+            "description": "Terminal only: the acting-staff claim, valid 5 minutes. Without profileId the PIN is checked against the active admins, cashiers and waiters of the restaurant; the attempt counts on this terminal session.",
             "content": {
               "application/json": {
                 "schema": {
@@ -201,8 +204,49 @@
           "403": {
             "description": "Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike."
           },
+          "409": {
+            "description": "PIN only: more than one active member has that PIN (code pin_ambiguous), or more than 100 PIN holders (code pin_too_many, not counted as an attempt); nobody is identified."
+          },
           "429": {
             "description": "The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/terminal/unlock": {
+      "post": {
+        "operationId": "AuthController_unlockTerminal",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TerminalUnlockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Terminal only: an active admin or cashier's PIN lifts this terminal's PIN lock early. Logged."
+          },
+          "403": {
+            "description": "Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, a non-supervisor or another restaurant alike."
+          },
+          "422": {
+            "description": "Malformed profile id or PIN."
+          },
+          "429": {
+            "description": "That supervisor is locked for 5 minutes (code pin_locked; lockedUntil)."
           }
         },
         "security": [
@@ -6236,6 +6280,9 @@
           "404": {
             "description": "Not a profile of the caller's restaurant."
           },
+          "409": {
+            "description": "Ese PIN no está disponible, elige otro (code pin_taken): another active member of the restaurant has it; never says whose. Code pin_check_unavailable when more than 200 members have a PIN."
+          },
           "422": {
             "description": "Invalid input; the message is the Spanish text the staff form shows."
           }
@@ -6575,7 +6622,7 @@
           "profileId": {
             "type": "string",
             "format": "uuid",
-            "description": "Profile picked on the terminal."
+            "description": "Optional (F4 compatibility): only this profile is tried. Without it the PIN alone says who it is (F4b)."
           },
           "pin": {
             "type": "string",
@@ -6583,7 +6630,6 @@
           }
         },
         "required": [
-          "profileId",
           "pin"
         ]
       },
@@ -6628,6 +6674,25 @@
           "token",
           "expiresAt",
           "profile"
+        ]
+      },
+      "TerminalUnlockRequest": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The admin or cashier picked on the terminal."
+          },
+          "pin": {
+            "type": "string",
+            "pattern": "^\\d{4,6}$",
+            "description": "That supervisor's PIN."
+          }
+        },
+        "required": [
+          "profileId",
+          "pin"
         ]
       },
       "AuthorizeRequest": {

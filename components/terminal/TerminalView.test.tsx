@@ -3,64 +3,51 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
- * F4 (S1 b) — shared order-taking terminal on a tablet
- * (design/acceso-meseros/02-terminal-compartida.html): tap your name, type your
- * PIN, take the order as yourself for 5 minutes; expiry keeps the unsent cart;
- * closing the terminal needs the PIN of the admin or cashier who opened it.
+ * F4b (S1 b, L20-L22) — the shared terminal is the normal waiter app: the
+ * same Header, and a PIN sheet when an order-writing entry (a table tap) has
+ * no valid identity. Expiry keeps the cart; a different person on a table
+ * with someone else's unsent products chooses Continuar or Descartar.
  */
 
-const tables = vi.hoisted(() => ({ getWaiters: vi.fn() }))
-vi.mock("@/lib/api/tables", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api/tables")>()),
-  ...tables,
-}))
 const staff = vi.hoisted(() => ({ listSupervisors: vi.fn() }))
-vi.mock("@/lib/api/staff", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api/staff")>()),
-  ...staff,
-}))
-const auth = vi.hoisted(() => ({ identifyStaff: vi.fn(), signOutAndReload: vi.fn() }))
-vi.mock("@/lib/api/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api/auth")>()),
-  ...auth,
-}))
+vi.mock("@/lib/api/staff", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/api/staff")>()), ...staff }))
+const auth = vi.hoisted(() => ({ identifyByPin: vi.fn(), identifyStaff: vi.fn(), unlockTerminal: vi.fn(), signOutAndReload: vi.fn() }))
+vi.mock("@/lib/api/auth", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/api/auth")>()), ...auth }))
 vi.mock("@/components/theme/theme-toggle", () => ({ ThemeToggle: () => null }))
 
-import { createApiClient } from "@/lib/api/client"
+import { Header } from "@/components/layout/Header"
 import { ApiError } from "@/lib/api/errors"
 import { clockTime } from "@/lib/terminal/format"
 import { actingToken, clearActingToken } from "@/lib/terminal/acting"
 import { useCartStore } from "@/store/useCartStore"
 import { useProfileStore } from "@/store/useProfileStore"
+import type { CartItem } from "@/types"
 import { TerminalView } from "./TerminalView"
+import { useTerminal } from "./terminal-context"
 
 const opener = {
   user: { id: "u-laura", email: "laura@a.test" },
   profile: { id: "p-laura", name: "Laura Gómez", role: "cashier", restaurantId: "r-1" },
   sessionKind: "terminal" as const,
 }
-const identity = (id: string, name: string, role = "waiter") => ({
-  token: `acting-${id}`,
-  expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
-  profile: { id, name, role },
-})
-// Always in the future, whenever the suite runs: a fixed timestamp expires.
-const LOCK = new Date(Date.now() + 60 * 60_000).toISOString()
+const PEOPLE: Record<string, { id: string; name: string; role: string }> = {
+  "4829": { id: "p-andres", name: "Andrés Mora", role: "waiter" },
+  "73914": { id: "p-vale", name: "Valentina Ríos", role: "waiter" },
+}
+const entered: string[] = []
 
-/**
- * The order screen the terminal wraps (WaiterView in the app): it writes an
- * order through an API client (absolute origin: Node's Request needs one).
- */
-const ordersApi = createApiClient({ baseUrl: "http://localhost:3000", fetch: (request) => globalThis.fetch(request) })
-function OrderScreen({ bar }: { bar: React.ReactNode }) {
-  const api = ordersApi
+/** Stands for WaiterView: the real Header and one table whose tap is an order-writing entry. */
+function Screen() {
+  const terminal = useTerminal()
   const who = useProfileStore((s) => s.selectedProfile)
   return (
     <div>
-      {bar}
-      <p>pedido de {who?.name}</p>
-      <button type="button" onClick={() => void api.POST("/api/orders", { body: {} as never })}>
-        Enviar a cocina
+      <Header profile={who ?? { id: "p-laura", name: "Laura Gómez", role: "cashier" }} onChangeProfile={() => {}} />
+      <button
+        type="button"
+        onClick={() => void terminal?.ensureIdentity({ tableId: "t-7", label: "Mesa 7" }).then((ok) => ok && entered.push(useProfileStore.getState().selectedProfile!.id))}
+      >
+        Mesa 7
       </button>
     </div>
   )
@@ -68,41 +55,43 @@ function OrderScreen({ bar }: { bar: React.ReactNode }) {
 
 function renderTerminal() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  return render(
     <QueryClientProvider client={client}>
-      <TerminalView session={opener}>{(bar) => <OrderScreen bar={bar} />}</TerminalView>
+      <TerminalView session={opener}>
+        <Screen />
+      </TerminalView>
     </QueryClientProvider>,
   )
 }
 
-const typePin = (pin: string) => {
-  const pad = screen.getByRole("group", { name: "Teclado del PIN" })
-  for (const digit of pin) fireEvent.click(within(pad).getByRole("button", { name: digit }))
-  return pad
-}
-const enter = async () => {
+const pad = () => within(screen.getByRole("group", { name: "Teclado del PIN" }))
+const typePin = async (pin: string, submit = "Entrar") => {
+  for (const digit of pin) fireEvent.click(pad().getByRole("button", { name: digit }))
   await act(async () => {
-    fireEvent.click(within(screen.getByRole("group", { name: "Teclado del PIN" })).getByRole("button", { name: "Entrar" }))
+    fireEvent.click(pad().getByRole("button", { name: submit }))
   })
 }
-const identifyAs = async (name: string, pin = "4829") => {
-  fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${name}`) }))
-  typePin(pin)
-  await enter()
+const tapTable = async () => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Mesa 7" }))
+  })
 }
+const item = (id: string, quantity: number): CartItem => ({ id, name: id, price: 1000, quantity } as CartItem)
 
 beforeEach(() => {
-  tables.getWaiters.mockReset().mockResolvedValue([
-    { id: "p-andres", name: "Andrés", username: null },
-    { id: "p-vale", name: "Valentina Ríos", username: null },
-  ])
-  auth.identifyStaff.mockReset().mockImplementation(async (id: string) => identity(id, id === "p-andres" ? "Andrés" : "Laura Gómez"))
+  entered.length = 0
+  auth.identifyByPin.mockReset().mockImplementation(async (pin: string) => {
+    const profile = PEOPLE[pin]
+    if (!profile) throw new ApiError(403, "Forbidden", "PIN incorrecto", { code: "pin_invalid" })
+    return { token: `acting-${profile.id}`, expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(), profile }
+  })
+  auth.identifyStaff.mockReset().mockResolvedValue({ token: "acting-sup", expiresAt: new Date().toISOString(), profile: { id: "p-carlos", name: "Carlos Pérez", role: "admin" } })
+  auth.unlockTerminal.mockReset().mockResolvedValue(undefined)
+  auth.signOutAndReload.mockReset().mockResolvedValue(undefined)
   staff.listSupervisors.mockReset().mockResolvedValue([
     { id: "p-carlos", fullName: "Carlos Pérez", role: "admin", hasPin: true, pinLockedUntil: null },
-    { id: "p-laura", fullName: "Laura Gómez", role: "cashier", hasPin: true, pinLockedUntil: null },
     { id: "p-sofia", fullName: "Sofía Ruiz", role: "cashier", hasPin: false, pinLockedUntil: null },
   ])
-  auth.signOutAndReload.mockReset().mockResolvedValue(undefined)
   useCartStore.setState({ cartItems: {} })
   useProfileStore.setState({ authProfile: null, selectedProfile: null })
   clearActingToken()
@@ -110,162 +99,196 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
-  vi.unstubAllGlobals()
 })
 
-describe("TerminalView", () => {
-  it("shows every waiter by name and initials, and who opened the terminal", async () => {
+describe("shared terminal inside the normal waiter screen (F4b)", () => {
+  it("has no waiter grid or terminal screens: the same header, without Cambiar mi PIN", () => {
     renderTerminal()
-    expect(await screen.findByRole("heading", { name: "¿Quién toma el pedido?" })).toBeInTheDocument()
-    const andres = await screen.findByRole("button", { name: /^Andrés/ })
-    expect(within(andres).getByText("A")).toBeInTheDocument()
-    expect(within(screen.getByRole("button", { name: /^Valentina Ríos/ })).getByText("VR")).toBeInTheDocument()
-    expect(screen.getByText("Abierta por Laura Gómez (Caja)")).toBeInTheDocument()
-    expect(screen.queryByText(/pedido de/)).toBeNull()
+    expect(screen.queryByText("¿Quién toma el pedido?")).toBeNull()
+    expect(screen.queryByText("Terminal de pedidos")).toBeNull()
+    expect(screen.getByRole("button", { name: /Salir|Cerrar Sesión/ })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Cambiar mi PIN/ })).toBeNull()
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 
-  it("has PIN keys of at least 56 px", async () => {
+  it("a table tap asks the PIN; a valid PIN says who it is and the entry continues as them", async () => {
     renderTerminal()
-    fireEvent.click(await screen.findByRole("button", { name: /^Andrés/ }))
-    const pad = screen.getByRole("group", { name: "Teclado del PIN" })
-    for (const key of within(pad).getAllByRole("button")) expect(key.className).toMatch(/\bmin-h-16\b/)
-  })
-
-  it("identifies the waiter by PIN, counts the 5 minutes down and keeps the unsent cart on expiry", async () => {
-    renderTerminal()
-    fireEvent.click(await screen.findByRole("button", { name: /^Andrés/ }))
-    expect(screen.getByRole("heading", { name: "Hola, Andrés" })).toBeInTheDocument()
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], now: new Date("2026-11-07T17:00:00.000Z") })
-    typePin("4829")
-    await enter()
-
-    expect(auth.identifyStaff).toHaveBeenCalledWith("p-andres", "4829")
-    expect(screen.getByText("pedido de Andrés")).toBeInTheDocument()
-    expect(useProfileStore.getState().authProfile).toMatchObject({ id: "p-andres", role: "waiter" })
+    await tapTable()
+    const sheet = screen.getByRole("dialog")
+    expect(within(sheet).getByRole("heading", { name: "Mesa 7 · Escribe tu PIN" })).toBeInTheDocument()
+    expect(entered).toEqual([])
+    await typePin("4829")
+    expect(auth.identifyByPin).toHaveBeenCalledWith("4829")
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(entered).toEqual(["p-andres"])
     expect(actingToken()).toBe("acting-p-andres")
     expect(screen.getByRole("status")).toHaveTextContent("Andrés · 5:00")
-    act(() => vi.advanceTimersByTime(48_000))
-    expect(screen.getByRole("status")).toHaveTextContent("Andrés · 4:12")
+    // While valid, the next tap goes straight in.
+    await tapTable()
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(entered).toEqual(["p-andres", "p-andres"])
+  })
 
-    useCartStore.setState({ cartItems: { "t-7": [{ id: "d-1", name: "Bandeja paisa", price: 32000, quantity: 2 } as never] } })
-    act(() => vi.advanceTimersByTime(4 * 60_000 + 12_000))
-    const expired = screen.getByRole("dialog", { name: "Pasaron 5 minutos sin identificarte" })
-    expect(within(expired).getByText(/El pedido sigue aquí, sin enviar/)).toBeInTheDocument()
+  it("a wrong PIN shows PIN no válido and identifies nobody; closing the sheet cancels the entry", async () => {
+    renderTerminal()
+    await tapTable()
+    await typePin("5820")
+    expect(screen.getByRole("alert")).toHaveTextContent("PIN no válido")
     expect(actingToken()).toBeNull()
-    expect(useCartStore.getState().cartItems["t-7"]).toHaveLength(1)
-
-    fireEvent.click(within(expired).getByRole("button", { name: "Soy otro mesero" }))
-    expect(screen.getByRole("heading", { name: "¿Quién toma el pedido?" })).toBeInTheDocument()
-    expect(useCartStore.getState().cartItems["t-7"]).toHaveLength(1)
-  })
-
-  it("lets the same waiter continue after the expiry with their PIN", async () => {
-    renderTerminal()
-    fireEvent.click(await screen.findByRole("button", { name: /^Andrés/ }))
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], now: new Date("2026-11-07T17:00:00.000Z") })
-    typePin("4829")
-    await enter()
-    act(() => vi.advanceTimersByTime(5 * 60_000))
-    fireEvent.click(screen.getByRole("button", { name: "Seguir como Andrés" }))
-    typePin("4829")
-    await enter()
-    expect(auth.identifyStaff).toHaveBeenCalledTimes(2)
-    expect(screen.getByText("pedido de Andrés")).toBeInTheDocument()
-    expect(screen.getByRole("status")).toHaveTextContent("Andrés · 5:00")
-  })
-
-  it("sends the acting claim on the order writes, and stops when the waiter changes", async () => {
-    const seen: Array<string | null> = []
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (request: Request) => {
-        seen.push(request.headers.get("X-Vipe-Acting"))
-        return new Response("{}", { status: 201, headers: { "Content-Type": "application/json" } })
-      }),
+    auth.identifyByPin.mockRejectedValueOnce(
+      new ApiError(409, "Conflict", "Ese PIN lo tiene más de una persona; pide al administrador que lo cambie", { code: "pin_ambiguous" }),
     )
+    await typePin("6408")
+    expect(screen.getByRole("alert")).toHaveTextContent("Ese PIN lo tiene más de una persona")
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }))
+    await act(async () => {})
+    expect(entered).toEqual([])
+  })
+
+  it("the header counts down, Terminar ends the identity, and expiry asks the PIN again keeping the cart", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ["setInterval", "clearInterval", "Date"] })
     renderTerminal()
-    await identifyAs("Andrés")
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Enviar a cocina" }))
+    await tapTable()
+    await typePin("4829")
+    act(() => {
+      useCartStore.getState().addToCart("t-7", item("arepa", 2))
     })
-    expect(seen).toEqual(["acting-p-andres"])
-
-    fireEvent.click(screen.getByRole("button", { name: "Cambiar mesero" }))
-    expect(screen.getByRole("heading", { name: "¿Quién toma el pedido?" })).toBeInTheDocument()
+    await act(async () => {
+      vi.advanceTimersByTime(48_000)
+    })
+    expect(screen.getByRole("status")).toHaveTextContent("Andrés · 4:12")
+    await act(async () => {
+      vi.advanceTimersByTime(4 * 60_000 + 12_000)
+    })
+    expect(screen.queryByRole("status")).toBeNull()
+    expect(actingToken()).toBeNull()
+    expect(useCartStore.getState().cartItems["t-7"]).toHaveLength(1)
+    await tapTable()
+    expect(screen.getByRole("heading", { name: "Mesa 7 · Escribe tu PIN" })).toBeInTheDocument()
+    await typePin("4829")
+    // Same person: no warning, straight back to the table.
+    expect(entered).toEqual(["p-andres", "p-andres"])
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }))
+    expect(screen.queryByRole("status")).toBeNull()
     expect(actingToken()).toBeNull()
   })
 
-  it("says a wrong PIN, keeps the waiter and clears the dots", async () => {
-    auth.identifyStaff.mockRejectedValueOnce(new ApiError(403, "Forbidden", "PIN incorrecto", { code: "pin_invalid" }))
+  it("a different person on a table with someone else's unsent products: Continuar keeps them", async () => {
     renderTerminal()
-    await identifyAs("Andrés", "1111")
-    expect(screen.getByRole("alert")).toHaveTextContent("PIN incorrecto.")
-    expect(screen.getByRole("alert")).toHaveTextContent("5 intentos fallidos lo bloquean 5 minutos")
-    expect(screen.getByRole("heading", { name: "Hola, Andrés" })).toBeInTheDocument()
-    expect(screen.getByLabelText("0 dígitos escritos")).toBeInTheDocument()
-    expect(actingToken()).toBeNull()
+    await tapTable()
+    await typePin("4829")
+    act(() => {
+      useCartStore.getState().addToCart("t-7", item("arepa", 2))
+      useCartStore.getState().addToCart("t-7", item("jugo", 1))
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }))
+    await tapTable()
+    await typePin("73914")
+    expect(screen.getByRole("heading", { name: "Andrés dejó 3 productos sin enviar" })).toBeInTheDocument()
+    expect(entered).toEqual(["p-andres"])
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+    })
+    expect(entered).toEqual(["p-andres", "p-vale"])
+    expect(useCartStore.getState().cartItems["t-7"]).toHaveLength(2)
+    // Now they are Valentina's: Andrés is the one warned.
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }))
+    await tapTable()
+    await typePin("4829")
+    expect(screen.getByRole("heading", { name: "Valentina dejó 3 productos sin enviar" })).toBeInTheDocument()
   })
 
-  it("shows until when a locked PIN is blocked, disables the pad and marks the waiter in the grid", async () => {
-    auth.identifyStaff.mockRejectedValueOnce(
-      new ApiError(429, "Too Many Requests", "Demasiados intentos fallidos. Espera 5 minutos e inténtalo de nuevo", {
-        code: "pin_locked",
-        lockedUntil: LOCK,
-      }),
+  it("F-c: products added after the identity expired still belong to the last person; another person is warned", async () => {
+    renderTerminal()
+    await tapTable()
+    await typePin("4829")
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }))
+    act(() => {
+      useCartStore.getState().addToCart("t-7", item("arepa", 2))
+    })
+    await tapTable()
+    await typePin("73914")
+    expect(screen.getByRole("heading", { name: "Andrés dejó 2 productos sin enviar" })).toBeInTheDocument()
+  })
+
+  it("F-d: when the identity ends the screen acts as the terminal opener again", async () => {
+    renderTerminal()
+    await tapTable()
+    await typePin("4829")
+    expect(useProfileStore.getState().selectedProfile?.id).toBe("p-andres")
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }))
+    expect(useProfileStore.getState().selectedProfile?.id).toBe("p-laura")
+    expect(useProfileStore.getState().authProfile?.id).toBe("p-laura")
+  })
+
+  it("F-d: expiry also gives the screen back to the terminal opener", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ["setInterval", "clearInterval", "Date"] })
+    renderTerminal()
+    await tapTable()
+    await typePin("4829")
+    await act(async () => {
+      vi.advanceTimersByTime(5 * 60_000 + 1000)
+    })
+    expect(useProfileStore.getState().selectedProfile?.id).toBe("p-laura")
+  })
+
+  it("Descartar clears the other person's unsent products and continues", async () => {
+    renderTerminal()
+    await tapTable()
+    await typePin("4829")
+    act(() => {
+      useCartStore.getState().addToCart("t-7", item("arepa", 1))
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }))
+    await tapTable()
+    await typePin("73914")
+    expect(screen.getByRole("heading", { name: "Andrés dejó 1 producto sin enviar" })).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Descartar" }))
+    })
+    expect(useCartStore.getState().cartItems["t-7"]).toEqual([])
+    expect(entered).toEqual(["p-andres", "p-vale"])
+  })
+
+  it("5 wrong PINs lock the tablet; a supervisor PIN unlocks it early", async () => {
+    const until = new Date(Date.now() + 5 * 60_000).toISOString()
+    renderTerminal()
+    await tapTable()
+    auth.identifyByPin.mockRejectedValueOnce(
+      new ApiError(429, "Too Many Requests", "Demasiados intentos fallidos. Espera 5 minutos e inténtalo de nuevo", { code: "pin_locked", lockedUntil: until }),
     )
-    renderTerminal()
-    await identifyAs("Valentina Ríos")
-    expect(screen.getByRole("alert")).toHaveTextContent(`Bloqueado hasta ${clockTime(LOCK)}.`)
-    const pad = screen.getByRole("group", { name: "Teclado del PIN" })
-    for (const key of within(pad).getAllByRole("button")) expect(key).toBeDisabled()
-    fireEvent.click(screen.getByRole("button", { name: "No soy Valentina Ríos" }))
-    expect(within(screen.getByRole("button", { name: /^Valentina Ríos/ })).getByText(`Bloqueado hasta ${clockTime(LOCK)}`)).toBeInTheDocument()
+    await typePin("1111")
+    expect(screen.getByRole("heading", { name: `Tablet bloqueada hasta ${clockTime(until)}` })).toBeInTheDocument()
+    expect(pad().getByRole("button", { name: "1" })).toBeDisabled()
+    // Closing and tapping again keeps the lock.
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }))
+    await tapTable()
+    expect(screen.getByRole("heading", { name: /Tablet bloqueada/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Desbloquear con PIN de supervisor" }))
+    const carlos = await screen.findByRole("radio", { name: /Carlos Pérez/ })
+    expect(screen.getByRole("radio", { name: /Sofía Ruiz/ })).toHaveTextContent("Sin PIN")
+    expect(screen.queryByRole("radio", { name: /Andrés|Valentina/ })).toBeNull()
+    fireEvent.click(carlos)
+    await typePin("9157", "Desbloquear")
+    expect(auth.unlockTerminal).toHaveBeenCalledWith("p-carlos", "9157")
+    expect(screen.getByRole("heading", { name: "Mesa 7 · Escribe tu PIN" })).toBeInTheDocument()
+    await typePin("4829")
+    expect(entered).toEqual(["p-andres"])
   })
 
-  it("closes the terminal with the PIN of any active admin or cashier, picked from their tiles", async () => {
+  it("a wrong supervisor PIN does not unlock the tablet", async () => {
+    const until = new Date(Date.now() + 5 * 60_000).toISOString()
     renderTerminal()
-    await screen.findByRole("button", { name: /^Andrés/ })
-    fireEvent.click(screen.getByRole("button", { name: "Cerrar terminal" }))
-    expect(screen.getByRole("heading", { name: "¿Quién cierra la terminal?" })).toBeInTheDocument()
-    expect(await screen.findByRole("button", { name: /^Carlos Pérez/ })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /^Laura Gómez/ })).toBeInTheDocument()
-    // A supervisor without PIN cannot close it.
-    const sofia = screen.getByRole("button", { name: /^Sofía Ruiz/ })
-    expect(sofia).toBeDisabled()
-    expect(within(sofia).getByText("Sin PIN")).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole("button", { name: /^Carlos Pérez/ }))
-    expect(screen.getByText(/Carlos Pérez \(Administrador\) escribe su PIN/)).toBeInTheDocument()
-    auth.identifyStaff.mockRejectedValueOnce(new ApiError(403, "Forbidden", "PIN incorrecto", { code: "pin_invalid" }))
-    typePin("1111")
-    await enter()
-    expect(auth.identifyStaff).toHaveBeenLastCalledWith("p-carlos", "1111")
-    expect(auth.signOutAndReload).not.toHaveBeenCalled()
-    expect(screen.getByRole("alert")).toHaveTextContent("PIN incorrecto.")
-
-    typePin("582046")
-    await enter()
-    expect(auth.identifyStaff).toHaveBeenLastCalledWith("p-carlos", "582046")
-    expect(auth.signOutAndReload).toHaveBeenCalledTimes(1)
-    expect(actingToken()).toBeNull()
-  })
-
-  it("keeps the wrong-PIN copy without a count: the API does not return attempts left", async () => {
-    auth.identifyStaff.mockRejectedValueOnce(new ApiError(403, "Forbidden", "PIN incorrecto", { code: "pin_invalid" }))
-    renderTerminal()
-    await identifyAs("Andrés", "1111")
-    expect(screen.getByRole("alert")).not.toHaveTextContent(/Te quedan/)
-  })
-
-  it("goes back from closing without logging out", async () => {
-    renderTerminal()
-    await screen.findByRole("button", { name: /^Andrés/ })
-    fireEvent.click(screen.getByRole("button", { name: "Cerrar terminal" }))
-    fireEvent.click(await screen.findByRole("button", { name: /^Laura Gómez/ }))
-    fireEvent.click(screen.getByRole("button", { name: "No soy Laura Gómez" }))
-    expect(screen.getByRole("heading", { name: "¿Quién cierra la terminal?" })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Volver" }))
-    expect(screen.getByRole("heading", { name: "¿Quién toma el pedido?" })).toBeInTheDocument()
-    expect(auth.signOutAndReload).not.toHaveBeenCalled()
+    await tapTable()
+    auth.identifyByPin.mockRejectedValueOnce(new ApiError(429, "Too Many Requests", "Demasiados", { code: "pin_locked", lockedUntil: until }))
+    await typePin("1111")
+    fireEvent.click(screen.getByRole("button", { name: "Desbloquear con PIN de supervisor" }))
+    fireEvent.click(await screen.findByRole("radio", { name: /Carlos Pérez/ }))
+    auth.unlockTerminal.mockRejectedValueOnce(new ApiError(403, "Forbidden", "PIN incorrecto", { code: "pin_invalid" }))
+    await typePin("5820", "Desbloquear")
+    expect(screen.getByRole("alert")).toHaveTextContent("PIN no válido")
+    fireEvent.click(screen.getByRole("button", { name: "Atrás" }))
+    fireEvent.click(screen.getByRole("button", { name: "Atrás" }))
+    expect(screen.getByRole("heading", { name: /Tablet bloqueada/ })).toBeInTheDocument()
   })
 })
