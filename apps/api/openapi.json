@@ -13967,7 +13967,9 @@
             ]
           },
           "printJob": {
-            "description": "Kitchen command job; its id is the command invoiceNumber.",
+            "nullable": true,
+            "description": "Kitchen command job (the first one with stations); its id is the command invoiceNumber. null when the restaurant does not use printers.",
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/PrintJobCreated"

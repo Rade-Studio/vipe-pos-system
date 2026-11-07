@@ -261,8 +261,12 @@ export class CreateDeliveryOrderResult {
   @ApiProperty({ type: DeliveryOrder }) delivery!: DeliveryOrder;
   @ApiProperty({ type: ConsumeOrderStockResult, description: 'consume_order_stock of the new order; shortages do not undo it.' })
   consumption!: ConsumeOrderStockResult;
-  @ApiProperty({ type: PrintJobCreated, description: 'Kitchen command job; its id is the command invoiceNumber.' })
-  printJob!: PrintJobCreated;
+  @ApiProperty({
+    type: PrintJobCreated,
+    nullable: true,
+    description: 'Kitchen command job (the first one with stations); its id is the command invoiceNumber. null when the restaurant does not use printers.',
+  })
+  printJob!: PrintJobCreated | null;
 }
 
 export class SetDeliveryStatusRequest {

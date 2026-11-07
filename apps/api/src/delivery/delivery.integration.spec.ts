@@ -969,6 +969,57 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       sockets.forEach((socket) => socket.close());
     }
   });
+  describe('stations and printing (F6)', () => {
+    const kitchen = 'f6d00000-0000-0000-0000-000000000001';
+    const bar = 'f6d00000-0000-0000-0000-000000000002';
+    afterEach(async () => {
+      await db(`DELETE FROM business_config WHERE key = 'printing_enabled'`);
+    });
+
+    it('splits the delivery comanda per station with the same rule as table orders, storing each line station', async () => {
+      await db(`INSERT INTO stations (id, restaurant_id, name, color, sort_order) VALUES ($1, $3, 'Cocina', 'kitchen', 0), ($2, $3, 'Barra', 'served', 1)`, [
+        kitchen, bar, fixtures.restaurantA,
+      ]);
+      await db('UPDATE dishes SET station_id = $1 WHERE id = $2', [bar, d.jugo]);
+      try {
+        const res = await create();
+        expect(res.status).toBe(201);
+        const jobs = await db<{ id: string; station_id: string; payload: { items: { name: string }[]; station: { name: string }; delivery: unknown } }>(
+          `SELECT id, station_id, payload FROM print_jobs WHERE payload->>'waiter' = 'Delivery A' AND station_id IS NOT NULL ORDER BY created_at, id`,
+        );
+        expect(jobs.map((j) => [j.station_id, j.payload.station.name, j.payload.items.map((i) => i.name)])).toEqual([
+          [kitchen, 'Cocina', ['Arepa']],
+          [bar, 'Barra', ['Jugo']],
+        ]);
+        expect(jobs.every((j) => j.payload.delivery)).toBe(true);
+        expect(JSON.stringify(jobs[0].payload.items)).not.toContain('dishId');
+        expect(res.body.printJob.id).toBe(jobs[0].id);
+        const lines = await db<{ name: string; station_id: string; station_source: string }>(
+          'SELECT name, station_id, station_source FROM order_items WHERE order_id = $1 ORDER BY name', [res.body.orderId],
+        );
+        expect(lines).toEqual([
+          { name: 'Arepa', station_id: kitchen, station_source: 'fallback' },
+          { name: 'Jugo', station_id: bar, station_source: 'dish' },
+        ]);
+      } finally {
+        await db(`DELETE FROM print_jobs WHERE station_id IS NOT NULL`);
+        await db('UPDATE dishes SET station_id = NULL WHERE id = $1', [d.jugo]);
+        await db('UPDATE order_items SET station_id = NULL, station_source = NULL WHERE station_id IS NOT NULL');
+        await db('DELETE FROM stations WHERE restaurant_id = $1', [fixtures.restaurantA]);
+      }
+    });
+
+    it('queues no comanda when the restaurant does not use printers, and still creates the delivery', async () => {
+      await db(`INSERT INTO business_config (restaurant_id, key, value) VALUES ($1, 'printing_enabled', 'false')`, [fixtures.restaurantA]);
+      const before = await snapshot();
+      const res = await create();
+      expect(res.status).toBe(201);
+      expect(res.body.printJob).toBeNull();
+      const after = await snapshot();
+      expect(after.jobs).toBe(before.jobs);
+      expect(after.orders).toBe(before.orders + 1);
+    });
+  });
 });
 
 async function seedDelivery(superuserUrl: string) {

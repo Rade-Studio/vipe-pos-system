@@ -4204,8 +4204,8 @@ export interface components {
             delivery: components["schemas"]["DeliveryOrder"];
             /** @description consume_order_stock of the new order; shortages do not undo it. */
             consumption: components["schemas"]["ConsumeOrderStockResult"];
-            /** @description Kitchen command job; its id is the command invoiceNumber. */
-            printJob: components["schemas"]["PrintJobCreated"];
+            /** @description Kitchen command job (the first one with stations); its id is the command invoiceNumber. null when the restaurant does not use printers. */
+            printJob: components["schemas"]["PrintJobCreated"] | null;
         };
         SetDeliveryStatusRequest: {
             /** @enum {string} */

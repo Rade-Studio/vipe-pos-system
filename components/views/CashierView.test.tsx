@@ -170,6 +170,8 @@ vi.mock("@/lib/api/realtime", () => ({
     },
   },
 }))
+const printing = vi.hoisted(() => ({ enabled: true }))
+vi.mock("@/lib/api/printing", () => ({ usePrintingEnabled: () => printing.enabled }))
 vi.mock("@/lib/api/print", () => ({
   sendCommand: vi.fn(),
   sendFactura: vi.fn(),
@@ -1443,5 +1445,17 @@ describe("F3 cashier voids", () => {
     fireEvent.click(await queueRow("Mesa 1"))
     expect(await screen.findByRole("button", { name: "Dividir" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Reimprimir" })).toBeInTheDocument()
+  })
+
+  it("shows the invoice instead of reprinting when the restaurant does not use printers (F6, S2)", async () => {
+    printing.enabled = false
+    try {
+      renderCashier()
+      fireEvent.click(await queueRow("Mesa 1"))
+      expect(await screen.findByRole("button", { name: "Ver factura" })).toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Reimprimir" })).not.toBeInTheDocument()
+    } finally {
+      printing.enabled = true
+    }
   })
 })

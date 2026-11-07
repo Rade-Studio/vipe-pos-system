@@ -39,6 +39,7 @@ import { elapsedLabel, openOrdersByTable } from "@/lib/floor/live"
 import { guestsText } from "@/lib/order-steps/details"
 import { realtimeService } from "@/lib/api/realtime"
 import { sendCommand } from "@/lib/api/print"
+import { usePrintingEnabled } from "@/lib/api/printing"
 import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
 import type { TableChange } from "@/lib/realtime/table-merge"
 import { createLocalChangeRegistry } from "@/lib/kitchen/realtime"
@@ -103,6 +104,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const [selectedTableForWaiter, setSelectedTableForWaiter] = useState<string | null>(null)
   const [showKitchenOrder, setShowKitchenOrder] = useState(false)
   const [kitchenOrderData, setKitchenOrderData] = useState<PrintableKitchenOrder | null>(null)
+  // S2 (F6): whether the restaurant uses thermal printers.
+  const printingEnabled = usePrintingEnabled()
   const [showStockDetailWarning, setShowStockDetailWarning] = useState(false)
   const [stockDetailWarning, setStockDetailWarning] = useState<{
     dishesWithoutStock: { id: string; name: string }[]
@@ -829,7 +832,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         )
       }
 
-      void sendCommand(kitchenOrder)
+      // S2 (F6): a restaurant without thermal printers reads the comanda on the kitchen screen.
+      if (printingEnabled) void sendCommand(kitchenOrder)
       clearCart(activeTable)
       const sentTable = activeTable
       setOrderDrafts((prev) => withoutTable(prev, sentTable))
@@ -899,6 +903,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     addOrder,
     toast,
     isMobile,
+    printingEnabled,
   ])
 
   // Manejar envío forzado a cocina

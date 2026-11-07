@@ -107,26 +107,32 @@ export class PrintService implements OnApplicationBootstrap {
    * (F6): one job per station, in station order, with only the lines routed
    * there by private.route_dishes (dish exception -> category -> default
    * station; a line without a dish goes to the default) and `station`
-   * {id, name}; the response is the first job plus `jobs`.
+   * {id, name}; the response is the first job plus `jobs`. `dishIds` (same
+   * order as the lines) routes server-built comandas whose lines carry no
+   * dish (DeliveryService) without changing their payload.
    */
-  async printCommand(input: z.infer<typeof commandPrintSchema>): Promise<PrintJobCreated | PrintJobsCreated> {
+  async printCommand(
+    input: z.infer<typeof commandPrintSchema>,
+    dishIds?: readonly (string | null)[],
+  ): Promise<PrintJobCreated | PrintJobsCreated> {
     const stations = await this.rows<StationRef>(sql`
       SELECT id, name, is_default FROM public.stations WHERE kind = 'prep' ORDER BY sort_order, lower(name), id`);
     if (stations.length === 0) {
       const id = randomUUID();
       return this.enqueue(id, 'command', { invoiceNumber: id, ...input });
     }
-    const dishIds = [...new Set(input.items.map(dishIdOf).filter((id): id is string => id !== null))];
+    const dishOf = (index: number) => dishIds?.[index] ?? dishIdOf(input.items[index]);
+    const known = [...new Set(input.items.map((_, index) => dishOf(index)).filter((id): id is string => id !== null))];
     const routes = new Map(
       (
         await this.rows<{ dish_id: string; station_id: string | null }>(sql`
-          SELECT dish_id, station_id FROM private.route_dishes(${sql.param(dishIds)}::uuid[])`)
+          SELECT dish_id, station_id FROM private.route_dishes(${sql.param(known)}::uuid[])`)
       ).map((row) => [row.dish_id, row.station_id]),
     );
     const fallback = (stations.find((station) => station.is_default) ?? stations[0]).id;
     const groups = new Map<string, Record<string, unknown>[]>();
-    for (const item of input.items) {
-      const dishId = dishIdOf(item);
+    for (const [index, item] of input.items.entries()) {
+      const dishId = dishOf(index);
       const stationId = (dishId && routes.get(dishId)) || fallback;
       groups.set(stationId, [...(groups.get(stationId) ?? []), item]);
     }
@@ -139,14 +145,18 @@ export class PrintService implements OnApplicationBootstrap {
     return { ...jobs[0], jobs };
   }
 
+  /** S2: whether the restaurant uses thermal printers (business_config printing_enabled, default true). */
+  async printingEnabled(): Promise<boolean> {
+    return (await this.config.get()).printingEnabled;
+  }
+
   /**
    * S2: the web print actions (POST /print/commands and /print/invoices) of a
-   * restaurant without thermal printers queue nothing. The delivery console's
-   * server-side comanda (DeliveryService) still queues: its response carries
-   * the job (follow-up outside F6).
+   * restaurant without thermal printers queue nothing. The delivery
+   * console's server-side comanda (DeliveryService) skips printing instead.
    */
   async assertPrinting(): Promise<void> {
-    if (!(await this.config.get()).printingEnabled) {
+    if (!(await this.printingEnabled())) {
       throw new ConflictException({ message: 'Este restaurante no usa impresoras', code: 'printing_disabled' });
     }
   }

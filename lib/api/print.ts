@@ -11,16 +11,23 @@ import type { CartItem, CommandPayload, PrintableInvoice } from "@/types"
  * Fire-and-forget like the former Supabase broadcasts: a failure shows the
  * same toast and never throws. With stations (F6) the API splits a command
  * into one job per station; a restaurant without printers (printingEnabled
- * off) answers 409 printing_disabled, which is silent.
+ * off) answers 409 printing_disabled, shown as "Impresión apagada"; the
+ * screens hide their print actions first (lib/api/printing).
  */
 
 type Schemas = components["schemas"]
 
-/** S2 (F6): a restaurant that turned printing off answers 409 printing_disabled; nothing to tell the user. */
+/** S2 (F6): a restaurant that turned printing off answers 409 printing_disabled. */
 const isPrintingOff = (error: unknown) => error instanceof ApiError && error.status === 409 && error.body.code === "printing_disabled"
 
 const notifyFailure = (error: unknown) => {
-  if (isPrintingOff(error)) return
+  if (isPrintingOff(error)) {
+    toast({
+      title: "Impresión apagada",
+      description: "Este restaurante no usa impresoras. Actívalas en Ajustes → Estaciones y rutas.",
+    })
+    return
+  }
   toast({
     title: "Error",
     description: "No se pudo enviar la factura a través de la red realtime. Intente nuevamente.",
