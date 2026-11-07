@@ -54,7 +54,13 @@ export const ADMIN_SECTIONS = [
     label: "Estaciones y rutas",
     description: "Qué estación prepara cada categoría y plato, y si el restaurante usa impresoras.",
   },
-  { id: "settings/printers", group: "settings", label: "Impresoras", description: "Estaciones de impresión y sus tokens." },
+  {
+    id: "settings/print-station",
+    group: "settings",
+    label: "Estación de impresión",
+    description: "Computadores con la app VIPE que imprimen comandas y facturas, y abren el cajón.",
+  },
+  { id: "settings/printers", group: "settings", label: "Impresoras", description: "Tokens del programa de impresión anterior (pos/)." },
 ] as const satisfies readonly { id: string; group: AdminNavGroupId; label: string; description: string }[]
 
 export type AdminSection = (typeof ADMIN_SECTIONS)[number]

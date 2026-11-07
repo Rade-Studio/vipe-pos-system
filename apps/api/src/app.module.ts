@@ -9,6 +9,7 @@ import { EnvModule } from './config/env.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DbModule } from './db/db.module';
 import { DeliveryModule } from './delivery/delivery.module';
+import { DesktopModule } from './desktop/desktop.module';
 import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
@@ -48,6 +49,7 @@ import { ZonesModule } from './zones/zones.module';
     StorageModule,
     AuditModule,
     StationsModule,
+    DesktopModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

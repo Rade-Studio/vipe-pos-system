@@ -257,7 +257,10 @@ SELECT is(
       -- acknowledged and pruned through SECURITY DEFINER helpers (200_printing).
       -- PINs and supervisor authorizations: column-level SELECT (no pin_hash),
       -- SECURITY DEFINER writes only (270_staff_pins).
-      AND c.relname NOT IN ('users', 'auth_sessions', 'printer_tokens', 'print_jobs', 'staff_pins', 'supervisor_authorizations')
+      -- F5a (0021): narrowed grants asserted in 310_desktop_devices.test.sql
+      AND c.relname NOT IN ('users', 'auth_sessions', 'printer_tokens', 'print_jobs', 'staff_pins', 'supervisor_authorizations',
+                            'desktop_devices', 'desktop_pairing_codes', 'desktop_printers', 'desktop_printer_stations',
+                            'desktop_job_acks', 'desktop_drawer_events', 'desktop_releases')
       -- profiles: SELECT only, writes through the staff helpers (210_staff_helpers).
       AND NOT (c.relname = 'profiles' AND p.priv <> 'SELECT')
       AND NOT has_table_privilege('vipe_api', c.oid, p.priv)

@@ -1940,6 +1940,198 @@ export interface paths {
         patch: operations["StationsController_update"];
         trace?: never;
     };
+    "/api/desktop/pairing/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DesktopPairingController_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/pairing/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DesktopPairingController_claim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DesktopDeviceController_heartbeat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/stations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DesktopDeviceController_stations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/printers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["DesktopDeviceController_printers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/jobs/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DesktopDeviceController_pending"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/jobs/{id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DesktopDeviceController_ack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/drawer-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DesktopDeviceController_drawer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/updates/{target}/{currentVersion}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DesktopDeviceController_update"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/pairing-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DesktopAdminController_createCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DesktopAdminController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["DesktopAdminController_revoke"];
+        options?: never;
+        head?: never;
+        patch: operations["DesktopAdminController_rename"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2400,6 +2592,12 @@ export interface components {
              * @default true
              */
             printingEnabled: boolean;
+            /**
+             * @description Update channel of the VIPE desktop app: pilot receives new versions before stable.
+             * @default stable
+             * @enum {string}
+             */
+            desktopUpdateChannel: "stable" | "pilot";
         };
         UpdateBusinessConfigRequest: {
             taxPercentage?: number;
@@ -2418,6 +2616,8 @@ export interface components {
             /** @description Admin only, like every key. */
             allowSelfAuthorization?: boolean;
             printingEnabled?: boolean;
+            /** @enum {string} */
+            desktopUpdateChannel?: "stable" | "pilot";
         };
         OrderItem: {
             /** Format: uuid */
@@ -4509,6 +4709,191 @@ export interface components {
              * @description Prep station that takes the routes.
              */
             moveTo?: string | null;
+        };
+        PairingCodeRequest: {
+            /** @example 481207 */
+            code: string;
+        };
+        PairingRestaurant: {
+            /** Format: uuid */
+            id: string;
+            /** @description business_name, else the restaurant name. */
+            name: string;
+            /** @description The restaurant name when business_name differs, else empty. */
+            branch: string;
+            /** @description business_address or empty. */
+            address: string;
+            /** @example LF */
+            initials: string;
+        };
+        PairingPreview: {
+            restaurant: components["schemas"]["PairingRestaurant"];
+        };
+        ClaimDeviceInfo: {
+            name: string;
+            /** @enum {string} */
+            platform: "windows";
+            appVersion: string;
+        };
+        ClaimRequest: {
+            /** @example 481207 */
+            code: string;
+            device: components["schemas"]["ClaimDeviceInfo"];
+        };
+        PairingClaim: {
+            /** Format: uuid */
+            deviceId: string;
+            /** @description `vdt_…`, returned only here; send it as `Authorization: Bearer`. */
+            deviceToken: string;
+            restaurant: components["schemas"]["PairingRestaurant"];
+            /** @enum {string} */
+            channel: "stable" | "pilot";
+        };
+        HeartbeatPrinterStatus: {
+            id: string;
+            /** @enum {string} */
+            status: "ready" | "printing" | "error" | "offline";
+            /** @description Stored cut to 200 characters. */
+            error?: string;
+        };
+        HeartbeatRequest: {
+            appVersion: string;
+            /**
+             * @description Tauri {{target}}; windows-x86_64 reads as windows.
+             * @default windows
+             */
+            target: string;
+            printers: components["schemas"]["HeartbeatPrinterStatus"][];
+            queue: {
+                pending?: number;
+                failed?: number;
+            };
+        };
+        HeartbeatResponse: {
+            /** Format: date-time */
+            serverTime: string;
+            /** @enum {string} */
+            channel: "stable" | "pilot";
+            printingEnabled: boolean;
+            /** @description Present (true) when DESKTOP_RELEASES_BASE_URL is set and the app is older than the newest required release of its channel and target. */
+            updateRequired?: boolean;
+        };
+        DesktopStation: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * @description cashier for Caja; other for every prep station.
+             * @enum {string}
+             */
+            kind: "cashier" | "kitchen" | "bar" | "other";
+            /** @description The Caja station. */
+            fixed: boolean;
+            /** @example Entradas, Platos fuertes */
+            prints: string;
+            productCount: number;
+        };
+        DesktopPrinter: {
+            id: string;
+            name: string;
+            model: string;
+            /** @enum {string} */
+            connection: "usb" | "network" | "bluetooth";
+            /** @enum {number} */
+            paperMm: 58 | 80;
+            hasDrawer: boolean;
+            stationIds: string[];
+        };
+        DesktopPendingJob: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "command" | "invoice";
+            /** Format: uuid */
+            stationId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        AckRequest: {
+            /** @enum {string} */
+            status: "printed" | "skipped" | "cancelled";
+            reason?: string;
+        };
+        DrawerEventRequest: {
+            printerId: string;
+            /** Format: date-time */
+            openedAt: string;
+            /** @enum {string} */
+            reason: "manual" | "cash_payment";
+            /**
+             * Format: uuid
+             * @description Ignored (stored as null) unless staff of the restaurant.
+             */
+            profileId?: string;
+        };
+        UpdateManifest: {
+            /** @example 1.2.0 */
+            version: string;
+            notes: string;
+            /** Format: date-time */
+            pub_date: string;
+            url: string;
+            signature: string;
+        };
+        PairingCode: {
+            /**
+             * @description 6 digits, single use; shown once.
+             * @example 481207
+             */
+            code: string;
+            /**
+             * Format: date-time
+             * @description 10 minutes after creation.
+             */
+            expiresAt: string;
+        };
+        AdminDesktopPrinter: {
+            id: string;
+            name: string;
+            model: string;
+            /** @enum {string} */
+            connection: "usb" | "network" | "bluetooth";
+            /** @enum {number} */
+            paperMm: 58 | 80;
+            hasDrawer: boolean;
+            stationIds: string[];
+            /**
+             * @description From the last heartbeat; null when not reported.
+             * @enum {string|null}
+             */
+            status: "ready" | "printing" | "error" | "offline" | null;
+        };
+        DesktopDevice: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            platform: "windows";
+            appVersion: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastSeenAt: string | null;
+            /** @description Not revoked and seen within the last 90 seconds. */
+            online: boolean;
+            /** Format: date-time */
+            revokedAt: string | null;
+            queue: {
+                pending?: number;
+                failed?: number;
+            };
+            printers: components["schemas"]["AdminDesktopPrinter"][];
+        };
+        RenameDeviceRequest: {
+            name: string;
         };
     };
     responses: never;
@@ -10587,6 +10972,510 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid input or unknown fields; the body carries `code` for station refusals. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopPairingController_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairingCodeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingPreview"];
+                };
+            };
+            /** @description `pairing_code_invalid`: unknown code (counts as a wrong code). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `pairing_code_expired`: expired or already claimed. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not 6 digits or invalid device. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `pairing_attempts`: 5 wrong codes per IP or 100 overall in 10 minutes. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopPairingController_claim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description The device token is returned only here. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingClaim"];
+                };
+            };
+            /** @description `pairing_code_invalid`: unknown code (counts as a wrong code). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `pairing_code_expired`: expired or already claimed. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not 6 digits or invalid device. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `pairing_attempts`: 5 wrong codes per IP or 100 overall in 10 minutes. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopDeviceController_heartbeat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeartbeatResponse"];
+                };
+            };
+            /** @description `device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopDeviceController_stations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesktopStation"][];
+                };
+            };
+            /** @description `device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopDeviceController_printers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DesktopPrinter"][];
+            };
+        };
+        responses: {
+            /** @description Replaces the list; `station_invalid`, `too_many_printers` (422). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesktopPrinter"][];
+                };
+            };
+            /** @description `device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopDeviceController_pending: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Oldest first; `after` (job id) pages, `limit` 1..500. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesktopPendingJob"][];
+                };
+            };
+            /** @description `device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopDeviceController_ack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AckRequest"];
+            };
+        };
+        responses: {
+            /** @description Acked for this device; repeating it is a no-op. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `job_not_found`: not a job the device receives (restaurant, station, created after pairing). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopDeviceController_drawer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DrawerEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopDeviceController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                target: string;
+                currentVersion: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tauri dynamic manifest of the newest release of the channel; target `windows` (`windows-x86_64` is an alias). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateManifest"];
+                };
+            };
+            /** @description Up to date, or DESKTOP_RELEASES_BASE_URL is not set. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopAdminController_createCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 6 digits valid 10 minutes, single use. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingCode"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopAdminController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, revoked devices included. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesktopDevice"][];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopAdminController_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked (idempotent); the token answers 401 device_revoked from the next call. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `device_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DesktopAdminController_rename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameDeviceRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesktopDevice"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `device_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Name of 1..60 characters. */
             422: {
                 headers: {
                     [name: string]: unknown;

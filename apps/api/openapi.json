@@ -6894,6 +6894,533 @@
           "stations"
         ]
       }
+    },
+    "/api/desktop/pairing/preview": {
+      "post": {
+        "operationId": "DesktopPairingController_preview",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingCodeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingPreview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pairing_code_invalid`: unknown code (counts as a wrong code)."
+          },
+          "410": {
+            "description": "`pairing_code_expired`: expired or already claimed."
+          },
+          "422": {
+            "description": "Not 6 digits or invalid device."
+          },
+          "429": {
+            "description": "`pairing_attempts`: 5 wrong codes per IP or 100 overall in 10 minutes."
+          }
+        },
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/pairing/claim": {
+      "post": {
+        "operationId": "DesktopPairingController_claim",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The device token is returned only here.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingClaim"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pairing_code_invalid`: unknown code (counts as a wrong code)."
+          },
+          "410": {
+            "description": "`pairing_code_expired`: expired or already claimed."
+          },
+          "422": {
+            "description": "Not 6 digits or invalid device."
+          },
+          "429": {
+            "description": "`pairing_attempts`: 5 wrong codes per IP or 100 overall in 10 minutes."
+          }
+        },
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/heartbeat": {
+      "post": {
+        "operationId": "DesktopDeviceController_heartbeat",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/stations": {
+      "get": {
+        "operationId": "DesktopDeviceController_stations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DesktopStation"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/printers": {
+      "put": {
+        "operationId": "DesktopDeviceController_printers",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DesktopPrinter"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replaces the list; `station_invalid`, `too_many_printers` (422).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DesktopPrinter"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/jobs/pending": {
+      "get": {
+        "operationId": "DesktopDeviceController_pending",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Oldest first; `after` (job id) pages, `limit` 1..500.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DesktopPendingJob"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/jobs/{id}/ack": {
+      "post": {
+        "operationId": "DesktopDeviceController_ack",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Acked for this device; repeating it is a no-op."
+          },
+          "401": {
+            "description": "`device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`."
+          },
+          "404": {
+            "description": "`job_not_found`: not a job the device receives (restaurant, station, created after pairing)."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/drawer-events": {
+      "post": {
+        "operationId": "DesktopDeviceController_drawer",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DrawerEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Recorded."
+          },
+          "401": {
+            "description": "`device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/updates/{target}/{currentVersion}": {
+      "get": {
+        "operationId": "DesktopDeviceController_update",
+        "parameters": [
+          {
+            "name": "target",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "currentVersion",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tauri dynamic manifest of the newest release of the channel; target `windows` (`windows-x86_64` is an alias).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateManifest"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Up to date, or DESKTOP_RELEASES_BASE_URL is not set."
+          },
+          "401": {
+            "description": "`device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/pairing-codes": {
+      "post": {
+        "operationId": "DesktopAdminController_createCode",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "6 digits valid 10 minutes, single use.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingCode"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/devices": {
+      "get": {
+        "operationId": "DesktopAdminController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Newest first, revoked devices included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DesktopDevice"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
+    },
+    "/api/desktop/devices/{id}": {
+      "patch": {
+        "operationId": "DesktopAdminController_rename",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameDeviceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopDevice"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": "`device_not_found`."
+          },
+          "422": {
+            "description": "Name of 1..60 characters."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      },
+      "delete": {
+        "operationId": "DesktopAdminController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked (idempotent); the token answers 401 device_revoked from the next call."
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": "`device_not_found`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "desktop"
+        ]
+      }
     }
   },
   "info": {
@@ -8148,6 +8675,15 @@
             "type": "boolean",
             "default": true,
             "description": "Este restaurante usa impresoras térmicas: when false, POST /print/commands and /print/invoices answer 409 printing_disabled and the screens offer no print action."
+          },
+          "desktopUpdateChannel": {
+            "type": "string",
+            "enum": [
+              "stable",
+              "pilot"
+            ],
+            "default": "stable",
+            "description": "Update channel of the VIPE desktop app: pilot receives new versions before stable."
           }
         },
         "required": [
@@ -8164,7 +8700,8 @@
           "deliveryLateMinutes",
           "waiterAccessMode",
           "allowSelfAuthorization",
-          "printingEnabled"
+          "printingEnabled",
+          "desktopUpdateChannel"
         ]
       },
       "UpdateBusinessConfigRequest": {
@@ -8230,6 +8767,13 @@
           },
           "printingEnabled": {
             "type": "boolean"
+          },
+          "desktopUpdateChannel": {
+            "type": "string",
+            "enum": [
+              "stable",
+              "pilot"
+            ]
           }
         }
       },
@@ -14813,6 +15357,597 @@
             "description": "Prep station that takes the routes."
           }
         }
+      },
+      "PairingCodeRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^\\d{6}$",
+            "example": "481207"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "PairingRestaurant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "business_name, else the restaurant name."
+          },
+          "branch": {
+            "type": "string",
+            "description": "The restaurant name when business_name differs, else empty."
+          },
+          "address": {
+            "type": "string",
+            "description": "business_address or empty."
+          },
+          "initials": {
+            "type": "string",
+            "example": "LF"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "branch",
+          "address",
+          "initials"
+        ]
+      },
+      "PairingPreview": {
+        "type": "object",
+        "properties": {
+          "restaurant": {
+            "$ref": "#/components/schemas/PairingRestaurant"
+          }
+        },
+        "required": [
+          "restaurant"
+        ]
+      },
+      "ClaimDeviceInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "windows"
+            ]
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 32
+          }
+        },
+        "required": [
+          "name",
+          "platform",
+          "appVersion"
+        ]
+      },
+      "ClaimRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^\\d{6}$",
+            "example": "481207"
+          },
+          "device": {
+            "$ref": "#/components/schemas/ClaimDeviceInfo"
+          }
+        },
+        "required": [
+          "code",
+          "device"
+        ]
+      },
+      "PairingClaim": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "deviceToken": {
+            "type": "string",
+            "description": "`vdt_…`, returned only here; send it as `Authorization: Bearer`."
+          },
+          "restaurant": {
+            "$ref": "#/components/schemas/PairingRestaurant"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "stable",
+              "pilot"
+            ]
+          }
+        },
+        "required": [
+          "deviceId",
+          "deviceToken",
+          "restaurant",
+          "channel"
+        ]
+      },
+      "HeartbeatPrinterStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "printing",
+              "error",
+              "offline"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "Stored cut to 200 characters."
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ]
+      },
+      "HeartbeatRequest": {
+        "type": "object",
+        "properties": {
+          "appVersion": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "target": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,40}$",
+            "default": "windows",
+            "description": "Tauri {{target}}; windows-x86_64 reads as windows."
+          },
+          "printers": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeartbeatPrinterStatus"
+            }
+          },
+          "queue": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "required": [
+          "appVersion",
+          "printers",
+          "queue"
+        ]
+      },
+      "HeartbeatResponse": {
+        "type": "object",
+        "properties": {
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "stable",
+              "pilot"
+            ]
+          },
+          "printingEnabled": {
+            "type": "boolean"
+          },
+          "updateRequired": {
+            "type": "boolean",
+            "description": "Present (true) when DESKTOP_RELEASES_BASE_URL is set and the app is older than the newest required release of its channel and target."
+          }
+        },
+        "required": [
+          "serverTime",
+          "channel",
+          "printingEnabled"
+        ]
+      },
+      "DesktopStation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cashier",
+              "kitchen",
+              "bar",
+              "other"
+            ],
+            "description": "cashier for Caja; other for every prep station."
+          },
+          "fixed": {
+            "type": "boolean",
+            "description": "The Caja station."
+          },
+          "prints": {
+            "type": "string",
+            "example": "Entradas, Platos fuertes"
+          },
+          "productCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "fixed",
+          "prints",
+          "productCount"
+        ]
+      },
+      "DesktopPrinter": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "connection": {
+            "type": "string",
+            "enum": [
+              "usb",
+              "network",
+              "bluetooth"
+            ]
+          },
+          "paperMm": {
+            "type": "number",
+            "enum": [
+              58,
+              80
+            ]
+          },
+          "hasDrawer": {
+            "type": "boolean"
+          },
+          "stationIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "model",
+          "connection",
+          "paperMm",
+          "hasDrawer",
+          "stationIds"
+        ]
+      },
+      "DesktopPendingJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "command",
+              "invoice"
+            ]
+          },
+          "stationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "stationId",
+          "createdAt",
+          "payload"
+        ]
+      },
+      "AckRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "printed",
+              "skipped",
+              "cancelled"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "DrawerEventRequest": {
+        "type": "object",
+        "properties": {
+          "printerId": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "cash_payment"
+            ]
+          },
+          "profileId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Ignored (stored as null) unless staff of the restaurant."
+          }
+        },
+        "required": [
+          "printerId",
+          "openedAt",
+          "reason"
+        ]
+      },
+      "UpdateManifest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "example": "1.2.0"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "pub_date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "notes",
+          "pub_date",
+          "url",
+          "signature"
+        ]
+      },
+      "PairingCode": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "481207",
+            "description": "6 digits, single use; shown once."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "10 minutes after creation."
+          }
+        },
+        "required": [
+          "code",
+          "expiresAt"
+        ]
+      },
+      "AdminDesktopPrinter": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "connection": {
+            "type": "string",
+            "enum": [
+              "usb",
+              "network",
+              "bluetooth"
+            ]
+          },
+          "paperMm": {
+            "type": "number",
+            "enum": [
+              58,
+              80
+            ]
+          },
+          "hasDrawer": {
+            "type": "boolean"
+          },
+          "stationIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "printing",
+              "error",
+              "offline"
+            ],
+            "nullable": true,
+            "description": "From the last heartbeat; null when not reported."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "model",
+          "connection",
+          "paperMm",
+          "hasDrawer",
+          "stationIds",
+          "status"
+        ]
+      },
+      "DesktopDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "windows"
+            ]
+          },
+          "appVersion": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "online": {
+            "type": "boolean",
+            "description": "Not revoked and seen within the last 90 seconds."
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "queue": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              }
+            }
+          },
+          "printers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminDesktopPrinter"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "platform",
+          "appVersion",
+          "createdAt",
+          "lastSeenAt",
+          "online",
+          "revokedAt",
+          "queue",
+          "printers"
+        ]
+      },
+      "RenameDeviceRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          }
+        },
+        "required": [
+          "name"
+        ]
       }
     }
   }

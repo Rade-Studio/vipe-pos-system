@@ -23,6 +23,10 @@ const text = (value: string) => value;
 export const WAITER_ACCESS_MODES = ['own_accounts', 'shared_terminal'] as const;
 export type WaiterAccessMode = (typeof WAITER_ACCESS_MODES)[number];
 const accessMode = (value: string): WaiterAccessMode => (value === 'shared_terminal' ? 'shared_terminal' : 'own_accounts');
+/** Update channel of the restaurant's desktop app (F5a, L32): pilot receives versions before stable. */
+export const DESKTOP_UPDATE_CHANNELS = ['stable', 'pilot'] as const;
+export type DesktopUpdateChannel = (typeof DESKTOP_UPDATE_CHANNELS)[number];
+const updateChannel = (value: string): DesktopUpdateChannel => (value === 'pilot' ? 'pilot' : 'stable');
 /** Late thresholds: a stored value that is not an integer 1..240 reads as the default. */
 const minutes = (fallback: number) => (value: string) => {
   const trimmed = value.trim();
@@ -50,6 +54,8 @@ export const CONFIG_KEYS = {
   allowSelfAuthorization: { key: 'allow_self_authorization', fallback: false, read: (v: string) => v === 'true' },
   /** F6 (S2): the restaurant uses thermal printers; a missing key reads as true, so existing restaurants keep printing. */
   printingEnabled: { key: 'printing_enabled', fallback: true, read: (v: string) => v !== 'false' },
+  /** F5a: stable (default) | pilot; anything else reads as stable. */
+  desktopUpdateChannel: { key: 'desktop_update_channel', fallback: 'stable' as DesktopUpdateChannel, read: updateChannel },
 } as const;
 
 export type ConfigField = keyof typeof CONFIG_KEYS;
@@ -73,6 +79,7 @@ export const updateConfigSchema = z.strictObject({
   waiterAccessMode: z.enum(WAITER_ACCESS_MODES).optional(),
   allowSelfAuthorization: z.boolean().optional(),
   printingEnabled: z.boolean().optional(),
+  desktopUpdateChannel: z.enum(DESKTOP_UPDATE_CHANNELS).optional(),
 });
 
 /** Typed config built from the stored rows; missing or unreadable keys take the default. */
@@ -118,6 +125,12 @@ export class BusinessConfig {
       'Este restaurante usa impresoras térmicas: when false, POST /print/commands and /print/invoices answer 409 printing_disabled and the screens offer no print action.',
   })
   printingEnabled!: boolean;
+  @ApiProperty({
+    enum: DESKTOP_UPDATE_CHANNELS,
+    default: 'stable',
+    description: 'Update channel of the VIPE desktop app: pilot receives new versions before stable.',
+  })
+  desktopUpdateChannel!: DesktopUpdateChannel;
 }
 
 export class UpdateBusinessConfigRequest {
@@ -135,4 +148,5 @@ export class UpdateBusinessConfigRequest {
   @ApiPropertyOptional({ enum: WAITER_ACCESS_MODES }) waiterAccessMode?: WaiterAccessMode;
   @ApiPropertyOptional({ description: 'Admin only, like every key.' }) allowSelfAuthorization?: boolean;
   @ApiPropertyOptional() printingEnabled?: boolean;
+  @ApiPropertyOptional({ enum: DESKTOP_UPDATE_CHANNELS }) desktopUpdateChannel?: DesktopUpdateChannel;
 }
