@@ -160,7 +160,7 @@
             "description": "Weak or malformed new PIN, or no PIN yet (Spanish message)."
           },
           "429": {
-            "description": "5 failures lock the profile and the session 5 minutes (code pin_locked)."
+            "description": "5 failures lock the profile and the session 5 minutes (code pin_locked; lockedUntil: when the lock ends)."
           }
         },
         "security": [
@@ -202,7 +202,7 @@
             "description": "Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike."
           },
           "429": {
-            "description": "The profile or this terminal is locked for 5 minutes (code pin_locked)."
+            "description": "The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends)."
           }
         },
         "security": [
@@ -247,7 +247,7 @@
             "description": "Unknown action or malformed PIN."
           },
           "429": {
-            "description": "The session or the named supervisor is locked for 5 minutes (code pin_locked)."
+            "description": "The session or the named supervisor is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends)."
           }
         },
         "security": [
@@ -6032,6 +6032,41 @@
         ]
       }
     },
+    "/api/staff/supervisors": {
+      "get": {
+        "operationId": "StaffController_supervisors",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Active admins and cashiers of the caller's restaurant, by name (close a shared terminal, authorize a void). Also a terminal read route. pinLockedUntil only for an admin caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StaffSupervisor"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      }
+    },
     "/api/staff/{id}": {
       "patch": {
         "operationId": "StaffController_update",
@@ -6229,6 +6264,43 @@
         "responses": {
           "204": {
             "description": "PIN removed (no-op when the member has none)."
+          },
+          "403": {
+            "description": "Not an active admin, or the target is an admin or the caller."
+          },
+          "404": {
+            "description": "Not a profile of the caller's restaurant."
+          },
+          "422": {
+            "description": "Invalid input; the message is the Spanish text the staff form shows."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "staff"
+        ]
+      }
+    },
+    "/api/staff/{id}/pin/lock": {
+      "delete": {
+        "operationId": "StaffController_unlockPin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Ends the member's PIN lockout early and clears its failed attempts; the PIN stays (no-op when not locked). Logged."
           },
           "403": {
             "description": "Not an active admin, or the target is an admin or the caller."
@@ -13603,6 +13675,43 @@
           "role",
           "active",
           "createdAt",
+          "hasPin",
+          "pinLockedUntil"
+        ]
+      },
+      "StaffSupervisor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Profile id (POST /auth/identify, POST /auth/authorize)."
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "cashier"
+            ]
+          },
+          "hasPin": {
+            "type": "boolean",
+            "description": "The supervisor has a PIN."
+          },
+          "pinLockedUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "End of a running PIN lockout, for an admin caller only (always null for other callers); null when not locked."
+          }
+        },
+        "required": [
+          "id",
+          "fullName",
+          "role",
           "hasPin",
           "pinLockedUntil"
         ]

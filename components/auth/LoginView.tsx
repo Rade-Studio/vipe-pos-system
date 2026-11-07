@@ -7,9 +7,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Loader2, Lock, Mail, Music, Utensils, Coffee } from "lucide-react"
+import { Loader2, Lock, Mail, Music, Utensils, Coffee, Tablet } from "lucide-react"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
-import { login, type Session } from "@/lib/api/auth"
+import { login, terminalLogin, type Session } from "@/lib/api/auth"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
@@ -22,6 +22,8 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  // F4: the same form opens this device as a shared order-taking terminal.
+  const [asTerminal, setAsTerminal] = useState(false)
   const [animationComplete, setAnimationComplete] = useState(false)
   const { toast } = useToast()
 
@@ -48,17 +50,18 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
     setIsLoading(true)
 
     try {
-      const session = await login(email, password)
+      const session = asTerminal ? await terminalLogin(email, password) : await login(email, password)
 
-      toast({
-        title: "Inicio de sesión exitoso",
-        description: "Bienvenido al sistema VibePOS",
-      })
+      toast(
+        asTerminal
+          ? { title: "Terminal abierta", description: "Cada mesero se identifica con su PIN." }
+          : { title: "Inicio de sesión exitoso", description: "Bienvenido al sistema VibePOS" },
+      )
 
       onLoginSuccess(session)
     } catch (error: any) {
       toast({
-        title: "Error al iniciar sesión",
+        title: asTerminal ? "No se pudo abrir la terminal" : "Error al iniciar sesión",
         description: error.message || "Verifica tus credenciales e intenta nuevamente",
         variant: "destructive",
       })
@@ -139,10 +142,12 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
 
           <CardHeader className="relative">
             <CardTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-purple-400 dark:to-indigo-400">
-              Iniciar sesión
+              {asTerminal ? "Abrir esta tablet como terminal" : "Iniciar sesión"}
             </CardTitle>
             <CardDescription className="text-gray-600 dark:text-gray-400">
-              Ingresa tus credenciales para acceder al sistema
+              {asTerminal
+                ? "Solo el admin o la caja pueden abrirla. Después, cada mesero se identifica con su PIN."
+                : "Ingresa tus credenciales para acceder al sistema"}
             </CardDescription>
           </CardHeader>
 
@@ -191,21 +196,33 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
               </div>
             </CardContent>
 
-            <CardFooter>
+            <CardFooter className="flex-col gap-3">
               <Button
                 type="submit"
-                className="w-full relative overflow-hidden group bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white border-0"
+                className="min-h-11 w-full relative overflow-hidden group bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white border-0"
                 disabled={isLoading}
               >
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-purple-600/0 via-white/20 to-indigo-600/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Iniciando sesión...
+                    {asTerminal ? "Abriendo terminal..." : "Iniciando sesión..."}
                   </>
+                ) : asTerminal ? (
+                  "Abrir terminal"
                 ) : (
                   "Iniciar sesión"
                 )}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="min-h-11 w-full text-gray-700 dark:text-gray-300"
+                disabled={isLoading}
+                onClick={() => setAsTerminal((value) => !value)}
+              >
+                {!asTerminal && <Tablet className="mr-2 h-4 w-4" aria-hidden />}
+                {asTerminal ? "Volver a iniciar sesión" : "Abrir esta tablet como terminal"}
               </Button>
             </CardFooter>
           </form>

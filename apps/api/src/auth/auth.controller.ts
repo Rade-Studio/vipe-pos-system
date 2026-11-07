@@ -116,7 +116,7 @@ export class AuthController {
   @ApiBody({ type: ChangeOwnPinRequest })
   @ApiNoContentResponse({ description: 'The caller\'s PIN is replaced (the current one was right).' })
   @ApiForbiddenResponse({ description: 'PIN incorrecto (code pin_invalid; the failure counts), or a terminal session.' })
-  @ApiTooManyRequestsResponse({ description: '5 failures lock the profile and the session 5 minutes (code pin_locked).' })
+  @ApiTooManyRequestsResponse({ description: '5 failures lock the profile and the session 5 minutes (code pin_locked; lockedUntil: when the lock ends).' })
   @ApiUnprocessableEntityResponse({ description: 'Weak or malformed new PIN, or no PIN yet (Spanish message).' })
   async changeOwnPin(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
     const input = parsePinInput(changeOwnPinSchema, body);
@@ -132,7 +132,7 @@ export class AuthController {
   @ApiForbiddenResponse({
     description: 'Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike.',
   })
-  @ApiTooManyRequestsResponse({ description: 'The profile or this terminal is locked for 5 minutes (code pin_locked).' })
+  @ApiTooManyRequestsResponse({ description: 'The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends).' })
   async identify(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
     const input = parsePinInput(identifySchema, body);
     this.sendAfterCommit(res, 200, await this.pins.identify(req.auth!, input.profileId, input.pin));
@@ -144,7 +144,7 @@ export class AuthController {
   @ApiBody({ type: AuthorizeRequest })
   @ApiCreatedResponse({ type: AuthorizeResponse, description: 'Single-use supervisor authorization for the action, valid 2 minutes.' })
   @ApiForbiddenResponse({ description: 'PIN incorrecto (code pin_invalid): no admin or cashier of the restaurant has that PIN.' })
-  @ApiTooManyRequestsResponse({ description: 'The session or the named supervisor is locked for 5 minutes (code pin_locked).' })
+  @ApiTooManyRequestsResponse({ description: 'The session or the named supervisor is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends).' })
   @ApiUnprocessableEntityResponse({ description: 'Unknown action or malformed PIN.' })
   async authorize(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
     const input = parsePinInput(authorizeSchema, body);

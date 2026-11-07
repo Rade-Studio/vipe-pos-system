@@ -78,4 +78,41 @@ describe("LoginView", () => {
       variant: "destructive",
     })
   })
+
+  it("opens this tablet as a shared terminal with POST /api/auth/terminal/login (F4)", async () => {
+    const terminal = { ...session, profile: { ...session.profile, role: "cashier" }, sessionKind: "terminal" }
+    api.POST.mockResolvedValue({ data: terminal })
+    const onLoginSuccess = vi.fn()
+    render(<LoginView onLoginSuccess={onLoginSuccess} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir esta tablet como terminal" }))
+    expect(screen.getByText("Solo el admin o la caja pueden abrirla. Después, cada mesero se identifica con su PIN.")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "laura@a.test" } })
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "secreto123" } })
+    fireEvent.click(screen.getByRole("button", { name: "Abrir terminal" }))
+
+    await waitFor(() => expect(onLoginSuccess).toHaveBeenCalledWith(terminal))
+    expect(api.POST).toHaveBeenCalledWith("/api/auth/terminal/login", { body: { email: "laura@a.test", password: "secreto123" } })
+  })
+
+  it("shows why a waiter cannot open a terminal, and goes back to the normal login", async () => {
+    api.POST.mockRejectedValue(
+      new ApiError(403, "Forbidden", "Solo un administrador o cajero puede abrir una terminal compartida"),
+    )
+    const onLoginSuccess = vi.fn()
+    render(<LoginView onLoginSuccess={onLoginSuccess} />)
+    fireEvent.click(screen.getByRole("button", { name: "Abrir esta tablet como terminal" }))
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "ana@a.test" } })
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "secreto123" } })
+    fireEvent.click(screen.getByRole("button", { name: "Abrir terminal" }))
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ description: "Solo un administrador o cajero puede abrir una terminal compartida" }),
+      ),
+    )
+    expect(onLoginSuccess).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Volver a iniciar sesión" }))
+    expect(screen.getByRole("button", { name: "Iniciar sesión" })).toBeInTheDocument()
+  })
 })

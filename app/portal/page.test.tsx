@@ -94,6 +94,14 @@ vi.mock("@/components/views/WaiterView", () => ({ WaiterView: () => <div>waiter-
 vi.mock("@/components/views/KitchenView", () => ({ KitchenView: () => <div>kitchen-view</div> }))
 vi.mock("@/components/views/CashierView", () => ({ CashierView: () => <div>cashier-view</div> }))
 vi.mock("@/components/views/AdminView", () => ({ AdminView: () => <div>admin-view</div> }))
+vi.mock("@/components/terminal/TerminalView", () => ({
+  TerminalView: ({ children }: { children: (bar: unknown) => unknown }) => (
+    <div>
+      terminal-view
+      {children(null) as never}
+    </div>
+  ),
+}))
 vi.mock("@/components/views/DeliveryView", () => ({ DeliveryView: () => <div>delivery-view</div> }))
 
 import { useProfileStore } from "@/store/useProfileStore"
@@ -589,5 +597,32 @@ describe("a login around the initial session check (D3 smoke)", () => {
 
     expect(await screen.findByText("login-view")).toBeInTheDocument()
     expect(useProfileStore.getState().authProfile).toBeNull()
+  })
+})
+
+describe("shared terminal session (F4)", () => {
+  const asTerminal = (role: string) => {
+    const base = env.apiGet.getMockImplementation()!
+    env.apiGet.mockImplementation(async (path: string, init?: unknown) =>
+      path === "/api/auth/me" ? { data: { ...sessionFor(role), sessionKind: "terminal" } } : base(path, init),
+    )
+  }
+
+  it("opens the terminal flow for a terminal opened by an admin, with the waiter loads only", async () => {
+    env.role = "admin"
+    asTerminal("admin")
+    render(<Home />)
+    expect(await screen.findByText(/terminal-view/)).toBeInTheDocument()
+    expect(screen.queryByText("admin-view")).toBeNull()
+    await waitFor(() => expect(env.loadConfig).toHaveBeenCalled())
+    expect(env.getAllRegisters).not.toHaveBeenCalled()
+    expect(env.tableGetAll).not.toHaveBeenCalled()
+  })
+
+  it("keeps a personal waiter session on the waiter view, without the terminal (own accounts unchanged)", async () => {
+    env.role = "waiter"
+    render(<Home />)
+    expect(await screen.findByText("waiter-view")).toBeInTheDocument()
+    expect(screen.queryByText(/terminal-view/)).toBeNull()
   })
 })

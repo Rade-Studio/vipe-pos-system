@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { createApiClient, onSessionRefreshed } from "./client"
 import { ApiError, conflictMessage } from "./errors"
 import { onAuthEvent } from "@/lib/shell/auth-events"
+import { clearActingToken, setActingToken } from "@/lib/terminal/acting"
 
 /**
  * T7 (S2): the web reaches the API same-origin with the session cookies. A 401
@@ -196,5 +197,54 @@ describe("api client", () => {
     expect(conflictMessage(new ApiError(409, "Conflict", "Order is paid"), "Error")).toBe("Order is paid")
     expect(conflictMessage(new ApiError(500, "Internal Server Error", "boom"), "Error")).toBe("Error")
     expect(conflictMessage(new Error("offline"), "Error")).toBe("Error")
+  })
+})
+
+/**
+ * F4: on a shared terminal the identified staff member's claim rides on the
+ * writes (the API swaps the identity on the order writes and ignores it
+ * elsewhere); reads and personal sessions never carry it.
+ */
+describe("acting claim", () => {
+  function headerFetch() {
+    const seen: Array<string | null> = []
+    const fetch = vi.fn(async (request: Request) => {
+      seen.push(request.headers.get("X-Vipe-Acting"))
+      return json(200, {})
+    })
+    return { fetch, seen }
+  }
+  afterEach(() => clearActingToken())
+
+  it("sends X-Vipe-Acting on writes while a staff member is identified", async () => {
+    const { fetch, seen } = headerFetch()
+    const api = createApiClient({ baseUrl: "http://localhost:3000", fetch })
+    setActingToken("acting-jwt")
+    await api.POST("/api/orders", { body: {} as never })
+    await api.PATCH("/api/orders/{id}/status", { params: { path: { id: "o-1" } }, body: {} as never })
+    expect(seen).toEqual(["acting-jwt", "acting-jwt"])
+  })
+
+  it("never sends it on reads, nor once the identification ended", async () => {
+    const { fetch, seen } = headerFetch()
+    const api = createApiClient({ baseUrl: "http://localhost:3000", fetch })
+    setActingToken("acting-jwt")
+    await api.GET("/api/tables")
+    clearActingToken()
+    await api.POST("/api/orders", { body: {} as never })
+    expect(seen).toEqual([null, null])
+  })
+
+  it("keeps it on the retry after a silent refresh", async () => {
+    const seen: Array<string | null> = []
+    const answers = [unauthorized(), new Response(null, { status: 204 }), json(200, {})]
+    const fetch = vi.fn(async (request: Request) => {
+      seen.push(`${new URL(request.url).pathname}:${request.headers.get("X-Vipe-Acting")}`)
+      return answers.shift()!
+    })
+    const api = createApiClient({ baseUrl: "http://localhost:3000", fetch })
+    setActingToken("acting-jwt")
+    await api.POST("/api/orders", { body: {} as never })
+    expect(seen).toEqual(["/api/orders:acting-jwt", "/api/auth/refresh:null", "/api/orders:acting-jwt"])
   })
 })

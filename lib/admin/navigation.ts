@@ -47,6 +47,7 @@ export const ADMIN_SECTIONS = [
   { id: "settings/payment-methods", group: "settings", label: "Métodos de pago", description: "Medios de pago aceptados." },
   { id: "settings/delivery", group: "settings", label: "Domicilios", description: "Repartidores y tarifa de domicilio." },
   { id: "settings/staff", group: "settings", label: "Personal", description: "Usuarios y roles del equipo." },
+  { id: "settings/access", group: "settings", label: "Acceso de meseros", description: "Cuenta propia o terminal compartida, y el PIN del personal." },
   { id: "settings/printers", group: "settings", label: "Impresoras", description: "Estaciones de impresión y sus tokens." },
 ] as const satisfies readonly { id: string; group: AdminNavGroupId; label: string; description: string }[]
 
