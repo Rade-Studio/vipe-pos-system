@@ -44,6 +44,7 @@ export interface OrderListFilter {
   statuses?: OrderStatus[];
   withTable?: boolean;
   withWaiter?: boolean;
+  stationId?: string;
 }
 
 /**
@@ -63,8 +64,17 @@ export class OrdersService {
   ) {}
 
   async list(filter: OrderListFilter): Promise<Order[]> {
-    const where = filter.statuses?.length ? sql`WHERE o.status = ANY(${sql.param(filter.statuses)}::text[])` : sql``;
-    const rows = await this.select(where, sql`ORDER BY o.created_at DESC, o.id LIMIT ${ORDER_LIST_LIMIT}`);
+    const conditions: SQL[] = [];
+    if (filter.statuses?.length) {
+      conditions.push(sql`o.status = ANY(${sql.param(filter.statuses)}::text[])`);
+    }
+    // F6: the kitchen screen of one station sees only its lines.
+    const items = filter.stationId ? sql`${LIVE_ITEMS} AND oi.station_id = ${filter.stationId}::uuid` : LIVE_ITEMS;
+    if (filter.stationId) {
+      conditions.push(sql`EXISTS (SELECT 1 FROM public.order_items oi WHERE oi.order_id = o.id AND ${items})`);
+    }
+    const where = conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+    const rows = await this.select(where, sql`ORDER BY o.created_at DESC, o.id LIMIT ${ORDER_LIST_LIMIT}`, items);
     return rows.map((row) => toOrder(row, filter));
   }
 
@@ -425,13 +435,13 @@ export class OrdersService {
   }
 
   /** Orders with their items (one query, json aggregate), table number and waiter name. */
-  private select(where: SQL, tail: SQL = sql``): Promise<OrderRow[]> {
+  private select(where: SQL, tail: SQL = sql``, items: SQL = LIVE_ITEMS): Promise<OrderRow[]> {
     return this.rows<OrderRow>(sql`
       SELECT to_jsonb(o) AS "order",
              t.number AS table_number,
              p.full_name AS waiter_name,
              coalesce((SELECT jsonb_agg(to_jsonb(oi) ORDER BY oi.added_at, oi.created_at, oi.id)
-                         FROM public.order_items oi WHERE oi.order_id = o.id AND ${LIVE_ITEMS}), '[]'::jsonb) AS items
+                         FROM public.order_items oi WHERE oi.order_id = o.id AND ${items}), '[]'::jsonb) AS items
         FROM public.orders o
         LEFT JOIN public.tables t ON t.id = o.table_id
         LEFT JOIN public.profiles p ON p.id = o.waiter_id

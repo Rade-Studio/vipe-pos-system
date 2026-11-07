@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req, UseGu
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -28,6 +29,7 @@ import {
   pendingQuerySchema,
   PrinterDevice,
   PrintJobCreated,
+  PrintJobsCreated,
 } from './print.dto';
 import { PrintService } from './print.service';
 import { type PrinterRequest, PrinterTokenGuard } from './printer-token.guard';
@@ -41,17 +43,26 @@ export class PrintController {
   @Post('invoices')
   @ApiCookieAuth()
   @ApiBody({ type: InvoicePrintRequest })
-  @ApiCreatedResponse({ type: PrintJobCreated, description: 'Queued; sent to the restaurant printers after commit.' })
-  printInvoice(@Body() body: unknown): Promise<PrintJobCreated> {
-    return this.print.printInvoice(parseInput(invoicePrintSchema, body));
+  @ApiCreatedResponse({ type: PrintJobCreated, description: 'Queued; sent to the restaurant printers after commit. Tagged to Caja when it exists.' })
+  @ApiConflictResponse({ description: '`printing_disabled`: the restaurant does not use printers.' })
+  async printInvoice(@Body() body: unknown): Promise<PrintJobCreated> {
+    const input = parseInput(invoicePrintSchema, body);
+    await this.print.assertPrinting();
+    return this.print.printInvoice(input);
   }
 
   @Post('commands')
   @ApiCookieAuth()
   @ApiBody({ type: CommandPrintRequest })
-  @ApiCreatedResponse({ type: PrintJobCreated, description: 'Queued kitchen command; its id is the payload invoiceNumber.' })
-  printCommand(@Body() body: unknown): Promise<PrintJobCreated> {
-    return this.print.printCommand(parseInput(commandPrintSchema, body));
+  @ApiCreatedResponse({
+    type: PrintJobsCreated,
+    description: 'Queued kitchen command; its id is the payload invoiceNumber. With stations: one job per station and `jobs`; without: the single legacy job (no `jobs`).',
+  })
+  @ApiConflictResponse({ description: '`printing_disabled`: the restaurant does not use printers.' })
+  async printCommand(@Body() body: unknown): Promise<PrintJobCreated | PrintJobsCreated> {
+    const input = parseInput(commandPrintSchema, body);
+    await this.print.assertPrinting();
+    return this.print.printCommand(input);
   }
 
   @Get('jobs/pending')

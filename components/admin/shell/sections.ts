@@ -14,6 +14,7 @@ import {
   Package,
   Percent,
   Printer,
+  Split,
   ReceiptText,
   ShoppingCart,
   Table2,
@@ -48,5 +49,6 @@ export const SECTION_ICONS: Record<AdminSectionId, LucideIcon> = {
   "settings/delivery": Truck,
   "settings/staff": Users,
   "settings/access": KeyRound,
+  "settings/stations": Split,
   "settings/printers": Printer,
 }

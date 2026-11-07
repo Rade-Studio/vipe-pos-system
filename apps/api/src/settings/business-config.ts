@@ -48,6 +48,8 @@ export const CONFIG_KEYS = {
   waiterAccessMode: { key: 'waiter_access_mode', fallback: 'own_accounts' as WaiterAccessMode, read: accessMode },
   /** F1 (L14): a supervisor may authorize their own cancellation or void; off by default, such events are flagged self_authorized. */
   allowSelfAuthorization: { key: 'allow_self_authorization', fallback: false, read: (v: string) => v === 'true' },
+  /** F6 (S2): the restaurant uses thermal printers; a missing key reads as true, so existing restaurants keep printing. */
+  printingEnabled: { key: 'printing_enabled', fallback: true, read: (v: string) => v !== 'false' },
 } as const;
 
 export type ConfigField = keyof typeof CONFIG_KEYS;
@@ -70,6 +72,7 @@ export const updateConfigSchema = z.strictObject({
   deliveryLateMinutes: lateMinutes.optional(),
   waiterAccessMode: z.enum(WAITER_ACCESS_MODES).optional(),
   allowSelfAuthorization: z.boolean().optional(),
+  printingEnabled: z.boolean().optional(),
 });
 
 /** Typed config built from the stored rows; missing or unreadable keys take the default. */
@@ -109,6 +112,12 @@ export class BusinessConfig {
       'Permitir que el supervisor se autorice a sí mismo: when true, an admin or cashier may authorize their own cancellation or void with their PIN and the event is flagged selfAuthorized; when false another supervisor must authorize (403 self_authorization_not_allowed).',
   })
   allowSelfAuthorization!: boolean;
+  @ApiProperty({
+    default: true,
+    description:
+      'Este restaurante usa impresoras térmicas: when false, POST /print/commands and /print/invoices answer 409 printing_disabled and the screens offer no print action.',
+  })
+  printingEnabled!: boolean;
 }
 
 export class UpdateBusinessConfigRequest {
@@ -125,4 +134,5 @@ export class UpdateBusinessConfigRequest {
   @ApiPropertyOptional({ minimum: 1, maximum: 240, type: 'integer' }) deliveryLateMinutes?: number;
   @ApiPropertyOptional({ enum: WAITER_ACCESS_MODES }) waiterAccessMode?: WaiterAccessMode;
   @ApiPropertyOptional({ description: 'Admin only, like every key.' }) allowSelfAuthorization?: boolean;
+  @ApiPropertyOptional() printingEnabled?: boolean;
 }

@@ -1,6 +1,7 @@
 "use client"
 
-import { Ban, Printer, SplitSquareVertical, Trash2, Undo2 } from "lucide-react"
+import { Ban, Printer, Receipt, SplitSquareVertical, Trash2, Undo2 } from "lucide-react"
+import { usePrintingEnabled } from "@/lib/api/printing"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
 import type { CartItem } from "@/types"
@@ -37,6 +38,8 @@ export function OrderDetail({
   onCancelOrder,
 }: OrderDetailProps) {
   const header = entryHeader(entry)
+  // S2 (F6): without thermal printers the same action shows the invoice on screen.
+  const printingEnabled = usePrintingEnabled()
   return (
     <div className="flex min-h-0 flex-col gap-4 p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -68,8 +71,8 @@ export function OrderDetail({
             </Button>
           )}
           <Button variant="outline" className="h-11" onClick={onReprint}>
-            <Printer aria-hidden="true" className="h-4 w-4" />
-            Reimprimir
+            {printingEnabled ? <Printer aria-hidden="true" className="h-4 w-4" /> : <Receipt aria-hidden="true" className="h-4 w-4" />}
+            {printingEnabled ? "Reimprimir" : "Ver factura"}
           </Button>
           {onVoidItem && (
             <Button variant="outline" className="h-11" onClick={onVoidItem}>

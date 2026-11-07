@@ -43,6 +43,7 @@ describe("admin navigation registry", () => {
       "Domicilios",
       "Personal",
       "Acceso de meseros",
+      "Estaciones y rutas",
       "Impresoras",
     ])
   })
@@ -51,6 +52,8 @@ describe("admin navigation registry", () => {
     expect(getAdminSection("settings/access")).toMatchObject({ id: "settings/access", group: "settings", label: "Acceso de meseros" })
     expect(groupOfSection("settings/access").label).toBe("Configuración")
     expect(parseSectionHash("#settings/access")).toBe("settings/access")
+    expect(getAdminSection("settings/stations")).toMatchObject({ group: "settings", label: "Estaciones y rutas" })
+    expect(parseSectionHash("#settings/stations")).toBe("settings/stations")
   })
 
   it("has unique section ids and every section belongs to a declared group", () => {

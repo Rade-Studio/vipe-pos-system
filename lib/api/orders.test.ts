@@ -67,6 +67,8 @@ function dto(overrides: Partial<OrderDto> = {}): OrderDto {
         quantity: 2,
         comments: null,
         status: "kitchen",
+        stationId: null,
+        stationSource: null,
         addedAt: "2026-11-04T12:00:00.000Z",
         createdAt: "2026-11-04T12:00:00.000Z",
         updatedAt: null,
@@ -183,6 +185,23 @@ describe("orderDtoFromWire", () => {
   it("reads missing guests and notes as null and a missing order_number as 0", () => {
     const wire = orderDtoFromWire({ id: "o-1", status: "kitchen" })
     expect(wire).toMatchObject({ orderNumber: 0, guests: null, notes: null })
+  })
+})
+
+describe("line stations (F6)", () => {
+  it("carries the station of each line from the API and from a realtime row", () => {
+    const item = { ...dto().items[0], stationId: "s-bar", stationSource: "category" as const }
+    expect(toOrder(dto({ items: [item] })).items[0]).toMatchObject({ id: "i-1", stationId: "s-bar" })
+    expect(toOrder(dto()).items[0]).toMatchObject({ stationId: undefined })
+    const wire = orderDtoFromWire({ id: "o-1", status: "kitchen", order_items: [{ id: "i-1", station_id: "s-bar", station_source: "fallback" }] })
+    expect(wire?.items[0]).toMatchObject({ stationId: "s-bar", stationSource: "fallback" })
+    expect(orderDtoFromWire({ id: "o-1", status: "kitchen", order_items: [{ id: "i-2", station_source: "nope" }] })?.items[0])
+      .toMatchObject({ stationId: null, stationSource: null })
+  })
+
+  it("asks the kitchen orders of one station", async () => {
+    await getByStatus("kitchen", { stationId: "s-bar" })
+    expect(api.GET).toHaveBeenCalledWith("/api/orders", { params: { query: { status: "kitchen", stationId: "s-bar" } } })
   })
 })
 

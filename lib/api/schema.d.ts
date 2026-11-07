@@ -1844,6 +1844,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["StationsController_list"];
+        put?: never;
+        post: operations["StationsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stations/starter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["StationsController_createStarter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stations/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["StationsController_routes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stations/routes/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["StationsController_setCategoryRoute"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stations/routes/dishes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["StationsController_setDishRoute"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["StationsController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["StationsController_update"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2299,6 +2395,11 @@ export interface components {
              * @default false
              */
             allowSelfAuthorization: boolean;
+            /**
+             * @description Este restaurante usa impresoras térmicas: when false, POST /print/commands and /print/invoices answer 409 printing_disabled and the screens offer no print action.
+             * @default true
+             */
+            printingEnabled: boolean;
         };
         UpdateBusinessConfigRequest: {
             taxPercentage?: number;
@@ -2316,6 +2417,7 @@ export interface components {
             waiterAccessMode?: "own_accounts" | "shared_terminal";
             /** @description Admin only, like every key. */
             allowSelfAuthorization?: boolean;
+            printingEnabled?: boolean;
         };
         OrderItem: {
             /** Format: uuid */
@@ -2331,6 +2433,16 @@ export interface components {
             comments: string | null;
             /** @enum {string} */
             status: "kitchen" | "served";
+            /**
+             * Format: uuid
+             * @description Station the line was routed to when sent (F6); null without stations.
+             */
+            stationId: string | null;
+            /**
+             * @description dish: the dish exception; category: its default; fallback: no route, sent to the default station.
+             * @enum {string|null}
+             */
+            stationSource: "dish" | "category" | "fallback" | null;
             /** Format: date-time */
             addedAt: string | null;
             /** Format: date-time */
@@ -3888,12 +4000,25 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        PrintJobsCreated: {
+            /**
+             * Format: uuid
+             * @description Also the invoiceNumber of a command payload.
+             */
+            id: string;
+            /** @enum {string} */
+            kind: "invoice" | "command";
+            /** Format: date-time */
+            createdAt: string;
+            /** @description One comanda per station, in station order. */
+            jobs: components["schemas"]["PrintJobCreated"][];
+        };
         PendingPrintJob: {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
             kind: "invoice" | "command";
-            /** @description invoice: {invoiceNumber, invoice, displayItems}; command: {invoiceNumber (job id), items, waiter, table?, delivery?}. */
+            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
             payload: {
                 [key: string]: unknown;
             };
@@ -4115,8 +4240,8 @@ export interface components {
             delivery: components["schemas"]["DeliveryOrder"];
             /** @description consume_order_stock of the new order; shortages do not undo it. */
             consumption: components["schemas"]["ConsumeOrderStockResult"];
-            /** @description Kitchen command job; its id is the command invoiceNumber. */
-            printJob: components["schemas"]["PrintJobCreated"];
+            /** @description Kitchen command job (the first one with stations); its id is the command invoiceNumber. null when the restaurant does not use printers. */
+            printJob: components["schemas"]["PrintJobCreated"] | null;
         };
         SetDeliveryStatusRequest: {
             /** @enum {string} */
@@ -4281,6 +4406,109 @@ export interface components {
         DeleteObjectRequest: {
             /** @description A publicUrl from POST /storage/uploads; must be under S3_PUBLIC_BASE_URL and the caller's restaurant. */
             publicUrl: string;
+        };
+        Station: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * @description prep: receives comanda lines; cashier: Caja, facturas and precuentas.
+             * @enum {string}
+             */
+            kind: "prep" | "cashier";
+            /** @enum {string} */
+            color: "kitchen" | "served" | "occupied" | "free" | "reserved";
+            sortOrder: number;
+            /** @description The prep station that receives dishes without a route (the first one created). */
+            isDefault: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateStationRequest: {
+            name: string;
+            /**
+             * @description One cashier station per restaurant.
+             * @default prep
+             * @enum {string}
+             */
+            kind: "prep" | "cashier";
+            /**
+             * @default kitchen
+             * @enum {string}
+             */
+            color: "kitchen" | "served" | "occupied" | "free" | "reserved";
+            /** @description Default: after the last station. */
+            sortOrder?: number;
+        };
+        CategoryRoute: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * Format: uuid
+             * @description Default station; null = no route.
+             */
+            stationId: string | null;
+            /** @description Dishes of the category, active or not. */
+            dishCount: number;
+        };
+        DishRoute: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            categoryId: string | null;
+            active: boolean;
+            /**
+             * Format: uuid
+             * @description The exception; null = same as the category.
+             */
+            stationId: string | null;
+            /**
+             * Format: uuid
+             * @description Where its lines go now; null without prep stations.
+             */
+            routedStationId: string | null;
+            /** @enum {string|null} */
+            source: "dish" | "category" | "fallback" | null;
+        };
+        UnroutedDish: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            categoryId: string | null;
+            categoryName: string | null;
+        };
+        StationRoutes: {
+            /** @description Menu order. */
+            categories: components["schemas"]["CategoryRoute"][];
+            /** @description By category order, then dish order and name. */
+            dishes: components["schemas"]["DishRoute"][];
+            /** @description Active dishes that go to the default station only because nothing routes them. */
+            unroutedDishes: components["schemas"]["UnroutedDish"][];
+        };
+        SetRouteRequest: {
+            /**
+             * Format: uuid
+             * @description A prep station; null clears the route.
+             */
+            stationId: string | null;
+        };
+        UpdateStationRequest: {
+            name?: string;
+            /** @enum {string} */
+            color?: "kitchen" | "served" | "occupied" | "free" | "reserved";
+            sortOrder?: number;
+        };
+        DeleteStationRequest: {
+            /**
+             * Format: uuid
+             * @description Prep station that takes the routes.
+             */
+            moveTo?: string | null;
         };
     };
     responses: never;
@@ -5598,6 +5826,8 @@ export interface operations {
     OrdersController_list: {
         parameters: {
             query?: {
+                /** @description Kitchen filter (F6): orders with a live line of this station, each with only those lines. */
+                stationId?: unknown;
                 /** @description Comma-separated: items, table, waiter. Items are always embedded; table adds tableNumber, waiter adds waiterName. */
                 include?: unknown;
                 /** @description Comma-separated: active, kitchen, delivered, cancelled, paid. */
@@ -8896,7 +9126,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Queued; sent to the restaurant printers after commit. */
+            /** @description Queued; sent to the restaurant printers after commit. Tagged to Caja when it exists. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -8904,6 +9134,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PrintJobCreated"];
                 };
+            };
+            /** @description `printing_disabled`: the restaurant does not use printers. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Invalid input or unknown fields. */
             422: {
@@ -8927,14 +9164,21 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Queued kitchen command; its id is the payload invoiceNumber. */
+            /** @description Queued kitchen command; its id is the payload invoiceNumber. With stations: one job per station and `jobs`; without: the single legacy job (no `jobs`). */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PrintJobCreated"];
+                    "application/json": components["schemas"]["PrintJobsCreated"];
                 };
+            };
+            /** @description `printing_disabled`: the restaurant does not use printers. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Invalid input or unknown fields. */
             422: {
@@ -10030,6 +10274,320 @@ export interface operations {
             };
             /** @description Storage is not configured (no S3_* variables). */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StationsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every staff member reads them (the kitchen screen filters by station). Prep stations first, then Caja. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Station"][];
+                };
+            };
+            /** @description Invalid input or unknown fields; the body carries `code` for station refusals. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StationsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStationRequest"];
+            };
+        };
+        responses: {
+            /** @description The first prep station becomes the default one. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Station"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `station_name_taken`, `cashier_exists` or `too_many_stations` (20). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; the body carries `code` for station refusals. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StationsController_createStarter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cocina (default), Barra and Caja. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Station"][];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `stations_exist`: the restaurant already has stations. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; the body carries `code` for station refusals. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StationsController_routes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Category routes, dish exceptions with the station each dish goes to now, and the dishes without a route. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationRoutes"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; the body carries `code` for station refusals. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StationsController_setCategoryRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRouteRequest"];
+            };
+        };
+        responses: {
+            /** @description The category routes to the station (null clears it). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `category_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `cashier_route` (Caja) or `station_invalid`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StationsController_setDishRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRouteRequest"];
+            };
+        };
+        responses: {
+            /** @description The dish exception (null: same as its category). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `dish_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `cashier_route` (Caja) or `station_invalid`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StationsController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeleteStationRequest"];
+            };
+        };
+        responses: {
+            /** @description Deleted after moving its categories, dish exceptions and sent lines to moveTo (the default passes to it). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `station_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `cashier_station`: Caja cannot be deleted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `move_required` (another prep station exists) or `target_invalid`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StationsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStationRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Station"];
+                };
+            };
+            /** @description `station_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `station_name_taken`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; the body carries `code` for station refusals. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

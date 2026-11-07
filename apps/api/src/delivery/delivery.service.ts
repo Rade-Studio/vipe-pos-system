@@ -213,12 +213,14 @@ export class DeliveryService {
       if (comments) line.comments = comments;
       return line;
     });
-    const printJob = await this.print.printCommand({
-      items: lines,
-      waiter: caller.name.trim() || FALLBACK_WAITER,
-      table: null,
-      delivery: printInfo(delivery),
-    });
+    // F6: the dish of each line routes it to its station (same rule as table
+    // orders); a restaurant without printers (S2) queues nothing.
+    const printJob = (await this.print.printingEnabled())
+      ? await this.print.printCommand(
+          { items: lines, waiter: caller.name.trim() || FALLBACK_WAITER, table: null, delivery: printInfo(delivery) },
+          input.items.map((item) => item.dishId),
+        )
+      : null;
 
     return {
       orderId,

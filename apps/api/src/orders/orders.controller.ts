@@ -69,10 +69,11 @@ export class OrdersController {
     required: false,
     description: `Comma-separated: ${ORDER_INCLUDES.join(', ')}. Items are always embedded; table adds tableNumber, waiter adds waiterName.`,
   })
+  @ApiQuery({ name: 'stationId', required: false, description: 'Kitchen filter (F6): orders with a live line of this station, each with only those lines.' })
   @ApiOkResponse({ type: [Order], description: `Newest first, at most ${ORDER_LIST_LIMIT} orders.` })
   list(@Query() query: unknown): Promise<Order[]> {
-    const { status, include } = parseInput(orderListQuerySchema, query);
-    return this.orders.list({ statuses: status, ...includeFilter(include) });
+    const { status, include, stationId } = parseInput(orderListQuerySchema, query);
+    return this.orders.list({ statuses: status, stationId, ...includeFilter(include) });
   }
 
   /** Declared before :id so `completed` is not read as an order id. */
