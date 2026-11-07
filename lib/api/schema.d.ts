@@ -4427,7 +4427,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Ese PIN no está disponible, elige otro (code pin_taken): another active member has the new PIN; never says whose. The attempt counts. */
+            /** @description Ese PIN no está disponible, elige otro (code pin_taken): another active member has the new PIN; never says whose. The attempt counts, also on a counter a later success does not clear. Code pin_check_unavailable above 200 PIN holders. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4479,7 +4479,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description PIN only: more than one active member has that PIN (code pin_ambiguous); nobody is identified. */
+            /** @description PIN only: more than one active member has that PIN (code pin_ambiguous), or more than 100 PIN holders (code pin_too_many, not counted as an attempt); nobody is identified. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -9725,7 +9725,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Ese PIN no está disponible, elige otro (code pin_taken): another active member of the restaurant has it; never says whose. */
+            /** @description Ese PIN no está disponible, elige otro (code pin_taken): another active member of the restaurant has it; never says whose. Code pin_check_unavailable when more than 200 members have a PIN. */
             409: {
                 headers: {
                     [name: string]: unknown;

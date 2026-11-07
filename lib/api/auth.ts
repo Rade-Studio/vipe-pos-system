@@ -112,7 +112,7 @@ export async function authorizeSupervisor(input: AuthorizeRequest): Promise<Auth
   return data
 }
 
-export type PinFailureKind = "wrong" | "locked" | "ambiguous" | "taken" | "invalid" | "acting-required" | "unknown"
+export type PinFailureKind = "wrong" | "locked" | "ambiguous" | "taken" | "unavailable" | "invalid" | "acting-required" | "unknown"
 
 export interface PinFailure {
   kind: PinFailureKind
@@ -135,6 +135,7 @@ export function pinFailureOf(error: unknown): PinFailure {
     // F4b: a PIN two members share (legacy), or a new PIN another member has.
     if (code === "pin_ambiguous") return { kind: "ambiguous", message: error.message }
     if (code === "pin_taken") return { kind: "taken", message: error.message }
+    if (code === "pin_too_many" || code === "pin_check_unavailable") return { kind: "unavailable", message: error.message }
     if (code === "acting_required") return { kind: "acting-required", message: error.message }
     if (error.status === 422) return { kind: "invalid", message: error.message }
   }

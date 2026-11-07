@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Button } from "@/components/ui/button"
 import { Alert, StepSheet } from "@/components/voids/sheet"
 import type { Supervisor } from "@/components/voids/flow"
-import { identifyByPin, identifyStaff, pinFailureOf, signOutAndReload, unlockTerminal, type Session } from "@/lib/api/auth"
+import { identifyByPin, pinFailureOf, profileFromSession, signOutAndReload, unlockTerminal, type Session } from "@/lib/api/auth"
 import { clearActingToken, setActingToken } from "@/lib/terminal/acting"
 import { clockTime } from "@/lib/terminal/format"
 import { useCartStore } from "@/store/useCartStore"
@@ -50,7 +50,7 @@ const unsentCount = (tableId: string) =>
  * PINs lock the tablet until a supervisor PIN unlocks it; "Salir" needs the
  * PIN of an admin or cashier (GET /staff/supervisors, never the waiters).
  */
-export function TerminalView({ children }: TerminalViewProps) {
+export function TerminalView({ session, children }: TerminalViewProps) {
   const [identity, setIdentity] = useState<TerminalIdentity | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [sheet, setSheet] = useState<Sheet | null>(null)
@@ -62,6 +62,17 @@ export function TerminalView({ children }: TerminalViewProps) {
   const resolver = useRef<((ok: boolean) => void) | null>(null)
   /** Who added the unsent products of each table. */
   const owners = useRef<Record<string, Person>>({})
+  /** Who held the tablet last: owns products added after their identity ended (F-c). */
+  const lastPerson = useRef<Person | null>(null)
+  /** No identity: the screen acts as the admin or cashier who opened the terminal (F-d). */
+  const sessionRef = useRef(session)
+  sessionRef.current = session
+  const releaseIdentity = useCallback(() => {
+    clearActingToken()
+    setIdentity(null)
+    const opener = profileFromSession(sessionRef.current)
+    useProfileStore.setState({ authProfile: opener, selectedProfile: opener })
+  }, [])
 
   useEffect(() => () => clearActingToken(), [])
 
@@ -69,7 +80,7 @@ export function TerminalView({ children }: TerminalViewProps) {
     () =>
       useCartStore.subscribe((state) => {
         for (const [tableId, items] of Object.entries(state.cartItems)) {
-          const who = identityRef.current
+          const who = identityRef.current ?? lastPerson.current
           if (items.length === 0) delete owners.current[tableId]
           else if (!owners.current[tableId] && who) owners.current[tableId] = { id: who.id, name: who.name }
         }
@@ -83,12 +94,12 @@ export function TerminalView({ children }: TerminalViewProps) {
       const at = Date.now()
       setNow(at)
       if (identityRef.current && at >= identityRef.current.deadline) {
-        clearActingToken()
-        setIdentity(null)
+        identityRef.current = null
+        releaseIdentity()
       }
     }, 1000)
     return () => clearInterval(id)
-  }, [identity, tabletLock])
+  }, [identity, tabletLock, releaseIdentity])
 
   const finish = useCallback((ok: boolean) => {
     const resolve = resolver.current
@@ -127,9 +138,9 @@ export function TerminalView({ children }: TerminalViewProps) {
   )
 
   const endIdentity = useCallback(() => {
-    clearActingToken()
-    setIdentity(null)
-  }, [])
+    identityRef.current = null
+    releaseIdentity()
+  }, [releaseIdentity])
 
   const requestLogout = useCallback(() => {
     resolver.current?.(false)
@@ -143,6 +154,7 @@ export function TerminalView({ children }: TerminalViewProps) {
       const answer = await identifyByPin(pin)
       const at = Date.now()
       const person = { id: answer.profile.id, name: answer.profile.name }
+      lastPerson.current = person
       setActingToken(answer.token)
       setIdentity({ ...person, role: answer.profile.role, deadline: Math.min(Date.parse(answer.expiresAt), at + ACTING_TTL_MS) })
       setNow(at)
@@ -243,7 +255,8 @@ export function TerminalView({ children }: TerminalViewProps) {
                 setTabletLock(null)
                 back({ kind: "identify", request: sheet.request })()
               })
-            : supervisorPin(supervisor, pin, () => identifyStaff(supervisor.id, pin), () => {
+            : // F-a: only the supervisor's own counter (POST /auth/terminal/unlock), never the tablet lock.
+            supervisorPin(supervisor, pin, () => unlockTerminal(supervisor.id, pin), () => {
                 clearActingToken()
                 void signOutAndReload()
               })
@@ -267,7 +280,7 @@ export function TerminalView({ children }: TerminalViewProps) {
         owner={owner.name.split(/\s+/)[0]}
         count={count}
         onContinue={() => {
-          const who = identityRef.current
+          const who = identityRef.current ?? lastPerson.current
           if (request.tableId && who) owners.current[request.tableId] = { id: who.id, name: who.name }
           finish(true)
         }}

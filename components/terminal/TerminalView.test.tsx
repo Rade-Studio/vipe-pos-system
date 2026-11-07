@@ -198,6 +198,40 @@ describe("shared terminal inside the normal waiter screen (F4b)", () => {
     expect(screen.getByRole("heading", { name: "Valentina dejó 3 productos sin enviar" })).toBeInTheDocument()
   })
 
+  it("F-c: products added after the identity expired still belong to the last person; another person is warned", async () => {
+    renderTerminal()
+    await tapTable()
+    await typePin("4829")
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }))
+    act(() => {
+      useCartStore.getState().addToCart("t-7", item("arepa", 2))
+    })
+    await tapTable()
+    await typePin("73914")
+    expect(screen.getByRole("heading", { name: "Andrés dejó 2 productos sin enviar" })).toBeInTheDocument()
+  })
+
+  it("F-d: when the identity ends the screen acts as the terminal opener again", async () => {
+    renderTerminal()
+    await tapTable()
+    await typePin("4829")
+    expect(useProfileStore.getState().selectedProfile?.id).toBe("p-andres")
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }))
+    expect(useProfileStore.getState().selectedProfile?.id).toBe("p-laura")
+    expect(useProfileStore.getState().authProfile?.id).toBe("p-laura")
+  })
+
+  it("F-d: expiry also gives the screen back to the terminal opener", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ["setInterval", "clearInterval", "Date"] })
+    renderTerminal()
+    await tapTable()
+    await typePin("4829")
+    await act(async () => {
+      vi.advanceTimersByTime(5 * 60_000 + 1000)
+    })
+    expect(useProfileStore.getState().selectedProfile?.id).toBe("p-laura")
+  })
+
   it("Descartar clears the other person's unsent products and continues", async () => {
     renderTerminal()
     await tapTable()

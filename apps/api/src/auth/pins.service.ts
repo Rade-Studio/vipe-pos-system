@@ -145,6 +145,8 @@ export class PinsService {
 
   /** Admin: set or reset a PIN (clears its lockout); 409 `pin_taken` when another active member has it. */
   async setForStaff(profileId: string, pin: string): Promise<void> {
+    await this.lockPinWrites(profileId);
+    await this.checkable(profileId);
     if (await this.taken(profileId, pin)) {
       const taken = PinRefusal.taken().body;
       throw new ConflictException({ message: taken.message, code: taken.code });
@@ -155,6 +157,7 @@ export class PinsService {
 
   /** Admin: remove a PIN (no-op when none). */
   async clearForStaff(profileId: string): Promise<void> {
+    await this.lockPinWrites(profileId);
     await this.uow.db.execute(sql`SELECT private.clear_staff_pin(${profileId}::uuid)`);
   }
 
@@ -184,8 +187,14 @@ export class PinsService {
     if (!target) {
       throw new UnprocessableEntityException(PIN_MESSAGES.noPin);
     }
+    // Lock order of every PIN write: restaurant advisory lock, then the
+    // pin_attempts claims, then staff_pins (B2: no 40P01 with an admin reset).
+    await this.lockPinWrites(caller.id);
+    await this.checkable(caller.id);
+    // `caller` is claimed too and never cleared by a success, so pin_taken
+    // probes stay at 5 per window even with a free change in between (B1).
     const scopes: Scope[] = ['session', 'profile'];
-    const locked = await this.claim(auth, caller.id, scopes);
+    const locked = await this.claim(auth, caller.id, [...scopes, 'caller']);
     if (locked) {
       return locked;
     }
@@ -223,18 +232,27 @@ export class PinsService {
       await this.upgrade(profileId, pin, usable!);
       return this.openActing(auth, profileId);
     }
+    if ((await this.holders(ACTING_ROLES)) > IDENTIFY_CANDIDATES_MAX) {
+      this.logger.warn(`PIN-only identify refused: more than ${IDENTIFY_CANDIDATES_MAX} PIN holders (session ${auth.sessionId})`);
+      throw new ConflictException({ message: PIN_MESSAGES.tooMany, code: 'pin_too_many' });
+    }
     const locked = await this.claim(auth, null, TABLET_SCOPES);
     if (locked) {
       return locked;
     }
-    const matches = await this.matching(pin, ACTING_ROLES, IDENTIFY_CANDIDATES_MAX);
+    const matches = await this.matching(pin, ACTING_ROLES);
     if (matches.length === 0) {
       return PinRefusal.wrong();
     }
     if (matches.length > 1) {
       return PinRefusal.ambiguous();
     }
-    await this.clear(auth, null, TABLET_SCOPES);
+    // A member whose own PIN is locked is refused here too (F-b).
+    const profileLock = await this.claim(auth, matches[0].profile_id, ['profile']);
+    if (profileLock) {
+      return profileLock;
+    }
+    await this.clear(auth, matches[0].profile_id, ['session', 'profile']);
     await this.upgrade(matches[0].profile_id, pin, matches[0]);
     return this.openActing(auth, matches[0].profile_id);
   }
@@ -395,21 +413,13 @@ export class PinsService {
   }
 
   /**
-   * Every PIN of the restaurant's active members (in `roles` unless null, at most `limit`,
-   * oldest PIN first) that `pin` matches. All of them are verified, a match
+   * Every PIN of the restaurant's active members (in `roles` unless null; the callers bound the count first,
+   * see holders) that `pin` matches. All of them are verified, a match
    * does not stop the loop; with none, one dummy verify still runs.
    */
-  private async matching(pin: string, roles: readonly string[] | null, limit: number, except?: string): Promise<Candidate[]> {
-    const roleFilter = roles === null ? sql`` : sql`AND p.role IN (${sql.join(roles.map((role) => sql`${role}`), sql`, `)})`;
-    const others = except === undefined ? sql`` : sql`AND sp.profile_id <> ${except}::uuid`;
+  private async matching(pin: string, roles: readonly string[] | null, except?: string): Promise<Candidate[]> {
     const ids = await this.rows<{ profile_id: string }>(sql`
-      SELECT sp.profile_id
-        FROM public.staff_pins sp
-        JOIN public.profiles p ON p.id = sp.profile_id
-        JOIN public.users u ON u.id = p.user_id
-       WHERE p.active AND u.is_active ${roleFilter} ${others}
-       ORDER BY sp.set_at, sp.profile_id
-       LIMIT ${limit}`);
+      SELECT sp.profile_id ${this.holderFrom(roles, except)} ORDER BY sp.profile_id`);
     const found: Candidate[] = [];
     for (const { profile_id } of ids) {
       const target = await this.target(profile_id);
@@ -429,10 +439,37 @@ export class PinsService {
    * follows, so two concurrent writes cannot both store the same PIN.
    */
   private async taken(profileId: string, pin: string): Promise<boolean> {
+    return (await this.matching(pin, null, profileId)).length > 0;
+  }
+
+  /** The per-restaurant transaction lock every PIN write takes first. */
+  private async lockPinWrites(profileId: string): Promise<void> {
     await this.uow.db.execute(sql`
       SELECT pg_advisory_xact_lock(hashtextextended('vipe.staff_pin:' || p.restaurant_id::text, 0))
         FROM public.profiles p WHERE p.id = ${profileId}::uuid`);
-    return (await this.matching(pin, null, UNIQUE_PIN_CHECK_MAX, profileId)).length > 0;
+  }
+
+  /** 409 when uniqueness cannot be checked within UNIQUE_PIN_CHECK_MAX (never a silent duplicate). */
+  private async checkable(profileId: string): Promise<void> {
+    if ((await this.holders(null, profileId)) > UNIQUE_PIN_CHECK_MAX) {
+      this.logger.warn(`PIN write refused: more than ${UNIQUE_PIN_CHECK_MAX} PIN holders (profile ${profileId})`);
+      throw new ConflictException({ message: PIN_MESSAGES.checkUnavailable, code: 'pin_check_unavailable' });
+    }
+  }
+
+  private async holders(roles: readonly string[] | null, except?: string): Promise<number> {
+    const [row] = await this.rows<{ n: string }>(sql`SELECT count(*) AS n ${this.holderFrom(roles, except)}`);
+    return Number(row.n);
+  }
+
+  /** Active members of the caller's restaurant (RLS) with a PIN, optionally by role and without one profile. */
+  private holderFrom(roles: readonly string[] | null, except?: string): SQL {
+    const roleFilter = roles === null ? sql`` : sql`AND p.role IN (${sql.join(roles.map((role) => sql`${role}`), sql`, `)})`;
+    const others = except === undefined ? sql`` : sql`AND sp.profile_id <> ${except}::uuid`;
+    return sql`FROM public.staff_pins sp
+      JOIN public.profiles p ON p.id = sp.profile_id
+      JOIN public.users u ON u.id = p.user_id
+     WHERE p.active AND u.is_active ${roleFilter} ${others}`;
   }
 
   /** After a correct PIN: re-hash a v1 PIN once PIN_PEPPER (v2) is configured. */

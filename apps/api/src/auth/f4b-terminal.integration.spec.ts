@@ -2,6 +2,7 @@ import { type INestApplication, Logger } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Clock } from '../common/clock';
+import { PinsService } from './pins.service';
 import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
 import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabase } from '../testing/test-database';
 
@@ -33,6 +34,8 @@ const MESSAGES = {
   terminalOnly: 'Esta acción solo está disponible en una terminal compartida',
   ambiguous: 'Ese PIN lo tiene más de una persona; pide al administrador que lo cambie',
   taken: 'Ese PIN no está disponible, elige otro',
+  tooMany: 'Hay demasiado personal con PIN para identificarse solo con el PIN; pide al administrador que revise el personal',
+  checkUnavailable: 'No se pudo comprobar que el PIN sea único: hay demasiado personal con PIN; pide al administrador que revise el personal',
 };
 const WRONG = { statusCode: 403, error: 'Forbidden', message: MESSAGES.wrong, code: 'pin_invalid' };
 
@@ -233,6 +236,81 @@ describe('F4b shared terminal: PIN-only identify, unique PINs, tablet unlock (Te
       await db('DELETE FROM private.pin_attempts');
       expect((await as(cookies.waiter2).put('/api/auth/pin', { currentPin: PINS.waiter2, pin: PINS.waiter2 })).status).toBe(204);
     });
+
+    it('pin_taken probes stay bounded even when a free PIN is set in between', async () => {
+      let current = PINS.waiter2;
+      for (let i = 0; i < 4; i++) expect((await as(cookies.waiter2).put('/api/auth/pin', { currentPin: current, pin: PINS.waiter })).body).toEqual(TAKEN);
+      expect((await as(cookies.waiter2).put('/api/auth/pin', { currentPin: current, pin: '640271' })).status).toBe(204);
+      current = '640271';
+      const fifth = await as(cookies.waiter2).put('/api/auth/pin', { currentPin: current, pin: PINS.waiter });
+      expect(fifth.status).toBe(429);
+      await db('DELETE FROM private.pin_attempts');
+      expect((await setPin(ids.waiter2, PINS.waiter2)).status).toBe(204);
+    });
+
+    it('an own change and an admin reset of the same member never deadlock (advisory lock first, B2)', async () => {
+      expect((await setPin(ids.waiter2, PINS.waiter2)).status).toBe(204);
+      // Precondition (verifier P3c): an earlier wrong own attempt left a committed counter row.
+      expect((await as(cookies.waiter2).put('/api/auth/pin', { currentPin: '110371', pin: '640299' })).status).toBe(403);
+      const service = app.get(PinsService) as unknown as { matches: (...args: unknown[]) => Promise<boolean> };
+      const original = service.matches.bind(service);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let paused!: () => void;
+      const reached = new Promise<void>((resolve) => (paused = resolve));
+      let first = true;
+      vi.spyOn(service, 'matches').mockImplementation(async (...args: unknown[]) => {
+        if (first) {
+          first = false;
+          paused();
+          await gate;
+        }
+        return original(...args);
+      });
+      const own = as(cookies.waiter2).put('/api/auth/pin', { currentPin: PINS.waiter2, pin: '640273' }).then((r) => r);
+      await reached;
+      const reset = setPin(ids.waiter2, '640275').then((r) => r);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      release();
+      const [ownRes, resetRes] = await Promise.all([own, reset]);
+      expect([ownRes.status, resetRes.status]).toEqual([204, 204]);
+      expect((await setPin(ids.waiter2, PINS.waiter2)).status).toBe(204);
+    }, 30_000);
+  });
+
+  describe('verifier fixes (F-b, F-e)', () => {
+    it('PIN-only identify refuses a member whose own PIN is locked', async () => {
+      for (let i = 0; i < 5; i++) await as(cookies.waiter2).put('/api/auth/pin', { currentPin: String(110370 + i), pin: '640299' });
+      const terminal = await openTerminal(emails.cashier);
+      const res = await identify(terminal, PINS.waiter2);
+      expect(res.status).toBe(429);
+      expect(res.body.code).toBe('pin_locked');
+      expect((await identify(terminal, PINS.waiter)).status).toBe(200);
+    });
+
+    it('above the bounds (100 identify, 200 uniqueness) PIN-only identify and PIN writes refuse clearly, without counting an attempt', async () => {
+      await db(`INSERT INTO users (id, email, password_hash, password_algo)
+                SELECT ('10000000-0000-0000-0000-000000009' || lpad(n::text, 3, '0'))::uuid, 'mass' || n || '@a.test', password_hash, password_algo
+                  FROM users, generate_series(1, 200) n WHERE users.id = $1`, [fixtures.adminA.userId]);
+      await db(`INSERT INTO profiles (id, user_id, full_name, email, role, restaurant_id)
+                SELECT ('20000000-0000-0000-0000-000000009' || lpad(n::text, 3, '0'))::uuid, ('10000000-0000-0000-0000-000000009' || lpad(n::text, 3, '0'))::uuid,
+                       'Mass ' || n, 'mass' || n || '@a.test', 'waiter', $1 FROM generate_series(1, 200) n`, [A]);
+      await db(`INSERT INTO staff_pins (profile_id, restaurant_id, pin_hash, pin_pepper_version)
+                SELECT ('20000000-0000-0000-0000-000000009' || lpad(n::text, 3, '0'))::uuid, $1, pin_hash, pin_pepper_version
+                  FROM staff_pins, generate_series(1, 200) n WHERE profile_id = $2`, [A, ids.cook]);
+      try {
+        const terminal = await openTerminal(emails.cashier);
+        const res = await identify(terminal, PINS.waiter);
+        expect(res.status).toBe(409);
+        expect(res.body).toMatchObject({ code: 'pin_too_many', message: MESSAGES.tooMany });
+        expect(await counters()).toEqual([]);
+        const write = await setPin(ids.cashier, '640277');
+        expect(write.status).toBe(409);
+        expect(write.body).toMatchObject({ code: 'pin_check_unavailable', message: MESSAGES.checkUnavailable });
+      } finally {
+        await db(`DELETE FROM users WHERE email LIKE 'mass%@a.test'`);
+      }
+    }, 60_000);
   });
 
   describe('the tablet lock', () => {

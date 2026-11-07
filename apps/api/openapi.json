@@ -157,7 +157,7 @@
             "description": "PIN incorrecto (code pin_invalid; the failure counts), or a terminal session."
           },
           "409": {
-            "description": "Ese PIN no está disponible, elige otro (code pin_taken): another active member has the new PIN; never says whose. The attempt counts."
+            "description": "Ese PIN no está disponible, elige otro (code pin_taken): another active member has the new PIN; never says whose. The attempt counts, also on a counter a later success does not clear. Code pin_check_unavailable above 200 PIN holders."
           },
           "422": {
             "description": "Weak or malformed new PIN, or no PIN yet (Spanish message)."
@@ -205,7 +205,7 @@
             "description": "Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike."
           },
           "409": {
-            "description": "PIN only: more than one active member has that PIN (code pin_ambiguous); nobody is identified."
+            "description": "PIN only: more than one active member has that PIN (code pin_ambiguous), or more than 100 PIN holders (code pin_too_many, not counted as an attempt); nobody is identified."
           },
           "429": {
             "description": "The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends)."
@@ -6281,7 +6281,7 @@
             "description": "Not a profile of the caller's restaurant."
           },
           "409": {
-            "description": "Ese PIN no está disponible, elige otro (code pin_taken): another active member of the restaurant has it; never says whose."
+            "description": "Ese PIN no está disponible, elige otro (code pin_taken): another active member of the restaurant has it; never says whose. Code pin_check_unavailable when more than 200 members have a PIN."
           },
           "422": {
             "description": "Invalid input; the message is the Spanish text the staff form shows."

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const staff = vi.hoisted(() => ({ listSupervisors: vi.fn() }))
 vi.mock("@/lib/api/staff", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/api/staff")>()), ...staff }))
-const auth = vi.hoisted(() => ({ identifyByPin: vi.fn(), identifyStaff: vi.fn(), signOutAndReload: vi.fn() }))
+const auth = vi.hoisted(() => ({ identifyByPin: vi.fn(), identifyStaff: vi.fn(), unlockTerminal: vi.fn(), signOutAndReload: vi.fn() }))
 vi.mock("@/lib/api/auth", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/api/auth")>()), ...auth }))
 vi.mock("@/components/theme/theme-toggle", () => ({ ThemeToggle: () => null }))
 
@@ -82,6 +82,7 @@ const openSalir = async () => {
 beforeEach(() => {
   auth.identifyByPin.mockReset().mockResolvedValue(andres)
   auth.identifyStaff.mockReset().mockResolvedValue({ ...andres, profile: { id: "p-carlos", name: "Carlos Pérez", role: "admin" } })
+  auth.unlockTerminal.mockReset().mockResolvedValue(undefined)
   auth.signOutAndReload.mockReset().mockResolvedValue(undefined)
   staff.listSupervisors.mockReset().mockResolvedValue([
     { id: "p-carlos", fullName: "Carlos Pérez", role: "admin", hasPin: true, pinLockedUntil: null },
@@ -107,18 +108,20 @@ describe("shared terminal security probes", () => {
   it("W2 a locked or failing supervisor PIN never logs out; only a valid one does", async () => {
     renderTerminal()
     fireEvent.click(await openSalir())
-    auth.identifyStaff.mockRejectedValueOnce(
+    auth.unlockTerminal.mockRejectedValueOnce(
       new ApiError(429, "Too Many Requests", "Demasiados intentos", { code: "pin_locked", lockedUntil: new Date(Date.now() + 60_000).toISOString() }),
     )
     await typePin("1111", "Salir")
     expect(auth.signOutAndReload).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole("button", { name: "Atrás" }))
     fireEvent.click(await screen.findByRole("radio", { name: /Laura Gómez/ }))
-    auth.identifyStaff.mockRejectedValueOnce(new ApiError(500, "Error", "boom", {}))
+    auth.unlockTerminal.mockRejectedValueOnce(new ApiError(500, "Error", "boom", {}))
     await typePin("5820", "Salir")
     expect(auth.signOutAndReload).not.toHaveBeenCalled()
     await typePin("5821", "Salir")
-    expect(auth.identifyStaff).toHaveBeenLastCalledWith("p-laura", "5821")
+    // F-a: checked on the supervisor's own counter (POST /auth/terminal/unlock), never the tablet lock.
+    expect(auth.unlockTerminal).toHaveBeenLastCalledWith("p-laura", "5821")
+    expect(auth.identifyStaff).not.toHaveBeenCalled()
     expect(auth.signOutAndReload).toHaveBeenCalledTimes(1)
   })
 

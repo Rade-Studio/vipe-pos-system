@@ -72,6 +72,13 @@ describe("F4b: PIN-only identify and tablet unlock", () => {
     expect(pinFailureOf(ambiguous)).toEqual({ kind: "ambiguous", message: ambiguous.message })
     expect(pinFailureOf(taken)).toEqual({ kind: "taken", message: taken.message })
   })
+
+  it("shows the server text when PINs cannot be checked (pin_too_many, pin_check_unavailable)", () => {
+    for (const code of ["pin_too_many", "pin_check_unavailable"]) {
+      const error = new ApiError(409, "Conflict", "Hay demasiado personal con PIN", { code })
+      expect(pinFailureOf(error)).toEqual({ kind: "unavailable", message: "Hay demasiado personal con PIN" })
+    }
+  })
 })
 
 describe("PINs", () => {

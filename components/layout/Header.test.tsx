@@ -12,6 +12,7 @@ vi.mock("@/components/ui/use-toast", () => ({ toast, useToast: () => ({ toast })
 vi.mock("@/hooks/use-toast", () => ({ toast, useToast: () => ({ toast }) }))
 
 import { Header } from "./Header"
+import { TerminalContext } from "@/components/terminal/terminal-context"
 
 const original = window.location
 
@@ -53,6 +54,12 @@ describe("Header sign-out", () => {
       }),
     )
     expect(window.location.href).toBe("/portal/x")
+  })
+
+  it("F4b: on a terminal, Salir is at least 44 px", () => {
+    const terminal = { identity: null, now: 0, ensureIdentity: vi.fn(), endIdentity: vi.fn(), requestLogout: vi.fn() }
+    render(<TerminalContext.Provider value={terminal}><Header profile={profile} onChangeProfile={() => {}} /></TerminalContext.Provider>)
+    expect(screen.getByRole("button", { name: /Salir|Cerrar Sesión/ }).className).toMatch(/\bmin-h-11\b/)
   })
 
   it("keeps the Cambiar Perfil button for the real admin", () => {

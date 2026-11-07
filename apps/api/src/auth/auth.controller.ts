@@ -119,7 +119,7 @@ export class AuthController {
   @ApiNoContentResponse({ description: 'The caller\'s PIN is replaced (the current one was right).' })
   @ApiForbiddenResponse({ description: 'PIN incorrecto (code pin_invalid; the failure counts), or a terminal session.' })
   @ApiConflictResponse({
-    description: 'Ese PIN no está disponible, elige otro (code pin_taken): another active member has the new PIN; never says whose. The attempt counts.',
+    description: 'Ese PIN no está disponible, elige otro (code pin_taken): another active member has the new PIN; never says whose. The attempt counts, also on a counter a later success does not clear. Code pin_check_unavailable above 200 PIN holders.',
   })
   @ApiTooManyRequestsResponse({ description: '5 failures lock the profile and the session 5 minutes (code pin_locked; lockedUntil: when the lock ends).' })
   @ApiUnprocessableEntityResponse({ description: 'Weak or malformed new PIN, or no PIN yet (Spanish message).' })
@@ -141,7 +141,10 @@ export class AuthController {
   @ApiForbiddenResponse({
     description: 'Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike.',
   })
-  @ApiConflictResponse({ description: 'PIN only: more than one active member has that PIN (code pin_ambiguous); nobody is identified.' })
+  @ApiConflictResponse({
+    description:
+      'PIN only: more than one active member has that PIN (code pin_ambiguous), or more than 100 PIN holders (code pin_too_many, not counted as an attempt); nobody is identified.',
+  })
   @ApiTooManyRequestsResponse({
     description: 'The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends).',
   })

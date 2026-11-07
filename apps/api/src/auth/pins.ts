@@ -48,16 +48,18 @@ export const PIN_MESSAGES = {
   target: 'Indica la orden o el pago que se va a anular',
   ambiguous: 'Ese PIN lo tiene más de una persona; pide al administrador que lo cambie',
   taken: 'Ese PIN no está disponible, elige otro',
+  tooMany: 'Hay demasiado personal con PIN para identificarse solo con el PIN; pide al administrador que revise el personal',
+  checkUnavailable: 'No se pudo comprobar que el PIN sea único: hay demasiado personal con PIN; pide al administrador que revise el personal',
 } as const;
 
 /**
  * F4b: POST /auth/identify with the PIN alone verifies at most this many
- * staff PINs of the restaurant (active admins, cashiers and waiters, oldest
- * PIN first), every one of them, so the answer time does not depend on which
- * one matches.
+ * staff PINs of the restaurant (active admins, cashiers and waiters), every
+ * one of them, so the answer time does not depend on which one matches. Above
+ * it the identify is refused (409 `pin_too_many`) instead of skipping anyone.
  */
-export const IDENTIFY_CANDIDATES_MAX = 50;
-/** F4b: a new PIN is compared with at most this many PINs of other active members of the restaurant. */
+export const IDENTIFY_CANDIDATES_MAX = 100;
+/** F4b: a new PIN is compared with at most this many PINs of other active members; above it the write is refused (409 `pin_check_unavailable`). */
 export const UNIQUE_PIN_CHECK_MAX = 200;
 
 /** What an authorization is for (F1): an order for cancel_order and void_item, a payment for void_payment. */

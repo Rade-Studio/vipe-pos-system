@@ -86,7 +86,7 @@ export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }
             <span className="hidden sm:inline">Cambiar mi PIN</span>
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={handleLogout}>
+        <Button variant="outline" size="sm" className="min-h-11" onClick={handleLogout}>
           <LogOut className="mr-2 h-4 w-4" />
           <span className="hidden sm:inline">Cerrar Sesión</span>
           <span className="sm:hidden">Salir</span>
