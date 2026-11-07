@@ -2415,7 +2415,7 @@
         },
         "responses": {
           "200": {
-            "description": "The table is occupied by the waiter.",
+            "description": "The table is occupied by the waiter; a reservation is cleared (seated).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2426,6 +2426,60 @@
           },
           "404": {
             "description": ""
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown waiter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "tables"
+        ]
+      }
+    },
+    "/api/tables/{id}/reserve": {
+      "post": {
+        "operationId": "TablesController_reserve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveTableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "reserved under the name; the caller is reservedBy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Table"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "table_not_available: not available or it has an open order."
           },
           "422": {
             "description": "Invalid input, unknown fields or unknown waiter."
@@ -2466,7 +2520,7 @@
         },
         "responses": {
           "200": {
-            "description": "available, no waiter.",
+            "description": "available, no waiter; a reservation is cancelled.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2479,7 +2533,7 @@
             "description": ""
           },
           "409": {
-            "description": "kitchen, delivered, served or reserved, unless an admin sends force: true."
+            "description": "kitchen, delivered or served, unless an admin sends force: true."
           },
           "422": {
             "description": "Invalid input, unknown fields or unknown waiter."
@@ -10211,6 +10265,27 @@
             "format": "date-time",
             "nullable": true,
             "description": "Set by the server on every write."
+          },
+          "reservationName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name the table is reserved under; set exactly when status is reserved."
+          },
+          "reservationArrivalAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Expected arrival, optional."
+          },
+          "reservedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "reservedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Who reserved; null for legacy reservations."
           }
         },
         "required": [
@@ -10229,7 +10304,11 @@
           "seats",
           "isActive",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "reservationName",
+          "reservationArrivalAt",
+          "reservedAt",
+          "reservedByName"
         ]
       },
       "CreateTableRequest": {
@@ -10466,6 +10545,18 @@
           "isActive": {
             "type": "boolean",
             "description": "false: no new order on the table; its open orders are unaffected."
+          },
+          "reservationName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Trimmed. Required when status becomes reserved (422 reservation_name_required); only with status reserved or on a reserved table."
+          },
+          "reservationArrivalAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Not more than 5 minutes ago (422 arrival_in_past)."
           }
         }
       },
@@ -10481,13 +10572,32 @@
           "waiterId"
         ]
       },
+      "ReserveTableRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Trimmed."
+          },
+          "arrivalAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Expected arrival; not more than 5 minutes ago (422 arrival_in_past)."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
       "ReleaseTableRequest": {
         "type": "object",
         "properties": {
           "force": {
             "type": "boolean",
             "default": false,
-            "description": "Admin only: release from kitchen, delivered, served or reserved."
+            "description": "Admin only: release from kitchen, delivered or served."
           }
         }
       },

@@ -21,6 +21,7 @@ import {
   getAll,
   getWaiters,
   releaseTable,
+  reserveTable,
   saveLayout,
   toTable,
   toTableRow,
@@ -47,6 +48,10 @@ const table: TableDto = {
   isActive: true,
   createdAt: "2026-11-04T11:00:00.000Z",
   updatedAt: "2026-11-04T12:00:00.000Z",
+  reservationName: null,
+  reservationArrivalAt: null,
+  reservedAt: null,
+  reservedByName: null,
 }
 
 const byId = { params: { path: { id: "t-1" } } }
@@ -165,5 +170,16 @@ describe("requests", () => {
 
     await releaseTable("t-1", { force: true })
     expect(api.POST).toHaveBeenLastCalledWith("/api/tables/{id}/release", { ...byId, body: { force: true } })
+  })
+
+  it("reserves a table under a name, with an optional arrival time", async () => {
+    const reserved = { ...table, status: "reserved", reservationName: "Ana", reservedByName: "Luis" }
+    api.POST.mockResolvedValue({ data: reserved })
+    await expect(reserveTable("t-1", { name: "Ana" })).resolves.toEqual(reserved)
+    expect(api.POST).toHaveBeenLastCalledWith("/api/tables/{id}/reserve", { ...byId, body: { name: "Ana" } })
+
+    const arrivalAt = new Date(Date.now() + 3_600_000).toISOString()
+    await reserveTable("t-1", { name: "Ana", arrivalAt })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/tables/{id}/reserve", { ...byId, body: { name: "Ana", arrivalAt } })
   })
 })

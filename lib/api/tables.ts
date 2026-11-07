@@ -8,13 +8,15 @@ import type { Table, TableStatus } from "@/types"
  * Tables and the waiters directory through the API (T8b). The server sets
  * every `updated_at` (no client clock reaches `mergeTableList`'s out-of-order
  * guard) and owns the release guard: releasing a table in kitchen, delivered,
- * served or reserved answers 409 `Table cannot be released while <status>`.
+ * or served answers 409 `Table cannot be released while <status>`; releasing a
+ * reserved table cancels the reservation and assigning one seats it.
  */
 
 type Schemas = components["schemas"]
 export type TableDto = Schemas["Table"]
 export type WaiterDto = Schemas["Waiter"]
 export type UpdateTableBody = Schemas["UpdateTableRequest"]
+export type ReserveTableBody = Schemas["ReserveTableRequest"]
 /** One row of the editor's "Guardar cambios" (PUT /tables/layout). */
 export type TableLayoutDto = Schemas["TableLayout"]
 
@@ -110,7 +112,17 @@ async function deleteTable(tableId: string): Promise<void> {
 }
 export { deleteTable as delete }
 
-/** The waiter takes the table: `occupied`. */
+/**
+ * Admin, cashier or waiter. Only a free table (available, no open order):
+ * otherwise 409 `table_not_available`. The name is trimmed (1..80); an
+ * `arrivalAt` more than 5 minutes ago answers 422 `arrival_in_past`.
+ */
+export async function reserveTable(tableId: string, body: ReserveTableBody): Promise<TableDto> {
+  const { data } = await api.POST("/api/tables/{id}/reserve", { ...byId(tableId), body })
+  return required(data)
+}
+
+/** The waiter takes the table: `occupied`; a reservation is cleared (the guests are seated). */
 export async function assignWaiter(tableId: string, waiterId: string): Promise<TableDto> {
   const { data } = await api.POST("/api/tables/{id}/assign", { ...byId(tableId), body: { waiterId } })
   return required(data)

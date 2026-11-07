@@ -676,6 +676,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/{id}/reserve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TablesController_reserve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{id}/release": {
         parameters: {
             query?: never;
@@ -3094,6 +3110,17 @@ export interface components {
              * @description Set by the server on every write.
              */
             updatedAt: string | null;
+            /** @description Name the table is reserved under; set exactly when status is reserved. */
+            reservationName: string | null;
+            /**
+             * Format: date-time
+             * @description Expected arrival, optional.
+             */
+            reservationArrivalAt: string | null;
+            /** Format: date-time */
+            reservedAt: string | null;
+            /** @description Who reserved; null for legacy reservations. */
+            reservedByName: string | null;
         };
         CreateTableRequest: {
             /** Format: uuid */
@@ -3157,14 +3184,30 @@ export interface components {
             waiterId?: string | null;
             /** @description false: no new order on the table; its open orders are unaffected. */
             isActive?: boolean;
+            /** @description Trimmed. Required when status becomes reserved (422 reservation_name_required); only with status reserved or on a reserved table. */
+            reservationName?: string;
+            /**
+             * Format: date-time
+             * @description Not more than 5 minutes ago (422 arrival_in_past).
+             */
+            reservationArrivalAt?: string | null;
         };
         AssignTableRequest: {
             /** Format: uuid */
             waiterId: string;
         };
+        ReserveTableRequest: {
+            /** @description Trimmed. */
+            name: string;
+            /**
+             * Format: date-time
+             * @description Expected arrival; not more than 5 minutes ago (422 arrival_in_past).
+             */
+            arrivalAt?: string;
+        };
         ReleaseTableRequest: {
             /**
-             * @description Admin only: release from kitchen, delivered, served or reserved.
+             * @description Admin only: release from kitchen, delivered or served.
              * @default false
              */
             force: boolean;
@@ -6984,7 +7027,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The table is occupied by the waiter. */
+            /** @description The table is occupied by the waiter; a reservation is cleared (seated). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6994,6 +7037,52 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or unknown waiter. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TablesController_reserve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReserveTableRequest"];
+            };
+        };
+        responses: {
+            /** @description reserved under the name; the caller is reservedBy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description table_not_available: not available or it has an open order. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7023,7 +7112,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description available, no waiter. */
+            /** @description available, no waiter; a reservation is cancelled. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7038,7 +7127,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description kitchen, delivered, served or reserved, unless an admin sends force: true. */
+            /** @description kitchen, delivered or served, unless an admin sends force: true. */
             409: {
                 headers: {
                     [name: string]: unknown;
