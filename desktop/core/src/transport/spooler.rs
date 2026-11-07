@@ -32,7 +32,7 @@ impl Transport for SpoolerTransport {
         let name = wide(&self.name);
         let mut doc_name = wide("VIPE");
         let mut datatype = wide("RAW");
-        let mut handle: PRINTER_HANDLE = std::ptr::null_mut();
+        let mut handle: PRINTER_HANDLE = PRINTER_HANDLE { Value: std::ptr::null_mut() };
         // SAFETY: every pointer refers to a live, NUL-terminated buffer owned by
         // this frame, and the handle is closed on every path below.
         unsafe {

@@ -6,7 +6,7 @@ use crate::state::AppState;
 use serde::Deserialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Wry};
 
 pub const TRAY_ID: &str = "vipe";
 

@@ -15,7 +15,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Source = (Resolve-Path (Join-Path $PSScriptRoot '..\..\desktop')).Path
+$Source = (Resolve-Path (Join-Path $PSScriptRoot '..\..\desktop')).ProviderPath
 if (-not (Test-Path (Join-Path $Source 'app\src-tauri\Cargo.toml'))) { throw "desktop/ not found at $Source" }
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
 $Log = Join-Path $BuildDir "$Step.log"
