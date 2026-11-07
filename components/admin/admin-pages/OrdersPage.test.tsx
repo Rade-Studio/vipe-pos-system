@@ -1,0 +1,420 @@
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type React from "react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+/**
+ * T28 (S2, S6, S8) — admin Órdenes: dense table with a side detail panel
+ * (design/admin-orders/01-tabla-densa-con-panel.html). Every value comes from
+ * the API: the orders, the tables/zones, the delivery board, the couriers and
+ * the business-config late thresholds.
+ */
+
+const api = vi.hoisted(() => ({
+  thresholds: null as null | { kitchenLateMinutes: number; deliveryLateMinutes: number },
+  completed: [] as unknown[],
+}))
+
+vi.mock("@/lib/api/settings", () => ({
+  DEFAULT_LATE_THRESHOLDS: { kitchenLateMinutes: 25, deliveryLateMinutes: 45 },
+  fetchLateThresholds: async () => {
+    if (!api.thresholds) throw new Error("config unavailable")
+    return api.thresholds
+  },
+}))
+vi.mock("@/lib/api/zones", () => ({
+  getAll: async () => [
+    { id: "z1", name: "Salón principal" },
+    { id: "z2", name: "Terraza" },
+  ],
+}))
+vi.mock("@/lib/api/delivery", () => ({
+  listActiveDeliveries: async () => [
+    {
+      delivery: {
+        orderId: "b",
+        customerName: "Laura Gómez",
+        addressLine: "Cra 43A #18-35",
+        neighborhood: "El Poblado",
+        courierId: "k1",
+      },
+      amountDue: 0,
+      subtotal: 0,
+      tax: 0,
+      isPaid: false,
+    },
+  ],
+  listCouriers: async () => [{ id: "k1", name: "Mateo Ríos", isActive: true }],
+}))
+vi.mock("@/lib/api/realtime", () => ({
+  realtimeService: {
+    isConnected: true,
+    subscribeToZones: () => () => {},
+    subscribeToDeliveries: () => () => {},
+    subscribeToConnectionStatus: () => () => {},
+  },
+}))
+vi.mock("@/lib/api/completed-orders", () => ({ getOrdersByDate: async () => api.completed }))
+vi.mock("@/lib/api/payments", () => ({ listPaymentMethods: async () => [] }))
+
+import { useProfileStore } from "@/store/useProfileStore"
+import { useTableStore } from "@/store/useTableStore"
+import { OrdersPage } from "./OrdersPage"
+import type { Order, OrderItem } from "@/types"
+
+const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000 - 5_000)
+
+function item(name: string, quantity: number, status: OrderItem["status"], comments?: string): OrderItem {
+  return { id: `${name}-i`, name, price: 1000, quantity, categoryId: "", image: "", status, comments }
+}
+
+function order(partial: Partial<Order> & { id: string }): Order {
+  return {
+    tableId: "",
+    items: [],
+    status: "kitchen",
+    bill: { subtotal: 0, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 0, totalDiscounts: 0 },
+    waiter: "",
+    createdAt: minutesAgo(1),
+    ...partial,
+  } as Order
+}
+
+const ORDERS: Order[] = [
+  order({
+    id: "a",
+    orderNumber: 128,
+    tableId: "t8",
+    waiter: "w1",
+    guests: 4,
+    status: "kitchen",
+    createdAt: minutesAgo(18),
+    items: [item("Bandeja paisa", 2, "kitchen", "Una sin chicharrón"), item("Limonada de coco", 2, "served")],
+    bill: { subtotal: 110800, tax: 8864, taxPercentage: 8, tip: 11080, tipPercentage: 10, total: 130744, totalDiscounts: 0 },
+  }),
+  order({
+    id: "b",
+    orderNumber: 127,
+    orderType: "delivery",
+    waiter: "w2",
+    status: "delivered",
+    createdAt: minutesAgo(58),
+    bill: { subtotal: 0, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 82620, totalDiscounts: 0 },
+  }),
+  order({
+    id: "c",
+    orderNumber: 125,
+    tableId: "t12",
+    waiter: "w1",
+    status: "kitchen",
+    createdAt: minutesAgo(31),
+    bill: { subtotal: 0, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 314706, totalDiscounts: 0 },
+  }),
+  order({
+    id: "d",
+    orderNumber: 122,
+    tableId: "t5",
+    waiter: "w1",
+    status: "active",
+    createdAt: minutesAgo(2),
+    bill: { subtotal: 0, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 50000, totalDiscounts: 0 },
+  }),
+]
+
+function renderPage(props: Partial<React.ComponentProps<typeof OrdersPage>> = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const onDelete = vi.fn()
+  const onRefresh = vi.fn()
+  render(
+    <QueryClientProvider client={client}>
+      <OrdersPage
+        description="Órdenes activas y completadas"
+        orders={ORDERS}
+        isLoading={false}
+        isFetching={false}
+        realtimeConnected
+        newOrdersCount={0}
+        onRefresh={onRefresh}
+        onDelete={onDelete}
+        selectedDate={new Date()}
+        onDateChange={() => {}}
+        {...props}
+      />
+    </QueryClientProvider>,
+  )
+  return { onDelete, onRefresh }
+}
+
+/** Order labels of the table rows, top to bottom. */
+function rowLabels() {
+  return screen.queryAllByTestId(/^admin-order-/).map((row) => within(row).getByTestId("order-label").textContent)
+}
+
+beforeEach(() => {
+  api.thresholds = { kitchenLateMinutes: 25, deliveryLateMinutes: 45 }
+  api.completed = []
+  Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1024 })
+  useProfileStore.setState({
+    profiles: [
+      { id: "w1", name: "Andrés Felipe Osorio", role: "waiter" },
+      { id: "w2", name: "Valentina Cardona", role: "waiter" },
+    ],
+  })
+  useTableStore.setState({
+    tables: [
+      { id: "t8", number: 8, status: "occupied", zoneId: "z1" },
+      { id: "t12", number: 12, status: "occupied", zoneId: "z1" },
+      { id: "t5", number: 5, status: "occupied", zoneId: "z2" },
+    ],
+  })
+})
+
+describe("OrdersPage — header and table", () => {
+  it("shows the summary line, the tab counts and the rows oldest first with place, waiter and status", async () => {
+    renderPage()
+
+    expect(screen.getByRole("heading", { level: 1, name: "Órdenes" })).toBeInTheDocument()
+    expect(screen.getByText("4 activas · 1 domicilio · la más antigua lleva 58 min")).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /Activas\s*4/ })).toBeInTheDocument()
+    expect(rowLabels()).toEqual(["#127", "#125", "#128", "#122"])
+
+    const row = screen.getByTestId("admin-order-a")
+    expect(row).toHaveTextContent("Mesa 8")
+    expect(row).toHaveTextContent("Andrés Felipe Osorio")
+    expect(row).toHaveTextContent("En cocina")
+    expect(row).toHaveTextContent("18 min")
+    await waitFor(() => expect(row).toHaveTextContent("Salón principal"))
+    await waitFor(() => expect(screen.getByTestId("admin-order-b")).toHaveTextContent("Laura Gómez"))
+    expect(screen.getByRole("columnheader", { name: /Tiempo/ })).toHaveAttribute("aria-sort", "descending")
+  })
+
+  it("sorts by Orden, Total and Tiempo with aria-sort", async () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole("button", { name: /^Orden/ }))
+    expect(rowLabels()).toEqual(["#122", "#125", "#127", "#128"])
+    expect(screen.getByRole("columnheader", { name: /Orden/ })).toHaveAttribute("aria-sort", "ascending")
+    expect(screen.getByRole("columnheader", { name: /Tiempo/ })).toHaveAttribute("aria-sort", "none")
+
+    fireEvent.click(screen.getByRole("button", { name: /^Total/ }))
+    expect(rowLabels()).toEqual(["#125", "#128", "#127", "#122"])
+    expect(screen.getByRole("columnheader", { name: /Total/ })).toHaveAttribute("aria-sort", "descending")
+
+    fireEvent.click(screen.getByRole("button", { name: /^Tiempo/ }))
+    fireEvent.click(screen.getByRole("button", { name: /^Tiempo/ }))
+    expect(rowLabels()).toEqual(["#122", "#128", "#125", "#127"])
+    expect(screen.getByRole("columnheader", { name: /Tiempo/ })).toHaveAttribute("aria-sort", "ascending")
+  })
+
+  it("marks late orders with the business-config thresholds (kitchen and delivery), none for other statuses", async () => {
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId("admin-order-c")).toHaveTextContent(/Atrasada/))
+    expect(screen.getByTestId("admin-order-b")).toHaveTextContent(/Atrasada/)
+    expect(screen.getByTestId("admin-order-a")).not.toHaveTextContent(/Atrasada/)
+    expect(screen.getByTestId("admin-order-d")).not.toHaveTextContent(/Atrasada/)
+  })
+
+  it("follows a lower kitchen threshold from the config", async () => {
+    api.thresholds = { kitchenLateMinutes: 15, deliveryLateMinutes: 60 }
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId("admin-order-a")).toHaveTextContent(/Atrasada/))
+    expect(screen.getByTestId("admin-order-b")).not.toHaveTextContent(/Atrasada/)
+  })
+
+  it("shows no late marker when the config cannot be read (no invented threshold)", async () => {
+    api.thresholds = null
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId("admin-order-b")).toHaveTextContent("Laura Gómez"))
+    expect(screen.queryByText(/Atrasada/)).toBeNull()
+  })
+})
+
+describe("OrdersPage — search and filters", () => {
+  it("searches by #number, waiter, customer and courier, with the result hint and Quitar filtros", async () => {
+    renderPage()
+    const search = screen.getByRole("searchbox", { name: "Buscar órdenes" })
+
+    fireEvent.change(search, { target: { value: "#128" } })
+    expect(rowLabels()).toEqual(["#128"])
+    expect(screen.getByRole("status")).toHaveTextContent("1 de 4 órdenes para “#128”")
+
+    // The courier comes from the couriers read: the search waits for it.
+    fireEvent.change(search, { target: { value: "mateo" } })
+    await waitFor(() => expect(rowLabels()).toEqual(["#127"]))
+
+    fireEvent.change(search, { target: { value: "mesa 30" } })
+    expect(screen.getByText("Ninguna orden coincide con “mesa 30”")).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole("button", { name: "Quitar filtros" })[0])
+    expect(rowLabels()).toHaveLength(4)
+    expect(search).toHaveValue("")
+  })
+
+  it("filters by real status chips with counts and by type", () => {
+    renderPage()
+    const chips = screen.getByRole("group", { name: "Filtrar por estado" })
+
+    expect(within(chips).getByRole("button", { name: /Todos\s*4/ })).toHaveAttribute("aria-pressed", "true")
+    expect(within(chips).getByRole("button", { name: /Abierta\s*1/ })).toBeInTheDocument()
+    expect(within(chips).getByRole("button", { name: /Servida\s*1/ })).toBeInTheDocument()
+
+    fireEvent.click(within(chips).getByRole("button", { name: /En cocina\s*2/ }))
+    expect(rowLabels()).toEqual(["#125", "#128"])
+    expect(within(chips).getByRole("button", { name: /En cocina/ })).toHaveAttribute("aria-pressed", "true")
+
+    fireEvent.click(within(chips).getByRole("button", { name: /Todos/ }))
+    fireEvent.change(screen.getByRole("combobox", { name: "Tipo de orden" }), { target: { value: "delivery" } })
+    expect(rowLabels()).toEqual(["#127"])
+    fireEvent.change(screen.getByRole("combobox", { name: "Tipo de orden" }), { target: { value: "table" } })
+    expect(rowLabels()).toEqual(["#125", "#128", "#122"])
+  })
+
+  it("shows the empty state when there are no active orders", () => {
+    const { onRefresh } = renderPage({ orders: [] })
+
+    expect(screen.getByText("No hay órdenes activas")).toBeInTheDocument()
+    expect(screen.getByText("Sin órdenes abiertas ahora")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /Verificar nuevamente/ }))
+    expect(onRefresh).toHaveBeenCalled()
+  })
+})
+
+describe("OrdersPage — selection and detail panel", () => {
+  it("opens the detail of a row with place, waiter, guests, zone, items and totals", async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId("admin-order-a")).toHaveTextContent("Salón principal"))
+
+    fireEvent.click(within(screen.getByTestId("admin-order-a")).getByRole("button", { name: /Abrir orden 128/ }))
+
+    const panel = await screen.findByRole("dialog", { name: /#128/ })
+    expect(panel).toHaveTextContent("En cocina")
+    expect(panel).toHaveTextContent("Mesa 8 · Salón principal")
+    expect(panel).toHaveTextContent("Andrés Felipe Osorio")
+    expect(panel).toHaveTextContent("Comensales4")
+    expect(panel).toHaveTextContent(/hace 18 min/)
+    expect(panel).toHaveTextContent("Bandeja paisa")
+    expect(panel).toHaveTextContent("“Una sin chicharrón”")
+    expect(panel).toHaveTextContent("Pendiente")
+    expect(panel).toHaveTextContent("Servido")
+    expect(panel).toHaveTextContent("Platos · 4")
+    expect(panel).toHaveTextContent("2 pendientes")
+    expect(panel).toHaveTextContent("Impuesto (8%)")
+    expect(panel).toHaveTextContent("Propina (10%)")
+    expect(panel).toHaveTextContent(/Total\s*\$\s*130\.744/)
+    expect(screen.getByTestId("admin-order-a")).toHaveAttribute("data-selected", "true")
+  })
+
+  it("shows the delivery customer, address and courier in the detail", async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId("admin-order-b")).toHaveTextContent("Laura Gómez"))
+
+    fireEvent.click(within(screen.getByTestId("admin-order-b")).getByRole("button", { name: /Abrir orden 127/ }))
+    const panel = await screen.findByRole("dialog", { name: /#127/ })
+    expect(panel).toHaveTextContent("Cra 43A #18-35, El Poblado")
+    expect(panel).toHaveTextContent("Mateo Ríos")
+  })
+
+  it("moves the selection with the arrow keys", () => {
+    renderPage()
+    const first = within(screen.getByTestId("admin-order-b")).getByRole("button", { name: /Abrir orden 127/ })
+    first.focus()
+
+    fireEvent.keyDown(first, { key: "ArrowDown" })
+    expect(screen.getByTestId("admin-order-c")).toHaveAttribute("data-selected", "true")
+    expect(within(screen.getByTestId("admin-order-c")).getByRole("button", { name: /Abrir orden 125/ })).toHaveFocus()
+
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowUp" })
+    expect(screen.getByTestId("admin-order-b")).toHaveAttribute("data-selected", "true")
+  })
+
+  it("docks the panel beside the table from 1280 px with the oldest order selected", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 })
+    renderPage()
+
+    const panel = await screen.findByRole("complementary", { name: "Detalle de la orden" })
+    expect(panel).toHaveTextContent("#127")
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+})
+
+describe("OrdersPage — cancel with typed confirmation", () => {
+  async function openCancel() {
+    const utils = renderPage()
+    fireEvent.click(within(screen.getByTestId("admin-order-a")).getByRole("button", { name: /Abrir orden 128/ }))
+    const panel = await screen.findByRole("dialog", { name: /#128/ })
+    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar orden…" }))
+    return { ...utils, panel }
+  }
+
+  it("keeps the button disabled until the order number is typed, then cancels that order once", async () => {
+    const { onDelete, panel } = await openCancel()
+
+    expect(within(panel).getByText("¿Cancelar la orden #128?")).toBeInTheDocument()
+    const input = within(panel).getByLabelText("Escribe 128 para confirmar")
+    const go = within(panel).getByRole("button", { name: "Cancelar orden #128" })
+    expect(go).toBeDisabled()
+
+    fireEvent.change(input, { target: { value: "12" } })
+    expect(go).toBeDisabled()
+    fireEvent.change(input, { target: { value: "127" } })
+    expect(go).toBeDisabled()
+    fireEvent.change(input, { target: { value: " 128 " } })
+    expect(go).toBeEnabled()
+
+    await act(async () => {
+      fireEvent.click(go)
+    })
+    expect(onDelete).toHaveBeenCalledTimes(1)
+    expect(onDelete).toHaveBeenCalledWith("a")
+  })
+
+  it("Volver leaves without cancelling and gives the focus back to the trigger", async () => {
+    const { onDelete, panel } = await openCancel()
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Volver" }))
+    expect(within(panel).queryByText("¿Cancelar la orden #128?")).toBeNull()
+    expect(within(panel).getByRole("button", { name: "Cancelar orden…" })).toHaveFocus()
+    expect(onDelete).not.toHaveBeenCalled()
+  })
+
+  it("Escape closes the confirmation first, without cancelling", async () => {
+    const { onDelete, panel } = await openCancel()
+
+    fireEvent.keyDown(within(panel).getByLabelText("Escribe 128 para confirmar"), { key: "Escape" })
+    expect(within(panel).queryByText("¿Cancelar la orden #128?")).toBeNull()
+    expect(screen.getByRole("dialog", { name: /#128/ })).toBeInTheDocument()
+    expect(within(panel).getByRole("button", { name: "Cancelar orden…" })).toHaveFocus()
+    expect(onDelete).not.toHaveBeenCalled()
+  })
+})
+
+describe("OrdersPage — Completadas hoy", () => {
+  it("shows the day's paid count, sales and tips from /orders/completed, and its list", async () => {
+    api.completed = [
+      order({ id: "p1", orderNumber: 112, tableId: "t8", waiter: "w1", status: "paid", bill: { subtotal: 0, tax: 0, taxPercentage: 0, tip: 10000, tipPercentage: 10, total: 110000, totalDiscounts: 0 } }),
+      order({ id: "p2", orderNumber: 111, orderType: "delivery", waiter: "w2", status: "paid", bill: { subtotal: 0, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 50000, totalDiscounts: 0 } }),
+    ]
+    renderPage()
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Completadas hoy\s*2/ })).toBeInTheDocument())
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /Completadas hoy/ }))
+    })
+
+    const totals = await screen.findByRole("group", { name: "Totales del día" })
+    expect(within(totals).getByText("Órdenes pagadas").nextElementSibling).toHaveTextContent("2")
+    expect(within(totals).getByText("Ventas del día").nextElementSibling).toHaveTextContent(/\$\s*160\.000/)
+    expect(within(totals).getByText("Propinas").nextElementSibling).toHaveTextContent(/\$\s*10\.000/)
+    // Cancelling deletes the order: nothing stored to count, so no invented number.
+    expect(within(totals).getByText("Canceladas").nextElementSibling).toHaveTextContent("—")
+
+    const list = await screen.findByTestId("completed-order-p1")
+    expect(list).toHaveTextContent("#112")
+    expect(list).toHaveTextContent("Mesa 8")
+    expect(list).toHaveTextContent("Andrés Felipe Osorio")
+    expect(list).toHaveTextContent("Pagada")
+    expect(screen.getByTestId("completed-order-p2")).toHaveTextContent("Domicilio")
+  })
+})

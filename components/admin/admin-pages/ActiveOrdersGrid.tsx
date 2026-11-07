@@ -1,86 +1,105 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { RefreshCw } from "lucide-react"
-import { useProfileStore } from "@/store/useProfileStore"
-import { useTableStore } from "@/store/useTableStore"
-import { OrderCard } from "@/components/pos/OrderCard"
-import { EmptyState } from "@/components/admin/common/EmptyState"
+import { useEffect, useId, useMemo, useState } from "react"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { CircleCheck, ReceiptText, RefreshCw, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { newOrderIdsAt, type AdminOrder } from "@/lib/admin/orders"
-import type { Profile, Table } from "@/types"
-
-/**
- * A clock that ticks only while `enabled`.
- *
- * The "new order" pulse used to be `new Date() - createdAt < 30000` evaluated
- * inside the render of every card, so its answer depended on WHEN the render
- * happened: a card that rendered once inside the window kept
- * `animate-pulse-light` forever. The window is now a function of the data and
- * this clock, so the class always comes back off.
- */
-function useTickingNow(enabled: boolean, intervalMs = 10_000): number {
-  const [nowMs, setNowMs] = useState<number>(() => Date.now())
-
-  useEffect(() => {
-    if (!enabled) return
-    const timer = setInterval(() => setNowMs(Date.now()), intervalMs)
-
-    return () => clearInterval(timer)
-  }, [enabled, intervalMs])
-
-  return nowMs
-}
+import { OrderDetailPanel } from "@/components/admin/orders/OrderDetailPanel"
+import { OrdersTable } from "@/components/admin/orders/OrdersTable"
+import { OrdersToolbar } from "@/components/admin/orders/OrdersToolbar"
+import { DOCKED_PANEL_FROM, TABLE_FROM, useWindowWidth } from "@/components/admin/orders/order-ui"
+import { useOrderRows, useTickingNow } from "@/components/admin/orders/use-order-rows"
+import {
+  ACTIVE_STATUS_INFO,
+  DEFAULT_ROW_SORT,
+  filterOrderRows,
+  newOrderIdsAt,
+  nextSort,
+  sortOrderRows,
+  statusCounts,
+  type AdminOrder,
+  type RowFilters,
+  type RowSort,
+} from "@/lib/admin/orders"
 
 interface ActiveOrdersGridProps {
   orders: AdminOrder[]
-  /** First load (nothing to show yet). A REFETCH keeps the cards on screen. */
+  /** First load (nothing to show yet). A REFETCH keeps the rows on screen. */
   isLoading: boolean
-  onDelete: (orderId: string) => void
+  onDelete: (orderId: string) => void | Promise<void>
   onRefresh: () => void
 }
 
-/** The card's `Table` from the table number the order carries, if any. */
-function tableFromOrder(order: AdminOrder): Table | undefined {
-  if (!order.tableId || typeof order.tableName !== "number") return undefined
-  return { id: order.tableId, number: order.tableName, status: "occupied" }
-}
+const NO_FILTERS: RowFilters = { query: "", status: "all", type: "all" }
 
-/** The card's waiter from the name the order carries ("Desconocido" is no name). */
-function waiterFromOrder(order: AdminOrder): Profile | undefined {
-  if (!order.waiter || !order.waiterName || order.waiterName === "Desconocido") return undefined
-  return { id: order.waiter, name: order.waiterName, role: "waiter" }
-}
+const CARD = "min-w-0 overflow-hidden rounded-card border border-line bg-surface shadow-sm"
 
-const GRID_CLASS = "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+function EmptyCard({ icon, title, text, action }: { icon: React.ReactNode; title: string; text: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+      <span className="text-muted-fg">{icon}</span>
+      <p className="font-bold text-fg">{title}</p>
+      <p className="max-w-sm text-sm text-muted-fg">{text}</p>
+      {action && <div className="pt-2">{action}</div>}
+    </div>
+  )
+}
 
 /**
- * "Órdenes en Cocina y Servidas": the card grid, its first-load skeleton and its
- * empty state. Kept apart from the page so the two invariants — a refresh never
- * blanks the grid, and a card never pulses forever — are testable on their own.
+ * T28 — "Activas" of admin Órdenes (design/admin-orders/01): toolbar, the dense
+ * sortable table and the detail panel, docked from 1280 px and an overlay
+ * below (full screen on a phone). Two earlier invariants hold: a refresh never
+ * blanks the list, and a row never pulses forever.
  */
 export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: ActiveOrdersGridProps) {
-  const profiles = useProfileStore((s) => s.profiles)
   const nowMs = useTickingNow(true, 10_000)
+  const rows = useOrderRows(orders, nowMs)
+  const width = useWindowWidth()
+  const docked = width >= DOCKED_PANEL_FROM
+  const compact = width < TABLE_FROM
 
-  // The pulse set is recomputed from the data and the clock, never from the
-  // render timestamp.
-  const pulsingOrderIds = useMemo(() => newOrderIdsAt(orders, nowMs), [orders, nowMs])
+  const [filters, setFilters] = useState<RowFilters>(NO_FILTERS)
+  const [sort, setSort] = useState<RowSort>(DEFAULT_ROW_SORT)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [overlayOpen, setOverlayOpen] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const titleId = useId()
+
+  // The pulse set is recomputed from the data and the clock, never from the render timestamp.
+  const pulsingIds = useMemo(() => newOrderIdsAt(orders, nowMs), [orders, nowMs])
+  const counts = useMemo(() => statusCounts(rows), [rows])
+  const visible = useMemo(() => sortOrderRows(filterOrderRows(rows, filters), sort), [rows, filters, sort])
+
+  // Docked, the panel always shows an order: the selected one, else the first visible.
+  const panelRow = visible.find((row) => row.id === selectedId) ?? (docked ? (visible[0] ?? null) : null)
+
+  useEffect(() => {
+    setConfirming(false)
+  }, [panelRow?.id])
+
+  // The order left the list (cancelled, paid): close its overlay.
+  useEffect(() => {
+    if (overlayOpen && !panelRow) setOverlayOpen(false)
+  }, [overlayOpen, panelRow])
+
+  const open = (id: string) => {
+    setSelectedId(id)
+    if (!docked) setOverlayOpen(true)
+  }
+
+  const focusRow = (id: string | undefined) => {
+    if (!id) return
+    document.querySelector<HTMLButtonElement>(`[data-testid="admin-order-${CSS.escape(id)}"] button`)?.focus()
+  }
+
+  const filtered = filters.query.trim() !== "" || filters.status !== "all" || filters.type !== "all"
 
   if (isLoading && orders.length === 0) {
     return (
-      <div className={GRID_CLASS} data-testid="admin-orders-skeleton">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="space-y-3 rounded-lg border p-4">
-            <div className="flex justify-between">
-              <Skeleton className="h-5 w-24" />
-              <Skeleton className="h-5 w-16" />
-            </div>
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="h-8 w-24" />
-          </div>
+      <div className={`${CARD} space-y-3 p-4`} data-testid="admin-orders-skeleton">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-9 w-full" />
         ))}
       </div>
     )
@@ -88,50 +107,130 @@ export function ActiveOrdersGrid({ orders, isLoading, onDelete, onRefresh }: Act
 
   if (orders.length === 0) {
     return (
-      <EmptyState
-        title="No hay órdenes activas en este momento"
-        description="Las nuevas órdenes aparecen aquí en tiempo real."
-        action={
-          <Button variant="outline" size="sm" onClick={onRefresh}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            <span>Verificar nuevamente</span>
-          </Button>
-        }
-      />
+      <section className={CARD} aria-label="Órdenes activas">
+        <EmptyCard
+          icon={<CircleCheck aria-hidden className="h-7 w-7" />}
+          title="No hay órdenes activas"
+          text="Cuando un mesero envíe un pedido o entre un domicilio, aparecerá aquí en tiempo real."
+          action={
+            <Button variant="outline" className="min-h-[44px]" onClick={onRefresh}>
+              <RefreshCw aria-hidden className="mr-2 h-4 w-4" />
+              Verificar nuevamente
+            </Button>
+          }
+        />
+      </section>
     )
   }
 
-  return (
-    <div className={GRID_CLASS}>
-      {orders.map((order) => {
-        // D6 Rule A variant: `OrderCard` (out of scope, components/pos/*)
-        // requires the full `Table` object, so a primitive projection
-        // does not apply here. No subscription is taken; getState() is
-        // read fresh on every render this component already performs
-        // for unrelated reasons (order data), which is safe because a
-        // table's `number` never changes after creation.
-        // The shell stores win; the names the order carries (the API join,
-        // or the stores at INSERT time) cover a table or waiter they lack.
-        const table = useTableStore.getState().getTableById(order.tableId) ?? tableFromOrder(order)
-        const waiter = profiles?.find((p) => p.id === order.waiter) ?? waiterFromOrder(order)
+  const hint = [
+    filters.query.trim() && `para “${filters.query.trim()}”`,
+    filters.status !== "all" && ACTIVE_STATUS_INFO[filters.status].label,
+    filters.type !== "all" && (filters.type === "table" ? "solo mesas" : "solo domicilios"),
+  ].filter(Boolean)
 
-        return (
-          <div
-            key={order.id}
-            className={pulsingOrderIds.has(order.id) ? "animate-pulse-light" : ""}
-            data-testid={`admin-order-${order.id}`}
+  const panel = (overlay: boolean) =>
+    panelRow ? (
+      <OrderDetailPanel
+        row={panelRow}
+        titleId={titleId}
+        onClose={overlay ? () => setOverlayOpen(false) : undefined}
+        onCancel={onDelete}
+        confirming={confirming}
+        onConfirmingChange={setConfirming}
+      />
+    ) : null
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <OrdersToolbar filters={filters} onChange={setFilters} counts={counts} />
+
+      {filtered && (
+        <p role="status" className="text-sm text-muted-fg">
+          <b className="font-semibold text-fg tabular-nums">
+            {visible.length} de {rows.length}
+          </b>{" "}
+          órdenes{hint.length > 0 && ` ${hint.join(" · ")}`} ·{" "}
+          <button
+            type="button"
+            onClick={() => setFilters(NO_FILTERS)}
+            className="inline-flex min-h-[44px] items-center font-medium text-brand underline underline-offset-2"
           >
-            <OrderCard
-              order={order}
-              table={table}
-              waiter={waiter}
-              isAdmin={true}
-              showActions={true}
-              onDelete={onDelete}
+            Quitar filtros
+          </button>
+        </p>
+      )}
+
+      <div className={docked ? "grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4" : "min-w-0"}>
+        <section className={CARD} aria-label="Órdenes activas">
+          {visible.length === 0 ? (
+            <EmptyCard
+              icon={<Search aria-hidden className="h-7 w-7" />}
+              title={
+                filters.query.trim() ? `Ninguna orden coincide con “${filters.query.trim()}”` : "Ninguna orden coincide con estos filtros"
+              }
+              text="Busca por número (#128), mesa (mesa 8), mesero o cliente de domicilio."
+              action={
+                <Button variant="outline" className="min-h-[44px]" onClick={() => setFilters(NO_FILTERS)}>
+                  Quitar filtros
+                </Button>
+              }
             />
-          </div>
-        )
-      })}
+          ) : (
+            <OrdersTable
+              rows={visible}
+              sort={sort}
+              onSort={(key) => setSort((current) => nextSort(current, key))}
+              selectedId={panelRow?.id ?? null}
+              onOpen={open}
+              onMove={setSelectedId}
+              pulsingIds={pulsingIds}
+              compact={compact}
+            />
+          )}
+        </section>
+
+        {docked && (
+          <aside
+            aria-label="Detalle de la orden"
+            className={`${CARD} sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto p-5`}
+          >
+            {panel(false) ?? (
+              <EmptyCard
+                icon={<ReceiptText aria-hidden className="h-6 w-6" />}
+                title="Selecciona una orden"
+                text="El detalle aparece aquí sin salir de la lista."
+              />
+            )}
+          </aside>
+        )}
+      </div>
+
+      {!docked && (
+        <DialogPrimitive.Root open={overlayOpen && Boolean(panelRow)} onOpenChange={setOverlayOpen}>
+          <DialogPrimitive.Portal>
+            <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+            <DialogPrimitive.Content
+              aria-labelledby={titleId}
+              aria-describedby={undefined}
+              onEscapeKeyDown={(event) => {
+                if (confirming) {
+                  event.preventDefault()
+                  setConfirming(false)
+                }
+              }}
+              onCloseAutoFocus={(event) => {
+                event.preventDefault()
+                focusRow(panelRow?.id ?? selectedId ?? undefined)
+              }}
+              className="fixed inset-0 z-50 overflow-y-auto bg-canvas p-5 shadow-elevated sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[420px] sm:border-l sm:border-line"
+            >
+              <DialogPrimitive.Title className="sr-only">Detalle de la orden</DialogPrimitive.Title>
+              {panel(true)}
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
+      )}
     </div>
   )
 }
