@@ -531,7 +531,8 @@ export function DeliveryBoard({ role, operatorName, withRoleNav = false }: Deliv
 
 /**
  * The step sheet's target for a delivery (F3b): a reason always; a supervisor
- * only when it is paid, and then its payment (the bill plus the fee) is voided.
+ * only when it is paid, and then its payment is voided (the sheet reads its
+ * total, tip included, from the order).
  */
 function deliveryCancelTarget(row: DeliveryOrderWithBill): VoidTarget {
   const total = row.amountDue + row.delivery.deliveryFee
@@ -542,7 +543,7 @@ function deliveryCancelTarget(row: DeliveryOrderWithBill): VoidTarget {
     lines: [],
     total,
     hasPayments: row.isPaid,
-    delivery: { paidAmount: row.isPaid ? total : null },
+    delivery: true,
   }
 }
 

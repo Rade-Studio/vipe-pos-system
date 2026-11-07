@@ -12,7 +12,7 @@ import { authorizeSupervisor, pinFailureOf } from "@/lib/api/auth"
 import { VOID_REASONS, voidRefusalOf, type VoidReasonCode } from "@/lib/api/audit"
 import { CONFIG_QUERY_KEY, fetchConfig } from "@/lib/api/config"
 import { cancelDelivery } from "@/lib/api/delivery"
-import { cancelOrder, voidOrderItems, type OrderDto } from "@/lib/api/orders"
+import { cancelOrder, getById, voidOrderItems, type OrderDto } from "@/lib/api/orders"
 import { voidPayment } from "@/lib/api/payments"
 import { useProfileStore } from "@/store/useProfileStore"
 import {
@@ -147,7 +147,7 @@ function FlowBody({
   const authProfile = useProfileStore((s) => s.authProfile)
   const actor: VoidActor | undefined =
     actorProp ?? (authProfile ? { id: authProfile.id, name: authProfile.full_name ?? authProfile.name, role: authProfile.role } : undefined)
-  const delivery = target.action === "order" ? target.delivery : undefined
+  const delivery = target.action === "order" && target.delivery === true
   const copy = delivery ? DELIVERY_COPY : COPY[target.action]
   const reasonId = useId()
 
@@ -184,6 +184,15 @@ function FlowBody({
     refetchOnMount: "always",
     retry: false,
   })
+  // A paid Domicilio's payment is voided with it. pay_order leaves orders.total = bill + fee + tip,
+  // the live payment's total; read it when a supervisor is needed (the board's row may be stale).
+  const deliveryOrder = useQuery({
+    queryKey: ["void-delivery-order", target.orderId],
+    queryFn: () => getById(target.orderId),
+    enabled: delivery && needsAuthorization,
+    retry: false,
+  })
+  const paidAmount = deliveryOrder.data?.status === "paid" ? deliveryOrder.data.total : null
   const tiles = supervisorTiles(supervisors.data ?? [], actor?.id, allowSelf)
   const supervisor = tiles.find((tile) => tile.id === supervisorId) ?? null
 
@@ -348,9 +357,13 @@ function FlowBody({
   )
 
   // The paid Domicilio's payment is voided with it: say so where the supervisor decides.
-  const paymentWarning = delivery?.paidAmount != null && (
+  const paymentWarning = delivery && needsAuthorization && !deliveryOrder.isLoading && (
     <Alert tone="warning">
-      <b>{`El pago de ${formatCurrency(delivery.paidAmount)} se anula: devuelve el dinero al cliente`}</b>
+      <b>
+        {paidAmount !== null
+          ? `El pago de ${formatCurrency(paidAmount)} se anula: devuelve el dinero al cliente`
+          : "Este domicilio ya tiene un pago; se anula al cancelar"}
+      </b>
     </Alert>
   )
 

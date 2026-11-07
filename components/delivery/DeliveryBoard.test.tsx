@@ -45,6 +45,8 @@ const listCouriers = vi.hoisted(() => vi.fn())
 const cancelDelivery = vi.hoisted(() => vi.fn())
 const listSupervisors = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/api/staff", () => ({ listSupervisors }))
+const getOrderById = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/api/orders", async (importOriginal) => ({ ...(await importOriginal<object>()), getById: getOrderById }))
 
 vi.mock("@/lib/api/delivery", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
@@ -377,7 +379,9 @@ describe("DeliveryBoard — T12 dispatch console", () => {
     expect(listSupervisors).not.toHaveBeenCalled()
   })
 
-  it("Cancelar on a paid delivery asks who authorizes and says the payment is voided", async () => {
+  it("Cancelar on a paid delivery asks who authorizes and says the payment, tip included, is voided", async () => {
+    // Paid 19.000 + 3.000 fee + 1.500 tip: orders.total of a paid order is what was charged.
+    getOrderById.mockResolvedValue({ id: "d-1", status: "paid", total: 23500 })
     listActiveDeliveries.mockResolvedValue([{ ...boardRow({ payment_mode: "prepaid" }), isPaid: true }])
     listSupervisors.mockResolvedValue([{ id: "s-1", fullName: "Laura Gómez", role: "cashier", hasPin: true, pinLockedUntil: null }])
     renderBoard(makeClient())
@@ -386,7 +390,7 @@ describe("DeliveryBoard — T12 dispatch console", () => {
     await screen.findByRole("heading", { name: "¿Por qué se cancela?" })
     fireEvent.click(screen.getByRole("radio", { name: "Cobro duplicado" }))
     fireEvent.click(screen.getByRole("button", { name: "Elegir quién autoriza" }))
-    expect(await screen.findByText(/El pago de \$\s?22\.000 se anula: devuelve el dinero al cliente/)).toBeInTheDocument()
+    expect(await screen.findByText(/El pago de \$\s?23\.500 se anula: devuelve el dinero al cliente/)).toBeInTheDocument()
     expect(await screen.findByRole("radio", { name: /Laura Gómez/ })).toBeInTheDocument()
     expect(cancelDelivery).not.toHaveBeenCalled()
   })

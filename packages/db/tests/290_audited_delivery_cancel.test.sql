@@ -12,7 +12,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(48);
+SELECT plan(49);
 
 -- ============================================
 -- Fixtures: restaurant A (admin, cashier, second cashier, delivery operator,
@@ -284,6 +284,14 @@ SELECT throws_ok($$ INSERT INTO public.order_cancellations (restaurant_id, order
                     VALUES ('e9000000-0000-0000-0000-0000000000b2', 'e9500000-0000-0000-0000-000000000006', gen_random_uuid(), 'active', 'customer_left', 'x', 0, 0, 0, 0, '[]', 0) $$,
   '42501', NULL, 'vipe_api cannot write a cancellation itself');
 RESET ROLE;
+
+-- ============================================
+-- 9. One authorization never backs events of two orders (defence in depth)
+-- ============================================
+SELECT throws_ok($$ INSERT INTO public.audit_log (restaurant_id, event_type, order_id, actor_name, authorized_by_name, authorization_id, reason_code, amount)
+                    VALUES ('e9000000-0000-0000-0000-0000000000a1', 'order_cancelled', 'e9500000-0000-0000-0000-000000000007', 'x', 'Cajera A',
+                            (SELECT id FROM t290_auth WHERE name = 'paid'), 'customer_left', 0) $$,
+  '23P01', NULL, 'even a writer that passes every guard cannot reuse an authorization on another order');
 
 SELECT * FROM finish();
 ROLLBACK;

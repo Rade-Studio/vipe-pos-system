@@ -43,10 +43,10 @@ export type VoidTarget =
       hasPayments?: boolean
       /**
        * A Domicilio (F3b): cancelled through POST /delivery/orders/:id/cancel;
-       * a supervisor only when it is paid (hasPayments), and that payment
-       * (paidAmount) is voided with it.
+       * a supervisor only when it is paid (hasPayments), and that payment is
+       * voided with it (the sheet reads its amount from the order).
        */
-      delivery?: { paidAmount: number | null }
+      delivery?: true
     })
   | (TargetBase & { action: "payment"; payments: VoidPaymentOption[]; paymentId?: string })
 

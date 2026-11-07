@@ -12,7 +12,7 @@ import { ApiError } from "@/lib/api/errors"
 
 const auth = vi.hoisted(() => ({ authorizeSupervisor: vi.fn() }))
 vi.mock("@/lib/api/auth", async (importOriginal) => ({ ...(await importOriginal<object>()), ...auth }))
-const orders = vi.hoisted(() => ({ cancelOrder: vi.fn(), voidOrderItems: vi.fn() }))
+const orders = vi.hoisted(() => ({ cancelOrder: vi.fn(), voidOrderItems: vi.fn(), getById: vi.fn() }))
 vi.mock("@/lib/api/orders", async (importOriginal) => ({ ...(await importOriginal<object>()), ...orders }))
 const delivery = vi.hoisted(() => ({ cancelDelivery: vi.fn() }))
 vi.mock("@/lib/api/delivery", async (importOriginal) => ({ ...(await importOriginal<object>()), ...delivery }))
@@ -25,8 +25,8 @@ import type { Supervisor, VoidTarget } from "./flow"
 const laura: Supervisor = { id: "c", fullName: "Laura Gómez", role: "cashier", hasPin: true, pinLockedUntil: null }
 const operator = { id: "op", name: "Operadora Ana", role: "delivery_operator" }
 
-const unpaid: VoidTarget = { action: "order", orderId: "d-1", label: "#41 · Ana Ruiz", lines: [], total: 37000, delivery: { paidAmount: null } }
-const paid: VoidTarget = { ...unpaid, hasPayments: true, delivery: { paidAmount: 37000 } }
+const unpaid: VoidTarget = { action: "order", orderId: "d-1", label: "#41 · Ana Ruiz", lines: [], total: 37000, delivery: true }
+const paid: VoidTarget = { ...unpaid, hasPayments: true }
 
 let loadSupervisors: ReturnType<typeof vi.fn<() => Promise<Supervisor[]>>>
 
@@ -47,6 +47,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   loadSupervisors = vi.fn(async () => [laura])
   delivery.cancelDelivery.mockResolvedValue({ orderId: "d-1", status: "cancelled" })
+  // The live payment total comes from the order itself: pay_order leaves orders.total = bill + fee + tip.
+  orders.getById.mockResolvedValue({ id: "d-1", status: "paid", total: 37000 })
 })
 
 describe("VoidFlow · Domicilio", () => {
@@ -103,6 +105,39 @@ describe("VoidFlow · Domicilio", () => {
     click("Cancelar domicilio")
     await screen.findByRole("heading", { name: "¿Quién autoriza?" })
     expect(await screen.findByRole("radio", { name: /Laura Gómez/ })).toBeInTheDocument()
+  })
+
+  it("the warning shows the real payment total, tip included, not the board's estimate (A3)", async () => {
+    orders.getById.mockResolvedValue({ id: "d-1", status: "paid", total: 39000 })
+    renderFlow(paid)
+    pickReason("El cliente se fue")
+    click("Elegir quién autoriza")
+    expect(await screen.findByText(/El pago de \$\s?39\.000 se anula: devuelve el dinero al cliente/)).toBeInTheDocument()
+    expect(orders.getById).toHaveBeenCalledWith("d-1")
+  })
+
+  it("a stale board (paid meanwhile) still warns about the payment in the supervisor step (A4)", async () => {
+    delivery.cancelDelivery.mockRejectedValueOnce(
+      new ApiError(403, "Forbidden", "Esta acción necesita la autorización de un supervisor", { code: "authorization_required" }),
+    )
+    orders.getById.mockResolvedValue({ id: "d-1", status: "paid", total: 41000 })
+    renderFlow(unpaid)
+    pickReason("Plato devuelto")
+    click("Cancelar domicilio")
+    await screen.findByRole("heading", { name: "¿Quién autoriza?" })
+    expect(await screen.findByText(/El pago de \$\s?41\.000 se anula: devuelve el dinero al cliente/)).toBeInTheDocument()
+  })
+
+  it("without the amount it still says the payment is voided (A4)", async () => {
+    delivery.cancelDelivery.mockRejectedValueOnce(
+      new ApiError(403, "Forbidden", "Esta acción necesita la autorización de un supervisor", { code: "authorization_required" }),
+    )
+    orders.getById.mockRejectedValue(new Error("offline"))
+    renderFlow(unpaid)
+    pickReason("Plato devuelto")
+    click("Cancelar domicilio")
+    await screen.findByRole("heading", { name: "¿Quién autoriza?" })
+    expect(await screen.findByText("Este domicilio ya tiene un pago; se anula al cancelar")).toBeInTheDocument()
   })
 
   it("refuses with the server message when the delivery already left", async () => {

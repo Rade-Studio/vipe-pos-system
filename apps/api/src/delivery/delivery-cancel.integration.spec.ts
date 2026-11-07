@@ -1,4 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
+import { createDb } from '@vipe/db';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
@@ -11,6 +12,7 @@ import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabas
  * Canceladas (GET /orders/cancelled) and Anulaciones (GET /audit) list it.
  */
 const A = fixtures.restaurantA;
+const B = fixtures.restaurantB;
 const ids = {
   operatorUser: '10000000-0000-0000-0000-0000000000c1',
   operator: '20000000-0000-0000-0000-0000000000c1',
@@ -18,10 +20,14 @@ const ids = {
   dish: '30000000-0000-0000-0000-0000000000c2',
   customer: '30000000-0000-0000-0000-0000000000c3',
   address: '30000000-0000-0000-0000-0000000000c4',
+  courier: '30000000-0000-0000-0000-0000000000c5',
 };
 const operator = { email: 'operator@a.test', profileId: ids.operator, name: 'Operadora A' };
 const cashier = { email: fixtures.bcryptUser.email, profileId: fixtures.bcryptUser.profileId, name: 'Legacy A' };
 const PINS: Record<string, string> = { [fixtures.adminA.profileId]: '9157', [cashier.profileId]: '582046' };
+/** Response rows read loosely by the ported verifier probes. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Loose = Record<string, any>;
 const LEGACY_LABEL = 'Sin motivo registrado (antes de la auditoría)';
 
 describe('audited delivery cancellation (Testcontainers, vipe_api)', () => {
@@ -53,12 +59,12 @@ describe('audited delivery cancellation (Testcontainers, vipe_api)', () => {
     expect(res.status).toBe(201);
     return res.body.orderId as string;
   };
-  const pay = async (orderId: string): Promise<void> => {
+  const pay = async (orderId: string, tip = 0): Promise<void> => {
     const res = await as(cashier.email).post('/api/payments', {
       orderId,
       cashRegisterId: ids.register,
-      tipAmount: 0,
-      tenders: [{ paymentMethodId: cashMethod, amount: 7000, cashReceived: 7000 }],
+      tipAmount: tip,
+      tenders: [{ paymentMethodId: cashMethod, amount: 7000 + tip, cashReceived: 7000 + tip }],
       idempotencyKey: crypto.randomUUID(),
     });
     expect(res.status).toBe(200);
@@ -75,6 +81,7 @@ describe('audited delivery cancellation (Testcontainers, vipe_api)', () => {
          FROM orders o JOIN order_deliveries od ON od.order_id = o.id WHERE o.id = $1`, [orderId]))[0].s;
   const cancelledRow = async (orderId: string) =>
     ((await admin().get(`/api/orders/cancelled?date=${today}`)).body as { id: string }[]).find((row) => row.id === orderId);
+  const cancelled = async (email: string = fixtures.adminA.email) => (await as(email).get(`/api/orders/cancelled?date=${today}`)).body as Loose[];
   const auditRows = async (orderId: string) =>
     ((await admin().get('/api/audit')).body as { orderId: string }[]).filter((row) => row.orderId === orderId);
 
@@ -91,6 +98,7 @@ describe('audited delivery cancellation (Testcontainers, vipe_api)', () => {
     await db(`INSERT INTO customer_addresses (id, customer_id, address_line, is_default, restaurant_id) VALUES ($1, $2, 'Calle 1', true, $3)`, [
       ids.address, ids.customer, A,
     ]);
+    await db(`INSERT INTO couriers (id, restaurant_id, name, is_active) VALUES ($1, $2, 'Moto', true)`, [ids.courier, A]);
     await db(`INSERT INTO cash_registers (id, restaurant_id, opening_timestamp, initial_cash, status) VALUES ($1, $2, now(), 50000, 'open')`, [ids.register, A]);
     [{ id: cashMethod }] = await db<{ id: string }>(`SELECT id FROM payment_methods WHERE restaurant_id = $1 AND code = 'cash'`, [A]);
     [{ today }] = await db<{ today: string }>(`SELECT to_char((now() AT TIME ZONE timezone)::date, 'YYYY-MM-DD') AS today FROM restaurants WHERE id = $1`, [A]);
@@ -236,5 +244,92 @@ describe('audited delivery cancellation (Testcontainers, vipe_api)', () => {
     expect(viaOrders.status).toBe(409);
     expect(viaOrders.body.code).toBe('delivery_order');
     expect(await state(orderId)).toBe('kitchen/received/0/0');
+  });
+  it('a drawer closed while the cancellation waits for it refuses it (409 register_closed, nothing voided)', async () => {
+    const orderId = await newDelivery();
+    await pay(orderId);
+    const authorizationId = await authorize(cashier.profileId, orderId);
+    const { pool } = createDb(database.superuserUrl, { max: 1 });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.user_id', $1, true)`, [fixtures.bcryptUser.userId]);
+      await client.query('SET LOCAL ROLE vipe_api');
+      await client.query('SELECT public.close_register($1)', [ids.register]);
+      const pending = cancel(orderId, { reason: 'customer_left', authorizationId }).then((res) => res);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await client.query('COMMIT');
+      const res = await pending;
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('register_closed');
+      expect(await state(orderId)).toBe('paid/received/1/0');
+    } finally {
+      client.release();
+      await pool.end();
+      await db(`UPDATE cash_registers SET status = 'open', closing_timestamp = NULL, final_cash = NULL WHERE id = $1`, [ids.register]);
+    }
+  });
+
+  it('verifier V3: out for delivery: 409 delivery_not_cancellable, nothing changes', async () => {
+    const orderId = await newDelivery();
+    for (const action of ['start_preparing', 'mark_ready']) {
+      expect((await op().post(`/api/delivery/orders/${orderId}/status`, { action })).status).toBe(200);
+    }
+    expect((await op().post(`/api/delivery/orders/${orderId}/status`, { action: 'dispatch', courierId: ids.courier })).status).toBe(200);
+    const res = await op().post(`/api/delivery/orders/${orderId}/cancel`, { reason: 'customer_left' });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: 'El domicilio ya salió o fue entregado; no se puede cancelar', code: 'delivery_not_cancellable' });
+    expect(await state(orderId)).toBe('kitchen/out_for_delivery/0/0');
+  });
+
+  it('verifier V4: an authorization for another order is refused and is not spent', async () => {
+    const x = await newDelivery();
+    const y = await newDelivery();
+    await pay(x);
+    await pay(y);
+    const forX = await authorize(cashier.profileId, x);
+    const wrong = await op().post(`/api/delivery/orders/${y}/cancel`, { reason: 'customer_left', authorizationId: forX });
+    expect(wrong.status).toBe(403);
+    expect(wrong.body.code).toBe('authorization_invalid');
+    expect(await state(y)).toBe('paid/received/1/0');
+    const right = await op().post(`/api/delivery/orders/${x}/cancel`, { reason: 'customer_left', authorizationId: forX });
+    expect(right.status).toBe(200);
+  });
+
+  it('verifier V5: a tip on a paid delivery: Canceladas total, both audit amounts and the voided payment agree', async () => {
+    const orderId = await newDelivery();
+    await pay(orderId, 1000);
+    const authorizationId = await authorize(cashier.profileId, orderId);
+    expect((await op().post(`/api/delivery/orders/${orderId}/cancel`, { reason: 'customer_left', authorizationId })).status).toBe(200);
+    const row = (await cancelled()).find((r) => r.id === orderId)!;
+    const events = ((await admin().get('/api/audit')).body as Loose[]).filter((e) => e.orderId === orderId);
+    expect(row.cancellation.total).toBe(8000);
+    expect(events.map((e) => e.amount)).toEqual([8000, 8000]);
+    expect(events.every((e) => e.orderType === 'delivery')).toBe(true);
+  });
+
+  it('verifier V6: legacy rows are tenant-scoped and never duplicated; dine-in audit rows say dine_in', async () => {
+    const legacyB = '40000000-0000-0000-0000-0000000000b1';
+    await db(`SET session_replication_role = replica;
+      INSERT INTO customers (id, phone, name, restaurant_id) VALUES ('${legacyB}', '3107654321', 'Bea', '${B}');
+      INSERT INTO orders (id, order_number, status, order_type, subtotal, tax, tax_percentage, tip, tip_percentage, total, restaurant_id) VALUES ('${legacyB}', 9001, 'cancelled', 'delivery', 1000, 0, 0, 0, 0, 1000, '${B}');
+      INSERT INTO order_deliveries (order_id, restaurant_id, customer_id, customer_name, customer_phone, address_line, delivery_fee, payment_mode, delivery_status, cancelled_at)
+        VALUES ('${legacyB}', '${B}', '${legacyB}', 'Bea', '3107654321', 'Calle 9', 500, 'cash_on_delivery', 'cancelled', now());
+      SET session_replication_role = origin;`);
+    expect((await cancelled()).some((r) => r.id === legacyB)).toBe(false);
+    const forB = (await cancelled(fixtures.adminB.email)).filter((r) => r.id === legacyB);
+    expect(forB).toHaveLength(1);
+    expect(forB[0].cancellation).toMatchObject({ legacy: true, total: 1500, cancelledBy: null });
+    const all = await cancelled();
+    expect(new Set(all.map((r) => r.id)).size).toBe(all.length);
+
+    const dineIn = '40000000-0000-0000-0000-0000000000a9';
+    await db(`INSERT INTO orders (id, status, order_type, subtotal, tax, tax_percentage, tip, tip_percentage, total, restaurant_id) VALUES ($1, 'active', 'dine_in', 0, 0, 0, 0, 0, 0, $2)`, [dineIn, A]);
+    expect((await admin().post(`/api/orders/${dineIn}/cancel`, { reason: 'customer_left' })).status).toBe(200);
+    const ev = ((await admin().get('/api/audit')).body as Loose[]).find((e) => e.orderId === dineIn)!;
+    expect(ev.orderType).toBe('dine_in');
+    const row = (await cancelled()).find((r) => r.id === dineIn)!;
+    expect(row.delivery).toBeNull();
+    expect(row.cancellation.legacy).toBe(false);
   });
 });

@@ -25,7 +25,9 @@
 -- 3. audit_log_authorization_id_key (one event per authorization) becomes
 --    audit_log_authorization_target_key: one event per authorization and
 --    target (the order, or each payment it voided). void_authorizer still
---    refuses an authorization that already backs any event.
+--    refuses an authorization that already backs any event, and the
+--    trigger audit_log_authorization_one_order refuses (23P01) an event
+--    whose authorization already backs an event of another order.
 -- 4. set_delivery_status no longer cancels: 'cancel' answers P0001 "cancel
 --    goes through cancel_order (a reason is required)" after the same input
 --    checks as before; every other transition is unchanged.
@@ -43,6 +45,32 @@ DROP INDEX public.audit_log_authorization_id_key;
 --> statement-breakpoint
 CREATE UNIQUE INDEX audit_log_authorization_target_key ON public.audit_log USING btree (authorization_id, (COALESCE(payment_id, order_id)))
   WHERE (authorization_id IS NOT NULL);
+--> statement-breakpoint
+CREATE FUNCTION private.guard_audit_authorization_one_order() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO ''
+    AS $$
+BEGIN
+  IF NEW.authorization_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  -- Serialize the writers of one authorization so two transactions cannot both pass the check.
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.authorization_id::text, 0));
+  IF EXISTS (SELECT 1 FROM public.audit_log l
+              WHERE l.authorization_id = NEW.authorization_id AND l.order_id <> NEW.order_id) THEN
+    RAISE EXCEPTION 'audit_log: authorization % already backs an event of another order', NEW.authorization_id
+      USING ERRCODE = '23P01';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.guard_audit_authorization_one_order() IS 'BEFORE INSERT on audit_log (0019, defence in depth): an authorization backs events of one order only (the cancellation and the payments it voided); another order answers 23P01. An advisory lock on the authorization serializes concurrent writers. btree_gist (for an EXCLUDE constraint) is not installed, hence a trigger.';
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION private.guard_audit_authorization_one_order() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER audit_log_authorization_one_order BEFORE INSERT ON public.audit_log
+  FOR EACH ROW EXECUTE FUNCTION private.guard_audit_authorization_one_order();
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.cancel_order(p_order_id uuid, p_reason_code text, p_reason_text text DEFAULT NULL, p_authorization_id uuid DEFAULT NULL) RETURNS jsonb
     LANGUAGE plpgsql SECURITY DEFINER
@@ -121,14 +149,18 @@ BEGIN
   IF v_is_delivery THEN
     -- Its live payments, locked; a payment of a closed drawer stops everything (its Z stands).
     PERFORM 1 FROM public.payments p WHERE p.order_id = p_order_id AND p.voided_at IS NULL FOR UPDATE;
+    -- Lock their drawers first (FOR SHARE, in id order, as pay_order and
+    -- void_payment), then read their status: a close_register in flight is
+    -- waited for, and a drawer it closed refuses the cancellation.
+    PERFORM 1 FROM public.cash_registers r
+      WHERE r.id IN (SELECT p.cash_register_id FROM public.payments p WHERE p.order_id = p_order_id AND p.voided_at IS NULL)
+      ORDER BY r.id
+        FOR SHARE;
     IF EXISTS (SELECT 1 FROM public.payments p
                  JOIN public.cash_registers r ON r.id = p.cash_register_id
                 WHERE p.order_id = p_order_id AND p.voided_at IS NULL AND r.status IS DISTINCT FROM 'open') THEN
       RAISE EXCEPTION '%: register_closed', c_fn USING ERRCODE = 'P0001';
     END IF;
-    PERFORM 1 FROM public.cash_registers r
-      WHERE r.id IN (SELECT p.cash_register_id FROM public.payments p WHERE p.order_id = p_order_id AND p.voided_at IS NULL)
-        FOR SHARE;
     v_paid := EXISTS (SELECT 1 FROM public.payments p WHERE p.order_id = p_order_id AND p.voided_at IS NULL);
     -- User decision (F3b): a supervisor only when the delivery is already paid.
     v_required := v_paid;
