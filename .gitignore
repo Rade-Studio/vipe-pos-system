@@ -37,3 +37,7 @@ next-env.d.ts
 .venv
 
 \__pycache__
+# Desktop signing: private material never lives in the repo
+desktop/signing/*.key
+desktop/signing/*.pfx
+desktop/signing/*.password
