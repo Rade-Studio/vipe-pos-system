@@ -100,6 +100,8 @@ export const categories = pgTable("categories", {
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
 	sortOrder: integer("sort_order").default(0).notNull(),
 	color: text().default('neutral').notNull(),
+	// Default station of the category's dishes; FK (restaurant_id, station_id) -> stations (0020).
+	stationId: uuid("station_id"),
 }, (table) => [
 	index("idx_categories_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
@@ -209,6 +211,8 @@ export const dishes = pgTable("dishes", {
 	sortOrder: integer("sort_order").default(0).notNull(),
 	// Normalised by the dishes_normalize_quick_notes trigger; CHECK private.quick_notes_valid() (0015).
 	quickNotes: text("quick_notes").array().default(sql`'{}'::text[]`).notNull(),
+	// Station exception (NULL = same as the category); FK (restaurant_id, station_id) -> stations (0020).
+	stationId: uuid("station_id"),
 }, (table) => [
 	index("idx_dishes_category").using("btree", table.categoryId.asc().nullsLast().op("uuid_ops")),
 	index("idx_dishes_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
@@ -637,6 +641,9 @@ export const orderItems = pgTable("order_items", {
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
 	stockConsumedAt: timestamp("stock_consumed_at", { withTimezone: true, mode: 'string' }),
 	createdByProfileId: uuid("created_by_profile_id"),
+	// Set once by the order_items_route_station trigger (0020): dish -> category -> default station.
+	stationId: uuid("station_id"),
+	stationSource: text("station_source"),
 }, (table) => [
 	index("idx_order_items_order").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
 	index("idx_order_items_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
@@ -1430,6 +1437,8 @@ export const printJobs = pgTable("print_jobs", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	printedAt: timestamp("printed_at", { withTimezone: true, mode: 'string' }),
 	printerTokenId: uuid("printer_token_id"),
+	// Comanda station or Caja for a factura; NULL without stations (0020).
+	stationId: uuid("station_id"),
 }, (table) => [
 	index("print_jobs_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 	index("print_jobs_pending_idx").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")).where(sql`(printed_at IS NULL)`),
@@ -1802,4 +1811,32 @@ export const paymentVoids = pgTable("payment_voids", {
 	check("payment_voids_reason_text_check", sql`(reason_text IS NULL) OR ((length(btrim(reason_text)) >= 3) AND (length(btrim(reason_text)) <= 200))`),
 	check("payment_voids_other_reason_check", sql`(reason_code <> 'other'::text) OR (reason_text IS NOT NULL)`),
 	check("payment_voids_self_match_check", sql`(authorized_by IS NULL) OR (voided_by IS NULL) OR (self_authorized = (authorized_by = voided_by))`),
+]);
+
+/** Preparation stations and the one cashier station (Caja) of a restaurant (0020, F6). Deleted only through public.delete_station. */
+export const stations = pgTable("stations", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	name: text().notNull(),
+	kind: text().default('prep').notNull(),
+	color: text().default('kitchen').notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	isDefault: boolean("is_default").default(false).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("stations_restaurant_id_name_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), sql`lower(name)`),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "stations_restaurant_id_fkey"
+		}),
+	unique("stations_restaurant_id_id_key").on(table.restaurantId, table.id),
+	pgPolicy("stations_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("stations_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	pgPolicy("stations_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	check("stations_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 40)`),
+	check("stations_kind_check", sql`kind = ANY (ARRAY['prep'::text, 'cashier'::text])`),
+	check("stations_color_check", sql`color = ANY (ARRAY['kitchen'::text, 'served'::text, 'occupied'::text, 'free'::text, 'reserved'::text])`),
+	check("stations_default_prep_check", sql`(NOT is_default) OR (kind = 'prep'::text)`),
 ]);

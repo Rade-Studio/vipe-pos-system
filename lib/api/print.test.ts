@@ -70,3 +70,14 @@ describe("sendFactura", () => {
     expect(toast).toHaveBeenCalledWith(FAILURE_TOAST)
   })
 })
+
+describe("printing turned off (F6, S2)", () => {
+  it("stays silent when the restaurant does not use printers", async () => {
+    const { ApiError } = await import("./errors")
+    const off = new ApiError(409, "Conflict", "Este restaurante no usa impresoras", { code: "printing_disabled" })
+    api.POST.mockRejectedValue(off)
+    await expect(sendCommand({ invoiceNumber: "1", waiter: "Ana", items: [{ name: "Ajiaco", quantity: 1 }] })).resolves.toBeUndefined()
+    await expect(sendFactura("F-1", { invoiceNumber: "F-1" } as unknown as PrintableInvoice, [])).resolves.toBeUndefined()
+    expect(toast).not.toHaveBeenCalled()
+  })
+})

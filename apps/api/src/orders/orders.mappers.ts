@@ -27,6 +27,8 @@ export const toOrderItem = (row: Json): OrderItem => ({
   quantity: num(row.quantity),
   comments: text(row.comments),
   status: String(row.status ?? 'kitchen'),
+  stationId: text(row.station_id),
+  stationSource: (text(row.station_source) as OrderItem['stationSource']) ?? null,
   addedAt: time(row.added_at),
   createdAt: time(row.created_at),
   updatedAt: time(row.updated_at),

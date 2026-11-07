@@ -102,6 +102,17 @@ describe("mergeKitchenOrders", () => {
     expect(merged[0].items).toEqual([])
   })
 
+  it("detects a line moved to another station as a change (F6: a deleted station moves its lines)", () => {
+    const prev = [order("o-1")]
+    const moved = refetched(prev[0])
+    moved.items = moved.items.map((item) => ({ ...item, stationId: "s-barra" }))
+
+    const merged = mergeKitchenOrders(prev, [moved])
+
+    expect(merged[0]).not.toBe(prev[0])
+    expect(merged[0].items[0]).toMatchObject({ stationId: "s-barra" })
+  })
+
   it("detects a changed bill total, item status and waiter as changes", () => {
     const prev = [order("o-1")]
 

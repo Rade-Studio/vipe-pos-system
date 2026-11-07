@@ -26,6 +26,8 @@ const csvOf = <T extends string>(values: readonly [T, ...T[]]) =>
 export const orderListQuerySchema = z.strictObject({
   status: csvOf(ORDER_STATUSES).optional(),
   include: csvOf(ORDER_INCLUDES).optional(),
+  /** F6 kitchen screen: only the orders with a live line of this station, each with only those lines. */
+  stationId: z.guid().optional(),
 });
 
 const orderItemInputSchema = z.strictObject({
@@ -112,6 +114,15 @@ export class OrderItem {
   @ApiProperty() quantity!: number;
   @ApiProperty({ type: String, nullable: true }) comments!: string | null;
   @ApiProperty({ enum: ORDER_ITEM_STATUSES }) status!: string;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Station the line was routed to when sent (F6); null without stations.' })
+  stationId!: string | null;
+  @ApiProperty({
+    type: String,
+    enum: ['dish', 'category', 'fallback'],
+    nullable: true,
+    description: 'dish: the dish exception; category: its default; fallback: no route, sent to the default station.',
+  })
+  stationSource!: 'dish' | 'category' | 'fallback' | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) addedAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) updatedAt!: string | null;

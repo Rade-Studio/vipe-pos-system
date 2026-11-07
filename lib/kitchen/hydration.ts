@@ -17,6 +17,9 @@
  */
 import type { Order, OrderBill, OrderItem } from "@/types"
 
+/** F6: the station a line was routed to (ApiOrderItem.stationId); absent before stations. */
+const stationOf = (item: OrderItem) => (item as OrderItem & { stationId?: string | null }).stationId ?? null
+
 function sameItem(a: OrderItem, b: OrderItem): boolean {
   return (
     a.id === b.id &&
@@ -24,6 +27,7 @@ function sameItem(a: OrderItem, b: OrderItem): boolean {
     a.price === b.price &&
     a.quantity === b.quantity &&
     a.status === b.status &&
+    stationOf(a) === stationOf(b) &&
     (a.comments ?? undefined) === (b.comments ?? undefined) &&
     (a.addedAt?.getTime() ?? null) === (b.addedAt?.getTime() ?? null)
   )

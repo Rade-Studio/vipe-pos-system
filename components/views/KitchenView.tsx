@@ -43,6 +43,8 @@ import {
 } from "@/lib/kitchen/ticket"
 import { cn } from "@/lib/utils"
 import { kitchenOrderOf, kitchenOrdersOf, pendingItems } from "@/lib/kitchen/order"
+import { orderForStation, ordersForStation, readKitchenStation, writeKitchenStation } from "@/lib/kitchen/stations"
+import { listStations, STATIONS_QUERY_KEY } from "@/lib/api/stations"
 import { DEFAULT_LATE_THRESHOLDS, fetchLateThresholds } from "@/lib/api/settings"
 import { mergeKitchenOrders } from "@/lib/kitchen/hydration"
 import type { KitchenItemBatch } from "@/lib/kitchen/realtime"
@@ -84,6 +86,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const [filterWaiter, setFilterWaiter] = useState<string | null>(null)
   const [filterTable, setFilterTable] = useState<PlaceFilter>(null)
   const [kindFilter, setKindFilter] = useState<KindFilter>("all")
+  // F6: the station this screen cooks for, remembered on this device (null = Todas).
+  const [savedStation, setSavedStation] = useState<string | null>(() => readKitchenStation())
   // One clock for every ticket timer.
   const [now, setNow] = useState(() => Date.now())
   const { toast } = useToast()
@@ -110,6 +114,16 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
+  // F6: the prep stations of the restaurant; none = no selector, the whole board.
+  const { data: stations = [] } = useQuery({ queryKey: STATIONS_QUERY_KEY, queryFn: listStations, retry: false })
+  const prepStations = stations.filter((station) => station.kind === "prep")
+  // A remembered station that was deleted (or not loaded yet) reads as Todas.
+  const station = prepStations.some((candidate) => candidate.id === savedStation) ? savedStation : null
+  const chooseStation = (next: string | null) => {
+    setSavedStation(next)
+    writeKitchenStation(next)
+  }
+
   const thresholds = kitchenThresholds(lateThresholds?.kitchenLateMinutes ?? DEFAULT_LATE_THRESHOLDS.kitchenLateMinutes)
 
   // Customer names and delivery status for the delivery orders in the queue.
@@ -340,7 +354,8 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   }
 
   // Obtener órdenes activas con items en cocina
-  const kitchenOrders = orders // Ahora usamos las órdenes que ya vienen filtradas por el store
+  // The store keeps the whole kitchen queue; a station sees only its lines (F6).
+  const kitchenOrders = ordersForStation(orders, station)
 
   // Aplicar filtros a las órdenes
   const filteredOrders = kitchenOrders.filter((order) => {
@@ -521,7 +536,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
     try {
       // Obtener la orden del store
-      const order = useOrderStore.getState().orders.find((o) => o.id === orderToDeliver)
+      // F6: on a station screen "Entregar toda" serves only that station's lines.
+      const stored = useOrderStore.getState().orders.find((o) => o.id === orderToDeliver)
+      const order = stored ? orderForStation(stored, station) : null
 
       if (!order || pendingItems(order).length === 0) {
         log.error("Orden no encontrada o sin items")
@@ -615,6 +632,28 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
 
       <div className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6">
         <div className="flex min-h-0 flex-1 flex-col">
+          {prepStations.length > 0 && (
+            <div
+              role="group"
+              aria-label="Estación"
+              className="flex min-w-0 snap-x items-center gap-2 overflow-x-auto px-4 pb-1 pt-1 [scrollbar-width:none] md:px-6"
+            >
+              <span aria-hidden="true" className="flex-none text-[13px] font-medium text-muted-fg">
+                Estación
+              </span>
+              {[{ id: null, name: "Todas" }, ...prepStations].map((option) => (
+                <button
+                  key={option.id ?? "all"}
+                  type="button"
+                  aria-pressed={station === option.id}
+                  onClick={() => chooseStation(option.id)}
+                  className={cn(pill, pillState(station === option.id))}
+                >
+                  {option.name}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex flex-col gap-2 px-4 pb-2 pt-1 md:px-6 lg:flex-row lg:items-center">
             <nav
               aria-label="Filtrar órdenes"

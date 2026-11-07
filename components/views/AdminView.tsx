@@ -38,6 +38,7 @@ import {
 } from "@/components/admin/settings/ManagedSettings"
 import { PrintersPage } from "@/components/admin/settings/PrintersPage"
 import { WaiterAccessPage } from "@/components/admin/settings/WaiterAccessPage"
+import { StationsPage } from "@/components/admin/settings/StationsPage"
 import { useHashSection } from "@/hooks/use-hash-section"
 import { getAdminSection, isAdminSectionId, type AdminSectionId } from "@/lib/admin/navigation"
 import {
@@ -348,6 +349,8 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         return <StaffSettings />
       case "settings/access":
         return <WaiterAccessPage />
+      case "settings/stations":
+        return <StationsPage />
       case "settings/printers":
         return <PrintersPage />
       default: {

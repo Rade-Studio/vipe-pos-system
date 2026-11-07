@@ -70,6 +70,11 @@ export class PrintJobCreated {
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
 }
 
+/** POST /print/commands when the restaurant has stations (F6): the first job, plus one job per station. */
+export class PrintJobsCreated extends PrintJobCreated {
+  @ApiProperty({ type: [PrintJobCreated], description: 'One comanda per station, in station order.' }) jobs!: PrintJobCreated[];
+}
+
 /** Body of the `print_job` socket event, plus createdAt in GET /print/jobs/pending. */
 export class PendingPrintJob {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -77,7 +82,8 @@ export class PendingPrintJob {
   @ApiProperty({
     type: 'object',
     additionalProperties: true,
-    description: 'invoice: {invoiceNumber, invoice, displayItems}; command: {invoiceNumber (job id), items, waiter, table?, delivery?}.',
+    description:
+      'invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices.',
   })
   payload!: Record<string, unknown>;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
