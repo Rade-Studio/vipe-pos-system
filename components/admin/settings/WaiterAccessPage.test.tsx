@@ -37,7 +37,8 @@ import { clockTime } from "@/lib/terminal/format"
 import { useProfileStore } from "@/store/useProfileStore"
 import { WaiterAccessPage } from "./WaiterAccessPage"
 
-const LOCK = "2026-11-07T17:49:00.000Z"
+// Always in the future, whenever the suite runs: a fixed timestamp expires.
+const LOCK = new Date(Date.now() + 60 * 60_000).toISOString()
 const member = (id: string, fullName: string, role: string, extra: Record<string, unknown> = {}) => ({
   id,
   userId: `u-${id}`,
