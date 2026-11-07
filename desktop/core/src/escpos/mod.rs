@@ -11,6 +11,11 @@ use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use serde_json::Value;
 
 pub use py::truthy as py_truthy;
+
+/// Pesos with dot separators ("86.400"); None when the value is not a number.
+pub fn money(v: &Value) -> Option<String> {
+    py::Num::of(v).ok().map(py::currency)
+}
 pub use render::{render_invoice, render_kitchen_order};
 
 /// Text encoding sent to the printer (`print_encoder.py`): CP1252 is the safe

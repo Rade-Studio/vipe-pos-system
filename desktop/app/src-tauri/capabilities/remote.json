@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "vipe-web",
+  "description": "The hosted VIPE web app may only read the station status.",
+  "local": false,
+  "webviews": ["vipe"],
+  "remote": {
+    "urls": ["https://vipe-staging.212.56.33.197.sslip.io/*", "https://vipepos.radestudio.org/*"]
+  },
+  "permissions": ["allow-station-status"]
+}
