@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import { Fragment, useEffect, useMemo, useRef } from "react"
 import { ArrowRight, Bike, Calculator, ChefHat, ConciergeBell, LogOut, SlidersVertical, type LucideIcon } from "lucide-react"
 import type { Profile, ProfileRole } from "@/types"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
@@ -83,6 +83,22 @@ export function ProfileSelection({ profiles, onSelectProfile }: ProfileSelection
         if (adminTile) onSelectProfile(adminTile)
         return
       }
+      // Arrows work from anywhere on the screen: with no row focused yet (right
+      // after opening), the first arrow lands on the current profile.
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const rows = rowRefs.current
+        if (rows.length === 0) return
+        event.preventDefault()
+        const index = rows.findIndex((row) => row === document.activeElement)
+        if (index < 0) {
+          const current = stations.findIndex((s) => s.role === currentRole)
+          rows[current >= 0 ? current : 0]?.focus()
+          return
+        }
+        const step = event.key === "ArrowDown" ? 1 : stations.length - 1
+        rows[(index + step) % stations.length]?.focus()
+        return
+      }
       const station = /^[1-9]$/.test(event.key) ? stations[Number(event.key) - 1] : undefined
       if (station) {
         event.preventDefault()
@@ -91,16 +107,7 @@ export function ProfileSelection({ profiles, onSelectProfile }: ProfileSelection
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [stations, adminTile, onSelectProfile])
-
-  const onListKeyDown = (event: ReactKeyboardEvent<HTMLUListElement>) => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
-    const index = rowRefs.current.findIndex((row) => row === document.activeElement)
-    if (index < 0) return
-    event.preventDefault()
-    const step = event.key === "ArrowDown" ? 1 : stations.length - 1
-    rowRefs.current[(index + step) % stations.length]?.focus()
-  }
+  }, [stations, adminTile, currentRole, onSelectProfile])
 
   const userName = authProfile?.full_name || authProfile?.name
 
@@ -132,7 +139,6 @@ export function ProfileSelection({ profiles, onSelectProfile }: ProfileSelection
 
           <ul
             aria-label="Estaciones"
-            onKeyDown={onListKeyDown}
             className="overflow-hidden rounded-card-lg border border-line bg-surface [&>li+li]:border-t [&>li+li]:border-line"
           >
             {stations.map((station, index) => {
