@@ -1,0 +1,3718 @@
+{
+ "source": "pos/print_renderer.py",
+ "now": "2026-11-07T12:30:45",
+ "cases": [
+  {
+   "name": "legacy_cash/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 8100
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 8.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20382e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "legacy_nequi/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "nequi"
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Nequi",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204e657175690a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "legacy_multiple/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "multiple"
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Multiple",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204d756c7469706c650a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "tender_single_nequi/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "nequi",
+    "tenders": [
+     {
+      "methodCode": "nequi",
+      "methodName": "Nequi",
+      "methodKind": "electronic",
+      "amount": 11900,
+      "cashReceived": null
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "NEQUI      11.900",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b61004e4551554920202020202031312e3930300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "tender_mixed_overpay/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "multiple",
+    "tenders": [
+     {
+      "methodCode": "nequi",
+      "methodName": "Nequi",
+      "methodKind": "electronic",
+      "amount": 30000,
+      "cashReceived": null
+     },
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 17000,
+      "cashReceived": 20000
+     }
+    ],
+    "change": 3000
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "NEQUI      30.000",
+    "EFECTIVO      17.000",
+    "  RECIBIDO   20.000 / CAMBIO    3.000",
+    "CAMBIO: 3.000",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b61004e4551554920202020202033302e3030300a1b6100454645435449564f20202020202031372e3030300a1b61002020524543494249444f20202032302e303030202f2043414d42494f20202020332e3030300a1b610043414d42494f3a20332e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "tender_exact_cash/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "tenders": [
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 11900,
+      "cashReceived": 11900
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "EFECTIVO      11.900",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b6100454645435449564f20202020202031312e3930300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "tender_change_missing/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "tenders": [
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 10000,
+      "cashReceived": 12000
+     },
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 1900,
+      "cashReceived": 5000
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "EFECTIVO      10.000",
+    "  RECIBIDO   12.000 / CAMBIO    2.000",
+    "EFECTIVO       1.900",
+    "  RECIBIDO    5.000 / CAMBIO    3.100",
+    "CAMBIO: 5.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b6100454645435449564f20202020202031302e3030300a1b61002020524543494249444f20202031322e303030202f2043414d42494f20202020322e3030300a1b6100454645435449564f20202020202020312e3930300a1b61002020524543494249444f20202020352e303030202f2043414d42494f20202020332e3130300a1b610043414d42494f3a20352e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "malformed_missing_amount/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 8100,
+    "tenders": [
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash"
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 8.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20382e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "malformed_mixed_label/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "multiple",
+    "cashReceived": 20000,
+    "cashChange": 3000,
+    "tenders": [
+     {
+      "methodCode": "cash"
+     },
+     {
+      "methodCode": "nequi"
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Multiple",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 3.000",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204d756c7469706c650a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20332e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "malformed_non_int/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 8100,
+    "tenders": [
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": "not-a-number",
+      "cashReceived": null
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 8.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20382e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "malformed_float_amount/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "nequi",
+    "tenders": [
+     {
+      "methodCode": "nequi",
+      "methodName": "Nequi",
+      "methodKind": "electronic",
+      "amount": 11900.0,
+      "cashReceived": null
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Nequi",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204e657175690a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "one_bad_entry/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "nequi",
+    "tenders": [
+     {
+      "methodCode": "nequi",
+      "methodName": "Nequi",
+      "methodKind": "electronic",
+      "amount": 11900,
+      "cashReceived": null
+     },
+     "not-a-dict",
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 5000,
+      "cashReceived": null
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "NEQUI      11.900",
+    "EFECTIVO       5.000",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b61004e4551554920202020202031312e3930300a1b6100454645435449564f20202020202020352e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "dine_in_tip/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-1",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Rest",
+     "nit": "900",
+     "address": "Calle 1",
+     "phone": "300"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 1000,
+     "tipPercentage": 10,
+     "total": 12900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 7100
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI REST",
+    "NIT: 900",
+    "Calle 1",
+    "Tel: 300",
+    "--------------------------------",
+    "FACTURA:    INV-1",
+    "FECHA:      15/01/2025 12:30:00",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (10%): 1.000",
+    "TOTAL A PAGAR: 12.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 7.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d4920524553540a1b61014e49543a203930300a1b610143616c6c6520310a1b610154656c3a203330300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d310a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e54415249412028313025293a20312e3030300a1b45011b6100544f54414c20412050414741523a2031322e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20372e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_cod/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 14900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": 3000
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "CAMBIO PARA: 50.000",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 3.000",
+    "TOTAL SIN PROPINA: 14.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 14.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b610043414d42494f20504152413a2035302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20332e3030300a1b6100544f54414c2053494e2050524f50494e413a2031342e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031342e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_tip/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 1000,
+     "tipPercentage": 10,
+     "total": 15900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": 3000
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "CAMBIO PARA: 50.000",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 3.000",
+    "TOTAL SIN PROPINA: 14.900",
+    "PROPINA VOLUNTARIA (10%): 1.000",
+    "TOTAL A PAGAR: 15.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b610043414d42494f20504152413a2035302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20332e3030300a1b6100544f54414c2053494e2050524f50494e413a2031342e3930300a1b610050524f50494e4120564f4c554e54415249412028313025293a20312e3030300a1b45011b6100544f54414c20412050414741523a2031352e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_prepaid/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 14900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "prepaid",
+     "cashChangeFor": null,
+     "deliveryFee": 3000
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 3.000",
+    "TOTAL SIN PROPINA: 14.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 14.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20332e3030300a1b6100544f54414c2053494e2050524f50494e413a2031342e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031342e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_no_change_for/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 14900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "deliveryFee": 3000
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 3.000",
+    "TOTAL SIN PROPINA: 14.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 14.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20332e3030300a1b6100544f54414c2053494e2050524f50494e413a2031342e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031342e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_fee_not_number/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 14900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": "3000"
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "CAMBIO PARA: 50.000",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 0",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 14.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b610043414d42494f20504152413a2035302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031342e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "discounts_and_spanish/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Ñandú Café",
+     "nit": "1",
+     "address": "Cra 7 — Peñón",
+     "phone": "1"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 1500
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": "Terraza 2",
+    "waiter": "Andrés Muñoz",
+    "paymentMethod": "transfer"
+   },
+   "displayItems": [
+    {
+     "name": "Bandeja paisa con chicharrón extra",
+     "quantity": 3,
+     "price": 31900
+    },
+    {
+     "name": "Limonada",
+     "quantity": 2,
+     "price": 7500.5
+    }
+   ],
+   "lines": [
+    "ÑANDÚ CAFÉ",
+    "NIT: 1",
+    "Cra 7 — Peñón",
+    "Tel: 1",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       Terraza 2",
+    "MESERO:     Andrés Muñoz",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "3   Bandeja paisa con ch    95.700",
+    "2   Limonada                15.001",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DESCUENTOS: -1.500",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Transferencia",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b6101d1414e44da20434146c90a1b61014e49543a20310a1b610143726120372097205065f1f36e0a1b610154656c3a20310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a2020202020202054657272617a6120320a1b61004d455345524f3a2020202020416e6472e973204d75f16f7a0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003320202042616e64656a6120706169736120636f6e2063682020202039352e3730300a1b6100322020204c696d6f6e6164612020202020202020202020202020202031352e3030310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b61004445534355454e544f533a202d312e3530300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a205472616e73666572656e6369610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "missing_payment_and_date/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "table": 1,
+    "waiter": "Ana"
+   },
+   "displayItems": [
+    {
+     "name": "Sin precio"
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      07/11/2026 12:30:45",
+    "MESA:       1",
+    "MESERO:     Ana",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Sin precio                   0",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: N/a",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030372f31312f323032362031323a33303a34350a1b61004d4553413a20202020202020310a1b61004d455345524f3a2020202020416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202053696e2070726563696f20202020202020202020202020202020202020300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204e2f610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "zulu_date_fraction/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-11-04T15:00:52.000Z",
+    "table": 4,
+    "waiter": "Mesero Dev",
+    "paymentMethod": "bancolombia"
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      04/11/2026 15:00:52",
+    "MESA:       4",
+    "MESERO:     Mesero Dev",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Bancolombia App",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030342f31312f323032362031353a30303a35320a1b61004d4553413a20202020202020340a1b61004d455345524f3a20202020204d657365726f204465760a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a2042616e636f6c6f6d626961204170700a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "rounding_half_even/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 2.5,
+     "tax": 0.5,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 3.5,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash"
+   },
+   "displayItems": [
+    {
+     "name": "A",
+     "quantity": 1,
+     "price": 2.5
+    },
+    {
+     "name": "B",
+     "quantity": 1,
+     "price": 3.5
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   A                            2",
+    "1   B                            4",
+    "--------------------------------",
+    "SUBTOTAL: 2",
+    "IVA: 0",
+    "TOTAL SIN PROPINA: 3",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 4",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b6100312020204120202020202020202020202020202020202020202020202020202020320a1b6100312020204220202020202020202020202020202020202020202020202020202020340a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a20320a1b61004956413a20300a1b6100544f54414c2053494e2050524f50494e413a20330a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a20340a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "negative_and_big/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 1234567,
+     "tax": -1000,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 1233567,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "NEQUI"
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 1.234.567",
+    "IVA: -1.000",
+    "TOTAL SIN PROPINA: 1.233.567",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 1.233.567",
+    "--------------------------------",
+    "FORMA DE PAGO: Nequi",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a20312e3233342e3536370a1b61004956413a202d312e3030300a1b6100544f54414c2053494e2050524f50494e413a20312e3233332e3536370a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a20312e3233332e3536370a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204e657175690a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "unicode_unencodable/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Sushi 寿司 🍣",
+     "nit": "€",
+     "address": "x",
+     "phone": "y"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "table": null,
+    "waiter": null
+   },
+   "displayItems": [
+    {
+     "name": "Ramen 🍜 picante",
+     "quantity": 10,
+     "price": 1000
+    }
+   ],
+   "lines": [
+    "SUSHI 寿司 🍣",
+    "NIT: €",
+    "x",
+    "Tel: y",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       None",
+    "MESERO:     None",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "10  Ramen 🍜 picante         10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61015355534849203f3f203f0a1b61014e49543a20800a1b6101780a1b610154656c3a20790a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e6f6e650a1b61004d455345524f3a20202020204e6f6e650a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003130202052616d656e203f20706963616e746520202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_dine_in/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "invoiceNumber": "1234",
+    "table": 5,
+    "waiter": "Juan",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 2,
+      "comments": "sin queso"
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa 5",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Juan",
+    "--------------------------------",
+    "AREPA                          x2",
+    "  Sin queso",
+    "JUGO                           x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e44412097204d65736120350a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078320a1b6100202053696e20717565736f0a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_delivery/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "invoiceNumber": "1234",
+    "table": null,
+    "waiter": "Luis",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 2,
+      "comments": "sin queso"
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1
+     }
+    ],
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": 3000
+    }
+   },
+   "lines": [
+    "COMANDA — DOMICILIO",
+    "Fecha:  07/11/2026 12:30",
+    "Cliente: Ana Perez",
+    "Mesero: Luis",
+    "--------------------------------",
+    "AREPA                          x2",
+    "  Sin queso",
+    "JUGO                           x1",
+    "NOTAS: Sin cebolla",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e4441209720444f4d4943494c494f0a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b6100436c69656e74653a20416e6120506572657a0a1b61004d657365726f3a204c7569730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078320a1b6100202053696e20717565736f0a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61004e4f5441533a2053696e206365626f6c6c610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_delivery_no_notes/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "invoiceNumber": "1234",
+    "table": null,
+    "waiter": "Luis",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 2,
+      "comments": "sin queso"
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1
+     }
+    ],
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": 3000
+    }
+   },
+   "lines": [
+    "COMANDA — DOMICILIO",
+    "Fecha:  07/11/2026 12:30",
+    "Cliente: Ana Perez",
+    "Mesero: Luis",
+    "--------------------------------",
+    "AREPA                          x2",
+    "  Sin queso",
+    "JUGO                           x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e4441209720444f4d4943494c494f0a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b6100436c69656e74653a20416e6120506572657a0a1b61004d657365726f3a204c7569730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078320a1b6100202053696e20717565736f0a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_job_payload/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "invoiceNumber": "6f1c",
+    "table": 4,
+    "waiter": "Mesero Dev",
+    "items": [
+     {
+      "name": "Ajiaco",
+      "quantity": 2,
+      "comments": "sin alcaparras"
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa 4",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Mesero Dev",
+    "--------------------------------",
+    "AJIACO                         x2",
+    "  Sin alcaparras",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e44412097204d65736120340a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a204d657365726f204465760a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100414a4941434f2020202020202020202020202020202020202020202020202078320a1b6100202053696e20616c63617061727261730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_spanish_long/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "table": "Terraza",
+    "waiter": "Andrés",
+    "items": [
+     {
+      "name": "Sancocho de gallina con arroz y aguacate",
+      "quantity": 1,
+      "comments": "  SIN cilantro, Ñapa "
+     },
+     {
+      "name": "Café",
+      "quantity": 12,
+      "comments": null
+     },
+     {
+      "name": null
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa Terraza",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Andrés",
+    "--------------------------------",
+    "SANCOCHO DE GALLINA CON ARROZ Y AGUACATE x1",
+    "  Sin cilantro, ñapa",
+    "CAFÉ                           x12",
+    "                               x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e44412097204d6573612054657272617a610a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e6472e9730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610053414e434f43484f2044452047414c4c494e4120434f4e204152524f5a20592041475541434154452078310a1b6100202053696e2063696c616e74726f2c20f16170610a1b6100434146c92020202020202020202020202020202020202020202020202020207831320a1b61002020202020202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_missing_table/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "waiter": "Ana",
+    "items": [
+     {
+      "name": "x",
+      "quantity": 1
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa N/A",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana",
+    "--------------------------------",
+    "X                              x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e44412097204d657361204e2f410a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61005820202020202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_delivery_no_customer/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "table": null,
+    "waiter": "D",
+    "items": [
+     {
+      "name": "y",
+      "quantity": 1
+     }
+    ],
+    "delivery": {
+     "customerName": "",
+     "notes": "   "
+    }
+   },
+   "lines": [
+    "COMANDA — DOMICILIO",
+    "Fecha:  07/11/2026 12:30",
+    "Cliente: N/A",
+    "Mesero: D",
+    "--------------------------------",
+    "Y                              x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e4441209720444f4d4943494c494f0a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b6100436c69656e74653a204e2f410a1b61004d657365726f3a20440a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61005920202020202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "legacy_cash/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 8100
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 8.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20382e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "legacy_nequi/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "nequi"
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Nequi",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204e657175690a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "legacy_multiple/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "multiple"
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Multiple",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204d756c7469706c650a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "tender_single_nequi/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "nequi",
+    "tenders": [
+     {
+      "methodCode": "nequi",
+      "methodName": "Nequi",
+      "methodKind": "electronic",
+      "amount": 11900,
+      "cashReceived": null
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "NEQUI      11.900",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b61004e4551554920202020202031312e3930300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "tender_mixed_overpay/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "multiple",
+    "tenders": [
+     {
+      "methodCode": "nequi",
+      "methodName": "Nequi",
+      "methodKind": "electronic",
+      "amount": 30000,
+      "cashReceived": null
+     },
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 17000,
+      "cashReceived": 20000
+     }
+    ],
+    "change": 3000
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "NEQUI      30.000",
+    "EFECTIVO      17.000",
+    "  RECIBIDO   20.000 / CAMBIO    3.000",
+    "CAMBIO: 3.000",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b61004e4551554920202020202033302e3030300a1b6100454645435449564f20202020202031372e3030300a1b61002020524543494249444f20202032302e303030202f2043414d42494f20202020332e3030300a1b610043414d42494f3a20332e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "tender_exact_cash/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "tenders": [
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 11900,
+      "cashReceived": 11900
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "EFECTIVO      11.900",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b6100454645435449564f20202020202031312e3930300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "tender_change_missing/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "tenders": [
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 10000,
+      "cashReceived": 12000
+     },
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 1900,
+      "cashReceived": 5000
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "EFECTIVO      10.000",
+    "  RECIBIDO   12.000 / CAMBIO    2.000",
+    "EFECTIVO       1.900",
+    "  RECIBIDO    5.000 / CAMBIO    3.100",
+    "CAMBIO: 5.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b6100454645435449564f20202020202031302e3030300a1b61002020524543494249444f20202031322e303030202f2043414d42494f20202020322e3030300a1b6100454645435449564f20202020202020312e3930300a1b61002020524543494249444f20202020352e303030202f2043414d42494f20202020332e3130300a1b610043414d42494f3a20352e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "malformed_missing_amount/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 8100,
+    "tenders": [
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash"
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 8.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20382e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "malformed_mixed_label/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "multiple",
+    "cashReceived": 20000,
+    "cashChange": 3000,
+    "tenders": [
+     {
+      "methodCode": "cash"
+     },
+     {
+      "methodCode": "nequi"
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Multiple",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 3.000",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204d756c7469706c650a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20332e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "malformed_non_int/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 8100,
+    "tenders": [
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": "not-a-number",
+      "cashReceived": null
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 8.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20382e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "malformed_float_amount/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "nequi",
+    "tenders": [
+     {
+      "methodCode": "nequi",
+      "methodName": "Nequi",
+      "methodKind": "electronic",
+      "amount": 11900.0,
+      "cashReceived": null
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Nequi",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204e657175690a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "one_bad_entry/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "nequi",
+    "tenders": [
+     {
+      "methodCode": "nequi",
+      "methodName": "Nequi",
+      "methodKind": "electronic",
+      "amount": 11900,
+      "cashReceived": null
+     },
+     "not-a-dict",
+     {
+      "methodCode": "cash",
+      "methodName": "Efectivo",
+      "methodKind": "cash",
+      "amount": 5000,
+      "cashReceived": null
+     }
+    ]
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMAS DE PAGO:",
+    "NEQUI      11.900",
+    "EFECTIVO       5.000",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d4153204445205041474f3a0a1b61004e4551554920202020202031312e3930300a1b6100454645435449564f20202020202020352e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "dine_in_tip/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-1",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Rest",
+     "nit": "900",
+     "address": "Calle 1",
+     "phone": "300"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 1000,
+     "tipPercentage": 10,
+     "total": 12900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 7100
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI REST",
+    "NIT: 900",
+    "Calle 1",
+    "Tel: 300",
+    "--------------------------------",
+    "FACTURA:    INV-1",
+    "FECHA:      15/01/2025 12:30:00",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (10%): 1.000",
+    "TOTAL A PAGAR: 12.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 7.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d4920524553540a1b61014e49543a203930300a1b610143616c6c6520310a1b610154656c3a203330300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d310a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e54415249412028313025293a20312e3030300a1b45011b6100544f54414c20412050414741523a2031322e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20372e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_cod/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 14900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": 3000
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "CAMBIO PARA: 50.000",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 3.000",
+    "TOTAL SIN PROPINA: 14.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 14.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b610043414d42494f20504152413a2035302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20332e3030300a1b6100544f54414c2053494e2050524f50494e413a2031342e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031342e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_tip/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 1000,
+     "tipPercentage": 10,
+     "total": 15900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": 3000
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "CAMBIO PARA: 50.000",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 3.000",
+    "TOTAL SIN PROPINA: 14.900",
+    "PROPINA VOLUNTARIA (10%): 1.000",
+    "TOTAL A PAGAR: 15.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b610043414d42494f20504152413a2035302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20332e3030300a1b6100544f54414c2053494e2050524f50494e413a2031342e3930300a1b610050524f50494e4120564f4c554e54415249412028313025293a20312e3030300a1b45011b6100544f54414c20412050414741523a2031352e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_prepaid/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 14900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "prepaid",
+     "cashChangeFor": null,
+     "deliveryFee": 3000
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 3.000",
+    "TOTAL SIN PROPINA: 14.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 14.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20332e3030300a1b6100544f54414c2053494e2050524f50494e413a2031342e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031342e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_no_change_for/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 14900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "deliveryFee": 3000
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 3.000",
+    "TOTAL SIN PROPINA: 14.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 14.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20332e3030300a1b6100544f54414c2053494e2050524f50494e413a2031342e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031342e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "delivery_fee_not_number/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 14900,
+     "totalDiscounts": 0
+    },
+    "date": "2025-01-15T12:30:00",
+    "table": "—",
+    "waiter": "uuid-should-not-print",
+    "paymentMethod": "cash",
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": "3000"
+    }
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      15/01/2025 12:30:00",
+    "CLIENTE: Ana Perez",
+    "TEL: 3101234567",
+    "DIRECCION: Calle 10 #5-20, Centro (Porton verde)",
+    "CAMBIO PARA: 50.000",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DOMICILIO: 0",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 14.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202031352f30312f323032352031323a33303a30300a1b6100434c49454e54453a20416e6120506572657a0a1b610054454c3a20333130313233343536370a1b6100444952454343494f4e3a2043616c6c652031302023352d32302c2043656e74726f2028506f72746f6e207665726465290a1b610043414d42494f20504152413a2035302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100444f4d4943494c494f3a20300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031342e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "discounts_and_spanish/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Ñandú Café",
+     "nit": "1",
+     "address": "Cra 7 — Peñón",
+     "phone": "1"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 1500
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": "Terraza 2",
+    "waiter": "Andrés Muñoz",
+    "paymentMethod": "transfer"
+   },
+   "displayItems": [
+    {
+     "name": "Bandeja paisa con chicharrón extra",
+     "quantity": 3,
+     "price": 31900
+    },
+    {
+     "name": "Limonada",
+     "quantity": 2,
+     "price": 7500.5
+    }
+   ],
+   "lines": [
+    "ÑANDÚ CAFÉ",
+    "NIT: 1",
+    "Cra 7 — Peñón",
+    "Tel: 1",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       Terraza 2",
+    "MESERO:     Andrés Muñoz",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "3   Bandeja paisa con ch    95.700",
+    "2   Limonada                15.001",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "DESCUENTOS: -1.500",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Transferencia",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b6101c391414e44c39a20434146c3890a1b61014e49543a20310a1b6101437261203720e28094205065c3b1c3b36e0a1b610154656c3a20310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a2020202020202054657272617a6120320a1b61004d455345524f3a2020202020416e6472c3a973204d75c3b16f7a0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003320202042616e64656a6120706169736120636f6e2063682020202039352e3730300a1b6100322020204c696d6f6e6164612020202020202020202020202020202031352e3030310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b61004445534355454e544f533a202d312e3530300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a205472616e73666572656e6369610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "missing_payment_and_date/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "table": 1,
+    "waiter": "Ana"
+   },
+   "displayItems": [
+    {
+     "name": "Sin precio"
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      07/11/2026 12:30:45",
+    "MESA:       1",
+    "MESERO:     Ana",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Sin precio                   0",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: N/a",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030372f31312f323032362031323a33303a34350a1b61004d4553413a20202020202020310a1b61004d455345524f3a2020202020416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202053696e2070726563696f20202020202020202020202020202020202020300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204e2f610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "zulu_date_fraction/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-11-04T15:00:52.000Z",
+    "table": 4,
+    "waiter": "Mesero Dev",
+    "paymentMethod": "bancolombia"
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      04/11/2026 15:00:52",
+    "MESA:       4",
+    "MESERO:     Mesero Dev",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Bancolombia App",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030342f31312f323032362031353a30303a35320a1b61004d4553413a20202020202020340a1b61004d455345524f3a20202020204d657365726f204465760a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a2042616e636f6c6f6d626961204170700a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "rounding_half_even/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 2.5,
+     "tax": 0.5,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 3.5,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash"
+   },
+   "displayItems": [
+    {
+     "name": "A",
+     "quantity": 1,
+     "price": 2.5
+    },
+    {
+     "name": "B",
+     "quantity": 1,
+     "price": 3.5
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   A                            2",
+    "1   B                            4",
+    "--------------------------------",
+    "SUBTOTAL: 2",
+    "IVA: 0",
+    "TOTAL SIN PROPINA: 3",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 4",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b6100312020204120202020202020202020202020202020202020202020202020202020320a1b6100312020204220202020202020202020202020202020202020202020202020202020340a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a20320a1b61004956413a20300a1b6100544f54414c2053494e2050524f50494e413a20330a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a20340a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "negative_and_big/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 1234567,
+     "tax": -1000,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 1233567,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "NEQUI"
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 1,
+     "price": 10000
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       N/A",
+    "MESERO:     N/A",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "1   Hamburguesa             10.000",
+    "--------------------------------",
+    "SUBTOTAL: 1.234.567",
+    "IVA: -1.000",
+    "TOTAL SIN PROPINA: 1.233.567",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 1.233.567",
+    "--------------------------------",
+    "FORMA DE PAGO: Nequi",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e2f410a1b61004d455345524f3a20202020204e2f410a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003120202048616d62757267756573612020202020202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a20312e3233342e3536370a1b61004956413a202d312e3030300a1b6100544f54414c2053494e2050524f50494e413a20312e3233332e3536370a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a20312e3233332e3536370a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a204e657175690a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "unicode_unencodable/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-abc12345",
+   "invoice": {
+    "businessInfo": {
+     "name": "Sushi 寿司 🍣",
+     "nit": "€",
+     "address": "x",
+     "phone": "y"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "paymentMethod": "cash",
+    "table": null,
+    "waiter": null
+   },
+   "displayItems": [
+    {
+     "name": "Ramen 🍜 picante",
+     "quantity": 10,
+     "price": 1000
+    }
+   ],
+   "lines": [
+    "SUSHI 寿司 🍣",
+    "NIT: €",
+    "x",
+    "Tel: y",
+    "--------------------------------",
+    "FACTURA:    INV-abc12345",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       None",
+    "MESERO:     None",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "10  Ramen 🍜 picante         10.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b6101535553484920e5afbfe58fb820f09f8da30a1b61014e49543a20e282ac0a1b6101780a1b610154656c3a20790a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d61626331323334350a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a202020202020204e6f6e650a1b61004d455345524f3a20202020204e6f6e650a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003130202052616d656e20f09f8d9c20706963616e746520202020202020202031302e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_dine_in/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "invoiceNumber": "1234",
+    "table": 5,
+    "waiter": "Juan",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 2,
+      "comments": "sin queso"
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa 5",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Juan",
+    "--------------------------------",
+    "AREPA                          x2",
+    "  Sin queso",
+    "JUGO                           x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120e28094204d65736120350a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078320a1b6100202053696e20717565736f0a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_delivery/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "invoiceNumber": "1234",
+    "table": null,
+    "waiter": "Luis",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 2,
+      "comments": "sin queso"
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1
+     }
+    ],
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "notes": "Sin cebolla",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": 3000
+    }
+   },
+   "lines": [
+    "COMANDA — DOMICILIO",
+    "Fecha:  07/11/2026 12:30",
+    "Cliente: Ana Perez",
+    "Mesero: Luis",
+    "--------------------------------",
+    "AREPA                          x2",
+    "  Sin queso",
+    "JUGO                           x1",
+    "NOTAS: Sin cebolla",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120e2809420444f4d4943494c494f0a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b6100436c69656e74653a20416e6120506572657a0a1b61004d657365726f3a204c7569730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078320a1b6100202053696e20717565736f0a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61004e4f5441533a2053696e206365626f6c6c610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_delivery_no_notes/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "invoiceNumber": "1234",
+    "table": null,
+    "waiter": "Luis",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 2,
+      "comments": "sin queso"
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1
+     }
+    ],
+    "delivery": {
+     "customerName": "Ana Perez",
+     "phone": "3101234567",
+     "address": "Calle 10 #5-20, Centro (Porton verde)",
+     "paymentMode": "cash_on_delivery",
+     "cashChangeFor": 50000,
+     "deliveryFee": 3000
+    }
+   },
+   "lines": [
+    "COMANDA — DOMICILIO",
+    "Fecha:  07/11/2026 12:30",
+    "Cliente: Ana Perez",
+    "Mesero: Luis",
+    "--------------------------------",
+    "AREPA                          x2",
+    "  Sin queso",
+    "JUGO                           x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120e2809420444f4d4943494c494f0a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b6100436c69656e74653a20416e6120506572657a0a1b61004d657365726f3a204c7569730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078320a1b6100202053696e20717565736f0a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_job_payload/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "invoiceNumber": "6f1c",
+    "table": 4,
+    "waiter": "Mesero Dev",
+    "items": [
+     {
+      "name": "Ajiaco",
+      "quantity": 2,
+      "comments": "sin alcaparras"
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa 4",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Mesero Dev",
+    "--------------------------------",
+    "AJIACO                         x2",
+    "  Sin alcaparras",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120e28094204d65736120340a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a204d657365726f204465760a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100414a4941434f2020202020202020202020202020202020202020202020202078320a1b6100202053696e20616c63617061727261730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_spanish_long/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "table": "Terraza",
+    "waiter": "Andrés",
+    "items": [
+     {
+      "name": "Sancocho de gallina con arroz y aguacate",
+      "quantity": 1,
+      "comments": "  SIN cilantro, Ñapa "
+     },
+     {
+      "name": "Café",
+      "quantity": 12,
+      "comments": null
+     },
+     {
+      "name": null
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa Terraza",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Andrés",
+    "--------------------------------",
+    "SANCOCHO DE GALLINA CON ARROZ Y AGUACATE x1",
+    "  Sin cilantro, ñapa",
+    "CAFÉ                           x12",
+    "                               x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120e28094204d6573612054657272617a610a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e6472c3a9730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610053414e434f43484f2044452047414c4c494e4120434f4e204152524f5a20592041475541434154452078310a1b6100202053696e2063696c616e74726f2c20c3b16170610a1b6100434146c3892020202020202020202020202020202020202020202020202020207831320a1b61002020202020202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_missing_table/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "waiter": "Ana",
+    "items": [
+     {
+      "name": "x",
+      "quantity": 1
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa N/A",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana",
+    "--------------------------------",
+    "X                              x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120e28094204d657361204e2f410a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61005820202020202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "kitchen_delivery_no_customer/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "table": null,
+    "waiter": "D",
+    "items": [
+     {
+      "name": "y",
+      "quantity": 1
+     }
+    ],
+    "delivery": {
+     "customerName": "",
+     "notes": "   "
+    }
+   },
+   "lines": [
+    "COMANDA — DOMICILIO",
+    "Fecha:  07/11/2026 12:30",
+    "Cliente: N/A",
+    "Mesero: D",
+    "--------------------------------",
+    "Y                              x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120e2809420444f4d4943494c494f0a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b6100436c69656e74653a204e2f410a1b61004d657365726f3a20440a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61005920202020202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  }
+ ]
+}

@@ -44,3 +44,9 @@ desktop/signing/**/*.p12
 desktop/signing/**/*.pem
 desktop/signing/**/*.pvk
 desktop/signing/**/*.password
+
+# Desktop app build output
+desktop/target/
+desktop/app/dist/
+desktop/app/src-tauri/target/
+desktop/app/src-tauri/gen/
