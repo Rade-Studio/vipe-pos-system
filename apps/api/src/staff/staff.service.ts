@@ -97,10 +97,11 @@ export class StaffService {
     return this.rows<StaffRow>(sql`
       SELECT p.id, p.user_id, p.full_name, p.username, coalesce(u.email::text, p.email) AS email,
              p.role, p.active, p.created_at, sp.profile_id IS NOT NULL AS has_pin,
-             CASE WHEN sp.locked_until > now() THEN sp.locked_until END AS pin_locked_until
+             l.locked_until AS pin_locked_until
         FROM public.profiles p
         LEFT JOIN public.users u ON u.id = p.user_id
         LEFT JOIN public.staff_pins sp ON sp.profile_id = p.id
+        LEFT JOIN private.staff_pin_locks(now()) l ON l.profile_id = p.id
        ${tail}`);
   }
 

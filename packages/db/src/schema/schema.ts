@@ -1312,8 +1312,6 @@ export const authSessions = pgTable("auth_sessions", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	kind: text().default('user').notNull(),
 	parentSessionId: uuid("parent_session_id"),
-	pinFailedAttempts: integer("pin_failed_attempts").default(0).notNull(),
-	pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	index("idx_auth_sessions_user_id").using("btree", table.userId.asc().nullsLast().op("uuid_ops")),
 	index("idx_auth_sessions_parent_session_id").using("btree", table.parentSessionId.asc().nullsLast().op("uuid_ops")).where(sql`(parent_session_id IS NOT NULL)`),
@@ -1330,7 +1328,6 @@ export const authSessions = pgTable("auth_sessions", {
 	unique("auth_sessions_refresh_hash_key").on(table.refreshHash),
 	pgPolicy("auth_sessions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(user_id = ( SELECT private.current_user_id() AS current_user_id))` }),
 	check("auth_sessions_kind_check", sql`kind = ANY (ARRAY['user'::text, 'terminal'::text, 'acting'::text])`),
-	check("auth_sessions_pin_failed_attempts_range", sql`(pin_failed_attempts >= 0) AND (pin_failed_attempts <= 4)`),
 	check("auth_sessions_acting_parent", sql`(kind = 'acting'::text) = (parent_session_id IS NOT NULL)`),
 ]);
 
@@ -1338,8 +1335,7 @@ export const staffPins = pgTable("staff_pins", {
 	profileId: uuid("profile_id").primaryKey().notNull(),
 	restaurantId: uuid("restaurant_id").notNull(),
 	pinHash: text("pin_hash").notNull(),
-	failedAttempts: integer("failed_attempts").default(0).notNull(),
-	lockedUntil: timestamp("locked_until", { withTimezone: true, mode: 'string' }),
+	pinPepperVersion: smallint("pin_pepper_version").default(1).notNull(),
 	setBy: uuid("set_by"),
 	setAt: timestamp("set_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -1362,7 +1358,7 @@ export const staffPins = pgTable("staff_pins", {
 		}).onDelete("set null"),
 	pgPolicy("staff_pins_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	check("staff_pins_pin_hash_argon2id", sql`pin_hash ~ '^\\$argon2id\\$v=19\\$m=[0-9]+,[pt]=[0-9]+,[pt]=[0-9]+\\$[A-Za-z0-9+/]{16,}\\$[A-Za-z0-9+/]{32,}$'::text`),
-	check("staff_pins_failed_attempts_range", sql`(failed_attempts >= 0) AND (failed_attempts <= 4)`),
+	check("staff_pins_pepper_version", sql`pin_pepper_version = ANY (ARRAY[1, 2])`),
 ]);
 
 export const supervisorAuthorizations = pgTable("supervisor_authorizations", {

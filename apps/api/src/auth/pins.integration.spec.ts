@@ -80,13 +80,18 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
     put: (url: string, body?: object) => server().put(url).set('Cookie', cookie).send(body),
     delete: (url: string) => server().delete(url).set('Cookie', cookie),
   });
+  const freshLogin = async (email: string) => cookiePair(setCookies(await login(email)).vipe_access);
   const admin = () => as(cookies.adminA);
   const waiter = () => as(cookies.waiterA);
   const setPin = (profileId: string, pin: unknown) => admin().put(`/api/staff/${profileId}/pin`, { pin });
+  /** The PIN row with its profile-scope counter (private.pin_attempts, readable by the superuser). */
   const pinRow = async (profileId: string) =>
     (
-      await db<{ pin_hash: string; failed_attempts: number; locked_until: Date | null; set_by: string | null }>(
-        'SELECT pin_hash, failed_attempts, locked_until, set_by FROM staff_pins WHERE profile_id = $1',
+      await db<{ pin_hash: string; pin_pepper_version: number; failed_attempts: number; locked_until: Date | null; set_by: string | null }>(
+        `SELECT sp.pin_hash, sp.pin_pepper_version, coalesce(a.failed_attempts, 0) AS failed_attempts, a.locked_until, sp.set_by
+           FROM staff_pins sp
+           LEFT JOIN private.pin_attempts a ON a.scope = 'profile' AND a.subject_id = sp.profile_id
+          WHERE sp.profile_id = $1`,
         [profileId],
       )
     )[0];
@@ -517,6 +522,89 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
       expect(fromB.status).toBe(403);
       expect(fromB.body.message).toBe(MESSAGES.wrong);
       expect((await consume(cookies.waiter2, res.body.authorizationId, 'void_item')).status).toBe(200);
+    });
+  });
+  describe('verifier regressions (B1-B3)', () => {
+    it('a single-use authorization is consumed once under concurrency', async () => {
+      const res = await as(cookies.waiter2).post('/api/auth/authorize', { pin: PINS.cashier, action: 'void_item' });
+      expect(res.status).toBe(201);
+      const statuses = await Promise.all(
+        Array.from({ length: 6 }, () =>
+          as(cookies.waiter2).post('/api/probe/authorizations/consume', { authorizationId: res.body.authorizationId, action: 'void_item' }),
+        ),
+      );
+      expect(statuses.filter((r) => r.status === 200).length).toBe(1);
+      expect(statuses.filter((r) => r.status === 403).length).toBe(5);
+    });
+
+    it('profile-less authorize lockout survives a fresh login', async () => {
+      for (let round = 0; round < 2; round++) {
+        const c = await freshLogin(emails.waiter2);
+        for (let i = 0; i < 5; i++) await as(c).post('/api/auth/authorize', { pin: String(100003 + round * 10 + i), action: 'void_item' });
+      }
+      const c = await freshLogin(emails.waiter2);
+      expect((await as(c).post('/api/auth/authorize', { pin: PINS.cashier, action: 'void_item' })).status).toBe(429);
+    });
+
+    it('parallel wrong identifies verify at most 5', async () => {
+      const t = await openTerminal(emails.cashier);
+      const res = await Promise.all(Array.from({ length: 9 }, (_, i) => identify(t, ids.waiter2, String(520000 + i * 7))));
+      expect(res.filter((r) => r.status === 403).length).toBeLessThanOrEqual(5);
+      expect(res.filter((r) => r.status === 429).length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('12 parallel wrong PINs leave the API responsive', async () => {
+      const c = await freshLogin(emails.waiter2);
+      const burst = await Promise.all(
+        Array.from({ length: 12 }, (_, i) =>
+          as(c)
+            .post('/api/auth/authorize', { pin: String(610000 + i * 13), action: 'void_item' })
+            .timeout(10_000)
+            .then((r) => r.status, () => 0),
+        ),
+      );
+      expect(burst.every((s) => s === 403 || s === 429)).toBe(true);
+      expect((await admin().get('/api/auth/me').timeout(5_000)).status).toBe(200);
+    }, 30_000);
+  });
+  describe('pepper versions (PIN_PEPPER)', () => {
+    it('re-hashes a v1 PIN to v2 on a correct PIN once PIN_PEPPER is set, and new PINs use v2', async () => {
+      expect((await pinRow(fixtures.waiterA.profileId)).pin_pepper_version).toBe(1);
+      const previous = process.env.PIN_PEPPER;
+      process.env.PIN_PEPPER = 'a-test-pin-pepper-that-is-long-enough-0123';
+      let app2: INestApplication | undefined;
+      try {
+        app2 = await createTestApp(database.apiUrl);
+        const server2 = () => request(app2!.getHttpServer());
+        const terminalRes = await server2().post('/api/auth/terminal/login').send({ email: emails.cashier, password: PASSWORD });
+        const terminal2 = cookiePair(setCookies(terminalRes).vipe_access);
+        const identify2 = () =>
+          server2().post('/api/auth/identify').set('Cookie', terminal2).send({ profileId: fixtures.waiterA.profileId, pin: PINS.waiter });
+        expect((await identify2()).status).toBe(200);
+        expect((await pinRow(fixtures.waiterA.profileId)).pin_pepper_version).toBe(2);
+        expect((await identify2()).status).toBe(200);
+        const admin2 = cookiePair(setCookies(await server2().post('/api/auth/login').send({ email: fixtures.adminA.email, password: PASSWORD })).vipe_access);
+        expect((await server2().put(`/api/staff/${ids.cook}/pin`).set('Cookie', admin2).send({ pin: '6031' })).status).toBe(204);
+        expect((await pinRow(ids.cook)).pin_pepper_version).toBe(2);
+      } finally {
+        await app2?.close();
+        if (previous === undefined) delete process.env.PIN_PEPPER;
+        else process.env.PIN_PEPPER = previous;
+      }
+      // Without PIN_PEPPER a v2 PIN cannot be verified: the same uniform 403.
+      const terminal = await openTerminal(emails.cashier);
+      expect((await identify(terminal, fixtures.waiterA.profileId, PINS.waiter)).status).toBe(403);
+    });
+
+    it('refuses a PIN_PEPPER shorter than 32 characters at startup', async () => {
+      const previous = process.env.PIN_PEPPER;
+      process.env.PIN_PEPPER = 'short';
+      try {
+        await expect(createTestApp(database.apiUrl)).rejects.toThrow('PIN_PEPPER must be at least 32 characters');
+      } finally {
+        if (previous === undefined) delete process.env.PIN_PEPPER;
+        else process.env.PIN_PEPPER = previous;
+      }
     });
   });
 });

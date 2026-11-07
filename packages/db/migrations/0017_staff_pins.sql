@@ -3,13 +3,13 @@
 --
 -- 1. public.staff_pins: one PIN per profile, stored only as an argon2id hash
 --    the API computes (the plain PIN never reaches the database; the CHECK
---    refuses anything that is not an argon2id encoded hash). It also keeps
---    the per-profile failure counter and lockout, and who set the PIN and
---    when. vipe_api reads only the non-secret columns of its restaurant;
---    every write goes through the SECURITY DEFINER helpers below.
--- 2. public.auth_sessions gains `kind` (user | terminal | acting),
---    `parent_session_id` (the terminal of an acting session) and the
---    per-session PIN failure counter and lockout (per terminal).
+--    refuses anything that is not an argon2id encoded hash), the pepper
+--    version the API used (1: derived from JWT_SECRET, 2: PIN_PEPPER), and
+--    who set the PIN and when. vipe_api reads only the non-secret columns
+--    of its restaurant; every write goes through the SECURITY DEFINER
+--    helpers below.
+-- 2. public.auth_sessions gains `kind` (user | terminal | acting) and
+--    `parent_session_id` (the terminal of an acting session).
 --    * terminal: a device opened by an active admin or cashier
 --      (private.create_terminal_session); the API limits it to the
 --      order-taking routes.
@@ -31,10 +31,18 @@
 -- only a profile of the same restaurant fits; deleting a profile clears the
 -- reference (or the PIN row).
 --
--- Lockout (both per profile and per session): 5 consecutive failures lock
--- for 5 minutes; the counter restarts at 0 when it locks and on a success.
--- The API passes its clock as p_now, so timing is testable; constants live in
--- private.record_pin_failure.
+-- Lockout: private.pin_attempts (no grant at all to vipe_api) keeps one
+-- counter per scope: `session` (per terminal or login), `caller` (the
+-- caller's profile, so a new login does not reset it), `profile` (the
+-- profile whose PIN is tried) and `supervisors` (the restaurant's supervisor
+-- set, for an authorization without a profile). private.claim_pin_attempt
+-- counts the attempt atomically BEFORE the API verifies the PIN, under row
+-- locks taken in a fixed order, and refuses while any scope is locked; a
+-- correct PIN clears the claimed scopes (private.clear_pin_attempts). 5
+-- attempts within 15 minutes lock every claimed scope for 5 minutes, so at
+-- most 5 PINs are ever verified per scope and window, also in parallel. The
+-- API passes its clock as p_now, so timing is testable; constants live in
+-- private.claim_pin_attempt.
 --
 -- Every helper pins search_path = '' (150_api_role_hardening). 42501/P0002
 -- texts are internal: the API answers with its own Spanish messages.
@@ -44,8 +52,7 @@ CREATE TABLE public.staff_pins (
     pin_hash text NOT NULL CONSTRAINT staff_pins_pin_hash_argon2id CHECK (
       pin_hash ~ '^\$argon2id\$v=19\$m=[0-9]+,[pt]=[0-9]+,[pt]=[0-9]+\$[A-Za-z0-9+/]{16,}\$[A-Za-z0-9+/]{32,}$'
     ),
-    failed_attempts integer DEFAULT 0 NOT NULL CONSTRAINT staff_pins_failed_attempts_range CHECK (failed_attempts BETWEEN 0 AND 4),
-    locked_until timestamptz,
+    pin_pepper_version smallint DEFAULT 1 NOT NULL CONSTRAINT staff_pins_pepper_version CHECK (pin_pepper_version IN (1, 2)),
     set_by uuid,
     set_at timestamptz DEFAULT now() NOT NULL,
     updated_at timestamptz DEFAULT now() NOT NULL,
@@ -54,7 +61,7 @@ CREATE TABLE public.staff_pins (
     CONSTRAINT staff_pins_set_by_fkey FOREIGN KEY (restaurant_id, set_by) REFERENCES public.profiles(restaurant_id, id) ON DELETE SET NULL (set_by)
 );
 --> statement-breakpoint
-COMMENT ON TABLE public.staff_pins IS 'Per-profile PIN as an argon2id hash computed by the API (never the plain PIN), the failure counter (0..4) and lockout (5 failures lock 5 minutes), and who set it (set_by, set_at). vipe_api reads profile_id, restaurant_id, locked_until, set_by and set_at of its restaurant; writes only through the private.*pin* helpers.';
+COMMENT ON TABLE public.staff_pins IS 'Per-profile PIN as an argon2id hash of the peppered PIN computed by the API (never the plain PIN), its pepper version (1 JWT_SECRET-derived, 2 PIN_PEPPER) and who set it (set_by, set_at). Lockout counters live in private.pin_attempts. vipe_api reads profile_id, restaurant_id, set_by and set_at of its restaurant; writes only through the private.*pin* helpers.';
 --> statement-breakpoint
 CREATE INDEX idx_staff_pins_restaurant_id ON public.staff_pins (restaurant_id);
 --> statement-breakpoint
@@ -65,22 +72,32 @@ CREATE POLICY staff_pins_select_policy ON public.staff_pins FOR SELECT TO vipe_a
 -- The migrator's default privileges grant full DML on new tables; narrow it.
 REVOKE ALL ON TABLE public.staff_pins FROM vipe_api;
 --> statement-breakpoint
-GRANT SELECT (profile_id, restaurant_id, locked_until, set_by, set_at) ON TABLE public.staff_pins TO vipe_api;
+GRANT SELECT (profile_id, restaurant_id, set_by, set_at) ON TABLE public.staff_pins TO vipe_api;
 --> statement-breakpoint
 ALTER TABLE public.auth_sessions
   ADD COLUMN kind text DEFAULT 'user' NOT NULL CONSTRAINT auth_sessions_kind_check CHECK (kind IN ('user', 'terminal', 'acting')),
   ADD COLUMN parent_session_id uuid REFERENCES public.auth_sessions(id) ON DELETE CASCADE,
-  ADD COLUMN pin_failed_attempts integer DEFAULT 0 NOT NULL CONSTRAINT auth_sessions_pin_failed_attempts_range CHECK (pin_failed_attempts BETWEEN 0 AND 4),
-  ADD COLUMN pin_locked_until timestamptz,
   ADD CONSTRAINT auth_sessions_acting_parent CHECK ((kind = 'acting') = (parent_session_id IS NOT NULL));
 --> statement-breakpoint
 CREATE INDEX idx_auth_sessions_parent_session_id ON public.auth_sessions (parent_session_id) WHERE parent_session_id IS NOT NULL;
 --> statement-breakpoint
 COMMENT ON COLUMN public.auth_sessions.kind IS 'user: a personal login; terminal: a shared order-taking device opened by an admin or cashier; acting: a short child session of a terminal for the staff member identified by PIN.';
 --> statement-breakpoint
-COMMENT ON COLUMN public.auth_sessions.pin_failed_attempts IS 'PIN failures from this session (per terminal); 5 lock pin_locked_until 5 minutes ahead and restart the counter.';
---> statement-breakpoint
 GRANT SELECT (kind, parent_session_id) ON TABLE public.auth_sessions TO vipe_api;
+--> statement-breakpoint
+CREATE TABLE private.pin_attempts (
+    scope text NOT NULL CONSTRAINT pin_attempts_scope_check CHECK (scope IN ('session', 'caller', 'profile', 'supervisors')),
+    subject_id uuid NOT NULL,
+    restaurant_id uuid NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
+    failed_attempts integer DEFAULT 0 NOT NULL CONSTRAINT pin_attempts_failed_attempts_range CHECK (failed_attempts BETWEEN 0 AND 4),
+    window_started_at timestamptz,
+    locked_until timestamptz,
+    PRIMARY KEY (scope, subject_id)
+);
+--> statement-breakpoint
+COMMENT ON TABLE private.pin_attempts IS 'PIN attempt counters per scope (session: auth_sessions.id; caller and profile: profiles.id; supervisors: restaurants.id). Written only by private.claim_pin_attempt / private.clear_pin_attempts and the PIN setters; vipe_api has no privilege on it.';
+--> statement-breakpoint
+REVOKE ALL ON TABLE private.pin_attempts FROM vipe_api;
 --> statement-breakpoint
 CREATE TABLE public.supervisor_authorizations (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -171,7 +188,7 @@ $$;
 --> statement-breakpoint
 COMMENT ON FUNCTION private.pin_caller() IS 'Internal gate of the PIN helpers: the caller''s active profile with an active user (profile, restaurant, role), else 42501. Not executable by vipe_api.';
 --> statement-breakpoint
-CREATE FUNCTION private.set_staff_pin(p_profile_id uuid, p_pin_hash text)
+CREATE FUNCTION private.set_staff_pin(p_profile_id uuid, p_pin_hash text, p_pepper_version smallint)
     RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO ''
@@ -182,15 +199,16 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = p_profile_id AND p.restaurant_id = v_restaurant) THEN
     RAISE EXCEPTION 'staff profile not found' USING ERRCODE = 'P0002';
   END IF;
-  INSERT INTO public.staff_pins (profile_id, restaurant_id, pin_hash, failed_attempts, locked_until, set_by, set_at, updated_at)
-  VALUES (p_profile_id, v_restaurant, p_pin_hash, 0, NULL, private.current_profile_id(), pg_catalog.now(), pg_catalog.now())
+  INSERT INTO public.staff_pins (profile_id, restaurant_id, pin_hash, pin_pepper_version, set_by, set_at, updated_at)
+  VALUES (p_profile_id, v_restaurant, p_pin_hash, p_pepper_version, private.current_profile_id(), pg_catalog.now(), pg_catalog.now())
   ON CONFLICT (profile_id) DO UPDATE
-     SET pin_hash = excluded.pin_hash, failed_attempts = 0, locked_until = NULL,
+     SET pin_hash = excluded.pin_hash, pin_pepper_version = excluded.pin_pepper_version,
          set_by = excluded.set_by, set_at = excluded.set_at, updated_at = excluded.updated_at;
+  DELETE FROM private.pin_attempts WHERE scope = 'profile' AND subject_id = p_profile_id;
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.set_staff_pin(uuid, text) IS 'Admin sets or resets the PIN hash of any profile of the caller''s restaurant (the admin included) and clears its lockout; records set_by/set_at. 42501 when the caller is not an active admin, P0002 for a profile of another restaurant.';
+COMMENT ON FUNCTION private.set_staff_pin(uuid, text, smallint) IS 'Admin sets or resets the PIN hash (and its pepper version) of any profile of the caller''s restaurant (the admin included) and clears its lockout; records set_by/set_at. 42501 when the caller is not an active admin, P0002 for a profile of another restaurant.';
 --> statement-breakpoint
 CREATE FUNCTION private.clear_staff_pin(p_profile_id uuid)
     RETURNS void
@@ -204,12 +222,13 @@ BEGIN
     RAISE EXCEPTION 'staff profile not found' USING ERRCODE = 'P0002';
   END IF;
   DELETE FROM public.staff_pins WHERE profile_id = p_profile_id AND restaurant_id = v_restaurant;
+  DELETE FROM private.pin_attempts WHERE scope = 'profile' AND subject_id = p_profile_id;
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.clear_staff_pin(uuid) IS 'Admin removes the PIN of a profile of the caller''s restaurant (no-op when it has none). Same gates as private.set_staff_pin.';
+COMMENT ON FUNCTION private.clear_staff_pin(uuid) IS 'Admin removes the PIN of a profile of the caller''s restaurant (no-op when it has none) and its lockout. Same gates as private.set_staff_pin.';
 --> statement-breakpoint
-CREATE FUNCTION private.change_own_pin(p_pin_hash text)
+CREATE FUNCTION private.change_own_pin(p_pin_hash text, p_pepper_version smallint)
     RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO ''
@@ -219,7 +238,7 @@ DECLARE
 BEGIN
   SELECT * INTO v_caller FROM private.pin_caller();
   UPDATE public.staff_pins
-     SET pin_hash = p_pin_hash, failed_attempts = 0, locked_until = NULL,
+     SET pin_hash = p_pin_hash, pin_pepper_version = p_pepper_version,
          set_by = v_caller.profile_id, set_at = pg_catalog.now(), updated_at = pg_catalog.now()
    WHERE profile_id = v_caller.profile_id;
   IF NOT FOUND THEN
@@ -228,10 +247,29 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.change_own_pin(text) IS 'Replaces the caller''s own PIN hash (the API verified the current PIN first). P0002 when the caller has no PIN yet (an admin assigns the first one).';
+COMMENT ON FUNCTION private.change_own_pin(text, smallint) IS 'Replaces the caller''s own PIN hash (the API verified the current PIN first). P0002 when the caller has no PIN yet (an admin assigns the first one).';
+--> statement-breakpoint
+CREATE FUNCTION private.rehash_staff_pin(p_profile_id uuid, p_pin_hash text, p_pepper_version smallint)
+    RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+DECLARE
+  v_caller record;
+BEGIN
+  SELECT * INTO v_caller FROM private.pin_caller();
+  UPDATE public.staff_pins
+     SET pin_hash = p_pin_hash, pin_pepper_version = p_pepper_version, updated_at = pg_catalog.now()
+   WHERE profile_id = p_profile_id
+     AND restaurant_id = v_caller.restaurant_id
+     AND pin_pepper_version < p_pepper_version;
+END;
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.rehash_staff_pin(uuid, text, smallint) IS 'After a correct PIN, upgrades a profile of the caller''s restaurant to a newer pepper version (never downgrades; set_by/set_at unchanged).';
 --> statement-breakpoint
 CREATE FUNCTION private.pin_check_target(p_profile_id uuid)
-    RETURNS TABLE (pin_hash text, locked_until timestamptz, role text, eligible boolean)
+    RETURNS TABLE (pin_hash text, pepper_version smallint, role text, eligible boolean)
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO ''
     AS $$
@@ -240,7 +278,7 @@ DECLARE
 BEGIN
   SELECT * INTO v_caller FROM private.pin_caller();
   RETURN QUERY
-  SELECT sp.pin_hash, sp.locked_until, p.role::text, (p.active AND u.is_active)
+  SELECT sp.pin_hash, sp.pin_pepper_version, p.role::text, (p.active AND u.is_active)
     FROM public.staff_pins sp
     JOIN public.profiles p ON p.id = sp.profile_id
     JOIN public.users u ON u.id = p.user_id
@@ -249,10 +287,10 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.pin_check_target(uuid) IS 'PIN hash, lockout, role and active flag of a profile of the caller''s restaurant, for the API to verify a PIN; no row for a profile without PIN or in another restaurant. 42501 without an active caller profile.';
+COMMENT ON FUNCTION private.pin_check_target(uuid) IS 'PIN hash, pepper version, role and active flag of a profile of the caller''s restaurant, for the API to verify a PIN; no row for a profile without PIN or in another restaurant. 42501 without an active caller profile.';
 --> statement-breakpoint
-CREATE FUNCTION private.supervisor_pin_candidates()
-    RETURNS TABLE (profile_id uuid, pin_hash text, locked_until timestamptz)
+CREATE FUNCTION private.supervisor_pin_candidates(p_now timestamptz)
+    RETURNS TABLE (profile_id uuid, pin_hash text, pepper_version smallint)
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO ''
     AS $$
@@ -261,97 +299,144 @@ DECLARE
 BEGIN
   SELECT * INTO v_caller FROM private.pin_caller();
   RETURN QUERY
-  SELECT sp.profile_id, sp.pin_hash, sp.locked_until
+  SELECT sp.profile_id, sp.pin_hash, sp.pin_pepper_version
     FROM public.staff_pins sp
     JOIN public.profiles p ON p.id = sp.profile_id
     JOIN public.users u ON u.id = p.user_id
+    LEFT JOIN private.pin_attempts a ON a.scope = 'profile' AND a.subject_id = sp.profile_id
    WHERE sp.restaurant_id = v_caller.restaurant_id
      AND p.role IN ('admin', 'cashier')
      AND p.active
      AND u.is_active
+     AND (a.locked_until IS NULL OR a.locked_until <= p_now)
    ORDER BY sp.set_at, sp.profile_id
    LIMIT 50;
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.supervisor_pin_candidates() IS 'Supervisors (active admin or cashier with an active user and a PIN) of the caller''s restaurant with their PIN hash and lockout, at most 50, for POST /auth/authorize without a profile id.';
+COMMENT ON FUNCTION private.supervisor_pin_candidates(timestamptz) IS 'Unlocked supervisors (active admin or cashier with an active user and a PIN) of the caller''s restaurant with their PIN hash and pepper version, at most 50: the only PINs POST /auth/authorize without a profile id verifies.';
 --> statement-breakpoint
-CREATE FUNCTION private.session_pin_lock(p_session_id uuid)
+CREATE FUNCTION private.pin_attempt_keys(p_session_id uuid, p_profile_id uuid, p_scopes text[])
+    RETURNS TABLE (scope text, subject_id uuid, restaurant_id uuid)
+    LANGUAGE plpgsql STABLE
+    SET search_path TO ''
+    AS $$
+DECLARE
+  v_caller record;
+BEGIN
+  SELECT * INTO v_caller FROM private.pin_caller();
+  IF p_scopes IS NULL OR cardinality(p_scopes) = 0 OR NOT (p_scopes <@ ARRAY['session', 'caller', 'profile', 'supervisors']) THEN
+    RAISE EXCEPTION 'pin_attempt_keys: unknown scope' USING ERRCODE = '22023';
+  END IF;
+  IF 'session' = ANY(p_scopes) AND NOT EXISTS (
+    SELECT 1 FROM public.auth_sessions s WHERE s.id = p_session_id AND s.user_id = private.current_user_id()
+  ) THEN
+    RAISE EXCEPTION 'not a session of the caller' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY
+  SELECT k.scope, k.subject_id, v_caller.restaurant_id
+    FROM (VALUES
+      ('session', CASE WHEN 'session' = ANY(p_scopes) THEN p_session_id END),
+      ('caller', CASE WHEN 'caller' = ANY(p_scopes) THEN v_caller.profile_id END),
+      -- A profile of another restaurant (or an unknown id) is not counted:
+      -- the session and caller scopes still are.
+      ('profile', CASE WHEN 'profile' = ANY(p_scopes) AND EXISTS (
+         SELECT 1 FROM public.profiles p WHERE p.id = p_profile_id AND p.restaurant_id = v_caller.restaurant_id) THEN p_profile_id END),
+      ('supervisors', CASE WHEN 'supervisors' = ANY(p_scopes) THEN v_caller.restaurant_id END)
+    ) AS k(scope, subject_id)
+   WHERE k.subject_id IS NOT NULL
+   ORDER BY k.scope, k.subject_id;
+END;
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.pin_attempt_keys(uuid, uuid, text[]) IS 'Internal: the (scope, subject) counters an attempt touches, in lock order. 42501 for a session that is not the caller''s, 22023 for an unknown scope. Not executable by vipe_api.';
+--> statement-breakpoint
+CREATE FUNCTION private.claim_pin_attempt(p_session_id uuid, p_profile_id uuid, p_scopes text[], p_now timestamptz)
     RETURNS timestamptz
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO ''
     AS $$
 DECLARE
+  -- Documented in the header: 5 attempts within 15 minutes lock for 5 minutes.
+  c_max_attempts constant integer := 5;
+  c_window constant interval := interval '15 minutes';
+  c_lock constant interval := interval '5 minutes';
+  v_key record;
+  v_scopes text[] := ARRAY[]::text[];
+  v_subjects uuid[] := ARRAY[]::uuid[];
   v_until timestamptz;
 BEGIN
-  SELECT s.pin_locked_until INTO v_until
-    FROM public.auth_sessions s
-   WHERE s.id = p_session_id AND s.user_id = private.current_user_id();
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'not a session of the caller' USING ERRCODE = '42501';
-  END IF;
-  RETURN v_until;
-END;
-$$;
---> statement-breakpoint
-COMMENT ON FUNCTION private.session_pin_lock(uuid) IS 'pin_locked_until of one of the caller''s own sessions (per-terminal PIN lockout); 42501 for any other session.';
---> statement-breakpoint
-CREATE FUNCTION private.record_pin_failure(p_session_id uuid, p_profile_id uuid, p_now timestamptz)
-    RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO ''
-    AS $$
-DECLARE
-  -- Documented in the header: 5 consecutive failures lock for 5 minutes.
-  c_max_failures constant integer := 5;
-  c_lock constant interval := interval '5 minutes';
-  v_caller record;
-BEGIN
-  SELECT * INTO v_caller FROM private.pin_caller();
   IF p_now IS NULL THEN
-    RAISE EXCEPTION 'record_pin_failure: p_now is required' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'claim_pin_attempt: p_now is required' USING ERRCODE = '22023';
   END IF;
-  UPDATE public.auth_sessions s
-     SET pin_failed_attempts = CASE WHEN s.pin_failed_attempts + 1 >= c_max_failures THEN 0 ELSE s.pin_failed_attempts + 1 END,
-         pin_locked_until = CASE WHEN s.pin_failed_attempts + 1 >= c_max_failures THEN p_now + c_lock ELSE s.pin_locked_until END
-   WHERE s.id = p_session_id AND s.user_id = private.current_user_id();
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'not a session of the caller' USING ERRCODE = '42501';
+  -- Create, then lock, the counters in (scope, subject) order: concurrent
+  -- attempts queue on the same rows and never deadlock.
+  FOR v_key IN SELECT * FROM private.pin_attempt_keys(p_session_id, p_profile_id, p_scopes) LOOP
+    INSERT INTO private.pin_attempts (scope, subject_id, restaurant_id)
+    VALUES (v_key.scope, v_key.subject_id, v_key.restaurant_id)
+    ON CONFLICT (scope, subject_id) DO NOTHING;
+    v_scopes := v_scopes || v_key.scope;
+    v_subjects := v_subjects || v_key.subject_id;
+  END LOOP;
+  PERFORM 1
+     FROM private.pin_attempts a
+     JOIN unnest(v_scopes, v_subjects) AS k(scope, subject_id) ON k.scope = a.scope AND k.subject_id = a.subject_id
+    ORDER BY a.scope, a.subject_id
+      FOR UPDATE OF a;
+  SELECT max(a.locked_until) INTO v_until
+    FROM private.pin_attempts a
+    JOIN unnest(v_scopes, v_subjects) AS k(scope, subject_id) ON k.scope = a.scope AND k.subject_id = a.subject_id
+   WHERE a.locked_until > p_now;
+  IF v_until IS NOT NULL THEN
+    RETURN v_until;
   END IF;
-  IF p_profile_id IS NOT NULL THEN
-    UPDATE public.staff_pins sp
-       SET failed_attempts = CASE WHEN sp.failed_attempts + 1 >= c_max_failures THEN 0 ELSE sp.failed_attempts + 1 END,
-           locked_until = CASE WHEN sp.failed_attempts + 1 >= c_max_failures THEN p_now + c_lock ELSE sp.locked_until END,
-           updated_at = pg_catalog.now()
-     WHERE sp.profile_id = p_profile_id AND sp.restaurant_id = v_caller.restaurant_id;
-  END IF;
+  UPDATE private.pin_attempts a
+     SET failed_attempts = CASE WHEN n.next >= c_max_attempts THEN 0 ELSE n.next END,
+         window_started_at = CASE WHEN n.next >= c_max_attempts THEN NULL WHEN n.next = 1 THEN p_now ELSE a.window_started_at END,
+         locked_until = CASE WHEN n.next >= c_max_attempts THEN p_now + c_lock ELSE NULL END
+    FROM (
+      SELECT b.scope, b.subject_id,
+             CASE WHEN b.window_started_at IS NULL OR b.window_started_at <= p_now - c_window THEN 1 ELSE b.failed_attempts + 1 END AS next
+        FROM private.pin_attempts b
+        JOIN unnest(v_scopes, v_subjects) AS k(scope, subject_id) ON k.scope = b.scope AND k.subject_id = b.subject_id
+    ) AS n
+   WHERE a.scope = n.scope AND a.subject_id = n.subject_id;
+  RETURN NULL;
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.record_pin_failure(uuid, uuid, timestamptz) IS 'Counts one PIN failure on the caller''s session (per terminal) and, when given, on a profile of the caller''s restaurant (a foreign or PIN-less profile is skipped silently). The 5th consecutive failure locks until p_now + 5 minutes and restarts the counter. 42501 for a session that is not the caller''s.';
+COMMENT ON FUNCTION private.claim_pin_attempt(uuid, uuid, text[], timestamptz) IS 'Counts one PIN attempt on every claimed scope (session, caller, profile, supervisors) BEFORE the PIN is verified, under row locks taken in a fixed order, and returns NULL; when any scope is locked it changes nothing and returns the latest locked_until. The 5th attempt within 15 minutes locks every claimed scope until p_now + 5 minutes. A correct PIN is followed by private.clear_pin_attempts.';
 --> statement-breakpoint
-CREATE FUNCTION private.record_pin_success(p_session_id uuid, p_profile_id uuid)
+CREATE FUNCTION private.clear_pin_attempts(p_session_id uuid, p_profile_id uuid, p_scopes text[])
     RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO ''
     AS $$
-DECLARE
-  v_caller record;
 BEGIN
-  SELECT * INTO v_caller FROM private.pin_caller();
-  UPDATE public.auth_sessions s
-     SET pin_failed_attempts = 0, pin_locked_until = NULL
-   WHERE s.id = p_session_id AND s.user_id = private.current_user_id();
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'not a session of the caller' USING ERRCODE = '42501';
-  END IF;
-  UPDATE public.staff_pins sp
-     SET failed_attempts = 0, locked_until = NULL, updated_at = pg_catalog.now()
-   WHERE sp.profile_id = p_profile_id AND sp.restaurant_id = v_caller.restaurant_id;
+  DELETE FROM private.pin_attempts a
+   USING private.pin_attempt_keys(p_session_id, p_profile_id, p_scopes) k
+   WHERE a.scope = k.scope AND a.subject_id = k.subject_id;
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.record_pin_success(uuid, uuid) IS 'Clears the PIN failure counters and lockout of the caller''s session and of a profile of the caller''s restaurant after a correct PIN.';
+COMMENT ON FUNCTION private.clear_pin_attempts(uuid, uuid, text[]) IS 'After a correct PIN: clears the counters of the claimed scopes (same resolution and gates as claim_pin_attempt).';
+--> statement-breakpoint
+CREATE FUNCTION private.staff_pin_locks(p_now timestamptz)
+    RETURNS TABLE (profile_id uuid, locked_until timestamptz)
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+DECLARE
+  v_restaurant uuid := private.staff_admin_restaurant();
+BEGIN
+  RETURN QUERY
+  SELECT a.subject_id, a.locked_until
+    FROM private.pin_attempts a
+   WHERE a.scope = 'profile' AND a.restaurant_id = v_restaurant AND a.locked_until > p_now;
+END;
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.staff_pin_locks(timestamptz) IS 'Admin: running PIN lockouts of the profiles of the caller''s restaurant (for the staff list). 42501 when the caller is not an active admin.';
 --> statement-breakpoint
 CREATE FUNCTION private.create_terminal_session(p_user_id uuid, p_refresh_hash text, p_expires_at timestamp with time zone)
     RETURNS uuid
@@ -570,23 +655,27 @@ COMMENT ON FUNCTION private.consume_supervisor_authorization(uuid, text, timesta
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.pin_caller() FROM PUBLIC;
 --> statement-breakpoint
+REVOKE ALL ON FUNCTION private.pin_attempt_keys(uuid, uuid, text[]) FROM PUBLIC;
+--> statement-breakpoint
 REVOKE ALL ON FUNCTION private.stamp_created_by_profile() FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION private.set_staff_pin(uuid, text) TO vipe_api;
+GRANT EXECUTE ON FUNCTION private.set_staff_pin(uuid, text, smallint) TO vipe_api;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION private.clear_staff_pin(uuid) TO vipe_api;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION private.change_own_pin(text) TO vipe_api;
+GRANT EXECUTE ON FUNCTION private.change_own_pin(text, smallint) TO vipe_api;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION private.rehash_staff_pin(uuid, text, smallint) TO vipe_api;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION private.pin_check_target(uuid) TO vipe_api;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION private.supervisor_pin_candidates() TO vipe_api;
+GRANT EXECUTE ON FUNCTION private.supervisor_pin_candidates(timestamptz) TO vipe_api;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION private.session_pin_lock(uuid) TO vipe_api;
+GRANT EXECUTE ON FUNCTION private.claim_pin_attempt(uuid, uuid, text[], timestamptz) TO vipe_api;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION private.record_pin_failure(uuid, uuid, timestamptz) TO vipe_api;
+GRANT EXECUTE ON FUNCTION private.clear_pin_attempts(uuid, uuid, text[]) TO vipe_api;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION private.record_pin_success(uuid, uuid) TO vipe_api;
+GRANT EXECUTE ON FUNCTION private.staff_pin_locks(timestamptz) TO vipe_api;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION private.create_terminal_session(uuid, text, timestamp with time zone) TO vipe_api;
 --> statement-breakpoint

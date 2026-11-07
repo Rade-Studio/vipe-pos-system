@@ -4,11 +4,14 @@ import { z } from 'zod';
 /**
  * Staff PINs, shared terminals and supervisor authorization
  * (odd/tasks/fase3-operacion.md, F2). The numbers below are the documented
- * policy; the lockout pair is also hard-coded in private.record_pin_failure
+ * policy; the lockout numbers are also hard-coded in private.claim_pin_attempt
  * (0017) and the authorization TTL in private.create_supervisor_authorization.
  */
 
-/** 5 consecutive wrong PINs lock the profile and the session (terminal) that tried. */
+/**
+ * 5 attempts within 15 minutes lock every scope they claimed (session,
+ * caller, profile or the restaurant's supervisor set) for PIN_LOCK_MS.
+ */
 export const PIN_MAX_FAILURES = 5;
 /** Lockout length after PIN_MAX_FAILURES. */
 export const PIN_LOCK_MS = 5 * 60_000;

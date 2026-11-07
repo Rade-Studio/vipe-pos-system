@@ -7,7 +7,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(73);
+SELECT plan(81);
 
 -- Fixtures: restaurant A with an admin, a cashier, a waiter, a kitchen cook
 -- and an inactive waiter; restaurant B with an admin and a waiter.
@@ -46,23 +46,23 @@ INSERT INTO t270 VALUES
 -- ============================================
 SELECT has_table('public', 'staff_pins', 'public.staff_pins exists');
 SELECT columns_are('public', 'staff_pins',
-  ARRAY['profile_id', 'restaurant_id', 'pin_hash', 'failed_attempts', 'locked_until', 'set_by', 'set_at', 'updated_at'],
-  'staff_pins has exactly the hash, counter, lockout and audit columns (no plaintext PIN column)');
+  ARRAY['profile_id', 'restaurant_id', 'pin_hash', 'pin_pepper_version', 'set_by', 'set_at', 'updated_at'],
+  'staff_pins has exactly the hash, pepper version and audit columns (no plaintext PIN column)');
 SELECT ok((SELECT relrowsecurity FROM pg_class WHERE oid = 'public.staff_pins'::regclass), 'staff_pins has RLS');
 SELECT ok((SELECT relrowsecurity FROM pg_class WHERE oid = 'public.supervisor_authorizations'::regclass), 'supervisor_authorizations has RLS');
 SELECT ok(NOT has_column_privilege('vipe_api', 'public.staff_pins', 'pin_hash', 'SELECT'), 'vipe_api cannot read pin_hash');
-SELECT ok(NOT has_column_privilege('vipe_api', 'public.staff_pins', 'failed_attempts', 'SELECT'), 'vipe_api cannot read failed_attempts');
-SELECT ok(has_column_privilege('vipe_api', 'public.staff_pins', 'locked_until', 'SELECT'), 'vipe_api reads locked_until');
+SELECT ok(has_column_privilege('vipe_api', 'public.staff_pins', 'set_at', 'SELECT'), 'vipe_api reads set_at');
+SELECT ok(NOT has_table_privilege('vipe_api', 'private.pin_attempts', 'SELECT, INSERT, UPDATE, DELETE'), 'vipe_api has no privilege on the attempt counters');
 SELECT ok(NOT has_table_privilege('vipe_api', 'public.staff_pins', 'INSERT, UPDATE, DELETE'), 'vipe_api cannot write staff_pins');
 SELECT ok(NOT has_table_privilege('vipe_api', 'public.supervisor_authorizations', 'INSERT, UPDATE, DELETE'), 'vipe_api cannot write supervisor_authorizations');
-SELECT ok(NOT has_column_privilege('vipe_api', 'public.auth_sessions', 'pin_failed_attempts', 'UPDATE'), 'vipe_api cannot reset the per-terminal counter');
+SELECT ok(NOT has_function_privilege('vipe_api', 'private.pin_attempt_keys(uuid, uuid, text[])', 'EXECUTE'), 'vipe_api cannot call the internal key resolver');
 SELECT ok(NOT has_function_privilege('vipe_api', 'private.pin_caller()', 'EXECUTE'), 'vipe_api cannot call the internal gate');
 SELECT ok(NOT has_function_privilege('vipe_api', 'private.stamp_created_by_profile()', 'EXECUTE'), 'vipe_api cannot call the stamping trigger function');
 SELECT is(
   (SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'private'
       AND p.proname = ANY(ARRAY['pin_caller', 'set_staff_pin', 'clear_staff_pin', 'change_own_pin', 'pin_check_target',
-        'supervisor_pin_candidates', 'session_pin_lock', 'record_pin_failure', 'record_pin_success', 'create_terminal_session',
+        'supervisor_pin_candidates', 'pin_attempt_keys', 'claim_pin_attempt', 'clear_pin_attempts', 'staff_pin_locks', 'rehash_staff_pin', 'create_terminal_session',
         'open_acting_session', 'session_is_live', 'rotate_session', 'revoke_session', 'revoke_session_by_id',
         'create_supervisor_authorization', 'consume_supervisor_authorization', 'stamp_created_by_profile'])
       AND NOT coalesce('search_path=""' = ANY(p.proconfig), false)),
@@ -70,11 +70,11 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'private'
-      AND p.proname = ANY(ARRAY['set_staff_pin', 'clear_staff_pin', 'change_own_pin', 'record_pin_failure', 'record_pin_success',
+      AND p.proname = ANY(ARRAY['set_staff_pin', 'clear_staff_pin', 'change_own_pin', 'rehash_staff_pin', 'claim_pin_attempt', 'clear_pin_attempts',
         'create_terminal_session', 'open_acting_session', 'create_supervisor_authorization', 'consume_supervisor_authorization'])
       AND p.prosecdef
       AND has_function_privilege('vipe_api', p.oid, 'EXECUTE')),
-  9, 'the write paths are SECURITY DEFINER helpers vipe_api may execute');
+  10, 'the write paths are SECURITY DEFINER helpers vipe_api may execute');
 
 SELECT throws_ok(
   $$ INSERT INTO public.staff_pins (profile_id, restaurant_id, pin_hash) VALUES ('28000000-0000-0000-0000-000000000003', '27000000-0000-0000-0000-0000000000a1', '4821') $$,
@@ -83,8 +83,8 @@ SELECT throws_ok(
   $$ INSERT INTO public.staff_pins (profile_id, restaurant_id, pin_hash) VALUES ('28000000-0000-0000-0000-000000000003', '27000000-0000-0000-0000-0000000000a1', '$2a$10$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012') $$,
   '23514', NULL, 'a bcrypt hash is refused');
 SELECT throws_ok(
-  format($$ INSERT INTO public.staff_pins (profile_id, restaurant_id, pin_hash, failed_attempts) VALUES ('28000000-0000-0000-0000-000000000003', '27000000-0000-0000-0000-0000000000a1', %L, 5) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
-  '23514', NULL, 'failed_attempts stays in 0..4');
+  format($$ INSERT INTO public.staff_pins (profile_id, restaurant_id, pin_hash, pin_pepper_version) VALUES ('28000000-0000-0000-0000-000000000003', '27000000-0000-0000-0000-0000000000a1', %L, 3) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
+  '23514', NULL, 'the pepper version is 1 or 2');
 SELECT throws_ok(
   format($$ INSERT INTO public.staff_pins (profile_id, restaurant_id, pin_hash) VALUES ('28000000-0000-0000-0000-000000000007', '27000000-0000-0000-0000-0000000000a1', %L) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
   '23503', NULL, 'the tenant key refuses a profile of another restaurant');
@@ -113,13 +113,13 @@ SELECT throws_ok(
 SET LOCAL ROLE vipe_api;
 SELECT set_config('app.user_id', '27000000-0000-0000-0000-000000000001', true);
 SELECT lives_ok(
-  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000003', %L) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
+  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000003', %L, 1::smallint) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
   'an admin sets a waiter PIN');
 SELECT lives_ok(
-  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000001', %L) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
+  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000001', %L, 1::smallint) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
   'an admin sets their own PIN');
 SELECT lives_ok(
-  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000002', %L) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
+  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000002', %L, 1::smallint) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
   'an admin sets a cashier PIN');
 SELECT results_eq(
   $$ SELECT profile_id, set_by FROM public.staff_pins ORDER BY profile_id $$,
@@ -129,25 +129,25 @@ SELECT results_eq(
   'vipe_api sees its restaurant PINs with who set them');
 SELECT throws_ok($$ SELECT pin_hash FROM public.staff_pins $$, '42501', NULL, 'selecting pin_hash is denied');
 SELECT throws_ok(
-  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000007', %L) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
+  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000007', %L, 1::smallint) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
   'P0002', NULL, 'an admin of A cannot set a PIN in B');
 SELECT throws_ok(
-  $$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000004', '1234') $$,
+  $$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000004', '1234', 1::smallint) $$,
   '23514', NULL, 'the helper refuses a plain PIN too');
 
 SELECT set_config('app.user_id', '27000000-0000-0000-0000-000000000003', true);
 SELECT throws_ok(
-  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000004', %L) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
+  format($$ SELECT private.set_staff_pin('28000000-0000-0000-0000-000000000004', %L, 1::smallint) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
   '42501', NULL, 'a waiter cannot set PINs');
 SELECT throws_ok($$ SELECT private.clear_staff_pin('28000000-0000-0000-0000-000000000003') $$, '42501', NULL, 'a waiter cannot clear PINs');
 SELECT lives_ok(
-  format($$ SELECT private.change_own_pin(%L) $$, (SELECT value FROM t270 WHERE name = 'hash2')),
+  format($$ SELECT private.change_own_pin(%L, 1::smallint) $$, (SELECT value FROM t270 WHERE name = 'hash2')),
   'a waiter changes their own PIN');
 SELECT is((SELECT set_by FROM public.staff_pins WHERE profile_id = '28000000-0000-0000-0000-000000000003'),
   '28000000-0000-0000-0000-000000000003'::uuid, 'the own change records the waiter as set_by');
 SELECT set_config('app.user_id', '27000000-0000-0000-0000-000000000004', true);
 SELECT throws_ok(
-  format($$ SELECT private.change_own_pin(%L) $$, (SELECT value FROM t270 WHERE name = 'hash2')),
+  format($$ SELECT private.change_own_pin(%L, 1::smallint) $$, (SELECT value FROM t270 WHERE name = 'hash2')),
   'P0002', NULL, 'without a PIN the own change is refused');
 
 -- ============================================
@@ -158,37 +158,73 @@ SELECT is((SELECT count(*) FROM private.pin_check_target('28000000-0000-0000-000
 SELECT is((SELECT role FROM private.pin_check_target('28000000-0000-0000-0000-000000000002')), 'cashier', 'with its role');
 SELECT set_config('app.user_id', '27000000-0000-0000-0000-000000000006', true);
 SELECT is((SELECT count(*) FROM private.pin_check_target('28000000-0000-0000-0000-000000000003'))::int, 0, 'an admin of B never sees a PIN of A');
-SELECT is((SELECT count(*) FROM private.supervisor_pin_candidates())::int, 0, 'B has no supervisor PINs');
+SELECT is((SELECT count(*) FROM private.supervisor_pin_candidates(now()))::int, 0, 'B has no supervisor PINs');
 SELECT set_config('app.user_id', '27000000-0000-0000-0000-000000000003', true);
 SELECT results_eq(
-  $$ SELECT profile_id FROM private.supervisor_pin_candidates() ORDER BY profile_id $$,
+  $$ SELECT profile_id FROM private.supervisor_pin_candidates(now()) ORDER BY profile_id $$,
   $$ VALUES ('28000000-0000-0000-0000-000000000001'::uuid), ('28000000-0000-0000-0000-000000000002'::uuid) $$,
   'supervisor candidates are the admin and the cashier with PINs (no waiter)');
 SELECT set_config('app.user_id', '', true);
 SELECT throws_ok($$ SELECT * FROM private.pin_check_target('28000000-0000-0000-0000-000000000003') $$, '42501', NULL, 'without a caller nothing is read');
 
 -- ============================================
--- 4. Lockout: 5 failures lock 5 minutes, per profile and per session
+-- 4. Lockout: attempts claimed before verifying; 5 lock 5 minutes
 -- ============================================
 SELECT set_config('app.user_id', '27000000-0000-0000-0000-000000000001', true);
-SELECT private.record_pin_failure('29000000-0000-0000-0000-000000000001', '28000000-0000-0000-0000-000000000003', '2026-11-07 12:00:00+00')
-  FROM generate_series(1, 4);
-SELECT is((SELECT locked_until FROM public.staff_pins WHERE profile_id = '28000000-0000-0000-0000-000000000003'), NULL, '4 failures do not lock');
-SELECT private.record_pin_failure('29000000-0000-0000-0000-000000000001', '28000000-0000-0000-0000-000000000003', '2026-11-07 12:00:00+00');
-SELECT is((SELECT locked_until FROM public.staff_pins WHERE profile_id = '28000000-0000-0000-0000-000000000003'),
-  '2026-11-07 12:05:00+00'::timestamptz, 'the 5th failure locks the profile 5 minutes');
-SELECT is(private.session_pin_lock('29000000-0000-0000-0000-000000000001'), '2026-11-07 12:05:00+00'::timestamptz, 'and the session 5 minutes');
-SELECT throws_ok($$ SELECT private.session_pin_lock('29000000-0000-0000-0000-000000000003') $$, '42501', NULL, 'another user''s session is not readable');
+SELECT is(
+  (SELECT count(*)::int FROM generate_series(1, 4) g
+    WHERE private.claim_pin_attempt('29000000-0000-0000-0000-000000000001', '28000000-0000-0000-0000-000000000003',
+                                    ARRAY['session', 'profile'], '2026-11-07 12:00:00+00') IS NULL),
+  4, '4 attempts are claimed');
+SELECT is(private.claim_pin_attempt('29000000-0000-0000-0000-000000000001', '28000000-0000-0000-0000-000000000003',
+                                    ARRAY['session', 'profile'], '2026-11-07 12:00:00+00'),
+  NULL, 'the 5th attempt is still claimed (and verified)');
+SELECT is(private.claim_pin_attempt('29000000-0000-0000-0000-000000000001', '28000000-0000-0000-0000-000000000003',
+                                    ARRAY['profile'], '2026-11-07 12:04:59+00'),
+  '2026-11-07 12:05:00+00'::timestamptz, 'then the profile is locked for 5 minutes: no 6th claim');
+SELECT is(
+  (SELECT locked_until FROM private.staff_pin_locks('2026-11-07 12:01:00+00') WHERE profile_id = '28000000-0000-0000-0000-000000000003'),
+  '2026-11-07 12:05:00+00'::timestamptz, 'the admin sees the running lockout');
+SELECT is(private.claim_pin_attempt('29000000-0000-0000-0000-000000000001', NULL, ARRAY['session'], '2026-11-07 12:01:00+00'),
+  '2026-11-07 12:05:00+00'::timestamptz, 'the session is locked too');
+SELECT is(private.claim_pin_attempt('29000000-0000-0000-0000-000000000001', '28000000-0000-0000-0000-000000000003',
+                                    ARRAY['session', 'profile'], '2026-11-07 12:05:00+00'),
+  NULL, 'after exactly 5 minutes an attempt is claimed again');
 SELECT throws_ok(
-  $$ SELECT private.record_pin_failure('29000000-0000-0000-0000-000000000006', NULL, now()) $$,
-  '42501', NULL, 'a failure cannot be recorded on another user''s session');
-SELECT lives_ok($$ SELECT private.record_pin_success('29000000-0000-0000-0000-000000000001', '28000000-0000-0000-0000-000000000003') $$, 'a success clears');
-SELECT is((SELECT locked_until FROM public.staff_pins WHERE profile_id = '28000000-0000-0000-0000-000000000003'), NULL, 'the profile lock is cleared');
+  $$ SELECT private.claim_pin_attempt('29000000-0000-0000-0000-000000000006', NULL, ARRAY['session'], now()) $$,
+  '42501', NULL, 'an attempt cannot be claimed on another user''s session');
+SELECT throws_ok(
+  $$ SELECT private.claim_pin_attempt('29000000-0000-0000-0000-000000000001', NULL, ARRAY['everything'], now()) $$,
+  '22023', NULL, 'unknown scopes are refused');
+SELECT lives_ok($$ SELECT private.clear_pin_attempts('29000000-0000-0000-0000-000000000001', '28000000-0000-0000-0000-000000000003', ARRAY['session', 'profile']) $$,
+  'a correct PIN clears the claimed scopes');
+-- The caller scope is keyed by profile: a new session of the same user keeps it.
+SELECT private.claim_pin_attempt('29000000-0000-0000-0000-000000000001', NULL, ARRAY['caller', 'supervisors'], '2026-11-07 13:00:00+00')
+  FROM generate_series(1, 5);
+RESET ROLE;
+INSERT INTO public.auth_sessions (id, user_id, refresh_hash, expires_at) VALUES
+  ('29000000-0000-0000-0000-000000000011', '27000000-0000-0000-0000-000000000001', 't270-admin-2', now() + interval '1 day');
+SET LOCAL ROLE vipe_api;
+SELECT is(private.claim_pin_attempt('29000000-0000-0000-0000-000000000011', NULL, ARRAY['session', 'caller'], '2026-11-07 13:01:00+00'),
+  '2026-11-07 13:05:00+00'::timestamptz, 'a fresh session of the same user is still locked by the caller scope');
+SELECT set_config('app.user_id', '27000000-0000-0000-0000-000000000003', true);
+SELECT is(private.claim_pin_attempt('29000000-0000-0000-0000-000000000003', NULL, ARRAY['supervisors'], '2026-11-07 13:01:00+00'),
+  '2026-11-07 13:05:00+00'::timestamptz, 'the restaurant supervisor set is locked for every caller');
 SELECT set_config('app.user_id', '27000000-0000-0000-0000-000000000006', true);
-SELECT private.record_pin_failure('29000000-0000-0000-0000-000000000006', '28000000-0000-0000-0000-000000000003', now()) FROM generate_series(1, 5);
+SELECT is(private.claim_pin_attempt('29000000-0000-0000-0000-000000000006', '28000000-0000-0000-0000-000000000003',
+                                    ARRAY['session', 'profile', 'supervisors'], '2026-11-07 13:01:00+00'),
+  NULL, 'another restaurant is not locked by A and never counts on a profile of A');
 SELECT set_config('app.user_id', '27000000-0000-0000-0000-000000000001', true);
-SELECT is((SELECT locked_until FROM public.staff_pins WHERE profile_id = '28000000-0000-0000-0000-000000000003'), NULL,
-  'failures from B never lock a profile of A');
+SELECT is((SELECT count(*)::int FROM private.staff_pin_locks('2026-11-07 13:01:00+00')), 0, 'no profile of A is locked');
+SELECT lives_ok(
+  format($$ SELECT private.rehash_staff_pin('28000000-0000-0000-0000-000000000003', %L, 2::smallint) $$, (SELECT value FROM t270 WHERE name = 'hash1')),
+  'a correct PIN upgrades the pepper version');
+SELECT lives_ok(
+  format($$ SELECT private.rehash_staff_pin('28000000-0000-0000-0000-000000000003', %L, 1::smallint) $$, (SELECT value FROM t270 WHERE name = 'hash2')),
+  'a downgrade is a no-op');
+RESET ROLE;
+SELECT is((SELECT pin_pepper_version FROM public.staff_pins WHERE profile_id = '28000000-0000-0000-0000-000000000003'), 2::smallint,
+  'the PIN stays on pepper version 2');
 
 -- ============================================
 -- 5. Terminal and acting sessions

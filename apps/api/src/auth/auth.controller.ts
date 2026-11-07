@@ -13,6 +13,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ENV, type Env } from '../config/env';
+import { UnitOfWork } from '../db/unit-of-work';
 import type { AuthenticatedRequest } from './auth-context';
 import {
   AuthorizeRequest,
@@ -27,7 +28,7 @@ import {
 import { AuthService } from './auth.service';
 import { ACCESS_COOKIE, clearAuthCookies, readCookie, REFRESH_COOKIE, setAuthCookies } from './cookies';
 import { authorizeSchema, changeOwnPinSchema, identifySchema, parsePinInput } from './pins';
-import { PinsService } from './pins.service';
+import { PinRefusal, PinsService } from './pins.service';
 import { Public } from './public.decorator';
 
 /** Session answers and cookies must never be stored by a browser or proxy cache. */
@@ -39,6 +40,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly pins: PinsService,
+    private readonly uow: UnitOfWork,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -116,9 +118,9 @@ export class AuthController {
   @ApiForbiddenResponse({ description: 'PIN incorrecto (code pin_invalid; the failure counts), or a terminal session.' })
   @ApiTooManyRequestsResponse({ description: '5 failures lock the profile and the session 5 minutes (code pin_locked).' })
   @ApiUnprocessableEntityResponse({ description: 'Weak or malformed new PIN, or no PIN yet (Spanish message).' })
-  changeOwnPin(@Req() req: AuthenticatedRequest, @Body() body: unknown): Promise<void> {
+  async changeOwnPin(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
     const input = parsePinInput(changeOwnPinSchema, body);
-    return this.pins.changeOwn(req.auth!, req.profile!, input.currentPin, input.pin);
+    this.sendAfterCommit(res, 204, await this.pins.changeOwn(req.auth!, req.profile!, input.currentPin, input.pin));
   }
 
   @Post('identify')
@@ -131,9 +133,9 @@ export class AuthController {
     description: 'Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike.',
   })
   @ApiTooManyRequestsResponse({ description: 'The profile or this terminal is locked for 5 minutes (code pin_locked).' })
-  identify(@Req() req: AuthenticatedRequest, @Body() body: unknown): Promise<IdentifyResponse> {
+  async identify(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
     const input = parsePinInput(identifySchema, body);
-    return this.pins.identify(req.auth!, input.profileId, input.pin);
+    this.sendAfterCommit(res, 200, await this.pins.identify(req.auth!, input.profileId, input.pin));
   }
 
   @Post('authorize')
@@ -144,9 +146,27 @@ export class AuthController {
   @ApiForbiddenResponse({ description: 'PIN incorrecto (code pin_invalid): no admin or cashier of the restaurant has that PIN.' })
   @ApiTooManyRequestsResponse({ description: 'The session or the named supervisor is locked for 5 minutes (code pin_locked).' })
   @ApiUnprocessableEntityResponse({ description: 'Unknown action or malformed PIN.' })
-  authorize(@Req() req: AuthenticatedRequest, @Body() body: unknown): Promise<AuthorizeResponse> {
+  async authorize(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
     const input = parsePinInput(authorizeSchema, body);
-    return this.pins.authorize(req.auth!, input.action, input.pin, input.profileId);
+    this.sendAfterCommit(res, 201, await this.pins.authorize(req.auth!, input.action, input.pin, input.profileId));
+  }
+
+  /**
+   * PIN routes answer only once the request transaction committed: a refused
+   * attempt (403/429) is returned, not thrown, so its claim is not rolled
+   * back, and an acting session or authorization exists before its id is
+   * sent. Thrown errors still go through the exception filter.
+   */
+  private sendAfterCommit(res: Response, okStatus: number, result: object | undefined): void {
+    const [status, body] = result instanceof PinRefusal ? [result.status, result.body] : [okStatus, result];
+    this.uow.afterCommit(() => {
+      res.setHeader(...NO_STORE);
+      if (body === undefined) {
+        res.status(status).send();
+      } else {
+        res.status(status).json(body);
+      }
+    });
   }
 }
 
