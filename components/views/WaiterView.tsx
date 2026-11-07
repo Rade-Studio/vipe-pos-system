@@ -1,7 +1,6 @@
 "use client"
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
 import { useOrderStore } from "@/store/useOrderStore"
@@ -64,8 +63,6 @@ import {
 
 // Importar el componente Skeleton
 import { Skeleton } from "@/components/ui/skeleton"
-// Importar el nuevo componente CompactOrderCard
-import { CompactOrderCard } from "@/components/pos/CompactOrderCard"
 import { ordersForWaiter } from "@/lib/delivery/kitchen"
 // Importar el hook para detectar dispositivos móviles
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -96,7 +93,6 @@ interface WaiterViewProps {
 
 export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewProps) {
   // Estados principales
-  const [activeView, setActiveView] = useState<"tables" | "orders">("tables")
   const [activeTable, setActiveTable] = useState<string | null>(null)
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
 
@@ -1089,6 +1085,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       guests={activeGuests}
       onChangeGuests={activeOrder || activeDraft.asked ? changeGuests : undefined}
       guestsBusy={savingDetails}
+      order={activeOrder}
     />
   )
 
@@ -1246,47 +1243,17 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         <div className="p-1 md:p-2">
           <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
 
-          <div className="flex justify-between items-center mb-1">
-            <Tabs
-              defaultValue={activeView}
-              onValueChange={(value) => setActiveView(value as "tables" | "orders")}
-              className="w-full"
-            >
-              <TabsList>
-                <TabsTrigger value="tables">Mesas</TabsTrigger>
-                <TabsTrigger value="orders">Órdenes</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="tables" className="mt-0 p-0">
-                {/* Table selection */}
-                <TablesSection
-                  activeTable={activeTable}
-                  profile={profile}
-                  profiles={waiters}
-                  onSelectTable={handleTableSelect}
-                  onReserveTable={handleReserveTable}
-                  onReleaseTable={handleReleaseTable}
-                  isTableAccessible={checkTableAccess}
-                  floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id, elapsedOf }}
-                />
-
-              </TabsContent>
-
-              <TabsContent value="orders" className="mt-0 p-0">
-                {activeOrders.length === 0 ? (
-                  <div className="text-center py-10 text-muted-foreground">No hay órdenes activas</div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mt-2">
-                    {activeOrders.map((order) => {
-                      const table = tables.find((t) => t.id === order.tableId)
-                      const waiter = waiters.find((p) => p.id === order.waiter)
-
-                      return <CompactOrderCard key={order.id} order={order} table={table} waiter={waiter} />
-                    })}
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+          <div className="mb-1">
+            <TablesSection
+              activeTable={activeTable}
+              profile={profile}
+              profiles={waiters}
+              onSelectTable={handleTableSelect}
+              onReserveTable={handleReserveTable}
+              onReleaseTable={handleReleaseTable}
+              isTableAccessible={checkTableAccess}
+              floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id, elapsedOf }}
+            />
           </div>
         </div>
       </div>
