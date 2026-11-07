@@ -18,6 +18,11 @@ const wholeFee = (value: string) => {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
 };
 const text = (value: string) => value;
+
+/** How waiters reach the system (F2): their own accounts (default) or a shared terminal with a personal PIN. */
+export const WAITER_ACCESS_MODES = ['own_accounts', 'shared_terminal'] as const;
+export type WaiterAccessMode = (typeof WAITER_ACCESS_MODES)[number];
+const accessMode = (value: string): WaiterAccessMode => (value === 'shared_terminal' ? 'shared_terminal' : 'own_accounts');
 /** Late thresholds: a stored value that is not an integer 1..240 reads as the default. */
 const minutes = (fallback: number) => (value: string) => {
   const trimmed = value.trim();
@@ -39,6 +44,8 @@ export const CONFIG_KEYS = {
   kitchenLateMinutes: { key: 'kitchen_late_minutes', fallback: 25, read: minutes(25) },
   /** Minutes after which an open delivery is late (default 45). */
   deliveryLateMinutes: { key: 'delivery_late_minutes', fallback: 45, read: minutes(45) },
+  /** own_accounts (default, a login per waiter) | shared_terminal (order writes need a PIN identification). */
+  waiterAccessMode: { key: 'waiter_access_mode', fallback: 'own_accounts' as WaiterAccessMode, read: accessMode },
 } as const;
 
 export type ConfigField = keyof typeof CONFIG_KEYS;
@@ -59,6 +66,7 @@ export const updateConfigSchema = z.strictObject({
   deliveryDefaultFee: z.number().int().min(0).optional(),
   kitchenLateMinutes: lateMinutes.optional(),
   deliveryLateMinutes: lateMinutes.optional(),
+  waiterAccessMode: z.enum(WAITER_ACCESS_MODES).optional(),
 });
 
 /** Typed config built from the stored rows; missing or unreadable keys take the default. */
@@ -86,6 +94,12 @@ export class BusinessConfig {
   kitchenLateMinutes!: number;
   @ApiProperty({ default: 45, minimum: 1, maximum: 240, description: 'Minutes after which an open delivery is late.' })
   deliveryLateMinutes!: number;
+  @ApiProperty({
+    enum: WAITER_ACCESS_MODES,
+    default: 'own_accounts',
+    description: 'own_accounts: each waiter logs in; shared_terminal: a terminal session takes orders and each write needs the PIN identification.',
+  })
+  waiterAccessMode!: WaiterAccessMode;
 }
 
 export class UpdateBusinessConfigRequest {
@@ -100,4 +114,5 @@ export class UpdateBusinessConfigRequest {
   @ApiPropertyOptional({ minimum: 0, type: 'integer' }) deliveryDefaultFee?: number;
   @ApiPropertyOptional({ minimum: 1, maximum: 240, type: 'integer' }) kitchenLateMinutes?: number;
   @ApiPropertyOptional({ minimum: 1, maximum: 240, type: 'integer' }) deliveryLateMinutes?: number;
+  @ApiPropertyOptional({ enum: WAITER_ACCESS_MODES }) waiterAccessMode?: WaiterAccessMode;
 }

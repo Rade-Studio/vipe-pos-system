@@ -16,6 +16,7 @@ const DEFAULTS = {
   deliveryDefaultFee: 0,
   kitchenLateMinutes: 25,
   deliveryLateMinutes: 45,
+  waiterAccessMode: 'own_accounts',
 };
 
 describe('business config endpoints (Testcontainers, vipe_api)', () => {
@@ -138,6 +139,24 @@ describe('business config endpoints (Testcontainers, vipe_api)', () => {
     );
     expect((await get(fixtures.waiterA)).body).toMatchObject({ kitchenLateMinutes: 1, deliveryLateMinutes: 240 });
     expect((await get(fixtures.adminB)).body).toMatchObject({ kitchenLateMinutes: 20, deliveryLateMinutes: 45 });
+  });
+
+  it('stores the waiter access mode for the admin and serves it to staff, per restaurant', async () => {
+    const res = await put(fixtures.adminA, { waiterAccessMode: 'shared_terminal' });
+    expect(res.status).toBe(200);
+    expect(res.body.waiterAccessMode).toBe('shared_terminal');
+    expect(await rows(fixtures.restaurantA)).toContainEqual({ key: 'waiter_access_mode', value: 'shared_terminal' });
+    expect((await get(fixtures.waiterA)).body.waiterAccessMode).toBe('shared_terminal');
+    expect((await get(fixtures.adminB)).body.waiterAccessMode).toBe('own_accounts');
+    const back = await put(fixtures.adminA, { waiterAccessMode: 'own_accounts' });
+    expect(back.body.waiterAccessMode).toBe('own_accounts');
+  });
+
+  it('refuses a waiter switching the access mode (403) and an unknown mode (422)', async () => {
+    const before = await rows(fixtures.restaurantA);
+    expect((await put(fixtures.waiterA, { waiterAccessMode: 'shared_terminal' })).status).toBe(403);
+    expect((await put(fixtures.adminA, { waiterAccessMode: 'mixed' })).status).toBe(422);
+    expect(await rows(fixtures.restaurantA)).toEqual(before);
   });
 
   it('rejects a waiter writing a late threshold with 403', async () => {

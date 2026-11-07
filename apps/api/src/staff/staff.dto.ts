@@ -97,6 +97,9 @@ export class StaffMember {
   @ApiProperty({ enum: PROFILE_ROLES }) role!: string;
   @ApiProperty() active!: boolean;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ description: 'The member has a PIN (shared terminal, supervisor authorization).' }) hasPin!: boolean;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'End of a running PIN lockout (5 failures lock 5 minutes); null when not locked.' })
+  pinLockedUntil!: string | null;
 }
 
 export class CreateStaffRequest {
@@ -114,6 +117,11 @@ export class UpdateStaffRequest {
   username?: string | null;
   @ApiPropertyOptional() active?: boolean;
   @ApiPropertyOptional({ enum: STAFF_ROLES }) role?: StaffRole;
+}
+
+export class SetStaffPinRequest {
+  @ApiProperty({ pattern: '^\\d{4,6}$', description: '4-6 digits; not one repeated digit, a run (1234, 4321) or a repeated block (1212).' })
+  pin!: string;
 }
 
 export class SetStaffPasswordRequest {

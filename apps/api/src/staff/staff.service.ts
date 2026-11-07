@@ -14,6 +14,8 @@ interface StaffRow {
   role: string;
   active: boolean;
   created_at: Date | string;
+  has_pin: boolean;
+  pin_locked_until: Date | string | null;
 }
 
 const toStaffMember = (row: StaffRow): StaffMember => ({
@@ -25,6 +27,8 @@ const toStaffMember = (row: StaffRow): StaffMember => ({
   role: row.role,
   active: row.active,
   createdAt: new Date(row.created_at).toISOString(),
+  hasPin: row.has_pin,
+  pinLockedUntil: row.pin_locked_until === null ? null : new Date(row.pin_locked_until).toISOString(),
 });
 
 /**
@@ -92,9 +96,12 @@ export class StaffService {
   private select(tail: SQL): Promise<StaffRow[]> {
     return this.rows<StaffRow>(sql`
       SELECT p.id, p.user_id, p.full_name, p.username, coalesce(u.email::text, p.email) AS email,
-             p.role, p.active, p.created_at
+             p.role, p.active, p.created_at, sp.profile_id IS NOT NULL AS has_pin,
+             l.locked_until AS pin_locked_until
         FROM public.profiles p
         LEFT JOIN public.users u ON u.id = p.user_id
+        LEFT JOIN public.staff_pins sp ON sp.profile_id = p.id
+        LEFT JOIN private.staff_pin_locks(now()) l ON l.profile_id = p.id
        ${tail}`);
   }
 

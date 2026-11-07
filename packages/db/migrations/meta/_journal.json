@@ -120,6 +120,13 @@
       "when": 1793849681411,
       "tag": "0016_delivery_details",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793853281411,
+      "tag": "0017_staff_pins",
+      "breakpoints": true
     }
   ]
 }

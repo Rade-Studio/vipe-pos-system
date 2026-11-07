@@ -23,6 +23,7 @@ export const businessConfig = pgTable("business_config", {
 	pgPolicy("business_config_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("business_config_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("business_config_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	check("business_config_waiter_access_mode", sql`((key)::text <> 'waiter_access_mode'::text) OR (value = ANY (ARRAY['own_accounts'::text, 'shared_terminal'::text]))`),
 ]);
 
 export const cashRegisters = pgTable("cash_registers", {
@@ -634,6 +635,7 @@ export const orderItems = pgTable("order_items", {
 	addedAt: timestamp("added_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
 	stockConsumedAt: timestamp("stock_consumed_at", { withTimezone: true, mode: 'string' }),
+	createdByProfileId: uuid("created_by_profile_id"),
 }, (table) => [
 	index("idx_order_items_order").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
 	index("idx_order_items_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
@@ -654,6 +656,11 @@ export const orderItems = pgTable("order_items", {
 			foreignColumns: [restaurants.id],
 			name: "order_items_restaurant_id_fkey"
 		}),
+	foreignKey({
+			columns: [table.restaurantId, table.createdByProfileId],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "order_items_created_by_profile_fkey"
+		}).onDelete("set null"),
 	pgPolicy("order_items_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("order_items_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("order_items_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
@@ -682,6 +689,7 @@ export const orders = pgTable("orders", {
 	orderNumber: integer("order_number").notNull(),
 	guests: smallint(),
 	notes: text(),
+	createdByProfileId: uuid("created_by_profile_id"),
 }, (table) => [
 	index("idx_orders_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	index("idx_orders_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
@@ -707,6 +715,11 @@ export const orders = pgTable("orders", {
 			columns: [table.waiterId],
 			foreignColumns: [profiles.id],
 			name: "orders_waiter_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.createdByProfileId],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "orders_created_by_profile_fkey"
 		}).onDelete("set null"),
 	pgPolicy("orders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("orders_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
@@ -1297,15 +1310,87 @@ export const authSessions = pgTable("auth_sessions", {
 	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }).notNull(),
 	revokedAt: timestamp("revoked_at", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	kind: text().default('user').notNull(),
+	parentSessionId: uuid("parent_session_id"),
 }, (table) => [
 	index("idx_auth_sessions_user_id").using("btree", table.userId.asc().nullsLast().op("uuid_ops")),
+	index("idx_auth_sessions_parent_session_id").using("btree", table.parentSessionId.asc().nullsLast().op("uuid_ops")).where(sql`(parent_session_id IS NOT NULL)`),
 	foreignKey({
 			columns: [table.userId],
 			foreignColumns: [users.id],
 			name: "auth_sessions_user_id_fkey"
 		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.parentSessionId],
+			foreignColumns: [table.id],
+			name: "auth_sessions_parent_session_id_fkey"
+		}).onDelete("cascade"),
 	unique("auth_sessions_refresh_hash_key").on(table.refreshHash),
 	pgPolicy("auth_sessions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(user_id = ( SELECT private.current_user_id() AS current_user_id))` }),
+	check("auth_sessions_kind_check", sql`kind = ANY (ARRAY['user'::text, 'terminal'::text, 'acting'::text])`),
+	check("auth_sessions_acting_parent", sql`(kind = 'acting'::text) = (parent_session_id IS NOT NULL)`),
+]);
+
+export const staffPins = pgTable("staff_pins", {
+	profileId: uuid("profile_id").primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	pinHash: text("pin_hash").notNull(),
+	pinPepperVersion: smallint("pin_pepper_version").default(1).notNull(),
+	setBy: uuid("set_by"),
+	setAt: timestamp("set_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_staff_pins_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "staff_pins_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.profileId],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "staff_pins_profile_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.setBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "staff_pins_set_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("staff_pins_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	check("staff_pins_pin_hash_argon2id", sql`pin_hash ~ '^\\$argon2id\\$v=19\\$m=[0-9]+,[pt]=[0-9]+,[pt]=[0-9]+\\$[A-Za-z0-9+/]{16,}\\$[A-Za-z0-9+/]{32,}$'::text`),
+	check("staff_pins_pepper_version", sql`pin_pepper_version = ANY (ARRAY[1, 2])`),
+]);
+
+export const supervisorAuthorizations = pgTable("supervisor_authorizations", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	action: text().notNull(),
+	supervisorProfileId: uuid("supervisor_profile_id"),
+	requestedByProfileId: uuid("requested_by_profile_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }).notNull(),
+	consumedAt: timestamp("consumed_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	index("idx_supervisor_authorizations_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "supervisor_authorizations_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.supervisorProfileId],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "supervisor_authorizations_supervisor_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.requestedByProfileId],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "supervisor_authorizations_requested_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("supervisor_authorizations_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	check("supervisor_authorizations_action_format", sql`action ~ '^[a-z][a-z_]{0,39}$'::text`),
+	check("supervisor_authorizations_window", sql`(expires_at > created_at) AND (expires_at <= (created_at + '00:10:00'::interval))`),
+	check("supervisor_authorizations_consumed_after", sql`(consumed_at IS NULL) OR (consumed_at >= created_at)`),
 ]);
 
 export const printerTokens = pgTable("printer_tokens", {

@@ -18,7 +18,7 @@ class UsersProbe {
   }
 }
 
-const STAFF_KEYS = ['active', 'createdAt', 'email', 'fullName', 'id', 'role', 'userId', 'username'];
+const STAFF_KEYS = ['active', 'createdAt', 'email', 'fullName', 'hasPin', 'id', 'pinLockedUntil', 'role', 'userId', 'username'];
 const NEW_PASSWORD = 'otra clave segura 2026';
 /** A second admin of restaurant A, seeded by this spec. */
 const adminA2 = {

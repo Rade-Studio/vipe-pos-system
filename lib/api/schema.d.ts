@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/terminal/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AuthController_terminalLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/refresh": {
         parameters: {
             query?: never;
@@ -62,6 +78,54 @@ export interface paths {
         get: operations["AuthController_me"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["AuthController_changeOwnPin"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/identify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AuthController_identify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AuthController_authorize"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1572,6 +1636,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/{id}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["StaffController_setPin"];
+        post?: never;
+        delete: operations["StaffController_removePin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dashboard/summary": {
         parameters: {
             query?: never;
@@ -1646,6 +1726,73 @@ export interface components {
         SessionResponse: {
             user: components["schemas"]["SessionUser"];
             profile: components["schemas"]["SessionProfile"];
+            /**
+             * @description user: a personal login; terminal: a shared order-taking device (POST /auth/terminal/login).
+             * @enum {string}
+             */
+            sessionKind: "user" | "terminal";
+        };
+        ChangeOwnPinRequest: {
+            /** @description The current PIN. */
+            currentPin: string;
+            /** @description 4-6 digits; not one repeated digit, a run (1234, 4321) or a repeated block (1212). */
+            pin: string;
+        };
+        IdentifyRequest: {
+            /**
+             * Format: uuid
+             * @description Profile picked on the terminal.
+             */
+            profileId: string;
+            pin: string;
+        };
+        ActingProfile: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @example waiter */
+            role: string;
+        };
+        IdentifyResponse: {
+            /** @description Send as the X-Vipe-Acting header on the order writes of this terminal. */
+            token: string;
+            /**
+             * Format: date-time
+             * @description 5 minutes after the identification.
+             */
+            expiresAt: string;
+            profile: components["schemas"]["ActingProfile"];
+        };
+        AuthorizeRequest: {
+            /** @description PIN of an admin or cashier of the restaurant. */
+            pin: string;
+            /** @enum {string} */
+            action: "cancel_order" | "void_item" | "void_payment";
+            /**
+             * Format: uuid
+             * @description Only this supervisor is tried; omitted, every supervisor with a PIN.
+             */
+            profileId?: string;
+        };
+        AuthorizationSupervisor: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        AuthorizeResponse: {
+            /**
+             * Format: uuid
+             * @description Single use, bound to the action and the restaurant.
+             */
+            authorizationId: string;
+            /** @enum {string} */
+            action: "cancel_order" | "void_item" | "void_payment";
+            supervisor: components["schemas"]["AuthorizationSupervisor"];
+            /**
+             * Format: date-time
+             * @description 2 minutes after the authorization.
+             */
+            expiresAt: string;
         };
         HealthResponse: Record<string, never>;
         Category: {
@@ -1974,6 +2121,12 @@ export interface components {
              * @default 45
              */
             deliveryLateMinutes: number;
+            /**
+             * @description own_accounts: each waiter logs in; shared_terminal: a terminal session takes orders and each write needs the PIN identification.
+             * @default own_accounts
+             * @enum {string}
+             */
+            waiterAccessMode: "own_accounts" | "shared_terminal";
         };
         UpdateBusinessConfigRequest: {
             taxPercentage?: number;
@@ -1987,6 +2140,8 @@ export interface components {
             deliveryDefaultFee?: number;
             kitchenLateMinutes?: number;
             deliveryLateMinutes?: number;
+            /** @enum {string} */
+            waiterAccessMode?: "own_accounts" | "shared_terminal";
         };
         OrderItem: {
             /** Format: uuid */
@@ -3634,6 +3789,13 @@ export interface components {
             active: boolean;
             /** Format: date-time */
             createdAt: string;
+            /** @description The member has a PIN (shared terminal, supervisor authorization). */
+            hasPin: boolean;
+            /**
+             * Format: date-time
+             * @description End of a running PIN lockout (5 failures lock 5 minutes); null when not locked.
+             */
+            pinLockedUntil: string | null;
         };
         CreateStaffRequest: {
             /**
@@ -3659,6 +3821,10 @@ export interface components {
         };
         SetStaffPasswordRequest: {
             password: string;
+        };
+        SetStaffPinRequest: {
+            /** @description 4-6 digits; not one repeated digit, a run (1234, 4321) or a repeated block (1212). */
+            pin: string;
         };
         DailySales: {
             /**
@@ -3760,6 +3926,44 @@ export interface operations {
             };
         };
     };
+    AuthController_terminalLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Opens a shared order-taking terminal (sessionKind terminal): only the order-taking routes, no admin screens. Sets the same cookies. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Solo un administrador o cajero puede abrir una terminal compartida (or no active profile). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     AuthController_refresh: {
         parameters: {
             query?: never;
@@ -3822,6 +4026,132 @@ export interface operations {
             };
             /** @description No valid access cookie. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_changeOwnPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeOwnPinRequest"];
+            };
+        };
+        responses: {
+            /** @description The caller's PIN is replaced (the current one was right). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PIN incorrecto (code pin_invalid; the failure counts), or a terminal session. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Weak or malformed new PIN, or no PIN yet (Spanish message). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 5 failures lock the profile and the session 5 minutes (code pin_locked). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_identify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Terminal only: the acting-staff claim, valid 5 minutes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentifyResponse"];
+                };
+            };
+            /** @description Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The profile or this terminal is locked for 5 minutes (code pin_locked). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_authorize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthorizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Single-use supervisor authorization for the action, valid 2 minutes. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorizeResponse"];
+                };
+            };
+            /** @description PIN incorrecto (code pin_invalid): no admin or cashier of the restaurant has that PIN. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown action or malformed PIN. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The session or the named supervisor is locked for 5 minutes (code pin_locked). */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8615,6 +8945,92 @@ export interface operations {
         };
         responses: {
             /** @description Password replaced; the member's open sessions are revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a profile of the caller's restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_setPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetStaffPinRequest"];
+            };
+        };
+        responses: {
+            /** @description PIN set or reset (stored as an argon2id hash); its lockout is cleared. Any profile of the restaurant, the admin included. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an active admin, or the target is an admin or the caller. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a profile of the caller's restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input; the message is the Spanish text the staff form shows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StaffController_removePin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PIN removed (no-op when the member has none). */
             204: {
                 headers: {
                     [name: string]: unknown;

@@ -7,7 +7,7 @@ import { ApiError } from "./errors"
  * create-staff-account Edge Function and direct `profiles` writes.
  */
 
-const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() }))
+const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn(), PATCH: vi.fn(), PUT: vi.fn(), DELETE: vi.fn() }))
 vi.mock("@/lib/api/client", () => ({ api }))
 
 import {
@@ -15,7 +15,9 @@ import {
   createStaffAccount,
   deleteStaff,
   listStaff,
+  removeStaffPin,
   setStaffPassword,
+  setStaffPin,
   updateStaff,
 } from "./staff"
 
@@ -134,5 +136,22 @@ describe("the other staff routes", () => {
       kind: "invalid",
       message: "El integrante tiene mesas asignadas",
     })
+  })
+})
+
+describe("staff PINs (F2)", () => {
+  it("sets or resets a PIN with PUT /api/staff/{id}/pin", async () => {
+    await expect(setStaffPin("p-1", "4829")).resolves.toBeUndefined()
+    expect(api.PUT).toHaveBeenCalledWith("/api/staff/{id}/pin", { params: { path: { id: "p-1" } }, body: { pin: "4829" } })
+  })
+
+  it("removes a PIN with DELETE /api/staff/{id}/pin", async () => {
+    await expect(removeStaffPin("p-1")).resolves.toBeUndefined()
+    expect(api.DELETE).toHaveBeenCalledWith("/api/staff/{id}/pin", { params: { path: { id: "p-1" } } })
+  })
+
+  it("keeps the server's Spanish text for a weak PIN", async () => {
+    api.PUT.mockRejectedValueOnce(new ApiError(422, "Unprocessable Entity", "El PIN es muy fácil de adivinar"))
+    await expect(kindOf(setStaffPin("p-1", "1234"))).resolves.toEqual({ kind: "invalid", message: "El PIN es muy fácil de adivinar" })
   })
 })

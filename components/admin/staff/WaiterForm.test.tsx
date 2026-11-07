@@ -33,6 +33,8 @@ const member: StaffMember = {
   role: "waiter",
   active: true,
   createdAt: "2026-11-04T00:00:00.000Z",
+  hasPin: false,
+  pinLockedUntil: null,
 }
 
 beforeEach(() => {
