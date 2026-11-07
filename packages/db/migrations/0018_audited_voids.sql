@@ -30,19 +30,26 @@
 -- 5. business_config key allow_self_authorization ('true' | 'false', missing
 --    = false): whether a supervisor may authorize their own action; such
 --    events are flagged self_authorized.
+-- 5b. supervisor_authorizations gains target_type/target_id: an
+--    authorization (private.create_target_authorization) is for one order
+--    (cancel_order, void_item) or one payment (void_payment) and is usable
+--    only by the staff member who requested it (requested_by_profile_id).
 -- 6. Writers: public.cancel_order, public.void_order_items and
 --    public.void_payment (SECURITY DEFINER). The API consumes the supervisor
 --    authorization first (private.consume_supervisor_authorization, 0017) in
 --    the same transaction; the functions accept only a consumed
---    authorization of the caller's restaurant, for that action, from an
---    active admin or cashier, not used by another event, and different from
---    the caller unless allow_self_authorization is on. Required: cancelling
+--    authorization of the caller's restaurant, for that action and target,
+--    requested by the caller, from an active admin or cashier with an active
+--    user, not used by another event, and different from the caller unless
+--    allow_self_authorization is on. Required: cancelling
 --    an order with a live item or any payment, voiding any line (every
 --    server-side line was sent to the kitchen) and voiding any payment.
 -- 7. Guards for vipe_api (postgres and vipe_migrator, the definer functions
 --    and migrations, pass): no DELETE of orders or order_items, no status
 --    change into or out of 'paid' or 'cancelled', no change of an item's
---    quantity or price and no 'cancelled' item; delete_order_with_items now
+--    quantity or price and no 'cancelled' item, no line inserted with
+--    quantity 0, as cancelled or into a cancelled order, no line moved out
+--    of or into a cancelled order; delete_order_with_items now
 --    refuses (42501); the four new tables are read-only for vipe_api (RLS
 --    policies for SELECT, UPDATE and DELETE scoped to the restaurant, no
 --    INSERT policy, and a trigger that refuses every write); a voided_at
@@ -59,7 +66,8 @@
 -- Spanish message): 42501 authorization_required, authorization_invalid,
 -- self_authorization_not_allowed; P0002 order_not_found, item_not_found,
 -- payment_not_found; P0001 order_cancelled, order_paid, order_closed,
--- delivery_order, payment_voided, register_closed; 22023 reason_invalid,
+-- delivery_order, payment_voided, register_closed (undo_split:
+-- split_has_voids); 22023 reason_invalid,
 -- reason_text_required, items_invalid, void_quantity_exceeded.
 ALTER TABLE public.business_config
   ADD CONSTRAINT business_config_allow_self_authorization CHECK (key <> 'allow_self_authorization' OR value IN ('true', 'false'));
@@ -97,6 +105,38 @@ CREATE POLICY payment_tenders_select_policy ON public.payment_tenders FOR SELECT
   USING (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)
          AND EXISTS (SELECT 1 FROM public.payments p WHERE p.id = payment_tenders.payment_id AND p.voided_at IS NULL));
 --> statement-breakpoint
+ALTER TABLE public.supervisor_authorizations
+  ADD COLUMN target_type text,
+  ADD COLUMN target_id uuid,
+  ADD CONSTRAINT supervisor_authorizations_target_check CHECK ((target_type IS NULL) = (target_id IS NULL) AND (target_type IS NULL OR target_type IN ('order', 'payment'))),
+  ADD CONSTRAINT supervisor_authorizations_target_action_check CHECK (target_type IS NULL OR (target_type = 'payment') = (action = 'void_payment'));
+--> statement-breakpoint
+COMMENT ON COLUMN public.supervisor_authorizations.target_id IS 'The order (cancel_order, void_item) or payment (void_payment) the authorization is for (0018); the cancellation or void must name the same target and be done by requested_by_profile_id. NULL on rows from before 0018, which back no event.';
+--> statement-breakpoint
+CREATE FUNCTION private.create_target_authorization(p_supervisor_profile_id uuid, p_action text, p_now timestamptz, p_target_type text, p_target_id uuid)
+    RETURNS uuid
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+DECLARE
+  v_id uuid;
+BEGIN
+  IF p_target_type IS NULL OR p_target_id IS NULL OR p_target_type NOT IN ('order', 'payment')
+     OR (p_target_type = 'payment') <> (p_action = 'void_payment') THEN
+    RAISE EXCEPTION 'create_target_authorization: the target does not match the action' USING ERRCODE = '22023';
+  END IF;
+  v_id := private.create_supervisor_authorization(p_supervisor_profile_id, p_action, p_now);
+  UPDATE public.supervisor_authorizations SET target_type = p_target_type, target_id = p_target_id WHERE id = v_id;
+  RETURN v_id;
+END;
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.create_target_authorization(uuid, text, timestamptz, text, uuid) IS 'private.create_supervisor_authorization (same checks: an active admin or cashier with a PIN of the caller''s restaurant, requested_by = the caller, which on a shared terminal is the identified staff member) bound to one target: an order for cancel_order and void_item, a payment for void_payment (else 22023). The target is not looked up here: an authorization for a foreign or unknown target simply backs no event.';
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION private.create_target_authorization(uuid, text, timestamptz, text, uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION private.create_target_authorization(uuid, text, timestamptz, text, uuid) TO vipe_api;
+--> statement-breakpoint
 CREATE FUNCTION private.guard_payment_voided_final() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO ''
@@ -126,6 +166,23 @@ BEGIN
     RAISE EXCEPTION '% rows are never deleted: cancel the order or void the item', TG_TABLE_NAME
       USING ERRCODE = '42501';
   END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.quantity = 0 OR NEW.status = 'cancelled' THEN
+      RAISE EXCEPTION 'order_items: a line is inserted with units; cancelled lines come only from void_order_items'
+        USING ERRCODE = '42501';
+    END IF;
+    IF EXISTS (SELECT 1 FROM public.orders o WHERE o.id = NEW.order_id AND o.status = 'cancelled') THEN
+      RAISE EXCEPTION 'order_items: order % is cancelled', NEW.order_id USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF TG_TABLE_NAME = 'order_items' THEN
+    -- Nested: plpgsql does not short-circuit, and orders rows have no order_id.
+    IF NEW.order_id IS DISTINCT FROM OLD.order_id
+       AND EXISTS (SELECT 1 FROM public.orders o WHERE o.id IN (OLD.order_id, NEW.order_id) AND o.status = 'cancelled') THEN
+      RAISE EXCEPTION 'order_items: a line does not move out of or into a cancelled order' USING ERRCODE = '42501';
+    END IF;
+  END IF;
   IF TG_TABLE_NAME = 'orders' THEN
     IF NEW.status IS DISTINCT FROM OLD.status
        AND (OLD.status IN ('paid', 'cancelled') OR NEW.status IN ('paid', 'cancelled')) THEN
@@ -142,12 +199,12 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.guard_order_lifecycle() IS 'BEFORE UPDATE OR DELETE on orders and order_items for every role but postgres and vipe_migrator (the SECURITY DEFINER RPCs, migrations and seeds): no DELETE; no orders.status change into or out of paid or cancelled; no order_items quantity or price change and no cancelled item. 42501.';
+COMMENT ON FUNCTION private.guard_order_lifecycle() IS 'BEFORE UPDATE OR DELETE on orders and BEFORE INSERT OR UPDATE OR DELETE on order_items, for every role but postgres and vipe_migrator (the SECURITY DEFINER RPCs, migrations and seeds): no DELETE; no orders.status change into or out of paid or cancelled; no order_items quantity or price change and no cancelled item; no line inserted with quantity 0, as cancelled or into a cancelled order; no line moved out of or into a cancelled order. 42501.';
 --> statement-breakpoint
 CREATE TRIGGER orders_lifecycle_guard BEFORE UPDATE OR DELETE ON public.orders
   FOR EACH ROW EXECUTE FUNCTION private.guard_order_lifecycle();
 --> statement-breakpoint
-CREATE TRIGGER order_items_lifecycle_guard BEFORE UPDATE OR DELETE ON public.order_items
+CREATE TRIGGER order_items_lifecycle_guard BEFORE INSERT OR UPDATE OR DELETE ON public.order_items
   FOR EACH ROW EXECUTE FUNCTION private.guard_order_lifecycle();
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.delete_order_with_items(p_order_id uuid) RETURNS void
@@ -1381,10 +1438,14 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
-  -- 0018: voids are history, so a child order with events is not merged back.
-  IF EXISTS (SELECT 1 FROM public.audit_log a WHERE a.order_id = p_child_order_id) THEN
-    RAISE EXCEPTION 'undo_split: child order % has voided items or payments', p_child_order_id
-      USING ERRCODE = 'P0001';
+  -- 0018: voids are history, so a child order with events, or a line with
+  -- void history (voided on the parent, then moved here), is never merged back
+  -- and deleted (order_item_voids references it).
+  IF EXISTS (SELECT 1 FROM public.audit_log a WHERE a.order_id = p_child_order_id)
+     OR EXISTS (SELECT 1 FROM public.order_item_voids v
+                  JOIN public.order_items ci ON ci.id = v.order_item_id
+                 WHERE ci.order_id = p_child_order_id) THEN
+    RAISE EXCEPTION 'undo_split: split_has_voids' USING ERRCODE = 'P0001';
   END IF;
 
   -- Lock the parent now that we know it is non-NULL.
@@ -1720,7 +1781,8 @@ $$;
 --> statement-breakpoint
 COMMENT ON FUNCTION private.void_reason_text(text, text, text) IS 'Validates a cancellation/void reason code (the fixed list of the API, VOID_REASONS) and returns the free text collapsed and trimmed (NULL when blank). "other" needs a text; a text is 3..200 characters. 22023 reason_invalid / reason_text_required.';
 --> statement-breakpoint
-CREATE FUNCTION private.void_authorizer(p_fn text, p_restaurant_id uuid, p_actor uuid, p_action text, p_authorization_id uuid, p_required boolean,
+CREATE FUNCTION private.void_authorizer(p_fn text, p_restaurant_id uuid, p_actor uuid, p_action text, p_target_type text, p_target_id uuid,
+                                        p_authorization_id uuid, p_required boolean,
                                         OUT authorized_by uuid, OUT authorized_by_name text, OUT self_authorized boolean) RETURNS record
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO ''
@@ -1741,6 +1803,9 @@ BEGIN
    WHERE a.id = p_authorization_id
      AND a.restaurant_id = p_restaurant_id
      AND a.action = p_action
+     AND a.target_type = p_target_type
+     AND a.target_id = p_target_id
+     AND a.requested_by_profile_id = p_actor
      AND a.consumed_at IS NOT NULL
      AND a.supervisor_profile_id IS NOT NULL;
   IF NOT FOUND OR EXISTS (SELECT 1 FROM public.audit_log l WHERE l.authorization_id = p_authorization_id) THEN
@@ -1749,9 +1814,11 @@ BEGIN
 
   SELECT p.id, p.full_name INTO authorized_by, authorized_by_name
     FROM public.profiles p
+    JOIN public.users u ON u.id = p.user_id
    WHERE p.id = v_auth.supervisor_profile_id
      AND p.restaurant_id = p_restaurant_id
      AND p.active
+     AND u.is_active
      AND p.role IN ('admin', 'cashier');
   IF authorized_by IS NULL THEN
     RAISE EXCEPTION '%: authorization_invalid', p_fn USING ERRCODE = '42501';
@@ -1769,7 +1836,7 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.void_authorizer(text, uuid, uuid, text, uuid, boolean) IS 'The supervisor behind a cancellation or void. Without an authorization: 42501 authorization_required when p_required, else no authorizer. With one: it must be of the restaurant, for p_action, already consumed in this request (private.consume_supervisor_authorization), not backing another audit_log event, from an active admin or cashier (else authorization_invalid); the actor themself only with allow_self_authorization = true (else self_authorization_not_allowed), then self_authorized.';
+COMMENT ON FUNCTION private.void_authorizer(text, uuid, uuid, text, text, uuid, uuid, boolean) IS 'The supervisor behind a cancellation or void. Without an authorization: 42501 authorization_required when p_required, else no authorizer. With one: it must be of the restaurant, for p_action, for this target (order or payment), requested by the actor themself, already consumed in this request (private.consume_supervisor_authorization), not backing another audit_log event, from an active admin or cashier whose user is active (else authorization_invalid); the actor themself only with allow_self_authorization = true (else self_authorization_not_allowed), then self_authorized.';
 --> statement-breakpoint
 CREATE FUNCTION public.cancel_order(p_order_id uuid, p_reason_code text, p_reason_text text DEFAULT NULL, p_authorization_id uuid DEFAULT NULL) RETURNS jsonb
     LANGUAGE plpgsql SECURITY DEFINER
@@ -1823,7 +1890,7 @@ BEGIN
   v_paid := EXISTS (SELECT 1 FROM public.payments p WHERE p.order_id = p_order_id);
 
   SELECT * INTO v_auth FROM private.void_authorizer(c_fn, v_caller.restaurant_id, v_caller.profile_id, 'cancel_order',
-                                                    p_authorization_id, v_live > 0 OR v_paid);
+                                                    'order', p_order_id, p_authorization_id, v_live > 0 OR v_paid);
 
   INSERT INTO public.audit_log
     (restaurant_id, event_type, order_id, actor_profile_id, actor_name, authorized_by_profile_id, authorized_by_name,
@@ -1935,7 +2002,7 @@ BEGIN
   END LOOP;
 
   SELECT * INTO v_auth FROM private.void_authorizer(c_fn, v_caller.restaurant_id, v_caller.profile_id, 'void_item',
-                                                    p_authorization_id, v_sent);
+                                                    'order', p_order_id, p_authorization_id, v_sent);
 
   INSERT INTO public.audit_log
     (restaurant_id, event_type, order_id, actor_profile_id, actor_name, authorized_by_profile_id, authorized_by_name,
@@ -2023,7 +2090,7 @@ BEGIN
   v_text := private.void_reason_text(c_fn, p_reason_code, p_reason_text);
 
   SELECT * INTO v_auth FROM private.void_authorizer(c_fn, v_caller.restaurant_id, v_caller.profile_id, 'void_payment',
-                                                    p_authorization_id, true);
+                                                    'payment', p_payment_id, p_authorization_id, true);
 
   SELECT jsonb_agg(jsonb_build_object('line_no', t.line_no, 'payment_method_id', t.payment_method_id,
                                       'method_code', t.method_code, 'method_kind', t.method_kind, 'amount', t.amount,
@@ -2087,7 +2154,7 @@ REVOKE ALL ON FUNCTION private.guard_append_only() FROM PUBLIC;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.void_reason_text(text, text, text) FROM PUBLIC;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION private.void_authorizer(text, uuid, uuid, text, uuid, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION private.void_authorizer(text, uuid, uuid, text, text, uuid, uuid, boolean) FROM PUBLIC;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION public.cancel_order(uuid, text, text, uuid) FROM PUBLIC;
 --> statement-breakpoint

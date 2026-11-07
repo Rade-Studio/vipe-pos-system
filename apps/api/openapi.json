@@ -6578,11 +6578,26 @@
             "type": "string",
             "format": "uuid",
             "description": "Only this supervisor is tried; omitted, every supervisor with a PIN."
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "order",
+              "payment"
+            ],
+            "description": "order for cancel_order and void_item, payment for void_payment (else 422)."
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The order or payment to cancel or void. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member)."
           }
         },
         "required": [
           "pin",
-          "action"
+          "action",
+          "targetType",
+          "targetId"
         ]
       },
       "AuthorizationSupervisor": {
@@ -6607,7 +6622,7 @@
           "authorizationId": {
             "type": "string",
             "format": "uuid",
-            "description": "Single use, bound to the action and the restaurant."
+            "description": "Single use, bound to the action, the target, the caller and the restaurant."
           },
           "action": {
             "type": "string",
@@ -6616,6 +6631,17 @@
               "void_item",
               "void_payment"
             ]
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "order",
+              "payment"
+            ]
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid"
           },
           "supervisor": {
             "$ref": "#/components/schemas/AuthorizationSupervisor"
@@ -6629,6 +6655,8 @@
         "required": [
           "authorizationId",
           "action",
+          "targetType",
+          "targetId",
           "supervisor",
           "expiresAt"
         ]

@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ACTING_HEADER } from '../auth/terminal-access';
 import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
 import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabase } from '../testing/test-database';
 
@@ -24,6 +25,7 @@ const PINS: Record<string, string> = {
   [fixtures.adminA.profileId]: '9157',
   [cashier.profileId]: '582046',
   [ids.cashier2]: '73914',
+  [fixtures.waiterA.profileId]: '4829',
 };
 
 const MESSAGES = {
@@ -54,12 +56,20 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
   const admin = () => as(fixtures.adminA.email);
   const waiter = () => as(fixtures.waiterA.email);
   const cash = () => as(cashier.email);
-  const cash2 = () => as(cashier2.email);
   const adminB = () => as(fixtures.adminB.email);
+  /** A shared terminal session; with `acting` the request carries the identified staff member's claim. */
+  const onTerminal = (cookie: string, acting?: string) => {
+    const withClaim = <T extends request.Test>(req: T) => (acting ? req.set(ACTING_HEADER, acting) : req);
+    return {
+      post: (url: string, body?: object) => withClaim(server().post(url).set('Cookie', cookie)).send(body),
+    };
+  };
 
   /** A supervisor authorization from the real PIN flow. */
-  const authorize = async (action: string, supervisor: string, caller: string = fixtures.waiterA.email) => {
-    const res = await as(caller).post('/api/auth/authorize', { pin: PINS[supervisor], action, profileId: supervisor });
+  /** Bound to one order (cancel_order, void_item) or payment (void_payment); the caller must be the one who then acts. */
+  const authorize = async (action: string, supervisor: string, targetId: string, caller: string = fixtures.waiterA.email) => {
+    const targetType = action === 'void_payment' ? 'payment' : 'order';
+    const res = await as(caller).post('/api/auth/authorize', { pin: PINS[supervisor], action, profileId: supervisor, targetType, targetId });
     expect(res.status).toBe(201);
     return res.body.authorizationId as string;
   };
@@ -151,7 +161,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       expect(refused.body).toEqual({ statusCode: 403, error: 'Forbidden', message: MESSAGES.required, code: 'authorization_required' });
       expect(await orderRow(orderId)).toMatchObject({ status: 'kitchen' });
 
-      const authorizationId = await authorize('cancel_order', cashier.profileId);
+      const authorizationId = await authorize('cancel_order', cashier.profileId, orderId);
       const res = await waiter().post(`/api/orders/${orderId}/cancel`, { reason: 'customer_left', authorizationId });
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ id: orderId, status: 'cancelled', total: 13000, tableId });
@@ -183,7 +193,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
 
     it('drops the cancelled order from the kitchen, cashier and waiter views and lists it for admin with its amounts', async () => {
       const { orderId, tableId } = await newOrder([{ name: 'Arepa', price: 5000, quantity: 1 }]);
-      const authorizationId = await authorize('cancel_order', cashier.profileId);
+      const authorizationId = await authorize('cancel_order', cashier.profileId, orderId);
       expect((await waiter().post(`/api/orders/${orderId}/cancel`, { reason: 'other', reasonText: 'Mesa equivocada', authorizationId })).status).toBe(200);
 
       const kitchen = await admin().get('/api/orders?status=kitchen');
@@ -204,7 +214,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
 
     it('refuses an authorization for another action, an expired one and a foreign one (403 authorization_invalid) without spending it', async () => {
       const { orderId } = await newOrder([{ name: 'Arepa', price: 5000, quantity: 1 }]);
-      const wrongAction = await authorize('void_item', cashier.profileId);
+      const wrongAction = await authorize('void_item', cashier.profileId, orderId);
       const wrong = await waiter().post(`/api/orders/${orderId}/cancel`, { reason: 'waiter_error', authorizationId: wrongAction });
       expect(wrong.status).toBe(403);
       expect(wrong.body).toMatchObject({ message: MESSAGES.invalid, code: 'authorization_invalid' });
@@ -244,7 +254,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
 
     it('self-authorization is refused by default and flagged when the restaurant allows it (L14)', async () => {
       const { orderId } = await newOrder([{ name: 'Arepa', price: 5000, quantity: 1 }]);
-      const own = await authorize('cancel_order', cashier.profileId, cashier.email);
+      const own = await authorize('cancel_order', cashier.profileId, orderId, cashier.email);
       const refused = await cash().post(`/api/orders/${orderId}/cancel`, { reason: 'waiter_error', authorizationId: own });
       expect(refused.status).toBe(403);
       expect(refused.body).toMatchObject({ message: MESSAGES.self, code: 'self_authorization_not_allowed' });
@@ -256,7 +266,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       expect(on.body.allowSelfAuthorization).toBe(true);
       expect((await waiter().get('/api/config')).body.allowSelfAuthorization).toBe(true);
       try {
-        const own2 = await authorize('cancel_order', cashier.profileId, cashier.email);
+        const own2 = await authorize('cancel_order', cashier.profileId, orderId, cashier.email);
         const res = await cash().post(`/api/orders/${orderId}/cancel`, { reason: 'waiter_error', authorizationId: own2 });
         expect(res.status).toBe(200);
         expect(res.body.cancellation).toMatchObject({ selfAuthorized: true, cancelledBy: { id: cashier.profileId }, authorizedBy: { id: cashier.profileId } });
@@ -270,7 +280,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
     it('a paid order is not cancelled (409 order_paid) and another restaurant gets 404', async () => {
       const { orderId } = await newOrder([{ name: 'Arepa', price: 5000, quantity: 1 }]);
       expect((await pay(orderId, 5000)).status).toBe(200);
-      const authorizationId = await authorize('cancel_order', cashier.profileId);
+      const authorizationId = await authorize('cancel_order', cashier.profileId, orderId);
       const paid = await waiter().post(`/api/orders/${orderId}/cancel`, { reason: 'waiter_error', authorizationId });
       expect(paid.status).toBe(409);
       expect(paid.body).toMatchObject({ message: 'La orden ya está pagada: anula primero el pago', code: 'order_paid' });
@@ -304,7 +314,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       expect(refused.body.code).toBe('authorization_required');
       expect(await orderRow(orderId)).toMatchObject({ status: 'kitchen' });
 
-      const authorizationId = await authorize('cancel_order', cashier.profileId, fixtures.adminA.email);
+      const authorizationId = await authorize('cancel_order', cashier.profileId, orderId, fixtures.adminA.email);
       const res = await admin().delete(`/api/orders/${orderId}`, { reason: 'dish_returned', authorizationId });
       expect(res.status).toBe(204);
       expect(await orderRow(orderId)).toMatchObject({ status: 'cancelled', total: '10000.00' });
@@ -325,13 +335,13 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       expect(refused.status).toBe(403);
       expect(refused.body.code).toBe('authorization_required');
 
-      const wrongAction = await authorize('cancel_order', cashier.profileId);
+      const wrongAction = await authorize('cancel_order', cashier.profileId, orderId);
       expect(
         (await waiter().post(`/api/orders/${orderId}/items/void`, { items: [{ itemId: items[0], quantity: 1 }], reason: 'dish_returned', authorizationId: wrongAction }))
           .body.code,
       ).toBe('authorization_invalid');
 
-      const authorizationId = await authorize('void_item', cashier.profileId);
+      const authorizationId = await authorize('void_item', cashier.profileId, orderId);
       const res = await waiter().post(`/api/orders/${orderId}/items/void`, { items: [{ itemId: items[0], quantity: 2 }], reason: 'dish_returned', authorizationId });
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ status: 'kitchen', subtotal: 7000, total: 7000 });
@@ -358,7 +368,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
         { name: 'Jugo', price: 2000, quantity: 1, status: 'served' },
       ]);
       const other = await newOrder([{ name: 'Arepa', price: 5000, quantity: 1 }]);
-      const auth1 = await authorize('void_item', cashier.profileId);
+      const auth1 = await authorize('void_item', cashier.profileId, orderId);
       const tooMany = await waiter().post(`/api/orders/${orderId}/items/void`, { items: [{ itemId: items[0], quantity: 2 }], reason: 'waiter_error', authorizationId: auth1 });
       expect(tooMany.status).toBe(422);
       expect(tooMany.body).toMatchObject({ message: 'No puedes anular más unidades de las que tiene el producto', code: 'void_quantity_exceeded' });
@@ -377,9 +387,9 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       expect(await db('SELECT quantity, status FROM order_items WHERE id = $1', [items[0]])).toEqual([{ quantity: 0, status: 'cancelled' }]);
       expect((await admin().get('/api/orders?status=kitchen')).body.map((o: { id: string }) => o.id)).not.toContain(orderId);
 
-      const cancelAuth = await authorize('cancel_order', cashier.profileId);
+      const cancelAuth = await authorize('cancel_order', cashier.profileId, orderId);
       expect((await waiter().post(`/api/orders/${orderId}/cancel`, { reason: 'customer_left', authorizationId: cancelAuth })).status).toBe(200);
-      const closed = await waiter().post(`/api/orders/${orderId}/items/void`, { items: [{ itemId: items[1], quantity: 1 }], reason: 'waiter_error', authorizationId: await authorize('void_item', cashier.profileId) });
+      const closed = await waiter().post(`/api/orders/${orderId}/items/void`, { items: [{ itemId: items[1], quantity: 1 }], reason: 'waiter_error', authorizationId: await authorize('void_item', cashier.profileId, orderId) });
       expect(closed.status).toBe(409);
       expect(closed.body.code).toBe('order_closed');
       expect((await adminB().post(`/api/orders/${other.orderId}/items/void`, { items: [{ itemId: other.items[0], quantity: 1 }], reason: 'waiter_error' })).status).toBe(404);
@@ -415,7 +425,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       expect(refused.body.code).toBe('authorization_required');
       expect((await waiter().post(`/api/payments/${paymentId}/void`, { reason: 'duplicate_charge' })).status).toBe(403);
 
-      const authorizationId = await authorize('void_payment', ids.cashier2, cashier.email);
+      const authorizationId = await authorize('void_payment', ids.cashier2, paymentId, cashier.email);
       const res = await cash().post(`/api/payments/${paymentId}/void`, { reason: 'wrong_payment_method', authorizationId });
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({
@@ -446,7 +456,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       expect((await cash().get('/api/orders?status=delivered')).body.map((o: { id: string }) => o.id)).toContain(orderId);
       expect(await db('SELECT voided_at IS NOT NULL AS voided FROM payments WHERE id = $1', [paymentId])).toEqual([{ voided: true }]);
 
-      const twice = await cash().post(`/api/payments/${paymentId}/void`, { reason: 'duplicate_charge', authorizationId: await authorize('void_payment', ids.cashier2, cashier.email) });
+      const twice = await cash().post(`/api/payments/${paymentId}/void`, { reason: 'duplicate_charge', authorizationId: await authorize('void_payment', ids.cashier2, paymentId, cashier.email) });
       expect(twice.status).toBe(409);
       expect(twice.body.code).toBe('payment_voided');
       const again = await pay(orderId, 8000);
@@ -468,7 +478,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       expect(foreign.body.code).toBe('payment_not_found');
       await db(`UPDATE cash_registers SET status = 'closed', closing_timestamp = now() WHERE id = $1`, [ids.register]);
       try {
-        const res = await cash().post(`/api/payments/${paid.body.paymentId}/void`, { reason: 'duplicate_charge', authorizationId: await authorize('void_payment', ids.cashier2, cashier.email) });
+        const res = await cash().post(`/api/payments/${paid.body.paymentId}/void`, { reason: 'duplicate_charge', authorizationId: await authorize('void_payment', ids.cashier2, paid.body.paymentId, cashier.email) });
         expect(res.status).toBe(409);
         expect(res.body).toMatchObject({ message: 'La caja de este pago ya está cerrada; no se puede anular', code: 'register_closed' });
       } finally {
@@ -502,6 +512,96 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       expect((await admin().get('/api/audit?from=2026-02-02&to=2026-02-01')).status).toBe(422);
       expect((await admin().get('/api/audit?type=deleted')).status).toBe(422);
       expect((await adminB().get('/api/audit')).body).toEqual([]);
+    });
+  });
+  describe('verifier round 2', () => {
+    it('a fully voided line is not counted among the popular dishes', async () => {
+      const { orderId, items } = await newOrder([
+        { name: 'Arepa', price: 5000, quantity: 1 },
+        { name: 'Jugo anulado', price: 3000, quantity: 1 },
+      ]);
+      const authorizationId = await authorize('void_item', cashier.profileId, orderId);
+      expect((await waiter().post(`/api/orders/${orderId}/items/void`, { items: [{ itemId: items[1], quantity: 1 }], reason: 'dish_returned', authorizationId })).status).toBe(200);
+      expect((await pay(orderId, 5000)).status).toBe(200);
+      const dash = await admin().get('/api/dashboard/summary');
+      expect(dash.status).toBe(200);
+      expect(dash.body.popularDishes.map((d: { name: string }) => d.name)).not.toContain('Jugo anulado');
+    });
+
+    it('undo-split of a split with void history answers 409 split_has_voids and keeps the void (B2)', async () => {
+      const { orderId, items } = await newOrder([
+        { name: 'Arepa', price: 5000, quantity: 5 },
+        { name: 'Arepa', price: 5000, quantity: 1 },
+        { name: 'Jugo', price: 2000, quantity: 1 },
+      ]);
+      const authorizationId = await authorize('void_item', cashier.profileId, orderId);
+      expect((await waiter().post(`/api/orders/${orderId}/items/void`, { items: [{ itemId: items[0], quantity: 2 }], reason: 'dish_returned', authorizationId })).status).toBe(200);
+      const split = await cash().post(`/api/orders/${orderId}/split`, { items: [{ orderItemId: items[0], quantity: 3 }] });
+      expect(split.status).toBe(200);
+      const undo = await cash().post(`/api/orders/${split.body.childOrderId}/undo-split`);
+      expect(undo.status).toBe(409);
+      expect(undo.body).toMatchObject({ message: 'Esta cuenta dividida tiene productos anulados; no se puede deshacer la división', code: 'split_has_voids' });
+      expect(await db('SELECT count(*)::int AS n FROM order_item_voids WHERE order_item_id = $1', [items[0]])).toEqual([{ n: 1 }]);
+    });
+
+    it('an authorization is bound to its order and to the staff member who asked for it (A1)', async () => {
+      const a = await newOrder([{ name: 'Lomo', price: 90000, quantity: 2 }]);
+      const b = await newOrder([{ name: 'Lomo', price: 90000, quantity: 2 }]);
+      const forA = await authorize('void_item', cashier.profileId, a.orderId);
+      const voidOf = (order: { orderId: string; items: string[] }) => ({ items: [{ itemId: order.items[0], quantity: 2 }], reason: 'dish_returned', authorizationId: forA });
+      const otherOrder = await waiter().post(`/api/orders/${b.orderId}/items/void`, voidOf(b));
+      expect(otherOrder.status).toBe(403);
+      expect(otherOrder.body.code).toBe('authorization_invalid');
+      const otherActor = await admin().post(`/api/orders/${a.orderId}/items/void`, voidOf(a));
+      expect(otherActor.status).toBe(403);
+      expect(otherActor.body.code).toBe('authorization_invalid');
+      expect(await db('SELECT quantity FROM order_items WHERE id = ANY($1) ORDER BY id', [[a.items[0], b.items[0]]])).toEqual([{ quantity: 2 }, { quantity: 2 }]);
+      expect((await waiter().post(`/api/orders/${a.orderId}/items/void`, voidOf(a))).status).toBe(200);
+    });
+
+    it('POST /auth/authorize needs the target of the action (A1)', async () => {
+      const { orderId } = await newOrder([{ name: 'Arepa', price: 5000, quantity: 1 }]);
+      const base = { pin: PINS[cashier.profileId], profileId: cashier.profileId };
+      expect((await waiter().post('/api/auth/authorize', { ...base, action: 'void_item' })).status).toBe(422);
+      expect((await waiter().post('/api/auth/authorize', { ...base, action: 'void_item', targetType: 'payment', targetId: orderId })).status).toBe(422);
+      expect((await waiter().post('/api/auth/authorize', { ...base, action: 'void_payment', targetType: 'order', targetId: orderId })).status).toBe(422);
+      const res = await waiter().post('/api/auth/authorize', { ...base, action: 'void_item', targetType: 'order', targetId: orderId });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ action: 'void_item', targetType: 'order', targetId: orderId });
+    });
+
+    it('on a shared terminal the identified waiter cancels with another supervisor; the requester is the waiter (A2)', async () => {
+      expect((await admin().put('/api/config', { waiterAccessMode: 'shared_terminal' })).status).toBe(200);
+      try {
+        const opened = await server().post('/api/auth/terminal/login').send({ email: cashier.email, password: PASSWORD });
+        expect(opened.status).toBe(200);
+        const terminal = cookiePair(setCookies(opened).vipe_access);
+        const identified = await onTerminal(terminal).post('/api/auth/identify', { profileId: fixtures.waiterA.profileId, pin: PINS[fixtures.waiterA.profileId] });
+        expect(identified.status).toBe(200);
+        const acting = identified.body.token as string;
+        const { orderId } = await newOrder([{ name: 'Arepa', price: 5000, quantity: 1 }]);
+
+        const noClaim = await onTerminal(terminal).post(`/api/orders/${orderId}/cancel`, { reason: 'customer_left' });
+        expect(noClaim.status).toBe(403);
+        expect(noClaim.body.code).toBe('acting_required');
+
+        const auth = await onTerminal(terminal, acting).post('/api/auth/authorize', {
+          pin: PINS[ids.cashier2],
+          action: 'cancel_order',
+          profileId: ids.cashier2,
+          targetType: 'order',
+          targetId: orderId,
+        });
+        expect(auth.status).toBe(201);
+        expect(await db('SELECT requested_by_profile_id FROM supervisor_authorizations WHERE id = $1', [auth.body.authorizationId])).toEqual([
+          { requested_by_profile_id: fixtures.waiterA.profileId },
+        ]);
+        const res = await onTerminal(terminal, acting).post(`/api/orders/${orderId}/cancel`, { reason: 'customer_left', authorizationId: auth.body.authorizationId });
+        expect(res.status).toBe(200);
+        expect(res.body.cancellation).toMatchObject({ cancelledBy: { id: fixtures.waiterA.profileId }, authorizedBy: { id: ids.cashier2 }, selfAuthorized: false });
+      } finally {
+        expect((await admin().put('/api/config', { waiterAccessMode: 'own_accounts' })).status).toBe(200);
+      }
     });
   });
 });

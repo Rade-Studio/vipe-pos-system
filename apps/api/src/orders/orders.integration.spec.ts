@@ -493,9 +493,10 @@ describe('orders endpoints (Testcontainers, vipe_api)', () => {
       const [{ id }] = await ordersOf(o.t4);
       expect((await adminB().delete(`/api/orders/${String(id)}`)).status).toBe(404);
       const [auth] = await db<{ id: string }>(
-        `INSERT INTO supervisor_authorizations (restaurant_id, action, supervisor_profile_id, created_at, expires_at)
-         VALUES ($1, 'cancel_order', $2, now(), now() + interval '2 minutes') RETURNING id`,
-        [fixtures.restaurantA, fixtures.bcryptUser.profileId],
+        `INSERT INTO supervisor_authorizations
+           (restaurant_id, action, supervisor_profile_id, requested_by_profile_id, target_type, target_id, created_at, expires_at)
+         VALUES ($1, 'cancel_order', $2, $3, 'order', $4, now(), now() + interval '2 minutes') RETURNING id`,
+        [fixtures.restaurantA, fixtures.bcryptUser.profileId, fixtures.adminA.profileId, id],
       );
       const res = await adminA().delete(`/api/orders/${String(id)}`).send({ reason: 'customer_left', authorizationId: auth.id });
       expect(res.status).toBe(204);

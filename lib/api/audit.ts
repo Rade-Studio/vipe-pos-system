@@ -42,6 +42,7 @@ export const VOID_REFUSAL_CODES = [
   "reason_text_required",
   "items_invalid",
   "void_quantity_exceeded",
+  "split_has_voids",
 ] as const
 export type VoidRefusalCode = (typeof VOID_REFUSAL_CODES)[number]
 

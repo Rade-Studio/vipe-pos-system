@@ -1,6 +1,7 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
+import { toVoidException } from '../audit/voids';
 import { VoidsService } from '../audit/voids.service';
 import { UnitOfWork } from '../db/unit-of-work';
 import {
@@ -107,8 +108,13 @@ export class PaymentsService {
     );
   }
 
+  /** A split whose lines have void history is not undone: 409 split_has_voids (the void rows reference them). */
   async undoSplit(childOrderId: string): Promise<UndoSplitResult> {
-    return toUndoSplitResult(await this.rpc(sql`SELECT public.undo_split(${childOrderId}::uuid) AS result`));
+    try {
+      return toUndoSplitResult(await this.rpc(sql`SELECT public.undo_split(${childOrderId}::uuid) AS result`));
+    } catch (error) {
+      throw toVoidException(error) ?? error;
+    }
   }
 
   private async rpc(query: SQL): Promise<Json> {

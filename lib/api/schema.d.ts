@@ -1853,6 +1853,16 @@ export interface components {
              * @description Only this supervisor is tried; omitted, every supervisor with a PIN.
              */
             profileId?: string;
+            /**
+             * @description order for cancel_order and void_item, payment for void_payment (else 422).
+             * @enum {string}
+             */
+            targetType: "order" | "payment";
+            /**
+             * Format: uuid
+             * @description The order or payment to cancel or void. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member).
+             */
+            targetId: string;
         };
         AuthorizationSupervisor: {
             /** Format: uuid */
@@ -1862,11 +1872,15 @@ export interface components {
         AuthorizeResponse: {
             /**
              * Format: uuid
-             * @description Single use, bound to the action and the restaurant.
+             * @description Single use, bound to the action, the target, the caller and the restaurant.
              */
             authorizationId: string;
             /** @enum {string} */
             action: "cancel_order" | "void_item" | "void_payment";
+            /** @enum {string} */
+            targetType: "order" | "payment";
+            /** Format: uuid */
+            targetId: string;
             supervisor: components["schemas"]["AuthorizationSupervisor"];
             /**
              * Format: date-time

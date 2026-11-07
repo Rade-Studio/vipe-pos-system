@@ -11,7 +11,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(89);
+SELECT plan(94);
 
 -- ============================================
 -- 1. Schema, RLS, grants
@@ -93,20 +93,20 @@ INSERT INTO public.order_items (id, order_id, dish_id, name, price, quantity, st
 -- another action, another restaurant.
 CREATE TEMP TABLE t280_auth (name text PRIMARY KEY, id uuid) ON COMMIT DROP;
 GRANT ALL ON t280_auth TO vipe_api;
-WITH rows (name, id, restaurant, action, supervisor, consumed) AS (VALUES
-  ('cancel1', 'e8700000-0000-0000-0000-000000000001'::uuid, 'e8000000-0000-0000-0000-0000000000a1'::uuid, 'cancel_order', 'e8200000-0000-0000-0000-000000000002'::uuid, true),
-  ('unconsumed', 'e8700000-0000-0000-0000-000000000002', 'e8000000-0000-0000-0000-0000000000a1', 'cancel_order', 'e8200000-0000-0000-0000-000000000002', false),
-  ('wrong_action', 'e8700000-0000-0000-0000-000000000003', 'e8000000-0000-0000-0000-0000000000a1', 'void_item', 'e8200000-0000-0000-0000-000000000002', true),
-  ('other_restaurant', 'e8700000-0000-0000-0000-000000000004', 'e8000000-0000-0000-0000-0000000000b2', 'cancel_order', 'e8200000-0000-0000-0000-000000000006', true),
-  ('self_cancel', 'e8700000-0000-0000-0000-000000000005', 'e8000000-0000-0000-0000-0000000000a1', 'cancel_order', 'e8200000-0000-0000-0000-000000000002', true),
-  ('item1', 'e8700000-0000-0000-0000-000000000006', 'e8000000-0000-0000-0000-0000000000a1', 'void_item', 'e8200000-0000-0000-0000-000000000005', true),
-  ('item2', 'e8700000-0000-0000-0000-000000000007', 'e8000000-0000-0000-0000-0000000000a1', 'void_item', 'e8200000-0000-0000-0000-000000000003', true),
-  ('pay1', 'e8700000-0000-0000-0000-000000000008', 'e8000000-0000-0000-0000-0000000000a1', 'void_payment', 'e8200000-0000-0000-0000-000000000003', true),
-  ('pay2', 'e8700000-0000-0000-0000-000000000009', 'e8000000-0000-0000-0000-0000000000a1', 'void_payment', 'e8200000-0000-0000-0000-000000000003', true),
-  ('pay_b', 'e8700000-0000-0000-0000-00000000000a', 'e8000000-0000-0000-0000-0000000000b2', 'void_payment', 'e8200000-0000-0000-0000-000000000006', true)
+-- Each one is bound to a target and to the staff member who asked for it (0018, A1).
+WITH rows (name, id, restaurant, action, supervisor, consumed, requester, target) AS (VALUES
+  ('cancel1', 'e8700000-0000-0000-0000-000000000001'::uuid, 'e8000000-0000-0000-0000-0000000000a1'::uuid, 'cancel_order', 'e8200000-0000-0000-0000-000000000002'::uuid, true, 'e8200000-0000-0000-0000-000000000004'::uuid, 'e8500000-0000-0000-0000-000000000001'::uuid),
+  ('unconsumed', 'e8700000-0000-0000-0000-000000000002', 'e8000000-0000-0000-0000-0000000000a1', 'cancel_order', 'e8200000-0000-0000-0000-000000000002', false, 'e8200000-0000-0000-0000-000000000004', 'e8500000-0000-0000-0000-000000000001'),
+  ('wrong_action', 'e8700000-0000-0000-0000-000000000003', 'e8000000-0000-0000-0000-0000000000a1', 'void_item', 'e8200000-0000-0000-0000-000000000002', true, 'e8200000-0000-0000-0000-000000000004', 'e8500000-0000-0000-0000-000000000001'),
+  ('other_restaurant', 'e8700000-0000-0000-0000-000000000004', 'e8000000-0000-0000-0000-0000000000b2', 'cancel_order', 'e8200000-0000-0000-0000-000000000006', true, 'e8200000-0000-0000-0000-000000000006', 'e8500000-0000-0000-0000-000000000001'),
+  ('self_cancel', 'e8700000-0000-0000-0000-000000000005', 'e8000000-0000-0000-0000-0000000000a1', 'cancel_order', 'e8200000-0000-0000-0000-000000000002', true, 'e8200000-0000-0000-0000-000000000002', 'e8500000-0000-0000-0000-000000000006'),
+  ('item1', 'e8700000-0000-0000-0000-000000000006', 'e8000000-0000-0000-0000-0000000000a1', 'void_item', 'e8200000-0000-0000-0000-000000000005', true, 'e8200000-0000-0000-0000-000000000004', 'e8500000-0000-0000-0000-000000000005'),
+  ('item2', 'e8700000-0000-0000-0000-000000000007', 'e8000000-0000-0000-0000-0000000000a1', 'void_item', 'e8200000-0000-0000-0000-000000000003', true, 'e8200000-0000-0000-0000-000000000004', 'e8500000-0000-0000-0000-000000000005'),
+  ('item_inactive', 'e8700000-0000-0000-0000-00000000000b', 'e8000000-0000-0000-0000-0000000000a1', 'void_item', 'e8200000-0000-0000-0000-000000000003', true, 'e8200000-0000-0000-0000-000000000004', 'e8500000-0000-0000-0000-000000000005')
 ), ins AS (
-  INSERT INTO public.supervisor_authorizations (id, restaurant_id, action, supervisor_profile_id, created_at, expires_at, consumed_at)
-  SELECT id, restaurant, action, supervisor, now() - interval '10 seconds', now() + interval '110 seconds', CASE WHEN consumed THEN now() END FROM rows
+  INSERT INTO public.supervisor_authorizations
+    (id, restaurant_id, action, supervisor_profile_id, requested_by_profile_id, target_type, target_id, created_at, expires_at, consumed_at)
+  SELECT id, restaurant, action, supervisor, requester, 'order', target, now() - interval '10 seconds', now() + interval '110 seconds', CASE WHEN consumed THEN now() END FROM rows
   RETURNING id
 )
 INSERT INTO t280_auth SELECT name, id FROM rows;
@@ -184,6 +184,16 @@ SELECT lives_ok($$ SELECT public.cancel_order('e8500000-0000-0000-0000-000000000
 SELECT is((SELECT row(authorized_by, authorization_id, total)::text FROM public.order_cancellations WHERE order_id = 'e8500000-0000-0000-0000-000000000002'),
   '(,,0.00)', 'and is recorded without an authorizer');
 
+-- vipe_api cannot feed a cancelled order or write a cancelled line directly (A4).
+SELECT throws_ok($$ INSERT INTO public.order_items (order_id, name, price, quantity, status, restaurant_id) VALUES ('e8500000-0000-0000-0000-000000000001', 'Extra', 1000, 1, 'kitchen', 'e8000000-0000-0000-0000-0000000000a1') $$,
+  '42501', NULL, 'no line is added to a cancelled order');
+SELECT throws_ok($$ INSERT INTO public.order_items (order_id, name, price, quantity, status, restaurant_id) VALUES ('e8500000-0000-0000-0000-000000000008', 'Cero', 1000, 0, 'kitchen', 'e8000000-0000-0000-0000-0000000000a1') $$,
+  '42501', NULL, 'no line with quantity 0 is inserted');
+SELECT throws_ok($$ INSERT INTO public.order_items (order_id, name, price, quantity, status, restaurant_id) VALUES ('e8500000-0000-0000-0000-000000000008', 'Anulada', 1000, 1, 'cancelled', 'e8000000-0000-0000-0000-0000000000a1') $$,
+  '42501', NULL, 'no cancelled line is inserted');
+SELECT throws_ok($$ UPDATE public.order_items SET order_id = 'e8500000-0000-0000-0000-000000000008' WHERE id = 'e8600000-0000-0000-0000-000000000012' $$,
+  '42501', NULL, 'a line does not leave a cancelled order');
+
 -- ============================================
 -- 4. Self-authorization (L14: off by default)
 -- ============================================
@@ -207,6 +217,15 @@ SET LOCAL ROLE vipe_api;
 -- ============================================
 -- 5. void_order_items
 -- ============================================
+RESET ROLE;
+UPDATE public.users SET is_active = false WHERE id = 'e8100000-0000-0000-0000-000000000003';
+SET LOCAL ROLE vipe_api;
+SELECT set_config('app.user_id', 'e8100000-0000-0000-0000-000000000004', true);
+SELECT throws_ok($$ SELECT public.void_order_items('e8500000-0000-0000-0000-000000000005', '[{"order_item_id":"e8600000-0000-0000-0000-000000000051","quantity":1}]', 'dish_returned', NULL, (SELECT id FROM t280_auth WHERE name = 'item_inactive')) $$,
+  '42501', 'void_order_items: authorization_invalid', 'a supervisor whose user is inactive authorizes nothing (A5)');
+RESET ROLE;
+UPDATE public.users SET is_active = true WHERE id = 'e8100000-0000-0000-0000-000000000003';
+SET LOCAL ROLE vipe_api;
 SELECT set_config('app.user_id', 'e8100000-0000-0000-0000-000000000004', true);
 SELECT throws_ok($$ SELECT public.void_order_items('e8500000-0000-0000-0000-000000000005', '[{"order_item_id":"e8600000-0000-0000-0000-000000000051","quantity":1}]', 'dish_returned') $$,
   '42501', 'void_order_items: authorization_required', 'voiding a sent line needs an authorization');
@@ -254,6 +273,17 @@ SELECT o.name, (public.pay_order(o.id, 'e8400000-0000-0000-0000-000000000001', 0
   FROM (VALUES ('p3', 'e8500000-0000-0000-0000-000000000003'::uuid, 8000, 'e8800000-0000-0000-0000-000000000003'::uuid),
                ('p4', 'e8500000-0000-0000-0000-000000000004', 4000, 'e8800000-0000-0000-0000-000000000004'),
                ('p8', 'e8500000-0000-0000-0000-000000000008', 3000, 'e8800000-0000-0000-0000-000000000008')) AS o(name, id, amount, key);
+RESET ROLE;
+INSERT INTO public.supervisor_authorizations
+  (id, restaurant_id, action, supervisor_profile_id, requested_by_profile_id, target_type, target_id, created_at, expires_at, consumed_at)
+SELECT a.id, a.restaurant, 'void_payment', a.supervisor, a.requester, 'payment', (SELECT id FROM t280_pay WHERE name = a.payment),
+       now() - interval '10 seconds', now() + interval '110 seconds', now()
+  FROM (VALUES ('e8700000-0000-0000-0000-000000000008'::uuid, 'e8000000-0000-0000-0000-0000000000a1'::uuid, 'e8200000-0000-0000-0000-000000000003'::uuid, 'e8200000-0000-0000-0000-000000000002'::uuid, 'p3'),
+               ('e8700000-0000-0000-0000-000000000009', 'e8000000-0000-0000-0000-0000000000a1', 'e8200000-0000-0000-0000-000000000003', 'e8200000-0000-0000-0000-000000000002', 'p4'),
+               ('e8700000-0000-0000-0000-00000000000a', 'e8000000-0000-0000-0000-0000000000b2', 'e8200000-0000-0000-0000-000000000006', 'e8200000-0000-0000-0000-000000000006', 'p8')) AS a(id, restaurant, supervisor, requester, payment);
+INSERT INTO t280_auth VALUES ('pay1', 'e8700000-0000-0000-0000-000000000008'), ('pay2', 'e8700000-0000-0000-0000-000000000009'), ('pay_b', 'e8700000-0000-0000-0000-00000000000a');
+SET LOCAL ROLE vipe_api;
+SELECT set_config('app.user_id', 'e8100000-0000-0000-0000-000000000002', true);
 SELECT is((SELECT count(*)::int FROM public.payments WHERE order_id = 'e8500000-0000-0000-0000-000000000003'), 1, 'the payment is visible before the void');
 SELECT throws_ok($$ SELECT public.cancel_order('e8500000-0000-0000-0000-000000000003', 'duplicate_charge', NULL, (SELECT id FROM t280_auth WHERE name = 'self_cancel')) $$,
   'P0001', 'cancel_order: order_paid', 'a paid order is not cancelled: its payment is voided first');

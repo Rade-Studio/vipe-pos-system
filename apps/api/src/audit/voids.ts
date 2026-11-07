@@ -74,10 +74,11 @@ export const VOID_ERRORS: Record<string, { status: 403 | 404 | 409 | 422; messag
   reason_text_required: { status: 422, message: VOID_MESSAGES.reasonText },
   items_invalid: { status: 422, message: 'Revisa los productos a anular' },
   void_quantity_exceeded: { status: 422, message: 'No puedes anular más unidades de las que tiene el producto' },
+  split_has_voids: { status: 409, message: 'Esta cuenta dividida tiene productos anulados; no se puede deshacer la división' },
 };
 
 const EXCEPTIONS = { 403: ForbiddenException, 404: NotFoundException, 409: ConflictException, 422: UnprocessableEntityException };
-const RAISED = /^(cancel_order|void_order_items|void_payment): ([a-z_]+)$/;
+const RAISED = /^(cancel_order|void_order_items|void_payment|undo_split): ([a-z_]+)$/;
 
 /** The mapped HttpException for a `<function>: <code>` raise of the 0018 functions, else undefined. */
 export function toVoidException(error: unknown): HttpException | undefined {

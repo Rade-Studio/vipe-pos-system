@@ -43,6 +43,9 @@ const ids = {
   unknown: '20000000-0000-0000-0000-00000000ffff',
 };
 const emails = { cashier: 'cashier@a.test', waiter2: 'waiter2@a.test', waiterB: 'waiter@b.test', cook: 'cook@a.test' };
+/** F1: an authorization names its target; these need not exist (the authorization then backs no event). */
+const ORDER_TARGET = { targetType: 'order', targetId: '60000000-0000-0000-0000-0000000000a1' } as const;
+const PAYMENT_TARGET = { targetType: 'payment', targetId: '60000000-0000-0000-0000-0000000000b1' } as const;
 const PINS = { waiter: '4829', waiter2: '73914', cashier: '582046', admin: '9157', waiterB: '6408' };
 
 const MESSAGES = {
@@ -469,7 +472,7 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
       as(cookie).post('/api/probe/authorizations/consume', { authorizationId, action });
 
     it('a supervisor PIN (cashier or admin) returns a single-use authorization bound to the action', async () => {
-      const res = await authorize(cookies.waiter2, { pin: PINS.cashier, action: 'void_item' });
+      const res = await authorize(cookies.waiter2, { pin: PINS.cashier, action: 'void_item', ...ORDER_TARGET });
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({ action: 'void_item', supervisor: { id: ids.cashier, name: 'Cashier A' } });
       const [row] = await db<{ restaurant_id: string; requested_by_profile_id: string }>(
@@ -486,17 +489,17 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
       expect(again.status).toBe(403);
       expect(again.body).toMatchObject({ message: MESSAGES.authorization, code: 'authorization_invalid' });
 
-      const byAdmin = await authorize(cookies.waiter2, { pin: PINS.admin, action: 'cancel_order', profileId: fixtures.adminA.profileId });
+      const byAdmin = await authorize(cookies.waiter2, { pin: PINS.admin, action: 'cancel_order', ...ORDER_TARGET, profileId: fixtures.adminA.profileId });
       expect(byAdmin.status).toBe(201);
       expect(byAdmin.body.supervisor.id).toBe(fixtures.adminA.profileId);
     });
 
     it('refuses a waiter PIN, a non-supervisor profile and an unknown action', async () => {
       const before = Number((await db<{ n: string }>('SELECT count(*) AS n FROM supervisor_authorizations'))[0].n);
-      const waiterPin = await authorize(cookies.waiter2, { pin: PINS.waiter, action: 'void_item' });
+      const waiterPin = await authorize(cookies.waiter2, { pin: PINS.waiter, action: 'void_item', ...ORDER_TARGET });
       expect(waiterPin.status).toBe(403);
       expect(waiterPin.body.message).toBe(MESSAGES.wrong);
-      const notSupervisor = await authorize(cookies.waiter2, { pin: PINS.waiter, action: 'void_item', profileId: fixtures.waiterA.profileId });
+      const notSupervisor = await authorize(cookies.waiter2, { pin: PINS.waiter, action: 'void_item', ...ORDER_TARGET, profileId: fixtures.waiterA.profileId });
       expect(notSupervisor.status).toBe(403);
       expect(notSupervisor.body).toEqual(waiterPin.body);
       expect((await authorize(cookies.waiter2, { pin: PINS.cashier, action: 'drop_tables' })).status).toBe(422);
@@ -507,8 +510,8 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
       const clock = app.get(Clock);
       const t0 = new Date('2031-01-01T12:00:00.000Z');
       vi.spyOn(clock, 'now').mockReturnValue(t0);
-      const first = await authorize(cookies.waiter2, { pin: PINS.cashier, action: 'void_payment' });
-      const second = await authorize(cookies.waiter2, { pin: PINS.cashier, action: 'void_payment' });
+      const first = await authorize(cookies.waiter2, { pin: PINS.cashier, action: 'void_payment', ...PAYMENT_TARGET });
+      const second = await authorize(cookies.waiter2, { pin: PINS.cashier, action: 'void_payment', ...PAYMENT_TARGET });
       expect(first.body.expiresAt).toBe('2031-01-01T12:02:00.000Z');
       vi.spyOn(clock, 'now').mockReturnValue(new Date(t0.getTime() + 119_000));
       expect((await consume(cookies.waiter2, first.body.authorizationId, 'void_payment')).status).toBe(200);
@@ -517,9 +520,9 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
     });
 
     it('never crosses restaurants', async () => {
-      const res = await authorize(cookies.waiter2, { pin: PINS.cashier, action: 'void_item' });
+      const res = await authorize(cookies.waiter2, { pin: PINS.cashier, action: 'void_item', ...ORDER_TARGET });
       expect((await consume(cookies.adminB, res.body.authorizationId, 'void_item')).status).toBe(403);
-      const fromB = await authorize(cookies.adminB, { pin: PINS.cashier, action: 'void_item', profileId: ids.cashier });
+      const fromB = await authorize(cookies.adminB, { pin: PINS.cashier, action: 'void_item', ...ORDER_TARGET, profileId: ids.cashier });
       expect(fromB.status).toBe(403);
       expect(fromB.body.message).toBe(MESSAGES.wrong);
       expect((await consume(cookies.waiter2, res.body.authorizationId, 'void_item')).status).toBe(200);
@@ -527,7 +530,7 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
   });
   describe('verifier regressions (B1-B3)', () => {
     it('a single-use authorization is consumed once under concurrency', async () => {
-      const res = await as(cookies.waiter2).post('/api/auth/authorize', { pin: PINS.cashier, action: 'void_item' });
+      const res = await as(cookies.waiter2).post('/api/auth/authorize', { pin: PINS.cashier, action: 'void_item', ...ORDER_TARGET });
       expect(res.status).toBe(201);
       const statuses = await Promise.all(
         Array.from({ length: 6 }, () =>
@@ -541,10 +544,10 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
     it('profile-less authorize lockout survives a fresh login', async () => {
       for (let round = 0; round < 2; round++) {
         const c = await freshLogin(emails.waiter2);
-        for (let i = 0; i < 5; i++) await as(c).post('/api/auth/authorize', { pin: String(100003 + round * 10 + i), action: 'void_item' });
+        for (let i = 0; i < 5; i++) await as(c).post('/api/auth/authorize', { pin: String(100003 + round * 10 + i), action: 'void_item', ...ORDER_TARGET });
       }
       const c = await freshLogin(emails.waiter2);
-      expect((await as(c).post('/api/auth/authorize', { pin: PINS.cashier, action: 'void_item' })).status).toBe(429);
+      expect((await as(c).post('/api/auth/authorize', { pin: PINS.cashier, action: 'void_item', ...ORDER_TARGET })).status).toBe(429);
     });
 
     it('parallel wrong identifies verify at most 5', async () => {
@@ -559,7 +562,7 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
       const burst = await Promise.all(
         Array.from({ length: 12 }, (_, i) =>
           as(c)
-            .post('/api/auth/authorize', { pin: String(610000 + i * 13), action: 'void_item' })
+            .post('/api/auth/authorize', { pin: String(610000 + i * 13), action: 'void_item', ...ORDER_TARGET })
             .timeout(10_000)
             .then((r) => r.status, () => 0),
         ),

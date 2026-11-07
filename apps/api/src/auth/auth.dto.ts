@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { z } from 'zod';
-import { SUPERVISOR_ACTIONS } from './pins';
+import { AUTHORIZATION_TARGETS, SUPERVISOR_ACTIONS } from './pins';
 
 export const loginSchema = z.object({
   email: z.string().trim().min(1).max(254),
@@ -93,6 +93,16 @@ export class AuthorizeRequest {
 
   @ApiPropertyOptional({ format: 'uuid', description: 'Only this supervisor is tried; omitted, every supervisor with a PIN.' })
   profileId?: string;
+
+  @ApiProperty({ enum: AUTHORIZATION_TARGETS, description: 'order for cancel_order and void_item, payment for void_payment (else 422).' })
+  targetType!: (typeof AUTHORIZATION_TARGETS)[number];
+
+  @ApiProperty({
+    format: 'uuid',
+    description:
+      'The order or payment to cancel or void. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member).',
+  })
+  targetId!: string;
 }
 
 export class AuthorizationSupervisor {
@@ -101,11 +111,15 @@ export class AuthorizationSupervisor {
 }
 
 export class AuthorizeResponse {
-  @ApiProperty({ format: 'uuid', description: 'Single use, bound to the action and the restaurant.' })
+  @ApiProperty({ format: 'uuid', description: 'Single use, bound to the action, the target, the caller and the restaurant.' })
   authorizationId!: string;
 
   @ApiProperty({ enum: SUPERVISOR_ACTIONS })
   action!: (typeof SUPERVISOR_ACTIONS)[number];
+
+  @ApiProperty({ enum: AUTHORIZATION_TARGETS }) targetType!: (typeof AUTHORIZATION_TARGETS)[number];
+
+  @ApiProperty({ format: 'uuid' }) targetId!: string;
 
   @ApiProperty({ type: AuthorizationSupervisor })
   supervisor!: AuthorizationSupervisor;
