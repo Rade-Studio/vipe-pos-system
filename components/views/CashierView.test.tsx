@@ -1353,3 +1353,26 @@ describe("T24 review fixes", () => {
     }
   })
 })
+
+describe("queue tabs keep one layout (S6: no tab row shift on selection or scroll)", () => {
+  it("renders the same tab row whichever tab is selected, inside scrollers that reserve the scrollbar gutter", async () => {
+    getByStatus.mockResolvedValue([])
+    const { container } = renderCashier()
+    const tablist = await screen.findByRole("tablist", { name: "Tipo de orden" })
+    const layout = () => ({
+      row: tablist.className,
+      tabs: within(tablist)
+        .getAllByRole("tab")
+        .map((tab) => tab.className.replace(/bg-surface text-fg shadow-sm|text-muted-fg hover:text-fg/, "STATE")),
+    })
+    const initial = layout()
+    for (const name of [/^Domicilios/, /^Parciales/, /^Pagadas/, /^Mesas/]) {
+      fireEvent.click(within(tablist).getByRole("tab", { name }))
+      expect(layout()).toEqual(initial)
+    }
+    // A scrollbar that appears only on a long list would narrow the row: every
+    // scroller around it keeps the gutter reserved.
+    expect(screen.getByRole("region", { name: "Órdenes por cobrar" }).className).toContain("[scrollbar-gutter:stable]")
+    expect((container.firstElementChild as HTMLElement).className).toMatch(/overflow-y-auto.*\[scrollbar-gutter:stable\]/)
+  })
+})

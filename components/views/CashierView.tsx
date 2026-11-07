@@ -613,15 +613,17 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const lastUpdate = dataUpdatedAt ? clockTime(new Date(dataUpdatedAt)) : null
   const dockAmount = payTotals?.remaining ?? selectedEntry?.total ?? 0
 
-  const pane = "min-w-0 rounded-card border border-line bg-surface min-[1180px]:min-h-0 min-[1180px]:overflow-y-auto"
+  const pane = "min-w-0 rounded-card border border-line bg-surface min-[1180px]:min-h-0 min-[1180px]:overflow-y-auto min-[1180px]:[scrollbar-gutter:stable]"
   const steps = [
     { id: "queue", label: "Órdenes" },
     { id: "detail", label: "Detalle" },
     { id: "pay", label: "Pago" },
   ] as const
 
+  // The screen is its own scroller with the gutter reserved, so a list that
+  // starts or stops scrolling never narrows the queue or its tabs (S6).
   return (
-    <div className="flex min-h-dvh flex-col bg-canvas px-3 sm:px-4 min-[1180px]:h-dvh">
+    <div className="flex h-dvh flex-col overflow-y-auto bg-canvas px-3 [scrollbar-gutter:stable] sm:px-4">
       <Header
         profile={profile}
         onChangeProfile={onChangeProfile}
@@ -632,7 +634,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       <Tabs
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as "orders" | "transactions")}
-        className="flex min-h-0 flex-1 flex-col gap-3 pb-3"
+        className="flex flex-1 flex-col gap-3 pb-3 min-[1180px]:min-h-0"
       >
         {/* Top bar: real register state and its actions, the shift summary, refresh. */}
         <div className="flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface p-2 sm:p-3">
@@ -671,7 +673,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
           </Button>
         </div>
 
-        <TabsContent value="orders" className="mt-0 flex min-h-0 flex-1 flex-col gap-3 data-[state=inactive]:hidden">
+        <TabsContent value="orders" className="mt-0 flex flex-1 flex-col gap-3 data-[state=inactive]:hidden min-[1180px]:min-h-0">
           {!online ? (
             <div
               role="alert"
@@ -723,7 +725,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
 
           {phone && billNotice && <BillChangedBanner notice={billNotice} onDismiss={() => setBillNotice(null)} />}
 
-          <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2 min-[1180px]:grid-cols-[minmax(320px,360px)_minmax(0,1fr)_minmax(360px,420px)]">
+          <div className="grid flex-1 gap-3 md:grid-cols-2 min-[1180px]:min-h-0 min-[1180px]:grid-cols-[minmax(320px,360px)_minmax(0,1fr)_minmax(360px,420px)]">
             <section
               aria-label="Órdenes por cobrar"
               className={cn(pane, "md:col-span-2 min-[1180px]:col-span-1", step !== "queue" && "max-md:hidden")}
