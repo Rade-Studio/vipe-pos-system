@@ -98,10 +98,10 @@ export interface SupervisorTile extends Supervisor {
   refused: boolean
 }
 
-/** Only supervisors with a PIN can authorize; the actor's own tile is refused unless the restaurant allows it. */
+/** Admins and cashiers; only those with a PIN can authorize (the sheet shows the rest disabled); the actor's own tile is refused unless the restaurant allows it. */
 export function supervisorTiles(staff: readonly Supervisor[], actorId: string | undefined, allowSelf: boolean): SupervisorTile[] {
   return staff
-    .filter((member) => member.hasPin && (member.role === "admin" || member.role === "cashier"))
+    .filter((member) => member.role === "admin" || member.role === "cashier")
     .map((member) => {
       const self = member.id === actorId
       return { ...member, self, refused: self && !allowSelf }

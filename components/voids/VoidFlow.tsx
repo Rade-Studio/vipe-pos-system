@@ -273,6 +273,7 @@ function FlowBody({
   }
 
   const pickSupervisor = (tile: SupervisorTile) => {
+    if (!tile.hasPin) return
     if (tile.refused) {
       setProblem({ kind: "self" })
       return
@@ -566,15 +567,18 @@ function FlowBody({
                 Reintentar
               </button>
             </Alert>
-          ) : tiles.length === 0 ? (
-            <Alert tone="warning">Nadie tiene PIN de supervisor. El admin lo asigna en Configuración → Personal.</Alert>
           ) : (
+            <>
+            {!tiles.some((tile) => tile.hasPin) && (
+              <Alert tone="warning">Nadie tiene PIN de supervisor. El admin lo asigna en Configuración → Personal.</Alert>
+            )}
+            {tiles.length > 0 && (
             <Options label="Quién autoriza">
               {tiles.map((tile) => {
                 const until = lockedUntilLabel(tile.pinLockedUntil)
                 const refusedShown = tile.refused && problem?.kind === "self"
                 return (
-                  <Option key={tile.id} checked={false} disabled={tile.refused} danger={refusedShown} onSelect={() => pickSupervisor(tile)}>
+                  <Option key={tile.id} checked={false} disabled={tile.refused || !tile.hasPin} danger={refusedShown} onSelect={() => pickSupervisor(tile)}>
                     <Avatar name={tile.fullName} />
                     <span className="min-w-0 flex-1">
                       <b className="block break-words">{tile.fullName}</b>
@@ -583,7 +587,9 @@ function FlowBody({
                         {tile.self ? " · eres tú" : ""}
                       </small>
                     </span>
-                    {tile.refused ? (
+                    {!tile.hasPin ? (
+                      <Chip tone="reserved">Sin PIN</Chip>
+                    ) : tile.refused ? (
                       <Chip tone={refusedShown ? "danger" : "reserved"}>{refusedShown ? "No permitido" : "Otra persona"}</Chip>
                     ) : until ? (
                       <Chip tone="danger">Bloqueado hasta {until}</Chip>
@@ -592,6 +598,8 @@ function FlowBody({
                 )
               })}
             </Options>
+            )}
+            </>
           )}
           {problem?.kind === "self" && (
             <Alert tone="danger">

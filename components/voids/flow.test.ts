@@ -55,7 +55,7 @@ describe("void flow rules", () => {
     expect(lockedUntilLabel(null, now)).toBeNull()
   })
 
-  it("lists admins and cashiers with a PIN; the actor's own tile is refused unless self-authorization is on", () => {
+  it("lists admins and cashiers; one without a PIN is listed but cannot authorize; the actor's own tile is refused unless self-authorization is on", () => {
     const staff = [
       { id: "a", fullName: "Carlos Pérez", role: "admin" as const, hasPin: true, pinLockedUntil: null },
       { id: "c", fullName: "Laura Gómez", role: "cashier" as const, hasPin: true, pinLockedUntil: null },
@@ -64,10 +64,12 @@ describe("void flow rules", () => {
     expect(supervisorTiles(staff, "c", false).map((t) => [t.id, t.self, t.refused])).toEqual([
       ["a", false, false],
       ["c", true, true],
+      ["n", false, false],
     ])
-    expect(supervisorTiles(staff, "c", true).map((t) => [t.id, t.refused])).toEqual([
-      ["a", false],
-      ["c", false],
+    expect(supervisorTiles(staff, "c", true).map((t) => [t.id, t.refused, t.hasPin])).toEqual([
+      ["a", false, true],
+      ["c", false, true],
+      ["n", false, false],
     ])
   })
 })

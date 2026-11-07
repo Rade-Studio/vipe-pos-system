@@ -157,6 +157,28 @@ describe("VoidFlow — anular plato", () => {
     expect(screen.queryByRole("group", { name: "Teclado del PIN" })).not.toBeInTheDocument()
   })
 
+  it("shows a supervisor without a PIN as a disabled 'Sin PIN' tile that opens no PIN pad", async () => {
+    loadSupervisors.mockResolvedValue([carlos, { id: "n", fullName: "Nora Ruiz", role: "cashier", hasPin: false, pinLockedUntil: null }])
+    renderFlow(itemTarget)
+    pickReason("Plato devuelto")
+    click("Elegir quién autoriza")
+    const noPin = await screen.findByRole("radio", { name: /Nora Ruiz/ })
+    expect(noPin).toHaveAttribute("aria-disabled", "true")
+    expect(within(noPin).getByText("Sin PIN")).toBeInTheDocument()
+    fireEvent.click(noPin)
+    expect(screen.queryByRole("group", { name: "Teclado del PIN" })).not.toBeInTheDocument()
+    expect(auth.authorizeSupervisor).not.toHaveBeenCalled()
+  })
+
+  it("when nobody has a PIN, the tiles stay disabled and the admin is told to assign one", async () => {
+    loadSupervisors.mockResolvedValue([{ id: "n", fullName: "Nora Ruiz", role: "cashier", hasPin: false, pinLockedUntil: null }])
+    renderFlow(itemTarget)
+    pickReason("Plato devuelto")
+    click("Elegir quién autoriza")
+    expect(await screen.findByRole("radio", { name: /Nora Ruiz/ })).toHaveAttribute("aria-disabled", "true")
+    expect(screen.getByText(/Nadie tiene PIN de supervisor/)).toBeInTheDocument()
+  })
+
   it("accepts the actor's own tile when the restaurant allows self-authorization", async () => {
     config.allowSelfAuthorization = true
     renderFlow(itemTarget)

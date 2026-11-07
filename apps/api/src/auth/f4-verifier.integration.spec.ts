@@ -40,6 +40,8 @@ const ids = {
   unknown: '20000000-0000-0000-0000-00000000ffff',
 };
 const emails = { cashier: 'cashier@a.test', waiter2: 'waiter2@a.test', waiterB: 'waiter@b.test', cook: 'cook@a.test' };
+// POST /auth/authorize is bound to a target since F1 round 2 (L19).
+const ORDER_TARGET = { targetType: 'order', targetId: '60000000-0000-0000-0000-0000000000a1' } as const;
 const PINS = { waiter: '4829', waiter2: '73914', cashier: '582046', admin: '9157', waiterB: '6408' };
 
 const MESSAGES = {
@@ -235,8 +237,8 @@ describe('staff PINs, shared terminals and supervisor authorization (Testcontain
       await clearCounters();
       expect((await setPin(ids.cashier, PINS.cashier)).status).toBe(204);
       const cashier = as(await freshLogin(emails.cashier));
-      for (let i = 0; i < 5; i++) await cashier.post('/api/auth/authorize', { pin: '808080', action: 'cancel_order', profileId: ids.cashier });
-      const auth = await cashier.post('/api/auth/authorize', { pin: PINS.cashier, action: 'cancel_order', profileId: ids.cashier });
+      for (let i = 0; i < 5; i++) await cashier.post('/api/auth/authorize', { pin: '808080', action: 'cancel_order', profileId: ids.cashier, ...ORDER_TARGET });
+      const auth = await cashier.post('/api/auth/authorize', { pin: PINS.cashier, action: 'cancel_order', profileId: ids.cashier, ...ORDER_TARGET });
       expect(auth.status).toBe(429);
       expect(auth.body).toMatchObject({ code: 'pin_locked', message: MESSAGES.locked });
       expect(auth.body.lockedUntil).toMatch(ISO);
