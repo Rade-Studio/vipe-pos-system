@@ -38,7 +38,7 @@ interface OrdersPageProps {
 export const cancelledOrdersQueryKey = (day: string) => ["orders", "cancelled", day] as const
 
 const TAB_CLASS = cn(
-  "inline-flex min-h-[40px] flex-1 items-center gap-1.5 whitespace-nowrap rounded-pill px-3.5 text-sm font-medium text-muted-fg data-[state=active]:bg-surface data-[state=active]:text-fg data-[state=active]:shadow-sm sm:flex-none",
+  "inline-flex min-h-[40px] flex-1 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-sm font-medium text-muted-fg data-[state=active]:bg-surface data-[state=active]:text-fg data-[state=active]:shadow-sm sm:flex-none",
   focusRing,
 )
 
@@ -95,7 +95,7 @@ export function OrdersPage({
               </span>
             )}
           </Button>
-          <TabsList className="h-auto w-full rounded-pill border border-line bg-surface-2 p-1 sm:w-auto">
+          <TabsList className="h-auto w-full rounded-full border border-line bg-surface-2 p-1 sm:w-auto">
             <TabsTrigger value="active" className={TAB_CLASS}>
               Activas <span className="text-xs tabular-nums text-muted-fg">{rows.length}</span>
             </TabsTrigger>

@@ -474,6 +474,15 @@ describe("OrdersPage — F3 Canceladas", () => {
   })
 })
 
+describe("OrdersPage — tab switch shape", () => {
+  it("rounds the active tab like its pill container", async () => {
+    renderPage()
+    const tab = await screen.findByRole("tab", { name: /Activas/ })
+    expect(tab.className).toMatch(/\brounded-full\b/)
+    expect(tab.className).not.toMatch(/\brounded-sm\b/)
+  })
+})
+
 describe("OrdersPage — Completadas hoy", () => {
   it("shows the day's paid count, sales and tips from /orders/completed, and its list", async () => {
     api.completed = [
