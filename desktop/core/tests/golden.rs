@@ -8,8 +8,11 @@ use vipe_desktop_core::escpos::{
 };
 
 fn fixtures() -> (NaiveDateTime, Vec<Value>) {
-    let raw = include_str!("fixtures/golden.json");
-    let doc: Value = serde_json::from_str(raw).expect("golden.json parses");
+    fixture_set(include_str!("fixtures/golden.json"))
+}
+
+fn fixture_set(raw: &str) -> (NaiveDateTime, Vec<Value>) {
+    let doc: Value = serde_json::from_str(raw).expect("golden fixture parses");
     let now = NaiveDateTime::parse_from_str(doc["now"].as_str().unwrap(), "%Y-%m-%dT%H:%M:%S").unwrap();
     (now, doc["cases"].as_array().unwrap().clone())
 }
@@ -26,8 +29,21 @@ fn encoding(case: &Value) -> Encoding {
 fn every_golden_case_has_identical_lines_and_bytes() {
     let (now, cases) = fixtures();
     assert!(cases.len() >= 60, "fixture set looks truncated: {}", cases.len());
+    check_cases(now, &cases);
+}
+
+/// golden_plus.json: golden.json plus independent probe_* cases (see fixtures/regen.py).
+#[test]
+fn every_golden_plus_case_has_identical_lines_and_bytes() {
+    let (now, cases) = fixture_set(include_str!("fixtures/golden_plus.json"));
+    let probes = cases.iter().filter(|c| c["name"].as_str().unwrap().starts_with("probe_")).count();
+    assert!(probes >= 12, "probe cases look truncated: {probes}");
+    check_cases(now, &cases);
+}
+
+fn check_cases(now: NaiveDateTime, cases: &[Value]) {
     let mut failures = Vec::new();
-    for case in &cases {
+    for case in cases {
         let name = case["name"].as_str().unwrap();
         let expected_lines: Vec<String> =
             case["lines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap().to_string()).collect();

@@ -8,6 +8,7 @@ use crate::state::{now_ms, AppState};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Notify;
 use tauri::{AppHandle, Manager, Url};
 use tauri_plugin_updater::UpdaterExt;
 use vipe_desktop_core::station::{idle_for_update, updater_endpoint};
@@ -15,17 +16,20 @@ use vipe_desktop_core::station::{idle_for_update, updater_endpoint};
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
 const IDLE_POLL: Duration = Duration::from_secs(60);
 static RUNNING: AtomicBool = AtomicBool::new(false);
+static WAKE: Notify = Notify::const_new();
 
-/// Check now (at most one check at a time), then every 6 hours.
+/// Check now (at most one check at a time), then every 6 hours. Called again
+/// (settings saved, e.g. right after pairing) it wakes the loop for a new check.
 pub fn schedule(app: &AppHandle) {
     if RUNNING.swap(true, Ordering::SeqCst) {
+        WAKE.notify_one();
         return;
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         loop {
             let _ = check_and_install(&app).await;
-            tokio::time::sleep(CHECK_EVERY).await;
+            let _ = tokio::time::timeout(CHECK_EVERY, WAKE.notified()).await;
         }
     });
 }

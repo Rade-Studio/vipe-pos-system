@@ -41,6 +41,8 @@ export interface StationSettings {
   linkedAt: string | null;
   channel: Channel;
   printers: LocalPrinter[];
+  /** The Caja station (`fixed`); invoices without a station print on its printers. */
+  cajaStationId?: string | null;
   autostart: boolean;
   autoUpdate: boolean;
   soundOnFailure: boolean;

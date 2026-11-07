@@ -1,6 +1,7 @@
 import { Link } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { errorMessage, type Station } from '../../api/contract';
+import type { StationSettings } from '../../bridge/types';
 import type { StepContext } from '../Setup';
 import { Acts, NextButton, Opt } from './common';
 import { usePrinter } from './StepView';
@@ -21,11 +22,14 @@ export function StationStep({ ctx }: { ctx: StepContext }) {
       .stations()
       .then((list) => {
         setStations(list);
+        const caja = list.find((s) => s.fixed);
+        // The core prints invoices without a station on the Caja printers.
+        const patch: Partial<StationSettings> = { cajaStationId: caja?.id ?? null };
         // A printer with a cash drawer starts on the Caja station.
-        if (printer && printer.stationIds.length === 0 && printer.hasDrawer) {
-          const caja = list.find((s) => s.fixed);
-          if (caja) set({ stationIds: [caja.id] });
+        if (caja && printer && printer.stationIds.length === 0 && printer.hasDrawer) {
+          patch.printers = ctx.settings.printers.map((p, i) => (i === index ? { ...p, stationIds: [caja.id] } : p));
         }
+        ctx.update(patch);
       })
       .catch((e) => setError(errorMessage(e)));
   }, []);

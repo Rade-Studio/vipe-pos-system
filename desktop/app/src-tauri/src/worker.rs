@@ -49,7 +49,7 @@ fn run(state: Arc<AppState>) {
 /// Print one job on all its printers; the first failure fails the job.
 pub fn print_job(state: &AppState, job: &PrintJob) -> Result<(), String> {
     let settings = state.settings();
-    let targets = printers_for_job(job, &settings.printers);
+    let targets = printers_for_job(job, &settings.printers, settings.caja_station_id.as_deref());
     if targets.is_empty() {
         return Err("Ninguna impresora atiende esta estación".into());
     }

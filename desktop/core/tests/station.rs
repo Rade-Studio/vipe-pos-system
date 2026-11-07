@@ -44,11 +44,11 @@ fn connections_follow_the_printer_kind() {
 #[test]
 fn a_job_goes_to_the_printers_of_its_station() {
     let s = settings();
-    let names = |j: &PrintJob| printers_for_job(j, &s.printers).iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+    let names = |j: &PrintJob| printers_for_job(j, &s.printers, Some("st-caja")).iter().map(|p| p.name.clone()).collect::<Vec<_>>();
     assert_eq!(names(&comanda()), vec!["Cocina"]);
     assert_eq!(names(&job("invoice", Some("st-caja"), json!({}))), vec!["Caja"]);
     assert!(names(&job("command", Some("st-postres"), json!({}))).is_empty());
-    // An invoice without a station prints on the printer with the cash drawer.
+    // An invoice without a station prints on the Caja printers.
     assert_eq!(names(&job("invoice", None, json!({}))), vec!["Caja"]);
 }
 

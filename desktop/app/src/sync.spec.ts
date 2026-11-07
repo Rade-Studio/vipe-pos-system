@@ -6,7 +6,7 @@ import { syncOnce } from './sync';
 describe('syncOnce', () => {
   it('sends a heartbeat, queues pending jobs and acks finished ones', async () => {
     const api = new MockApiClient();
-    api.jobs = [{ id: 'j1', kind: 'command', station: 'st-cocina', createdAt: new Date().toISOString(), payload: {} }];
+    api.jobs = [{ id: 'j1', kind: 'command', stationId: 'st-cocina', createdAt: new Date().toISOString(), payload: {} }];
     const bridge = createDemoBridge({ scenario: 'ready', storage: null });
     bridge.enqueueJobs = vi.fn(async () => undefined);
     bridge.takeAcks = vi.fn(async () => [{ id: 'j0', status: 'printed' as const }]);

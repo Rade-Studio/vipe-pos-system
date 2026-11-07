@@ -71,7 +71,10 @@ export type JobKind = 'command' | 'invoice';
 export interface PendingJob {
   id: string;
   kind: JobKind;
-  station: string;
+  /** null for restaurants without stations: the job prints on every printer. */
+  stationId: string | null;
+  /** From F6 the server may add the station itself; the device routes by stationId. */
+  station?: { id: string; name: string } | null;
   createdAt: string;
   payload: Record<string, unknown>;
 }

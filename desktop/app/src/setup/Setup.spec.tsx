@@ -94,6 +94,8 @@ describe('first-run setup (design/instalador-vipe/02-asistente.html)', () => {
       ['Cocina caliente', ['st-cocina']],
     ]);
     expect(ctx.api.savedPrinters.map((p) => p.name)).toEqual(['Caja principal', 'Cocina caliente']);
+    // The core prints invoices without a station on the Caja printers.
+    expect(last.cajaStationId).toBe('st-caja');
   });
 
   it('skips to step 8 when the computer does not print', async () => {

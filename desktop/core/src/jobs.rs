@@ -1,8 +1,9 @@
-//! Server-driven print jobs (`{id, kind, station, createdAt, payload}`), with the
+//! Server-driven print jobs (`{id, kind, stationId, createdAt, payload}`), with the
 //! rules of pos/print_jobs.py: what prints, what is acknowledged without
 //! printing (unprintable payloads, comandas older than 12 hours) and what is
-//! rejected (no id). Routing is decided by the server; `station` only says which
-//! local printer serves the job.
+//! rejected (no id). Routing is decided by the server; `stationId` only says which
+//! local printer serves the job, and `null` (restaurants without stations) means
+//! every printer.
 
 use crate::escpos::{build_comanda_bytes, build_invoice_bytes, py_truthy, Encoding, RenderError};
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
@@ -13,17 +14,47 @@ use serde_json::{json, Value};
 pub const COMMAND_MAX_AGE_HOURS: i64 = 12;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", from = "WireJob")]
 pub struct PrintJob {
     pub id: String,
     /// `command` (comanda) or `invoice`.
     pub kind: String,
-    #[serde(default)]
+    /// The station id; `None` for jobs of restaurants without stations.
+    #[serde(rename = "stationId")]
     pub station: Option<String>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
     pub payload: Value,
+}
+
+/// The envelope as received: `stationId` (string or null) and, from F6, an
+/// optional `station` object `{id, name}`. Rows stored by earlier builds carry
+/// `station` as a plain string.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WireJob {
+    id: String,
+    kind: String,
+    #[serde(default)]
+    station_id: Option<String>,
+    #[serde(default)]
+    station: Value,
+    #[serde(default)]
+    created_at: Option<String>,
+    #[serde(default)]
+    payload: Value,
+}
+
+impl From<WireJob> for PrintJob {
+    fn from(w: WireJob) -> Self {
+        let from_station = match &w.station {
+            Value::String(s) => Some(s.clone()),
+            Value::Object(o) => o.get("id").and_then(Value::as_str).map(str::to_string),
+            _ => None,
+        };
+        PrintJob { id: w.id, kind: w.kind, station: w.station_id.or(from_station), created_at: w.created_at, payload: w.payload }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

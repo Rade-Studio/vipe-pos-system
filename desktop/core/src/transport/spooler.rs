@@ -45,14 +45,19 @@ impl Transport for SpoolerTransport {
                     return Err(TransportError::Io(last_error("StartDocPrinter", &self.name)));
                 }
                 let mut written: u32 = 0;
-                let ok = StartPagePrinter(handle) != 0
-                    && WritePrinter(handle, data.as_ptr() as *const c_void, data.len() as u32, &mut written) != 0;
+                // Read the error right after the failing call, before EndPage/EndDoc overwrite it.
+                let failure = if StartPagePrinter(handle) == 0 {
+                    Some(last_error("StartPagePrinter", &self.name))
+                } else if WritePrinter(handle, data.as_ptr() as *const c_void, data.len() as u32, &mut written) == 0 {
+                    Some(last_error("WritePrinter", &self.name))
+                } else if written as usize != data.len() {
+                    Some(format!("WritePrinter wrote {written} of {} bytes for {}", data.len(), self.name))
+                } else {
+                    None
+                };
                 EndPagePrinter(handle);
                 EndDocPrinter(handle);
-                if !ok || written as usize != data.len() {
-                    return Err(TransportError::Io(last_error("WritePrinter", &self.name)));
-                }
-                Ok(())
+                failure.map_or(Ok(()), |e| Err(TransportError::Io(e)))
             })();
             ClosePrinter(handle);
             result

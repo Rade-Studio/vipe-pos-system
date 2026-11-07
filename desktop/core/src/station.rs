@@ -55,6 +55,9 @@ pub struct Settings {
     pub device_token: Option<String>,
     #[serde(default)]
     pub printers: Vec<Printer>,
+    /// The id of the Caja station (`fixed` in GET /api/desktop/stations), when known.
+    #[serde(default)]
+    pub caja_station_id: Option<String>,
     #[serde(default = "yes")]
     pub auto_update: bool,
 }
@@ -83,13 +86,18 @@ pub fn connection_of(p: &Printer) -> Connection {
     }
 }
 
-/// Printers serving the job's station. The server decides routing (L10); an
-/// invoice without a station goes to the printer with the cash drawer.
-pub fn printers_for_job<'a>(job: &PrintJob, printers: &'a [Printer]) -> Vec<&'a Printer> {
+/// Printers serving the job's station. The server decides routing (L10). A job
+/// without a station (restaurants without stations) prints on every printer,
+/// except an invoice, which prints on the Caja printers (`caja_station`) or on
+/// every printer when none serves Caja.
+pub fn printers_for_job<'a>(job: &PrintJob, printers: &'a [Printer], caja_station: Option<&str>) -> Vec<&'a Printer> {
+    let serving = |st: &str| printers.iter().filter(|p| p.station_ids.iter().any(|s| s == st)).collect::<Vec<_>>();
     match &job.station {
-        Some(st) => printers.iter().filter(|p| p.station_ids.iter().any(|s| s == st)).collect(),
-        None if job.kind == "invoice" => printers.iter().filter(|p| p.has_drawer).take(1).collect(),
-        None => Vec::new(),
+        Some(st) => serving(st),
+        None => {
+            let caja = caja_station.filter(|_| job.kind == "invoice").map(serving).unwrap_or_default();
+            if caja.is_empty() { printers.iter().collect() } else { caja }
+        }
     }
 }
 

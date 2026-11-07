@@ -77,7 +77,7 @@ pub fn reprint_job(state: S, id: String) -> Result<(), String> {
 
 fn queue_item(j: &QueuedJob, settings: &Settings) -> Value {
     let (title, detail) = job_summary(&j.job);
-    let printers = printers_for_job(&j.job, &settings.printers).iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+    let printers = printers_for_job(&j.job, &settings.printers, settings.caja_station_id.as_deref()).iter().map(|p| p.name.clone()).collect::<Vec<_>>();
     json!({
         "id": j.job.id, "title": title, "detail": detail, "printerName": printers.join(", "),
         "status": status_str(j.status), "attempts": j.attempts, "error": j.last_error, "at": iso(j.enqueued_at),

@@ -15,7 +15,7 @@ the client against this document with a mock adapter; F5a builds the endpoints
 - Errors: `{ "message": "<Spanish text for the user>", "code": "<snake_case>" }`.
 - Times: ISO 8601 with offset. Money: integer pesos.
 - Routing is decided by the server (L10): the desktop never chooses which dish
-  goes where; it maps a job's `station` to the local printers assigned to it.
+  goes where; it maps a job's `stationId` to the local printers assigned to it.
 
 ## 1. Pairing
 
@@ -65,8 +65,15 @@ on the computer.
 ## 5. Print jobs
 
 - `GET /api/desktop/jobs/pending?after=<jobId>&limit=500` →
-  `[{ id, kind: "command" | "invoice", station, createdAt, payload }]`, oldest
-  first, for the stations this device's printers serve. Payloads are today's
+  `[{ id, kind: "command" | "invoice", stationId, createdAt, payload }]`, oldest
+  first, for the stations this device's printers serve. `stationId` is a
+  string or `null`: restaurants without stations get jobs with no station, and
+  `print_jobs.station_id` is `ON DELETE SET NULL`. From F6 the job may also
+  carry `station: { id, name } | null`; the device routes by `stationId` (or
+  `station.id`) and ignores the name. A job with no station prints on every
+  active printer of the device; an invoice with no station prints on the
+  printers assigned to the Caja station (`fixed` in §3), or on every printer
+  when none is. Payloads are today's
   `print_job` payloads (see `pos/print_jobs.py`): `command`
   `{ invoiceNumber, items, waiter, table?, delivery? }`, `invoice`
   `{ invoiceNumber, invoice, displayItems }`. One job per station: a printer
