@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
@@ -45,6 +45,7 @@ import { createLocalChangeRegistry } from "@/lib/kitchen/realtime"
 import { mergeOrdersList } from "@/lib/realtime/order-merge"
 import { mergeOrdersForWaiter, wireRowToPartialOrder, withoutVoidedWireLines, type OrderChange } from "@/lib/realtime/order-merge"
 import { WaiterVoidActions } from "@/components/waiter/WaiterVoidActions"
+import { useTerminal } from "@/components/terminal/terminal-context"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { useWaiters } from "@/hooks/use-waiters"
@@ -83,8 +84,6 @@ interface WaiterViewProps {
   profile: Profile
   onChangeProfile: () => void
   authRole?: string
-  /** F4: on a shared terminal, its bar (identified waiter, "Cambiar mesero") replaces the header and its logout. */
-  header?: ReactNode
 }
 
 // S5: the shared wire→app mapping (`wireRowToPartialOrder`) turns the
@@ -94,7 +93,7 @@ interface WaiterViewProps {
 // reference-stable contract) and returns null when the row lacks the minimum
 // id+status shape the merge needs. See its call site in the orders handler.
 
-export function WaiterView({ profile, onChangeProfile, authRole, header }: WaiterViewProps) {
+export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewProps) {
   // Estados principales
   const [activeTable, setActiveTable] = useState<string | null>(null)
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
@@ -917,6 +916,53 @@ export function WaiterView({ profile, onChangeProfile, authRole, header }: Waite
     setShowStockDetailWarning(false)
   }, [])
 
+  // F4b: on a shared terminal every order-writing entry first asks for a valid
+  // PIN (the sheet of components/terminal). The entry then runs from an effect,
+  // after the identified person's profile reached this screen, with the
+  // handlers of that render.
+  const terminal = useTerminal()
+  const latestHandlers = useRef({ handleTableSelect, handleReserveTable, handleReleaseTable, handleSendToKitchen })
+  latestHandlers.current = { handleTableSelect, handleReserveTable, handleReleaseTable, handleSendToKitchen }
+  const [pendingEntry, setPendingEntry] = useState<(() => void) | null>(null)
+  useEffect(() => {
+    if (!pendingEntry) return
+    setPendingEntry(null)
+    pendingEntry()
+  }, [pendingEntry])
+  const tableLabel = useCallback(
+    (tableId: string) => {
+      const number = tables.find((t) => t.id === tableId)?.number
+      return number === undefined ? "Mesa" : `Mesa ${number}`
+    },
+    [tables],
+  )
+  const withIdentity = useCallback(
+    (tableId: string, run: () => void) => {
+      if (!terminal) return run()
+      void terminal.ensureIdentity({ tableId, label: tableLabel(tableId) }).then((ok) => {
+        if (ok) setPendingEntry(() => run)
+      })
+    },
+    [terminal, tableLabel],
+  )
+  const selectTable = useCallback(
+    (tableId: string | null) =>
+      tableId ? withIdentity(tableId, () => latestHandlers.current.handleTableSelect(tableId)) : handleTableSelect(null),
+    [withIdentity, handleTableSelect],
+  )
+  const reserveTable = useCallback(
+    (tableId: string) => withIdentity(tableId, () => latestHandlers.current.handleReserveTable(tableId)),
+    [withIdentity],
+  )
+  const releaseTable = useCallback(
+    (tableId: string) => withIdentity(tableId, () => latestHandlers.current.handleReleaseTable(tableId)),
+    [withIdentity],
+  )
+  const sendToKitchen = useCallback(() => {
+    if (!activeTable) return
+    withIdentity(activeTable, () => void latestHandlers.current.handleSendToKitchen())
+  }, [activeTable, withIdentity])
+
   // Verificar acceso a mesa
   const checkTableAccess = useCallback((tableId: string) => {
     // En este enfoque, todas las mesas son accesibles por el perfil de mesero principal
@@ -976,6 +1022,7 @@ export function WaiterView({ profile, onChangeProfile, authRole, header }: Waite
     )
   }
   const saveDetails = async (orderId: string, details: OrderDetails) => {
+    if (terminal && activeTable && !(await terminal.ensureIdentity({ tableId: activeTable, label: tableLabel(activeTable) }))) return false
     setSavingDetails(true)
     try {
       applyOrderDto(await updateDetails(orderId, details))
@@ -1087,8 +1134,8 @@ export function WaiterView({ profile, onChangeProfile, authRole, header }: Waite
       waiterName={activeWaiterName}
       zoneName={activeZoneName}
       onAddItems={handleAddItems}
-      onReserve={handleReserveTable}
-      onRelease={handleReleaseTable}
+      onReserve={reserveTable}
+      onRelease={releaseTable}
       onShowOrder={onShowOrder}
       orderCount={cartItems.reduce((sum, item) => sum + item.quantity, 0)}
       orderNumber={activeOrder?.orderNumber}
@@ -1174,7 +1221,7 @@ export function WaiterView({ profile, onChangeProfile, authRole, header }: Waite
             </button>
           }
           primaryAction={
-            <Button onClick={handleSendToKitchen} disabled={newCount === 0 || sendingToKitchen} className="text-base">
+            <Button onClick={sendToKitchen} disabled={newCount === 0 || sendingToKitchen} className="text-base">
               <Send className="mr-1.5 h-[18px] w-[18px]" aria-hidden />
               Enviar a cocina ({newCount})
             </Button>
@@ -1259,16 +1306,16 @@ export function WaiterView({ profile, onChangeProfile, authRole, header }: Waite
       {/* Contenido principal */}
       <div className="flex-1 overflow-auto bg-muted/20 p-0">
         <div className="p-1 md:p-2">
-          {header ?? <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />}
+          <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
 
           <div className="mb-1">
             <TablesSection
               activeTable={activeTable}
               profile={profile}
               profiles={waiters}
-              onSelectTable={handleTableSelect}
-              onReserveTable={handleReserveTable}
-              onReleaseTable={handleReleaseTable}
+              onSelectTable={selectTable}
+              onReserveTable={reserveTable}
+              onReleaseTable={releaseTable}
               isTableAccessible={checkTableAccess}
               floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id, elapsedOf }}
             />
@@ -1298,7 +1345,7 @@ export function WaiterView({ profile, onChangeProfile, authRole, header }: Waite
               onUpdateQuantity={handleUpdateQuantity}
               onUpdateComments={handleUpdateComments}
               onClearCart={handleClearCart}
-              onSendToKitchen={handleSendToKitchen}
+              onSendToKitchen={sendToKitchen}
               onToggleSidebar={() => {}}
               isSending={sendingToKitchen}
               hasActiveTable={activeTable !== null}
@@ -1319,7 +1366,7 @@ export function WaiterView({ profile, onChangeProfile, authRole, header }: Waite
           onUpdateQuantity={handleUpdateQuantity}
           onUpdateComments={handleUpdateComments}
           onClearCart={handleClearCart}
-          onSendToKitchen={handleSendToKitchen}
+          onSendToKitchen={sendToKitchen}
           onToggleSidebar={() => setShowMobileCart(!showMobileCart)}
           isSending={sendingToKitchen}
           hasActiveTable={activeTable !== null}

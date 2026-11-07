@@ -76,7 +76,19 @@ export async function terminalLogin(email: string, password: string): Promise<Se
   return data
 }
 
-/** Terminal: the picked staff member enters their PIN; the claim lasts 5 minutes. */
+/** Terminal (F4b): the PIN alone says who is taking the order; the claim lasts 5 minutes. */
+export async function identifyByPin(pin: string): Promise<IdentifyResponse> {
+  const { data } = await api.POST("/api/auth/identify", { body: { pin } })
+  if (!data) throw new ApiError(500, "Internal Server Error", "Empty identify response")
+  return data
+}
+
+/** Terminal (F4b): an admin or cashier PIN lifts this tablet's PIN lock early. */
+export async function unlockTerminal(profileId: string, pin: string): Promise<void> {
+  await api.POST("/api/auth/terminal/unlock", { body: { profileId, pin } })
+}
+
+/** Terminal: the picked staff member enters their PIN (closing the terminal checks a supervisor this way). */
 export async function identifyStaff(profileId: string, pin: string): Promise<IdentifyResponse> {
   const { data } = await api.POST("/api/auth/identify", { body: { profileId, pin } })
   if (!data) throw new ApiError(500, "Internal Server Error", "Empty identify response")
@@ -100,7 +112,7 @@ export async function authorizeSupervisor(input: AuthorizeRequest): Promise<Auth
   return data
 }
 
-export type PinFailureKind = "wrong" | "locked" | "invalid" | "acting-required" | "unknown"
+export type PinFailureKind = "wrong" | "locked" | "ambiguous" | "taken" | "invalid" | "acting-required" | "unknown"
 
 export interface PinFailure {
   kind: PinFailureKind
@@ -120,6 +132,9 @@ export function pinFailureOf(error: unknown): PinFailure {
         ? { kind: "locked", message: error.message, lockedUntil: until }
         : { kind: "locked", message: error.message }
     }
+    // F4b: a PIN two members share (legacy), or a new PIN another member has.
+    if (code === "pin_ambiguous") return { kind: "ambiguous", message: error.message }
+    if (code === "pin_taken") return { kind: "taken", message: error.message }
     if (code === "acting_required") return { kind: "acting-required", message: error.message }
     if (error.status === 422) return { kind: "invalid", message: error.message }
   }

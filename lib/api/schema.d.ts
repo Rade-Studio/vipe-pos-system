@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/terminal/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AuthController_unlockTerminal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/authorize": {
         parameters: {
             query?: never;
@@ -1853,9 +1869,9 @@ export interface components {
         IdentifyRequest: {
             /**
              * Format: uuid
-             * @description Profile picked on the terminal.
+             * @description Optional (F4 compatibility): only this profile is tried. Without it the PIN alone says who it is (F4b).
              */
-            profileId: string;
+            profileId?: string;
             pin: string;
         };
         ActingProfile: {
@@ -1874,6 +1890,15 @@ export interface components {
              */
             expiresAt: string;
             profile: components["schemas"]["ActingProfile"];
+        };
+        TerminalUnlockRequest: {
+            /**
+             * Format: uuid
+             * @description The admin or cashier picked on the terminal.
+             */
+            profileId: string;
+            /** @description That supervisor's PIN. */
+            pin: string;
         };
         AuthorizeRequest: {
             /** @description PIN of an admin or cashier of the restaurant. */
@@ -4402,6 +4427,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Ese PIN no está disponible, elige otro (code pin_taken): another active member has the new PIN; never says whose. The attempt counts. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Weak or malformed new PIN, or no PIN yet (Spanish message). */
             422: {
                 headers: {
@@ -4431,7 +4463,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Terminal only: the acting-staff claim, valid 5 minutes. */
+            /** @description Terminal only: the acting-staff claim, valid 5 minutes. Without profileId the PIN is checked against the active admins, cashiers and waiters of the restaurant; the attempt counts on this terminal session. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4447,7 +4479,57 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description PIN only: more than one active member has that PIN (code pin_ambiguous); nobody is identified. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_unlockTerminal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TerminalUnlockRequest"];
+            };
+        };
+        responses: {
+            /** @description Terminal only: an active admin or cashier's PIN lifts this terminal's PIN lock early. Logged. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, a non-supervisor or another restaurant alike. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Malformed profile id or PIN. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description That supervisor is locked for 5 minutes (code pin_locked; lockedUntil). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9638,6 +9720,13 @@ export interface operations {
             };
             /** @description Not a profile of the caller's restaurant. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ese PIN no está disponible, elige otro (code pin_taken): another active member of the restaurant has it; never says whose. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -94,6 +94,7 @@ export class StaffController {
   @ApiBody({ type: SetStaffPinRequest })
   @ApiNoContentResponse({ description: 'PIN set or reset (stored as an argon2id hash); its lockout is cleared. Any profile of the restaurant, the admin included.' })
   @ApiNotFoundResponse({ description: "Not a profile of the caller's restaurant." })
+  @ApiConflictResponse({ description: 'Ese PIN no está disponible, elige otro (code pin_taken): another active member of the restaurant has it; never says whose.' })
   setPin(@Param('id') id: string, @Body() body: unknown): Promise<void> {
     return this.pins.setForStaff(parseInput(idParamSchema, id), parsePinInput(setPinSchema, body).pin);
   }

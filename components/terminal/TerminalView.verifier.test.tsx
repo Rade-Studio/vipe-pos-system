@@ -3,63 +3,48 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
- * F4 (S1 b) — shared order-taking terminal on a tablet
- * (design/acceso-meseros/02-terminal-compartida.html): tap your name, type your
- * PIN, take the order as yourself for 5 minutes; expiry keeps the unsent cart;
- * closing the terminal needs the PIN of the admin or cashier who opened it.
+ * Security probes of the shared terminal, kept from F4 for the F4b design
+ * (the normal waiter app plus a PIN sheet): the acting claim only on writes
+ * and cleared on unmount, "Salir" only through an admin or cashier PIN and
+ * never offered to the waiters.
  */
 
-const tables = vi.hoisted(() => ({ getWaiters: vi.fn() }))
-vi.mock("@/lib/api/tables", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api/tables")>()),
-  ...tables,
-}))
 const staff = vi.hoisted(() => ({ listSupervisors: vi.fn() }))
-vi.mock("@/lib/api/staff", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api/staff")>()),
-  ...staff,
-}))
-const auth = vi.hoisted(() => ({ identifyStaff: vi.fn(), signOutAndReload: vi.fn() }))
-vi.mock("@/lib/api/auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api/auth")>()),
-  ...auth,
-}))
+vi.mock("@/lib/api/staff", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/api/staff")>()), ...staff }))
+const auth = vi.hoisted(() => ({ identifyByPin: vi.fn(), identifyStaff: vi.fn(), signOutAndReload: vi.fn() }))
+vi.mock("@/lib/api/auth", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/api/auth")>()), ...auth }))
 vi.mock("@/components/theme/theme-toggle", () => ({ ThemeToggle: () => null }))
 
+import { Header } from "@/components/layout/Header"
 import { createApiClient } from "@/lib/api/client"
 import { ApiError } from "@/lib/api/errors"
-import { clockTime } from "@/lib/terminal/format"
 import { actingToken, clearActingToken } from "@/lib/terminal/acting"
-import { useCartStore } from "@/store/useCartStore"
 import { useProfileStore } from "@/store/useProfileStore"
 import { TerminalView } from "./TerminalView"
+import { useTerminal } from "./terminal-context"
 
 const opener = {
   user: { id: "u-laura", email: "laura@a.test" },
   profile: { id: "p-laura", name: "Laura Gómez", role: "cashier", restaurantId: "r-1" },
   sessionKind: "terminal" as const,
 }
-const identity = (id: string, name: string, role = "waiter") => ({
-  token: `acting-${id}`,
-  expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
-  profile: { id, name, role },
-})
-const LOCK = "2026-11-07T17:49:00.000Z"
+const andres = { token: "acting-p-andres", expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(), profile: { id: "p-andres", name: "Andrés", role: "waiter" } }
 
-/**
- * The order screen the terminal wraps (WaiterView in the app): it writes an
- * order through an API client (absolute origin: Node's Request needs one).
- */
+/** An API client with an absolute origin (Node's Request needs one). */
 const ordersApi = createApiClient({ baseUrl: "http://localhost:3000", fetch: (request) => globalThis.fetch(request) })
-function OrderScreen({ bar }: { bar: React.ReactNode }) {
-  const api = ordersApi
-  const who = useProfileStore((s) => s.selectedProfile)
+function Screen() {
+  const terminal = useTerminal()
   return (
     <div>
-      {bar}
-      <p>pedido de {who?.name}</p>
-      <button type="button" onClick={() => void api.POST("/api/orders", { body: {} as never })}>
+      <Header profile={{ id: "p-laura", name: "Laura Gómez", role: "cashier" }} onChangeProfile={() => {}} />
+      <button type="button" onClick={() => void terminal?.ensureIdentity({ tableId: "t-7", label: "Mesa 7" })}>
+        Mesa 7
+      </button>
+      <button type="button" onClick={() => void ordersApi.POST("/api/orders", { body: {} as never })}>
         Enviar a cocina
+      </button>
+      <button type="button" onClick={() => void ordersApi.GET("/api/tables")}>
+        Leer mesas
       </button>
     </div>
   )
@@ -67,96 +52,117 @@ function OrderScreen({ bar }: { bar: React.ReactNode }) {
 
 function renderTerminal() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  return render(
     <QueryClientProvider client={client}>
-      <TerminalView session={opener}>{(bar) => <OrderScreen bar={bar} />}</TerminalView>
+      <TerminalView session={opener}>
+        <Screen />
+      </TerminalView>
     </QueryClientProvider>,
   )
 }
 
-const typePin = (pin: string) => {
-  const pad = screen.getByRole("group", { name: "Teclado del PIN" })
-  for (const digit of pin) fireEvent.click(within(pad).getByRole("button", { name: digit }))
-  return pad
-}
-const enter = async () => {
+const typePin = async (pin: string, submit: string) => {
+  const pad = within(screen.getByRole("group", { name: "Teclado del PIN" }))
+  for (const digit of pin) fireEvent.click(pad.getByRole("button", { name: digit }))
   await act(async () => {
-    fireEvent.click(within(screen.getByRole("group", { name: "Teclado del PIN" })).getByRole("button", { name: "Entrar" }))
+    fireEvent.click(pad.getByRole("button", { name: submit }))
   })
 }
-const identifyAs = async (name: string, pin = "4829") => {
-  fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${name}`) }))
-  typePin(pin)
-  await enter()
+const identifyAndres = async () => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Mesa 7" }))
+  })
+  await typePin("4829", "Entrar")
+}
+const openSalir = async () => {
+  fireEvent.click(screen.getByRole("button", { name: /Salir|Cerrar Sesión/ }))
+  return screen.findByRole("radio", { name: /Carlos Pérez/ })
 }
 
 beforeEach(() => {
-  tables.getWaiters.mockReset().mockResolvedValue([
-    { id: "p-andres", name: "Andrés", username: null },
-    { id: "p-vale", name: "Valentina Ríos", username: null },
-  ])
-  auth.identifyStaff.mockReset().mockImplementation(async (id: string) => identity(id, id === "p-andres" ? "Andrés" : "Laura Gómez"))
+  auth.identifyByPin.mockReset().mockResolvedValue(andres)
+  auth.identifyStaff.mockReset().mockResolvedValue({ ...andres, profile: { id: "p-carlos", name: "Carlos Pérez", role: "admin" } })
+  auth.signOutAndReload.mockReset().mockResolvedValue(undefined)
   staff.listSupervisors.mockReset().mockResolvedValue([
     { id: "p-carlos", fullName: "Carlos Pérez", role: "admin", hasPin: true, pinLockedUntil: null },
     { id: "p-laura", fullName: "Laura Gómez", role: "cashier", hasPin: true, pinLockedUntil: null },
-    { id: "p-sofia", fullName: "Sofía Ruiz", role: "cashier", hasPin: false, pinLockedUntil: null },
   ])
-  auth.signOutAndReload.mockReset().mockResolvedValue(undefined)
-  useCartStore.setState({ cartItems: {} })
   useProfileStore.setState({ authProfile: null, selectedProfile: null })
   clearActingToken()
 })
 
 afterEach(() => {
-  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
-describe("F4 verifier probes", () => {
-  it("W1 unmounting the terminal clears the acting claim (a later personal session never sends it)", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const view = render(
-      <QueryClientProvider client={client}>
-        <TerminalView session={opener}>{(bar) => <OrderScreen bar={bar} />}</TerminalView>
-      </QueryClientProvider>,
-    )
-    await identifyAs("Andrés")
+describe("shared terminal security probes", () => {
+  it("W1 unmounting the terminal clears the acting claim", async () => {
+    const view = renderTerminal()
+    await identifyAndres()
     expect(actingToken()).toBe("acting-p-andres")
     view.unmount()
     expect(actingToken()).toBeNull()
   })
 
-  it("W2 a locked or failing supervisor PIN never logs out; only a 200 identify does", async () => {
+  it("W2 a locked or failing supervisor PIN never logs out; only a valid one does", async () => {
     renderTerminal()
-    await screen.findByRole("button", { name: /^Andrés/ })
-    fireEvent.click(screen.getByRole("button", { name: "Cerrar terminal" }))
-    fireEvent.click(await screen.findByRole("button", { name: /^Laura Gómez/ }))
-    auth.identifyStaff.mockRejectedValueOnce(new ApiError(429, "Too Many Requests", "Demasiados intentos", { code: "pin_locked", lockedUntil: LOCK }))
-    typePin("1111")
-    await enter()
+    fireEvent.click(await openSalir())
+    auth.identifyStaff.mockRejectedValueOnce(
+      new ApiError(429, "Too Many Requests", "Demasiados intentos", { code: "pin_locked", lockedUntil: new Date(Date.now() + 60_000).toISOString() }),
+    )
+    await typePin("1111", "Salir")
     expect(auth.signOutAndReload).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Atrás" }))
+    fireEvent.click(await screen.findByRole("radio", { name: /Laura Gómez/ }))
     auth.identifyStaff.mockRejectedValueOnce(new ApiError(500, "Error", "boom", {}))
-    fireEvent.click(screen.getByRole("button", { name: "No soy Laura Gómez" }))
-    fireEvent.click(await screen.findByRole("button", { name: /^Carlos Pérez/ }))
-    typePin("1111")
-    await enter()
+    await typePin("5820", "Salir")
     expect(auth.signOutAndReload).not.toHaveBeenCalled()
-    expect(auth.identifyStaff).toHaveBeenLastCalledWith("p-carlos", "1111")
+    await typePin("5821", "Salir")
+    expect(auth.identifyStaff).toHaveBeenLastCalledWith("p-laura", "5821")
+    expect(auth.signOutAndReload).toHaveBeenCalledTimes(1)
   })
 
-  it("W3 the close tiles come only from GET /staff/supervisors: waiters are never offered", async () => {
+  it("W3 Salir offers only GET /staff/supervisors (never the waiters), also while a waiter is identified", async () => {
     renderTerminal()
-    await screen.findByRole("button", { name: /^Andrés/ })
-    fireEvent.click(screen.getByRole("button", { name: "Cerrar terminal" }))
-    await screen.findByRole("button", { name: /^Carlos Pérez/ })
-    expect(screen.queryByRole("button", { name: /^Andrés/ })).toBeNull()
-    expect(screen.queryByRole("button", { name: /^Valentina/ })).toBeNull()
+    await identifyAndres()
+    await openSalir()
+    expect(screen.getAllByRole("radio").map((tile) => tile.textContent)).toEqual([
+      expect.stringContaining("Carlos Pérez"),
+      expect.stringContaining("Laura Gómez"),
+    ])
+    expect(screen.queryByRole("radio", { name: /Andrés/ })).toBeNull()
   })
 
-  it("W4 no close entry while a waiter is identified on the order screen (Cambiar mesero first)", async () => {
+  it("W4 the acting claim goes only on writes, and not after Terminar", async () => {
+    const seen: [string, string | null][] = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (request: Request) => {
+        seen.push([request.method, request.headers.get("X-Vipe-Acting")])
+        return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } })
+      }),
+    )
     renderTerminal()
-    await identifyAs("Andrés")
-    expect(screen.queryByRole("button", { name: "Cerrar terminal" })).toBeNull()
+    await identifyAndres()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Leer mesas" }))
+      fireEvent.click(screen.getByRole("button", { name: "Enviar a cocina" }))
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar a cocina" }))
+    })
+    expect(seen).toEqual([
+      ["GET", null],
+      ["POST", "acting-p-andres"],
+      ["POST", null],
+    ])
+  })
+
+  it("W5 nobody changes a PIN on the terminal, identified or not", async () => {
+    renderTerminal()
+    expect(screen.queryByRole("button", { name: /Cambiar mi PIN/ })).toBeNull()
+    await identifyAndres()
     expect(screen.queryByRole("button", { name: /Cambiar mi PIN/ })).toBeNull()
   })
 })

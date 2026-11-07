@@ -495,22 +495,12 @@ describe("WaiterView — S13 delivery invariant", () => {
   })
 })
 
-describe("WaiterView — shared terminal header (F4)", () => {
-  it("keeps its own header (with Cerrar Sesión) on a personal session", async () => {
+describe("WaiterView — personal session header (F4b preserve)", () => {
+  it("keeps its own header with Cerrar Sesión and Cambiar mi PIN on a personal session", async () => {
     renderView()
     await flush()
     expect(screen.getByRole("button", { name: /Cerrar Sesión/ })).toBeInTheDocument()
-  })
-
-  it("shows the terminal bar instead of its header, so logout goes through the terminal", async () => {
-    render(
-      <QueryClientProvider client={queryClient}>
-        <WaiterView profile={waiterProfile} onChangeProfile={() => {}} header={<div>barra de terminal</div>} />
-      </QueryClientProvider>,
-    )
-    await flush()
-    expect(screen.getByText("barra de terminal")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /Cerrar Sesión/ })).toBeNull()
+    expect(screen.getByRole("button", { name: /Cambiar mi PIN/ })).toBeInTheDocument()
   })
 })
 

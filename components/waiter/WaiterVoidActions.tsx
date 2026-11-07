@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { VoidFlow, type VoidResult } from "@/components/voids/VoidFlow"
 import type { VoidLine, VoidTarget } from "@/components/voids/flow"
 import { formatCurrency } from "@/utils/helpers"
+import { useTerminal } from "@/components/terminal/terminal-context"
 
 interface WaiterVoidActionsProps {
   /** The table's open order; only its sent lines are listed (unsent ones live in the cart). */
@@ -25,6 +26,14 @@ const linesOf = (order: Order): VoidLine[] =>
  */
 export function WaiterVoidActions({ order, tableNumber, onDone }: WaiterVoidActionsProps) {
   const [target, setTarget] = useState<VoidTarget | null>(null)
+  // F4b: on a shared terminal the waiter identifies with their PIN first, so
+  // the authorization and the void are requested as them.
+  const terminal = useTerminal()
+  const open = async (next: VoidTarget) => {
+    const label = tableNumber !== undefined ? `Mesa ${tableNumber}` : "Anular o cancelar"
+    if (terminal && !(await terminal.ensureIdentity({ tableId: order.tableId ?? undefined, label }))) return
+    setTarget(next)
+  }
   // Every line may be voided and the order still open: it can always be cancelled.
   if (order.status === "paid" || order.status === "cancelled") return null
   const label = [order.orderNumber ? `#${order.orderNumber}` : null, tableNumber !== undefined ? `Mesa ${tableNumber}` : null]
@@ -48,7 +57,7 @@ export function WaiterVoidActions({ order, tableNumber, onDone }: WaiterVoidActi
               variant="ghost"
               className="h-11 flex-none px-2.5 text-status-danger-fg hover:text-status-danger-fg"
               aria-label={`Anular ${line.name}`}
-              onClick={() => setTarget({ action: "item", orderId: order.id, label, lines, lineId: line.id })}
+              onClick={() => void open({ action: "item", orderId: order.id, label, lines, lineId: line.id })}
             >
               Anular plato
             </Button>
@@ -59,7 +68,7 @@ export function WaiterVoidActions({ order, tableNumber, onDone }: WaiterVoidActi
       <Button
         variant="outline"
         className="h-11 border-status-danger-line text-status-danger-fg hover:bg-status-danger-bg hover:text-status-danger-fg"
-        onClick={() => setTarget({ action: "order", orderId: order.id, label, lines, total: order.bill?.total ?? 0 })}
+        onClick={() => void open({ action: "order", orderId: order.id, label, lines, total: order.bill?.total ?? 0 })}
       >
         <Ban className="mr-1.5 h-4 w-4" aria-hidden />
         Cancelar orden

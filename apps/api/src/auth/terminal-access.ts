@@ -21,6 +21,8 @@ const write: TerminalRoute = { acting: true };
 const TERMINAL_ROUTES: Readonly<Record<string, TerminalRoute>> = {
   'GET /api/auth/me': read,
   'POST /api/auth/identify': read,
+  // F4b: a supervisor PIN lifts the lock of the terminal that guessed.
+  'POST /api/auth/terminal/unlock': read,
   'GET /api/staff/supervisors': read,
   'GET /api/config': read,
   'GET /api/staff/waiters': read,

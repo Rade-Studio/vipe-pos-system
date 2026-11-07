@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Header, HttpCode, Inject, Post, Put, Req, Res } from '@nestjs/common';
 import {
   ApiBody,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -24,10 +25,11 @@ import {
   loginSchema,
   LoginRequest,
   SessionResponse,
+  TerminalUnlockRequest,
 } from './auth.dto';
 import { AuthService } from './auth.service';
 import { ACCESS_COOKIE, clearAuthCookies, readCookie, REFRESH_COOKIE, setAuthCookies } from './cookies';
-import { authorizeSchema, changeOwnPinSchema, identifySchema, parsePinInput } from './pins';
+import { authorizeSchema, changeOwnPinSchema, identifySchema, parsePinInput, terminalUnlockSchema } from './pins';
 import { PinRefusal, PinsService } from './pins.service';
 import { Public } from './public.decorator';
 
@@ -116,6 +118,9 @@ export class AuthController {
   @ApiBody({ type: ChangeOwnPinRequest })
   @ApiNoContentResponse({ description: 'The caller\'s PIN is replaced (the current one was right).' })
   @ApiForbiddenResponse({ description: 'PIN incorrecto (code pin_invalid; the failure counts), or a terminal session.' })
+  @ApiConflictResponse({
+    description: 'Ese PIN no está disponible, elige otro (code pin_taken): another active member has the new PIN; never says whose. The attempt counts.',
+  })
   @ApiTooManyRequestsResponse({ description: '5 failures lock the profile and the session 5 minutes (code pin_locked; lockedUntil: when the lock ends).' })
   @ApiUnprocessableEntityResponse({ description: 'Weak or malformed new PIN, or no PIN yet (Spanish message).' })
   async changeOwnPin(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
@@ -128,14 +133,35 @@ export class AuthController {
   @HttpCode(200)
   @ApiCookieAuth()
   @ApiBody({ type: IdentifyRequest })
-  @ApiOkResponse({ type: IdentifyResponse, description: 'Terminal only: the acting-staff claim, valid 5 minutes.' })
+  @ApiOkResponse({
+    type: IdentifyResponse,
+    description:
+      'Terminal only: the acting-staff claim, valid 5 minutes. Without profileId the PIN is checked against the active admins, cashiers and waiters of the restaurant; the attempt counts on this terminal session.',
+  })
   @ApiForbiddenResponse({
     description: 'Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, an unknown profile, another restaurant or no PIN alike.',
   })
-  @ApiTooManyRequestsResponse({ description: 'The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends).' })
+  @ApiConflictResponse({ description: 'PIN only: more than one active member has that PIN (code pin_ambiguous); nobody is identified.' })
+  @ApiTooManyRequestsResponse({
+    description: 'The profile or this terminal is locked for 5 minutes (code pin_locked; lockedUntil: when the lock ends).',
+  })
   async identify(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
     const input = parsePinInput(identifySchema, body);
     this.sendAfterCommit(res, 200, await this.pins.identify(req.auth!, input.profileId, input.pin));
+  }
+
+  @Post('terminal/unlock')
+  @Header(...NO_STORE)
+  @HttpCode(204)
+  @ApiCookieAuth()
+  @ApiBody({ type: TerminalUnlockRequest })
+  @ApiNoContentResponse({ description: "Terminal only: an active admin or cashier's PIN lifts this terminal's PIN lock early. Logged." })
+  @ApiForbiddenResponse({ description: 'Not a terminal session, or PIN incorrecto (code pin_invalid) for a wrong PIN, a non-supervisor or another restaurant alike.' })
+  @ApiTooManyRequestsResponse({ description: 'That supervisor is locked for 5 minutes (code pin_locked; lockedUntil).' })
+  @ApiUnprocessableEntityResponse({ description: 'Malformed profile id or PIN.' })
+  async unlockTerminal(@Req() req: AuthenticatedRequest, @Body() body: unknown, @Res() res: Response): Promise<void> {
+    const input = parsePinInput(terminalUnlockSchema, body);
+    this.sendAfterCommit(res, 204, await this.pins.unlockTerminal(req.auth!, input.profileId, input.pin));
   }
 
   @Post('authorize')

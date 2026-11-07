@@ -46,7 +46,19 @@ export const PIN_MESSAGES = {
   opener: 'Solo un administrador o cajero puede abrir una terminal compartida',
   authorization: 'La autorización del supervisor no es válida, expiró o ya fue usada',
   target: 'Indica la orden o el pago que se va a anular',
+  ambiguous: 'Ese PIN lo tiene más de una persona; pide al administrador que lo cambie',
+  taken: 'Ese PIN no está disponible, elige otro',
 } as const;
+
+/**
+ * F4b: POST /auth/identify with the PIN alone verifies at most this many
+ * staff PINs of the restaurant (active admins, cashiers and waiters, oldest
+ * PIN first), every one of them, so the answer time does not depend on which
+ * one matches.
+ */
+export const IDENTIFY_CANDIDATES_MAX = 50;
+/** F4b: a new PIN is compared with at most this many PINs of other active members of the restaurant. */
+export const UNIQUE_PIN_CHECK_MAX = 200;
 
 /** What an authorization is for (F1): an order for cancel_order and void_item, a payment for void_payment. */
 export const AUTHORIZATION_TARGETS = ['order', 'payment'] as const;
@@ -81,7 +93,10 @@ const strict = <T extends z.ZodRawShape>(shape: T) => z.strictObject(shape, { er
 
 export const setPinSchema = strict({ pin: newPin });
 export const changeOwnPinSchema = strict({ currentPin: enteredPin, pin: newPin });
-export const identifySchema = strict({ profileId: z.guid({ error: PIN_MESSAGES.profile }), pin: enteredPin });
+/** F4b: `profileId` is optional (kept for compatibility); without it the PIN alone says who it is. */
+export const identifySchema = strict({ profileId: z.guid({ error: PIN_MESSAGES.profile }).optional(), pin: enteredPin });
+/** F4b: a supervisor lifts the lock of the terminal that guessed. */
+export const terminalUnlockSchema = strict({ profileId: z.guid({ error: PIN_MESSAGES.profile }), pin: enteredPin });
 export const authorizeSchema = strict({
   pin: enteredPin,
   action: z.enum(SUPERVISOR_ACTIONS, { error: PIN_MESSAGES.action }),
