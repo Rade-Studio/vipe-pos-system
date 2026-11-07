@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import type React from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -35,6 +35,11 @@ vi.mock("@/lib/api/client", () => ({
       if (path === "/api/zones") return { data: [] }
       if (path === "/api/dashboard/summary")
         return { data: { monthSales: 0, kitchenOrders: 0, dailySales: [], popularDishes: [] } }
+      // T28: the Órdenes table names its rows from the delivery board, the
+      // couriers and the late thresholds, and counts the day's paid orders.
+      if (path === "/api/delivery/active" || path === "/api/delivery/couriers" || path === "/api/orders/completed")
+        return { data: [] }
+      if (path === "/api/config") return { data: { kitchenLateMinutes: 25, deliveryLateMinutes: 45 } }
       throw new Error(`unexpected GET ${path}`)
     },
     DELETE: async (path: string, init?: any) => {
@@ -54,8 +59,12 @@ vi.mock("@/lib/api/realtime", () => ({
     },
     subscribeToTables: () => () => {},
     subscribeToZones: () => () => {},
+    subscribeToDeliveries: () => () => {},
   },
 }))
+
+/** T28: the Órdenes reads that name the rows (not the active-orders read itself). */
+const ORDERS_PAGE_READS = new Set(["/api/delivery/active", "/api/delivery/couriers", "/api/config", "/api/orders/completed"])
 
 const toastMock = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
@@ -192,7 +201,7 @@ describe("ActiveOrdersGrid", () => {
     expect(screen.getByTestId("admin-order-old")).not.toHaveClass("animate-pulse-light")
   })
 
-  it("labels a delivery order as DOMICILIO, never Mesa ? (odd/tasks/domicilios.md S14)", () => {
+  it("labels a delivery order as Domicilio, never Mesa ? (odd/tasks/domicilios.md S14)", () => {
     render(
       wrap(
         <ActiveOrdersGrid
@@ -204,7 +213,7 @@ describe("ActiveOrdersGrid", () => {
       ),
     )
 
-    expect(screen.getByTestId("admin-order-d-1")).toHaveTextContent("DOMICILIO")
+    expect(screen.getByTestId("admin-order-d-1")).toHaveTextContent("Domicilio")
     expect(screen.getByTestId("admin-order-d-1")).not.toHaveTextContent("Mesa ?")
   })
 
@@ -212,7 +221,7 @@ describe("ActiveOrdersGrid", () => {
     const onRefresh = vi.fn()
     render(wrap(<ActiveOrdersGrid orders={[]} isLoading={false} onDelete={() => {}} onRefresh={onRefresh} />))
 
-    expect(screen.getByText("No hay órdenes activas en este momento")).toBeInTheDocument()
+    expect(screen.getByText("No hay órdenes activas")).toBeInTheDocument()
     await act(async () => {
       screen.getByRole("button", { name: /Verificar nuevamente/i }).click()
     })
@@ -278,10 +287,15 @@ describe("AdminView — requests issued while a tab is open", () => {
 
     // One click = ONE request on the active statuses (no store `loadOrders` behind it).
     await waitFor(() => expect(state.apiCalls.filter((call) => call.path === "/api/orders")).toHaveLength(2))
-    // Besides the dashboard's summary, low-stock and zones reads, nothing else is requested.
+    // Besides the dashboard's summary, low-stock and zones reads (and the T28
+    // reads that name the rows), nothing else is requested.
     expect(
       state.apiCalls.filter(
-        (call) => call.path !== "/api/inventory/items" && call.path !== "/api/dashboard/summary" && call.path !== "/api/zones",
+        (call) =>
+          call.path !== "/api/inventory/items" &&
+          call.path !== "/api/dashboard/summary" &&
+          call.path !== "/api/zones" &&
+          !ORDERS_PAGE_READS.has(call.path),
       ),
     ).toHaveLength(2)
     expect(state.apiCalls.filter((call) => call.path === "/api/inventory/items")).toHaveLength(1)
@@ -378,8 +392,8 @@ describe("AdminView — realtime on the Órdenes tab (S3)", () => {
 
     await emit({ eventType: "INSERT", new: insertedRow("o-2"), old: {} })
 
-    const card = await screen.findByTestId("admin-order-o-2")
-    expect(card).toHaveTextContent("Bandeja paisa")
+    expect(await screen.findByTestId("admin-order-o-2")).toBeInTheDocument()
+    expect(await openRow("o-2")).toHaveTextContent("Bandeja paisa")
     expect(screen.getByTestId("admin-order-o-1")).toBeInTheDocument()
   })
 
@@ -392,7 +406,7 @@ describe("AdminView — realtime on the Órdenes tab (S3)", () => {
 
     const card = await screen.findByTestId("admin-order-o-2")
     expect(card).toHaveTextContent("Mesa 7")
-    expect(card).toHaveTextContent("Mesero: Ana")
+    expect(card).toHaveTextContent("Ana")
     // The cached order carries the names too, not "N/A" / "Desconocido".
     const cached = (queryClient.getQueryData(["orders", "admin"]) as any[]).find((o) => o.id === "o-2")
     expect(cached).toMatchObject({ tableName: 7, waiterName: "Ana" })
@@ -403,7 +417,7 @@ describe("AdminView — realtime on the Órdenes tab (S3)", () => {
 
     const card = screen.getByTestId("admin-order-o-1")
     expect(card).toHaveTextContent("Mesa 1")
-    expect(card).toHaveTextContent("Mesero: Ana")
+    expect(card).toHaveTextContent("Ana")
   })
 
   it("keeps Mesa ? and no waiter for a live order nobody can name (previous fallback)", async () => {
@@ -413,7 +427,7 @@ describe("AdminView — realtime on the Órdenes tab (S3)", () => {
 
     const card = await screen.findByTestId("admin-order-o-2")
     expect(card).toHaveTextContent("Mesa ?")
-    expect(card).toHaveTextContent("Mesero: No asignado")
+    expect(card).toHaveTextContent("No asignado")
   })
 
   it("keeps the screen up when an INSERT row arrives without order_items", async () => {
@@ -434,7 +448,7 @@ describe("AdminView — realtime on the Órdenes tab (S3)", () => {
 
     await emit({ eventType: "UPDATE", new: { id: "o-1", status: "delivered" }, old: { id: "o-1" } })
 
-    expect(screen.getByTestId("admin-order-o-1")).toHaveTextContent("Bandeja paisa")
+    expect(await openRow("o-1")).toHaveTextContent("Bandeja paisa")
   })
 })
 
@@ -457,19 +471,30 @@ function activeOrderDto(id: string) {
     createdAt: "2026-01-01T10:00:00.000Z",
     updatedAt: null,
     items: [],
+    orderNumber: 1,
     tableNumber: 1,
     waiterName: "Ana",
   }
 }
 
-/** "Cancelar Orden" on the card, then "Eliminar" in its confirmation. */
-async function deleteFromGrid() {
-  const cancel = await screen.findByRole("button", { name: /Cancelar Orden/ })
+/** Opens the detail panel of an order row (T28 table). */
+async function openRow(id: string) {
+  const row = await screen.findByTestId(`admin-order-${id}`)
   await act(async () => {
-    fireEvent.click(cancel)
+    fireEvent.click(within(row).getByRole("button", { name: /^Abrir orden/ }))
   })
+  return screen.findByRole("dialog")
+}
+
+/** T28: "Cancelar orden…" in the detail panel, type the number, then "Cancelar orden #1". */
+async function deleteFromGrid() {
+  const panel = await openRow("o-1")
   await act(async () => {
-    fireEvent.click(await screen.findByRole("button", { name: "Eliminar" }))
+    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar orden…" }))
+  })
+  fireEvent.change(within(panel).getByLabelText("Escribe 1 para confirmar"), { target: { value: "1" } })
+  await act(async () => {
+    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar orden #1" }))
   })
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))

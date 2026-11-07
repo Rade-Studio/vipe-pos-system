@@ -1,21 +1,21 @@
 "use client"
 
 import { useState, useEffect, useMemo, type ReactNode } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { Table as TableUI, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Printer, RefreshCw, Search } from "lucide-react"
-import {formatCurrency, formatDate, formatDateTime} from "@/utils/helpers"
+import { Bike, Printer, RefreshCw, Search } from "lucide-react"
+import { formatCurrency } from "@/utils/helpers"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
-import { useOrderStore } from "@/store/useOrderStore"
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
-import type { Order, Table, Profile, PrintableInvoice } from "@/types"
+import type { Order, PrintableInvoice } from "@/types"
 import { useConfigStore } from "@/store/use-config-store"
 import { format } from "date-fns"
-import { getOrdersByDate } from "@/lib/api/completed-orders"
 import { listPaymentMethods } from "@/lib/api/payments"
+import { useZones } from "@/hooks/use-zones"
+import { Money, focusRing } from "@/components/cashier/cashier-ui"
+import { OrderStatusPill, clockTime } from "@/components/admin/orders/order-ui"
+import { completedOrdersQueryKey, useCompletedOrders } from "@/components/admin/orders/use-completed-orders"
+import { cn } from "@/lib/utils"
 import {
   invoiceTendersFromPayment,
   legacyInvoiceFields,
@@ -23,8 +23,7 @@ import {
 import { invoicePlaceLabel, isDeliveryOrder } from "@/lib/delivery/kitchen"
 import { log } from "@/lib/log"
 import { useToast } from "@/components/ui/use-toast"
-import { localDayKey, startOfLocalDayMs } from "@/lib/admin/dates"
-import { mergeOrderLists, paidOrdersOn } from "@/lib/admin/orders"
+import { completedTotals, normalizeSearch } from "@/lib/admin/orders"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Pagination } from "@/components/ui/pagination"
 import { ItemsPerPage } from "@/components/ui/items-per-page"
@@ -36,14 +35,24 @@ interface CompletedOrdersTableProps {
   toolbar?: ReactNode
 }
 
-/** Cache slot for "the paid orders of one local day". */
-export function completedOrdersQueryKey(selectedDate?: Date) {
-  return ["orders", "completed", localDayKey(selectedDate)] as const
+export { completedOrdersQueryKey, useCompletedOrders }
+
+/** "id:number:zone|...": changes only when a table's number or zone changes. */
+export function tablePlacesKey(state: { tables: ReadonlyArray<{ id: string; number: number; zoneId?: string }> }): string {
+  return state.tables.map((table) => `${table.id}:${table.number}:${table.zoneId ?? ""}`).join("|")
+}
+
+/** "#112", or the id prefix for an order read without its number. */
+function orderLabel(order: Order): string {
+  return typeof order.orderNumber === "number" ? `#${order.orderNumber}` : `#${order.id.substring(0, 8)}`
 }
 
 export function CompletedOrdersTable({ selectedDate, toolbar }: CompletedOrdersTableProps) {
-  const orders = useOrderStore((s) => s.orders)
   const profiles = useProfileStore((s) => s.profiles)
+  // D6: a primitive projection of what the list shows (number, zone), so a
+  // table status patch does not re-render the table; the lookup reads getState().
+  const tablesKey = useTableStore(tablePlacesKey)
+  const { data: zones } = useZones()
   const { businessName, businessAddress, businessPhone, businessNIT } = useConfigStore()
   const { toast } = useToast()
 
@@ -57,19 +66,7 @@ export function CompletedOrdersTable({ selectedDate, toolbar }: CompletedOrdersT
   // skeletons while it did. `placeholderData: keepPreviousData` keeps the rows
   // of the previous day on screen while a new day loads, and `isError` (not the
   // discarded promise) reports a failed read through the same toast.
-  const {
-    data: dbOrders = [],
-    isLoading,
-    isFetching,
-    isError,
-    refetch,
-  } = useQuery<Order[]>({
-    queryKey: completedOrdersQueryKey(selectedDate),
-    queryFn: () => getOrdersByDate(selectedDate as Date),
-    enabled: Boolean(selectedDate),
-    placeholderData: (previous) => previous,
-    staleTime: 30_000,
-  })
+  const { orders: allOrders, isLoading, isFetching, isError, refetch } = useCompletedOrders(selectedDate)
 
   const loadOrdersFromDB = async () => {
     await refetch()
@@ -89,36 +86,24 @@ export function CompletedOrdersTable({ selectedDate, toolbar }: CompletedOrdersT
     })
   }, [isError, toast])
 
-  // Paid orders the order store already holds for that day, merged by id with
-  // the day's query (unchanged contract: the store list is a subset of what
-  // the query returns, and a store-only paid order still shows).
-  const localCompletedOrders = useMemo(() => {
-    if (!selectedDate) return orders.filter((order) => order.status === "paid")
-    return paidOrdersOn(orders, startOfLocalDayMs(selectedDate))
-  }, [orders, selectedDate])
-
-  // The rows of the selected day, newest first.
-  const allOrders = useMemo(() => {
-    return [...mergeOrderLists(localCompletedOrders, dbOrders)].sort((a, b) => {
-      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
-      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
-      return dateB - dateA
-    })
-  }, [localCompletedOrders, dbOrders])
+  // "Completadas hoy" totals from the same rows (T28).
+  const totals = useMemo(() => completedTotals(allOrders), [allOrders])
 
   const completedOrders = useMemo(() => {
     if (!searchTerm) return allOrders
 
     const lowerSearch = searchTerm.toLowerCase().trim()
-    const isNumeric = /^\d+$/.test(lowerSearch)
+    const bareNumber = lowerSearch.replace(/^#/, "")
 
-    // Buscar por ID (contiene el término)
-    const byId = allOrders.filter((order: Order) => order.id.toLowerCase().includes(lowerSearch))
+    // Buscar por ID (contiene el término) o por número de orden exacto (#112)
+    const byId = allOrders.filter(
+      (order: Order) => order.id.toLowerCase().includes(lowerSearch) || String(order.orderNumber ?? "") === bareNumber,
+    )
 
     // Buscar por nombre de mesero (contiene el término)
     const byWaiter = allOrders.filter((order: Order) => {
       const waiter = profiles.find((p: any) => p.id === order.waiter)
-      return waiter && waiter.name.toLowerCase().includes(lowerSearch)
+      return waiter && normalizeSearch(waiter.name).includes(normalizeSearch(lowerSearch))
     })
 
     // Unir resultados sin duplicados
@@ -236,29 +221,62 @@ export function CompletedOrdersTable({ selectedDate, toolbar }: CompletedOrdersT
     setInvoiceOpen(true)
   }
 
-  // Below `sm` every row is a small card (CSS grid on the same <tr>), so the
-  // rows render once and the table never forces a horizontal page scroll.
-  const cellClass = "p-0 sm:p-4"
+  const tableById = useMemo(
+    () => new Map(useTableStore.getState().tables.map((table) => [table.id, table])),
+    // tablesKey is the trigger for the getState() read.
+    [tablesKey],
+  )
+  const zoneById = useMemo(() => new Map((zones ?? []).map((zone) => [zone.id, zone.name])), [zones])
+
+  /** "Mesa 9" + zone, or "Domicilio" (the day's read carries no delivery customer). */
+  const placeOf = (order: Order): { title: string; detail: string | null; delivery: boolean } => {
+    if (isDeliveryOrder(order)) return { title: "Domicilio", detail: null, delivery: true }
+    const table = tableById.get(order.tableId)
+    return {
+      title: table ? `Mesa ${table.number}` : "Mesa ?",
+      detail: (table?.zoneId && zoneById.get(table.zoneId)) || null,
+      delivery: false,
+    }
+  }
+
+  const summary: Array<{ label: string; value: ReactNode }> = [
+    { label: "Órdenes pagadas", value: <span className="tabular-nums">{totals.paid}</span> },
+    { label: "Ventas del día", value: <Money>{formatCurrency(totals.sales)}</Money> },
+    { label: "Propinas", value: <Money>{formatCurrency(totals.tips)}</Money> },
+    // Cancelling deletes the order (DELETE /orders/:id): nothing is stored to count.
+    { label: "Canceladas", value: <span title="Cancelar una orden la elimina; no queda registro para contarla">—</span> },
+  ]
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-w-0 flex-col gap-4">
+      <div role="group" aria-label="Totales del día" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {summary.map(({ label, value }) => (
+          <div key={label} className="min-w-0 rounded-card border border-line bg-surface p-4 shadow-sm">
+            <p className="truncate text-xs text-muted-fg">{label}</p>
+            <p className="mt-1 truncate text-xl font-bold text-fg sm:text-2xl">{value}</p>
+          </div>
+        ))}
+      </div>
+
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         {toolbar}
         <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
-          <Input
-            type="text"
-            placeholder="Buscar por ID o mesero..."
-            aria-label="Buscar por ID o mesero"
-            className="pl-8"
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden />
+          <input
+            type="search"
+            placeholder="#112 o mesero"
+            aria-label="Buscar por número o mesero"
+            className={cn(
+              "h-11 w-full rounded-pill border border-line bg-surface-2 pl-10 pr-3 text-sm text-fg placeholder:text-muted-fg",
+              focusRing,
+            )}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <Button
           variant="outline"
-          size="sm"
-          className="sm:ml-auto"
+          className="min-h-[44px] sm:ml-auto"
           onClick={loadOrdersFromDB}
           disabled={isFetching || !selectedDate}
         >
@@ -268,85 +286,91 @@ export function CompletedOrdersTable({ selectedDate, toolbar }: CompletedOrdersT
       </div>
 
       {selectedDate && (
-        <p className="text-sm text-muted-foreground">Mostrando órdenes del {format(selectedDate, "dd/MM/yyyy")}</p>
+        <p className="text-sm text-muted-fg">Mostrando órdenes del {format(selectedDate, "dd/MM/yyyy")}</p>
       )}
 
-      <div className="rounded-lg border">
-        <TableUI>
-          <TableHeader className="hidden sm:table-header-group">
-            <TableRow>
-              <TableHead>ID</TableHead>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Mesero</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              // Skeletons only when there is nothing to show yet: a refetch
-              // (Actualizar, or coming back to the sub-tab) keeps the rows.
-              Array(5)
-                .fill(0)
-                .map((_, index) => (
-                  <TableRow key={`skeleton-${index}`}>
-                    <TableCell colSpan={5}>
-                      <Skeleton className="h-5 w-full" />
-                    </TableCell>
-                  </TableRow>
-                ))
-            ) : paginatedData.length > 0 ? (
-              paginatedData.map((order) => {
-                const waiter = profiles.find((p) => p.id === order.waiter)
-                return (
-                  <TableRow
-                    key={order.id}
-                    className="grid grid-cols-2 gap-x-3 gap-y-1 p-3 sm:table-row sm:p-0"
+      <section aria-label="Órdenes completadas" className="min-w-0 overflow-hidden rounded-card border border-line bg-surface shadow-sm">
+        <div
+          aria-hidden
+          className="hidden grid-cols-[72px_minmax(0,1.4fr)_minmax(0,1fr)_64px_112px_104px_112px] items-center gap-3 border-b border-line bg-surface-2 px-4 py-2.5 text-xs font-semibold text-fg-2 lg:grid"
+        >
+          <span>#</span>
+          <span>Lugar</span>
+          <span>Mesero</span>
+          <span>Cerrada</span>
+          <span>Estado</span>
+          <span className="text-right">Total</span>
+          <span />
+        </div>
+        {isLoading ? (
+          // Skeletons only when there is nothing to show yet: a refetch
+          // (Actualizar, or coming back to the sub-tab) keeps the rows.
+          <div className="space-y-3 p-4">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={`skeleton-${index}`} className="h-6 w-full" />
+            ))}
+          </div>
+        ) : paginatedData.length > 0 ? (
+          <ul className="divide-y divide-line">
+            {paginatedData.map((order) => {
+              const waiter = profiles.find((p) => p.id === order.waiter)
+              const place = placeOf(order)
+              const closedAt = order.ledgerPayment?.createdAt
+              return (
+                <li
+                  key={order.id}
+                  data-testid={`completed-order-${order.id}`}
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-4 py-3 text-sm lg:grid-cols-[72px_minmax(0,1.4fr)_minmax(0,1fr)_64px_112px_104px_112px] lg:gap-y-0 lg:py-2"
+                >
+                  <span className="font-bold tabular-nums text-fg">{orderLabel(order)}</span>
+                  <span className="flex min-w-0 items-center gap-1.5" title={[place.title, place.detail].filter(Boolean).join(" · ")}>
+                    {place.delivery && <Bike aria-hidden className="h-4 w-4 flex-none text-muted-fg" />}
+                    <span className={cn("truncate", place.delivery ? "min-w-0" : "flex-none")}>{place.title}</span>
+                    {place.detail && <span className="min-w-0 shrink-[2] truncate text-muted-fg">· {place.detail}</span>}
+                  </span>
+                  <Money className="text-right font-semibold text-fg lg:order-6 lg:font-normal">
+                    {formatCurrency(order.bill?.total || 0)}
+                  </Money>
+                  <span className="col-span-2 truncate text-muted-fg lg:col-span-1 lg:order-3 lg:text-fg">
+                    {waiter ? waiter.name : "Desconocido"}
+                  </span>
+                  <span
+                    className="text-right tabular-nums text-muted-fg lg:order-4 lg:text-left"
+                    title={closedAt ? "Hora del pago" : "Pago sin hora registrada"}
                   >
-                    <TableCell className={`${cellClass} order-1 font-medium sm:order-none`}>
-                      {order.id.substring(0, 8)}
-                    </TableCell>
-                    <TableCell className={`${cellClass} order-3 text-muted-foreground sm:order-none sm:text-foreground`}>
-                      {order.createdAt ? formatDateTime(order.createdAt) : "Fecha no disponible"}
-                    </TableCell>
-                    <TableCell className={`${cellClass} order-4 text-right sm:order-none sm:text-left`}>
-                      {waiter ? waiter.name : "Desconocido"}
-                    </TableCell>
-                    <TableCell className={`${cellClass} order-2 text-right font-medium tabular-nums sm:order-none sm:font-normal`}>
-                      {formatCurrency(order.bill?.total || 0)}
-                    </TableCell>
-                    <TableCell className={`${cellClass} order-5 col-span-2 pt-2 sm:order-none sm:text-right`}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full sm:w-auto"
-                        onClick={() => handlePrintInvoice(order)}
-                      >
-                        <Printer className="h-4 w-4 mr-1" />
-                        Factura
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              })
-            ) : (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {searchTerm
-                    ? "No se encontraron órdenes con ese término de búsqueda"
-                    : `No hay órdenes completadas ${selectedDate ? "para esta fecha" : ""}`}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </TableUI>
-      </div>
+                    {closedAt ? clockTime(closedAt) : "—"}
+                  </span>
+                  <span className="lg:order-5">
+                    <OrderStatusPill status={order.status} />
+                  </span>
+                  <span className="col-span-2 text-right lg:order-7 lg:col-span-1">
+                    <Button
+                      variant="outline"
+                      className="min-h-[44px]"
+                      onClick={() => handlePrintInvoice(order)}
+                    >
+                      <Printer className="h-4 w-4 mr-1" />
+                      Factura
+                    </Button>
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p className="px-4 py-10 text-center text-sm text-muted-fg">
+            {searchTerm
+              ? "No se encontraron órdenes con ese término de búsqueda"
+              : `No hay órdenes completadas ${selectedDate ? "para esta fecha" : ""}`}
+          </p>
+        )}
+      </section>
 
       {/* Paginación */}
       {completedOrders.length > 0 && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <ItemsPerPage itemsPerPage={itemsPerPage} onChange={setItemsPerPage} options={[10, 25, 50, 100]} />
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted-fg">
             Mostrando {paginatedData.length} de {completedOrders.length} órdenes
           </div>
           <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />

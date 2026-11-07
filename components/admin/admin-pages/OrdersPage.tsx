@@ -1,13 +1,17 @@
 "use client"
 
+import { format, isSameDay } from "date-fns"
+import { es } from "date-fns/locale"
 import { RefreshCw } from "lucide-react"
-import { PageHeader } from "@/components/admin/common/PageHeader"
-import { segmentedListClass, segmentedTriggerClass } from "@/components/admin/common/Panel"
 import { CompletedOrdersTable } from "@/components/admin/CompletedOrdersTable"
+import { useCompletedOrders } from "@/components/admin/orders/use-completed-orders"
+import { Chip, Eyebrow, focusRing } from "@/components/cashier/cashier-ui"
+import { useOrderRows, useTickingNow } from "@/components/admin/orders/use-order-rows"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { AdminOrder } from "@/lib/admin/orders"
+import { cn } from "@/lib/utils"
+import { ordersSummary, type AdminOrder } from "@/lib/admin/orders"
 import { ActiveOrdersGrid } from "./ActiveOrdersGrid"
 
 interface OrdersPageProps {
@@ -18,11 +22,21 @@ interface OrdersPageProps {
   realtimeConnected: boolean
   newOrdersCount: number
   onRefresh: () => void
-  onDelete: (orderId: string) => void
+  onDelete: (orderId: string) => void | Promise<void>
   selectedDate: Date | undefined
   onDateChange: (date: Date | undefined) => void
 }
 
+const TAB_CLASS = cn(
+  "inline-flex min-h-[40px] flex-1 items-center gap-1.5 whitespace-nowrap rounded-pill px-3.5 text-sm font-medium text-muted-fg data-[state=active]:bg-surface data-[state=active]:text-fg data-[state=active]:shadow-sm sm:flex-none",
+  focusRing,
+)
+
+/**
+ * T28 — admin Órdenes (design/admin-orders/01-tabla-densa-con-panel.html):
+ * date eyebrow, summary line, Activas | Completadas tabs with counts, the
+ * realtime chip and Actualizar; "Activas" is the dense table with its panel.
+ */
 export function OrdersPage({
   description,
   orders,
@@ -35,54 +49,58 @@ export function OrdersPage({
   selectedDate,
   onDateChange,
 }: OrdersPageProps) {
+  const nowMs = useTickingNow(true, 10_000)
+  const rows = useOrderRows(orders, nowMs)
+  const { orders: completed } = useCompletedOrders(selectedDate)
+  const today = new Date(nowMs)
+  const completedLabel =
+    !selectedDate || isSameDay(selectedDate, today) ? "Completadas hoy" : `Completadas ${format(selectedDate, "dd/MM")}`
+
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Órdenes"
-        description={description}
-        actions={
-          <>
-            {realtimeConnected && (
-              <span className="flex items-center text-xs text-muted-foreground">
-                <span className="relative mr-1.5 flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-                </span>
-                Tiempo real activo
+    <Tabs defaultValue="active" className="flex min-w-0 flex-col gap-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 space-y-1.5">
+          <Eyebrow className="text-brand-strong tracking-[0.2em]">{format(today, "EEEE d 'de' MMMM", { locale: es })}</Eyebrow>
+          <h1 className="text-2xl font-bold tracking-tight text-fg sm:text-3xl">Órdenes</h1>
+          <p className="text-sm text-muted-fg">
+            {isLoading && orders.length === 0 ? description : ordersSummary(rows)}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {realtimeConnected && (
+            <Chip tone="ok" dot>
+              Tiempo real
+            </Chip>
+          )}
+          <Button variant="outline" className="min-h-[44px]" onClick={onRefresh} disabled={isFetching}>
+            <RefreshCw aria-hidden className={cn("mr-2 h-4 w-4", isFetching && "animate-spin")} />
+            <span>Actualizar</span>
+            {newOrdersCount > 0 && (
+              <span className="ml-2 rounded-full bg-primary px-1.5 py-0.5 text-xs leading-none text-primary-foreground tabular-nums">
+                {newOrdersCount}
               </span>
             )}
-            <Button variant="outline" size="sm" onClick={onRefresh} disabled={isFetching}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-              <span>Actualizar</span>
-              {newOrdersCount > 0 && (
-                <span className="ml-2 rounded-full bg-primary px-1.5 py-0.5 text-xs leading-none text-primary-foreground tabular-nums">
-                  {newOrdersCount}
-                </span>
-              )}
-            </Button>
-          </>
-        }
-      />
+          </Button>
+          <TabsList className="h-auto w-full rounded-pill border border-line bg-surface-2 p-1 sm:w-auto">
+            <TabsTrigger value="active" className={TAB_CLASS}>
+              Activas <span className="text-xs tabular-nums text-muted-fg">{rows.length}</span>
+            </TabsTrigger>
+            <TabsTrigger value="completed" className={TAB_CLASS}>
+              {completedLabel} <span className="text-xs tabular-nums text-muted-fg">{completed.length}</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+      </div>
 
-      <Tabs defaultValue="active" className="space-y-4">
-        <TabsList className={segmentedListClass}>
-          <TabsTrigger value="active" className={segmentedTriggerClass}>
-            Activas
-          </TabsTrigger>
-          <TabsTrigger value="completed" className={segmentedTriggerClass}>
-            Completadas
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="active" className="mt-0">
-          <ActiveOrdersGrid orders={orders} isLoading={isLoading} onDelete={onDelete} onRefresh={onRefresh} />
-        </TabsContent>
-        <TabsContent value="completed" className="mt-0">
-          <CompletedOrdersTable
-            selectedDate={selectedDate}
-            toolbar={<DatePicker date={selectedDate} onDateChange={onDateChange} />}
-          />
-        </TabsContent>
-      </Tabs>
-    </div>
+      <TabsContent value="active" className="mt-0 min-w-0">
+        <ActiveOrdersGrid orders={orders} isLoading={isLoading} onDelete={onDelete} onRefresh={onRefresh} />
+      </TabsContent>
+      <TabsContent value="completed" className="mt-0 min-w-0">
+        <CompletedOrdersTable
+          selectedDate={selectedDate}
+          toolbar={<DatePicker date={selectedDate} onDateChange={onDateChange} />}
+        />
+      </TabsContent>
+    </Tabs>
   )
 }

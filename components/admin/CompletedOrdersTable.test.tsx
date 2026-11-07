@@ -88,7 +88,7 @@ beforeEach(() => {
 describe("CompletedOrdersTable — one read per date, shared with every revisit", () => {
   it("reads the selected day once and serves the revisit from cache (no second read, no blank)", async () => {
     const first = renderTable(<CompletedOrdersTable selectedDate={DAY} />)
-    await waitFor(() => expect(screen.getByText("11111111")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("#11111111")).toBeInTheDocument())
     expect(getOrdersByDate).toHaveBeenCalledTimes(1)
 
     // Radix unmounts the inactive sub-tab: coming back must not re-read.
@@ -97,19 +97,19 @@ describe("CompletedOrdersTable — one read per date, shared with every revisit"
 
     // Synchronously (no await): the rows are already on screen, so the table is
     // not replaced by skeletons on the way back in.
-    expect(screen.getByText("11111111")).toBeInTheDocument()
+    expect(screen.getByText("#11111111")).toBeInTheDocument()
     expect(getOrdersByDate).toHaveBeenCalledTimes(1)
   })
 
   it("reads once per distinct date, never once per mount", async () => {
     const { rerender: rawRerender } = renderTable(<CompletedOrdersTable selectedDate={DAY} />)
     const rerender = (ui: React.ReactElement) => rawRerender(wrap(ui))
-    await waitFor(() => expect(screen.getByText("11111111")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("#11111111")).toBeInTheDocument())
 
     getOrdersByDate.mockResolvedValue([paidOrder({ id: "22222222-bbbb-4444-8888-000000000002" })])
     rerender(<CompletedOrdersTable selectedDate={new Date(2026, 0, 16)} />)
 
-    await waitFor(() => expect(screen.getByText("22222222")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("#22222222")).toBeInTheDocument())
     expect(getOrdersByDate).toHaveBeenCalledTimes(2)
     expect(getOrdersByDate.mock.calls[1][0]).toEqual(new Date(2026, 0, 16))
 
@@ -120,7 +120,7 @@ describe("CompletedOrdersTable — one read per date, shared with every revisit"
 
   it("re-reads the same day when the admin presses Actualizar", async () => {
     renderTable(<CompletedOrdersTable selectedDate={DAY} />)
-    await waitFor(() => expect(screen.getByText("11111111")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("#11111111")).toBeInTheDocument())
 
     await act(async () => {
       screen.getByRole("button", { name: /Actualizar/i }).click()
@@ -141,15 +141,15 @@ describe("CompletedOrdersTable — one read per date, shared with every revisit"
 
     const { rerender: rawRerender } = renderTable(<CompletedOrdersTable selectedDate={DAY} />)
     const rerender = (ui: React.ReactElement) => rawRerender(wrap(ui))
-    await waitFor(() => expect(screen.getByText("11111111")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("#11111111")).toBeInTheDocument())
 
     rerender(<CompletedOrdersTable selectedDate={new Date(2026, 0, 16)} />)
-    expect(screen.getByText("11111111")).toBeInTheDocument()
+    expect(screen.getByText("#11111111")).toBeInTheDocument()
 
     await act(async () => {
       resolveSecond([paidOrder({ id: "33333333-cccc-4444-8888-000000000003" })])
     })
-    await waitFor(() => expect(screen.getByText("33333333")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("#33333333")).toBeInTheDocument())
   })
 
   it("reports a failed read instead of showing an empty table as if there were no orders", async () => {
@@ -177,7 +177,7 @@ describe("CompletedOrdersTable — one read per date, shared with every revisit"
     getOrdersByDate.mockResolvedValue([paidOrder({ orderType: "delivery", tableId: "" })])
 
     renderTable(<CompletedOrdersTable selectedDate={DAY} />)
-    await waitFor(() => expect(screen.getByText("11111111")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("#11111111")).toBeInTheDocument())
 
     await act(async () => {
       screen.getByRole("button", { name: /Factura/i }).click()
