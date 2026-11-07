@@ -232,6 +232,9 @@ export class OrdersService {
    * becomes cancelled with its reason, actor, supervisor and bill, and the
    * table is freed when no other open order remains. Needs the supervisor
    * authorization (cancel_order) when the order has a live line or any payment.
+   * An admin may cancel a delivery here too (same function, delivery rules:
+   * reason always, supervisor only when paid); cashiers and waiters get
+   * delivery_order. Domicilios uses POST /delivery/orders/:id/cancel.
    */
   async cancel(id: string, input: CancelInput): Promise<CancelledOrder> {
     await this.voids.run(
@@ -271,7 +274,11 @@ export class OrdersService {
     return this.get(id);
   }
 
-  /** GET /orders/cancelled?date=: orders cancelled that day (restaurant timezone), newest first, with their amounts. */
+  /**
+   * GET /orders/cancelled?date=: orders cancelled that day (restaurant timezone), newest first, with their amounts.
+   * Deliveries cancelled before 0019 (delivery_status cancelled, no order_cancellations row) are read as they
+   * are: `legacy`, no reason and no actor, the bill of the order plus its fee, at cancelled_at.
+   */
   async cancelledOn(date: string): Promise<CancelledOrder[]> {
     const rows = await this.cancelledRows(sql`
       c.cancelled_at >= (${date}::date::timestamp AT TIME ZONE r.timezone)
@@ -286,10 +293,26 @@ export class OrdersService {
              p.full_name AS waiter_name,
              coalesce((SELECT jsonb_agg(to_jsonb(oi) ORDER BY oi.added_at, oi.created_at, oi.id)
                          FROM public.order_items oi WHERE oi.order_id = o.id AND ${LIVE_ITEMS}), '[]'::jsonb) AS items,
-             to_jsonb(c) AS cancellation
-        FROM public.order_cancellations c
+             c.cancellation,
+             CASE WHEN d.order_id IS NOT NULL
+                  THEN jsonb_build_object('customer_name', d.customer_name, 'delivery_fee', d.delivery_fee) END AS delivery
+        FROM (SELECT x.order_id, x.restaurant_id, x.cancelled_at, to_jsonb(x) AS cancellation
+                FROM public.order_cancellations x
+              UNION ALL
+              SELECT od.order_id, od.restaurant_id, coalesce(od.cancelled_at, od.updated_at),
+                     jsonb_build_object('legacy', true, 'self_authorized', false,
+                                        'subtotal', lo.subtotal, 'tax', lo.tax, 'tip', lo.tip,
+                                        'total', lo.subtotal + lo.tax + lo.tip + od.delivery_fee,
+                                        'sent_items', (SELECT count(*) FROM public.order_items li WHERE li.order_id = od.order_id AND li.quantity > 0
+                                                         AND li.status IS DISTINCT FROM 'cancelled'),
+                                        'cancelled_at', coalesce(od.cancelled_at, od.updated_at))
+                FROM public.order_deliveries od
+                JOIN public.orders lo ON lo.id = od.order_id
+               WHERE od.delivery_status = 'cancelled'
+                 AND NOT EXISTS (SELECT 1 FROM public.order_cancellations y WHERE y.order_id = od.order_id)) c
         JOIN public.orders o ON o.id = c.order_id
         JOIN public.restaurants r ON r.id = c.restaurant_id
+        LEFT JOIN public.order_deliveries d ON d.order_id = o.id
         LEFT JOIN public.tables t ON t.id = o.table_id
         LEFT JOIN public.profiles p ON p.id = o.waiter_id
        WHERE ${where}

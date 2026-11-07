@@ -41,6 +41,12 @@ export type VoidTarget =
       total: number
       /** A live payment on the order: the API asks for a supervisor even with no lines. */
       hasPayments?: boolean
+      /**
+       * A Domicilio (F3b): cancelled through POST /delivery/orders/:id/cancel;
+       * a supervisor only when it is paid (hasPayments), and that payment
+       * (paidAmount) is voided with it.
+       */
+      delivery?: { paidAmount: number | null }
     })
   | (TargetBase & { action: "payment"; payments: VoidPaymentOption[]; paymentId?: string })
 

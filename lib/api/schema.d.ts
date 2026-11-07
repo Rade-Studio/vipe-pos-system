@@ -1620,6 +1620,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/delivery/orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["DeliveryController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/delivery/orders/{id}/return": {
         parameters: {
             query?: never;
@@ -2450,18 +2466,27 @@ export interface components {
             name: string;
         };
         OrderCancellation: {
-            /** @enum {string} */
-            reason: "waiter_error" | "customer_left" | "dish_returned" | "duplicate_charge" | "wrong_payment_method" | "other";
-            /** @description Spanish label of the reason. */
+            /**
+             * @description Null only for a legacy delivery.
+             * @enum {string|null}
+             */
+            reason: "waiter_error" | "customer_left" | "dish_returned" | "duplicate_charge" | "wrong_payment_method" | "other" | null;
+            /** @description Spanish label of the reason; "Sin motivo registrado (antes de la auditoría)" for a legacy delivery. */
             reasonLabel: string;
             reasonText: string | null;
-            cancelledBy: components["schemas"]["StaffRef"];
-            /** @description Null when no authorization was needed (an order with nothing on it). */
+            /** @description Null only for a legacy delivery (no actor was recorded). */
+            cancelledBy: components["schemas"]["StaffRef"] | null;
+            /** @description Null when no authorization was needed (an order with nothing on it, an unpaid delivery). */
             authorizedBy: components["schemas"]["StaffRef"] | null;
             selfAuthorized: boolean;
-            /** @enum {string} */
-            previousStatus: "active" | "kitchen" | "delivered";
-            /** @description Bill at the moment of the cancellation. */
+            /**
+             * @description paid: a prepaid delivery; null for a legacy delivery.
+             * @enum {string|null}
+             */
+            previousStatus: "active" | "kitchen" | "delivered" | "paid" | null;
+            /** @description A delivery cancelled before cancellations were audited (no reason, actor or authorization recorded). */
+            legacy: boolean;
+            /** @description Bill at the moment of the cancellation (a delivery: total includes the delivery fee). */
             subtotal: number;
             tax: number;
             tip: number;
@@ -2470,6 +2495,10 @@ export interface components {
             sentItems: number;
             /** Format: date-time */
             cancelledAt: string;
+        };
+        CancelledDelivery: {
+            customerName: string;
+            deliveryFee: number;
         };
         CancelledOrder: {
             /** Format: uuid */
@@ -2512,6 +2541,8 @@ export interface components {
             /** @description Only with include=waiter. */
             waiterName?: string | null;
             cancellation: components["schemas"]["OrderCancellation"];
+            /** @description Only for a delivery (orderType delivery). */
+            delivery: components["schemas"]["CancelledDelivery"] | null;
         };
         StockShortage: {
             /** Format: uuid */
@@ -2623,7 +2654,7 @@ export interface components {
             reasonText?: string | null;
             /**
              * Format: uuid
-             * @description POST /auth/authorize id for action cancel_order. Required when the order has a live item or any payment.
+             * @description POST /auth/authorize id for action cancel_order. Required when a table order has a live item or any payment, and when a delivery has a live payment (voided with it).
              */
             authorizationId?: string;
         };
@@ -2657,6 +2688,11 @@ export interface components {
             orderId: string;
             orderNumber: number | null;
             /**
+             * @description delivery: a Domicilio (cancelled from Domicilios, F3b).
+             * @enum {string}
+             */
+            orderType: "dine_in" | "delivery";
+            /**
              * Format: uuid
              * @description Only for payment_voided.
              */
@@ -2672,9 +2708,9 @@ export interface components {
             /** @description Spanish label of the reason: Error del mesero, El cliente se fue, Plato devuelto, Cobro duplicado, Método de pago equivocado, Otro. */
             reasonLabel: string;
             reasonText: string | null;
-            /** @description Money removed: order total, voided lines (price x quantity) or payment total charged. */
+            /** @description Money removed: order total (a delivery: with its fee), voided lines (price x quantity) or payment total charged. */
             amount: number;
-            /** @description order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items; items_voided: lines; payment_voided: amounts, methods, tenders. */
+            /** @description order_cancelled: previous_status, subtotal, tax, tip, total, items, sent_items (a delivery adds order_type, delivery_fee, customer_name, delivery_status, payment_mode, payments_voided); items_voided: lines; payment_voided: amounts, methods, tenders (voided by a delivery cancellation: cancellation_audit_id). */
             details: {
                 [key: string]: unknown;
             };
@@ -5598,7 +5634,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Newest cancellation first, with the bill at that moment, reason, actor and supervisor. */
+            /** @description Newest cancellation first, with the bill at that moment, reason, actor and supervisor; deliveries carry `delivery`, and those cancelled before the audit (0019) come as `legacy` with no reason or actor. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5941,7 +5977,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `order_cancelled`, `order_paid` (void the payment first) or `delivery_order`. */
+            /** @description `order_cancelled`, `order_paid` (a table order: void the payment first), `delivery_order` (a cashier or waiter on a delivery), `delivery_not_cancellable` or `register_closed` (a paid delivery of a closed drawer). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -9244,7 +9280,62 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
+            /** @description RPC rejection with its message verbatim and `code`; action cancel is refused (P0001): use POST /delivery/orders/:id/cancel. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** @description authorizationId (POST /auth/authorize, action cancel_order, target this order) only when the delivery has a live payment. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The audited cancellation (cancel_order): reason, actor and supervisor stored in order_cancellations and the audit log; the order and the delivery become cancelled; a live payment is voided under the same authorization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryOrder"];
+                };
+            };
+            /** @description Not admin or delivery_operator; 403 `authorization_required` (paid), `authorization_invalid` or `self_authorization_not_allowed`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_cancelled`, `delivery_not_cancellable` (out for delivery or delivered) or `register_closed` (the payment's drawer is closed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `reason_invalid` or `reason_text_required` (Spanish message, `code`). */
             422: {
                 headers: {
                     [name: string]: unknown;

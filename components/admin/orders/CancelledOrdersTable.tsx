@@ -17,11 +17,14 @@ interface CancelledOrdersTableProps {
 const CARD = "min-w-0 overflow-x-auto rounded-card border border-line bg-surface shadow-sm"
 const TH = "px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg"
 const TD = "px-3 py-3 align-top text-sm text-fg"
+const NOT_RECORDED = <span className="text-muted-fg">Sin registro</span>
 
 /**
  * F3 — "Canceladas" of admin Órdenes (design/anulaciones/01): the day's
  * cancelled orders from GET /orders/cancelled with the bill each had when it
- * was cancelled. They never count as sales.
+ * was cancelled. They never count as sales. Domicilios (F3b) come with their
+ * customer; one cancelled before the audit existed (`legacy`) has no recorded
+ * reason, actor or supervisor and says "Sin registro" instead of inventing one.
  */
 export function CancelledOrdersTable({ orders, isLoading, isError, onOpenAudit }: CancelledOrdersTableProps) {
   if (isLoading) {
@@ -57,7 +60,7 @@ export function CancelledOrdersTable({ orders, isLoading, isError, onOpenAudit }
         .
       </div>
       <div className={CARD}>
-        <table className="w-full min-w-[720px] border-collapse" aria-label="Órdenes canceladas">
+        <table className="w-full min-w-[820px] border-collapse" aria-label="Órdenes canceladas">
           <thead>
             <tr className="border-b border-line">
               <th className={TH}>Orden</th>
@@ -65,6 +68,7 @@ export function CancelledOrdersTable({ orders, isLoading, isError, onOpenAudit }
               <th className={TH}>Mesero</th>
               <th className={TH}>Cancelada</th>
               <th className={TH}>Motivo</th>
+              <th className={TH}>Canceló</th>
               <th className={TH}>Autorizó</th>
               <th className={`${TH} text-right`}>Monto</th>
             </tr>
@@ -75,12 +79,28 @@ export function CancelledOrdersTable({ orders, isLoading, isError, onOpenAudit }
               return (
                 <tr key={order.id} className="border-b border-line">
                   <td className={`${TD} font-semibold tabular-nums`}>#{order.orderNumber}</td>
-                  <td className={TD}>{order.orderType === "delivery" ? "Domicilio" : order.tableNumber != null ? `Mesa ${order.tableNumber}` : "—"}</td>
+                  <td className={TD}>
+                    {order.orderType === "delivery" ? (
+                      <>
+                        <Chip tone="reserved">Domicilio</Chip>
+                        {order.delivery && <small className="mt-1 block break-words text-xs text-muted-fg">{order.delivery.customerName}</small>}
+                      </>
+                    ) : order.tableNumber != null ? (
+                      `Mesa ${order.tableNumber}`
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className={TD}>{order.waiterName ?? <span className="text-muted-fg">No asignado</span>}</td>
                   <td className={`${TD} tabular-nums`}>{clock(c.cancelledAt)}</td>
-                  <td className={`${TD} break-words`}>{c.reasonText ? `${c.reasonLabel}: «${c.reasonText}»` : c.reasonLabel}</td>
+                  <td className={`${TD} break-words`}>
+                    {c.legacy ? <span className="text-muted-fg">{c.reasonLabel}</span> : c.reasonText ? `${c.reasonLabel}: «${c.reasonText}»` : c.reasonLabel}
+                  </td>
+                  <td className={`${TD} break-words`}>{c.cancelledBy?.name ?? NOT_RECORDED}</td>
                   <td className={TD}>
-                    <span className="block">{c.authorizedBy?.name ?? <span className="text-muted-fg">No hizo falta</span>}</span>
+                    <span className="block">
+                      {c.authorizedBy?.name ?? (c.legacy ? NOT_RECORDED : <span className="text-muted-fg">No hizo falta</span>)}
+                    </span>
                     {c.selfAuthorized && (
                       <Chip tone="warning" className="mt-1">
                         Autoautorizada
@@ -94,7 +114,7 @@ export function CancelledOrdersTable({ orders, isLoading, isError, onOpenAudit }
               )
             })}
             <tr>
-              <td colSpan={6} className={`${TD} font-bold`}>
+              <td colSpan={7} className={`${TD} font-bold`}>
                 Total cancelado
               </td>
               <td className={`${TD} text-right font-bold`}>

@@ -11,6 +11,7 @@ import { formatCurrency } from "@/utils/helpers"
 import { authorizeSupervisor, pinFailureOf } from "@/lib/api/auth"
 import { VOID_REASONS, voidRefusalOf, type VoidReasonCode } from "@/lib/api/audit"
 import { CONFIG_QUERY_KEY, fetchConfig } from "@/lib/api/config"
+import { cancelDelivery } from "@/lib/api/delivery"
 import { cancelOrder, voidOrderItems, type OrderDto } from "@/lib/api/orders"
 import { voidPayment } from "@/lib/api/payments"
 import { useProfileStore } from "@/store/useProfileStore"
@@ -80,6 +81,15 @@ const COPY: Record<VoidAction, { eyebrow: string; question: string; done: string
   },
 }
 
+/** F3b: a Domicilio is cancelled from Domicilios with the same sheet. */
+const DELIVERY_COPY = {
+  eyebrow: "Cancelar domicilio",
+  question: "¿Por qué se cancela?",
+  done: "Domicilio cancelado",
+  note: "El domicilio no se borra: pasa a Canceladas con su motivo y quién lo canceló.",
+  back: "Listo",
+}
+
 const PIN_MIN = 4
 const PIN_MAX = 6
 
@@ -137,7 +147,8 @@ function FlowBody({
   const authProfile = useProfileStore((s) => s.authProfile)
   const actor: VoidActor | undefined =
     actorProp ?? (authProfile ? { id: authProfile.id, name: authProfile.full_name ?? authProfile.name, role: authProfile.role } : undefined)
-  const copy = COPY[target.action]
+  const delivery = target.action === "order" ? target.delivery : undefined
+  const copy = delivery ? DELIVERY_COPY : COPY[target.action]
   const reasonId = useId()
 
   const [step, setStep] = useState<Step>("what")
@@ -160,8 +171,12 @@ function FlowBody({
   const allowSelf = config.data?.allowSelfAuthorization === true
   // The API has the last word: authorization_required on a direct cancel turns the supervisor step on.
   const [authorizationRequired, setAuthorizationRequired] = useState(false)
+  // A Domicilio needs a supervisor only when it is paid (user decision, F3b).
   const needsAuthorization =
-    target.action !== "order" || target.lines.length > 0 || target.hasPayments === true || authorizationRequired
+    target.action !== "order" ||
+    (!delivery && target.lines.length > 0) ||
+    target.hasPayments === true ||
+    authorizationRequired
   const supervisors = useQuery({
     queryKey: SUPERVISORS_QUERY_KEY,
     queryFn: loadSupervisors,
@@ -183,7 +198,7 @@ function FlowBody({
     target.action === "item"
       ? line && { title: `${quantity}× ${line.name}`, amount: line.price * quantity }
       : target.action === "order"
-        ? { title: `Orden ${target.label}`, amount: target.total }
+        ? { title: `${delivery ? "Domicilio" : "Orden"} ${target.label}`, amount: target.total }
         : payment && { title: payment.title, amount: payment.amount }
 
   const ready = canContinue({
@@ -202,7 +217,7 @@ function FlowBody({
       return { action: "item", orderId: target.orderId, order }
     }
     if (target.action === "order") {
-      await cancelOrder(target.orderId, body)
+      await (delivery ? cancelDelivery(target.orderId, body) : cancelOrder(target.orderId, body))
       return { action: "order", orderId: target.orderId }
     }
     await voidPayment(payment!.id, { ...body, authorizationId: authorizationId! })
@@ -332,6 +347,13 @@ function FlowBody({
     </>
   )
 
+  // The paid Domicilio's payment is voided with it: say so where the supervisor decides.
+  const paymentWarning = delivery?.paidAmount != null && (
+    <Alert tone="warning">
+      <b>{`El pago de ${formatCurrency(delivery.paidAmount)} se anula: devuelve el dinero al cliente`}</b>
+    </Alert>
+  )
+
   const summary = subject && (
     <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-sm">
       <span className="min-w-0 flex-1 break-words">
@@ -360,7 +382,9 @@ function FlowBody({
                 ? `Nuevo total de la orden: ${formatCurrency(doneInfo.newTotal)}.`
                 : "La orden quedó sin ese plato."
               : target.action === "order"
-                ? "La orden pasa a Canceladas y la mesa queda libre si no tiene otra orden abierta."
+                ? delivery
+                  ? "El domicilio pasa a Canceladas con su motivo."
+                  : "La orden pasa a Canceladas y la mesa queda libre si no tiene otra orden abierta."
                 : "La orden vuelve a Por cobrar y se puede cobrar de nuevo."}
           </p>
           <dl className="grid w-full max-w-sm grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 rounded-lg border border-line p-3 text-left text-sm">
@@ -461,7 +485,9 @@ function FlowBody({
                 </div>
               ))}
               <div className="flex items-baseline gap-3 px-3 py-2 text-sm font-bold">
-                <span className="min-w-0 flex-1">{target.lines.length > 0 ? "Total · ya en cocina" : "Sin platos"}</span>
+                <span className="min-w-0 flex-1">
+                  {delivery ? "Total del domicilio" : target.lines.length > 0 ? "Total · ya en cocina" : "Sin platos"}
+                </span>
                 <Money>{formatCurrency(target.total)}</Money>
               </div>
             </div>
@@ -539,7 +565,7 @@ function FlowBody({
             </Button>
           ) : (
             <Button variant="destructive" className="h-12 flex-[2] text-base" disabled={!ready || busy} onClick={() => void cancelWithoutAuthorization()}>
-              Cancelar orden
+              {delivery ? "Cancelar domicilio" : "Cancelar orden"}
             </Button>
           )}
         </footer>
@@ -554,6 +580,7 @@ function FlowBody({
         {header("¿Quién autoriza?", true)}
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-4 pt-1">
           {summary}
+          {paymentWarning}
           {problem?.kind === "expired" && (
             <Alert tone="warning">
               <b>La autorización venció.</b> Pasaron más de 2 minutos y no se anuló nada. Elige quién autoriza y escribe el PIN otra vez.
@@ -640,6 +667,7 @@ function FlowBody({
       {header(`${firstName(name)}, escribe tu PIN`, true)}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-4 pt-1">
         {summary}
+        {paymentWarning}
         {supervisor && (
           <div className="flex items-center gap-3">
             <Avatar name={name} />
