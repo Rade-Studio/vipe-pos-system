@@ -44,6 +44,7 @@ describe("admin navigation registry", () => {
       "Personal",
       "Acceso de meseros",
       "Estaciones y rutas",
+      "Estación de impresión",
       "Impresoras",
     ])
   })
@@ -54,6 +55,8 @@ describe("admin navigation registry", () => {
     expect(parseSectionHash("#settings/access")).toBe("settings/access")
     expect(getAdminSection("settings/stations")).toMatchObject({ group: "settings", label: "Estaciones y rutas" })
     expect(parseSectionHash("#settings/stations")).toBe("settings/stations")
+    expect(getAdminSection("settings/print-station")).toMatchObject({ group: "settings", label: "Estación de impresión" })
+    expect(parseSectionHash("#settings/print-station")).toBe("settings/print-station")
   })
 
   it("has unique section ids and every section belongs to a declared group", () => {

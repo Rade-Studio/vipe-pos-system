@@ -11,6 +11,7 @@ import {
   FlaskConical,
   KeyRound,
   LayoutDashboard,
+  MonitorSmartphone,
   Package,
   Percent,
   Printer,
@@ -50,5 +51,6 @@ export const SECTION_ICONS: Record<AdminSectionId, LucideIcon> = {
   "settings/staff": Users,
   "settings/access": KeyRound,
   "settings/stations": Split,
+  "settings/print-station": MonitorSmartphone,
   "settings/printers": Printer,
 }
