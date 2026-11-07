@@ -35,7 +35,13 @@ interface TargetBase {
 
 export type VoidTarget =
   | (TargetBase & { action: "item"; lines: VoidLine[]; lineId?: string })
-  | (TargetBase & { action: "order"; lines: VoidLine[]; total: number })
+  | (TargetBase & {
+      action: "order"
+      lines: VoidLine[]
+      total: number
+      /** A live payment on the order: the API asks for a supervisor even with no lines. */
+      hasPayments?: boolean
+    })
   | (TargetBase & { action: "payment"; payments: VoidPaymentOption[]; paymentId?: string })
 
 export const SUPERVISOR_ACTION: Record<VoidAction, SupervisorAction> = {

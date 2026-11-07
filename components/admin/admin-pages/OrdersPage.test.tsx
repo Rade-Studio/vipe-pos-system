@@ -511,3 +511,12 @@ describe("OrdersPage — Completadas hoy", () => {
     expect(screen.getByTestId("completed-order-p2")).toHaveTextContent("Domicilio")
   })
 })
+
+describe("OrdersPage — S6 touch targets", () => {
+  it("every tab is at least 44 px tall", () => {
+    renderPage()
+    for (const name of [/Activas/, /Completadas/, /Canceladas/]) {
+      expect(screen.getByRole("tab", { name })).toHaveClass("min-h-11")
+    }
+  })
+})

@@ -223,7 +223,12 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
                 waiterName: useProfileStore.getState().profiles.find((p) => p.id === wire.waiterId)?.name ?? null,
               }
             : null
-          const conv: OrderChange = {
+          // F3: a cancellation on another device arrives as an UPDATE into
+          // cancelled; it leaves Activas like a DELETE (as on the kitchen board).
+          const cancelled = payload.eventType === "UPDATE" && payload.new?.status === "cancelled"
+          const conv: OrderChange = cancelled
+            ? { eventType: "DELETE", new: null, old: { id: payload.new.id } }
+            : {
             eventType: payload.eventType,
             new: inserted
               ? adminOrderFromDto(inserted)

@@ -25,7 +25,8 @@ const linesOf = (order: Order): VoidLine[] =>
  */
 export function WaiterVoidActions({ order, tableNumber, onDone }: WaiterVoidActionsProps) {
   const [target, setTarget] = useState<VoidTarget | null>(null)
-  if (order.items.length === 0) return null
+  // Every line may be voided and the order still open: it can always be cancelled.
+  if (order.status === "paid" || order.status === "cancelled") return null
   const label = [order.orderNumber ? `#${order.orderNumber}` : null, tableNumber !== undefined ? `Mesa ${tableNumber}` : null]
     .filter(Boolean)
     .join(" · ")
@@ -35,6 +36,7 @@ export function WaiterVoidActions({ order, tableNumber, onDone }: WaiterVoidActi
     <section aria-label="Anular o cancelar" className="grid gap-2 rounded-card border border-line bg-surface px-3 py-2.5">
       <h3 className="text-[13px] font-semibold uppercase tracking-wider text-fg-2">Anular o cancelar</h3>
       <p className="text-xs text-muted-fg">Todo ya se envió · anular necesita supervisor</p>
+      {lines.length > 0 && (
       <ul className="grid gap-1">
         {lines.map((line) => (
           <li key={line.id} className="flex min-w-0 items-center gap-2 text-sm">
@@ -53,6 +55,7 @@ export function WaiterVoidActions({ order, tableNumber, onDone }: WaiterVoidActi
           </li>
         ))}
       </ul>
+      )}
       <Button
         variant="outline"
         className="h-11 border-status-danger-line text-status-danger-fg hover:bg-status-danger-bg hover:text-status-danger-fg"

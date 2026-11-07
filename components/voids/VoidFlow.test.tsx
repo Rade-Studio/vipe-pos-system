@@ -294,3 +294,66 @@ describe("VoidFlow — cancelar orden y anular pago", () => {
     expect(await screen.findByRole("radio", { name: /Laura Gómez/ })).not.toHaveAttribute("aria-disabled")
   })
 })
+
+describe("VoidFlow — retry and double submit", () => {
+  it("a void that fails after the authorization can be retried with a new one", async () => {
+    orders.voidOrderItems.mockReset().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce({ total: 32900 })
+    renderFlow(itemTarget)
+    pickReason("Plato devuelto")
+    await toPin()
+    typePin("1357")
+    click("Autorizar")
+    expect(await screen.findByText("No se pudo completar. Revisa la conexión e inténtalo de nuevo.")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("button", { name: "Autorizar" })).toBeEnabled())
+    click("Autorizar")
+    expect(await screen.findByRole("heading", { name: "Plato anulado" })).toBeInTheDocument()
+    expect(auth.authorizeSupervisor).toHaveBeenCalledTimes(2)
+  })
+
+  it("two quick taps and Enter ask for one authorization", async () => {
+    renderFlow(orderTarget)
+    pickReason("El cliente se fue")
+    await toPin()
+    typePin("1357")
+    const submit = screen.getByRole("button", { name: "Autorizar" })
+    fireEvent.click(submit)
+    fireEvent.click(submit)
+    fireEvent.keyDown(window, { key: "Enter" })
+    expect(await screen.findByRole("heading", { name: "Orden cancelada" })).toBeInTheDocument()
+    expect(auth.authorizeSupervisor).toHaveBeenCalledTimes(1)
+    expect(orders.cancelOrder).toHaveBeenCalledTimes(1)
+  })
+
+  it("step 2 never shows a PIN pad before a supervisor is chosen", async () => {
+    renderFlow(itemTarget)
+    pickReason("Plato devuelto")
+    click("Elegir quién autoriza")
+    await screen.findByRole("radio", { name: /Carlos Pérez/ })
+    expect(screen.queryByRole("group", { name: "Teclado del PIN" })).not.toBeInTheDocument()
+  })
+})
+
+describe("VoidFlow — an order with no live lines but a live payment", () => {
+  it("authorization_required on the direct cancel goes to the supervisor step", async () => {
+    orders.cancelOrder
+      .mockReset()
+      .mockRejectedValueOnce(new ApiError(403, "Forbidden", "Se necesita autorización", { code: "authorization_required" }))
+      .mockResolvedValueOnce({})
+    renderFlow({ ...orderTarget, lines: [], total: 0 })
+    pickReason("Error del mesero")
+    click("Cancelar orden")
+    expect(await screen.findByRole("heading", { name: "¿Quién autoriza?" })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole("radio", { name: /Carlos Pérez/ }))
+    await screen.findByRole("heading", { name: "Carlos, escribe tu PIN" })
+    typePin("1357")
+    click("Autorizar")
+    expect(await screen.findByRole("heading", { name: "Orden cancelada" })).toBeInTheDocument()
+    expect(orders.cancelOrder).toHaveBeenLastCalledWith("o-1", { reason: "waiter_error", reasonText: null, authorizationId: "auth-1" })
+  })
+
+  it("a target that says it has payments asks for a supervisor from the start", async () => {
+    renderFlow({ ...orderTarget, lines: [], total: 0, hasPayments: true })
+    pickReason("Error del mesero")
+    expect(screen.getByRole("button", { name: "Elegir quién autoriza" })).toBeEnabled()
+  })
+})

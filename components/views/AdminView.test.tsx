@@ -514,3 +514,28 @@ async function cancelFromGrid() {
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
 }
+
+describe("F3 — a cancellation made on another device", () => {
+  it("a realtime UPDATE into cancelled takes the order off Activas", async () => {
+    state.api.orders = [activeOrderDto("o-1"), activeOrderDto("o-2")]
+    render(wrap(<AdminView profile={{ id: "p-1", name: "Admin", role: "admin" }} onChangeProfile={() => {}} authRole="admin" />))
+    await openSection("orders")
+    await screen.findByTestId("admin-order-o-1")
+    await act(async () => {
+      state.realtime.subscribeToOrders?.({ eventType: "UPDATE", new: { id: "o-1", status: "cancelled", order_items: [] }, old: { id: "o-1" } })
+    })
+    await waitFor(() => expect(screen.queryByTestId("admin-order-o-1")).not.toBeInTheDocument())
+    expect(screen.getByTestId("admin-order-o-2")).toBeInTheDocument()
+  })
+
+  it("closes the detail panel that showed the cancelled order", async () => {
+    state.api.orders = [activeOrderDto("o-1"), activeOrderDto("o-2")]
+    render(wrap(<AdminView profile={{ id: "p-1", name: "Admin", role: "admin" }} onChangeProfile={() => {}} authRole="admin" />))
+    await openSection("orders")
+    const panel = await openRow("o-1")
+    await act(async () => {
+      state.realtime.subscribeToOrders?.({ eventType: "UPDATE", new: { id: "o-1", status: "cancelled", order_items: [] }, old: { id: "o-1" } })
+    })
+    await waitFor(() => expect(panel).not.toBeInTheDocument())
+  })
+})

@@ -158,7 +158,10 @@ function FlowBody({
 
   const config = useQuery({ queryKey: CONFIG_QUERY_KEY, queryFn: fetchConfig })
   const allowSelf = config.data?.allowSelfAuthorization === true
-  const needsAuthorization = target.action !== "order" || target.lines.length > 0
+  // The API has the last word: authorization_required on a direct cancel turns the supervisor step on.
+  const [authorizationRequired, setAuthorizationRequired] = useState(false)
+  const needsAuthorization =
+    target.action !== "order" || target.lines.length > 0 || target.hasPayments === true || authorizationRequired
   const supervisors = useQuery({
     queryKey: SUPERVISORS_QUERY_KEY,
     queryFn: loadSupervisors,
@@ -214,7 +217,12 @@ function FlowBody({
 
   const showRefusal = (error: unknown) => {
     const refusal = voidRefusalOf(error)
-    if (refusal?.code === "authorization_invalid") {
+    if (refusal?.code === "authorization_required") {
+      setPin("")
+      setAuthorizationRequired(true)
+      setProblem(null)
+      setStep("who")
+    } else if (refusal?.code === "authorization_invalid") {
       setPin("")
       setProblem({ kind: "expired" })
       setStep("who")
