@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = ["core"]
+# app/src-tauri is its own workspace: it needs webkit/WebView2 and is built on Windows only.
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+publish = false

@@ -13,3 +13,8 @@ pos/.venv
 **/.env.*
 .DS_Store
 .codegraph
+desktop/target
+desktop/app/node_modules
+desktop/app/dist
+desktop/app/src-tauri/target
+desktop/app/src-tauri/gen

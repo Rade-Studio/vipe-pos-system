@@ -1,0 +1,32 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "local-pages",
+  "description": "Bundled pages (title bar, Estación panel, first-run setup): every app command.",
+  "local": true,
+  "windows": ["estacion"],
+  "webviews": ["titlebar"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "allow-station-status",
+    "allow-load-settings",
+    "allow-save-settings",
+    "allow-discover-printers",
+    "allow-test-print",
+    "allow-open-drawer",
+    "allow-enqueue-jobs",
+    "allow-take-acks",
+    "allow-mark-acked",
+    "allow-retry-job",
+    "allow-cancel-job",
+    "allow-reprint-job",
+    "allow-set-autostart",
+    "allow-update-tray",
+    "allow-open-panel",
+    "allow-show-vipe",
+    "allow-demo-mode"
+  ]
+}
