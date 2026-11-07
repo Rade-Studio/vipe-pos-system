@@ -473,11 +473,9 @@ describe("WaiterView — S13 delivery invariant", () => {
     renderView()
     await flush()
 
-    await act(async () => {
-      screen.getByRole("tab", { name: "Órdenes" }).click()
-    })
-    await flush()
-
+    // T29: the waiter has no orders tab; the map is the screen.
+    expect(screen.queryByRole("tab", { name: "Órdenes" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "Mesas" })).not.toBeInTheDocument()
     expect(screen.getByText("Mesa 1")).toBeInTheDocument()
     expect(screen.queryByText(/DOMICILIO/)).not.toBeInTheDocument()
 
@@ -1253,6 +1251,54 @@ describe("WaiterView — guests, order note, sent time and order number (T22)", 
     await tap("Guardar nota")
     expect(env.updateDetails).toHaveBeenLastCalledWith("o-1", { notes: "Cumpleaños, traer vela" })
     expect(env.addItems).not.toHaveBeenCalled()
+  })
+
+  it("entering a table with an open order shows its sent lines, state, send time, note and total (T29)", async () => {
+    const later = new Date(2026, 10, 6, 20, 5, 0)
+    env.orderGetByStatus.mockResolvedValue([
+      {
+        ...openOrder(),
+        // The bill total (tax and tip included), not the sum of the lines.
+        subtotal: 42_000,
+        total: 49_560,
+        items: [
+          { ...openOrder().items[0], status: "served" },
+          {
+            id: "i-2",
+            orderId: "o-1",
+            dishId: BANDEJA,
+            name: "Arroz con leche",
+            price: 7000,
+            quantity: 2,
+            status: "kitchen",
+            comments: "Sin canela",
+            addedAt: later.toISOString(),
+          },
+        ],
+      },
+    ])
+    await selectTable()
+
+    const current = within(screen.getByRole("region", { name: "Mesa 1" })).getByRole("region", { name: "Pedido en curso" })
+    const groups = within(current).getAllByRole("list")
+    expect(groups).toHaveLength(2)
+    expect(current).toHaveTextContent("Enviado a cocina · 19:48")
+    expect(current).toHaveTextContent("Enviado a cocina · 20:05")
+    expect(groups[0]).toHaveTextContent("1× Ajiaco")
+    expect(groups[0]).toHaveTextContent("Servido")
+    expect(groups[1]).toHaveTextContent("2× Arroz con leche")
+    expect(groups[1]).toHaveTextContent("“Sin canela”")
+    expect(groups[1]).toHaveTextContent("En cocina")
+    expect(current).toHaveTextContent("Cumpleaños")
+    expect(current).toHaveTextContent(/Total\s*\$\s?49\.560/)
+    // Read only: no quantity controls in the panel.
+    expect(within(current).queryByRole("button")).not.toBeInTheDocument()
+  })
+
+  it("a table without an open order shows no order in progress (T29)", async () => {
+    await selectTable()
+    expect(screen.getByRole("region", { name: "Mesa 1" })).toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "Pedido en curso" })).not.toBeInTheDocument()
   })
 
   it("an unsaved note change on an open order goes with the add-items send", async () => {
