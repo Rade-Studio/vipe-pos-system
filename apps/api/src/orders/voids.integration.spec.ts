@@ -174,6 +174,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
         authorizedBy: { id: cashier.profileId, name: cashier.name },
         selfAuthorized: false,
         previousStatus: 'kitchen',
+        legacy: false,
         subtotal: 13000,
         tax: 0,
         tip: 0,
@@ -206,7 +207,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       const cancelled = await admin().get(`/api/orders/cancelled?date=${today}`);
       expect(cancelled.status).toBe(200);
       const row = cancelled.body.find((o: { id: string }) => o.id === orderId);
-      expect(row).toMatchObject({ status: 'cancelled', total: 5000, tableNumber: expect.any(Number), waiterName: 'Waiter A' });
+      expect(row).toMatchObject({ status: 'cancelled', total: 5000, tableNumber: expect.any(Number), waiterName: 'Waiter A', delivery: null });
       expect(row.cancellation).toMatchObject({ reason: 'other', reasonLabel: 'Otro', reasonText: 'Mesa equivocada', total: 5000 });
       expect((await waiter().get(`/api/orders/cancelled?date=${today}`)).status).toBe(403);
       expect((await admin().get('/api/orders/cancelled?date=2026-13-01')).status).toBe(422);
@@ -497,7 +498,7 @@ describe('audited cancellations and voids (Testcontainers, vipe_api)', () => {
       const times = all.body.map((e: { createdAt: string }) => e.createdAt);
       expect([...times].sort().reverse()).toEqual(times);
       expect(Object.keys(all.body[0]).sort()).toEqual([
-        'actor', 'amount', 'authorizedBy', 'createdAt', 'details', 'eventType', 'id', 'orderId', 'orderNumber', 'paymentId',
+        'actor', 'amount', 'authorizedBy', 'createdAt', 'details', 'eventType', 'id', 'orderId', 'orderNumber', 'orderType', 'paymentId',
         'reason', 'reasonLabel', 'reasonText', 'selfAuthorized',
       ]);
       const voids = await admin().get('/api/audit?type=items_voided');

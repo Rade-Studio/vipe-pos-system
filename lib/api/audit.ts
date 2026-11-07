@@ -36,6 +36,7 @@ export const VOID_REFUSAL_CODES = [
   "order_paid",
   "order_closed",
   "delivery_order",
+  "delivery_not_cancellable",
   "payment_voided",
   "register_closed",
   "reason_invalid",

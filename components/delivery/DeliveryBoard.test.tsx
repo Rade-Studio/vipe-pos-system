@@ -42,10 +42,15 @@ const harness = vi.hoisted(() => {
 const listActiveDeliveries = vi.hoisted(() => vi.fn())
 const setDeliveryStatus = vi.hoisted(() => vi.fn())
 const listCouriers = vi.hoisted(() => vi.fn())
+const cancelDelivery = vi.hoisted(() => vi.fn())
+const listSupervisors = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/api/staff", () => ({ listSupervisors }))
+const getOrderById = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/api/orders", async (importOriginal) => ({ ...(await importOriginal<object>()), getById: getOrderById }))
 
 vi.mock("@/lib/api/delivery", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/delivery")>("@/lib/api/delivery")
-  return { ...actual, listActiveDeliveries, setDeliveryStatus, listCouriers }
+  return { ...actual, listActiveDeliveries, setDeliveryStatus, listCouriers, cancelDelivery }
 })
 
 const getCurrentRegister = vi.hoisted(() => vi.fn())
@@ -353,5 +358,40 @@ describe("DeliveryBoard — T12 dispatch console", () => {
     await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
     expect(screen.getByRole("button", { name: "Preparar" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeInTheDocument()
+  })
+
+  // F3b: "Cancelar" opens the audited step sheet (components/voids), never the old confirm.
+  it("Cancelar on an unpaid delivery opens the step sheet: a reason, no supervisor, then the audited cancel", async () => {
+    cancelDelivery.mockResolvedValue(parseOrderDeliveryRow(wireRow({ delivery_status: "cancelled", cancelled_at: "2026-10-07T10:05:00.000Z" })))
+    renderBoard(makeClient())
+    await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }))
+    expect(await screen.findByRole("heading", { name: "¿Por qué se cancela?" })).toBeInTheDocument()
+    expect(screen.queryByText("¿Cancelar el domicilio?")).not.toBeInTheDocument()
+    expect(screen.getByText(/Cancelar domicilio · .+ · Ana Ruiz/)).toBeInTheDocument()
+    const confirm = screen.getByRole("button", { name: "Cancelar domicilio" })
+    expect(confirm).toBeDisabled()
+    fireEvent.click(screen.getByRole("radio", { name: "El cliente se fue" }))
+    fireEvent.click(confirm)
+    await screen.findByRole("heading", { name: "Domicilio cancelado" })
+    expect(cancelDelivery).toHaveBeenCalledWith("d-1", { reason: "customer_left", reasonText: null })
+    expect(setDeliveryStatus).not.toHaveBeenCalled()
+    expect(listSupervisors).not.toHaveBeenCalled()
+  })
+
+  it("Cancelar on a paid delivery asks who authorizes and says the payment, tip included, is voided", async () => {
+    // Paid 19.000 + 3.000 fee + 1.500 tip: orders.total of a paid order is what was charged.
+    getOrderById.mockResolvedValue({ id: "d-1", status: "paid", total: 23500 })
+    listActiveDeliveries.mockResolvedValue([{ ...boardRow({ payment_mode: "prepaid" }), isPaid: true }])
+    listSupervisors.mockResolvedValue([{ id: "s-1", fullName: "Laura Gómez", role: "cashier", hasPin: true, pinLockedUntil: null }])
+    renderBoard(makeClient())
+    await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }))
+    await screen.findByRole("heading", { name: "¿Por qué se cancela?" })
+    fireEvent.click(screen.getByRole("radio", { name: "Cobro duplicado" }))
+    fireEvent.click(screen.getByRole("button", { name: "Elegir quién autoriza" }))
+    expect(await screen.findByText(/El pago de \$\s?23\.500 se anula: devuelve el dinero al cliente/)).toBeInTheDocument()
+    expect(await screen.findByRole("radio", { name: /Laura Gómez/ })).toBeInTheDocument()
+    expect(cancelDelivery).not.toHaveBeenCalled()
   })
 })

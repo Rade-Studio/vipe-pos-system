@@ -11,6 +11,7 @@ function event(overrides: Partial<AuditEvent>): AuditEvent {
     eventType: "items_voided",
     orderId: "o",
     orderNumber: 128,
+    orderType: "dine_in",
     paymentId: null,
     actor: staff("Andrés"),
     authorizedBy: staff("Carlos Pérez"),
