@@ -292,7 +292,7 @@ SET LOCAL ROLE vipe_api;
 SELECT set_config('t260.cancelled', public.create_delivery_order(
   '{"phone": "3101234567"}', '{"address_line": "Calle 1"}',
   '[{"dish_id": "26200000-0000-0000-0000-0000000000a1", "quantity": 1}]', 0::bigint, 'cash_on_delivery') ->> 'order_id', true);
-SELECT lives_ok($$ SELECT public.set_delivery_status(current_setting('t260.cancelled')::uuid, 'cancel') $$, 'cancel a fresh order');
+SELECT lives_ok($$ SELECT public.cancel_order(current_setting('t260.cancelled')::uuid, 'customer_left') $$, 'cancel a fresh order (audited cancel_order, 0019)');
 SELECT throws_ok(
   $$ SELECT public.return_courier(current_setting('t260.cancelled')::uuid) $$,
   'P0001', format('return_courier: delivery for order %s is in state ''cancelled'' (allowed: delivered, failed)', current_setting('t260.cancelled')),

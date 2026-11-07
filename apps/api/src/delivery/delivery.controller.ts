@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import {
   ApiBody,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -10,9 +11,11 @@ import {
   ApiTags,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
+import { parseVoidBody } from '../audit/voids';
 import type { AuthenticatedRequest } from '../auth/auth-context';
 import { Roles } from '../auth/roles.decorator';
 import { idParamSchema, parseInput } from '../common/validation';
+import { CancelOrderRequest, cancelOrderSchema } from '../orders/orders.dto';
 import {
   ClosedTodaySummary,
   Courier,
@@ -109,8 +112,26 @@ export class DeliveryController {
   @ApiOkResponse({ type: DeliveryOrder })
   @ApiNotFoundResponse({ description: 'P0002: delivery or courier not found.' })
   @ApiForbiddenResponse({ description: '42501: the role may not perform the action.' })
+  @ApiUnprocessableEntityResponse({ description: 'RPC rejection with its message verbatim and `code`; action cancel is refused (P0001): use POST /delivery/orders/:id/cancel.' })
   setStatus(@Param('id') id: string, @Body() body: unknown): Promise<DeliveryOrder> {
     return this.delivery.setStatus(parseInput(idParamSchema, id), parseInput(setDeliveryStatusSchema, body));
+  }
+
+  @Post('orders/:id/cancel')
+  @HttpCode(200)
+  @Roles('admin', 'delivery_operator')
+  @ApiBody({ type: CancelOrderRequest, description: 'authorizationId (POST /auth/authorize, action cancel_order, target this order) only when the delivery has a live payment.' })
+  @ApiOkResponse({
+    type: DeliveryOrder,
+    description:
+      'The audited cancellation (cancel_order): reason, actor and supervisor stored in order_cancellations and the audit log; the order and the delivery become cancelled; a live payment is voided under the same authorization.',
+  })
+  @ApiNotFoundResponse({ description: '`order_not_found`.' })
+  @ApiForbiddenResponse({ description: 'Not admin or delivery_operator; 403 `authorization_required` (paid), `authorization_invalid` or `self_authorization_not_allowed`.' })
+  @ApiConflictResponse({ description: '`order_cancelled`, `delivery_not_cancellable` (out for delivery or delivered) or `register_closed` (the payment\'s drawer is closed).' })
+  @ApiUnprocessableEntityResponse({ description: '`reason_invalid` or `reason_text_required` (Spanish message, `code`).' })
+  cancel(@Param('id') id: string, @Body() body: unknown): Promise<DeliveryOrder> {
+    return this.delivery.cancel(parseInput(idParamSchema, id), parseVoidBody(cancelOrderSchema, body));
   }
 
   @Post('orders/:id/return')

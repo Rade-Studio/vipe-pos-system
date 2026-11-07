@@ -287,6 +287,18 @@ export async function setDeliveryStatus(input: {
 }
 
 /**
+ * F3b: the audited cancellation (cancel_order, the same path as F1). A reason
+ * is always required; `authorizationId` (POST /auth/authorize, cancel_order,
+ * this order) only when the delivery is paid, and its payment is voided with
+ * it. A refusal is the ApiError with its `code` (voidRefusalOf).
+ */
+export async function cancelDelivery(orderId: string, body: Schemas["CancelOrderRequest"]): Promise<DeliveryOrder> {
+  const { data } = await api.POST("/api/delivery/orders/{id}/cancel", { params: { path: { id: orderId } }, body })
+  if (data === undefined) throw new ApiError(500, "Internal Server Error", "Empty API response")
+  return asDelivery(data)
+}
+
+/**
  * The courier is back at the restaurant (`return_courier`): a delivered or
  * failed delivery, once; the server's rejection comes back verbatim.
  */

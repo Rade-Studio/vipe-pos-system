@@ -38,7 +38,8 @@ import { DeliveryCard } from './DeliveryCard'
 import { NewDeliveryDialog } from './NewDeliveryDialog'
 import { DispatchDialog } from './DispatchDialog'
 import { FailDialog } from './FailDialog'
-import { CancelDeliveryDialog } from './CancelDeliveryDialog'
+import { VoidFlow } from '@/components/voids/VoidFlow'
+import type { VoidTarget } from '@/components/voids/flow'
 import { CouriersRail } from './CouriersRail'
 import { useLastLiveSignal, useNow } from './use-live-signal'
 import { CONFIG_QUERY_KEY, fetchConfig } from '@/lib/api/config'
@@ -106,7 +107,7 @@ const ACTION_SUCCESS_TOAST: Record<DeliveryAction, string> = {
   cancel: 'Domicilio cancelado',
 }
 
-type CardDialogKind = 'dispatch' | 'fail' | 'cancel' | 'pay'
+type CardDialogKind = 'dispatch' | 'fail' | 'pay'
 
 /** T25: how often the header re-checks the register (also on window focus). */
 export const REGISTER_POLL_MS = 60_000
@@ -309,9 +310,15 @@ export function DeliveryBoard({ role, operatorName, withRoleNav = false }: Deliv
     switch (action) {
       case 'dispatch':
       case 'fail':
-      case 'cancel':
         setDialog({ kind: action, orderId })
         return
+      case 'cancel': {
+        // F3b: the audited step sheet; the target is fixed now so the sheet
+        // survives the row moving under it while it is open.
+        const row = deliveries.find((r) => r.delivery.orderId === orderId)
+        if (row) setCancelTarget(deliveryCancelTarget(row))
+        return
+      }
       default:
         void transition({ orderId, action })
     }
@@ -345,6 +352,7 @@ export function DeliveryBoard({ role, operatorName, withRoleNav = false }: Deliv
     if (returned > 0) toast.success('Repartidor de regreso en el local')
   }
 
+  const [cancelTarget, setCancelTarget] = useState<VoidTarget | null>(null)
   const dialogPending = dialog !== null && pendingIds.has(dialog.orderId)
   const closeDialog = (open: boolean) => {
     if (!open) setDialog(null)
@@ -495,19 +503,14 @@ export function DeliveryBoard({ role, operatorName, withRoleNav = false }: Deliv
           }
         />
       )}
-      {dialogRow && dialog?.kind === 'cancel' && (
-        <CancelDeliveryDialog
-          open
-          onOpenChange={closeDialog}
-          customerName={dialogRow.delivery.customerName}
-          isPending={dialogPending}
-          onConfirm={() =>
-            void closeDialogOnSuccess(
-              transition({ orderId: dialogRow.delivery.orderId, action: 'cancel' }),
-            )
-          }
-        />
-      )}
+      <VoidFlow
+        target={cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        onDone={() => {
+          toast.success(ACTION_SUCCESS_TOAST.cancel)
+          refreshBoard()
+        }}
+      />
       {dialogRow && dialog?.kind === 'pay' && (
         <PaymentMethodDialog
           open
@@ -524,6 +527,24 @@ export function DeliveryBoard({ role, operatorName, withRoleNav = false }: Deliv
       )}
     </div>
   )
+}
+
+/**
+ * The step sheet's target for a delivery (F3b): a reason always; a supervisor
+ * only when it is paid, and then its payment is voided (the sheet reads its
+ * total, tip included, from the order).
+ */
+function deliveryCancelTarget(row: DeliveryOrderWithBill): VoidTarget {
+  const total = row.amountDue + row.delivery.deliveryFee
+  return {
+    action: 'order',
+    orderId: row.delivery.orderId,
+    label: `${deliveryOrderRef(row.delivery)} · ${row.delivery.customerName}`,
+    lines: [],
+    total,
+    hasPayments: row.isPaid,
+    delivery: true,
+  }
 }
 
 type ListProps = {

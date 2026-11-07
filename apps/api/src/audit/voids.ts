@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, HttpException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { z } from 'zod';
 import { PIN_MESSAGES } from '../auth/pins';
+import { parseInput } from '../common/validation';
 
 /**
  * Cancellations and voids (odd/tasks/fase3-operacion.md, F1). Nothing is
@@ -13,6 +14,10 @@ import { PIN_MESSAGES } from '../auth/pins';
  * client cart) and to void any payment. The supervisor must be someone else
  * unless the restaurant turned on allowSelfAuthorization (L14); then the event
  * is flagged selfAuthorized.
+ *
+ * Deliveries (F3b, migration 0019) go through the same cancel_order: a reason
+ * is always required and a supervisor only when the delivery has a live
+ * payment, which is then voided under that same authorization.
  */
 
 /** The fixed list of reasons, code -> the Spanish label the screens show. "other" needs a text. */
@@ -68,6 +73,7 @@ export const VOID_ERRORS: Record<string, { status: 403 | 404 | 409 | 422; messag
   order_paid: { status: 409, message: 'La orden ya está pagada: anula primero el pago' },
   order_closed: { status: 409, message: 'La orden está cerrada (pagada o cancelada)' },
   delivery_order: { status: 409, message: 'Los domicilios se cancelan desde el módulo de domicilios' },
+  delivery_not_cancellable: { status: 409, message: 'El domicilio ya salió o fue entregado; no se puede cancelar' },
   payment_voided: { status: 409, message: 'El pago ya fue anulado' },
   register_closed: { status: 409, message: 'La caja de este pago ya está cerrada; no se puede anular' },
   reason_invalid: { status: 422, message: VOID_MESSAGES.reason },
@@ -76,6 +82,25 @@ export const VOID_ERRORS: Record<string, { status: 403 | 404 | 409 | 422; messag
   void_quantity_exceeded: { status: 422, message: 'No puedes anular más unidades de las que tiene el producto' },
   split_has_voids: { status: 409, message: 'Esta cuenta dividida tiene productos anulados; no se puede deshacer la división' },
 };
+
+/**
+ * The body of a cancellation with the stable codes of the 0018 functions: a
+ * missing or unknown reason is 422 reason_invalid, a bad text 422
+ * reason_text_required (Spanish message, `code`); any other issue is the
+ * usual parseInput 422.
+ */
+export function parseVoidBody<T extends z.ZodType>(schema: T, body: unknown): z.infer<T> {
+  const parsed = schema.safeParse(body ?? {});
+  if (parsed.success) {
+    return parsed.data;
+  }
+  const fields = parsed.error.issues.map((issue) => issue.path[0]);
+  const code = fields.includes('reason') ? 'reason_invalid' : fields.every((field) => field === 'reasonText') ? 'reason_text_required' : null;
+  if (code) {
+    throw new UnprocessableEntityException({ message: VOID_ERRORS[code].message, code });
+  }
+  return parseInput(schema, body);
+}
 
 const EXCEPTIONS = { 403: ForbiddenException, 404: NotFoundException, 409: ConflictException, 422: UnprocessableEntityException };
 const RAISED = /^(cancel_order|void_order_items|void_payment|undo_split): ([a-z_]+)$/;

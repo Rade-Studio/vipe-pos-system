@@ -46,6 +46,7 @@ function event(over: Partial<AuditEvent>): AuditEvent {
     reason: "dish_returned",
     reasonLabel: "Plato devuelto",
     reasonText: null,
+    orderType: "dine_in",
     amount: 32900,
     details: { lines: [{ name: "Bandeja paisa", quantity: 1, amount: 32900 }] },
     createdAt: at(12, 44),
@@ -133,6 +134,18 @@ describe("VoidsPage", () => {
     const text = await blob!.text()
     expect(text.split("\r\n")).toHaveLength(4)
     expect(text).toContain("Pago anulado")
+  })
+
+  it("labels a delivery cancellation Domicilio with its customer (F3b)", async () => {
+    audit.events = [
+      event({ id: "d", eventType: "order_cancelled", orderType: "delivery", orderNumber: 41, amount: 37000, authorizedBy: null, actor: { id: "op", name: "Operadora Ana" }, details: { items: [{}], customer_name: "Ana Ruiz", delivery_fee: 5000 } }),
+    ]
+    renderPage()
+    const row = (await screen.findByText("#41")).closest("tr")!
+    expect(within(row).getByText("Domicilio")).toBeInTheDocument()
+    expect(row).toHaveTextContent("Ana Ruiz")
+    expect(row).toHaveTextContent("Operadora Ana")
+    expect(row).toHaveTextContent("No hizo falta")
   })
 
   it("says so when nothing matches", async () => {

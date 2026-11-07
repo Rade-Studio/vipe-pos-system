@@ -88,7 +88,11 @@ export class OrdersController {
   @Get('cancelled')
   @Roles('admin')
   @ApiQuery({ name: 'date', required: true, description: "YYYY-MM-DD: orders cancelled that day in the restaurant's timezone." })
-  @ApiOkResponse({ type: [CancelledOrder], description: 'Newest cancellation first, with the bill at that moment, reason, actor and supervisor.' })
+  @ApiOkResponse({
+    type: [CancelledOrder],
+    description:
+      'Newest cancellation first, with the bill at that moment, reason, actor and supervisor; deliveries carry `delivery`, and those cancelled before the audit (0019) come as `legacy` with no reason or actor.',
+  })
   @ApiForbiddenResponse({ description: 'Not admin.' })
   cancelled(@Query() query: unknown): Promise<CancelledOrder[]> {
     return this.orders.cancelledOn(parseInput(completedOrdersQuerySchema, query).date);
@@ -167,7 +171,10 @@ export class OrdersController {
   @ApiBody({ type: CancelOrderRequest })
   @ApiOkResponse({ type: CancelledOrder, description: 'Cancelled, never deleted: reason, actor, supervisor and the bill are stored; the table is freed when no other open order remains.' })
   @ApiForbiddenResponse({ description: `Not admin, waiter or cashier, or ${VOID_REFUSALS}` })
-  @ApiConflictResponse({ description: '`order_cancelled`, `order_paid` (void the payment first) or `delivery_order`.' })
+  @ApiConflictResponse({
+    description:
+      '`order_cancelled`, `order_paid` (a table order: void the payment first), `delivery_order` (a cashier or waiter on a delivery), `delivery_not_cancellable` or `register_closed` (a paid delivery of a closed drawer).',
+  })
   @ApiNotFoundResponse({ description: '`order_not_found`.' })
   cancel(@Param('id') id: string, @Body() body: unknown): Promise<CancelledOrder> {
     return this.orders.cancel(parseInput(idParamSchema, id), parseInput(cancelOrderSchema, body));

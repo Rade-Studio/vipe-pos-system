@@ -3,10 +3,12 @@ import { sql } from '@vipe/db';
 import type { z } from 'zod';
 import type { CallerProfile } from '../auth/auth-context';
 import { Clock } from '../common/clock';
+import { VoidsService } from '../audit/voids.service';
 import { UnitOfWork } from '../db/unit-of-work';
 import { definedColumns, insertColumns, one, rows, rpc, setList } from '../inventory/inventory-sql';
 import { SalesService } from '../inventory/sales.service';
 import { PrintService } from '../print/print.service';
+import type { cancelOrderSchema } from '../orders/orders.dto';
 import type {
   ClosedTodaySummary,
   Courier,
@@ -98,6 +100,7 @@ export class DeliveryService {
     private readonly sales: SalesService,
     private readonly print: PrintService,
     private readonly clock: Clock,
+    private readonly voids: VoidsService,
   ) {}
 
   /** `phone` is already normalised; RLS limits it to the caller's restaurant. */
@@ -234,6 +237,21 @@ export class DeliveryService {
       SELECT public.set_delivery_status(${orderId}::uuid, ${input.action}::text,
                ${input.courierId ?? null}::uuid, ${input.reason ?? null}::text,
                ${input.courierEta ?? null}::timestamptz, ${input.courierLocation ?? null}::text) AS result`);
+    return this.readDelivery(orderId);
+  }
+
+  /**
+   * POST /delivery/orders/:id/cancel: the audited public.cancel_order of F1
+   * (0019), the only way a delivery is cancelled. A reason is required; the
+   * supervisor authorization (cancel_order, bound to this order) only when
+   * the delivery has a live payment, which is voided in the same transaction.
+   */
+  async cancel(orderId: string, input: z.infer<typeof cancelOrderSchema>): Promise<DeliveryOrder> {
+    await this.voids.run(
+      'cancel_order',
+      input.authorizationId,
+      sql`SELECT public.cancel_order(${orderId}::uuid, ${input.reason}, ${input.reasonText ?? null}, ${input.authorizationId ?? null}::uuid) AS result`,
+    );
     return this.readDelivery(orderId);
   }
 
