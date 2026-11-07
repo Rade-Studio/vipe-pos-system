@@ -31,7 +31,7 @@ export function Details({ ctx }: { ctx: StepContext }) {
           </div>
         </div>
       </div>
-      <div className="card" style={{ padding: '8px 20px' }}>
+      <div className="card checks" style={{ padding: '8px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1 }}>
             <Opt
@@ -58,7 +58,7 @@ export function Details({ ctx }: { ctx: StepContext }) {
       </div>
       <p className="note">
         <Check aria-hidden />
-        Detectamos {printer.paperMm} mm automáticamente; cámbialo solo si no coincide.
+        Detectamos {printer.paperMm} mm y cuchilla automáticamente; cámbialo solo si no coincide.
       </p>
       <Acts onBack={() => void ctx.back()}>
         <NextButton label="Siguiente: prueba" onClick={() => void ctx.next()} disabled={!printer.name.trim()} />

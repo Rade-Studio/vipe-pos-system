@@ -7,6 +7,7 @@ import { createDemoBridge, type DemoScenario } from './bridge/demo';
 import { createTauriBridge, isDemoMode, isTauri } from './bridge/tauri';
 import type { Bridge, StationSettings } from './bridge/types';
 import { Panel } from './panel/Panel';
+import { stepNumber, type StepId } from './setup/flow';
 import { Setup } from './setup/Setup';
 import { APP_VERSION } from './setup/steps/Welcome';
 import { startSync } from './sync';
@@ -36,6 +37,12 @@ async function boot(): Promise<{ bridge: Bridge; api: VipeApiClient; demo: boole
   }
   const scenario = (params.get('demo') ?? 'fresh') as DemoScenario;
   const bridge = isTauri() ? createTauriBridge() : createDemoBridge({ scenario, storage: params.has('persist') ? localStorage : null });
+  // Demo-only ?paso=<step id> opens the wizard at that step (visual QA).
+  const step = params.get('paso') as StepId | null;
+  if (step && !isTauri()) {
+    const s = await bridge.loadSettings();
+    await bridge.saveSettings({ ...s, setup: { ...s.setup, step, maxStep: Math.max(s.setup.maxStep, stepNumber(step)), completed: false, deferred: false } });
+  }
   return { bridge, api: new MockApiClient(), demo: true };
 }
 
@@ -57,6 +64,7 @@ function Station({ bridge, api }: { bridge: Bridge; api: VipeApiClient }) {
         initial={settings}
         onDone={() => void bridge.loadSettings().then((s) => (setSettings(s), setMode('panel'), bridge.showVipe()))}
         onDefer={() => void bridge.loadSettings().then((s) => (setSettings(s), setMode('panel'), bridge.showVipe()))}
+        skipResume={params.has('paso')}
       />
     );
   const addPrinter = async () => {

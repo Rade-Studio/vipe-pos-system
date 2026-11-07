@@ -21,7 +21,6 @@ export function TestPrint({ ctx }: { ctx: StepContext }) {
   };
   useEffect(() => {
     void print();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!printer) return null;
 

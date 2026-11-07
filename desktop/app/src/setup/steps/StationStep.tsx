@@ -28,7 +28,6 @@ export function StationStep({ ctx }: { ctx: StepContext }) {
         }
       })
       .catch((e) => setError(errorMessage(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!printer) return null;
 

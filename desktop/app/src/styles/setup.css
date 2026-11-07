@@ -56,6 +56,8 @@ ol.how b { color: var(--text); }
 .opt b { display: block; font-weight: 600; }
 .opt small { display: block; color: var(--text-muted); font-size: 12.5px; margin-top: 2px; line-height: 1.4; }
 .opt:disabled { opacity: 1; }
+/* Check rows inside a card (step 5) are plain rows, not option cards. */
+.checks .opt, .checks .opt[aria-pressed=true] { border-color: transparent; box-shadow: none; background: none; padding-inline: 0; }
 .pi { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--bg, var(--surface-2)); color: var(--fg, var(--text-2)); border: 1px solid var(--ln, var(--line)); flex: none; }
 .pi svg { width: 18px; height: 18px; }
 .scan { display: flex; align-items: center; gap: 10px; color: var(--text-2); font-size: 13px; }

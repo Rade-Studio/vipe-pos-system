@@ -40,7 +40,7 @@ export function Startup({ ctx }: { ctx: StepContext }) {
     <section className="step">
       <p className="eyebrow">Paso 8 de 9</p>
       <h1>Inicio y actualizaciones</h1>
-      <div className="card" style={{ padding: '8px 20px' }}>
+      <div className="card checks" style={{ padding: '8px 20px' }}>
         <Opt kind="check" pressed={autostart} onClick={() => ctx.update({ autostart: !autostart })}
           title="Abrir VIPE al encender el computador"
           hint="Recomendado: las comandas se imprimen aunque nadie abra VIPE." />

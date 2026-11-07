@@ -29,7 +29,6 @@ export function Discover({ ctx }: { ctx: StepContext }) {
   };
   useEffect(() => {
     void search();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggle = (id: string) =>
@@ -55,7 +54,10 @@ export function Discover({ ctx }: { ctx: StepContext }) {
         <div className="tabs" role="group" aria-label="Tipo de conexión">
           {TABS.map((t) => (
             <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}>
-              {t.id === 'all' ? <Search aria-hidden size={15} /> : null}
+              {(() => {
+                const Icon = t.id === 'all' ? Search : KIND_ICON[t.id];
+                return <Icon aria-hidden size={15} />;
+              })()}
               {t.label}
             </button>
           ))}

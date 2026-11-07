@@ -8,7 +8,7 @@ import { NextButton } from './common';
 export function printerSummary(p: LocalPrinter, stations: Station[]) {
   const names = p.stationIds.map((id) => stations.find((s) => s.id === id)?.name ?? id).join(' y ');
   const proof = p.drawerTested ? 'cajón probado' : p.testResult === 'ok' ? 'prueba bien' : 'sin prueba';
-  return `${p.name} → ${names} · ${proof}`;
+  return names ? `${p.name} → ${names} · ${proof}` : `${p.name} · sin estación · ${proof}`;
 }
 
 /** Step 9: summary and "Abrir la caja". */
@@ -17,7 +17,6 @@ export function Done({ ctx }: { ctx: StepContext }) {
   const [stations, setStations] = useState<Station[]>([]);
   useEffect(() => {
     ctx.api.stations().then(setStations, () => setStations([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const served = [...new Set(printers.flatMap((p) => p.stationIds))]

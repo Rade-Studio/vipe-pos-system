@@ -13,6 +13,8 @@ export interface SetupProps {
   initial: StationSettings;
   onDone: () => void;
   onDefer: () => void;
+  /** Open at the saved step without the "Sigamos donde quedaste" screen (demo ?paso=). */
+  skipResume?: boolean;
 }
 
 export interface StepContext {
@@ -32,9 +34,9 @@ function wasStarted(s: StationSettings) {
 }
 
 /** First-run setup: nine steps with the side menu, saved after every step. */
-export function Setup({ api, bridge, initial, onDone, onDefer }: SetupProps) {
+export function Setup({ api, bridge, initial, onDone, onDefer, skipResume }: SetupProps) {
   const [settings, setSettings] = useState(initial);
-  const [resuming, setResuming] = useState(wasStarted(initial));
+  const [resuming, setResuming] = useState(!skipResume && wasStarted(initial));
   const current = useRef(initial);
 
   const persist = async (next: StationSettings) => {
@@ -83,7 +85,8 @@ export function Setup({ api, bridge, initial, onDone, onDefer }: SetupProps) {
     await persist({ ...s, printers: [], setup: { ...s.setup, step: s.deviceToken ? 'prints' : 'welcome', printerIndex: 0, maxStep: s.deviceToken ? 3 : 1 } });
   };
 
-  const canDefer = settings.setup.maxStep >= 3 && settings.setup.step !== 'done' && !resuming;
+  // As in the design, "Configurar después" appears while setting up printers (steps 4-7).
+  const canDefer = ['discover', 'details', 'test', 'station'].includes(settings.setup.step) && !resuming;
 
   return (
     <div className="shell">

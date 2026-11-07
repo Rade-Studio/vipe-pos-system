@@ -37,7 +37,7 @@ export function Resume({ settings, onContinue, onRestart }: { settings: StationS
         </li>
       </ul>
       <Acts>
-        <button type="button" className="btn" onClick={onRestart} style={{ marginRight: 'auto' }}>
+        <button type="button" className="btn" onClick={onRestart} style={{ order: -1 }}>
           Empezar de cero
         </button>
         <NextButton label={`Continuar en el paso ${n}`} onClick={onContinue} />
