@@ -1,10 +1,13 @@
 [package]
 name = "vipe-desktop"
 description = "VIPE desktop app (Tauri 2)"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-publish.workspace = true
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+publish = false
+
+# Standalone workspace (see desktop/Cargo.toml).
+[workspace]
 
 [lib]
 name = "vipe_desktop_lib"
