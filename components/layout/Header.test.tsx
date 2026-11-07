@@ -69,6 +69,11 @@ describe("Header sign-out", () => {
 describe("Header — Cambiar mi PIN", () => {
   const cashier = { id: "p-2", name: "Laura Gómez", role: "cashier" as const }
 
+  it("has a touch target of at least 44 px", () => {
+    render(<Header profile={cashier} onChangeProfile={vi.fn()} />)
+    expect(screen.getByRole("button", { name: "Cambiar mi PIN" }).className).toMatch(/\bmin-h-11\b/)
+  })
+
   it("opens the own-PIN dialog with who is changing it and saves with the current PIN", async () => {
     api.PUT.mockResolvedValue({ data: undefined })
     render(<Header profile={cashier} onChangeProfile={vi.fn()} />)

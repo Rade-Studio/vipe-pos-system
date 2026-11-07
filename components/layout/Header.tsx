@@ -49,7 +49,13 @@ export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }
             <span className="sm:hidden">Cambiar</span>
           </Button>
         )}
-        <Button variant="outline" size="sm" aria-label="Cambiar mi PIN" onClick={() => setPinOpen(true)}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="min-h-11 min-w-11"
+          aria-label="Cambiar mi PIN"
+          onClick={() => setPinOpen(true)}
+        >
           <KeyRound className="h-4 w-4 sm:mr-2" aria-hidden />
           <span className="hidden sm:inline">Cambiar mi PIN</span>
         </Button>
