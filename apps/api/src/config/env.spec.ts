@@ -19,7 +19,16 @@ describe('parseEnv', () => {
       accessTokenTtlSeconds: 900,
       refreshTokenTtlSeconds: 2592000,
       storage: null,
+      desktopReleasesBaseUrl: null,
     });
+  });
+
+  it('reads DESKTOP_RELEASES_BASE_URL without its trailing slash and rejects a non-http URL', () => {
+    expect(parseEnv({ ...valid, DESKTOP_RELEASES_BASE_URL: 'https://cdn.vipe.test/desktop/' }).desktopReleasesBaseUrl).toBe(
+      'https://cdn.vipe.test/desktop',
+    );
+    expect(parseEnv({ ...valid, DESKTOP_RELEASES_BASE_URL: '' }).desktopReleasesBaseUrl).toBeNull();
+    expect(() => parseEnv({ ...valid, DESKTOP_RELEASES_BASE_URL: 'ftp://cdn.vipe.test' })).toThrow(/DESKTOP_RELEASES_BASE_URL/);
   });
 
   it('defaults PORT to 4000 when absent', () => {

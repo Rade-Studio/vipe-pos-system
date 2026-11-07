@@ -19,6 +19,7 @@ const DEFAULTS = {
   waiterAccessMode: 'own_accounts',
   allowSelfAuthorization: false,
   printingEnabled: true,
+  desktopUpdateChannel: 'stable',
 };
 
 describe('business config endpoints (Testcontainers, vipe_api)', () => {
@@ -187,6 +188,20 @@ describe('business config endpoints (Testcontainers, vipe_api)', () => {
     expect((await get(fixtures.waiterA)).body.printingEnabled).toBe(false);
     expect((await get(fixtures.adminB)).body.printingEnabled).toBe(true);
     expect((await put(fixtures.adminA, { printingEnabled: true })).body.printingEnabled).toBe(true);
+  });
+
+  it('stores desktopUpdateChannel for the admin only (default stable) and serves it per restaurant', async () => {
+    const before = await rows(fixtures.restaurantA);
+    expect((await put(fixtures.waiterA, { desktopUpdateChannel: 'pilot' })).status).toBe(403);
+    expect((await put(fixtures.adminA, { desktopUpdateChannel: 'beta' })).status).toBe(422);
+    expect(await rows(fixtures.restaurantA)).toEqual(before);
+    const res = await put(fixtures.adminA, { desktopUpdateChannel: 'pilot' });
+    expect(res.status).toBe(200);
+    expect(res.body.desktopUpdateChannel).toBe('pilot');
+    expect(await rows(fixtures.restaurantA)).toContainEqual({ key: 'desktop_update_channel', value: 'pilot' });
+    expect((await get(fixtures.waiterA)).body.desktopUpdateChannel).toBe('pilot');
+    expect((await get(fixtures.adminB)).body.desktopUpdateChannel).toBe('stable');
+    expect((await put(fixtures.adminA, { desktopUpdateChannel: 'stable' })).body.desktopUpdateChannel).toBe('stable');
   });
 
   it('rejects a waiter writing a late threshold with 403', async () => {

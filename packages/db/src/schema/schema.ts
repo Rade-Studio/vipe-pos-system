@@ -1,4 +1,4 @@
-import { pgTable, index, foreignKey, unique, pgPolicy, uuid, varchar, text, timestamp, uniqueIndex, numeric, check, boolean, bigint, integer, date, jsonb, smallint } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, unique, pgPolicy, uuid, varchar, text, timestamp, uniqueIndex, numeric, check, boolean, bigint, integer, date, jsonb, smallint, primaryKey } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 import { citext } from "./citext"
 
@@ -1839,4 +1839,160 @@ export const stations = pgTable("stations", {
 	check("stations_kind_check", sql`kind = ANY (ARRAY['prep'::text, 'cashier'::text])`),
 	check("stations_color_check", sql`color = ANY (ARRAY['kitchen'::text, 'served'::text, 'occupied'::text, 'free'::text, 'reserved'::text])`),
 	check("stations_default_prep_check", sql`(NOT is_default) OR (kind = 'prep'::text)`),
+]);
+
+/** Paired VIPE desktop apps (0021, F5a). token_hash (sha256 of the vdt_ token) is not readable by vipe_api. */
+export const desktopDevices = pgTable("desktop_devices", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	name: text().notNull(),
+	platform: text().default('windows').notNull(),
+	appVersion: text("app_version").notNull(),
+	tokenHash: text("token_hash").notNull(),
+	createdBy: uuid("created_by"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: 'string' }),
+	revokedAt: timestamp("revoked_at", { withTimezone: true, mode: 'string' }),
+	queuePending: integer("queue_pending").default(0).notNull(),
+	queueFailed: integer("queue_failed").default(0).notNull(),
+	printerStatus: jsonb("printer_status").default([]).notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "desktop_devices_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	unique("desktop_devices_token_hash_key").on(table.tokenHash),
+	unique("desktop_devices_restaurant_id_id_key").on(table.restaurantId, table.id),
+	pgPolicy("desktop_devices_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
+	pgPolicy("desktop_devices_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	check("desktop_devices_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 60)`),
+	check("desktop_devices_platform_check", sql`platform = 'windows'::text`),
+]);
+
+/** Single-use 6-digit pairing codes (sha256 only), valid 10 minutes (0021). No grant to vipe_api. */
+export const desktopPairingCodes = pgTable("desktop_pairing_codes", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	codeHash: text("code_hash").notNull(),
+	createdBy: uuid("created_by"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }).default(sql`(now() + '00:10:00'::interval)`).notNull(),
+	claimedAt: timestamp("claimed_at", { withTimezone: true, mode: 'string' }),
+	deviceId: uuid("device_id"),
+}, (table) => [
+	uniqueIndex("desktop_pairing_codes_live_key").using("btree", table.codeHash.asc().nullsLast().op("text_ops")).where(sql`(claimed_at IS NULL)`),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "desktop_pairing_codes_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.deviceId],
+			foreignColumns: [desktopDevices.id],
+			name: "desktop_pairing_codes_device_id_fkey"
+		}).onDelete("set null"),
+]);
+
+/** Printers of a desktop device; id is the app's local id (0021). Written by private.desktop_put_printers. */
+export const desktopPrinters = pgTable("desktop_printers", {
+	deviceId: uuid("device_id").notNull(),
+	id: text().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	name: text().notNull(),
+	model: text().default('').notNull(),
+	connection: text().notNull(),
+	paperMm: integer("paper_mm").notNull(),
+	hasDrawer: boolean("has_drawer").default(false).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.deviceId, table.id], name: "desktop_printers_pkey" }),
+	foreignKey({
+			columns: [table.restaurantId, table.deviceId],
+			foreignColumns: [desktopDevices.restaurantId, desktopDevices.id],
+			name: "desktop_printers_device_fkey"
+		}).onDelete("cascade"),
+	pgPolicy("desktop_printers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	check("desktop_printers_connection_check", sql`connection = ANY (ARRAY['usb'::text, 'network'::text, 'bluetooth'::text])`),
+	check("desktop_printers_paper_mm_check", sql`paper_mm = ANY (ARRAY[58, 80])`),
+]);
+
+/** Stations a desktop printer serves (0021). */
+export const desktopPrinterStations = pgTable("desktop_printer_stations", {
+	deviceId: uuid("device_id").notNull(),
+	printerId: text("printer_id").notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	stationId: uuid("station_id").notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.deviceId, table.printerId, table.stationId], name: "desktop_printer_stations_pkey" }),
+	foreignKey({
+			columns: [table.deviceId, table.printerId],
+			foreignColumns: [desktopPrinters.deviceId, desktopPrinters.id],
+			name: "desktop_printer_stations_printer_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.stationId],
+			foreignColumns: [stations.restaurantId, stations.id],
+			name: "desktop_printer_stations_station_fkey"
+		}).onDelete("cascade"),
+	pgPolicy("desktop_printer_stations_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+]);
+
+/** Per-device acknowledgement of a print job; the first wins (0021). Reached only through private.desktop_ack_job. */
+export const desktopJobAcks = pgTable("desktop_job_acks", {
+	jobId: uuid("job_id").notNull(),
+	deviceId: uuid("device_id").notNull(),
+	status: text().notNull(),
+	reason: text(),
+	ackedAt: timestamp("acked_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.jobId, table.deviceId], name: "desktop_job_acks_pkey" }),
+	foreignKey({
+			columns: [table.jobId],
+			foreignColumns: [printJobs.id],
+			name: "desktop_job_acks_job_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.deviceId],
+			foreignColumns: [desktopDevices.id],
+			name: "desktop_job_acks_device_id_fkey"
+		}).onDelete("cascade"),
+	check("desktop_job_acks_status_check", sql`status = ANY (ARRAY['printed'::text, 'skipped'::text, 'cancelled'::text])`),
+]);
+
+/** Cash drawer openings reported by a desktop device (0021, L10). */
+export const desktopDrawerEvents = pgTable("desktop_drawer_events", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	deviceId: uuid("device_id").notNull(),
+	printerId: text("printer_id").notNull(),
+	openedAt: timestamp("opened_at", { withTimezone: true, mode: 'string' }).notNull(),
+	reason: text().notNull(),
+	profileId: uuid("profile_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.restaurantId, table.deviceId],
+			foreignColumns: [desktopDevices.restaurantId, desktopDevices.id],
+			name: "desktop_drawer_events_device_fkey"
+		}).onDelete("cascade"),
+	pgPolicy("desktop_drawer_events_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
+	check("desktop_drawer_events_reason_check", sql`reason = ANY (ARRAY['manual'::text, 'cash_payment'::text])`),
+]);
+
+/** Signed desktop builds per channel and target; global, written by the publishing script (0021). */
+export const desktopReleases = pgTable("desktop_releases", {
+	channel: text().notNull(),
+	target: text().notNull(),
+	version: text().notNull(),
+	file: text().notNull(),
+	signature: text().notNull(),
+	notes: text().default('').notNull(),
+	pubDate: timestamp("pub_date", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	required: boolean().default(false).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.channel, table.target, table.version], name: "desktop_releases_pkey" }),
+	pgPolicy("desktop_releases_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`true` }),
+	check("desktop_releases_channel_check", sql`channel = ANY (ARRAY['stable'::text, 'pilot'::text])`),
 ]);

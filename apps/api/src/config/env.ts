@@ -25,6 +25,7 @@ const envSchema = z.object({
   S3_SECRET_ACCESS_KEY: optional(z.string()),
   S3_PUBLIC_BASE_URL: optional(z.url({ protocol: /^https?$/, message: 'must be an http(s) URL' })),
   S3_FORCE_PATH_STYLE: optional(z.enum(['true', 'false'], { message: 'must be true or false' })),
+  DESKTOP_RELEASES_BASE_URL: optional(z.url({ protocol: /^https?$/, message: 'must be an http(s) URL' })),
 });
 
 /** S3-compatible object storage (MinIO in development, R2 or any S3 service in production). */
@@ -53,6 +54,12 @@ export interface Env {
   readonly refreshTokenTtlSeconds: number;
   /** Null when no S3 variable is set: the storage endpoints answer 503. */
   readonly storage: StorageEnv | null;
+  /**
+   * Public base URL of the desktop app builds (F5a), without a trailing slash;
+   * an update's url is `<base>/<desktop_releases.file>`. Null: GET
+   * /desktop/updates always answers 204 (no update offered).
+   */
+  readonly desktopReleasesBaseUrl: string | null;
 }
 
 /** Injection token for the validated environment. */
@@ -94,5 +101,6 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
           forcePathStyle: s3.S3_FORCE_PATH_STYLE === 'true',
         }
       : null,
+    desktopReleasesBaseUrl: result.data.DESKTOP_RELEASES_BASE_URL?.replace(/\/+$/, '') ?? null,
   };
 }
