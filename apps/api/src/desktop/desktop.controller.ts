@@ -120,7 +120,7 @@ export class DesktopDeviceController {
   @HttpCode(204)
   @ApiBody({ type: AckRequest })
   @ApiNoContentResponse({ description: 'Acked for this device; repeating it is a no-op.' })
-  @ApiNotFoundResponse({ description: "`job_not_found`: not a job of the device's restaurant." })
+  @ApiNotFoundResponse({ description: '`job_not_found`: not a job the device receives (restaurant, station, created after pairing).' })
   ack(@Req() req: DesktopRequest, @Param('id') id: string, @Body() body: unknown): Promise<void> {
     return this.devices.ack(req.desktopDevice!, parseInput(idParamSchema, id), parseInput(ackSchema, body));
   }
@@ -134,7 +134,10 @@ export class DesktopDeviceController {
   }
 
   @Get('updates/:target/:currentVersion')
-  @ApiOkResponse({ type: UpdateManifest, description: 'Tauri dynamic manifest of the newest release of the channel.' })
+  @ApiOkResponse({
+    type: UpdateManifest,
+    description: 'Tauri dynamic manifest of the newest release of the channel; target `windows` (`windows-x86_64` is an alias).',
+  })
   @ApiNoContentResponse({ description: 'Up to date, or DESKTOP_RELEASES_BASE_URL is not set.' })
   async update(
     @Req() req: DesktopRequest,

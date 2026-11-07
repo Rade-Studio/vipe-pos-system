@@ -5,7 +5,8 @@ import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
 import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabase } from '../testing/test-database';
 
 const BASE = 'https://downloads.vipe.test/desktop';
-const TARGET = 'windows-x86_64';
+// Tauri 2 sends the OS as {{target}} (`windows`); releases are stored with target `windows`.
+const TARGET = 'windows';
 
 describe('desktop updates (Testcontainers, vipe_api)', () => {
   let database: TestDatabase;
@@ -22,7 +23,7 @@ describe('desktop updates (Testcontainers, vipe_api)', () => {
          ('stable', $1, '1.0.5', 'stable/1.0.5/vipe.msi.zip', 'sig-105', 'Arreglo de cajón', now() - interval '9 days', true),
          ('stable', $1, '1.1.0', 'stable/1.1.0/vipe.msi.zip', 'sig-110', 'Cola más rápida', now() - interval '2 days', false),
          ('stable', $1, '0.9.0', 'stable/0.9.0/vipe.msi.zip', 'sig-090', '', now() - interval '30 days', false),
-         ('stable', 'linux-x86_64', '9.0.0', 'linux/vipe.tar.gz', 'sig-l', '', now(), false),
+         ('stable', 'linux-x86_64', '9.0.0', 'linux/vipe.tar.gz', 'sig-l', '', now(), true),
          ('pilot', $1, '1.2.0', 'pilot/1.2.0/vipe.msi.zip', 'sig-120', 'Nueva cola', now() - interval '1 day', false)`,
       [TARGET],
     );
@@ -64,6 +65,12 @@ describe('desktop updates (Testcontainers, vipe_api)', () => {
     expect(new Date(res.body.pub_date).toISOString()).toBe(res.body.pub_date);
   });
 
+  it('accepts windows-x86_64 as an alias of the windows target', async () => {
+    const res = await get('/api/desktop/updates/windows-x86_64/1.0.0');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ version: '1.1.0', signature: 'sig-110' });
+  });
+
   it('answers 204 when up to date or for an unknown target', async () => {
     expect((await get(`/api/desktop/updates/${TARGET}/1.1.0`)).status).toBe(204);
     expect((await get(`/api/desktop/updates/${TARGET}/1.10.0`)).status).toBe(204);
@@ -86,15 +93,25 @@ describe('desktop updates (Testcontainers, vipe_api)', () => {
     await setChannel('stable');
   });
 
-  it('flags updateRequired in the heartbeat below the newest required release only', async () => {
-    const beat = (appVersion: string) =>
-      request(app.getHttpServer())
-        .post('/api/desktop/heartbeat')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ appVersion, printers: [], queue: { pending: 0, failed: 0 } });
+  const beat = (appVersion: string, extra: object = {}, server = app) =>
+    request(server.getHttpServer())
+      .post('/api/desktop/heartbeat')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ appVersion, printers: [], queue: { pending: 0, failed: 0 }, ...extra });
+
+  it('flags updateRequired in the heartbeat below the newest required release of its target only', async () => {
     expect((await beat('1.0.0')).body).toMatchObject({ updateRequired: true, channel: 'stable' });
+    expect((await beat('1.0.0', { target: 'windows-x86_64' })).body).toMatchObject({ updateRequired: true });
     expect((await beat('1.0.5')).body).not.toHaveProperty('updateRequired');
     expect((await beat('1.1.0')).body).not.toHaveProperty('updateRequired');
+  });
+
+  it('ignores a required release of another target unless the heartbeat names that target', async () => {
+    const windows = await beat('1.1.0', { target: 'windows' });
+    expect(windows.status).toBe(200);
+    expect(windows.body).not.toHaveProperty('updateRequired');
+    expect((await beat('1.1.0', { target: 'linux-x86_64' })).body).toMatchObject({ updateRequired: true });
+    expect((await beat('1.1.0', { target: 'WIN!' })).status).toBe(422);
   });
 
   it('answers 204 when DESKTOP_RELEASES_BASE_URL is not set', async () => {
@@ -102,6 +119,9 @@ describe('desktop updates (Testcontainers, vipe_api)', () => {
     const bare = await createTestApp(database.apiUrl);
     try {
       expect((await get(`/api/desktop/updates/${TARGET}/1.0.0`, bare)).status).toBe(204);
+      const res = await beat('1.0.0', {}, bare);
+      expect(res.status).toBe(200);
+      expect(res.body).not.toHaveProperty('updateRequired');
     } finally {
       await bare.close();
     }

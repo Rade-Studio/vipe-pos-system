@@ -5,6 +5,8 @@
 --    device token (`vdt_` + 32 random bytes) is never stored, only its sha256
 --    (token_hash, never granted to vipe_api). vipe_api reads the other columns
 --    and updates name and revoked_at as an admin of the restaurant (RLS).
+--    Revocation is one-way: private.guard_desktop_revocation refuses clearing
+--    or rewriting a set revoked_at (42501 desktop_devices: revocation_final).
 -- 2. public.desktop_pairing_codes: single-use 6-digit codes (sha256 only),
 --    valid 10 minutes; no grant, reached only through the functions below.
 --    A live (unclaimed) hash is unique.
@@ -21,6 +23,7 @@
 -- 6. public.desktop_drawer_events: "Abrir cajón" records (admin reads).
 -- 7. public.desktop_releases: signed builds per channel and target, global,
 --    written by the publishing script as vipe_migrator; vipe_api reads them.
+--    Windows builds are stored with target `windows` (Tauri 2 {{target}}).
 -- Every device entry point is SECURITY DEFINER, keyed by the token hash, and
 -- re-checks revoked_at on each call (private.desktop_live_device), so a
 -- revoke is immediate.
@@ -138,7 +141,11 @@ CREATE TABLE public.desktop_job_acks (
 --> statement-breakpoint
 COMMENT ON TABLE public.desktop_job_acks IS 'Per-device acknowledgement of a print job; the first one wins (private.desktop_ack_job).';
 --> statement-breakpoint
-CREATE INDEX desktop_job_acks_device_idx ON public.desktop_job_acks USING btree (device_id);
+CREATE INDEX desktop_job_acks_device_job_idx ON public.desktop_job_acks USING btree (device_id, job_id);
+--> statement-breakpoint
+CREATE INDEX print_jobs_restaurant_created_idx ON public.print_jobs USING btree (restaurant_id, created_at, id);
+--> statement-breakpoint
+COMMENT ON INDEX public.print_jobs_restaurant_created_idx IS 'Pending jobs of a desktop device: restaurant, oldest first by (created_at, id); desktop devices ignore printed_at.';
 --> statement-breakpoint
 CREATE TABLE public.desktop_drawer_events (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -177,7 +184,7 @@ CREATE TABLE public.desktop_releases (
     CONSTRAINT desktop_releases_file_check CHECK (length(file) BETWEEN 1 AND 300)
 );
 --> statement-breakpoint
-COMMENT ON TABLE public.desktop_releases IS 'Signed desktop builds per channel and target (e.g. windows-x86_64). Global; inserted by the F5c publishing script as vipe_migrator. file is the object key under DESKTOP_RELEASES_BASE_URL.';
+COMMENT ON TABLE public.desktop_releases IS 'Signed desktop builds per channel and target: Windows builds use target windows (the Tauri 2 {{target}}; the API reads windows-x86_64 as windows). Global; inserted by the F5c publishing script as vipe_migrator. file is the object key under DESKTOP_RELEASES_BASE_URL.';
 --> statement-breakpoint
 ALTER TABLE public.desktop_devices ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -235,6 +242,26 @@ GRANT SELECT ON TABLE public.desktop_drawer_events TO vipe_api;
 REVOKE ALL ON TABLE public.desktop_releases FROM vipe_api;
 --> statement-breakpoint
 GRANT SELECT ON TABLE public.desktop_releases TO vipe_api;
+--> statement-breakpoint
+CREATE FUNCTION private.guard_desktop_revocation()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO ''
+    AS $$
+BEGIN
+  IF OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS DISTINCT FROM OLD.revoked_at THEN
+    RAISE EXCEPTION 'desktop_devices: revocation_final' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.guard_desktop_revocation() IS 'BEFORE UPDATE trigger of desktop_devices: a set revoked_at can be neither cleared nor changed (revocation is one-way).';
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION private.guard_desktop_revocation() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER desktop_devices_revocation_final BEFORE UPDATE OF revoked_at ON public.desktop_devices
+    FOR EACH ROW EXECUTE FUNCTION private.guard_desktop_revocation();
 --> statement-breakpoint
 CREATE FUNCTION private.desktop_live_device(p_token_hash text, OUT device_id uuid, OUT restaurant_id uuid, OUT created_at timestamp with time zone)
     LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -579,9 +606,19 @@ CREATE FUNCTION private.desktop_ack_job(p_token_hash text, p_job_id uuid, p_stat
 DECLARE
   v_device uuid;
   v_restaurant uuid;
+  v_since timestamptz;
 BEGIN
-  SELECT l.device_id, l.restaurant_id INTO v_device, v_restaurant FROM private.desktop_live_device(p_token_hash) l;
-  IF NOT EXISTS (SELECT 1 FROM public.print_jobs j WHERE j.id = p_job_id AND j.restaurant_id = v_restaurant) THEN
+  SELECT l.device_id, l.restaurant_id, l.created_at INTO v_device, v_restaurant, v_since FROM private.desktop_live_device(p_token_hash) l;
+  -- A repeated ack stays a no-op even if the device's printers stopped serving that station since.
+  IF EXISTS (SELECT 1 FROM public.desktop_job_acks a WHERE a.job_id = p_job_id AND a.device_id = v_device) THEN
+    RETURN true;
+  END IF;
+  -- Same rule as desktop_pending_jobs: only a job the device would receive.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.print_jobs j
+     WHERE j.id = p_job_id AND j.restaurant_id = v_restaurant AND j.created_at >= v_since
+       AND (j.station_id IS NULL OR j.station_id IN (
+             SELECT ps.station_id FROM public.desktop_printer_stations ps WHERE ps.device_id = v_device))) THEN
     RETURN false;
   END IF;
   INSERT INTO public.desktop_job_acks (job_id, device_id, status, reason)
@@ -594,7 +631,7 @@ BEGIN
 END
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.desktop_ack_job(text, uuid, text, text) IS 'Acknowledges a job of the device''s restaurant for that device, idempotently (the first status stays); printed also sets print_jobs.printed_at once. false for a job of another restaurant or unknown.';
+COMMENT ON FUNCTION private.desktop_ack_job(text, uuid, text, text) IS 'Acknowledges, for that device, a job it would receive (same rule as desktop_pending_jobs: its restaurant, created at or after the device, no station or one its printers serve), idempotently (the first status stays); printed also sets print_jobs.printed_at once. false otherwise (unknown, another restaurant, another station, before pairing).';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.desktop_ack_job(text, uuid, text, text) FROM PUBLIC;
 --> statement-breakpoint

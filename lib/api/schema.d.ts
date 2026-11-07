@@ -4753,10 +4753,16 @@ export interface components {
             id: string;
             /** @enum {string} */
             status: "ready" | "printing" | "error" | "offline";
+            /** @description Stored cut to 200 characters. */
             error?: string;
         };
         HeartbeatRequest: {
             appVersion: string;
+            /**
+             * @description Tauri {{target}}; windows-x86_64 reads as windows.
+             * @default windows
+             */
+            target: string;
             printers: components["schemas"]["HeartbeatPrinterStatus"][];
             queue: {
                 pending?: number;
@@ -4769,7 +4775,7 @@ export interface components {
             /** @enum {string} */
             channel: "stable" | "pilot";
             printingEnabled: boolean;
-            /** @description Present (true) when the app is older than the newest required release of its channel. */
+            /** @description Present (true) when DESKTOP_RELEASES_BASE_URL is set and the app is older than the newest required release of its channel and target. */
             updateRequired?: boolean;
         };
         DesktopStation: {
@@ -4777,7 +4783,7 @@ export interface components {
             id: string;
             name: string;
             /**
-             * @description cashier for Caja; a prep station by its color: kitchen, served = bar, else other.
+             * @description cashier for Caja; other for every prep station.
              * @enum {string}
              */
             kind: "cashier" | "kitchen" | "bar" | "other";
@@ -11248,7 +11254,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `job_not_found`: not a job of the device's restaurant. */
+            /** @description `job_not_found`: not a job the device receives (restaurant, station, created after pairing). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -11312,7 +11318,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Tauri dynamic manifest of the newest release of the channel. */
+            /** @description Tauri dynamic manifest of the newest release of the channel; target `windows` (`windows-x86_64` is an alias). */
             200: {
                 headers: {
                     [name: string]: unknown;

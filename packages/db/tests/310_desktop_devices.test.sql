@@ -8,7 +8,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(93);
+SELECT plan(103);
 
 -- ============================================
 -- 1. Schema and grants
@@ -35,6 +35,12 @@ SELECT ok(has_column_privilege('vipe_api', 'public.desktop_devices', 'name', 'UP
   AND has_column_privilege('vipe_api', 'public.desktop_devices', 'revoked_at', 'UPDATE'), 'vipe_api may update name and revoked_at');
 SELECT ok(NOT has_column_privilege('vipe_api', 'public.desktop_devices', 'token_hash', 'UPDATE')
   AND NOT has_column_privilege('vipe_api', 'public.desktop_devices', 'restaurant_id', 'UPDATE'), 'vipe_api cannot rewrite token_hash or the tenant');
+SELECT is((SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'print_jobs_restaurant_created_idx'),
+  'CREATE INDEX print_jobs_restaurant_created_idx ON public.print_jobs USING btree (restaurant_id, created_at, id)',
+  'print_jobs has the (restaurant_id, created_at, id) index of the pending query');
+SELECT is((SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'desktop_job_acks_device_job_idx'),
+  'CREATE INDEX desktop_job_acks_device_job_idx ON public.desktop_job_acks USING btree (device_id, job_id)',
+  'desktop_job_acks has a (device_id, job_id) index');
 SELECT ok(NOT has_table_privilege('vipe_api', 'public.desktop_devices', 'INSERT,DELETE,TRUNCATE'), 'vipe_api cannot insert or delete devices');
 SELECT ok(NOT has_table_privilege('vipe_api', 'public.desktop_pairing_codes', 'SELECT,INSERT,UPDATE,DELETE')
   AND NOT has_column_privilege('vipe_api', 'public.desktop_pairing_codes', 'code_hash', 'SELECT'), 'vipe_api has no grant on pairing codes');
@@ -224,6 +230,10 @@ SELECT is(private.desktop_ack_job('hash-d1', '31600000-0000-0000-0000-0000000000
 SELECT is(private.desktop_ack_job('hash-d1', '31600000-0000-0000-0000-000000000001', 'skipped', 'again'), true, 'repeating the ack succeeds');
 SELECT is(private.desktop_ack_job('hash-d1', '31600000-0000-0000-0000-0000000000b1', 'printed', NULL), false, 'a job of another restaurant is not acked');
 SELECT is(private.desktop_ack_job('hash-d1', '31600000-0000-0000-0000-000000000099', 'printed', NULL), false, 'an unknown job is not acked');
+SELECT is(private.desktop_ack_job('hash-d1', '31600000-0000-0000-0000-000000000003', 'printed', NULL), false,
+  'a job of a station the device does not serve is not acked');
+SELECT is(private.desktop_ack_job('hash-d1', '31600000-0000-0000-0000-000000000000', 'printed', NULL), false,
+  'a job created before the device was paired is not acked');
 SELECT results_eq($$ SELECT id FROM private.desktop_pending_jobs('hash-d1', NULL, 500) $$,
   $$ VALUES ('31600000-0000-0000-0000-000000000002'::uuid) $$, 'an acked job stops being pending for that device');
 SELECT results_eq($$ SELECT id FROM private.desktop_pending_jobs('hash-d2', NULL, 500) $$,
@@ -233,6 +243,11 @@ SELECT is(private.desktop_ack_job('hash-d2', '31600000-0000-0000-0000-0000000000
 SELECT throws_ok($$ SELECT private.desktop_ack_job('hash-d4', '31600000-0000-0000-0000-000000000001', 'printed', NULL) $$,
   '42501', 'desktop: device_revoked', 'a revoked device cannot ack');
 RESET ROLE;
+SAVEPOINT repeat_ack;
+DELETE FROM public.desktop_printer_stations WHERE device_id = (SELECT id FROM public.desktop_devices WHERE token_hash = 'hash-d2');
+SELECT is(private.desktop_ack_job('hash-d2', '31600000-0000-0000-0000-000000000003', 'printed', NULL), true,
+  'a repeated ack stays a no-op after the device stopped serving that station');
+ROLLBACK TO SAVEPOINT repeat_ack;
 SELECT results_eq(
   $$ SELECT status, reason FROM public.desktop_job_acks WHERE job_id = '31600000-0000-0000-0000-000000000001' $$,
   $$ VALUES ('printed'::text, NULL::text) $$, 'the first ack is kept');
@@ -240,6 +255,11 @@ SELECT results_eq(
   $$ SELECT id, printed_at IS NOT NULL FROM public.print_jobs WHERE id IN ('31600000-0000-0000-0000-000000000001', '31600000-0000-0000-0000-000000000003') ORDER BY id $$,
   $$ VALUES ('31600000-0000-0000-0000-000000000001'::uuid, true), ('31600000-0000-0000-0000-000000000003'::uuid, false) $$,
   'printed sets print_jobs.printed_at; cancelled does not');
+SELECT is((SELECT count(*)::int FROM public.desktop_job_acks WHERE device_id = '31500000-0000-0000-0000-0000000000d1'
+            AND job_id IN ('31600000-0000-0000-0000-000000000000', '31600000-0000-0000-0000-000000000003')), 0,
+  'a refused ack stores nothing');
+SELECT is((SELECT printed_at FROM public.print_jobs WHERE id = '31600000-0000-0000-0000-000000000000'), NULL,
+  'a refused printed ack leaves printed_at unset');
 
 -- ============================================
 -- 7. Printers registry, stations, heartbeat, drawer
@@ -305,6 +325,12 @@ SELECT is((SELECT count(*)::int FROM public.desktop_printers), 3, 'admin A sees 
 SELECT throws_ok($$ SELECT token_hash FROM public.desktop_devices $$, '42501', NULL, 'admin A cannot read token hashes');
 UPDATE public.desktop_devices SET revoked_at = now() WHERE id = '31500000-0000-0000-0000-0000000000d2';
 SELECT throws_ok($$ SELECT * FROM private.desktop_pending_jobs('hash-d2', NULL, 500) $$, '42501', 'desktop: device_revoked', 'revoking is immediate');
+SELECT throws_ok($$ UPDATE public.desktop_devices SET revoked_at = NULL WHERE id = '31500000-0000-0000-0000-0000000000d2' $$,
+  '42501', 'desktop_devices: revocation_final', 'a revoked device cannot be un-revoked');
+SELECT throws_ok($$ UPDATE public.desktop_devices SET revoked_at = now() - interval '1 day' WHERE id = '31500000-0000-0000-0000-0000000000d2' $$,
+  '42501', 'desktop_devices: revocation_final', 'the revocation time cannot be rewritten');
+SELECT lives_ok($$ UPDATE public.desktop_devices SET revoked_at = coalesce(revoked_at, now()), name = 'Cocina vieja' WHERE id = '31500000-0000-0000-0000-0000000000d2' $$,
+  'revoking again (coalesce) and renaming a revoked device still work');
 SELECT set_config('app.user_id', '31000000-0000-0000-0000-000000000002', true);
 SELECT is((SELECT count(*)::int FROM public.desktop_devices), 0, 'a waiter sees no device');
 UPDATE public.desktop_devices SET name = 'hack' WHERE id = '31500000-0000-0000-0000-0000000000d1';

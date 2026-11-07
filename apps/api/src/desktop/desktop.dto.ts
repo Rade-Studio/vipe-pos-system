@@ -20,10 +20,14 @@ export const claimSchema = z.strictObject({
   device: z.strictObject({ name: deviceName, platform: z.literal('windows'), appVersion: z.string().min(1).max(32) }),
 });
 
+/** A longer printer error is cut to 200 characters instead of refusing the heartbeat. */
+const printerError = z.string().transform((value) => value.slice(0, 200));
+
 export const heartbeatSchema = z.strictObject({
   appVersion: z.string().min(1).max(32),
+  target: z.string().regex(/^[a-z0-9_-]{1,40}$/).optional(),
   printers: z
-    .array(z.strictObject({ id: z.string().min(1).max(64), status: z.enum(PRINTER_HEALTH), error: z.string().max(200).optional() }))
+    .array(z.strictObject({ id: z.string().min(1).max(64), status: z.enum(PRINTER_HEALTH), error: printerError.optional() }))
     .max(20),
   queue: z.strictObject({ pending: z.number().int().min(0).max(1_000_000), failed: z.number().int().min(0).max(1_000_000) }),
 });
@@ -88,14 +92,16 @@ export class HeartbeatResponse {
   @ApiProperty({ format: 'date-time' }) serverTime!: string;
   @ApiProperty({ enum: DESKTOP_UPDATE_CHANNELS }) channel!: DesktopUpdateChannel;
   @ApiProperty() printingEnabled!: boolean;
-  @ApiPropertyOptional({ description: 'Present (true) when the app is older than the newest required release of its channel.' })
+  @ApiPropertyOptional({
+    description: 'Present (true) when DESKTOP_RELEASES_BASE_URL is set and the app is older than the newest required release of its channel and target.',
+  })
   updateRequired?: true;
 }
 
 export class DesktopStation {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() name!: string;
-  @ApiProperty({ enum: STATION_KINDS, description: 'cashier for Caja; a prep station by its color: kitchen, served = bar, else other.' })
+  @ApiProperty({ enum: STATION_KINDS, description: 'cashier for Caja; other for every prep station.' })
   kind!: StationKind;
   @ApiProperty({ description: 'The Caja station.' }) fixed!: boolean;
   @ApiProperty({ example: 'Entradas, Platos fuertes' }) prints!: string;
@@ -164,11 +170,13 @@ export class ClaimRequest extends PairingCodeRequest {
 export class HeartbeatPrinterStatus {
   @ApiProperty({ maxLength: 64 }) id!: string;
   @ApiProperty({ enum: PRINTER_HEALTH }) status!: string;
-  @ApiPropertyOptional({ maxLength: 200 }) error?: string;
+  @ApiPropertyOptional({ description: 'Stored cut to 200 characters.' }) error?: string;
 }
 
 export class HeartbeatRequest {
   @ApiProperty({ maxLength: 32 }) appVersion!: string;
+  @ApiPropertyOptional({ pattern: '^[a-z0-9_-]{1,40}$', default: 'windows', description: 'Tauri {{target}}; windows-x86_64 reads as windows.' })
+  target?: string;
   @ApiProperty({ type: [HeartbeatPrinterStatus], maxItems: 20 }) printers!: HeartbeatPrinterStatus[];
   @ApiProperty({ type: 'object', properties: { pending: { type: 'integer', minimum: 0 }, failed: { type: 'integer', minimum: 0 } } })
   queue!: { pending: number; failed: number };

@@ -7172,7 +7172,7 @@
             "description": "`device_unauthorized` (missing, unknown or not a `vdt_` token) or `device_revoked`."
           },
           "404": {
-            "description": "`job_not_found`: not a job of the device's restaurant."
+            "description": "`job_not_found`: not a job the device receives (restaurant, station, created after pairing)."
           },
           "422": {
             "description": "Invalid input or unknown fields."
@@ -7246,7 +7246,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Tauri dynamic manifest of the newest release of the channel.",
+            "description": "Tauri dynamic manifest of the newest release of the channel; target `windows` (`windows-x86_64` is an alias).",
             "content": {
               "application/json": {
                 "schema": {
@@ -15503,7 +15503,7 @@
           },
           "error": {
             "type": "string",
-            "maxLength": 200
+            "description": "Stored cut to 200 characters."
           }
         },
         "required": [
@@ -15517,6 +15517,12 @@
           "appVersion": {
             "type": "string",
             "maxLength": 32
+          },
+          "target": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,40}$",
+            "default": "windows",
+            "description": "Tauri {{target}}; windows-x86_64 reads as windows."
           },
           "printers": {
             "maxItems": 20,
@@ -15564,7 +15570,7 @@
           },
           "updateRequired": {
             "type": "boolean",
-            "description": "Present (true) when the app is older than the newest required release of its channel."
+            "description": "Present (true) when DESKTOP_RELEASES_BASE_URL is set and the app is older than the newest required release of its channel and target."
           }
         },
         "required": [
@@ -15591,7 +15597,7 @@
               "bar",
               "other"
             ],
-            "description": "cashier for Caja; a prep station by its color: kitchen, served = bar, else other."
+            "description": "cashier for Caja; other for every prep station."
           },
           "fixed": {
             "type": "boolean",

@@ -21,6 +21,8 @@ import { newestAbove, parseVersion } from './semver';
 
 const iso = (value: Date | string) => new Date(value).toISOString();
 const TARGET = /^[a-z0-9_-]{1,40}$/;
+/** Tauri 2 sends the OS (`windows`) as {{target}}; `windows-x86_64` (target-arch) is read as `windows`. */
+export const normalizeTarget = (target: string) => (target === 'windows-x86_64' ? 'windows' : target);
 
 const MESSAGES = {
   stationInvalid: 'Una de las estaciones no existe en este restaurante.',
@@ -36,11 +38,9 @@ const PRINTER_ERRORS: Record<string, { message: string; code: string }> = {
   'desktop_put_printers: printers_invalid': { message: MESSAGES.printersInvalid, code: 'printers_invalid' },
 };
 
-/** Contract kind of a station: Caja is cashier; a prep station reads its color (kitchen, served = bar, else other). */
-export function stationKind(kind: string, color: string): StationKind {
-  if (kind === 'cashier') return 'cashier';
-  if (color === 'kitchen') return 'kitchen';
-  return color === 'served' ? 'bar' : 'other';
+/** Contract kind of a station: Caja is cashier; every prep station is other (its color carries no meaning). */
+export function stationKind(kind: string): StationKind {
+  return kind === 'cashier' ? 'cashier' : 'other';
 }
 
 /** Channels a restaurant's devices see: pilot also receives every stable release. */
@@ -65,21 +65,23 @@ export class DesktopDeviceService {
       [device.tokenHash, input.appVersion, JSON.stringify(input.printers), input.queue.pending, input.queue.failed],
     );
     const channel = CONFIG_KEYS.desktopUpdateChannel.read(row.channel);
+    // Only what GET updates would serve: a base URL and a required release of the device's target.
     const current = parseVersion(input.appVersion);
-    const required = current ? await this.releases(channel, null, true) : [];
-    const updateRequired = current !== null && newestAbove(required, current) !== undefined;
+    const offered = current !== null && this.env.desktopReleasesBaseUrl !== null;
+    const required = offered ? await this.releases(channel, normalizeTarget(input.target ?? 'windows'), true) : [];
+    const updateRequired = offered && newestAbove(required, current) !== undefined;
     return { serverTime: new Date().toISOString(), channel, printingEnabled: row.printing_enabled, ...(updateRequired ? { updateRequired } : {}) };
   }
 
   async stations(device: DesktopDevice): Promise<DesktopStation[]> {
-    const rows = await this.query<{ id: string; name: string; kind: string; color: string; fixed: boolean; prints: string; product_count: number }>(
-      'SELECT id, name, kind, color, fixed, prints, product_count FROM private.desktop_stations($1)',
+    const rows = await this.query<{ id: string; name: string; kind: string; fixed: boolean; prints: string; product_count: number }>(
+      'SELECT id, name, kind, fixed, prints, product_count FROM private.desktop_stations($1)',
       [device.tokenHash],
     );
     return rows.map((row) => ({
       id: row.id,
       name: row.name,
-      kind: stationKind(row.kind, row.color),
+      kind: stationKind(row.kind),
       fixed: row.fixed,
       prints: row.prints,
       productCount: row.product_count,
@@ -151,17 +153,18 @@ export class DesktopDeviceService {
     if (!base) {
       return null;
     }
-    const release = newestAbove(await this.releases(CONFIG_KEYS.desktopUpdateChannel.read(row.channel), target, false), current);
+    const channel = CONFIG_KEYS.desktopUpdateChannel.read(row.channel);
+    const release = newestAbove(await this.releases(channel, normalizeTarget(target), false), current);
     return release
       ? { version: release.version, notes: release.notes, pub_date: iso(release.pub_date), url: `${base}/${release.file}`, signature: release.signature }
       : null;
   }
 
-  /** Releases of the visible channels; `target` null = every target (required releases). */
-  private releases(channel: DesktopUpdateChannel, target: string | null, requiredOnly: boolean) {
+  /** Releases of the visible channels for one (normalised) target. */
+  private releases(channel: DesktopUpdateChannel, target: string, requiredOnly: boolean) {
     return this.query<{ version: string; notes: string; pub_date: Date; file: string; signature: string }>(
       `SELECT version, notes, pub_date, file, signature FROM public.desktop_releases
-        WHERE channel = ANY($1::text[]) AND ($2::text IS NULL OR target = $2) AND (NOT $3::boolean OR required)`,
+        WHERE channel = ANY($1::text[]) AND target = $2 AND (NOT $3::boolean OR required)`,
       [visibleChannels(channel), target, requiredOnly],
     );
   }

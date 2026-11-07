@@ -124,6 +124,10 @@ describe('desktop device API (Testcontainers, vipe_api)', () => {
     const [row] = await db('SELECT app_version, queue_pending, queue_failed, printer_status FROM desktop_devices WHERE id = $1', [ids.d1]);
     expect(row).toEqual({ app_version: '1.0.0', queue_pending: 2, queue_failed: 1, printer_status: [{ id: 'p1', status: 'ready' }] });
     expect((await device(tokens.d1).post('/api/desktop/heartbeat', { ...heartbeat, queue: { pending: -1, failed: 0 } })).status).toBe(422);
+    const long = { ...heartbeat, printers: [{ id: 'p1', status: 'error', error: `${'x'.repeat(199)}yz${'w'.repeat(50)}` }] };
+    expect((await device(tokens.d1).post('/api/desktop/heartbeat', long)).status).toBe(200);
+    const [stored] = await db<{ printer_status: unknown }>('SELECT printer_status FROM desktop_devices WHERE id = $1', [ids.d1]);
+    expect(stored.printer_status).toEqual([{ id: 'p1', status: 'error', error: `${'x'.repeat(199)}y` }]);
     await db(`INSERT INTO business_config (key, value, restaurant_id) VALUES ('printing_enabled', 'false', $1)`, [fixtures.restaurantA]);
     expect((await device(tokens.d1).post('/api/desktop/heartbeat', heartbeat)).body.printingEnabled).toBe(false);
     expect((await device(tokens.b1).post('/api/desktop/heartbeat', heartbeat)).body.printingEnabled).toBe(true);
@@ -134,8 +138,8 @@ describe('desktop device API (Testcontainers, vipe_api)', () => {
     const res = await device(tokens.d1).get('/api/desktop/stations');
     expect(res.status).toBe(200);
     expect(res.body).toEqual([
-      { id: s.cocina, name: 'Cocina', kind: 'kitchen', fixed: false, prints: 'Platos fuertes', productCount: 1 },
-      { id: s.barra, name: 'Barra', kind: 'bar', fixed: false, prints: 'Bebidas', productCount: 1 },
+      { id: s.cocina, name: 'Cocina', kind: 'other', fixed: false, prints: 'Platos fuertes', productCount: 1 },
+      { id: s.barra, name: 'Barra', kind: 'other', fixed: false, prints: 'Bebidas', productCount: 1 },
       { id: s.caja, name: 'Caja', kind: 'cashier', fixed: true, prints: 'Facturas y precuentas', productCount: 0 },
     ]);
     expect((await device(tokens.b1).get('/api/desktop/stations')).body.map((row: { id: string }) => row.id)).toEqual([s.cocinaB]);
@@ -190,6 +194,21 @@ describe('desktop device API (Testcontainers, vipe_api)', () => {
     expect(res.body.code).toBe('job_not_found');
     expect((await device(tokens.d1).post(`/api/desktop/jobs/${free.id}/ack`, { status: 'done' })).status).toBe(422);
     expect(await db('SELECT 1 FROM desktop_job_acks WHERE job_id = $1', [foreign.id])).toHaveLength(0);
+  });
+
+  it('refuses with 404 an ack of a job the device would not receive: another station or before its pairing', async () => {
+    const barra = await job(fixtures.restaurantA, s.barra, 5);
+    const [{ id: old }] = await db<{ id: string }>(
+      `INSERT INTO print_jobs (kind, payload, station_id, restaurant_id, created_at) VALUES ('command', '{}', NULL, $1, now() - interval '1 day') RETURNING id`,
+      [fixtures.restaurantA],
+    );
+    for (const jobId of [barra, old]) {
+      const res = await device(tokens.d1).post(`/api/desktop/jobs/${jobId}/ack`, { status: 'printed' });
+      expect([res.status, res.body.code]).toEqual([404, 'job_not_found']);
+    }
+    expect(await db('SELECT 1 FROM desktop_job_acks WHERE job_id = ANY($1::uuid[])', [[barra, old]])).toHaveLength(0);
+    expect(await db('SELECT 1 FROM print_jobs WHERE id = ANY($1::uuid[]) AND printed_at IS NOT NULL', [[barra, old]])).toHaveLength(0);
+    expect((await device(tokens.d2).post(`/api/desktop/jobs/${barra}/ack`, { status: 'skipped' })).status).toBe(204);
   });
 
   it('records a drawer opening, keeping only a profile of the restaurant', async () => {

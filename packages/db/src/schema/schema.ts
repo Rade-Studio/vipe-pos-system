@@ -1441,6 +1441,7 @@ export const printJobs = pgTable("print_jobs", {
 	stationId: uuid("station_id"),
 }, (table) => [
 	index("print_jobs_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("print_jobs_restaurant_created_idx").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops"), table.id.asc().nullsLast().op("uuid_ops")),
 	index("print_jobs_pending_idx").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")).where(sql`(printed_at IS NULL)`),
 	foreignKey({
 			columns: [table.restaurantId],
@@ -1946,6 +1947,7 @@ export const desktopJobAcks = pgTable("desktop_job_acks", {
 	reason: text(),
 	ackedAt: timestamp("acked_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
+	index("desktop_job_acks_device_job_idx").using("btree", table.deviceId.asc().nullsLast().op("uuid_ops"), table.jobId.asc().nullsLast().op("uuid_ops")),
 	primaryKey({ columns: [table.jobId, table.deviceId], name: "desktop_job_acks_pkey" }),
 	foreignKey({
 			columns: [table.jobId],
