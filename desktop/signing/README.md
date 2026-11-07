@@ -20,6 +20,17 @@ with the Tauri updater key. When restaurants start installing on their own,
 move to a publicly trusted certificate (for example Azure Trusted Signing) so
 no certificate has to be installed by hand.
 
+## Signing rules for F5
+
+- Timestamp every signature (RFC 3161, for example `timestampUrl` in Tauri's
+  `bundle.windows`), otherwise signatures stop validating after 2031-11-07.
+- A locally trusted certificate gives the UAC prompt a publisher name but no
+  SmartScreen reputation: an installer downloaded from the internet can still
+  show "Windows protected your PC". Install from USB during the pilot and
+  confirm that updater downloads do not trigger it.
+- `verify-signing.sh` checks this folder (thumbprint, constraints, public-only
+  material, script bytes, ignore rules); run it from the repository root.
+
 ## Secrets (GitHub Actions)
 
 | Secret | Content |

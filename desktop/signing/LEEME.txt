@@ -1,14 +1,14 @@
 ﻿VIPE POS - Certificado para instalar la app de escritorio
 =========================================================
 
-Para que Windows confie en la app VIPE (y no muestre "Editor desconocido"),
+Para que Windows confíe en la app VIPE (y no muestre "Editor desconocido"),
 instala este certificado UNA sola vez en cada computador del restaurante,
 antes de instalar la app.
 
 Pasos
 1. Copia esta carpeta completa al computador (por ejemplo, con una USB).
 2. Clic derecho en "Instalar-certificado.cmd" > "Ejecutar como administrador".
-3. Debe decir: "Listo: este computador confia en las apps firmadas por VIPE POS."
+3. Debe decir: "Listo: este computador confía en las apps firmadas por VIPE POS."
 4. Instala la app VIPE. Las actualizaciones llegan solas despues.
 
 Comprobar que el archivo es el correcto (no instala nada)

@@ -38,6 +38,9 @@ next-env.d.ts
 
 \__pycache__
 # Desktop signing: private material never lives in the repo
-desktop/signing/*.key
-desktop/signing/*.pfx
-desktop/signing/*.password
+desktop/signing/**/*.key
+desktop/signing/**/*.pfx
+desktop/signing/**/*.p12
+desktop/signing/**/*.pem
+desktop/signing/**/*.pvk
+desktop/signing/**/*.password
