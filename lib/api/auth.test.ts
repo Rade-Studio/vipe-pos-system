@@ -17,9 +17,11 @@ import {
   actingHeaders,
   authorizeSupervisor,
   changeOwnPin,
+  identifyByPin,
   identifyStaff,
   pinFailureOf,
   terminalLogin,
+  unlockTerminal,
 } from "./auth"
 
 const session = {
@@ -48,6 +50,34 @@ describe("terminal session", () => {
     expect(api.POST).toHaveBeenCalledWith("/api/auth/identify", { body: { profileId: "p-2", pin: "4829" } })
     expect(ACTING_HEADER).toBe("X-Vipe-Acting")
     expect(actingHeaders(identity.token)).toEqual({ "X-Vipe-Acting": "t.k.n" })
+  })
+})
+
+describe("F4b: PIN-only identify and tablet unlock", () => {
+  it("identifies with the PIN alone (POST /api/auth/identify { pin })", async () => {
+    const identity = { token: "t.k.n", expiresAt: "2026-11-07T12:05:00.000Z", profile: { id: "p-2", name: "Ana", role: "waiter" } }
+    api.POST.mockResolvedValueOnce({ data: identity })
+    await expect(identifyByPin("4829")).resolves.toEqual(identity)
+    expect(api.POST).toHaveBeenCalledWith("/api/auth/identify", { body: { pin: "4829" } })
+  })
+
+  it("unlocks the tablet with a supervisor PIN (POST /api/auth/terminal/unlock)", async () => {
+    await expect(unlockTerminal("p-1", "582046")).resolves.toBeUndefined()
+    expect(api.POST).toHaveBeenCalledWith("/api/auth/terminal/unlock", { body: { profileId: "p-1", pin: "582046" } })
+  })
+
+  it("maps pin_ambiguous and pin_taken with the server's text", () => {
+    const ambiguous = new ApiError(409, "Conflict", "Ese PIN lo tiene más de una persona; pide al administrador que lo cambie", { code: "pin_ambiguous" })
+    const taken = new ApiError(409, "Conflict", "Ese PIN no está disponible, elige otro", { code: "pin_taken" })
+    expect(pinFailureOf(ambiguous)).toEqual({ kind: "ambiguous", message: ambiguous.message })
+    expect(pinFailureOf(taken)).toEqual({ kind: "taken", message: taken.message })
+  })
+
+  it("shows the server text when PINs cannot be checked (pin_too_many, pin_check_unavailable)", () => {
+    for (const code of ["pin_too_many", "pin_check_unavailable"]) {
+      const error = new ApiError(409, "Conflict", "Hay demasiado personal con PIN", { code })
+      expect(pinFailureOf(error)).toEqual({ kind: "unavailable", message: "Hay demasiado personal con PIN" })
+    }
   })
 })
 

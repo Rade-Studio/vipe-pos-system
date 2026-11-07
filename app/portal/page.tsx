@@ -78,8 +78,8 @@ export default function Home() {
   const loadAllRegisters = useCashRegisterStore((s) => s.loadAllRegisters)
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  // F4: a shared order-taking terminal (POST /auth/terminal/login) shows the
-  // terminal flow instead of the opener's role view.
+  // F4b: a shared order-taking terminal (POST /auth/terminal/login) shows the
+  // normal waiter view, with the terminal's PIN sheet around it.
   const [terminalSession, setTerminalSession] = useState<Session | null>(null)
   // `profileResolved` separates "we have not asked yet" from "there is no
   // profile row", so the startup loads never run twice for one identity.
@@ -289,9 +289,7 @@ export default function Home() {
   if (terminalSession) {
     return (
       <TerminalView session={terminalSession}>
-        {(bar) =>
-          selectedProfile && <WaiterView profile={selectedProfile} onChangeProfile={() => {}} header={bar} />
-        }
+        {selectedProfile && <WaiterView profile={selectedProfile} onChangeProfile={() => {}} />}
       </TerminalView>
     )
   }

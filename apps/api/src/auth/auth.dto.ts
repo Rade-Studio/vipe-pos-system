@@ -60,10 +60,21 @@ export class ChangeOwnPinRequest {
 }
 
 export class IdentifyRequest {
-  @ApiProperty({ format: 'uuid', description: 'Profile picked on the terminal.' })
-  profileId!: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Optional (F4 compatibility): only this profile is tried. Without it the PIN alone says who it is (F4b).',
+  })
+  profileId?: string;
 
   @ApiProperty({ pattern: '^\\d{4,6}$' })
+  pin!: string;
+}
+
+export class TerminalUnlockRequest {
+  @ApiProperty({ format: 'uuid', description: 'The admin or cashier picked on the terminal.' })
+  profileId!: string;
+
+  @ApiProperty({ pattern: '^\\d{4,6}$', description: "That supervisor's PIN." })
   pin!: string;
 }
 
