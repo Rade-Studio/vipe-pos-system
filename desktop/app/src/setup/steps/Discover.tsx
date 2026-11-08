@@ -5,6 +5,7 @@ import { toLocal } from '../../bridge/demoData';
 import type { DiscoveredPrinter } from '../../bridge/types';
 import type { StepContext } from '../Setup';
 import { Acts, NextButton, Opt } from './common';
+import { ManualIpForm } from './networkFields';
 
 const KIND_ICON = { usb: Usb, network: Network, bluetooth: Bluetooth } as const;
 const TABS: { id: ConnectionKind | 'all'; label: string }[] = [
@@ -20,12 +21,15 @@ export function Discover({ ctx }: { ctx: StepContext }) {
   const [found, setFound] = useState<DiscoveredPrinter[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<ConnectionKind | 'all'>('all');
+  // Printers typed by hand ("Escribir IP a mano") stay across searches.
+  const [typed, setTyped] = useState<DiscoveredPrinter[]>([]);
+  const [manual, setManual] = useState(false);
 
   const search = async () => {
     setFound(null);
     const list = await ctx.bridge.discoverPrinters();
     setFound(list);
-    setSelected(new Set(list.map((p) => p.id)));
+    setSelected((prev) => new Set([...list.map((p) => p.id), ...typed.filter((p) => prev.has(p.id)).map((p) => p.id)]));
   };
   useEffect(() => {
     void search();
@@ -39,8 +43,14 @@ export function Discover({ ctx }: { ctx: StepContext }) {
       return next;
     });
 
-  const chosen = (found ?? []).filter((p) => selected.has(p.id));
-  const visible = (found ?? []).filter((p) => tab === 'all' || p.connection === tab);
+  const all = [...(found ?? []), ...typed.filter((t) => !found?.some((f) => f.id === t.id))];
+  const chosen = all.filter((p) => selected.has(p.id));
+  const visible = all.filter((p) => tab === 'all' || p.connection === tab);
+  const addTyped = (p: DiscoveredPrinter) => {
+    setTyped((prev) => [...prev.filter((t) => t.id !== p.id), p]);
+    setSelected((prev) => new Set([...prev, p.id]));
+    setManual(false);
+  };
   const keep = () => {
     const existing = new Map(ctx.settings.printers.map((p) => [p.id, p]));
     void ctx.next({ printers: chosen.map((d) => existing.get(d.id) ?? toLocal(d)) });
@@ -97,6 +107,14 @@ export function Discover({ ctx }: { ctx: StepContext }) {
           );
         })}
       </div>
+      {manual ? (
+        <ManualIpForm onAdd={addTyped} onClose={() => setManual(false)} />
+      ) : (
+        <div className="wz-alt">
+          <span className="muted">¿No aparece la tuya?</span>
+          <button type="button" className="btn sm" onClick={() => setManual(true)}>Escribir IP a mano</button>
+        </div>
+      )}
       <Acts onBack={() => void ctx.back()}>
         {chosen.length > 0 ? (
           <NextButton label={`Configurar ${chosen.length} ${chosen.length === 1 ? 'impresora' : 'impresoras'}`} onClick={keep} />

@@ -42,6 +42,16 @@ fn connections_follow_the_printer_kind() {
 }
 
 #[test]
+fn a_typed_ip_or_host_name_and_port_parse_back() {
+    // `formatNetworkAddress` in desktop/app/src/bridge/printer-address.ts stores `host:port`.
+    let mut s = settings();
+    for (address, host, port) in [("192.168.1.52:9100", "192.168.1.52", 9100), ("caja-pc.local:9101", "caja-pc.local", 9101)] {
+        s.printers[1].address = address.into();
+        assert_eq!(connection_of(&s.printers[1]), Connection::Network { host: host.into(), port: Some(port) });
+    }
+}
+
+#[test]
 fn a_job_goes_to_the_printers_of_its_station() {
     let s = settings();
     let names = |j: &PrintJob| printers_for_job(j, &s.printers, Some("st-caja")).iter().map(|p| p.name.clone()).collect::<Vec<_>>();

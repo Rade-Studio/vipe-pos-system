@@ -1,12 +1,20 @@
 import { RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { errorMessage } from '../../api/contract';
+import { errorMessage, type PrinterRegistration } from '../../api/contract';
+import type { LocalPrinter } from '../../bridge/types';
 import type { StepContext } from '../Setup';
 import { Acts, NextButton, Opt } from './common';
 
 export const CHANNEL_LABEL = { stable: 'Estable', pilot: 'Piloto' } as const;
 
 /** Step 8: start with Windows, automatic updates out of service, channel (read-only, L32). */
+/** What VIPE web knows about this computer's printers (no addresses). */
+export function registrations(printers: LocalPrinter[]): PrinterRegistration[] {
+  return printers.map((p) => ({
+    id: p.id, name: p.name, model: p.model, connection: p.connection, paperMm: p.paperMm, hasDrawer: p.hasDrawer, stationIds: p.stationIds,
+  }));
+}
+
 export function Startup({ ctx }: { ctx: StepContext }) {
   const { autostart, autoUpdate, channel, restaurant, printers } = ctx.settings;
   const [error, setError] = useState<string | null>(null);
@@ -17,17 +25,7 @@ export function Startup({ ctx }: { ctx: StepContext }) {
     setError(null);
     try {
       await ctx.bridge.setAutostart(autostart);
-      await ctx.api.savePrinters(
-        printers.map((p) => ({
-          id: p.id,
-          name: p.name,
-          model: p.model,
-          connection: p.connection,
-          paperMm: p.paperMm,
-          hasDrawer: p.hasDrawer,
-          stationIds: p.stationIds,
-        })),
-      );
+      await ctx.api.savePrinters(registrations(printers));
       await ctx.next();
     } catch (e) {
       setError(errorMessage(e));

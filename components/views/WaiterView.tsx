@@ -5,7 +5,7 @@ import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { useProfileStore } from "@/store/useProfileStore"
-import type { Profile, Order, CommandPayload } from "@/types"
+import type { Profile, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { TablePanel } from "@/components/floor/TablePanel"
@@ -40,7 +40,7 @@ import { ApiError, conflictMessage } from "@/lib/api/errors"
 import { elapsedLabel, openOrdersByTable } from "@/lib/floor/live"
 import { guestsText } from "@/lib/order-steps/details"
 import { realtimeService } from "@/lib/api/realtime"
-import { sendCommand } from "@/lib/api/print"
+import { type CommandRequest, sendCommand } from "@/lib/api/print"
 import { usePrintingEnabled } from "@/lib/api/printing"
 import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
 import { cartLineKey } from "@/lib/modifiers/cart"
@@ -767,7 +767,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         throw new Error("Mesa no encontrada")
       }
 
-      const waiterId = table.waiter || profile.id
       const items = orderItemsFromCart(cartItems)
       const existingOrder = checkExistingOrder(activeTable)
       // T22: the new order carries the guests and note captured for it; an
@@ -816,15 +815,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       if (marksTable) useTableStore.getState().updateTableStatus(activeTable, "kitchen")
       refreshStockAfterSending()
 
-      // The database number (T15/T17); an order read without one keeps the old print number.
-      const storedNumber = created?.orderNumber ?? added?.orderNumber ?? existingOrder?.orderNumber
-      const orderNumber = storedNumber != null ? String(storedNumber) : `${Math.floor(Math.random() * 9000) + 1000}`
-      const kitchenOrder: CommandPayload = {
-        invoiceNumber: orderNumber,
-        table: table.number,
-        waiter: waiters.find((p) => p.id === waiterId)?.name || "Mesero",
-        items: cartItems,
-      }
+      // The database number (T15/T17). The API prints it and the sender's name on the comanda.
+      const orderNumber = created?.orderNumber ?? added?.orderNumber ?? existingOrder?.orderNumber
+      const orderId = created?.id ?? added?.id ?? existingOrder?.id
+      const kitchenOrder: CommandRequest | null = orderId ? { orderId, table: table.number, items: cartItems } : null
 
       // The created order reaches the list through its realtime INSERT; an
       // order that received items is upserted (it may not be listed yet).
@@ -840,14 +834,17 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       }
 
       // S2 (F6): a restaurant without thermal printers reads the comanda on the kitchen screen.
-      if (printingEnabled) void sendCommand(kitchenOrder)
+      if (printingEnabled && kitchenOrder) void sendCommand(kitchenOrder)
       clearCart(activeTable)
       const sentTable = activeTable
       setOrderDrafts((prev) => withoutTable(prev, sentTable))
 
       toast(
         created
-          ? { title: "Orden enviada", description: `La orden #${orderNumber} ha sido enviada a cocina.` }
+          ? {
+              title: "Orden enviada",
+              description: orderNumber != null ? `La orden #${orderNumber} ha sido enviada a cocina.` : "La orden ha sido enviada a cocina.",
+            }
           : {
               title: "Productos adicionales enviados",
               description: `Los nuevos productos para la mesa ${table.number} han sido enviados a cocina.`,

@@ -3,13 +3,9 @@ import { useEffect, useState } from 'react';
 import { errorMessage, type Station } from '../../api/contract';
 import type { StationSettings } from '../../bridge/types';
 import type { StepContext } from '../Setup';
-import { Acts, NextButton, Opt } from './common';
+import { Acts, NextButton } from './common';
+import { StationOptions } from './printerFields';
 import { usePrinter } from './StepView';
-
-export function stationHint(s: Station) {
-  if (s.fixed) return 'Facturas, precuentas y cierre de caja. Abre el cajón.';
-  return `Qué imprime: ${s.prints}${s.productCount ? ` · ${s.productCount} productos` : ''}`;
-}
 
 /** Step 7: which stations this printer serves. Routing itself is read-only (L10). */
 export function StationStep({ ctx }: { ctx: StepContext }) {
@@ -35,8 +31,6 @@ export function StationStep({ ctx }: { ctx: StepContext }) {
   }, []);
   if (!printer) return null;
 
-  const toggle = (id: string) =>
-    set({ stationIds: printer.stationIds.includes(id) ? printer.stationIds.filter((s) => s !== id) : [...printer.stationIds, id] });
   const following = ctx.settings.printers[index + 1];
 
   return (
@@ -44,19 +38,7 @@ export function StationStep({ ctx }: { ctx: StepContext }) {
       <p className="eyebrow">Paso 7 de 9 · {printer.name}</p>
       <h1>¿Para qué estación imprime?</h1>
       {error && <p className="err" role="alert">{error}</p>}
-      <div className="opts">
-        {(stations ?? []).map((s) => (
-          <Opt
-            key={s.id}
-            kind="check"
-            pressed={printer.stationIds.includes(s.id)}
-            onClick={() => toggle(s.id)}
-            title={s.name}
-            hint={stationHint(s)}
-            tail={s.fixed ? <span className="ro">Fija</span> : undefined}
-          />
-        ))}
-      </div>
+      <StationOptions printer={printer} set={set} stations={stations ?? []} />
       <p className="note">
         <Link aria-hidden />
         Qué plato va a cada estación se decide en VIPE web → Estaciones y rutas; aquí solo se ve. Una impresora puede servir

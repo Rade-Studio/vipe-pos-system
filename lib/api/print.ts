@@ -2,7 +2,7 @@ import { api } from "./client"
 import { ApiError } from "./errors"
 import type { components } from "./schema"
 import { toast } from "@/components/ui/use-toast"
-import type { CartItem, CommandPayload, PrintableInvoice } from "@/types"
+import type { CartItem, DeliveryPrintInfo, PrintableInvoice } from "@/types"
 
 /**
  * Printing through the API (T8c). Each call queues a durable print job that
@@ -50,12 +50,22 @@ export async function sendFactura(
   }
 }
 
-/** Kitchen command. The client number is not sent: the print job id replaces it. */
-export async function sendCommand(command: CommandPayload): Promise<void> {
-  const body: Omit<CommandPayload, "invoiceNumber"> & { invoiceNumber?: string } = { ...command }
-  delete body.invoiceNumber
+/**
+ * Kitchen command of an order. The API prints the order's number and the
+ * sender's name (the PIN-identified person on a shared terminal), so the
+ * client sends neither; the print job id is the payload's invoiceNumber.
+ */
+export type CommandRequest = {
+  orderId: string
+  items: unknown[]
+  /** Null / absent for delivery orders; the order's table wins on the server. */
+  table?: number | null
+  delivery?: DeliveryPrintInfo
+}
+
+export async function sendCommand(command: CommandRequest): Promise<void> {
   try {
-    await api.POST("/api/print/commands", { body: body as Schemas["CommandPrintRequest"] })
+    await api.POST("/api/print/commands", { body: command as Schemas["CommandPrintRequest"] })
   } catch (error) {
     notifyFailure(error)
   }

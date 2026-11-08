@@ -1,0 +1,24 @@
+# Encabezado de la comanda: mesero y número de pedido
+
+Printed kitchen comandas must name the real waiter and carry the order number.
+Branch `fix/comanda-header` from `dev` after #156. Code in English, ticket text in Spanish.
+
+## Specs
+
+- S1. "esta perfecto la separacion 2 comandas diferentes impresoras, pero el nombre del mesero no aparece": the comanda's "Mesero:" line shows the real name of the staff member who sent it (on a shared terminal, the person identified with the PIN), never the placeholder "Mesero".
+- S2. "y tampoco tenemos un numero de pedido o numero de comanda": every comanda shows the order number (the database `orders.order_number`), e.g. "COMANDA #130 — Mesa 1" and "COMANDA #131 — DOMICILIO".
+- S3. The station split stays exactly as it is; when the restaurant has stations each ticket also says which one ("Estación: Cocina"), so two tickets of one send can be told apart.
+- S4. Every renderer prints the same header: the VIPE desktop app (desktop/core), the legacy pos/ listener and the browser print view (lib/print). Restaurants without stations and old stored jobs without the new fields still print (backward compatible).
+
+## Tasks
+
+- [x] T1. Server-filled waiter and order number in command payloads, header in the three renderers, golden fixtures, tests (S1–S4). Route: worker. Commit: pending. Evidence (worker, 2026-11-07): POST /print/commands takes `orderId` (422 missing, 404 foreign/unknown) and stores `waiter` (acting profile → order waiter → "Mesero") and `orderNumber` per station job; deliveries add `orderNumber`; pos/, desktop/core and lib/print print `COMANDA #<n> — Mesa <t>` / `— DOMICILIO` plus `Estación: <name>`; golden_plus +6 probe_header_* cases, old 74 unchanged. Job mappers (pos/print_jobs.py, desktop/core/src/jobs.rs) pass orderNumber/station through; a stored job renders `COMANDA #130 — Mesa 1` + `Estación: Cocina` with the same bytes on both sides (golden probe_header_number_station). Checks 2026-11-07: api 781/781, pos 44 OK, desktop-core all ok, api typecheck/lint clean.
+- [ ] T2. Windows installer with the new renderer, PR, staging (S4). Route: parent. Commit: none.
+
+## Log
+
+- L1 (user, 2026-11-07, with a screenshot of two comandas of Mesa 1 printed on two printers, both "Mesero: Mesero" and no number): "mira como estan saliendo las comandas, esta perfecto la separacion 2 comandas diferentes impresoras, pero el nombre del mesero no aparece y tampoco tenemos un numero de pedido o numero de comanda".
+- L2 (evidence, 2026-11-07): WaiterView builds the comanda with `waiter: waiters.find((p) => p.id === waiterId)?.name || "Mesero"` (components/views/WaiterView.tsx:813), so any sender missing from that list prints "Mesero"; it also computes the order number into `invoiceNumber`, but the API replaces `invoiceNumber` with the print job id (apps/api/src/print/print.dto.ts:24-34), so no renderer has the order number. desktop/core/src/escpos/render.rs:20-45 and pos/print_renderer.py print "COMANDA — Mesa {table}" and "Mesero: {waiter}" only. Deliveries already take the waiter from the caller server-side (apps/api/src/delivery/delivery.service.ts:220).
+- L3 (decision, 2026-11-07): the API fills `waiter` from the authenticated (acting) profile's name and `orderNumber` from the order the comanda belongs to, so the client can no longer print a wrong name or number; the request carries the order id, and the server refuses an order of another restaurant. Payloads gain optional `orderNumber`; renderers print "COMANDA #<n> — Mesa <t>" / "COMANDA #<n> — DOMICILIO" and, when the job has a station, "Estación: <name>"; without the new fields they print exactly as today.
+- L4 (worker decisions, 2026-11-07): the controller resolves the header through `PrintService.commandFor(request, req.profile)` and passes the existing `printCommand` a server-built input (`CommandJobInput`), so the station split is untouched; the order's table wins when it has one; a sent `waiter` is accepted and ignored (old clients keep working). Renderers print `#<orderNumber>` only from `orderNumber`, never from `invoiceNumber` (the job id), and the station line only when `station.name` is truthy, so legacy payloads are byte-identical. The web client sends `{orderId, table, items}` via `CommandRequest` (lib/api/print.ts) and skips the comanda when no order id is known instead of a random number.
+- L5 (worker, 2026-11-07, parent-approved surfaces): the mappers copy `orderNumber`/`station` only when non-null, so legacy jobs map to the same order. The F6 test `test_station_key_ignored_same_bytes` now pins that a station-tagged comanda gains exactly the `Estación:` line (S3 supersedes F6's "tickets do not change" for comandas; facturas unchanged). The stations legacy-job assertion pins `orderNumber` instead of the request's orderId.

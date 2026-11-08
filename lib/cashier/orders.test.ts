@@ -14,7 +14,7 @@
  * `orderType` and never lands in the by-table view — DeliveryPaymentsPanel stays
  * the place where the cashier charges deliveries.
  */
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   CASHIER_ORDER_STATUSES,
   applyCashierOrderEvent,
@@ -270,11 +270,15 @@ describe("billSourceFromOrder (S1: the dialog reuses the loaded order)", () => {
 describe("toCashierOrder (T24 review: include=waiter)", () => {
   it("keeps waiterName from the DTO and leaves it out when absent", async () => {
     const { toCashierOrder, CASHIER_ORDER_INCLUDES } = await import("./orders")
+    // An order without createdAt gets "now": pin it so the compared mappings cannot fall 1 ms apart.
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(Date.now())
     const dto = orderDtoFromWire({ id: "o-1", status: "active", order_items: [] })!
     expect(CASHIER_ORDER_INCLUDES).toEqual(["waiter"])
     expect(toCashierOrder({ ...dto, waiterName: "Ana" }).waiterName).toBe("Ana")
     expect(toCashierOrder({ ...dto, waiterName: null })).toEqual(toOrder(dto))
     expect(toCashierOrder(dto)).toEqual(toOrder(dto))
+    vi.useRealTimers()
   })
 })
 

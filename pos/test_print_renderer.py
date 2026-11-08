@@ -13,9 +13,9 @@ import hashlib
 import unittest
 
 try:  # when run from repo root
-    from pos.print_renderer import build_invoice_bytes, render_invoice, render_kitchen_order
+    from pos.print_renderer import build_comanda_bytes, build_invoice_bytes, render_invoice, render_kitchen_order
 except ImportError:  # when run from inside pos/
-    from print_renderer import build_invoice_bytes, render_invoice, render_kitchen_order
+    from print_renderer import build_comanda_bytes, build_invoice_bytes, render_invoice, render_kitchen_order
 
 
 # ---------------------------------------------------------------------------
@@ -513,6 +513,53 @@ class DeliveryKitchenTicketTests(unittest.TestCase):
         text = "\n".join(_kitchen_lines(self._order(delivery=delivery)))
         self.assertNotIn("NOTAS", text)
 
+
+
+class ComandaHeaderTests(unittest.TestCase):
+    """orderNumber and station (one comanda per prep station) in the header."""
+
+    def test_dine_in_header_has_the_order_number_and_the_station(self):
+        lines = _kitchen_lines({
+            "invoiceNumber": "job-1", "orderNumber": 130, "table": 1, "waiter": "Ana",
+            "station": {"id": "s1", "name": "Cocina"}, "items": _KITCHEN_ITEMS,
+        })
+        self.assertEqual(lines[0], "COMANDA #130 \u2014 Mesa 1")
+        self.assertEqual(lines[1], "Estaci\u00f3n: Cocina")
+        self.assertTrue(lines[2].startswith("Fecha:  "))
+        self.assertEqual(lines[3], "Mesero: Ana")
+
+    def test_delivery_header_has_the_order_number_and_the_station(self):
+        lines = _kitchen_lines({
+            "invoiceNumber": "job-2", "orderNumber": 131, "table": None, "waiter": "Luis",
+            "station": {"id": "s2", "name": "Bar"}, "items": _KITCHEN_ITEMS, "delivery": _DELIVERY,
+        })
+        self.assertEqual(lines[0], "COMANDA #131 \u2014 DOMICILIO")
+        self.assertEqual(lines[1], "Estaci\u00f3n: Bar")
+        self.assertEqual(lines[3:5], ["Cliente: Ana Perez", "Mesero: Luis"])
+
+    def test_without_stations_only_the_number_is_added(self):
+        lines = _kitchen_lines({"invoiceNumber": "j", "orderNumber": 7, "table": 2, "waiter": "Ana", "items": _KITCHEN_ITEMS})
+        self.assertEqual(lines[0], "COMANDA #7 \u2014 Mesa 2")
+        self.assertTrue(lines[1].startswith("Fecha:  "))
+        self.assertNotIn("Estaci", "\n".join(lines))
+
+    def test_an_old_job_without_the_new_fields_prints_the_same_bytes(self):
+        order = {"invoiceNumber": "1234", "table": 5, "waiter": "Juan", "items": _KITCHEN_ITEMS}
+        lines = _kitchen_lines(order)
+        self.assertEqual(lines[0], "COMANDA \u2014 Mesa 5")
+        self.assertEqual(lines[2], "Mesero: Juan")
+        self.assertEqual(
+            build_comanda_bytes(order, encoding="cp1252"),
+            build_comanda_bytes({**order, "orderNumber": None, "station": None}, encoding="cp1252"),
+        )
+
+    def test_the_station_line_encodes_in_cp1252(self):
+        raw = build_comanda_bytes(
+            {"invoiceNumber": "j", "orderNumber": 9, "table": 3, "waiter": "Ana", "station": {"name": "Cocina"}, "items": _KITCHEN_ITEMS},
+            encoding="cp1252",
+        )
+        self.assertIn("COMANDA #9 \u2014 Mesa 3".encode("cp1252"), raw)
+        self.assertIn("Estaci\u00f3n: Cocina".encode("cp1252"), raw)
 
 class DeliveryInvoiceTests(unittest.TestCase):
     def _invoice(self, delivery=_DELIVERY, **bill):

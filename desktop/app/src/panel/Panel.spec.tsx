@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MockApiClient } from '../api/mock';
 import { createDemoBridge, type DemoScenario } from '../bridge/demo';
+import type { StationSettings } from '../bridge/types';
 import { Panel } from './Panel';
 
 afterEach(cleanup);
@@ -9,12 +10,17 @@ afterEach(cleanup);
 async function mount(scenario: DemoScenario, page?: string) {
   const api = new MockApiClient();
   const bridge = createDemoBridge({ scenario, storage: null });
-  const onAddPrinter = vi.fn();
   const settings = await bridge.loadSettings();
-  await act(async () => {
-    render(<Panel api={api} bridge={bridge} initial={settings} initialPage={page} onAddPrinter={onAddPrinter} />);
+  const save = bridge.saveSettings.bind(bridge);
+  const saved: StationSettings[] = [];
+  bridge.saveSettings = vi.fn(async (s: StationSettings) => {
+    saved.push(structuredClone(s));
+    await save(s);
   });
-  return { api, bridge, onAddPrinter };
+  await act(async () => {
+    render(<Panel api={api} bridge={bridge} initial={settings} initialPage={page} />);
+  });
+  return { api, bridge, saved };
 }
 
 const click = (el: HTMLElement) => act(async () => fireEvent.click(el));
@@ -55,15 +61,13 @@ describe('Estación panel (design/estacion-vipe/01-panel-con-menu.html)', () => 
   });
 
   it('Impresoras shows the read-only "Qué imprime" of each printer', async () => {
-    const { api, onAddPrinter } = await mount('ready', 'impresoras');
+    const { api } = await mount('ready', 'impresoras');
     await act(async () => {
       await api.stations();
     });
     expect(await screen.findByText('comandas de Entradas, Platos fuertes, Postres')).toBeTruthy();
     expect(screen.getByText('facturas y precuentas · abre el cajón al cobrar en efectivo')).toBeTruthy();
     expect(screen.getByText(/se define en VIPE web/)).toBeTruthy();
-    await click(screen.getByRole('button', { name: /Agregar impresora/ }));
-    expect(onAddPrinter).toHaveBeenCalled();
   });
 
   it('Historial reprints a finished job', async () => {
@@ -85,10 +89,12 @@ describe('Estación panel (design/estacion-vipe/01-panel-con-menu.html)', () => 
   });
 
   it('without printers it invites to add the first one', async () => {
-    const { onAddPrinter } = await mount('empty');
+    await mount('empty');
     expect(screen.getByText('Agrega tu primera impresora')).toBeTruthy();
     await click(screen.getByRole('button', { name: /Agregar impresora/ }));
-    expect(onAddPrinter).toHaveBeenCalled();
+    // The add card opens on the Impresoras page, not the first-run wizard (S1).
+    expect(screen.getByRole('heading', { name: 'Paso 1 de 4' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Impresoras/ }).getAttribute('aria-current')).toBe('page');
   });
 
   it('without connection it says so and keeps printing locally', async () => {

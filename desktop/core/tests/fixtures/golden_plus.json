@@ -4389,6 +4389,204 @@
     "VipePOS"
    ],
    "hex": "1b45011b6101434f4d414e444120e2809420444f4d4943494c494f0a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b6100436c69656e74653a2050c3a972657a0a1b61004d657365726f3a204c7569730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610050495a5a41202020202020202020202020202020202020202020202020202078310a1b61004e4f5441533a2074696d627265206461c3b161646f0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_header_number_station/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "invoiceNumber": "job-1",
+    "orderNumber": 130,
+    "table": 1,
+    "waiter": "Ana María",
+    "station": {
+     "id": "s1",
+     "name": "Cocina"
+    },
+    "items": [
+     {
+      "name": "Ajiaco",
+      "quantity": 2,
+      "comments": "sin alcaparras"
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA #130 — Mesa 1",
+    "Estación: Cocina",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana María",
+    "--------------------------------",
+    "AJIACO                         x2",
+    "  Sin alcaparras",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120233133302097204d65736120310a1b45001b6100457374616369f36e3a20436f63696e610a1b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e61204d6172ed610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100414a4941434f2020202020202020202020202020202020202020202020202078320a1b6100202053696e20616c63617061727261730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_header_number_station/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "invoiceNumber": "job-1",
+    "orderNumber": 130,
+    "table": 1,
+    "waiter": "Ana María",
+    "station": {
+     "id": "s1",
+     "name": "Cocina"
+    },
+    "items": [
+     {
+      "name": "Ajiaco",
+      "quantity": 2,
+      "comments": "sin alcaparras"
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA #130 — Mesa 1",
+    "Estación: Cocina",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana María",
+    "--------------------------------",
+    "AJIACO                         x2",
+    "  Sin alcaparras",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e4441202331333020e28094204d65736120310a1b45001b6100457374616369c3b36e3a20436f63696e610a1b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e61204d6172c3ad610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100414a4941434f2020202020202020202020202020202020202020202020202078320a1b6100202053696e20616c63617061727261730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_header_delivery_number_station/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "invoiceNumber": "job-2",
+    "orderNumber": 131,
+    "table": null,
+    "waiter": "Luis",
+    "station": {
+     "id": "s2",
+     "name": "Bar"
+    },
+    "items": [
+     {
+      "name": "Jugo",
+      "quantity": 1
+     }
+    ],
+    "delivery": {
+     "customerName": "Pérez",
+     "notes": "timbre"
+    }
+   },
+   "lines": [
+    "COMANDA #131 — DOMICILIO",
+    "Estación: Bar",
+    "Fecha:  07/11/2026 12:30",
+    "Cliente: Pérez",
+    "Mesero: Luis",
+    "--------------------------------",
+    "JUGO                           x1",
+    "NOTAS: timbre",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e44412023313331209720444f4d4943494c494f0a1b45001b6100457374616369f36e3a204261720a1b610046656368613a202030372f31312f323032362031323a33300a1b6100436c69656e74653a2050e972657a0a1b61004d657365726f3a204c7569730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61004e4f5441533a2074696d6272650a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_header_delivery_number_station/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "invoiceNumber": "job-2",
+    "orderNumber": 131,
+    "table": null,
+    "waiter": "Luis",
+    "station": {
+     "id": "s2",
+     "name": "Bar"
+    },
+    "items": [
+     {
+      "name": "Jugo",
+      "quantity": 1
+     }
+    ],
+    "delivery": {
+     "customerName": "Pérez",
+     "notes": "timbre"
+    }
+   },
+   "lines": [
+    "COMANDA #131 — DOMICILIO",
+    "Estación: Bar",
+    "Fecha:  07/11/2026 12:30",
+    "Cliente: Pérez",
+    "Mesero: Luis",
+    "--------------------------------",
+    "JUGO                           x1",
+    "NOTAS: timbre",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e4441202331333120e2809420444f4d4943494c494f0a1b45001b6100457374616369c3b36e3a204261720a1b610046656368613a202030372f31312f323032362031323a33300a1b6100436c69656e74653a2050c3a972657a0a1b61004d657365726f3a204c7569730a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61004e4f5441533a2074696d6272650a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_header_number_only/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "invoiceNumber": "job-3",
+    "orderNumber": 7,
+    "table": 2,
+    "waiter": "Ana",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 1
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA #7 — Mesa 2",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana",
+    "--------------------------------",
+    "AREPA                          x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e44412023372097204d65736120320a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_header_number_only/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "invoiceNumber": "job-3",
+    "orderNumber": 7,
+    "table": 2,
+    "waiter": "Ana",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 1
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA #7 — Mesa 2",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana",
+    "--------------------------------",
+    "AREPA                          x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120233720e28094204d65736120320a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
   }
  ]
 }

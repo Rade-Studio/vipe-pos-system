@@ -4427,12 +4427,21 @@ export interface components {
             createdAt: string;
         };
         CommandPrintRequest: {
+            /**
+             * Format: uuid
+             * @description The order of the caller's restaurant this comanda belongs to (404 otherwise).
+             */
+            orderId: string;
             /** @description Lines {name, quantity, comments?, modifiers?, dishId?}; modifiers [{group, name, price}] (F7), left out without options. */
             items: {
                 [key: string]: unknown;
             }[];
-            waiter: string;
-            /** @description Null or absent for delivery orders. */
+            /**
+             * @deprecated
+             * @description Ignored: the API prints the sender's profile name.
+             */
+            waiter?: string;
+            /** @description Null or absent for delivery orders; the order's table wins. */
             table?: number | null;
             /** @description DeliveryPrintInfo (types/index.ts). */
             delivery?: {
@@ -4457,7 +4466,7 @@ export interface components {
             id: string;
             /** @enum {string} */
             kind: "invoice" | "command";
-            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
+            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
             payload: {
                 [key: string]: unknown;
             };
@@ -10211,7 +10220,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Queued kitchen command; its id is the payload invoiceNumber. With stations: one job per station and `jobs`; without: the single legacy job (no `jobs`). */
+            /** @description Queued kitchen command; its id is the payload invoiceNumber, with the order's orderNumber and the sender's name as waiter. With stations: one job per station and `jobs`; without: the single legacy job (no `jobs`). */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -10219,6 +10228,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PrintJobsCreated"];
                 };
+            };
+            /** @description orderId is not an order of the caller's restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description `printing_disabled`: the restaurant does not use printers. */
             409: {

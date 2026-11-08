@@ -101,3 +101,19 @@ fn preamble_initialises_and_selects_the_code_page() {
     assert_eq!(printer_preamble(Encoding::Cp1252), vec![0x1b, 0x40, 0x1b, 0x74, 16]);
     assert_eq!(printer_preamble(Encoding::Utf8), vec![0x1b, 0x40]);
 }
+
+/// A stored job with orderNumber and station prints the pos/ bytes (golden_plus probe_header_number_station).
+#[test]
+fn a_command_with_order_number_and_station_prints_the_python_bytes() {
+    let doc: serde_json::Value = serde_json::from_str(include_str!("fixtures/golden_plus.json")).unwrap();
+    let at = NaiveDateTime::parse_from_str(doc["now"].as_str().unwrap(), "%Y-%m-%dT%H:%M:%S").unwrap();
+    for (name, encoding) in [("probe_header_number_station/cp1252", Encoding::Cp1252), ("probe_header_number_station/utf-8", Encoding::Utf8)] {
+        let case = doc["cases"].as_array().unwrap().iter().find(|c| c["name"] == name).unwrap();
+        assert_eq!(case["lines"][0], "COMANDA #130 \u{2014} Mesa 1");
+        assert_eq!(case["lines"][1], "Estaci\u{f3}n: Cocina");
+        let job = PrintJob { id: "job-1".into(), kind: "command".into(), station: None, created_at: None, payload: case["order"].clone() };
+        let bytes = render_job(&job, encoding, at).unwrap();
+        let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(hex, case["hex"].as_str().unwrap(), "{name}");
+    }
+}

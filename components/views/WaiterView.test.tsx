@@ -740,6 +740,10 @@ describe("WaiterView — sending through the API (T8b)", () => {
     expect(env.consumeOrderStock).not.toHaveBeenCalled()
     expect(env.updateTableStatus).not.toHaveBeenCalled()
     expect(env.sendCommand).toHaveBeenCalledTimes(1)
+    // S1/S2: the comanda names its order; the API fills the waiter and the number.
+    const [command] = env.sendCommand.mock.calls[0]
+    expect(command).toEqual({ orderId: "o-new", table: expect.any(Number), items: expect.any(Array) })
+    expect(JSON.stringify(command)).not.toContain("Mesero")
     expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Orden enviada" }))
     expect(useOrderStore.getState().orders.map((order) => order.id)).toEqual(["o-new"])
     expect(useCartStore.getState().cartItems["t-1"]).toEqual([])
@@ -796,6 +800,7 @@ describe("WaiterView — sending through the API (T8b)", () => {
     expect(env.addItems).toHaveBeenCalledTimes(1)
     expect(env.addItems).toHaveBeenCalledWith("o-9", { items })
     expect(env.sendCommand).toHaveBeenCalledTimes(1)
+    expect(env.sendCommand).toHaveBeenCalledWith(expect.objectContaining({ orderId: "o-9" }))
     expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Productos adicionales enviados" }))
   })
 
@@ -805,6 +810,7 @@ describe("WaiterView — sending through the API (T8b)", () => {
 
     expect(env.orderCreate).not.toHaveBeenCalled()
     expect(env.addItems).toHaveBeenCalledWith("o-1", { items })
+    expect(env.sendCommand).toHaveBeenCalledWith(expect.objectContaining({ orderId: "o-1" }))
     expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Productos adicionales enviados" }))
   })
 
