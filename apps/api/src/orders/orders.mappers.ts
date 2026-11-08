@@ -32,6 +32,13 @@ export const toOrderItem = (row: Json): OrderItem => ({
   addedAt: time(row.added_at),
   createdAt: time(row.created_at),
   updatedAt: time(row.updated_at),
+  modifiers: ((row.modifiers as Json[] | undefined) ?? []).map((m) => ({
+    groupId: String(m.group_id),
+    groupName: String(m.group_name),
+    optionId: String(m.option_id),
+    name: String(m.option_name),
+    price: num(m.price),
+  })),
 });
 
 export function toOrder(row: OrderRow, include: { withTable?: boolean; withWaiter?: boolean } = {}): Order {

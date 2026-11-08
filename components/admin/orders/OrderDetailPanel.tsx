@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/utils/helpers"
 import type { AdminOrderRow } from "@/lib/admin/orders"
 import type { VoidLine, VoidTarget } from "@/components/voids/flow"
+import { ModifierLines } from "@/components/modifiers/ModifierLines"
 import { OrderStatusPill, clockTime } from "./order-ui"
 
 interface OrderDetailPanelProps {
@@ -47,6 +48,7 @@ export function OrderDetailPanel({ row, titleId, onClose, onVoid }: OrderDetailP
     price: item.price,
     quantity: item.quantity,
     comments: item.comments,
+    ...(item.modifiers?.length ? { modifiers: item.modifiers } : {}),
   }))
 
   return (
@@ -126,10 +128,11 @@ export function OrderDetailPanel({ row, titleId, onClose, onVoid }: OrderDetailP
             {items.map((item) => (
               <li key={item.id} className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] gap-x-2 gap-y-1.5 py-3 text-sm">
                 <span className="font-semibold tabular-nums text-fg">{item.quantity}x</span>
-                <span className="min-w-0 break-words text-fg">
+                <div className="min-w-0 break-words text-fg">
                   {item.name}
+                  <ModifierLines modifiers={item.modifiers} className="mt-0.5 text-xs" />
                   {item.comments && <small className="block text-xs text-muted-fg">“{item.comments}”</small>}
-                </span>
+                </div>
                 <Money className="text-right text-fg">{formatCurrency(item.price * item.quantity)}</Money>
                 <span className="col-start-2">
                   {item.status === "served" ? (

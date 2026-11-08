@@ -50,6 +50,11 @@ kit_case("delivery_full", {"invoiceNumber": "q1", "waiter": "Luis", "items": [{"
 kit_case("header_number_station", {"invoiceNumber": "job-1", "orderNumber": 130, "table": 1, "waiter": "Ana María", "station": {"id": "s1", "name": "Cocina"}, "items": [{"name": "Ajiaco", "quantity": 2, "comments": "sin alcaparras"}]})
 kit_case("header_delivery_number_station", {"invoiceNumber": "job-2", "orderNumber": 131, "table": None, "waiter": "Luis", "station": {"id": "s2", "name": "Bar"}, "items": [{"name": "Jugo", "quantity": 1}], "delivery": {"customerName": "Pérez", "notes": "timbre"}})
 kit_case("header_number_only", {"invoiceNumber": "job-3", "orderNumber": 7, "table": 2, "waiter": "Ana", "items": [{"name": "Arepa", "quantity": 1}]})
+# F7 modifiers: options under the line (comanda) and with their price (invoice); malformed entries print nothing.
+mods = [{"group": "Término", "name": "Medio", "price": 0}, {"group": "Adiciones", "name": "Queso cheddar", "price": 3000}, {"group": "Sin", "name": "Sin cebolla", "price": 0}, {"group": "Adiciones", "name": "Tocineta ahumada doble extra grande", "price": 4500.5}]
+kit_case("modifiers_comanda", {"invoiceNumber": "job-4", "orderNumber": 132, "table": 3, "waiter": "Ana", "items": [{"name": "Hamburguesa", "quantity": 2, "comments": "bien caliente", "modifiers": mods}, {"name": "Jugo", "quantity": 1, "modifiers": []}]})
+kit_case("modifiers_malformed", {"invoiceNumber": "job-5", "table": 3, "waiter": "Ana", "items": [{"name": "Arepa", "quantity": 1, "modifiers": [None, 7, {"name": "Queso", "price": True}, {"group": "Salsa", "name": None, "price": "x"}]}, {"name": "Jugo", "quantity": 1, "modifiers": "x"}]})
+inv_case("modifiers_invoice", dict(bi), [{"name": "Hamburguesa", "quantity": 2, "price": 29500, "modifiers": mods}, {"name": "Jugo", "quantity": 1, "price": 5000, "modifiers": None}])
 doc["cases"].extend(extra)
 json.dump(doc, open(out, "w"), ensure_ascii=False, indent=1)
 print("extra", len(extra))

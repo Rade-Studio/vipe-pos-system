@@ -15,6 +15,7 @@ import { cancelDelivery } from "@/lib/api/delivery"
 import { cancelOrder, getById, voidOrderItems, type OrderDto } from "@/lib/api/orders"
 import { voidPayment } from "@/lib/api/payments"
 import { useProfileStore } from "@/store/useProfileStore"
+import { modifierLabel } from "@/lib/modifiers/rules"
 import {
   ROLE_LABEL,
   SUPERVISOR_ACTION,
@@ -426,6 +427,11 @@ function FlowBody({
                       >
                         <span className="min-w-0 flex-1 break-words font-semibold">
                           {candidate.quantity}× {candidate.name}
+                          {candidate.modifiers?.length ? (
+                            <small className="block text-xs font-normal text-muted-fg">
+                              {candidate.modifiers.map(modifierLabel).join(", ")}
+                            </small>
+                          ) : null}
                         </span>
                         <Money>{formatCurrency(candidate.price * candidate.quantity)}</Money>
                       </Option>
@@ -440,6 +446,15 @@ function FlowBody({
                       <span className="tabular-nums text-muted-fg">{line.quantity}×</span>
                       <span className="min-w-0 flex-1 break-words">
                         <b>{line.name}</b>
+                        {line.modifiers?.length ? (
+                          <span role="list" aria-label="Opciones" className="block text-xs text-fg-2">
+                            {line.modifiers.map((modifier) => (
+                              <span role="listitem" key={modifier.optionId} className="block">
+                                {modifierLabel(modifier)}
+                              </span>
+                            ))}
+                          </span>
+                        ) : null}
                         {line.comments && <small className="block text-xs text-muted-fg">“{line.comments}”</small>}
                         <small className="block text-xs text-muted-fg">Orden {target.label} · enviado a cocina</small>
                       </span>

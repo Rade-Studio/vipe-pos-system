@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { sql } from '@vipe/db';
 import type { z } from 'zod';
 import type { CallerProfile } from '../auth/auth-context';
+import { resolveLineModifiers, modifierError } from '../catalog/line-modifiers';
 import { Clock } from '../common/clock';
 import { VoidsService } from '../audit/voids.service';
 import { UnitOfWork } from '../db/unit-of-work';
@@ -189,12 +190,18 @@ export class DeliveryService {
       label: 'label',
       save: 'save',
     });
-    const items = input.items.map((item) => wire(item, { dishId: 'dish_id', quantity: 'quantity', comments: 'comments' }));
+    const items = input.items.map((item) => ({
+      ...wire(item, { dishId: 'dish_id', quantity: 'quantity', comments: 'comments' }),
+      ...(item.modifiers ? { option_ids: item.modifiers.map((m) => m.optionId) } : {}),
+    }));
     const cashChangeFor = input.paymentMode === 'cash_on_delivery' ? (input.cashChangeFor ?? null) : null;
     const created = await rpc(this.uow, sql`
       SELECT public.create_delivery_order(${json(customer)}, ${json(address)}, ${json(items)},
                ${input.deliveryFee}::bigint, ${input.paymentMode}::text, ${cashChangeFor}::bigint, ${input.notes ?? null}::text,
-               ${input.prepaidMethodId ?? null}::uuid) AS result`);
+               ${input.prepaidMethodId ?? null}::uuid) AS result`).catch((error: unknown) => {
+      // F7: a broken option rule (private.resolve_line_modifiers) answers like POST /orders.
+      throw modifierError(error) ?? error;
+    });
     const orderId = String(created.order_id);
     const delivery = await this.readDelivery(orderId);
 
@@ -207,10 +214,18 @@ export class DeliveryService {
           SELECT DISTINCT ON (oi.dish_id) oi.dish_id, oi.name FROM public.order_items oi WHERE oi.order_id = ${orderId}`)
       ).map((row) => [row.dish_id, row.name]),
     );
-    const lines = input.items.map((item) => {
+    // F7: the options of each line as the order stored them; a line without options prints as before.
+    const modifiers = await resolveLineModifiers(
+      this.uow,
+      input.items.map((item) => ({ dishId: item.dishId, optionIds: (item.modifiers ?? []).map((m) => m.optionId) })),
+    );
+    const lines = input.items.map((item, index) => {
       const line: Json = { name: names.get(item.dishId) ?? '', quantity: item.quantity };
       const comments = item.comments?.trim();
       if (comments) line.comments = comments;
+      if (modifiers[index].length > 0) {
+        line.modifiers = modifiers[index].map((m) => ({ group: m.groupName, name: m.name, price: m.price }));
+      }
       return line;
     });
     // F6: the dish of each line routes it to its station (same rule as table

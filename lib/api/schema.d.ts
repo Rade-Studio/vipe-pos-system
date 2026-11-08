@@ -260,6 +260,22 @@ export interface paths {
         patch: operations["DishesController_update"];
         trace?: never;
     };
+    "/api/catalog/dishes/{id}/modifier-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["DishesController_modifierGroups"];
+        put: operations["DishesController_setModifierGroups"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/promotions": {
         parameters: {
             query?: never;
@@ -434,6 +450,70 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/modifier-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ModifierGroupsController_list"];
+        put?: never;
+        post: operations["ModifierGroupsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/modifier-groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["ModifierGroupsController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["ModifierGroupsController_update"];
+        trace?: never;
+    };
+    "/api/catalog/modifier-groups/{id}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ModifierGroupsController_createOption"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/modifier-options/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["ModifierOptionsController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["ModifierOptionsController_update"];
         trace?: never;
     };
     "/api/config": {
@@ -2311,6 +2391,32 @@ export interface components {
             /** @enum {string} */
             color?: "neutral" | "yellow" | "orange" | "sky" | "violet" | "emerald" | "rose";
         };
+        ModifierOption: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            groupId: string;
+            name: string;
+            /** @description Added to the unit price of the line (>= 0). */
+            price: number;
+            /**
+             * Format: uuid
+             * @description Ingredient deducted per unit, with ingredientQty.
+             */
+            ingredientId: string | null;
+            ingredientQty: number | null;
+            sortOrder: number;
+            isActive: boolean;
+        };
+        DishModifierGroup: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            required: boolean;
+            minSelect: number;
+            maxSelect: number | null;
+            options: components["schemas"]["ModifierOption"][];
+        };
         Dish: {
             /** Format: uuid */
             id: string;
@@ -2331,8 +2437,8 @@ export interface components {
             allowComments: boolean;
             /** @description Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name. */
             sortOrder: number;
-            /** @description Modifier chips offered when the dish is added (append to the item comment, no price). */
-            quickNotes: string[];
+            /** @description Active modifier groups the dish offers, in order, with their active options and live prices (F7). Assigned with PUT /catalog/dishes/{id}/modifier-groups. */
+            modifierGroups: components["schemas"]["DishModifierGroup"][];
             /** Format: date-time */
             createdAt: string | null;
             /** Format: date-time */
@@ -2367,8 +2473,6 @@ export interface components {
             active: boolean;
             /** @default false */
             allowComments: boolean;
-            /** @description At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish). */
-            quickNotes?: string[];
         };
         DishOrderRequest: {
             /**
@@ -2395,8 +2499,14 @@ export interface components {
             imageUrl?: string | null;
             active?: boolean;
             allowComments?: boolean;
-            /** @description At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish). */
-            quickNotes?: string[];
+        };
+        DishModifierGroupIds: {
+            /** @description Groups assigned to the dish in order, inactive ones included. */
+            groupIds: string[];
+        };
+        DishModifierGroupsRequest: {
+            /** @description The complete group set of the dish, in order; replaces the previous one. */
+            groupIds: string[];
         };
         Promotion: {
             /** Format: uuid */
@@ -2499,8 +2609,8 @@ export interface components {
             allowComments: boolean;
             /** @description Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name. */
             sortOrder: number;
-            /** @description Modifier chips offered when the dish is added (append to the item comment, no price). */
-            quickNotes: string[];
+            /** @description Active modifier groups the dish offers, in order, with their active options and live prices (F7). Assigned with PUT /catalog/dishes/{id}/modifier-groups. */
+            modifierGroups: components["schemas"]["DishModifierGroup"][];
             /** Format: date-time */
             createdAt: string | null;
             /** Format: date-time */
@@ -2559,6 +2669,72 @@ export interface components {
             publishedByName: string | null;
             /** @description Categories, subcategories and dishes added, removed or changed in structure since then; 0 with no publication. */
             pendingChanges: number;
+        };
+        ModifierGroup: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description True exactly when minSelect >= 1: the line cannot be sent without it. */
+            required: boolean;
+            minSelect: number;
+            /** @description null: no limit. */
+            maxSelect: number | null;
+            sortOrder: number;
+            isActive: boolean;
+            /** @description By sortOrder, then name; only active ones unless includeInactive. */
+            options: components["schemas"]["ModifierOption"][];
+            /** Format: date-time */
+            createdAt: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        CreateModifierGroupRequest: {
+            /** @description Unique per restaurant, case-insensitive (409). */
+            name: string;
+            /** @description Omitted: minSelect >= 1. */
+            required?: boolean;
+            /** @description Omitted: 1 when required, else 0. */
+            minSelect?: number;
+            /** @description null or omitted: no limit. */
+            maxSelect?: number | null;
+            /** @description Omitted: after the last group. */
+            sortOrder?: number;
+            /** @description Omitted: true. */
+            isActive?: boolean;
+        };
+        UpdateModifierGroupRequest: {
+            name?: string;
+            required?: boolean;
+            minSelect?: number;
+            maxSelect?: number | null;
+            sortOrder?: number;
+            isActive?: boolean;
+        };
+        CreateModifierOptionRequest: {
+            /** @description Unique per group, case-insensitive (409). */
+            name: string;
+            /** @description 0 for a free option ("Sin cebolla"). */
+            price: number;
+            /**
+             * Format: uuid
+             * @description An ingredient of the restaurant; set with ingredientQty.
+             */
+            ingredientId?: string | null;
+            /** @description > 0, in the ingredient unit, per unit of the line. */
+            ingredientQty?: number | null;
+            /** @description Omitted: after the last option of the group. */
+            sortOrder?: number;
+            /** @description Omitted: true. */
+            isActive?: boolean;
+        };
+        UpdateModifierOptionRequest: {
+            name?: string;
+            price?: number;
+            /** Format: uuid */
+            ingredientId?: string | null;
+            ingredientQty?: number | null;
+            sortOrder?: number;
+            isActive?: boolean;
         };
         BusinessConfig: {
             /** @default 10 */
@@ -2635,6 +2811,16 @@ export interface components {
             /** @enum {string} */
             desktopUpdateChannel?: "stable" | "pilot";
         };
+        OrderItemModifier: {
+            /** Format: uuid */
+            groupId: string;
+            groupName: string;
+            /** Format: uuid */
+            optionId: string;
+            name: string;
+            /** @description Already included in the line price. */
+            price: number;
+        };
         OrderItem: {
             /** Format: uuid */
             id: string;
@@ -2665,6 +2851,8 @@ export interface components {
             createdAt: string | null;
             /** Format: date-time */
             updatedAt: string | null;
+            /** @description Options chosen on the line, in menu order; their prices are inside price (F7). */
+            modifiers: components["schemas"]["OrderItemModifier"][];
         };
         Order: {
             /** Format: uuid */
@@ -2940,13 +3128,19 @@ export interface components {
             /** Format: uuid */
             orderId: string;
         };
+        OrderItemModifierInput: {
+            /** Format: uuid */
+            optionId: string;
+        };
         OrderItemInput: {
             /** Format: uuid */
             dishId: string;
             quantity: number;
-            /** @description Price the client showed. The server charges the catalog price (promotions applied, server clock); a different value answers 409 Price changed. */
+            /** @description Price the client showed: the dish price (promotions applied, server clock) plus the options. A different value answers 409 Price changed; with options the body also carries `lines` [{index, dishId, unitPrice}]. */
             unitPrice?: number;
             comments?: string | null;
+            /** @description Options of the line. Each once, offered by an active group of the dish, active; every active group between its min and max. 422 code modifier_invalid | modifier_inactive | modifier_duplicate | modifier_required | modifier_max. */
+            modifiers?: components["schemas"]["OrderItemModifierInput"][];
         };
         CreateOrderRequest: {
             /** Format: uuid */
@@ -4216,6 +4410,7 @@ export interface components {
             invoice: {
                 [key: string]: unknown;
             };
+            /** @description Lines {name, quantity, price, comments?, modifiers?}: price is the unit price with the options (F7); modifiers [{group, name, price}]. */
             displayItems: {
                 [key: string]: unknown;
             }[];
@@ -4237,6 +4432,7 @@ export interface components {
              * @description The order of the caller's restaurant this comanda belongs to (404 otherwise).
              */
             orderId: string;
+            /** @description Lines {name, quantity, comments?, modifiers?, dishId?}; modifiers [{group, name, price}] (F7), left out without options. */
             items: {
                 [key: string]: unknown;
             }[];
@@ -4270,7 +4466,7 @@ export interface components {
             id: string;
             /** @enum {string} */
             kind: "invoice" | "command";
-            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
+            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
             payload: {
                 [key: string]: unknown;
             };
@@ -4398,12 +4594,18 @@ export interface components {
             /** @description Store the new address in customer_addresses (default false). */
             save?: boolean;
         };
+        CreateDeliveryItemModifier: {
+            /** Format: uuid */
+            optionId: string;
+        };
         CreateDeliveryItem: {
             /** Format: uuid */
             dishId: string;
             /** @description Integer; 1..999 validated by create_delivery_order. */
             quantity: number;
             comments?: string | null;
+            /** @description Options of the line (F7): priced and checked like table orders; 422 code modifier_invalid | modifier_inactive | modifier_duplicate | modifier_required | modifier_max. */
+            modifiers?: components["schemas"]["CreateDeliveryItemModifier"][];
         };
         CreateDeliveryOrderRequest: {
             customer: components["schemas"]["CreateDeliveryCustomer"];
@@ -5662,6 +5864,93 @@ export interface operations {
             };
         };
     };
+    DishesController_modifierGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DishModifierGroupIds"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DishesController_setModifierGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DishModifierGroupsRequest"];
+            };
+        };
+        responses: {
+            /** @description The new group set, atomically; position i is the order i. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DishModifierGroupIds"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Grupo de modificadores desconocido (another restaurant) or a repeated id; nothing is saved. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     PromotionsController_list: {
         parameters: {
             query?: never;
@@ -6111,7 +6400,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and quick notes are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure. */
+            /** @description The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and modifier groups are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6195,6 +6484,290 @@ export interface operations {
             };
             /** @description Solo un administrador puede publicar el menú */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ModifierGroupsController_list: {
+        parameters: {
+            query?: {
+                /** @description Admin only: inactive groups and options too. */
+                includeInactive?: "true" | "false";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description By sortOrder, then name, each with its options. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModifierGroup"][];
+                };
+            };
+            /** @description includeInactive by a non-admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; the group rules in Spanish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ModifierGroupsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateModifierGroupRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModifierGroup"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe un grupo de modificadores con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; the group rules in Spanish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ModifierGroupsController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The group, its options and its dish links; lines already sent keep their options. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; the group rules in Spanish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ModifierGroupsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateModifierGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description With every option, inactive included. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModifierGroup"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe un grupo de modificadores con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; the group rules in Spanish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ModifierGroupsController_createOption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateModifierOptionRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModifierOption"];
+                };
+            };
+            /** @description Unknown group. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una opción con ese nombre en el grupo */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; the group rules in Spanish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ModifierOptionsController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, an unknown ingredient or an ingredient without quantity. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ModifierOptionsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateModifierOptionRequest"];
+            };
+        };
+        responses: {
+            /** @description A new price applies to the next lines; sent lines keep theirs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModifierOption"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una opción con ese nombre en el grupo */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, an unknown ingredient or an ingredient without quantity. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

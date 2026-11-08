@@ -4587,6 +4587,416 @@
     "VipePOS"
    ],
    "hex": "1b45011b6101434f4d414e444120233720e28094204d65736120320a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_modifiers_comanda/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "invoiceNumber": "job-4",
+    "orderNumber": 132,
+    "table": 3,
+    "waiter": "Ana",
+    "items": [
+     {
+      "name": "Hamburguesa",
+      "quantity": 2,
+      "comments": "bien caliente",
+      "modifiers": [
+       {
+        "group": "Término",
+        "name": "Medio",
+        "price": 0
+       },
+       {
+        "group": "Adiciones",
+        "name": "Queso cheddar",
+        "price": 3000
+       },
+       {
+        "group": "Sin",
+        "name": "Sin cebolla",
+        "price": 0
+       },
+       {
+        "group": "Adiciones",
+        "name": "Tocineta ahumada doble extra grande",
+        "price": 4500.5
+       }
+      ]
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1,
+      "modifiers": []
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA #132 — Mesa 3",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana",
+    "--------------------------------",
+    "HAMBURGUESA                    x2",
+    "  Término: Medio",
+    "  + Queso cheddar",
+    "  Sin cebolla",
+    "  + Tocineta ahumada doble extra grande",
+    "  Bien caliente",
+    "JUGO                           x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120233133322097204d65736120330a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610048414d4255524755455341202020202020202020202020202020202020202078320a1b6100202054e9726d696e6f3a204d6564696f0a1b610020202b20517565736f20636865646461720a1b6100202053696e206365626f6c6c610a1b610020202b20546f63696e657461206168756d61646120646f626c65206578747261206772616e64650a1b610020204269656e2063616c69656e74650a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_modifiers_comanda/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "invoiceNumber": "job-4",
+    "orderNumber": 132,
+    "table": 3,
+    "waiter": "Ana",
+    "items": [
+     {
+      "name": "Hamburguesa",
+      "quantity": 2,
+      "comments": "bien caliente",
+      "modifiers": [
+       {
+        "group": "Término",
+        "name": "Medio",
+        "price": 0
+       },
+       {
+        "group": "Adiciones",
+        "name": "Queso cheddar",
+        "price": 3000
+       },
+       {
+        "group": "Sin",
+        "name": "Sin cebolla",
+        "price": 0
+       },
+       {
+        "group": "Adiciones",
+        "name": "Tocineta ahumada doble extra grande",
+        "price": 4500.5
+       }
+      ]
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1,
+      "modifiers": []
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA #132 — Mesa 3",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana",
+    "--------------------------------",
+    "HAMBURGUESA                    x2",
+    "  Término: Medio",
+    "  + Queso cheddar",
+    "  Sin cebolla",
+    "  + Tocineta ahumada doble extra grande",
+    "  Bien caliente",
+    "JUGO                           x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e4441202331333220e28094204d65736120330a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610048414d4255524755455341202020202020202020202020202020202020202078320a1b6100202054c3a9726d696e6f3a204d6564696f0a1b610020202b20517565736f20636865646461720a1b6100202053696e206365626f6c6c610a1b610020202b20546f63696e657461206168756d61646120646f626c65206578747261206772616e64650a1b610020204269656e2063616c69656e74650a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_modifiers_malformed/cp1252",
+   "kind": "command",
+   "encoding": "cp1252",
+   "order": {
+    "invoiceNumber": "job-5",
+    "table": 3,
+    "waiter": "Ana",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 1,
+      "modifiers": [
+       null,
+       7,
+       {
+        "name": "Queso",
+        "price": true
+       },
+       {
+        "group": "Salsa",
+        "name": null,
+        "price": "x"
+       }
+      ]
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1,
+      "modifiers": "x"
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa 3",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana",
+    "--------------------------------",
+    "AREPA                          x1",
+    "  Queso",
+    "  Salsa: ",
+    "JUGO                           x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e44412097204d65736120330a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078310a1b61002020517565736f0a1b6100202053616c73613a200a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_modifiers_malformed/utf-8",
+   "kind": "command",
+   "encoding": "utf-8",
+   "order": {
+    "invoiceNumber": "job-5",
+    "table": 3,
+    "waiter": "Ana",
+    "items": [
+     {
+      "name": "Arepa",
+      "quantity": 1,
+      "modifiers": [
+       null,
+       7,
+       {
+        "name": "Queso",
+        "price": true
+       },
+       {
+        "group": "Salsa",
+        "name": null,
+        "price": "x"
+       }
+      ]
+     },
+     {
+      "name": "Jugo",
+      "quantity": 1,
+      "modifiers": "x"
+     }
+    ]
+   },
+   "lines": [
+    "COMANDA — Mesa 3",
+    "Fecha:  07/11/2026 12:30",
+    "Mesero: Ana",
+    "--------------------------------",
+    "AREPA                          x1",
+    "  Queso",
+    "  Salsa: ",
+    "JUGO                           x1",
+    "--------------------------------",
+    "VipePOS"
+   ],
+   "hex": "1b45011b6101434f4d414e444120e28094204d65736120330a1b45001b610046656368613a202030372f31312f323032362031323a33300a1b61004d657365726f3a20416e610a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61004152455041202020202020202020202020202020202020202020202020202078310a1b61002020517565736f0a1b6100202053616c73613a200a1b61004a55474f20202020202020202020202020202020202020202020202020202078310a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b45011b610156697065504f530a1b45000a0a0a1d5600"
+  },
+  {
+   "name": "probe_modifiers_invoice/cp1252",
+   "kind": "invoice",
+   "encoding": "cp1252",
+   "invoiceNumber": "INV-x",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 8100
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 2,
+     "price": 29500,
+     "modifiers": [
+      {
+       "group": "Término",
+       "name": "Medio",
+       "price": 0
+      },
+      {
+       "group": "Adiciones",
+       "name": "Queso cheddar",
+       "price": 3000
+      },
+      {
+       "group": "Sin",
+       "name": "Sin cebolla",
+       "price": 0
+      },
+      {
+       "group": "Adiciones",
+       "name": "Tocineta ahumada doble extra grande",
+       "price": 4500.5
+      }
+     ]
+    },
+    {
+     "name": "Jugo",
+     "quantity": 1,
+     "price": 5000,
+     "modifiers": null
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-x",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "2   Hamburguesa             59.000",
+    "  Término: Medio",
+    "  + Queso cheddar           $3.000",
+    "  Sin cebolla",
+    "  + Tocineta ahumada dob    $4.500",
+    "1   Jugo                     5.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 8.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d780a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003220202048616d62757267756573612020202020202020202020202035392e3030300a1b6100202054e9726d696e6f3a204d6564696f0a1b610020202b20517565736f2063686564646172202020202020202020202024332e3030300a1b6100202053696e206365626f6c6c610a1b610020202b20546f63696e657461206168756d61646120646f622020202024342e3530300a1b6100312020204a75676f202020202020202020202020202020202020202020352e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20382e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
+  },
+  {
+   "name": "probe_modifiers_invoice/utf-8",
+   "kind": "invoice",
+   "encoding": "utf-8",
+   "invoiceNumber": "INV-x",
+   "invoice": {
+    "businessInfo": {
+     "name": "Mi Restaurante",
+     "nit": "900.000.000-1",
+     "address": "Calle 1 #2-3",
+     "phone": "3001234567"
+    },
+    "bill": {
+     "subtotal": 10000,
+     "tax": 1900,
+     "taxPercentage": 19,
+     "tip": 0,
+     "tipPercentage": 0,
+     "total": 11900,
+     "totalDiscounts": 0
+    },
+    "date": "2026-10-06T15:00:52",
+    "table": 5,
+    "waiter": "Juan",
+    "paymentMethod": "cash",
+    "cashReceived": 20000,
+    "cashChange": 8100
+   },
+   "displayItems": [
+    {
+     "name": "Hamburguesa",
+     "quantity": 2,
+     "price": 29500,
+     "modifiers": [
+      {
+       "group": "Término",
+       "name": "Medio",
+       "price": 0
+      },
+      {
+       "group": "Adiciones",
+       "name": "Queso cheddar",
+       "price": 3000
+      },
+      {
+       "group": "Sin",
+       "name": "Sin cebolla",
+       "price": 0
+      },
+      {
+       "group": "Adiciones",
+       "name": "Tocineta ahumada doble extra grande",
+       "price": 4500.5
+      }
+     ]
+    },
+    {
+     "name": "Jugo",
+     "quantity": 1,
+     "price": 5000,
+     "modifiers": null
+    }
+   ],
+   "lines": [
+    "MI RESTAURANTE",
+    "NIT: 900.000.000-1",
+    "Calle 1 #2-3",
+    "Tel: 3001234567",
+    "--------------------------------",
+    "FACTURA:    INV-x",
+    "FECHA:      06/10/2026 15:00:52",
+    "MESA:       5",
+    "MESERO:     Juan",
+    "--------------------------------",
+    "CANT DESCRIPCION            IMPORTE",
+    "2   Hamburguesa             59.000",
+    "  Término: Medio",
+    "  + Queso cheddar           $3.000",
+    "  Sin cebolla",
+    "  + Tocineta ahumada dob    $4.500",
+    "1   Jugo                     5.000",
+    "--------------------------------",
+    "SUBTOTAL: 10.000",
+    "IVA: 1.900",
+    "TOTAL SIN PROPINA: 11.900",
+    "PROPINA VOLUNTARIA (0%): 0",
+    "TOTAL A PAGAR: 11.900",
+    "--------------------------------",
+    "FORMA DE PAGO: Efectivo",
+    "RECIBIDO: 20.000",
+    "CAMBIO: 8.100",
+    "--------------------------------",
+    "GRACIAS POR SU COMPRA!",
+    "VUELVA PRONTO"
+   ],
+   "hex": "1b61014d492052455354415552414e54450a1b61014e49543a203930302e3030302e3030302d310a1b610143616c6c6520312023322d330a1b610154656c3a20333030313233343536370a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464143545552413a20202020494e562d780a1b610046454348413a20202020202030362f31302f323032362031353a30303a35320a1b61004d4553413a20202020202020350a1b61004d455345524f3a20202020204a75616e0a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610043414e54204445534352495043494f4e202020202020202020202020494d504f5254450a1b61003220202048616d62757267756573612020202020202020202020202035392e3030300a1b6100202054c3a9726d696e6f3a204d6564696f0a1b610020202b20517565736f2063686564646172202020202020202020202024332e3030300a1b6100202053696e206365626f6c6c610a1b610020202b20546f63696e657461206168756d61646120646f622020202024342e3530300a1b6100312020204a75676f202020202020202020202020202020202020202020352e3030300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100535542544f54414c3a2031302e3030300a1b61004956413a20312e3930300a1b6100544f54414c2053494e2050524f50494e413a2031312e3930300a1b610050524f50494e4120564f4c554e544152494120283025293a20300a1b45011b6100544f54414c20412050414741523a2031312e3930300a1b45001b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6100464f524d41204445205041474f3a20456665637469766f0a1b6100524543494249444f3a2032302e3030300a1b610043414d42494f3a20382e3130300a1b61012d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014752414349415320504f5220535520434f4d505241210a1b61015655454c56412050524f4e544f0a0a0a0a1d5600"
   }
  ]
 }

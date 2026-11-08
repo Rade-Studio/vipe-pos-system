@@ -431,3 +431,56 @@ describe('renderInvoice - delivery', () => {
     )
   })
 })
+
+// -----------------------------------------------------------
+// F7 T4: a line's options under it (print payload or cart shape)
+// -----------------------------------------------------------
+describe('modifier lines (F7)', () => {
+  const printMods = [
+    { group: 'Término', name: 'Medio', price: 0 },
+    { group: 'Adiciones', name: 'Queso cheddar', price: 3000 },
+    { group: 'Sin', name: 'Sin cebolla', price: 0 },
+  ]
+  const cartMods = printMods.map(({ group, ...rest }, i) => ({ groupId: `g-${i}`, groupName: group, optionId: `o-${i}`, ...rest }))
+  const bill = { subtotal: 50000, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 50000, totalDiscounts: 0 }
+  const business = { name: 'R', nit: '1', address: 'A', phone: 'P' }
+
+  it.each([['print payload', printMods], ['cart line', cartMods]])('comanda: one indented line per option before the comments (%s)', (_, modifiers) => {
+    const { lines } = renderKitchenOrder({
+      table: 1,
+      waiter: 'Ana',
+      items: [{ name: 'Hamburguesa', quantity: 2, comments: 'bien caliente', modifiers }],
+    })
+    const at = lines.findIndex((l) => l.text.startsWith('HAMBURGUESA'))
+    expect(lines.slice(at + 1, at + 5).map((l) => l.text)).toEqual([
+      '  Término: Medio',
+      '  + Queso cheddar',
+      '  Sin cebolla',
+      '  bien caliente',
+    ])
+  })
+
+  it.each([['print payload', printMods], ['cart line', cartMods]])('invoice: the options with their price under the line (%s)', (_, modifiers) => {
+    const { lines } = renderInvoice({
+      invoiceNumber: 'I',
+      invoice: { businessInfo: business, bill, paymentMethod: 'cash' },
+      displayItems: [{ name: 'Hamburguesa', quantity: 2, price: 25000, modifiers }],
+    })
+    const at = lines.findIndex((l) => l.text.startsWith('2   Hamburguesa'))
+    expect(lines[at].text).toBe('2   Hamburguesa             50.000')
+    expect(lines.slice(at + 1, at + 4).map((l) => l.text)).toEqual([
+      '  Término: Medio',
+      '  + Queso cheddar           $3.000',
+      '  Sin cebolla',
+    ])
+  })
+
+  it('lines without options render exactly as before', () => {
+    const plain = { table: 5, waiter: 'Juan', items: [{ name: 'Arepa', quantity: 2, comments: 'sin queso' }] }
+    const withEmpty = { ...plain, items: [{ ...plain.items[0], modifiers: [] }] }
+    expect(renderKitchenOrder(withEmpty).lines.slice(1)).toEqual(renderKitchenOrder(plain).lines.slice(1))
+    const inv = { invoiceNumber: 'I', invoice: { businessInfo: business, bill, date: new Date().toISOString() } }
+    const item = { name: 'Arepa', quantity: 1, price: 5000 }
+    expect(renderInvoice({ ...inv, displayItems: [{ ...item, modifiers: [] }] })).toEqual(renderInvoice({ ...inv, displayItems: [item] }))
+  })
+})

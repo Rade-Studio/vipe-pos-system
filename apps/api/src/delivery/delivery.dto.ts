@@ -80,6 +80,7 @@ export const createDeliveryOrderSchema = z
           dishId: z.guid(),
           quantity: z.number().int(),
           comments: z.string().max(TEXT_MAX).nullable().optional(),
+          modifiers: z.array(z.strictObject({ optionId: z.guid() })).max(50).optional(),
         }),
       )
       .max(MAX_LINES),
@@ -225,10 +226,21 @@ class CreateDeliveryAddress {
   @ApiPropertyOptional({ description: 'Store the new address in customer_addresses (default false).' }) save?: boolean;
 }
 
+class CreateDeliveryItemModifier {
+  @ApiProperty({ format: 'uuid' }) optionId!: string;
+}
+
 class CreateDeliveryItem {
   @ApiProperty({ format: 'uuid' }) dishId!: string;
   @ApiProperty({ type: 'integer', description: `Integer; 1..999 ${BY_RPC}.` }) quantity!: number;
   @ApiPropertyOptional({ type: String, nullable: true, maxLength: TEXT_MAX }) comments?: string | null;
+  @ApiPropertyOptional({
+    type: [CreateDeliveryItemModifier],
+    maxItems: 50,
+    description:
+      'Options of the line (F7): priced and checked like table orders; 422 code modifier_invalid | modifier_inactive | modifier_duplicate | modifier_required | modifier_max.',
+  })
+  modifiers?: CreateDeliveryItemModifier[];
 }
 
 export class CreateDeliveryOrderRequest {

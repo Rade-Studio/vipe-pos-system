@@ -64,6 +64,9 @@ pub fn render_kitchen_order(order: &Value, now: NaiveDateTime) -> Result<Vec<Pri
         let qty = pystr(get(item, "quantity", &one));
         let comments = str_or(item.get("comments").unwrap_or(&Value::Null), "")?.trim();
         lines.push(left(format!("{} x{qty}", ljust(&name, 30))));
+        for (label, _) in modifier_rows(item)? {
+            lines.push(left(format!("  {label}")));
+        }
         if !comments.is_empty() {
             lines.push(left(format!("  {}", capitalize(comments))));
         }
@@ -133,6 +136,14 @@ pub fn render_invoice(
         let qty = get(item, "quantity", &one);
         let price = Num::of(get(item, "price", &zero))?.mul(Num::of(qty)?);
         lines.push(left(format!("{}{}{}", ljust(&pystr(qty), 4), ljust_trunc(name, 20), rjust(&currency(price), 10))));
+        // F7: the options with their unit price; the line total above already includes them.
+        for (label, opt_price) in modifier_rows(item)? {
+            if opt_price.gt(Num::Int(0)) {
+                lines.push(left(format!("  {}{}", ljust_trunc(&label, 22), rjust(&format!("${}", currency(opt_price)), 10))));
+            } else {
+                lines.push(left(format!("  {label:.32}")));
+            }
+        }
     }
     lines.push(center(RULE));
 
@@ -170,6 +181,31 @@ pub fn render_invoice(
     lines.push(center("GRACIAS POR SU COMPRA!"));
     lines.push(center("VUELVA PRONTO"));
     Ok(lines)
+}
+
+/// `_modifier_rows`: (label, price) per option of a line (`modifiers [{group, name, price}]`).
+/// Priced: "+ name"; $0: "Group: name" unless the name starts with the group. Malformed entries print nothing.
+fn modifier_rows(item: &Map<String, Value>) -> Result<Vec<(String, Num)>, RenderError> {
+    let Some(Value::Array(raw)) = item.get("modifiers") else { return Ok(vec![]) };
+    let or_empty = |v: Option<&Value>| v.filter(|v| py::truthy(v)).map(pystr).unwrap_or_default();
+    let mut rows = Vec::new();
+    for modifier in raw.iter().filter_map(Value::as_object) {
+        let name = or_empty(modifier.get("name"));
+        let group = or_empty(modifier.get("group")).trim().to_string();
+        let price = match modifier.get("price") {
+            Some(v @ Value::Number(_)) => Num::of(v)?,
+            _ => Num::Int(0),
+        };
+        let label = if price.gt(Num::Int(0)) {
+            format!("+ {name}")
+        } else if name.to_lowercase().starts_with(&group.to_lowercase()) {
+            name
+        } else {
+            format!("{group}: {name}")
+        };
+        rows.push((label, price));
+    }
+    Ok(rows)
 }
 
 /// `_delivery_block`: the `delivery` dict with a numeric (non-bool) fee, else None.

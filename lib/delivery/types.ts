@@ -219,6 +219,8 @@ export interface CreateDeliveryItemInput {
   dishId: string
   quantity: number
   comments?: string | null
+  /** F7: the chosen options; priced and checked by the server (422 modifier_*). */
+  modifiers?: { optionId: string }[]
 }
 
 export interface CreateDeliveryOrderInput {

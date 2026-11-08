@@ -190,6 +190,7 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
 import { WaiterView } from "./WaiterView"
 import { ApiError } from "@/lib/api/errors"
 import { menuCategory, menuDish } from "@/lib/order-steps/fixtures"
+import { modifierGroup } from "@/lib/modifiers/fixtures"
 
 // jsdom has no layout: WaiterView scrolls the menu into view after a table is
 // picked, which jsdom does not implement.
@@ -1394,38 +1395,34 @@ describe("WaiterView — guests, order note, sent time and order number (T22)", 
     expect(env.orderCreate).toHaveBeenCalledWith({ tableId: "t-1", orderType: "dine_in", items: [item] })
   })
 
-  it("C1 chips compose 'chip1, chip2, free note' in tap order; merge on same dish+comment; undo of merge", async () => {
+  it("S5: the line comment is the free note only; merge on same dish + note; undo of merge", async () => {
     const A = "aaaaaaaa-1111-4111-8111-111111111111"
     env.menuTree.mockResolvedValue({
-      categories: [
-        menuCategory({ id: "cat-1", name: "Platos", dishes: [menuDish({ id: A, name: "Bandeja", price: 30000, quickNotes: ["Sin cebolla", "Término medio"] })] }),
-      ],
+      categories: [menuCategory({ id: "cat-1", name: "Platos", dishes: [menuDish({ id: A, name: "Bandeja", price: 30000 })] })],
       uncategorized: [],
     })
     const cart = () => (useCartStore.getState().cartItems["t-1"] ?? []).map((l) => [l.name, l.quantity, l.comments ?? null])
-    const pick = async (qty: number, note: string | undefined, chips: string[]) => {
+    const pick = async (qty: number, note: string | undefined) => {
       await tap(/^Platos/)
       await tap(/^Bandeja,/)
       for (let i = 1; i < qty; i += 1) await tap("Sumar uno")
-      for (const c of chips) await tap(new RegExp(`^${c}$`))
       if (note !== undefined) fireEvent.change(screen.getByLabelText(/Nota para cocina/), { target: { value: note } })
       await tap(new RegExp(`^Agregar ${qty} ·`))
     }
     await selectTable()
     await openOrderFlow()
-    await pick(1, "rápido", ["Término medio", "Sin cebolla"])
-    await pick(2, " rápido ", ["Término medio", "Sin cebolla"])
-    await pick(1, "rápido", ["Sin cebolla", "Término medio"])
-    await pick(1, undefined, ["Sin cebolla"])
+    expect(screen.queryByText("Indicaciones rápidas")).not.toBeInTheDocument()
+    await pick(1, "rápido")
+    await pick(2, " rápido ")
+    await pick(1, undefined)
     expect(cart()).toEqual([
-      ["Bandeja", 3, "Término medio, Sin cebolla, rápido"],
-      ["Bandeja", 1, "Sin cebolla, Término medio, rápido"],
-      ["Bandeja", 1, "Sin cebolla"],
+      ["Bandeja", 3, "rápido"],
+      ["Bandeja", 1, null],
     ])
     const undo = env.toastFn.mock.calls.filter(([a]: any) => a.title === "✓ 2× Bandeja agregada")[0][0].action.props.onClick
     await act(async () => undo())
     await flush()
-    expect(cart()[0]).toEqual(["Bandeja", 1, "Término medio, Sin cebolla, rápido"])
+    expect(cart()[0]).toEqual(["Bandeja", 1, "rápido"])
   })
 
   it("refuses a new order on an inactive table without assigning it", async () => {
@@ -1693,5 +1690,120 @@ describe("WaiterView — reservations (reservas-mesas T2, S1, S2, S5)", () => {
 
     expect(env.releaseTable).toHaveBeenCalledWith("t-1", {})
     expect(env.toastFn).not.toHaveBeenCalledWith(expect.objectContaining({ title: "Acción no permitida" }))
+  })
+})
+
+describe("WaiterView — modifiers (F7 T3)", () => {
+  const BURGER = "55555555-5555-4555-8555-555555555555"
+  const PAPAS = "66666666-6666-4666-8666-666666666666"
+  const termino = modifierGroup({ id: "g-t", name: "Término de la carne", minSelect: 1, maxSelect: 1, options: [["o-azul", "Azul", 0], ["o-medio", "Medio", 0]] })
+  const adic = modifierGroup({ id: "g-a", name: "Adiciones", maxSelect: 3, options: [["o-ched", "Queso cheddar", 3000], ["o-toc", "Tocineta", 4000]] })
+  const menu = {
+    categories: [
+      menuCategory({
+        id: "cat-h",
+        name: "Hamburguesas",
+        dishes: [
+          menuDish({ id: BURGER, name: "Hamburguesa artesanal", price: 22000, modifierGroups: [termino, adic] }),
+          menuDish({ id: PAPAS, name: "Papas", price: 8000 }),
+        ],
+      }),
+    ],
+    uncategorized: [],
+  }
+  const conflict = (message: string, extra: Record<string, unknown>) =>
+    new ApiError(409, "Conflict", message, { statusCode: 409, error: "Conflict", message, ...extra })
+  const sheet = () => screen.getByRole("dialog", { name: "Hamburguesa artesanal" })
+  const pickIn = async (role: "radio" | "checkbox" | "button", name: RegExp) => {
+    await act(async () => {
+      within(sheet()).getByRole(role, { name }).click()
+    })
+    await flush()
+  }
+  const cart = () => useCartStore.getState().cartItems["t-1"] ?? []
+
+  beforeEach(() => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
+    env.menuTree.mockResolvedValue(menu)
+  })
+
+  const addBurger = async (options: RegExp[]) => {
+    await tap(/^Hamburguesas/)
+    await tap(/^Hamburguesa artesanal,/)
+    expect(within(sheet()).getByRole("button", { name: /^Agregar ·/ })).toBeDisabled()
+    await pickIn("radio", /^Medio/)
+    for (const name of options) await pickIn("checkbox", name)
+    await pickIn("button", /^Agregar ·/)
+  }
+  const start = async () => {
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await openOrderFlow()
+  }
+
+  it("adds a dish with options as its own line priced dish + options, and sends modifiers [{optionId}]", async () => {
+    await start()
+    await addBurger([/^Queso cheddar/, /^Tocineta/])
+    await addBurger([/^Queso cheddar/])
+    await tap(/^Hamburguesas/)
+    await tap(/^Papas,/)
+    await tap(/^Agregar 1 ·/)
+    expect(cart().map((line) => [line.name, line.quantity, line.price])).toEqual([
+      ["Hamburguesa artesanal", 1, 29000],
+      ["Hamburguesa artesanal", 1, 25000],
+      ["Papas", 1, 8000],
+    ])
+    await tap("Enviar a cocina (3)")
+    expect(env.orderCreate).toHaveBeenCalledWith({
+      tableId: "t-1",
+      orderType: "dine_in",
+      items: [
+        { dishId: BURGER, quantity: 1, unitPrice: 29000, comments: null, modifiers: [{ optionId: "o-medio" }, { optionId: "o-ched" }, { optionId: "o-toc" }] },
+        { dishId: BURGER, quantity: 1, unitPrice: 25000, comments: null, modifiers: [{ optionId: "o-medio" }, { optionId: "o-ched" }] },
+        { dishId: PAPAS, quantity: 1, unitPrice: 8000, comments: null },
+      ],
+    })
+  })
+
+  it("Ver pedido lists the options under the dish; Cambiar opciones reopens the sheet and Guardar edits the line", async () => {
+    await start()
+    await addBurger([/^Queso cheddar/])
+    await tap(/Ver pedido/)
+    const review = screen.getByRole("region", { name: "Nuevos" })
+    expect(within(review).getByText("Término de la carne: Medio")).toBeInTheDocument()
+    expect(within(review).getByText("+ Queso cheddar")).toBeInTheDocument()
+    await tap("Cambiar opciones de Hamburguesa artesanal")
+    expect(within(sheet()).getByRole("checkbox", { name: /^Queso cheddar/ })).toHaveAttribute("aria-checked", "true")
+    await pickIn("checkbox", /^Tocineta/)
+    await pickIn("button", /^Guardar ·/)
+    expect(cart()).toHaveLength(1)
+    expect(cart()[0]).toMatchObject({ price: 29000, quantity: 1 })
+    expect(cart()[0]!.modifiers!.map((m) => m.optionId)).toEqual(["o-medio", "o-ched", "o-toc"])
+  })
+
+  it("a 409 Price changed with lines reprices each option line with the server unit price", async () => {
+    env.orderCreate.mockRejectedValueOnce(
+      conflict("Price changed", { prices: [{ dishId: BURGER, price: 23000 }], lines: [{ index: 0, dishId: BURGER, unitPrice: 26000 }] }),
+    )
+    await start()
+    await addBurger([/^Queso cheddar/])
+    await tap("Enviar a cocina (1)")
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Precios actualizados" }))
+    expect(cart().map((line) => line.price)).toEqual([26000])
+  })
+
+  it("shows the server's modifier refusal (422) instead of the generic error", async () => {
+    env.orderCreate.mockRejectedValueOnce(
+      new ApiError(422, "Unprocessable Entity", "Falta elegir Término de la carne", { code: "modifier_required", message: "Falta elegir Término de la carne" }),
+    )
+    await start()
+    await addBurger([])
+    await tap("Enviar a cocina (1)")
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ description: "Falta elegir Término de la carne", variant: "destructive" }))
+    expect(cart()).toHaveLength(1)
   })
 })

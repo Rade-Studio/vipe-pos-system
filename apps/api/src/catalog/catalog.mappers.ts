@@ -1,6 +1,7 @@
 import type { schema } from '@vipe/db';
 import { toIso } from '../common/validation';
 import type { Category, CategoryColor, DiscountType, Dish, Promotion } from './catalog.dto';
+import type { DishModifierGroup } from './modifiers.dto';
 
 type CategoryRow = typeof schema.categories.$inferSelect;
 type DishRow = typeof schema.dishes.$inferSelect;
@@ -20,7 +21,8 @@ export const toCategory = (row: CategoryRow, hasSubcategories: boolean): Categor
   updatedAt: toIso(row.updatedAt),
 });
 
-export const toDish = (row: DishRow): Dish => ({
+/** `modifierGroups` comes from ModifiersService.groupsForDishes. */
+export const toDish = (row: DishRow, modifierGroups: DishModifierGroup[] = []): Dish => ({
   id: row.id,
   name: row.name,
   description: row.description,
@@ -31,7 +33,7 @@ export const toDish = (row: DishRow): Dish => ({
   active: row.active,
   allowComments: row.allowComments,
   sortOrder: row.sortOrder,
-  quickNotes: row.quickNotes,
+  modifierGroups,
   createdAt: toIso(row.createdAt),
   updatedAt: toIso(row.updatedAt),
 });

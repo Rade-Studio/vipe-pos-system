@@ -139,6 +139,13 @@ class PrintJobHandlerTests(unittest.TestCase):
         self.assertIn("COMANDA #130 \u2014 Mesa 1".encode("cp1252"), comandas.ticket[0])
         self.assertIn("Estaci\u00f3n: Cocina".encode("cp1252"), comandas.ticket[0])
 
+    def test_command_keeps_the_line_modifiers(self):
+        comandas = FakePrinter()
+        items = [{"name": "Hamburguesa", "quantity": 1, "modifiers": [{"group": "Adiciones", "name": "Queso cheddar", "price": 3000}]}]
+        payload = {**COMMAND_JOB["payload"], "items": items}
+        self.assertTrue(make_handler(comandas=comandas).handle({**COMMAND_JOB, "payload": payload}))
+        self.assertIn(b"HAMBURGUESA                    x1\n\x1b\x61\x00  + Queso cheddar\n", comandas.ticket[0])
+
     def test_delivery_command_prints_the_delivery_variant(self):
         comandas = FakePrinter()
         self.assertTrue(make_handler(comandas=comandas).handle(DELIVERY_COMMAND_JOB))

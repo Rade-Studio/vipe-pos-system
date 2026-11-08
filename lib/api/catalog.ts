@@ -15,12 +15,17 @@ import type { components } from "./schema"
  * one read, priced and with availability.
  *
  * Menu publication (T20): `getMenuTree` serves the latest publication's
- * structure with live prices, availability and quick notes, plus the active
+ * structure with live prices, availability and modifier groups, plus the active
  * dishes without category in `uncategorized`; the admin editor reads the live
  * structure with `getMenuDraft`, the "n cambios sin publicar" status with
  * `getMenuPublication` and publishes with `publishMenu` (403 `Solo un
- * administrador puede publicar el menú`). Dishes carry `sortOrder` and
- * `quickNotes` (422 in Spanish when invalid); `reorderDishes` orders one group.
+ * administrador puede publicar el menú`). Dishes carry `sortOrder`;
+ * `reorderDishes` orders one group.
+ *
+ * Modifiers (F7): reusable groups with priced options (`fetchModifierGroups`
+ * and the admin writes below); a dish offers groups through
+ * `setDishModifierGroups` and carries its active groups, with live prices, in
+ * `modifierGroups`. Quick notes are gone: a $0 option covers "Sin cebolla".
  */
 
 type Schemas = components["schemas"]
@@ -40,6 +45,13 @@ export type CreateDishBody = Schemas["CreateDishRequest"]
 export type UpdateDishBody = Schemas["UpdateDishRequest"]
 export type CreatePromotionBody = Schemas["CreatePromotionRequest"]
 export type UpdatePromotionBody = Schemas["UpdatePromotionRequest"]
+export type ModifierGroupDto = Schemas["ModifierGroup"]
+export type ModifierOptionDto = Schemas["ModifierOption"]
+export type DishModifierGroupDto = Schemas["DishModifierGroup"]
+export type CreateModifierGroupBody = Schemas["CreateModifierGroupRequest"]
+export type UpdateModifierGroupBody = Schemas["UpdateModifierGroupRequest"]
+export type CreateModifierOptionBody = Schemas["CreateModifierOptionRequest"]
+export type UpdateModifierOptionBody = Schemas["UpdateModifierOptionRequest"]
 
 /** A 2xx without the body the contract promises. */
 function required<T>(data: T | undefined): T {
@@ -139,6 +151,59 @@ export async function reorderDishes(group: DishGroup, ids: string[]): Promise<Di
 
 export async function deleteDish(id: string): Promise<void> {
   await api.DELETE("/api/catalog/dishes/{id}", byId(id))
+}
+
+// ---- Modifiers --------------------------------------------------------------
+
+/** Groups by sortOrder with their options; `includeInactive` (admin, else 403) adds the inactive ones. */
+export async function fetchModifierGroups(filter: { includeInactive?: boolean } = {}): Promise<ModifierGroupDto[]> {
+  const { data } = await api.GET("/api/catalog/modifier-groups", {
+    params: { query: defined({ includeInactive: flag(filter.includeInactive) }) },
+  })
+  return required(data)
+}
+
+/** Admin. 409 `Ya existe un grupo de modificadores con ese nombre`; 422 in Spanish for the min/max rules. */
+export async function createModifierGroup(body: CreateModifierGroupBody): Promise<ModifierGroupDto> {
+  const { data } = await api.POST("/api/catalog/modifier-groups", { body })
+  return required(data)
+}
+
+export async function updateModifierGroup(id: string, body: UpdateModifierGroupBody): Promise<ModifierGroupDto> {
+  const { data } = await api.PATCH("/api/catalog/modifier-groups/{id}", { ...byId(id), body })
+  return required(data)
+}
+
+/** Also removes its options and dish links; lines already sent keep their options. */
+export async function deleteModifierGroup(id: string): Promise<void> {
+  await api.DELETE("/api/catalog/modifier-groups/{id}", byId(id))
+}
+
+/** Admin. 409 `Ya existe una opción con ese nombre en el grupo`; ingredientId and ingredientQty go together (422). */
+export async function createModifierOption(groupId: string, body: CreateModifierOptionBody): Promise<ModifierOptionDto> {
+  const { data } = await api.POST("/api/catalog/modifier-groups/{id}/options", { ...byId(groupId), body })
+  return required(data)
+}
+
+export async function updateModifierOption(id: string, body: UpdateModifierOptionBody): Promise<ModifierOptionDto> {
+  const { data } = await api.PATCH("/api/catalog/modifier-options/{id}", { ...byId(id), body })
+  return required(data)
+}
+
+export async function deleteModifierOption(id: string): Promise<void> {
+  await api.DELETE("/api/catalog/modifier-options/{id}", byId(id))
+}
+
+/** Admin. The group ids a dish offers, in order, inactive included. */
+export async function fetchDishModifierGroups(dishId: string): Promise<string[]> {
+  const { data } = await api.GET("/api/catalog/dishes/{id}/modifier-groups", byId(dishId))
+  return required(data).groupIds
+}
+
+/** Admin. Replace the dish's groups with exactly `groupIds`, in order, atomically. */
+export async function setDishModifierGroups(dishId: string, groupIds: string[]): Promise<string[]> {
+  const { data } = await api.PUT("/api/catalog/dishes/{id}/modifier-groups", { ...byId(dishId), body: { groupIds } })
+  return required(data).groupIds
 }
 
 // ---- Menu tree --------------------------------------------------------------

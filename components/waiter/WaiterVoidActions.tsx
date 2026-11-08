@@ -17,7 +17,14 @@ interface WaiterVoidActionsProps {
 }
 
 const linesOf = (order: Order): VoidLine[] =>
-  order.items.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, comments: item.comments }))
+  order.items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    price: item.price,
+    quantity: item.quantity,
+    comments: item.comments,
+    modifiers: item.modifiers,
+  }))
 
 /**
  * F3 — the waiter's "Anular plato" per sent line and "Cancelar orden"

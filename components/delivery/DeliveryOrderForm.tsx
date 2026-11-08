@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ArrowLeft, ArrowRight, Check, Loader2, Minus, Plus, Trash2 } from 'lucide-react'
 import { StepPicker, type StepPickerItem } from '@/components/order-steps/StepPicker'
+import { ModifierLines } from '@/components/modifiers/ModifierLines'
 import { useMenuTree } from '@/hooks/use-menu-tree'
 import {
   findCustomerByPhone,
@@ -25,6 +26,7 @@ import {
   orderDraftReducer,
   validateDraft,
   draftTotals,
+  draftLineKey,
   toCreateInput,
   type OrderDraft,
   type OrderDraftAction,
@@ -162,15 +164,21 @@ export function DeliveryOrderForm({
   // A dish picked through the steps goes into the draft with the same merge
   // rule (dish + comments); the returned undo takes back what was just added,
   // only while the line is still as this add left it.
-  const onAddFromSteps = ({ dish, quantity, comments }: StepPickerItem) => {
+  // F7: a dish with options comes from the modifier sheet with its unit price
+  // (dish + options) and is its own line per set of options.
+  const onAddFromSteps = ({ dish, quantity, comments, modifiers, unitPrice }: StepPickerItem) => {
     const note = comments ?? null
-    const existing = draft.cartLines.find((l) => l.dishId === dish.id && (l.comments ?? null) === note)
+    const options = modifiers?.length ? { modifiers } : {}
+    const key = draftLineKey({ dishId: dish.id, comments: note, ...options })
+    const existing = draft.cartLines.find((l) => draftLineKey(l) === key)
     const quantityAfterAdd = (existing?.quantity ?? 0) + quantity
     dispatch({
       type: 'addItem',
-      line: { dishId: dish.id, name: dish.name, unitPrice: dish.price, quantity, comments: note },
+      line: { dishId: dish.id, name: dish.name, unitPrice: unitPrice ?? dish.price, quantity, comments: note, ...options },
     })
-    return () => dispatch({ type: 'undoAdd', dishId: dish.id, comments: note, quantity, quantityAfterAdd })
+    const optionIds = modifiers?.map((m) => m.optionId)
+    return () =>
+      dispatch({ type: 'undoAdd', dishId: dish.id, comments: note, ...(optionIds ? { optionIds } : {}), quantity, quantityAfterAdd })
   }
 
   // Phone lookup: fires on blur and on Enter while the phone has the
@@ -928,6 +936,7 @@ function CartPanel({
             </div>
             <span className={MONEY}>{formatMoney(line.unitPrice * line.quantity)}</span>
           </div>
+          <ModifierLines modifiers={line.modifiers} unitPrice={line.modifiers?.length ? line.unitPrice : undefined} />
           <Input
             placeholder="Comentario"
             value={line.comments ?? ''}

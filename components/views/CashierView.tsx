@@ -58,6 +58,7 @@ import { pendingDeliveryPayments } from "@/lib/delivery/kitchen"
 import {
   clockTime,
   entryTotals,
+  billLineKey,
   groupItems,
   matchesQueueSearch,
   partialEntries,
@@ -287,11 +288,11 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       const tableOrders = getOrdersByTable(tableId)
       const items = tableOrders.flatMap((order) => order.items)
 
-      // Agrupar items por nombre y comentarios
+      // Agrupar items por nombre, comentarios y opciones (F7)
       const groupedItems: Record<string, CartItem> = {}
 
       items.forEach((item) => {
-        const key = `${item.name}-${item.comments || ""}`
+        const key = billLineKey(item)
 
         if (!groupedItems[key]) {
           groupedItems[key] = { ...item }
@@ -626,7 +627,14 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const voidLabel = (entry: QueueEntry) =>
     [entry.payOrder.orderNumber ? `#${entry.payOrder.orderNumber}` : null, entry.label].filter(Boolean).join(" · ")
   const voidLines = (order: Order): VoidLine[] =>
-    order.items.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, comments: item.comments }))
+    order.items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      comments: item.comments,
+      ...(item.modifiers?.length ? { modifiers: item.modifiers } : {}),
+    }))
   const openPaymentVoid = (row: PaidOrderRow) =>
     setVoidTarget({
       action: "payment",

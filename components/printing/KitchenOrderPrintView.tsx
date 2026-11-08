@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Printer } from "lucide-react"
 import { formatDate } from "@/utils/helpers"
 import { renderKitchenOrder } from "@/lib/print/renderKitchenOrder"
+import { modifierLabel } from "@/lib/modifiers/rules"
 import type { PrintableKitchenOrder } from "@/types"
 
 interface KitchenOrderPrintViewProps {
@@ -111,6 +112,13 @@ export function KitchenOrderPrintView({ order, onClose }: KitchenOrderPrintViewP
                 <span className="font-bold">{item.name}</span>
                 <span className="font-bold text-xl">x{item.quantity}</span>
               </div>
+              {item.modifiers?.length ? (
+                <ul aria-label="Opciones" className="mt-1 dark:text-gray-300">
+                  {item.modifiers.map((modifier) => (
+                    <li key={modifier.optionId}>{modifierLabel(modifier)}</li>
+                  ))}
+                </ul>
+              ) : null}
               {item.comments && <div className="italic mt-1 dark:text-gray-300">{item.comments}</div>}
             </div>
           ))}

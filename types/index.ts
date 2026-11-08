@@ -81,6 +81,15 @@ export type OrderBill = {
   totalDiscounts: number
 }
 
+/** One chosen option of a line (F7): the server snapshot, its price already in the line's unit price. */
+export type OrderItemModifier = {
+  groupId: string
+  groupName: string
+  optionId: string
+  name: string
+  price: number
+}
+
 export type OrderItem = {
   id: string
   name: string
@@ -89,6 +98,8 @@ export type OrderItem = {
   categoryId: string
   image: string
   comments?: string
+  /** F7: the chosen options; absent or empty on a plain line. */
+  modifiers?: OrderItemModifier[]
   status: OrderItemStatus
   addedAt?: Date
 }
@@ -131,6 +142,8 @@ export type CartItem = {
   categoryId: string
   image: string
   comments?: string
+  /** F7: the chosen options; `price` is the unit price with them (dish price + options, L4). */
+  modifiers?: OrderItemModifier[]
   // Nuevos campos para descuentos
   originalPrice?: number
   discountAmount?: number

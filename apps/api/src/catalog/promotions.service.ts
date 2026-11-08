@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import { UnitOfWork } from '../db/unit-of-work';
 import type { createPromotionSchema, Dish, Promotion, updatePromotionSchema } from './catalog.dto';
 import { toDish, toPromotion } from './catalog.mappers';
+import { ModifiersService } from './modifiers.service';
 import type { PricingPromotion } from './promotion-pricing';
 
 const promotions = schema.promotions;
@@ -14,7 +15,10 @@ type PromotionInput = z.infer<typeof updatePromotionSchema>;
 /** Promotions of the caller's restaurant; RLS scopes every statement to it. */
 @Injectable()
 export class PromotionsService {
-  constructor(private readonly uow: UnitOfWork) {}
+  constructor(
+    private readonly uow: UnitOfWork,
+    private readonly modifiers: ModifiersService,
+  ) {}
 
   async list(): Promise<Promotion[]> {
     const rows = await this.uow.db.select().from(promotions).orderBy(sql`${promotions.createdAt} DESC`);
@@ -66,7 +70,8 @@ export class PromotionsService {
       .innerJoin(schema.dishes, eq(schema.dishes.id, promotionDishes.dishId))
       .where(eq(promotionDishes.promotionId, id))
       .orderBy(schema.dishes.name);
-    return rows.map((row) => toDish(row.dish));
+    const groups = await this.modifiers.groupsForDishes(rows.map((row) => row.dish.id));
+    return rows.map((row) => toDish(row.dish, groups.get(row.dish.id)));
   }
 
   /**

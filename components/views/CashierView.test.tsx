@@ -58,6 +58,15 @@ const dbRow = (over: Record<string, unknown> = {}) => ({
 
 type Row = ReturnType<typeof dbRow>
 
+/** GET /orders lines carry their option snapshot (F7); the wire adapter leaves it to the next read. */
+const withSnapshot = <T extends { items: Array<{ modifiers?: unknown }> }>(dto: T, row: { order_items: unknown[] }) => ({
+  ...dto,
+  items: dto.items.map((item, i) => {
+    const sent = (row.order_items[i] as { modifiers?: unknown } | undefined)?.modifiers
+    return sent ? { ...item, modifiers: sent } : item
+  }),
+})
+
 const ordersIncludes: unknown[] = []
 const getByStatus = vi.fn(async (_statuses: string | string[]): Promise<Row[]> => [dbRow()])
 const getById = vi.fn(async (id: string) => dbRow({ id }))
@@ -120,7 +129,7 @@ vi.mock("@/lib/api/client", () => {
           const withWaiter = String(init.params.query.include ?? "").split(",").includes("waiter")
           return {
             data: rows.map((row) => ({
-              ...orderDtoFromWire(row),
+              ...withSnapshot(orderDtoFromWire(row)!, row),
               ...(withWaiter && "waiter_name" in row ? { waiterName: (row as any).waiter_name } : {}),
             })),
           }
@@ -646,6 +655,31 @@ describe("T14 three-panel layout: queue, detail and the always-visible payment p
     expect(screen.getByTestId("payment-remaining")).toHaveTextContent(/47\.600/)
     expect(registerButton()).toHaveAccessibleName(/^Registrar \$\s47\.600 y cerrar$/)
     expect(registerButton()).toBeDisabled()
+  })
+
+  it("F7: shows each line's options with their price and keeps different options on separate lines", async () => {
+    const ched = { groupId: "g-a", groupName: "Adiciones", optionId: "o-ched", name: "Queso cheddar", price: 3000 }
+    const medio = { groupId: "g-t", groupName: "Término", optionId: "o-medio", name: "Medio", price: 0 }
+    const burger = { name: "Hamburguesa", quantity: 1, comments: null }
+    getByStatus.mockResolvedValueOnce([
+      dbRow({
+        order_items: [
+          { ...burger, id: "oi-1", price: 25_000, modifiers: [medio, ched] },
+          { ...burger, id: "oi-2", price: 25_000, modifiers: [ched, medio] },
+          { ...burger, id: "oi-3", price: 22_000, modifiers: [medio] },
+        ],
+      }) as unknown as Row,
+    ])
+    renderCashier()
+    fireEvent.click(await queueRow("Mesa 1"))
+    const table = await screen.findByRole("table", { name: "Productos de la orden" })
+    const lines = within(table).getAllByRole("row", { name: /Hamburguesa/ })
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toHaveTextContent(/50\.000/)
+    const options = within(lines[0]).getByRole("list", { name: "Opciones" })
+    expect(options).toHaveTextContent("Término: Medio")
+    expect(options).toHaveTextContent(/\+ Queso cheddar\s*\$\s3\.000/)
+    expect(within(lines[1]).getByRole("list", { name: "Opciones" })).not.toHaveTextContent("Queso")
   })
 
   it("filters the queue by table, waiter or order number", async () => {

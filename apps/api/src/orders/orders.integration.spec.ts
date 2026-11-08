@@ -37,7 +37,7 @@ const ORDER_KEYS = [
   'taxPercentage', 'tip', 'tipPercentage', 'total', 'totalDiscounts', 'updatedAt', 'waiterId',
 ];
 const ITEM_KEYS = [
-  'addedAt', 'comments', 'createdAt', 'dishId', 'id', 'name', 'orderId', 'price', 'quantity', 'stationId', 'stationSource', 'status', 'updatedAt',
+  'addedAt', 'comments', 'createdAt', 'dishId', 'id', 'modifiers', 'name', 'orderId', 'price', 'quantity', 'stationId', 'stationSource', 'status', 'updatedAt',
 ];
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 

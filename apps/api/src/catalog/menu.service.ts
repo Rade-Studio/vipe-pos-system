@@ -33,7 +33,7 @@ const bySortOrder = <T extends { sortOrder: number }>(rows: T[]) => [...rows].so
  * publication (T20, 0015 contract). Structure (order, names, colours, icons,
  * active flags of categories and subcategories, subcategory membership) comes
  * from the latest publication; price, dish availability (`active`), stock and
- * quick notes are always live. A snapshot id gone live drops out; a live row
+ * modifier groups are always live. A snapshot id gone live drops out; a live row
  * missing from the snapshot waits for the next publication; no publication
  * serves the live structure. Pricing and availability are the existing rules:
  * DishesService with `pricing: 'promotions'` and SalesService.availability.

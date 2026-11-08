@@ -20,11 +20,8 @@ const p = {
 } as const;
 
 const PUBLISH_FORBIDDEN = 'Solo un administrador puede publicar el menú';
-const TOO_MANY = 'Máximo 12 notas rápidas';
-const NOTE_LENGTH = 'Cada nota rápida debe tener entre 1 y 30 caracteres';
-const NOTE_DUPLICATE = 'Las notas rápidas no se pueden repetir';
 
-describe('menu publication, dish order and quick notes (Testcontainers, vipe_api)', () => {
+describe('menu publication and dish order (Testcontainers, vipe_api)', () => {
   let database: TestDatabase;
   let app: INestApplication;
   const cookies: Record<string, string> = {};
@@ -73,12 +70,12 @@ describe('menu publication, dish order and quick notes (Testcontainers, vipe_api
   };
 
   describe('before the first publication', () => {
-    it('serves the live tree: dishes by sortOrder then name, quick notes, loose dishes with availability', async () => {
+    it('serves the live tree: dishes by sortOrder then name, modifier groups, loose dishes with availability', async () => {
       const body = await tree();
       expect(ids(body.categories)).toEqual([p.drinks, p.mains]);
       expect(ids(body.categories[0].dishes)).toEqual([p.coffee, p.water]);
-      expect(body.categories[0].dishes[0]).toMatchObject({ name: 'Café', sortOrder: 0, quickNotes: ['Sin azúcar'], available: true });
-      expect(body.categories[0].dishes[1]).toMatchObject({ name: 'Agua', sortOrder: 1, quickNotes: [] });
+      expect(body.categories[0].dishes[0]).toMatchObject({ name: 'Café', sortOrder: 0, modifierGroups: [], available: true });
+      expect(body.categories[0].dishes[1]).toMatchObject({ name: 'Agua', sortOrder: 1, modifierGroups: [] });
       expect(body.uncategorized).toEqual([expect.objectContaining({ id: p.loose, categoryId: null, available: true })]);
     });
 
@@ -110,7 +107,7 @@ describe('menu publication, dish order and quick notes (Testcontainers, vipe_api
   });
 
   describe('published vs live', () => {
-    it('keeps the published structure until the next publication; price and quick notes stay live', async () => {
+    it('keeps the published structure until the next publication; price stays live', async () => {
       expect((await adminA().patch(`/api/catalog/categories/${p.drinks}`, { name: 'Bebidas frías' })).status).toBe(200);
       expect((await adminA().put('/api/catalog/dishes/order', { categoryId: p.drinks, subcategoryId: null, ids: [p.water, p.coffee] })).status).toBe(200);
       const added = await adminA().post('/api/catalog/categories', { name: 'Entradas', icon: 'utensils' });
@@ -119,13 +116,13 @@ describe('menu publication, dish order and quick notes (Testcontainers, vipe_api
       expect(wings.status).toBe(201);
       expect(wings.body.sortOrder).toBe(2);
       expect((await adminA().delete(`/api/catalog/dishes/${p.steak}`)).status).toBe(204);
-      expect((await adminA().patch(`/api/catalog/dishes/${p.coffee}`, { price: 4500, quickNotes: ['Doble'] })).status).toBe(200);
+      expect((await adminA().patch(`/api/catalog/dishes/${p.coffee}`, { price: 4500 })).status).toBe(200);
 
       const body = await tree();
       expect(ids(body.categories)).toEqual([p.drinks, p.mains]);
       expect(body.categories[0].name).toBe('Bebidas');
       expect(ids(body.categories[0].dishes)).toEqual([p.coffee, p.water]);
-      expect(body.categories[0].dishes[0]).toMatchObject({ price: 4500, quickNotes: ['Doble'] });
+      expect(body.categories[0].dishes[0]).toMatchObject({ price: 4500 });
       expect(body.categories[1].dishes).toEqual([]);
 
       // rename 1 + two dish orders + new category + new dish + deleted dish
@@ -216,39 +213,13 @@ describe('menu publication, dish order and quick notes (Testcontainers, vipe_api
     });
   });
 
-  describe('quick notes', () => {
-    it('normalises the notes on create and update', async () => {
-      const res = await adminA().post('/api/catalog/dishes', {
-        name: 'Hamburguesa',
-        price: 15000,
-        categoryId: p.mains,
-        quickNotes: ['  Sin   cebolla ', 'Término medio'],
-      });
-      expect(res.status).toBe(201);
-      expect(res.body.quickNotes).toEqual(['Sin cebolla', 'Término medio']);
-      const patched = await adminA().patch(`/api/catalog/dishes/${res.body.id}`, { quickNotes: [] });
-      expect(patched.body.quickNotes).toEqual([]);
-    });
-
-    it.each([
-      ['more than 12', Array.from({ length: 13 }, (_, index) => `Nota ${index}`), TOO_MANY],
-      ['an empty note', ['Bien', '   '], NOTE_LENGTH],
-      ['a note over 30 characters', ['x'.repeat(31)], NOTE_LENGTH],
-      ['a duplicate ignoring case and spaces', ['Sin cebolla', 'sin  CEBOLLA'], NOTE_DUPLICATE],
-    ])('refuses %s with 422 and keeps the stored notes', async (_label, quickNotes, message) => {
-      const res = await adminA().patch(`/api/catalog/dishes/${p.water}`, { quickNotes });
+  describe('quick notes (removed in F7)', () => {
+    it('refuses quickNotes as an unknown field and the dish no longer carries it', async () => {
+      const res = await adminA().patch(`/api/catalog/dishes/${p.water}`, { quickNotes: ['Sin hielo'] });
       expect(res.status).toBe(422);
-      expect(res.body.message).toBe(`quickNotes: ${message}`);
-      expect(await db('SELECT quick_notes FROM dishes WHERE id = $1', [p.water])).toEqual([{ quick_notes: [] }]);
-      expect((await adminA().post('/api/catalog/dishes', { name: 'Nuevo', price: 1, quickNotes })).status).toBe(422);
-    });
-
-    it('accepts exactly 12 notes of 30 characters', async () => {
-      const notes = Array.from({ length: 12 }, (_, index) => `${String(index).padStart(2, '0')}${'n'.repeat(28)}`);
-      const res = await adminA().patch(`/api/catalog/dishes/${p.water}`, { quickNotes: notes });
-      expect(res.status).toBe(200);
-      expect(res.body.quickNotes).toEqual(notes);
-      await adminA().patch(`/api/catalog/dishes/${p.water}`, { quickNotes: [] });
+      expect((await adminA().post('/api/catalog/dishes', { name: 'Nuevo', price: 1, quickNotes: [] })).status).toBe(422);
+      const dish = (await adminA().get('/api/catalog/dishes')).body.find((d: { id: string }) => d.id === p.water);
+      expect(dish).not.toHaveProperty('quickNotes');
     });
   });
 });
@@ -264,13 +235,13 @@ async function seed(url: string) {
   );
   await q(`INSERT INTO subcategories (id, category_id, name, restaurant_id) VALUES ($1, $2, 'Parrilla', $3)`, [p.grill, p.mains, A]);
   await q(
-    `INSERT INTO dishes (id, name, price, category_id, subcategory_id, sort_order, quick_notes, active, restaurant_id) VALUES
-       ($1, 'Agua', 3000, $7, NULL, 1, '{}', true, $9),
-       ($2, 'Café', 4000, $7, NULL, 0, '{"Sin azúcar"}', true, $9),
-       ($3, 'Lomo', 30000, $8, $10, 0, '{}', true, $9),
-       ($4, 'Suelto', 2000, NULL, NULL, 0, '{}', true, $9),
-       ($5, 'Suelto apagado', 2000, NULL, NULL, 1, '{}', false, $9),
-       ($6, 'Plato B', 1000, $11, NULL, 0, '{}', true, $12)`,
+    `INSERT INTO dishes (id, name, price, category_id, subcategory_id, sort_order, active, restaurant_id) VALUES
+       ($1, 'Agua', 3000, $7, NULL, 1, true, $9),
+       ($2, 'Café', 4000, $7, NULL, 0, true, $9),
+       ($3, 'Lomo', 30000, $8, $10, 0, true, $9),
+       ($4, 'Suelto', 2000, NULL, NULL, 0, true, $9),
+       ($5, 'Suelto apagado', 2000, NULL, NULL, 1, false, $9),
+       ($6, 'Plato B', 1000, $11, NULL, 0, true, $12)`,
     [p.water, p.coffee, p.steak, p.loose, p.looseOff, p.dishB, p.drinks, p.mains, A, p.grill, p.categoryB, B],
   );
 }

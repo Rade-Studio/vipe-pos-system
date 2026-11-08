@@ -4,6 +4,7 @@ import type { ReactElement } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { menuCategory, menuDish } from "@/lib/order-steps/fixtures"
+import { modifierGroup } from "@/lib/modifiers/fixtures"
 
 /**
  * T11 (S3, S5) — the Productos step of the new delivery is the waiter's step
@@ -193,5 +194,40 @@ describe("DeliveryOrderForm — Productos uses the step picker (T11)", () => {
       cashChangeFor: null,
       notes: null,
     })
+  })
+})
+
+describe("DeliveryOrderForm — modifier sheet (F7 T3)", () => {
+  const termino = modifierGroup({ id: "g-t", name: "Término", minSelect: 1, maxSelect: 1, options: [["o-medio", "Medio", 0]] })
+  const adic = modifierGroup({ id: "g-a", name: "Adiciones", maxSelect: 2, options: [["o-ched", "Queso cheddar", 3000]] })
+
+  it("adds a dish with options through the same sheet: totals include them and the body carries modifiers", async () => {
+    env.getMenuTree.mockResolvedValue({
+      categories: [
+        menuCategory({ id: "c-h", name: "Hamburguesas", dishes: [menuDish({ id: "d-h", name: "Hamburguesa", price: 22000, modifierGroups: [termino, adic] })] }),
+      ],
+      uncategorized: [],
+    })
+    renderForm()
+    fireEvent.change(screen.getByLabelText("Teléfono"), { target: { value: "3001234567" } })
+    await act(async () => {
+      fireEvent.blur(screen.getByLabelText("Teléfono"))
+    })
+    fireEvent.change(await screen.findByLabelText("Nombre del cliente"), { target: { value: "Luis" } })
+    fireEvent.change(screen.getByLabelText("Dirección"), { target: { value: "Calle 1 # 2-3" } })
+    await openProducts()
+    await click(screen.getByRole("button", { name: /^Hamburguesas/ }))
+    await click(screen.getByRole("button", { name: /^Hamburguesa,/ }))
+    const sheet = screen.getByRole("dialog", { name: "Hamburguesa" })
+    await click(within(sheet).getByRole("radio", { name: /^Medio/ }))
+    await click(within(sheet).getByRole("checkbox", { name: /^Queso cheddar/ }))
+    await click(within(sheet).getByRole("button", { name: /^Agregar ·/ }))
+    expect(summary().textContent?.replace(/\s+/g, " ")).toContain("25.000")
+    await click(formStep("Confirmar"))
+    await click(screen.getByRole("button", { name: "Crear domicilio" }))
+    await waitFor(() => expect(env.createDeliveryOrder).toHaveBeenCalledTimes(1))
+    expect(env.createDeliveryOrder.mock.calls[0]![0].items).toEqual([
+      { dishId: "d-h", quantity: 1, modifiers: [{ optionId: "o-medio" }, { optionId: "o-ched" }] },
+    ])
   })
 })

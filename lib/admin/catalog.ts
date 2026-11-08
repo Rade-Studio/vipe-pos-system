@@ -20,6 +20,7 @@ import type { QueryClient } from "@tanstack/react-query"
 import {
   fetchCategories as listCategories,
   fetchDishes as listDishes,
+  fetchModifierGroups as listModifierGroups,
   fetchPromotions as listPromotions,
   getMenuDraft,
   getMenuPublication,
@@ -28,9 +29,11 @@ import {
   type MenuTreeDto,
   type CategoryDto,
   type DishDto,
+  type ModifierGroupDto,
   type PromotionDto,
 } from "@/lib/api/catalog"
 import { getAll as listSubcategories, type SubcategoryDto } from "@/lib/api/subcategories"
+import { formatCurrency } from "@/utils/helpers"
 import { listStaff, type StaffMember, type StaffRole } from "@/lib/api/staff"
 
 /** Roles the Personal sub-tab manages. Admin accounts are provisioned elsewhere. */
@@ -59,6 +62,8 @@ export const catalogKeys = {
   /** T27: the live structure the next publication serves, and the "n cambios sin publicar" status. */
   draft: ["catalog", "menu", "draft"] as const,
   publication: ["catalog", "menu", "publication"] as const,
+  /** F7: reusable modifier groups, inactive ones too. */
+  modifierGroups: ["catalog", "menu", "modifier-groups"] as const,
   staff: ["catalog", "staff"] as const,
 }
 
@@ -84,6 +89,11 @@ export async function fetchSubcategories(): Promise<SubcategoryDto[]> {
 
 export async function fetchPromotions(): Promise<PromotionDto[]> {
   return listPromotions()
+}
+
+/** Every modifier group with its options, inactive ones too (admin). */
+export async function fetchAdminModifierGroups(): Promise<ModifierGroupDto[]> {
+  return listModifierGroups({ includeInactive: true })
 }
 
 export async function fetchMenuDraft(): Promise<MenuTreeDto> {
@@ -237,24 +247,75 @@ export function publishedAgo(iso: string, now: number = Date.now()): string {
   return `hace ${Math.floor(hours / 24)} d`
 }
 
-// ---- Quick notes (T27): the API's rules and Spanish messages ------------------
+// ---- Modifier groups (F7): the API's rules and Spanish messages --------------
 
-export const QUICK_NOTES_MAX = 12
-export const QUICK_NOTE_MAX_LENGTH = 30
-export const QUICK_NOTE_MESSAGES = {
-  tooMany: "Máximo 12 notas rápidas",
-  length: "Cada nota rápida debe tener entre 1 y 30 caracteres",
-  duplicate: "Las notas rápidas no se pueden repetir",
+export const MODIFIER_SELECT_MAX = 50
+export const MODIFIER_GROUP_MESSAGES = {
+  name: "Escribe el nombre del grupo",
+  required: "Un grupo obligatorio pide al menos una opción y uno opcional ninguna",
+  minMax: "El máximo debe ser mayor o igual al mínimo",
+  optionName: "Cada opción necesita un nombre",
+  optionPrice: "El precio de una opción es un número entero de 0 o más",
+  ingredient: "El ingrediente y su cantidad van juntos",
 } as const
 
-/** `candidate` as the API stores it (trimmed, inner spaces collapsed), or why it cannot join `notes`. */
-export function checkQuickNote(notes: readonly string[], candidate: string): { note: string } | { error: string } {
-  const note = candidate.trim().replace(/\s+/g, " ")
-  const length = [...note].length
-  if (length < 1 || length > QUICK_NOTE_MAX_LENGTH) return { error: QUICK_NOTE_MESSAGES.length }
-  if (notes.some((existing) => existing.toLowerCase() === note.toLowerCase())) return { error: QUICK_NOTE_MESSAGES.duplicate }
-  if (notes.length >= QUICK_NOTES_MAX) return { error: QUICK_NOTE_MESSAGES.tooMany }
-  return { note }
+export interface ModifierRules {
+  required: boolean
+  minSelect: number
+  /** null: no limit. */
+  maxSelect: number | null
+}
+
+/** An option as the editor holds it: price and quantity as typed, "" for no ingredient. */
+export interface ModifierOptionDraft {
+  name: string
+  price: string
+  ingredientId: string
+  ingredientQty: string
+}
+
+/** The rule chip: "Obligatorio · elige 1", "Opcional · hasta 3", "Opcional · sin límite". */
+export function modifierRuleText({ required, minSelect, maxSelect }: ModifierRules): string {
+  if (!required) return maxSelect === null ? "Opcional · sin límite" : `Opcional · hasta ${maxSelect}`
+  if (maxSelect === null) return `Obligatorio · ${minSelect} o más`
+  return maxSelect === minSelect ? `Obligatorio · elige ${minSelect}` : `Obligatorio · de ${minSelect} a ${maxSelect}`
+}
+
+const parseQty = (value: string) => Number(value.trim().replace(",", "."))
+
+/** Why the API would refuse the group, in its words; empty when it can be saved. */
+export function checkModifierGroup(group: ModifierRules & { name: string; options: readonly ModifierOptionDraft[] }): string[] {
+  const errors: string[] = []
+  if (!group.name.trim()) errors.push(MODIFIER_GROUP_MESSAGES.name)
+  if (group.required !== group.minSelect >= 1) errors.push(MODIFIER_GROUP_MESSAGES.required)
+  if (group.maxSelect !== null && group.maxSelect < group.minSelect) errors.push(MODIFIER_GROUP_MESSAGES.minMax)
+  const options = group.options
+  if (options.some((o) => !o.name.trim())) errors.push(MODIFIER_GROUP_MESSAGES.optionName)
+  if (options.some((o) => !/^\d+$/.test(o.price.trim()))) errors.push(MODIFIER_GROUP_MESSAGES.optionPrice)
+  const halfIngredient = (o: ModifierOptionDraft) => {
+    const qty = o.ingredientQty.trim()
+    if (!o.ingredientId) return qty !== ""
+    return !(parseQty(qty) > 0)
+  }
+  if (options.some(halfIngredient)) errors.push(MODIFIER_GROUP_MESSAGES.ingredient)
+  return errors
+}
+
+/** `ingredientQty` as the API takes it: "0,25" → 0.25, null without an ingredient. */
+export function optionIngredientQty(option: ModifierOptionDraft): number | null {
+  return option.ingredientId ? parseQty(option.ingredientQty) : null
+}
+
+/** The dishes that offer the group ("Se usa en N platos"); the dish list carries its active groups. */
+export function dishesUsingGroup(dishes: readonly DishDto[], groupId: string): DishDto[] {
+  return dishes.filter((dish) => (dish.modifierGroups ?? []).some((group) => group.id === groupId))
+}
+
+/** "$0 a +$3.000" for the options of a group. */
+export function modifierPriceRange(options: readonly { price: number }[]): string {
+  if (options.length === 0) return "Sin opciones"
+  const top = Math.max(...options.map((o) => o.price))
+  return top > 0 ? `${formatCurrency(Math.min(...options.map((o) => o.price)))} a +${formatCurrency(top)}` : `Todas ${formatCurrency(0)}`
 }
 
 // ---- Tile name hint (T27, L19 e) ----------------------------------------------

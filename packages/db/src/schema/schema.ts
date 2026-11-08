@@ -209,8 +209,6 @@ export const dishes = pgTable("dishes", {
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
 	subcategoryId: uuid("subcategory_id"),
 	sortOrder: integer("sort_order").default(0).notNull(),
-	// Normalised by the dishes_normalize_quick_notes trigger; CHECK private.quick_notes_valid() (0015).
-	quickNotes: text("quick_notes").array().default(sql`'{}'::text[]`).notNull(),
 	// Station exception (NULL = same as the category); FK (restaurant_id, station_id) -> stations (0020).
 	stationId: uuid("station_id"),
 }, (table) => [
@@ -238,7 +236,8 @@ export const dishes = pgTable("dishes", {
 		}).onDelete("restrict"),
 	check("dishes_subcategory_category_check", sql`(subcategory_id IS NULL) OR (category_id IS NOT NULL)`),
 	index("idx_dishes_menu_order").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.categoryId.asc().nullsLast().op("uuid_ops"), table.subcategoryId.asc().nullsLast().op("uuid_ops"), table.sortOrder.asc().nullsLast().op("int4_ops")),
-	check("dishes_quick_notes_check", sql`private.quick_notes_valid(quick_notes)`),
+	// Same-restaurant key of dish_modifier_groups (0023).
+	unique("dishes_restaurant_id_id_key").on(table.restaurantId, table.id),
 ]);
 
 export const ingredientCategories = pgTable("ingredient_categories", {
@@ -361,6 +360,8 @@ export const ingredients = pgTable("ingredients", {
 			name: "ingredients_restaurant_id_fkey"
 		}),
 	unique("ingredients_restaurant_id_sku_key").on(table.restaurantId, table.sku),
+	// Same-restaurant key of modifier_options.ingredient_id (0023).
+	unique("ingredients_restaurant_id_id_key").on(table.restaurantId, table.id),
 	pgPolicy("ingredients_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("ingredients_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("ingredients_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
@@ -2009,4 +2010,122 @@ export const desktopReleases = pgTable("desktop_releases", {
 	primaryKey({ columns: [table.channel, table.target, table.version], name: "desktop_releases_pkey" }),
 	pgPolicy("desktop_releases_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`true` }),
 	check("desktop_releases_channel_check", sql`channel = ANY (ARRAY['stable'::text, 'pilot'::text])`),
+]);
+
+const ADMIN_TENANT = sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))`;
+const TENANT = sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))`;
+
+/** Reusable modifier groups (0023, F7): required exactly when min_select >= 1; max_select NULL = no limit. Staff read, admin writes. */
+export const modifierGroups = pgTable("modifier_groups", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	name: text().notNull(),
+	required: boolean().default(false).notNull(),
+	minSelect: integer("min_select").default(0).notNull(),
+	maxSelect: integer("max_select"),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	unique("modifier_groups_restaurant_id_id_key").on(table.restaurantId, table.id),
+	uniqueIndex("modifier_groups_restaurant_id_name_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), sql`lower(name)`),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "modifier_groups_restaurant_id_fkey"
+		}),
+	pgPolicy("modifier_groups_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("modifier_groups_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: ADMIN_TENANT }),
+	pgPolicy("modifier_groups_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: ADMIN_TENANT, withCheck: ADMIN_TENANT }),
+	pgPolicy("modifier_groups_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: ADMIN_TENANT }),
+	check("modifier_groups_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 60) AND (name = btrim(name))`),
+	check("modifier_groups_select_check", sql`(min_select >= 0) AND (min_select <= 50) AND ((max_select IS NULL) OR ((max_select >= 1) AND (max_select <= 50) AND (max_select >= min_select))) AND (required = (min_select >= 1))`),
+]);
+
+/** Options of a modifier group (0023): price added to the line; optional ingredient_qty of ingredient_id per unit. */
+export const modifierOptions = pgTable("modifier_options", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	groupId: uuid("group_id").notNull(),
+	name: text().notNull(),
+	price: numeric({ precision: 10, scale:  2 }).default('0').notNull(),
+	ingredientId: uuid("ingredient_id"),
+	ingredientQty: numeric("ingredient_qty", { precision: 14, scale:  3 }),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("modifier_options_group_id_name_key").using("btree", table.groupId.asc().nullsLast().op("uuid_ops"), sql`lower(name)`),
+	index("idx_modifier_options_ingredient_id").using("btree", table.ingredientId.asc().nullsLast().op("uuid_ops")).where(sql`(ingredient_id IS NOT NULL)`),
+	foreignKey({
+			columns: [table.restaurantId, table.groupId],
+			foreignColumns: [modifierGroups.restaurantId, modifierGroups.id],
+			name: "modifier_options_group_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.ingredientId],
+			foreignColumns: [ingredients.restaurantId, ingredients.id],
+			name: "modifier_options_ingredient_id_fkey"
+		}).onDelete("restrict"),
+	pgPolicy("modifier_options_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("modifier_options_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: ADMIN_TENANT }),
+	pgPolicy("modifier_options_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: ADMIN_TENANT, withCheck: ADMIN_TENANT }),
+	pgPolicy("modifier_options_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: ADMIN_TENANT }),
+	check("modifier_options_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 60) AND (name = btrim(name))`),
+	check("modifier_options_price_check", sql`price >= (0)::numeric`),
+	check("modifier_options_ingredient_check", sql`((ingredient_id IS NULL) = (ingredient_qty IS NULL)) AND ((ingredient_qty IS NULL) OR (ingredient_qty > (0)::numeric))`),
+]);
+
+/** Groups a dish offers, in sort_order (0023). */
+export const dishModifierGroups = pgTable("dish_modifier_groups", {
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	dishId: uuid("dish_id").notNull(),
+	groupId: uuid("group_id").notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.dishId, table.groupId], name: "dish_modifier_groups_pkey" }),
+	index("idx_dish_modifier_groups_group_id").using("btree", table.groupId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId, table.dishId],
+			foreignColumns: [dishes.restaurantId, dishes.id],
+			name: "dish_modifier_groups_dish_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.groupId],
+			foreignColumns: [modifierGroups.restaurantId, modifierGroups.id],
+			name: "dish_modifier_groups_group_id_fkey"
+		}).onDelete("cascade"),
+	pgPolicy("dish_modifier_groups_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("dish_modifier_groups_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: ADMIN_TENANT }),
+	pgPolicy("dish_modifier_groups_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: ADMIN_TENANT, withCheck: ADMIN_TENANT }),
+	pgPolicy("dish_modifier_groups_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: ADMIN_TENANT }),
+]);
+
+/** Snapshot of the options chosen on an order line (0023); vipe_api only reads (written by SECURITY DEFINER functions). */
+export const orderItemModifiers = pgTable("order_item_modifiers", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	orderItemId: uuid("order_item_id").notNull(),
+	groupId: uuid("group_id").notNull(),
+	groupName: text("group_name").notNull(),
+	optionId: uuid("option_id").notNull(),
+	optionName: text("option_name").notNull(),
+	price: numeric({ precision: 10, scale:  2 }).notNull(),
+	ingredientId: uuid("ingredient_id"),
+	ingredientQty: numeric("ingredient_qty", { precision: 14, scale:  3 }),
+	sortOrder: integer("sort_order").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	unique("order_item_modifiers_order_item_id_option_id_key").on(table.orderItemId, table.optionId),
+	index("idx_order_item_modifiers_order_item_id").using("btree", table.orderItemId.asc().nullsLast().op("uuid_ops"), table.sortOrder.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.restaurantId, table.orderItemId],
+			foreignColumns: [orderItems.restaurantId, orderItems.id],
+			name: "order_item_modifiers_item_fkey"
+		}).onDelete("cascade"),
+	pgPolicy("order_item_modifiers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	check("order_item_modifiers_price_check", sql`price >= (0)::numeric`),
+	check("order_item_modifiers_ingredient_check", sql`((ingredient_id IS NULL) = (ingredient_qty IS NULL)) AND ((ingredient_qty IS NULL) OR (ingredient_qty > (0)::numeric))`),
 ]);

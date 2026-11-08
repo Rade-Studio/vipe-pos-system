@@ -2,9 +2,10 @@
 
 import { useState } from "react"
 import { AlertCircle, ArrowRight, Bike, Check, UtensilsCrossed } from "lucide-react"
-import type { Order } from "@/types"
+import type { Order, OrderItemModifier } from "@/types"
 import { cn } from "@/lib/utils"
 import { isServedItem, pendingItems } from "@/lib/kitchen/order"
+import { modifierLabel } from "@/lib/modifiers/rules"
 import {
   formatElapsed,
   newItemIdsOf,
@@ -55,12 +56,13 @@ interface ItemGroup {
   key: string
   name: string
   comments?: string
+  modifiers?: OrderItemModifier[]
   quantity: number
   ids: string[]
   served: boolean
 }
 
-// Identical lines (same name, comment, send and state) render as one row;
+// Identical lines (same name, options, comment, send and state) render as one row;
 // its ✓ serves the first line, as the previous kitchen card did. Served lines
 // stay, struck through as "Entregado" (T23). The send, not the exact
 // millisecond, groups them: one send can straddle a millisecond.
@@ -69,8 +71,18 @@ function groupItems(order: Order): ItemGroup[] {
   const sendOf = sendIndexOf(order)
   for (const item of order.items) {
     const served = isServedItem(item)
-    const key = `${item.name}|${item.comments || ""}|${sendOf.get(item.id) ?? "?"}|${served}`
-    const group = groups.get(key) ?? { key, name: item.name, comments: item.comments, quantity: 0, ids: [], served }
+    // F7: the sorted option ids, so two burgers with different options never merge.
+    const options = (item.modifiers ?? []).map((modifier) => modifier.optionId).sort().join(",")
+    const key = `${item.name}|${options}|${item.comments || ""}|${sendOf.get(item.id) ?? "?"}|${served}`
+    const group = groups.get(key) ?? {
+      key,
+      name: item.name,
+      comments: item.comments,
+      modifiers: item.modifiers,
+      quantity: 0,
+      ids: [],
+      served,
+    }
     group.quantity += item.quantity
     group.ids.push(item.id)
     groups.set(key, group)
@@ -187,6 +199,7 @@ export function KitchenTicket({
           return (
             <li
               key={group.key}
+              data-line
               className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2.5 border-line py-3 [&+&]:border-t"
             >
               <span
@@ -210,6 +223,16 @@ export function KitchenTicket({
                     Nuevo
                   </span>
                 )}
+                {group.modifiers?.length ? (
+                  // No prices in the kitchen (S6): only what to cook.
+                  <span role="list" aria-label="Opciones" className="mt-1 grid gap-0.5 text-[15px] font-medium text-fg-2">
+                    {group.modifiers.map((modifier) => (
+                      <span role="listitem" key={modifier.optionId}>
+                        {modifierLabel(modifier)}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
                 {group.comments && (
                   <span className="mt-1 block text-[15px] font-medium text-status-kitchen-fg">{group.comments}</span>
                 )}

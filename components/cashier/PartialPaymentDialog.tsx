@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatCurrency } from "@/utils/helpers"
 import { Plus, Minus } from "lucide-react"
 import type { CartItem } from "@/types"
+import { ModifierLines } from "@/components/modifiers/ModifierLines"
 
 interface PartialPaymentDialogProps {
   open: boolean
@@ -165,6 +166,7 @@ export function PartialPaymentDialog({
                           {formatCurrency(item.price)} c/u × {item.quantity} ={" "}
                           {formatCurrency(item.price * item.quantity)}
                         </div>
+                        <ModifierLines modifiers={item.modifiers} />
                         {item.comments && <div className="text-xs italic">{item.comments}</div>}
                       </div>
                     </div>

@@ -5,6 +5,7 @@ import { UnitOfWork } from '../db/unit-of-work';
 import { type createDishSchema, type Dish, DISH_MESSAGES, type dishListQuerySchema, type updateDishSchema } from './catalog.dto';
 import { toDish } from './catalog.mappers';
 import { applyPromotionsToDishes } from './promotion-pricing';
+import { ModifiersService } from './modifiers.service';
 import { PromotionsService } from './promotions.service';
 
 const dishes = schema.dishes;
@@ -17,6 +18,7 @@ export class DishesService {
   constructor(
     private readonly uow: UnitOfWork,
     private readonly promotions: PromotionsService,
+    private readonly modifiers: ModifiersService,
   ) {}
 
   /** Ordered by name; `pricing: 'promotions'` applies the promotions active now (server clock). */
@@ -32,7 +34,7 @@ export class DishesService {
         ),
       )
       .orderBy(dishes.name);
-    const list = rows.map(toDish);
+    const list = await this.withModifiers(rows);
     if (query.pricing !== 'promotions' || list.length === 0) {
       return list;
     }
@@ -63,7 +65,7 @@ export class DishesService {
         .values({ ...(toColumns(input) as typeof dishes.$inferInsert), sortOrder })
         .returning(),
     );
-    return toDish(row);
+    return (await this.withModifiers([row]))[0];
   }
 
   async update(id: string, input: DishInput): Promise<Dish> {
@@ -91,7 +93,7 @@ export class DishesService {
     if (!row) {
       throw new NotFoundException('Dish not found');
     }
-    return toDish(row);
+    return (await this.withModifiers([row]))[0];
   }
 
   /**
@@ -116,7 +118,7 @@ export class DishesService {
       }
     }
     const rows = await this.uow.db.select().from(dishes).where(inGroup).orderBy(dishes.sortOrder, dishes.name, dishes.id);
-    return rows.map(toDish);
+    return this.withModifiers(rows);
   }
 
   async remove(id: string): Promise<void> {
@@ -124,6 +126,12 @@ export class DishesService {
     if (deleted.length === 0) {
       throw new NotFoundException('Dish not found');
     }
+  }
+
+  /** The dishes with the modifier groups they offer (one query for all). */
+  private async withModifiers(rows: (typeof dishes.$inferSelect)[]): Promise<Dish[]> {
+    const groups = await this.modifiers.groupsForDishes(rows.map((row) => row.id));
+    return rows.map((row) => toDish(row, groups.get(row.id)));
   }
 
   /**

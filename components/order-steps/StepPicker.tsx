@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useReducer, useRef, type ReactNode } from "react"
-import { ArrowLeft, Check, ChevronRight, Minus, Plus } from "lucide-react"
+import { useEffect, useReducer, useRef, useState, type ReactNode } from "react"
+import { ArrowLeft, Check, ChevronRight, Layers, Minus, Plus } from "lucide-react"
 
 import type { MenuTreeCategoryDto, MenuTreeDishDto } from "@/lib/api/catalog"
 import { categoryMeta, dishCount, dishesOf, NO_SUBCATEGORY, skipsSubcategories, subcategoryChoices } from "@/lib/order-steps/menu"
@@ -25,6 +25,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ToastAction } from "@/components/ui/toast"
 import { CategoryIcon } from "./CategoryIcon"
 import { categoryTone } from "./tones"
+import { ModifierSheet, type ModifierSheetResult } from "@/components/modifiers/ModifierSheet"
+import type { LineModifier } from "@/lib/modifiers/rules"
 
 export interface StepPickerItem {
   dish: MenuTreeDishDto
@@ -32,6 +34,9 @@ export interface StepPickerItem {
   quantity: number
   /** The optional note for the kitchen, trimmed; absent when empty. */
   comments?: string
+  /** F7: the chosen options and the unit price with them; only for a dish with modifier groups. */
+  modifiers?: LineModifier[]
+  unitPrice?: number
 }
 
 export interface StepPickerProps {
@@ -72,6 +77,9 @@ const TILE =
 const FULL_GRID = "grid grid-cols-2 gap-2.5 md:grid-cols-3 md:gap-3 xl:grid-cols-4 xl:gap-3.5"
 const EMBEDDED_GRID = "grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3"
 const FOCUS = "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
+
+const subcategoryValueOf = (category: MenuTreeCategoryDto, id: string | null) =>
+  id === null ? null : (category.subcategories.find((sub) => sub.id === id)?.name ?? null)
 
 function Bar({ className }: { className: string }) {
   return <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1.5", className)} />
@@ -134,6 +142,8 @@ export function StepPicker({
   const headingRef = useRef<HTMLHeadingElement>(null)
   const mainRef = useRef<HTMLElement>(null)
   const direction = useRef<"fwd" | "back">("fwd")
+  // F7: a dish with modifier groups opens the sheet over step 3 instead of step 4.
+  const [sheetDishId, setSheetDishId] = useState<string | null>(null)
 
   const dispatch = (action: StepAction) => {
     direction.current = action.type === "back" || action.type === "crumb" || action.type === "added" ? "back" : "fwd"
@@ -151,12 +161,11 @@ export function StepPicker({
     headingRef.current?.focus({ preventScroll: true })
   }, [step, state.categoryId, state.subcategoryId, reviewing])
 
-  const add = () => {
-    if (!category || !dish) return
-    const comments = composeComment(state.quickNotes, state.note)
-    const undo = onAdd({ dish, category, quantity: state.quantity, ...(comments ? { comments } : {}) })
+  const sheetDish = (sheetDishId && category?.dishes.find((entry) => entry.id === sheetDishId)) || null
+
+  const notify = (quantity: number, name: string, undo: (() => void) | void) =>
     toast({
-      title: addedMessage(state.quantity, dish.name),
+      title: addedMessage(quantity, name),
       ...(undo
         ? {
             action: (
@@ -167,6 +176,19 @@ export function StepPicker({
           }
         : {}),
     })
+
+  const add = () => {
+    if (!category || !dish) return
+    const comments = composeComment(state.note)
+    notify(state.quantity, dish.name, onAdd({ dish, category, quantity: state.quantity, ...(comments ? { comments } : {}) }))
+    dispatch({ type: "added" })
+  }
+
+  const addFromSheet = ({ modifiers, quantity, note, unitPrice }: ModifierSheetResult) => {
+    if (!category || !sheetDish) return
+    const item: StepPickerItem = { dish: sheetDish, category, quantity, ...(note ? { comments: note } : {}), modifiers, unitPrice }
+    notify(quantity, sheetDish.name, onAdd(item))
+    setSheetDishId(null)
     dispatch({ type: "added" })
   }
 
@@ -308,6 +330,7 @@ export function StepPicker({
                     )}
                     onClick={() => {
                       if (out) toast({ title: soldOutMessage(entry.name) })
+                      else if (entry.modifierGroups.length > 0) return setSheetDishId(entry.id)
                       dispatch({ type: "dish", id: entry.id, available: entry.available })
                     }}
                   >
@@ -327,6 +350,12 @@ export function StepPicker({
                         )}
                         <span className="text-lg font-semibold tabular-nums">{formatCurrency(entry.price)}</span>
                       </span>
+                      {!out && entry.modifierGroups.length > 0 && (
+                        <span className="inline-flex h-7 flex-none items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-card px-2.5 text-[13px] font-medium text-fg-2">
+                          <Layers className="h-3.5 w-3.5" aria-hidden />
+                          Con opciones
+                        </span>
+                      )}
                       {out && (
                         <span className="inline-flex h-7 flex-none items-center whitespace-nowrap rounded-full border border-line-strong bg-status-reserved-bg px-3 text-[13px] font-medium text-status-reserved-fg">
                           Agotado
@@ -386,36 +415,6 @@ export function StepPicker({
             </button>
           </div>
         </div>
-
-        {dish!.quickNotes.length > 0 && (
-          <div>
-            <p id="step-quick" className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-fg-2">
-              Indicaciones rápidas
-            </p>
-            {/* The chips go before the free note in the line comment, joined with ", ". */}
-            <div role="group" aria-labelledby="step-quick" className="flex flex-wrap gap-2">
-              {dish!.quickNotes.map((note) => {
-                const on = state.quickNotes.includes(note)
-                return (
-                  <button
-                    key={note}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => dispatch({ type: "quickNote", note })}
-                    className={cn(
-                      "inline-flex min-h-12 max-w-full flex-none items-center gap-1.5 rounded-pill border border-line-strong bg-card px-4 text-[15px] font-medium text-fg",
-                      on && "border-brand bg-brand-tint shadow-[inset_0_0_0_1px_var(--accent)]",
-                      FOCUS,
-                    )}
-                  >
-                    {on && <Check aria-hidden className="h-4 w-4 flex-none text-brand-strong" />}
-                    <span className="min-w-0 [overflow-wrap:anywhere]">{note}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Offered on every dish, like the old menu grid and the cart comment action. */}
         <div>
@@ -549,6 +548,13 @@ export function StepPicker({
           {stepInfo}
         </span>
       </footer>
+
+      <ModifierSheet
+        dish={sheetDish}
+        context={sheetDish && category ? [category.name, state.skipped ? null : subcategoryValueOf(category, state.subcategoryId)].filter(Boolean).join(" · ") : undefined}
+        onClose={() => setSheetDishId(null)}
+        onSubmit={addFromSheet}
+      />
 
       {aside && (
         <aside

@@ -28,7 +28,7 @@
 import { orderDtoFromWire, toOrder, type OrderDto } from "@/lib/api/orders"
 import { groupDineInOrdersByTable } from "@/lib/delivery/kitchen"
 import { mergeOrdersList, wireRowToPartialOrder, withoutVoidedWireLines } from "@/lib/realtime/order-merge"
-import type { Order } from "@/types"
+import type { Order, OrderItemModifier } from "@/types"
 
 /**
  * The statuses the cashier screen lists, asked for in ONE request. Kept as the
@@ -233,6 +233,8 @@ export interface CashierBillSource {
     price: number
     quantity: number
     comments?: string | null
+    /** F7: the chosen options, already in `price`; absent on a plain line. */
+    modifiers?: OrderItemModifier[]
   }>
   tax_percentage: number
   tip_percentage: number
@@ -254,6 +256,7 @@ export function billSourceFromOrder(order: Order): CashierBillSource {
       price: item.price,
       quantity: item.quantity,
       comments: item.comments ?? null,
+      ...(item.modifiers?.length ? { modifiers: item.modifiers } : {}),
     })),
     tax_percentage: num(bill?.taxPercentage),
     tip_percentage: num(bill?.tipPercentage),

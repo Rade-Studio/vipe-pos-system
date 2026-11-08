@@ -32,6 +32,7 @@ import {
   toOrder,
   updateDetails,
   type DishPrice,
+  type LinePrice,
   type OrderDetails,
   type OrderDto,
 } from "@/lib/api/orders"
@@ -42,6 +43,9 @@ import { realtimeService } from "@/lib/api/realtime"
 import { type CommandRequest, sendCommand } from "@/lib/api/print"
 import { usePrintingEnabled } from "@/lib/api/printing"
 import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
+import { cartLineKey } from "@/lib/modifiers/cart"
+import { modifiersExtra, selectionOf } from "@/lib/modifiers/rules"
+import { ModifierSheet, type ModifierSheetResult } from "@/components/modifiers/ModifierSheet"
 import type { TableChange } from "@/lib/realtime/table-merge"
 import { createLocalChangeRegistry } from "@/lib/kitchen/realtime"
 import { mergeOrdersList } from "@/lib/realtime/order-merge"
@@ -133,6 +137,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // "Ver pedido" inside it swaps the steps for the order review.
   const [orderFlowOpen, setOrderFlowOpen] = useState(false)
   const [orderReviewOpen, setOrderReviewOpen] = useState(false)
+  // F7: the cart line whose options are being changed ("Cambiar opciones").
+  const [editingLineId, setEditingLineId] = useState<string | null>(null)
   // T22: the details of the order being taken on each table. `asked` once the
   // guests question was answered (guests null: "Sin indicar"); `notes` is the
   // "Nota del pedido" draft (undefined: untouched, the stored note shows).
@@ -220,6 +226,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const addToCart = useCartStore((s) => s.addToCart)
   const updateQuantity = useCartStore((s) => s.updateQuantity)
   const updateItemComments = useCartStore((s) => s.updateItemComments)
+  const replaceLine = useCartStore((s) => s.replaceLine)
   const clearCart = useCartStore((s) => s.clearCart)
   const getCartByTable = useCartStore((s) => s.getCartByTable)
   const getCartTotal = useCartStore((s) => s.getCartTotal)
@@ -708,14 +715,19 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
   // A 409 `Price changed`: reprice the cart lines with the server's prices and
   // reload the menu, so the waiter sees the real total before sending again.
+  // F7: a line with options takes the server's unit price of its index
+  // (`lines`), or the new dish price plus its options.
   const repriceCart = useCallback(
-    (tableId: string, prices: readonly DishPrice[]) => {
+    (tableId: string, prices: readonly DishPrice[], lines: readonly LinePrice[] = []) => {
       const priceByDish = new Map(prices.map((entry) => [entry.dishId, entry.price]))
+      const priceByIndex = new Map(lines.map((entry) => [entry.index, entry.unitPrice]))
       useCartStore.setState((state) => ({
         cartItems: {
           ...state.cartItems,
-          [tableId]: (state.cartItems[tableId] ?? []).map((item) => {
-            const price = priceByDish.get(dishIdFromCartItemId(item.id) ?? "")
+          [tableId]: (state.cartItems[tableId] ?? []).map((item, index) => {
+            const dishPrice = priceByDish.get(dishIdFromCartItemId(item.id) ?? "")
+            const price =
+              priceByIndex.get(index) ?? (dishPrice === undefined ? undefined : dishPrice + modifiersExtra(item.modifiers))
             return price === undefined || price === item.price ? item : { ...item, price }
           }),
         },
@@ -861,7 +873,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         })
         setShowStockDetailWarning(true)
       } else if (conflict?.kind === "priceChanged") {
-        repriceCart(activeTable, conflict.prices)
+        repriceCart(activeTable, conflict.prices, conflict.lines)
         toast({
           title: "Precios actualizados",
           description: "Algunos precios cambiaron. Revise el carrito y envíe de nuevo.",
@@ -871,9 +883,12 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         log.error("Error al enviar la orden a cocina:", { error: String(error) })
         // T22: the 0015 trigger's refusal, mapped by the API (409).
         const inactive = error instanceof ApiError && error.status === 409 && error.message === "La mesa está inactiva"
+        // F7: the server's option rules (422 modifier_*) say what to fix.
+        const modifierRefusal =
+          error instanceof ApiError && error.status === 422 && String(error.body.code ?? "").startsWith("modifier_")
         toast({
           title: "Error",
-          description: inactive ? error.message : "No se pudo enviar la orden a cocina. Intente nuevamente.",
+          description: inactive || modifierRefusal ? (error as ApiError).message : "No se pudo enviar la orden a cocina. Intente nuevamente.",
           variant: "destructive",
         })
       }
@@ -1079,26 +1094,31 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const handleAddFromSteps = (item: StepPickerItem): (() => void) | void => {
     if (!activeTable) return
     const tableId = activeTable
-    const { dish, quantity, comments } = item
-    addToCart(tableId, {
+    const { dish, quantity, comments, modifiers } = item
+    const extra = modifiersExtra(modifiers)
+    const added = {
       id: dish.id,
       name: dish.name,
-      price: dish.price,
+      // F7: dish price (after promotion) + options, the server's rule (L4).
+      price: item.unitPrice ?? dish.price + extra,
       quantity,
       categoryId: dish.categoryId ?? "",
       image: dish.imageUrl ?? "",
       comments,
-      originalPrice: dish.originalPrice,
+      ...(modifiers?.length ? { modifiers } : {}),
+      originalPrice: dish.originalPrice != null ? dish.originalPrice + extra : undefined,
       discountAmount: dish.discountAmount,
       discountPercentage: dish.discountPercentage ?? undefined,
       promotionId: dish.promotionId,
       promotionName: dish.promotionName,
-    })
+    }
+    addToCart(tableId, added)
+    const key = cartLineKey(added)
     const findLine = () =>
       useCartStore
         .getState()
         .getCartByTable(tableId)
-        .find((entry) => dishIdFromCartItemId(entry.id) === dish.id && (entry.comments || "") === (comments || ""))
+        .find((entry) => cartLineKey(entry) === key)
     const quantityAfterAdd = findLine()?.quantity
     return () => {
       const line = findLine()
@@ -1136,6 +1156,32 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         </ToastAction>
       ),
     })
+  }
+
+  // F7: "Cambiar opciones" reopens the sheet with the line's options, quantity and note.
+  const editingLine = editingLineId ? cartItems.find((entry) => entry.id === editingLineId) ?? null : null
+  const editingDishId = editingLine ? dishIdFromCartItemId(editingLine.id) : null
+  const editingDish = editingDishId
+    ? ((menuTree.categories ?? []).flatMap((category) => category.dishes).find((dish) => dish.id === editingDishId) ?? null)
+    : null
+  const saveEditedLine = ({ modifiers, quantity, note, unitPrice }: ModifierSheetResult) => {
+    if (!activeTable || !editingLine) return
+    replaceLine(activeTable, editingLine.id, {
+      ...editingLine,
+      price: unitPrice,
+      quantity,
+      comments: note || undefined,
+      modifiers,
+      originalPrice: editingDish?.originalPrice != null ? editingDish.originalPrice + modifiersExtra(modifiers) : undefined,
+    })
+    setEditingLineId(null)
+  }
+  const editOptions = (lineId: string) => {
+    const line = cartItems.find((entry) => entry.id === lineId)
+    const dishId = line ? dishIdFromCartItemId(line.id) : null
+    const inMenu = (menuTree.categories ?? []).some((category) => category.dishes.some((dish) => dish.id === dishId))
+    if (inMenu) setEditingLineId(lineId)
+    else toast({ title: "El plato ya no está en el menú", description: "Quítalo y agrega otro.", variant: "destructive" })
   }
 
   const tablePanel = (onShowOrder?: () => void) => (
@@ -1254,11 +1300,22 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                 sentLines={sentLines}
                 onChangeQuantity={handleUpdateQuantity}
                 onRemove={handleRemoveLine}
+                onEditOptions={editOptions}
                 onContinue={() => setOrderReviewOpen(false)}
               />
             ) : undefined
           }
           onCloseOverlay={() => setOrderReviewOpen(false)}
+        />
+        <ModifierSheet
+          dish={editingLine && editingDish ? editingDish : null}
+          initial={
+            editingLine
+              ? { selection: selectionOf(editingLine.modifiers ?? []), quantity: editingLine.quantity, note: editingLine.comments ?? "" }
+              : undefined
+          }
+          onClose={() => setEditingLineId(null)}
+          onSubmit={saveEditedLine}
         />
       </div>
     ) : null

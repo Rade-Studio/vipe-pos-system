@@ -21,6 +21,7 @@
  * with the rest of `lib/delivery`.
  */
 
+import { lineKey, type LineModifier } from '@/lib/modifiers/rules'
 import { normalizePhone } from './phone'
 import type {
   CreateDeliveryAddressInput,
@@ -59,6 +60,8 @@ export interface CartLine {
   unitPrice: number
   quantity: number
   comments: string | null
+  /** F7: the chosen options; `unitPrice` already includes them. Absent on a plain line. */
+  modifiers?: LineModifier[]
 }
 
 /** The address half of the draft. */
@@ -113,12 +116,14 @@ export type OrderDraftAction =
         unitPrice: number
         quantity: number
         comments: string | null
+        modifiers?: LineModifier[]
       }
     }
   /** Deshacer of an add: takes `quantity` back from the same dish + comments line. */
   // quantityAfterAdd: the line's quantity right after that add; a stale undo
   // (the line was removed, edited or added to since) does nothing.
-  | { type: 'undoAdd'; dishId: string; comments: string | null; quantity: number; quantityAfterAdd: number }
+  // optionIds: the options of the added line (F7); absent for a plain dish.
+  | { type: 'undoAdd'; dishId: string; comments: string | null; optionIds?: string[]; quantity: number; quantityAfterAdd: number }
   | { type: 'incrementItem'; lineId: string }
   | { type: 'decrementItem'; lineId: string }
   | { type: 'removeItem'; lineId: string }
@@ -185,16 +190,19 @@ function newLineId(): string {
   return `line-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`
 }
 
+/** F7 line identity: dish + sorted option ids + note (`lib/modifiers`). */
+export const draftLineKey = (line: Pick<CartLine, 'dishId' | 'comments' | 'modifiers'>) =>
+  lineKey(line.dishId, (line.modifiers ?? []).map((m) => m.optionId), line.comments)
+
 /**
- * Append-or-merge for cart lines: same dishId + same comments
+ * Append-or-merge for cart lines: same dishId + same options + same comments
  * increments the existing quantity; otherwise a new line is added.
  * Comments === null is treated as "no comments" so the merge is
  * robust to the form having an empty string vs. a real null.
  */
 function mergeCartLine(lines: CartLine[], incoming: Omit<CartLine, 'id'>): CartLine[] {
-  const sameKey = (a: CartLine, b: { dishId: string; comments: string | null }) =>
-    a.dishId === b.dishId && (a.comments ?? null) === b.comments
-  const idx = lines.findIndex((l) => sameKey(l, incoming))
+  const key = draftLineKey(incoming)
+  const idx = lines.findIndex((l) => draftLineKey(l) === key)
   if (idx !== -1) {
     const next = lines.slice()
     next[idx] = { ...next[idx]!, quantity: next[idx]!.quantity + incoming.quantity }
@@ -260,13 +268,13 @@ export function orderDraftReducer(state: OrderDraft, action: OrderDraftAction): 
           unitPrice: action.line.unitPrice,
           quantity: action.line.quantity,
           comments: action.line.comments,
+          ...(action.line.modifiers?.length ? { modifiers: action.line.modifiers } : {}),
         }),
       }
 
     case 'undoAdd': {
-      const idx = state.cartLines.findIndex(
-        (l) => l.dishId === action.dishId && (l.comments ?? null) === action.comments,
-      )
+      const key = lineKey(action.dishId, action.optionIds ?? [], action.comments)
+      const idx = state.cartLines.findIndex((l) => draftLineKey(l) === key)
       if (idx === -1) return state
       const line = state.cartLines[idx]!
       if (line.quantity !== action.quantityAfterAdd) return state
@@ -529,6 +537,7 @@ export function toCreateInput(draft: OrderDraft): CreateDeliveryOrderInput {
     if (line.comments !== null && line.comments.length > 0) {
       out.comments = line.comments
     }
+    if (line.modifiers?.length) out.modifiers = line.modifiers.map(({ optionId }) => ({ optionId }))
     return out
   })
 

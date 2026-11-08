@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 /** T7b (S4) — the dish form writes through the API with a camelCase body. */
 
-const catalog = vi.hoisted(() => ({ createDish: vi.fn(), updateDish: vi.fn() }))
+const catalog = vi.hoisted(() => ({
+  createDish: vi.fn(),
+  updateDish: vi.fn(),
+  fetchModifierGroups: vi.fn(),
+  fetchDishModifierGroups: vi.fn(),
+  setDishModifierGroups: vi.fn(),
+}))
 vi.mock("@/lib/api/catalog", () => catalog)
 const storage = vi.hoisted(() => ({
   isImageAccessible: vi.fn(async () => true),
@@ -61,14 +67,44 @@ const dish = {
   active: true,
   allowComments: true,
   sortOrder: 0,
-  quickNotes: [],
+  modifierGroups: [],
   createdAt: null,
   updatedAt: null,
 }
 
+const modifierGroup = (id: string, name: string, minSelect: number, maxSelect: number | null, options: number) => ({
+  id,
+  name,
+  required: minSelect >= 1,
+  minSelect,
+  maxSelect,
+  sortOrder: 0,
+  isActive: true,
+  options: Array.from({ length: options }, (_, i) => ({
+    id: `${id}-o${i}`,
+    groupId: id,
+    name: `Opción ${i}`,
+    price: i * 1000,
+    ingredientId: null,
+    ingredientQty: null,
+    sortOrder: i,
+    isActive: true,
+  })),
+  createdAt: null,
+  updatedAt: null,
+})
+const modifierGroups = [
+  modifierGroup("g-term", "Término", 1, 1, 4),
+  modifierGroup("g-adic", "Adiciones", 0, 3, 4),
+  modifierGroup("g-sin", "Sin", 0, null, 2),
+]
+
 beforeEach(() => {
   catalog.createDish.mockReset().mockResolvedValue({ id: "d-2" })
   catalog.updateDish.mockReset().mockResolvedValue(dish)
+  catalog.fetchModifierGroups.mockReset().mockResolvedValue(modifierGroups)
+  catalog.fetchDishModifierGroups.mockReset().mockResolvedValue([])
+  catalog.setDishModifierGroups.mockReset().mockImplementation(async (_id: string, ids: string[]) => ids)
   toastMock.mockClear()
   storage.deleteImage.mockClear()
   storage.isImageAccessible.mockReset().mockResolvedValue(true)
@@ -105,7 +141,6 @@ describe("DishForm", () => {
       imageUrl: "https://img/d-1.png",
       active: true,
       allowComments: true,
-      quickNotes: [],
     })
     expect(catalog.createDish).not.toHaveBeenCalled()
   })
@@ -130,7 +165,6 @@ describe("DishForm", () => {
       imageUrl: null,
       active: true,
       allowComments: false,
-      quickNotes: [],
     })
   })
 
@@ -333,77 +367,86 @@ describe("DishForm — subcategory", () => {
   })
 })
 
-describe("DishForm — quick notes (T27)", () => {
-  const input = () => screen.getByLabelText("Nueva nota rápida")
-  const add = (value: string) => {
-    fireEvent.change(input(), { target: { value } })
-    fireEvent.click(screen.getByRole("button", { name: "Agregar nota" }))
-  }
-  const chips = () =>
-    within(screen.getByRole("list", { name: "Notas rápidas" }))
+describe("DishForm — modifier groups (F7)", () => {
+  const block = () => screen.getByRole("region", { name: "Modificadores" })
+  const attached = () =>
+    within(within(block()).getByRole("list", { name: "Grupos del plato" }))
       .queryAllByRole("listitem")
-      .map((li) => li.querySelector("[data-note]")?.textContent)
-
-  it("loads the dish notes, adds and removes chips, and saves them", async () => {
+      .map((li) => li.querySelector("[data-group-name]")?.textContent)
+  const renderEdit = async (ids: string[]) => {
+    catalog.fetchDishModifierGroups.mockResolvedValue(ids)
     const onSuccess = vi.fn()
-    render(<DishForm dish={{ ...dish, quickNotes: ["Sin sal"] }} categories={categories} onSuccess={onSuccess} />)
-    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
-    expect(chips()).toEqual(["Sin sal"])
-
-    add("  Bien   caliente ")
-    expect(chips()).toEqual(["Sin sal", "Bien caliente"])
-    expect(input()).toHaveValue("")
-    fireEvent.click(screen.getByRole("button", { name: "Quitar nota Sin sal" }))
-    expect(chips()).toEqual(["Bien caliente"])
-
+    render(<DishForm dish={dish} categories={categories} onSuccess={onSuccess} />)
+    await waitFor(() => expect(attached()).toEqual(ids.map((id) => modifierGroups.find((g) => g.id === id)!.name)))
+    return onSuccess
+  }
+  const submit = async (name: string) => {
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+      fireEvent.click(screen.getByRole("button", { name }))
     })
+  }
+
+  it("lists the dish groups in order with their rule, options and price range", async () => {
+    await renderEdit(["g-term", "g-adic"])
+    const rows = within(block()).getAllByRole("listitem")
+    expect(rows[0]).toHaveTextContent("Obligatorio · elige 1 · 4 opciones")
+    expect(rows[1]).toHaveTextContent("Opcional · hasta 3")
+    expect(within(block()).getByRole("button", { name: "Subir Término" })).toBeDisabled()
+    expect(within(block()).getByRole("button", { name: "Bajar Adiciones" })).toBeDisabled()
+  })
+
+  it("attaches, reorders and detaches groups, then saves them in that order", async () => {
+    const onSuccess = await renderEdit(["g-term", "g-adic"])
+    const picker = within(block()).getByLabelText("Agregar grupo")
+    expect(within(picker).getAllByRole("option").map((o) => o.textContent)).toEqual(["Elige un grupo…", "Sin"])
+
+    fireEvent.change(picker, { target: { value: "g-sin" } })
+    expect(attached()).toEqual(["Término", "Adiciones", "Sin"])
+    fireEvent.click(within(block()).getByRole("button", { name: "Subir Sin" }))
+    expect(attached()).toEqual(["Término", "Sin", "Adiciones"])
+    fireEvent.click(within(block()).getByRole("button", { name: "Quitar Término del plato" }))
+    expect(attached()).toEqual(["Sin", "Adiciones"])
+
+    await submit("Actualizar Plato")
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
-    expect(catalog.updateDish).toHaveBeenCalledWith("d-1", expect.objectContaining({ quickNotes: ["Bien caliente"] }))
+    expect(catalog.setDishModifierGroups).toHaveBeenCalledWith("d-1", ["g-sin", "g-adic"])
+    expect(catalog.updateDish).toHaveBeenCalledWith("d-1", expect.not.objectContaining({ quickNotes: expect.anything() }))
   })
 
-  it("adds a note with Enter without submitting the dish", async () => {
-    render(<DishForm dish={dish} categories={categories} onSuccess={vi.fn()} />)
-    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
-
-    fireEvent.change(input(), { target: { value: "Sin hielo" } })
-    fireEvent.keyDown(input(), { key: "Enter" })
-
-    expect(chips()).toEqual(["Sin hielo"])
-    expect(catalog.updateDish).not.toHaveBeenCalled()
+  it("does not rewrite the groups when they did not change", async () => {
+    const onSuccess = await renderEdit(["g-term"])
+    await submit("Actualizar Plato")
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(catalog.updateDish).toHaveBeenCalled()
+    expect(catalog.setDishModifierGroups).not.toHaveBeenCalled()
   })
 
-  it("refuses a duplicate ignoring case, with the API message", async () => {
-    render(<DishForm dish={{ ...dish, quickNotes: ["Sin hielo"] }} categories={categories} onSuccess={vi.fn()} />)
-    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+  it("attaches groups to a new dish once it exists", async () => {
+    const onSuccess = vi.fn()
+    render(<DishForm categories={categories} onSuccess={onSuccess} isNewDish />)
+    const picker = await within(block()).findByLabelText("Agregar grupo")
+    await waitFor(() => expect(within(picker).getAllByRole("option")).toHaveLength(4))
+    fireEvent.change(picker, { target: { value: "g-adic" } })
+    fireEvent.change(screen.getByLabelText("Nombre del plato"), { target: { value: "Combo" } })
+    fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "28000" } })
 
-    add("SIN HIELO")
-
-    expect(screen.getByRole("alert")).toHaveTextContent("Las notas rápidas no se pueden repetir")
-    expect(chips()).toEqual(["Sin hielo"])
-    expect(input()).toHaveValue("SIN HIELO")
+    await submit("Crear Plato")
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(catalog.fetchDishModifierGroups).not.toHaveBeenCalled()
+    expect(catalog.setDishModifierGroups).toHaveBeenCalledWith("d-2", ["g-adic"])
   })
 
-  it("refuses an empty or a 31-character note", async () => {
-    render(<DishForm dish={dish} categories={categories} onSuccess={vi.fn()} />)
-    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
-
-    add("x".repeat(31))
-    expect(screen.getByRole("alert")).toHaveTextContent("Cada nota rápida debe tener entre 1 y 30 caracteres")
-    add("   ")
-    expect(screen.getByRole("alert")).toHaveTextContent("Cada nota rápida debe tener entre 1 y 30 caracteres")
-    expect(chips()).toEqual([])
+  it("explains the empty block and leaves no quick-notes editor", async () => {
+    await renderEdit([])
+    expect(within(block()).getByText(/Sin modificadores/)).toBeInTheDocument()
+    expect(screen.queryByLabelText("Nueva nota rápida")).not.toBeInTheDocument()
+    expect(screen.queryByRole("list", { name: "Notas rápidas" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Notas rápidas/)).not.toBeInTheDocument()
   })
 
-  it("refuses a 13th note", async () => {
-    const twelve = Array.from({ length: 12 }, (_, i) => `Nota ${i + 1}`)
-    render(<DishForm dish={{ ...dish, quickNotes: twelve }} categories={categories} onSuccess={vi.fn()} />)
-    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
-
-    add("Otra")
-
-    expect(screen.getByRole("alert")).toHaveTextContent("Máximo 12 notas rápidas")
-    expect(chips()).toHaveLength(12)
+  it("keeps every new control at least 44 px tall", async () => {
+    await renderEdit(["g-term", "g-adic"])
+    const controls = [...within(block()).getAllByRole("button"), within(block()).getByLabelText("Agregar grupo")]
+    for (const control of controls) expect(control.className).toMatch(/\bmin-h-11\b|\bh-11\b/)
   })
 })

@@ -101,7 +101,7 @@ export interface PaymentPanelProps {
 const TOTAL_MISMATCH = /tenders sum to (\d+) but amount_due \+ tip = (\d+)/
 
 interface OrderForBill extends CashierBillSource {
-  order_items: Array<{ id: string; name: string; price: number; quantity: number; comments?: string | null }>
+  order_items: CashierBillSource["order_items"]
   tax_percentage: number
   tip_percentage: number
   subtotal: number
@@ -436,6 +436,7 @@ export function PaymentPanel({
         price: it.price,
         quantity: it.quantity,
         comments: it.comments ?? undefined,
+        ...(it.modifiers?.length ? { modifiers: it.modifiers } : {}),
         categoryId: "",
         image: "",
       }))

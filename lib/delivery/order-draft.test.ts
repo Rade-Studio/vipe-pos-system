@@ -740,3 +740,38 @@ describe('prepaid payment channel (T25)', () => {
     expect(orderDraftReducer(chosen, { type: 'reset', suggestedFee: 0 }).prepaidMethodId).toBeNull()
   })
 })
+
+describe('modifiers (F7 T3)', () => {
+  const medio = { groupId: 'g-t', groupName: 'Término', optionId: 'o-medio', name: 'Medio', price: 0 }
+  const ched = { groupId: 'g-a', groupName: 'Adiciones', optionId: 'o-ched', name: 'Queso cheddar', price: 3000 }
+  const burger = (modifiers: (typeof ched)[], unitPrice: number, comments: string | null = null) =>
+    ({ type: 'addItem', line: { dishId: 'd1', name: 'Hamburguesa', unitPrice, quantity: 1, comments, modifiers } }) as const
+
+  it('keys lines by dish + sorted option ids + note, and totals include the options', () => {
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, burger([medio, ched], 25000))
+    d = orderDraftReducer(d, burger([ched, medio], 25000))
+    d = orderDraftReducer(d, burger([medio], 22000))
+    d = orderDraftReducer(d, { type: 'addItem', line: { dishId: 'd1', name: 'Hamburguesa', unitPrice: 22000, quantity: 1, comments: null } })
+    expect(d.cartLines.map((l) => [l.quantity, l.unitPrice])).toEqual([[2, 25000], [1, 22000], [1, 22000]])
+    expect(draftTotals(d, 0).subtotal).toBe(25000 * 2 + 22000 + 22000)
+  })
+
+  it('undoes an add of the line with the same options only', () => {
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, burger([medio], 22000))
+    d = orderDraftReducer(d, burger([medio, ched], 25000))
+    d = orderDraftReducer(d, { type: 'undoAdd', dishId: 'd1', comments: null, optionIds: ['o-ched', 'o-medio'], quantity: 1, quantityAfterAdd: 1 })
+    expect(d.cartLines.map((l) => l.unitPrice)).toEqual([22000])
+  })
+
+  it('sends modifiers [{optionId}] per item, and a plain line without the key', () => {
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, burger([medio, ched], 25000, 'pan sin tostar'))
+    d = orderDraftReducer(d, { type: 'addItem', line: { dishId: 'd2', name: 'Papas', unitPrice: 8000, quantity: 1, comments: null } })
+    expect(toCreateInput(d).items).toEqual([
+      { dishId: 'd1', quantity: 1, comments: 'pan sin tostar', modifiers: [{ optionId: 'o-medio' }, { optionId: 'o-ched' }] },
+      { dishId: 'd2', quantity: 1 },
+    ])
+  })
+})

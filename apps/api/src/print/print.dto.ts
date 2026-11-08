@@ -58,7 +58,12 @@ export class InvoicePrintRequest {
   })
   invoice!: Record<string, unknown>;
 
-  @ApiProperty({ type: 'array', items: { type: 'object', additionalProperties: true }, maxItems: MAX_LINES })
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+    maxItems: MAX_LINES,
+    description: 'Lines {name, quantity, price, comments?, modifiers?}: price is the unit price with the options (F7); modifiers [{group, name, price}].',
+  })
   displayItems!: Record<string, unknown>[];
 }
 
@@ -66,7 +71,13 @@ export class CommandPrintRequest {
   @ApiProperty({ format: 'uuid', description: "The order of the caller's restaurant this comanda belongs to (404 otherwise)." })
   orderId!: string;
 
-  @ApiProperty({ type: 'array', items: { type: 'object', additionalProperties: true }, minItems: 1, maxItems: MAX_LINES })
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+    minItems: 1,
+    maxItems: MAX_LINES,
+    description: 'Lines {name, quantity, comments?, modifiers?, dishId?}; modifiers [{group, name, price}] (F7), left out without options.',
+  })
   items!: Record<string, unknown>[];
 
   @ApiPropertyOptional({ deprecated: true, description: "Ignored: the API prints the sender's profile name." })
@@ -98,7 +109,7 @@ export class PendingPrintJob {
     type: 'object',
     additionalProperties: true,
     description:
-      'invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices.',
+      'invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices.',
   })
   payload!: Record<string, unknown>;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;

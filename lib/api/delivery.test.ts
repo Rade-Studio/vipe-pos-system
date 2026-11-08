@@ -225,6 +225,12 @@ describe("createDeliveryOrder", () => {
     })
   })
 
+  it("forwards each item's modifiers [{optionId}] (F7)", async () => {
+    api.POST.mockResolvedValue({ data: createdResult })
+    await createDeliveryOrder({ ...cashInput, items: [{ dishId: "d-1", quantity: 1, modifiers: [{ optionId: "o-1" }] }] })
+    expect(api.POST.mock.calls[0]![1].body.items).toEqual([{ dishId: "d-1", quantity: 1, modifiers: [{ optionId: "o-1" }] }])
+  })
+
   it("sends an existing customer and address by id, cashChangeFor null and notes null for prepaid", async () => {
     api.POST.mockResolvedValue({ data: createdResult })
     await createDeliveryOrder({

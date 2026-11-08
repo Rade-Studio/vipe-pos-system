@@ -20,6 +20,7 @@ import type {
   PrintJobsCreated,
 } from './print.dto';
 import { newPrinterToken, type Printer } from './printer-identity';
+import { printLines } from './print-lines';
 
 /** timestamptz from a raw query: a Date or Postgres text depending on the driver's type parsers. */
 const iso = (value: Date | string) => (value instanceof Date ? value.toISOString() : toIso(value));
@@ -100,7 +101,7 @@ export class PrintService implements OnApplicationBootstrap {
   /** Tagged to Caja (payload `station` and print_jobs.station_id) when the restaurant has it; else the legacy payload. */
   async printInvoice(input: z.infer<typeof invoicePrintSchema>): Promise<PrintJobCreated> {
     const [cashier] = await this.rows<StationRef>(sql`SELECT id, name, is_default FROM public.stations WHERE kind = 'cashier'`);
-    const payload = { invoiceNumber: input.invoice.invoiceNumber, invoice: input.invoice, displayItems: input.displayItems };
+    const payload = { invoiceNumber: input.invoice.invoiceNumber, invoice: input.invoice, displayItems: printLines(input.displayItems) };
     return cashier
       ? this.enqueue(randomUUID(), 'invoice', { ...payload, station: { id: cashier.id, name: cashier.name } }, cashier.id)
       : this.enqueue(randomUUID(), 'invoice', payload);
@@ -175,6 +176,7 @@ export class PrintService implements OnApplicationBootstrap {
     const { orderId: _orderId, waiter: _waiter, ...rest } = request;
     return {
       ...rest,
+      items: printLines(rest.items),
       ...(order.table_number !== null ? { table: order.table_number } : {}),
       waiter: caller.name.trim() || order.waiter_name?.trim() || FALLBACK_WAITER,
       orderNumber: order.order_number,

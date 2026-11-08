@@ -6,6 +6,7 @@
  */
 import type { SupervisorAction } from "@/lib/api/auth"
 import type { VoidReasonCode } from "@/lib/api/audit"
+import type { OrderItemModifier } from "@/types"
 
 export type VoidAction = "item" | "order" | "payment"
 
@@ -16,6 +17,8 @@ export interface VoidLine {
   price: number
   quantity: number
   comments?: string
+  /** F7: the chosen options, so the person voiding sees which burger it is. */
+  modifiers?: OrderItemModifier[]
 }
 
 export interface VoidPaymentOption {
