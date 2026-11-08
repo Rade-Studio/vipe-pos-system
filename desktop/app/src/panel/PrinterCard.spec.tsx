@@ -137,6 +137,17 @@ describe('Impresoras: add and edit inside the panel (S1-S4)', () => {
     expect(bridge.testPrints).toBe(1);
   });
 
+  it('a chosen printer in Buscar is styled as selected (radio rows use aria-checked)', async () => {
+    await mount();
+    await click(/Agregar impresora/);
+    const row = (await screen.findAllByRole('radio')).find((r) => !(r as HTMLButtonElement).disabled) as HTMLElement;
+    await act(async () => fireEvent.click(row));
+    expect(row.getAttribute('aria-checked')).toBe('true');
+    // jsdom computes no CSS: the selected look must exist for the attribute the panel sets.
+    const css = ['app.css', 'setup.css'].map((f) => readFileSync(`src/styles/${f}`, 'utf8')).join('\n');
+    for (const sel of ['.opt[aria-checked=true]', '.opt[aria-checked=true] .radio::after']) expect(css).toContain(sel);
+  });
+
   it('every control in the add and edit cards is at least 44 px tall', async () => {
     await mount();
     const rule = (sel: string) => ['app.css', 'setup.css'].map((f) => readFileSync(`src/styles/${f}`, 'utf8')).join('\n').split('\n').find((l) => l.startsWith(`${sel} {`)) ?? '';
