@@ -1,5 +1,5 @@
 import { Check } from 'lucide-react';
-import { useState } from 'react';
+import { type ClipboardEvent, useState } from 'react';
 import { errorMessage, type Restaurant } from '../../api/contract';
 import type { StepContext } from '../Setup';
 import { Acts } from './common';
@@ -13,11 +13,27 @@ export function Connect({ ctx }: { ctx: StepContext }) {
   const [busy, setBusy] = useState(false);
   const code = digits.join('');
 
+  // Each input sits in its own `display: contents` span, so look the boxes up from the code row.
+  const box = (input: HTMLInputElement, i: number) =>
+    input.closest('.code')?.querySelectorAll<HTMLInputElement>('input')[i];
+
   const setDigit = (i: number, value: string, input: HTMLInputElement) => {
     const d = value.replace(/\D/g, '').slice(-1);
     setDigits((prev) => prev.map((x, j) => (j === i ? d : x)));
     setFound(null);
-    if (d) (input.parentElement?.querySelectorAll('input')[i + 1] as HTMLInputElement | undefined)?.focus();
+    if (d) box(input, i + 1)?.focus();
+  };
+
+  /** A pasted code ("481207" or "481 207") fills the boxes from the one it lands on; six digits always fill all six. */
+  const pasteDigits = (i: number, event: ClipboardEvent<HTMLInputElement>) => {
+    const pasted = event.clipboardData.getData('text').replace(/\D/g, '');
+    if (!pasted) return;
+    event.preventDefault();
+    const start = pasted.length >= 6 ? 0 : i;
+    const fill = pasted.slice(0, 6 - start).split('');
+    setDigits((prev) => prev.map((x, j) => (j >= start && j < start + fill.length ? fill[j - start] : x)));
+    setFound(null);
+    box(event.currentTarget, Math.min(start + fill.length, 5))?.focus();
   };
 
   const run = async (fn: () => Promise<void>) => {
@@ -75,6 +91,7 @@ export function Connect({ ctx }: { ctx: StepContext }) {
                   maxLength={2}
                   value={d}
                   onChange={(e) => setDigit(i, e.target.value, e.target)}
+                  onPaste={(e) => pasteDigits(i, e)}
                 />
               </span>
             ))}

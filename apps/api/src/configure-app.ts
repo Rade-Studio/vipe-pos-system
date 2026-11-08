@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import { ENV, type Env } from './config/env';
+import { corsOptionsFor } from './desktop/desktop-cors';
 import { RealtimeIoAdapter } from './realtime/realtime-io.adapter';
 
 export const API_PREFIX = 'api';
@@ -8,13 +9,14 @@ export const API_PREFIX = 'api';
 /**
  * Apply the cross-cutting HTTP configuration shared by `main.ts` and the
  * integration specs: global prefix, CORS for the web origin (HTTP and the
- * socket.io realtime namespace), OpenAPI document.
+ * socket.io realtime namespace) plus credential-less CORS for the desktop
+ * app's pages on the device routes (desktop-cors.ts), OpenAPI document.
  */
 export function configureApp<T extends INestApplication>(app: T): T {
   const env = app.get<Env>(ENV);
 
   app.setGlobalPrefix(API_PREFIX);
-  app.enableCors({ origin: env.webOrigin, credentials: true });
+  app.enableCors(corsOptionsFor(env.webOrigin));
   app.useWebSocketAdapter(new RealtimeIoAdapter(app, env.webOrigin));
 
   SwaggerModule.setup(`${API_PREFIX}/docs`, app, createOpenApiDocument(app));
