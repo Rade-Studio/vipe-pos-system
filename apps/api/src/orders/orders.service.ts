@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
 import { VoidsService } from '../audit/voids.service';
 import { DishesService } from '../catalog/dishes.service';
+import { linePrice, resolveLineModifiers } from '../catalog/line-modifiers';
 import { UnitOfWork } from '../db/unit-of-work';
 import { paymentJson } from '../payments/payments.mappers';
 import { ConfigService } from '../settings/config.service';
@@ -35,6 +37,11 @@ type OrderDetails = z.infer<typeof updateOrderDetailsSchema>;
 type CancelInput = z.infer<typeof cancelOrderSchema>;
 /** Live lines: a fully voided line (quantity 0, status cancelled) is history, not part of the order. */
 const LIVE_ITEMS = sql`oi.status IS DISTINCT FROM 'cancelled'`;
+/** A line as the API reads it: the order_items row plus its option snapshot (F7), in menu order. */
+const ITEM_JSON = sql`to_jsonb(oi) || jsonb_build_object('modifiers', coalesce((
+  SELECT jsonb_agg(jsonb_build_object('group_id', m.group_id, 'group_name', m.group_name, 'option_id', m.option_id,
+                                      'option_name', m.option_name, 'price', m.price) ORDER BY m.sort_order)
+    FROM public.order_item_modifiers m WHERE m.order_item_id = oi.id), '[]'::jsonb))`;
 /** Order statuses that keep a table busy. */
 const OPEN_STATUSES = ['active', 'kitchen', 'delivered'];
 /** Roles a profile must have to own an order or a table. */
@@ -97,7 +104,7 @@ export class OrdersService {
       SELECT to_jsonb(o) AS "order",
              NULL AS table_number,
              NULL AS waiter_name,
-             coalesce((SELECT jsonb_agg(to_jsonb(oi) ORDER BY oi.added_at, oi.created_at, oi.id)
+             coalesce((SELECT jsonb_agg(${ITEM_JSON} ORDER BY oi.added_at, oi.created_at, oi.id)
                          FROM public.order_items oi WHERE oi.order_id = o.id AND ${LIVE_ITEMS}), '[]'::jsonb) AS items,
              (SELECT ${paymentJson} FROM public.payments p WHERE p.order_id = o.id) AS payment,
              CASE WHEN EXISTS (SELECT 1 FROM public.payments p WHERE p.order_id = o.id) THEN '[]'::jsonb
@@ -301,7 +308,7 @@ export class OrdersService {
       SELECT to_jsonb(o) AS "order",
              t.number AS table_number,
              p.full_name AS waiter_name,
-             coalesce((SELECT jsonb_agg(to_jsonb(oi) ORDER BY oi.added_at, oi.created_at, oi.id)
+             coalesce((SELECT jsonb_agg(${ITEM_JSON} ORDER BY oi.added_at, oi.created_at, oi.id)
                          FROM public.order_items oi WHERE oi.order_id = o.id AND ${LIVE_ITEMS}), '[]'::jsonb) AS items,
              c.cancellation,
              CASE WHEN d.order_id IS NOT NULL
@@ -369,12 +376,15 @@ export class OrdersService {
   }
 
   /**
-   * The catalog price of every line, promotions applied with the server clock
-   * (the same DishesService the menu reads). Every dish must exist in the
-   * caller's restaurant and be active. A unitPrice the client showed that
-   * differs from it answers 409 with the current prices, before any write.
+   * The unit price of every line: the catalog price, promotions applied with
+   * the server clock (the same DishesService the menu reads), plus the prices
+   * of the line's options, checked for the dish by
+   * private.resolve_line_modifiers (422 with a modifier_* code). Every dish
+   * must exist in the caller's restaurant and be active. A unitPrice the
+   * client showed that differs answers 409 with the current prices, before
+   * any write; with options the body also carries every line's unit price.
    */
-  private async priceItems(items: ItemInput[]): Promise<Map<string, number>> {
+  private async priceItems(items: ItemInput[]): Promise<number[]> {
     const ids = [...new Set(items.map((item) => item.dishId))];
     const catalog = new Map((await this.dishes.list({ pricing: 'promotions' })).map((dish) => [dish.id, dish]));
     const dishes = ids.map((id) => catalog.get(id));
@@ -385,13 +395,20 @@ export class OrdersService {
       throw new UnprocessableEntityException('Dish not active');
     }
     const prices = new Map(dishes.map((dish) => [dish!.id, dish!.price]));
-    if (items.some((item) => item.unitPrice !== undefined && item.unitPrice !== prices.get(item.dishId))) {
+    const modifiers = await resolveLineModifiers(
+      this.uow,
+      items.map((item) => ({ dishId: item.dishId, optionIds: (item.modifiers ?? []).map((m) => m.optionId) })),
+    );
+    const unitPrices = items.map((item, index) => linePrice(prices.get(item.dishId)!, modifiers[index]));
+    if (items.some((item, index) => item.unitPrice !== undefined && item.unitPrice !== unitPrices[index])) {
+      const withOptions = items.some((item) => (item.modifiers ?? []).length > 0);
       throw new ConflictException({
         message: 'Price changed',
         prices: ids.map((dishId) => ({ dishId, price: prices.get(dishId) })),
+        ...(withOptions ? { lines: items.map((item, index) => ({ index, dishId: item.dishId, unitPrice: unitPrices[index] })) } : {}),
       });
     }
-    return prices;
+    return unitPrices;
   }
 
   /** check_dishes_stock answers enabled: false (no shortages) when inventory control is off. */
@@ -406,26 +423,35 @@ export class OrdersService {
   }
 
   /**
-   * One INSERT for every line; name and price come from the catalog
-   * (priceItems). added_at grows by a microsecond per line so the items keep
-   * the cart order when read back.
+   * One INSERT for every line; name from the catalog, price from priceItems.
+   * added_at grows by a microsecond per line so the items keep the cart order
+   * when read back. The ids are chosen here so the option snapshot of each
+   * line is written next (private.add_order_item_modifiers, same rules).
    */
-  private async insertItems(orderId: string, items: ItemInput[], prices: Map<string, number>): Promise<void> {
+  private async insertItems(orderId: string, items: ItemInput[], prices: number[]): Promise<void> {
     const lines = items.map((item, index) => ({
+      id: randomUUID(),
       ord: index,
       dish_id: item.dishId,
       quantity: item.quantity,
-      price: prices.get(item.dishId),
+      price: prices[index],
       comments: item.comments ?? null,
+      option_ids: (item.modifiers ?? []).map((m) => m.optionId),
     }));
     await this.uow.db.execute(sql`
-      INSERT INTO public.order_items (order_id, dish_id, name, price, quantity, comments, status, added_at)
-      SELECT ${orderId}::uuid, d.id, d.name, x.price, x.quantity, x.comments, 'kitchen',
+      INSERT INTO public.order_items (id, order_id, dish_id, name, price, quantity, comments, status, added_at)
+      SELECT x.id, ${orderId}::uuid, d.id, d.name, x.price, x.quantity, x.comments, 'kitchen',
              now() + x.ord * interval '1 microsecond'
         FROM jsonb_to_recordset(${JSON.stringify(lines)}::jsonb)
-               AS x(ord integer, dish_id uuid, quantity integer, price numeric, comments text)
+               AS x(id uuid, ord integer, dish_id uuid, quantity integer, price numeric, comments text)
         JOIN public.dishes d ON d.id = x.dish_id
        ORDER BY x.ord`);
+    const withOptions = lines.filter((line) => line.option_ids.length > 0).map(({ id, option_ids }) => ({ id, option_ids }));
+    if (withOptions.length > 0) {
+      await this.uow.db.execute(sql`
+        SELECT private.add_order_item_modifiers(x.id, x.option_ids)
+          FROM jsonb_to_recordset(${JSON.stringify(withOptions)}::jsonb) AS x(id uuid, option_ids uuid[])`);
+    }
   }
 
   /** The bill from order_items, then the stock of the new lines (a no-op with inventory control off). */
@@ -440,7 +466,7 @@ export class OrdersService {
       SELECT to_jsonb(o) AS "order",
              t.number AS table_number,
              p.full_name AS waiter_name,
-             coalesce((SELECT jsonb_agg(to_jsonb(oi) ORDER BY oi.added_at, oi.created_at, oi.id)
+             coalesce((SELECT jsonb_agg(${ITEM_JSON} ORDER BY oi.added_at, oi.created_at, oi.id)
                          FROM public.order_items oi WHERE oi.order_id = o.id AND ${items}), '[]'::jsonb) AS items
         FROM public.orders o
         LEFT JOIN public.tables t ON t.id = o.table_id

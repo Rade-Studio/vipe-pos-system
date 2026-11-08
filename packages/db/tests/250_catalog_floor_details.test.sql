@@ -1,14 +1,14 @@
 -- Catalog and floor details (odd/tasks/rediseno-pos.md, T16, S8).
 --
--- dishes.sort_order (backfilled per category/subcategory in name order) and
--- dishes.quick_notes (modifier chips); tables.is_active (an inactive table
+-- dishes.sort_order (backfilled per category/subcategory in name order)
+-- (dishes.quick_notes was dropped by 0023); tables.is_active (an inactive table
 -- takes no new order); zones.width_m / depth_m (both or neither); and
 -- public.menu_publications, the structure waiters and delivery see until the
 -- admin publishes again.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(106);
+SELECT plan(88);
 
 -- ============================================
 -- 1. Schema
@@ -16,9 +16,7 @@ SELECT plan(106);
 SELECT col_not_null('public', 'dishes', 'sort_order', 'dishes.sort_order is NOT NULL');
 SELECT col_default_is('public', 'dishes', 'sort_order', '0', 'dishes.sort_order defaults to 0');
 SELECT has_index('public', 'dishes', 'idx_dishes_menu_order', 'dishes has the menu order index');
-SELECT col_not_null('public', 'dishes', 'quick_notes', 'dishes.quick_notes is NOT NULL');
-SELECT col_type_is('public', 'dishes', 'quick_notes', 'text[]', 'dishes.quick_notes is text[]');
-SELECT col_default_is('public', 'dishes', 'quick_notes', '{}', 'dishes.quick_notes defaults to an empty array');
+SELECT hasnt_column('public', 'dishes', 'quick_notes', 'dishes.quick_notes is dropped (0023 modifiers)');
 SELECT col_not_null('public', 'tables', 'is_active', 'tables.is_active is NOT NULL');
 SELECT col_default_is('public', 'tables', 'is_active', 'true', 'tables.is_active defaults to true');
 SELECT col_is_null('public', 'zones', 'width_m', 'zones.width_m is nullable');
@@ -101,56 +99,7 @@ SELECT is((SELECT sort_order FROM public.dishes WHERE id = '25400000-0000-0000-0
 SELECT is(has_function_privilege('vipe_api', 'private.backfill_dish_sort_order()', 'EXECUTE'), false, 'vipe_api cannot run the dish order backfill');
 UPDATE public.dishes SET sort_order = 0 WHERE id = '25400000-0000-0000-0000-0000000000a2';
 
--- ============================================
--- 3. Quick notes
--- ============================================
-SELECT lives_ok(
-  $$ UPDATE public.dishes SET quick_notes = ARRAY['Término medio', 'Sin cebolla'] WHERE id = '25400000-0000-0000-0000-0000000000a1' $$,
-  'quick notes are accepted');
-SELECT is((SELECT quick_notes FROM public.dishes WHERE id = '25400000-0000-0000-0000-0000000000a1'), ARRAY['Término medio', 'Sin cebolla'],
-  'quick notes keep their order');
-SELECT lives_ok(
-  $$ UPDATE public.dishes SET quick_notes = (SELECT array_agg('Nota ' || i) FROM generate_series(1, 12) i) WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  '12 quick notes are accepted');
-SELECT throws_ok(
-  $$ UPDATE public.dishes SET quick_notes = (SELECT array_agg('Nota ' || i) FROM generate_series(1, 13) i) WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  '23514', NULL, '13 quick notes are refused');
-SELECT throws_ok(
-  $$ UPDATE public.dishes SET quick_notes = ARRAY['Sin sal', '   '] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  '23514', NULL, 'a blank quick note is refused');
-SELECT throws_ok(
-  $$ UPDATE public.dishes SET quick_notes = ARRAY[repeat('x', 31)] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  '23514', NULL, 'a quick note over 30 characters is refused');
-SELECT lives_ok(
-  $$ UPDATE public.dishes SET quick_notes = ARRAY[repeat('x', 30)] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  'a quick note of 30 characters is accepted');
-SELECT throws_ok(
-  $$ UPDATE public.dishes SET quick_notes = ARRAY['Sin sal', ' sin SAL '] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  '23514', NULL, 'duplicate quick notes (trimmed, case-insensitive) are refused');
-SELECT throws_ok(
-  $$ UPDATE public.dishes SET quick_notes = ARRAY['Sin cebolla', 'Sin  cebolla'] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  '23514', NULL, 'quick notes that differ only in inner spaces are duplicates');
-SELECT throws_ok(
-  $$ UPDATE public.dishes SET quick_notes = ARRAY['ÁRBOL', 'árbol'] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  '23514', NULL, 'duplicate quick notes with accented capitals are refused');
-SELECT lives_ok(
-  $$ UPDATE public.dishes SET quick_notes = ARRAY['  Sin   sal ', E'Poco\t picante'] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  'quick notes with extra spaces are accepted');
-SELECT is((SELECT quick_notes FROM public.dishes WHERE id = '25400000-0000-0000-0000-0000000000a2'), ARRAY['Sin sal', 'Poco picante'],
-  'quick notes are stored trimmed with single inner spaces');
-SELECT lives_ok(
-  $$ INSERT INTO public.dishes (id, name, price, restaurant_id, quick_notes)
-     VALUES ('25400000-0000-0000-0000-0000000000a8', 'Jugo', 5000, '25000000-0000-0000-0000-0000000000a1', ARRAY[' Sin  hielo']) $$,
-  'a dish is inserted with quick notes');
-SELECT is((SELECT quick_notes FROM public.dishes WHERE id = '25400000-0000-0000-0000-0000000000a8'), ARRAY['Sin hielo'],
-  'quick notes are normalised on insert');
-DELETE FROM public.dishes WHERE id = '25400000-0000-0000-0000-0000000000a8';
-SELECT throws_ok(
-  $$ UPDATE public.dishes SET quick_notes = ARRAY['Sin sal', NULL] WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  '23514', NULL, 'a NULL quick note is refused');
-SELECT throws_ok(
-  $$ UPDATE public.dishes SET quick_notes = NULL WHERE id = '25400000-0000-0000-0000-0000000000a2' $$,
-  '23502', NULL, 'quick_notes cannot be NULL');
+-- (3. Quick notes: dishes.quick_notes was dropped by 0023, see 340_modifiers.)
 
 -- ============================================
 -- 4. Zone dimensions
@@ -284,14 +233,14 @@ SELECT is(private.menu_pending_changes(NULL, private.menu_structure('25000000-00
   'no publication counts 0 for a non-empty live menu');
 
 UPDATE public.dishes SET name = 'Arroz con coco', price = 21000 WHERE id = '25400000-0000-0000-0000-0000000000a2';
-UPDATE public.dishes SET price = 50000, active = false, quick_notes = ARRAY['Sin sal'] WHERE id = '25400000-0000-0000-0000-0000000000a5';
+UPDATE public.dishes SET price = 50000, active = false WHERE id = '25400000-0000-0000-0000-0000000000a5';
 INSERT INTO public.dishes (id, name, price, category_id, restaurant_id) VALUES
   ('25400000-0000-0000-0000-0000000000a7', 'Nuevo', 1000, '25200000-0000-0000-0000-0000000000a1', '25000000-0000-0000-0000-0000000000a1');
 UPDATE public.categories SET color = 'rose' WHERE id = '25200000-0000-0000-0000-0000000000a1';
 SELECT is(
   private.menu_pending_changes((SELECT snapshot FROM public.menu_publications WHERE restaurant_id = '25000000-0000-0000-0000-0000000000a1'),
                                private.menu_structure('25000000-0000-0000-0000-0000000000a1')),
-  3, 'a renamed dish, a new dish and a recoloured category are 3 pending changes; price, availability and quick notes are not');
+  3, 'a renamed dish, a new dish and a recoloured category are 3 pending changes; price and availability are not');
 
 -- ============================================
 -- 7. Publication RLS per role and tenant

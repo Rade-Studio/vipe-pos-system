@@ -19,12 +19,18 @@ vi.mock("@/lib/api/client", () => ({ api }))
 import {
   createCategory,
   createDish,
+  createModifierGroup,
+  createModifierOption,
   createPromotion,
   deleteCategory,
   deleteDish,
+  deleteModifierGroup,
+  deleteModifierOption,
   deletePromotion,
   fetchCategories,
   fetchDishes,
+  fetchDishModifierGroups,
+  fetchModifierGroups,
   fetchPromotionDishes,
   fetchPromotions,
   getMenuDraft,
@@ -33,9 +39,12 @@ import {
   publishMenu,
   reorderCategories,
   reorderDishes,
+  setDishModifierGroups,
   setPromotionDishes,
   updateCategory,
   updateDish,
+  updateModifierGroup,
+  updateModifierOption,
   updatePromotion,
 } from "./catalog"
 
@@ -228,12 +237,52 @@ describe("menu publication and dish order (T20)", () => {
     })
   })
 
-  it("sends quick notes on dish writes as given", async () => {
-    api.PATCH.mockResolvedValueOnce({ data: { id: "d-1", quickNotes: ["Sin cebolla"] } })
-    await updateDish("d-1", { quickNotes: ["Sin cebolla"] })
-    expect(api.PATCH).toHaveBeenCalledWith("/api/catalog/dishes/{id}", {
+  it("reads modifier groups, inactive ones only when asked", async () => {
+    api.GET.mockResolvedValueOnce({ data: [{ id: "g-1", options: [] }] })
+    await expect(fetchModifierGroups()).resolves.toEqual([{ id: "g-1", options: [] }])
+    expect(api.GET).toHaveBeenLastCalledWith("/api/catalog/modifier-groups", { params: { query: {} } })
+    api.GET.mockResolvedValueOnce({ data: [] })
+    await fetchModifierGroups({ includeInactive: true })
+    expect(api.GET).toHaveBeenLastCalledWith("/api/catalog/modifier-groups", { params: { query: { includeInactive: "true" } } })
+  })
+
+  it("writes modifier groups and options with camelCase bodies", async () => {
+    api.POST.mockResolvedValue({ data: { id: "x" } })
+    api.PATCH.mockResolvedValue({ data: { id: "x" } })
+    await createModifierGroup({ name: "Término", required: true, maxSelect: 1 })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/catalog/modifier-groups", {
+      body: { name: "Término", required: true, maxSelect: 1 },
+    })
+    await updateModifierGroup("g-1", { isActive: false })
+    expect(api.PATCH).toHaveBeenLastCalledWith("/api/catalog/modifier-groups/{id}", {
+      params: { path: { id: "g-1" } },
+      body: { isActive: false },
+    })
+    await deleteModifierGroup("g-1")
+    expect(api.DELETE).toHaveBeenLastCalledWith("/api/catalog/modifier-groups/{id}", { params: { path: { id: "g-1" } } })
+    await createModifierOption("g-1", { name: "Tocineta", price: 3000, ingredientId: "i-1", ingredientQty: 2 })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/catalog/modifier-groups/{id}/options", {
+      params: { path: { id: "g-1" } },
+      body: { name: "Tocineta", price: 3000, ingredientId: "i-1", ingredientQty: 2 },
+    })
+    await updateModifierOption("o-1", { price: 3500 })
+    expect(api.PATCH).toHaveBeenLastCalledWith("/api/catalog/modifier-options/{id}", {
+      params: { path: { id: "o-1" } },
+      body: { price: 3500 },
+    })
+    await deleteModifierOption("o-1")
+    expect(api.DELETE).toHaveBeenLastCalledWith("/api/catalog/modifier-options/{id}", { params: { path: { id: "o-1" } } })
+  })
+
+  it("reads and replaces the groups of a dish as ordered ids", async () => {
+    api.GET.mockResolvedValueOnce({ data: { groupIds: ["g-2", "g-1"] } })
+    await expect(fetchDishModifierGroups("d-1")).resolves.toEqual(["g-2", "g-1"])
+    expect(api.GET).toHaveBeenLastCalledWith("/api/catalog/dishes/{id}/modifier-groups", { params: { path: { id: "d-1" } } })
+    api.PUT.mockResolvedValueOnce({ data: { groupIds: ["g-1"] } })
+    await expect(setDishModifierGroups("d-1", ["g-1"])).resolves.toEqual(["g-1"])
+    expect(api.PUT).toHaveBeenLastCalledWith("/api/catalog/dishes/{id}/modifier-groups", {
       params: { path: { id: "d-1" } },
-      body: { quickNotes: ["Sin cebolla"] },
+      body: { groupIds: ["g-1"] },
     })
   })
 

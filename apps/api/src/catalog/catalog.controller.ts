@@ -54,6 +54,8 @@ import {
 import { CategoriesService } from './categories.service';
 import { DishesService } from './dishes.service';
 import { MenuService } from './menu.service';
+import { DishModifierGroupIds, DishModifierGroupsRequest, dishModifierGroupsSchema } from './modifiers.dto';
+import { ModifiersService } from './modifiers.service';
 import { PromotionsService } from './promotions.service';
 import { SubcategoriesService } from './subcategories.service';
 
@@ -184,7 +186,10 @@ export class SubcategoriesController {
 })
 @Controller('catalog/dishes')
 export class DishesController {
-  constructor(private readonly dishes: DishesService) {}
+  constructor(
+    private readonly dishes: DishesService,
+    private readonly modifiers: ModifiersService,
+  ) {}
 
   @Get()
   @ApiQuery({ name: 'categoryId', required: false, type: String })
@@ -237,6 +242,27 @@ export class DishesController {
   @ApiNotFoundResponse()
   remove(@Param('id') id: string): Promise<void> {
     return this.dishes.remove(parseInput(idParamSchema, id));
+  }
+
+  @Get(':id/modifier-groups')
+  @Roles(ADMIN)
+  @ApiOkResponse({ type: DishModifierGroupIds })
+  @ApiForbiddenResponse({ description: 'Not an admin.' })
+  @ApiNotFoundResponse()
+  async modifierGroups(@Param('id') id: string): Promise<DishModifierGroupIds> {
+    return { groupIds: await this.modifiers.dishGroupIds(parseInput(idParamSchema, id)) };
+  }
+
+  @Put(':id/modifier-groups')
+  @Roles(ADMIN)
+  @ApiBody({ type: DishModifierGroupsRequest })
+  @ApiOkResponse({ type: DishModifierGroupIds, description: 'The new group set, atomically; position i is the order i.' })
+  @ApiForbiddenResponse({ description: 'Not an admin.' })
+  @ApiNotFoundResponse()
+  @ApiUnprocessableEntityResponse({ description: 'Grupo de modificadores desconocido (another restaurant) or a repeated id; nothing is saved.' })
+  async setModifierGroups(@Param('id') id: string, @Body() body: unknown): Promise<DishModifierGroupIds> {
+    const { groupIds } = parseInput(dishModifierGroupsSchema, body);
+    return { groupIds: await this.modifiers.setDishGroups(parseInput(idParamSchema, id), groupIds) };
   }
 }
 
@@ -313,7 +339,7 @@ export class MenuController {
   @ApiOkResponse({
     type: MenuTree,
     description:
-      'The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and quick notes are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.',
+      'The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and modifier groups are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.',
   })
   tree(): Promise<MenuTree> {
     return this.menu.tree();

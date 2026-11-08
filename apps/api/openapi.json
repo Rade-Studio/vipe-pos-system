@@ -783,6 +783,102 @@
         ]
       }
     },
+    "/api/catalog/dishes/{id}/modifier-groups": {
+      "get": {
+        "operationId": "DishesController_modifierGroups",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DishModifierGroupIds"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown category or a subcategory outside the dish category (Spanish message)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      },
+      "put": {
+        "operationId": "DishesController_setModifierGroups",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DishModifierGroupsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new group set, atomically; position i is the order i.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DishModifierGroupIds"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Grupo de modificadores desconocido (another restaurant) or a repeated id; nothing is saved."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/catalog/promotions": {
       "get": {
         "operationId": "PromotionsController_list",
@@ -1307,7 +1403,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and quick notes are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.",
+            "description": "The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and modifier groups are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1402,6 +1498,324 @@
           },
           "403": {
             "description": "Solo un administrador puede publicar el menú"
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/modifier-groups": {
+      "get": {
+        "operationId": "ModifierGroupsController_list",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "required": false,
+            "in": "query",
+            "description": "Admin only: inactive groups and options too.",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "By sortOrder, then name, each with its options.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModifierGroup"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "includeInactive by a non-admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the group rules in Spanish."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      },
+      "post": {
+        "operationId": "ModifierGroupsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModifierGroupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModifierGroup"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "Ya existe un grupo de modificadores con ese nombre"
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the group rules in Spanish."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/modifier-groups/{id}": {
+      "patch": {
+        "operationId": "ModifierGroupsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModifierGroupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "With every option, inactive included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModifierGroup"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Ya existe un grupo de modificadores con ese nombre"
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the group rules in Spanish."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      },
+      "delete": {
+        "operationId": "ModifierGroupsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The group, its options and its dish links; lines already sent keep their options."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the group rules in Spanish."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/modifier-groups/{id}/options": {
+      "post": {
+        "operationId": "ModifierGroupsController_createOption",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModifierOptionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModifierOption"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown group."
+          },
+          "409": {
+            "description": "Ya existe una opción con ese nombre en el grupo"
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; the group rules in Spanish."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/modifier-options/{id}": {
+      "patch": {
+        "operationId": "ModifierOptionsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModifierOptionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A new price applies to the next lines; sent lines keep theirs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModifierOption"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Ya existe una opción con ese nombre en el grupo"
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, an unknown ingredient or an ingredient without quantity."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      },
+      "delete": {
+        "operationId": "ModifierOptionsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, an unknown ingredient or an ingredient without quantity."
           }
         },
         "security": [
@@ -7942,6 +8356,88 @@
           }
         }
       },
+      "ModifierOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "groupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "description": "Added to the unit price of the line (>= 0)."
+          },
+          "ingredientId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Ingredient deducted per unit, with ingredientQty."
+          },
+          "ingredientQty": {
+            "type": "number",
+            "nullable": true
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "groupId",
+          "name",
+          "price",
+          "ingredientId",
+          "ingredientQty",
+          "sortOrder",
+          "isActive"
+        ]
+      },
+      "DishModifierGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "minSelect": {
+            "type": "number"
+          },
+          "maxSelect": {
+            "type": "number",
+            "nullable": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModifierOption"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "required",
+          "minSelect",
+          "maxSelect",
+          "options"
+        ]
+      },
       "Dish": {
         "type": "object",
         "properties": {
@@ -7986,11 +8482,11 @@
             "type": "number",
             "description": "Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name."
           },
-          "quickNotes": {
-            "description": "Modifier chips offered when the dish is added (append to the item comment, no price).",
+          "modifierGroups": {
+            "description": "Active modifier groups the dish offers, in order, with their active options and live prices (F7). Assigned with PUT /catalog/dishes/{id}/modifier-groups.",
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/DishModifierGroup"
             }
           },
           "createdAt": {
@@ -8037,7 +8533,7 @@
           "active",
           "allowComments",
           "sortOrder",
-          "quickNotes",
+          "modifierGroups",
           "createdAt",
           "updatedAt"
         ]
@@ -8079,14 +8575,6 @@
           "allowComments": {
             "type": "boolean",
             "default": false
-          },
-          "quickNotes": {
-            "maxItems": 12,
-            "description": "At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish).",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           }
         },
         "required": [
@@ -8157,16 +8645,38 @@
           },
           "allowComments": {
             "type": "boolean"
-          },
-          "quickNotes": {
-            "maxItems": 12,
-            "description": "At most 12, each 1-30 characters after trimming and collapsing spaces, no duplicates ignoring case (422 in Spanish).",
+          }
+        }
+      },
+      "DishModifierGroupIds": {
+        "type": "object",
+        "properties": {
+          "groupIds": {
+            "description": "Groups assigned to the dish in order, inactive ones included.",
             "type": "array",
             "items": {
               "type": "string"
             }
           }
-        }
+        },
+        "required": [
+          "groupIds"
+        ]
+      },
+      "DishModifierGroupsRequest": {
+        "type": "object",
+        "properties": {
+          "groupIds": {
+            "description": "The complete group set of the dish, in order; replaces the previous one.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "groupIds"
+        ]
       },
       "Promotion": {
         "type": "object",
@@ -8468,11 +8978,11 @@
             "type": "number",
             "description": "Order inside its (category, subcategory) group; the menu tree lists by sortOrder, then name."
           },
-          "quickNotes": {
-            "description": "Modifier chips offered when the dish is added (append to the item comment, no price).",
+          "modifierGroups": {
+            "description": "Active modifier groups the dish offers, in order, with their active options and live prices (F7). Assigned with PUT /catalog/dishes/{id}/modifier-groups.",
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/DishModifierGroup"
             }
           },
           "createdAt": {
@@ -8523,7 +9033,7 @@
           "active",
           "allowComments",
           "sortOrder",
-          "quickNotes",
+          "modifierGroups",
           "createdAt",
           "updatedAt",
           "available"
@@ -8656,6 +9166,202 @@
           "publishedByName",
           "pendingChanges"
         ]
+      },
+      "ModifierGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "True exactly when minSelect >= 1: the line cannot be sent without it."
+          },
+          "minSelect": {
+            "type": "number"
+          },
+          "maxSelect": {
+            "type": "number",
+            "nullable": true,
+            "description": "null: no limit."
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "options": {
+            "description": "By sortOrder, then name; only active ones unless includeInactive.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModifierOption"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "required",
+          "minSelect",
+          "maxSelect",
+          "sortOrder",
+          "isActive",
+          "options",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateModifierGroupRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Unique per restaurant, case-insensitive (409)."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Omitted: minSelect >= 1."
+          },
+          "minSelect": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 50,
+            "description": "Omitted: 1 when required, else 0."
+          },
+          "maxSelect": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 50,
+            "description": "null or omitted: no limit."
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "Omitted: after the last group."
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Omitted: true."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateModifierGroupRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "minSelect": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 50
+          },
+          "maxSelect": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 50
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateModifierOptionRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Unique per group, case-insensitive (409)."
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0,
+            "description": "0 for a free option (\"Sin cebolla\")."
+          },
+          "ingredientId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "An ingredient of the restaurant; set with ingredientQty."
+          },
+          "ingredientQty": {
+            "type": "number",
+            "nullable": true,
+            "description": "> 0, in the ingredient unit, per unit of the line."
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "Omitted: after the last option of the group."
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Omitted: true."
+          }
+        },
+        "required": [
+          "name",
+          "price"
+        ]
+      },
+      "UpdateModifierOptionRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          },
+          "ingredientId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "ingredientQty": {
+            "type": "number",
+            "nullable": true
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
       },
       "BusinessConfig": {
         "type": "object",
@@ -8831,6 +9537,36 @@
           }
         }
       },
+      "OrderItemModifier": {
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "groupName": {
+            "type": "string"
+          },
+          "optionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "description": "Already included in the line price."
+          }
+        },
+        "required": [
+          "groupId",
+          "groupName",
+          "optionId",
+          "name",
+          "price"
+        ]
+      },
       "OrderItem": {
         "type": "object",
         "properties": {
@@ -8899,6 +9635,13 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "modifiers": {
+            "description": "Options chosen on the line, in menu order; their prices are inside price (F7).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemModifier"
+            }
           }
         },
         "required": [
@@ -8914,7 +9657,8 @@
           "stationSource",
           "addedAt",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "modifiers"
         ]
       },
       "Order": {
@@ -9799,6 +10543,18 @@
           "orderId"
         ]
       },
+      "OrderItemModifierInput": {
+        "type": "object",
+        "properties": {
+          "optionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "optionId"
+        ]
+      },
       "OrderItemInput": {
         "type": "object",
         "properties": {
@@ -9814,12 +10570,20 @@
           "unitPrice": {
             "type": "number",
             "minimum": 0,
-            "description": "Price the client showed. The server charges the catalog price (promotions applied, server clock); a different value answers 409 Price changed."
+            "description": "Price the client showed: the dish price (promotions applied, server clock) plus the options. A different value answers 409 Price changed; with options the body also carries `lines` [{index, dishId, unitPrice}]."
           },
           "comments": {
             "type": "string",
             "nullable": true,
             "maxLength": 500
+          },
+          "modifiers": {
+            "maxItems": 50,
+            "description": "Options of the line. Each once, offered by an active group of the dish, active; every active group between its min and max. 422 code modifier_invalid | modifier_inactive | modifier_duplicate | modifier_required | modifier_max.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemModifierInput"
+            }
           }
         },
         "required": [
@@ -13950,7 +14714,8 @@
               "type": "object",
               "additionalProperties": true
             },
-            "maxItems": 500
+            "maxItems": 500,
+            "description": "Lines {name, quantity, price, comments?, modifiers?}: price is the unit price with the options (F7); modifiers [{group, name, price}]."
           }
         },
         "required": [
@@ -13994,7 +14759,8 @@
               "additionalProperties": true
             },
             "minItems": 1,
-            "maxItems": 500
+            "maxItems": 500,
+            "description": "Lines {name, quantity, comments?, modifiers?, dishId?}; modifiers [{group, name, price}] (F7), left out without options."
           },
           "waiter": {
             "type": "string",
@@ -14067,7 +14833,7 @@
           "payload": {
             "type": "object",
             "additionalProperties": true,
-            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
+            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
           },
           "createdAt": {
             "type": "string",
@@ -14454,6 +15220,18 @@
           }
         }
       },
+      "CreateDeliveryItemModifier": {
+        "type": "object",
+        "properties": {
+          "optionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "optionId"
+        ]
+      },
       "CreateDeliveryItem": {
         "type": "object",
         "properties": {
@@ -14469,6 +15247,14 @@
             "type": "string",
             "nullable": true,
             "maxLength": 1000
+          },
+          "modifiers": {
+            "maxItems": 50,
+            "description": "Options of the line (F7): priced and checked like table orders; 422 code modifier_invalid | modifier_inactive | modifier_duplicate | modifier_required | modifier_max.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateDeliveryItemModifier"
+            }
           }
         },
         "required": [

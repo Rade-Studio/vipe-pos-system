@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { StaffRef } from '../audit/audit.dto';
 import { OTHER_TEXT_ISSUE, requireOtherText, VOID_REASON_CODES, VOID_REASONS, voidReasonFields, type VoidReason } from '../audit/voids';
 import { dateQuery } from '../common/validation';
+import { OrderItemModifier } from '../catalog/modifiers.dto';
 import { LegacyPaymentTransaction, Payment } from '../payments/payments.dto';
 
 export const ORDER_STATUSES = ['active', 'kitchen', 'delivered', 'cancelled', 'paid'] as const;
@@ -33,9 +34,11 @@ export const orderListQuerySchema = z.strictObject({
 const orderItemInputSchema = z.strictObject({
   dishId: z.guid(),
   quantity: z.number().int().min(1).max(999),
-  /** Price the client showed; the server charges the catalog price and answers 409 when they differ. */
+  /** Price the client showed (dish plus options); the server charges its own and answers 409 when they differ. */
   unitPrice: z.number().min(0).max(99_999_999.99).optional(),
   comments: z.string().max(500).nullable().optional(),
+  /** F7: the chosen options; the rules are checked by the database (422 with a modifier_* code). */
+  modifiers: z.array(z.strictObject({ optionId: z.guid() })).max(50).optional(),
 });
 const orderItemsSchema = z.array(orderItemInputSchema).min(1).max(MAX_ITEMS);
 
@@ -126,6 +129,8 @@ export class OrderItem {
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) addedAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) updatedAt!: string | null;
+  @ApiProperty({ type: [OrderItemModifier], description: 'Options chosen on the line, in menu order; their prices are inside price (F7).' })
+  modifiers!: OrderItemModifier[];
 }
 
 export class Order {
@@ -232,15 +237,27 @@ export class CancelledOrder extends Order {
   @ApiProperty({ type: CancelledDelivery, nullable: true, description: 'Only for a delivery (orderType delivery).' }) delivery!: CancelledDelivery | null;
 }
 
+export class OrderItemModifierInput {
+  @ApiProperty({ format: 'uuid' }) optionId!: string;
+}
+
 export class OrderItemInput {
   @ApiProperty({ format: 'uuid' }) dishId!: string;
   @ApiProperty({ minimum: 1, maximum: 999 }) quantity!: number;
   @ApiPropertyOptional({
     minimum: 0,
-    description: 'Price the client showed. The server charges the catalog price (promotions applied, server clock); a different value answers 409 Price changed.',
+    description:
+      'Price the client showed: the dish price (promotions applied, server clock) plus the options. A different value answers 409 Price changed; with options the body also carries `lines` [{index, dishId, unitPrice}].',
   })
   unitPrice?: number;
   @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 }) comments?: string | null;
+  @ApiPropertyOptional({
+    type: [OrderItemModifierInput],
+    maxItems: 50,
+    description:
+      'Options of the line. Each once, offered by an active group of the dish, active; every active group between its min and max. 422 code modifier_invalid | modifier_inactive | modifier_duplicate | modifier_required | modifier_max.',
+  })
+  modifiers?: OrderItemModifierInput[];
 }
 
 export class CreateOrderRequest {

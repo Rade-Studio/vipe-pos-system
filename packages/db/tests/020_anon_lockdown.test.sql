@@ -263,6 +263,8 @@ SELECT is(
                             'desktop_job_acks', 'desktop_drawer_events', 'desktop_releases')
       -- profiles: SELECT only, writes through the staff helpers (210_staff_helpers).
       AND NOT (c.relname = 'profiles' AND p.priv <> 'SELECT')
+      -- order_item_modifiers: SELECT only, written by SECURITY DEFINER functions (340_modifiers).
+      AND NOT (c.relname = 'order_item_modifiers' AND p.priv <> 'SELECT')
       AND NOT has_table_privilege('vipe_api', c.oid, p.priv)
   ),
   0::bigint,
