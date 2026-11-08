@@ -59,6 +59,11 @@ Delivery (domicilios) — additive. Both payloads may carry an optional
         "cashChangeFor": 50000,              # optional, only for cash_on_delivery
         "deliveryFee": 3000,
     }
+Comanda header — additive. A command may carry `orderNumber` (the order's
+number) and `station` {id, name} (one comanda per prep station): the title
+becomes `COMANDA #130 — Mesa 1` and `Estación: Cocina` follows it. Old jobs
+without them render exactly as before.
+
 Kitchen tickets print `COMANDA — DOMICILIO` + `Cliente:` instead of
 `Mesa N` (`table` may be null) and the order notes. Invoices print the
 customer, phone and address instead of MESA/MESERO, a `DOMICILIO:` fee
@@ -113,17 +118,26 @@ def render_kitchen_order(order: dict) -> KitchenOrderRender:
     delivery = _delivery_block(order.get("delivery"))
 
     date_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+    order_number = order.get("orderNumber")
+    title = "COMANDA" if order_number is None else f"COMANDA #{order_number}"
+    station = order.get("station")
+    station_name = station.get("name") if isinstance(station, dict) else None
+    station_lines: list[PrintLine] = (
+        [{"text": f"Estación: {station_name}", "bold": False, "align": "left"}] if station_name else []
+    )
 
     if delivery is None:
         lines: list[PrintLine] = [
-            {"text": f"COMANDA — Mesa {table}", "bold": True, "align": "center"},
+            {"text": f"{title} — Mesa {table}", "bold": True, "align": "center"},
+            *station_lines,
             {"text": f"Fecha:  {date_str}", "bold": False, "align": "left"},
             {"text": f"Mesero: {waiter}", "bold": False, "align": "left"},
             {"text": "--------------------------------", "bold": False, "align": "center"},
         ]
     else:
         lines = [
-            {"text": "COMANDA — DOMICILIO", "bold": True, "align": "center"},
+            {"text": f"{title} — DOMICILIO", "bold": True, "align": "center"},
+            *station_lines,
             {"text": f"Fecha:  {date_str}", "bold": False, "align": "left"},
             {"text": f"Cliente: {delivery.get('customerName') or 'N/A'}", "bold": False, "align": "left"},
             {"text": f"Mesero: {waiter}", "bold": False, "align": "left"},

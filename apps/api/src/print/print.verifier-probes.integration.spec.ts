@@ -16,6 +16,9 @@ import { PrintService } from './print.service';
  */
 
 const COMMAND = { items: [{ name: 'Ajiaco', quantity: 1 }], waiter: 'Probe', table: 1 };
+/** The request body: COMMAND for an order of the sender's restaurant. */
+const orders: Record<string, string> = {};
+const commandOf = (restaurantId: string) => ({ orderId: orders[restaurantId], ...COMMAND });
 
 /** Spec-only route: enqueues a command, then fails the request transaction. */
 @Controller('probe/enqueue-then-fail')
@@ -24,7 +27,7 @@ class EnqueueThenFail {
 
   @Post()
   async run(): Promise<void> {
-    await this.refs.get(PrintService, { strict: false }).printCommand({ ...COMMAND, waiter: 'rolled back' });
+    await this.refs.get(PrintService, { strict: false }).printCommand({ ...COMMAND, waiter: 'rolled back', orderNumber: 1 });
     throw new Error('fail after enqueue');
   }
 }
@@ -47,6 +50,12 @@ describe('printing bridge verifier probes (Testcontainers, vipe_api)', () => {
 
   beforeAll(async () => {
     database = await startTestDatabase();
+    for (const restaurantId of [fixtures.restaurantA, fixtures.restaurantB]) {
+      const [order] = await superuserQuery<{ id: string }>(database.superuserUrl, 'SELECT id FROM public.orders WHERE restaurant_id = $1 LIMIT 1', [
+        restaurantId,
+      ]);
+      orders[restaurantId] = order.id;
+    }
     app = await createTestApp(database.apiUrl, [EnqueueThenFail]);
     await app.listen(0, '127.0.0.1');
     url = `${await app.getUrl()}/realtime`.replace('[::1]', '127.0.0.1');
@@ -97,8 +106,8 @@ describe('printing bridge verifier probes (Testcontainers, vipe_api)', () => {
     const b = handshake({ auth: { token: await printerToken(fixtures.adminB.email) } });
     expect(await a.outcome).toBe(fixtures.restaurantA);
     expect(await b.outcome).toBe(fixtures.restaurantB);
-    await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(COMMAND).expect(201);
-    await http().post('/api/print/commands').set(as(fixtures.adminB.email)).send(COMMAND).expect(201);
+    await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(commandOf(fixtures.restaurantA)).expect(201);
+    await http().post('/api/print/commands').set(as(fixtures.adminB.email)).send(commandOf(fixtures.restaurantB)).expect(201);
     await eventually(() => a.jobs.length >= 1 && b.jobs.length >= 1);
     await settle();
     expect(a.jobs).toHaveLength(1);
@@ -120,7 +129,7 @@ describe('printing bridge verifier probes (Testcontainers, vipe_api)', () => {
     const spy = vi.spyOn(gateway, 'emitPrintJob').mockImplementationOnce(() => {
       throw new Error('socket layer down');
     });
-    const res = await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(COMMAND);
+    const res = await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(commandOf(fixtures.restaurantA));
     spy.mockRestore();
     expect(res.status).toBe(201);
     const pending = await http().get('/api/print/jobs/pending').set(bearer(await printerToken(fixtures.adminA.email)));
@@ -158,7 +167,7 @@ describe('printing bridge verifier probes (Testcontainers, vipe_api)', () => {
   it('P6: unknown ack 404, a bearer token cannot enqueue, prune keeps 6 days and deletes 8', async () => {
     const token = await printerToken(fixtures.adminA.email);
     expect((await http().post(`/api/print/jobs/${randomUUID()}/ack`).set(bearer(token))).status).toBe(404);
-    expect((await http().post('/api/print/commands').set(bearer(token)).send(COMMAND)).status).toBe(401);
+    expect((await http().post('/api/print/commands').set(bearer(token)).send(commandOf(fixtures.restaurantA))).status).toBe(401);
     expect((await http().post('/api/print/invoices').set(bearer(token)).send({ invoice: { invoiceNumber: 'F' }, displayItems: [] })).status).toBe(401);
 
     const [kept] = await superuserQuery<{ id: string }>(

@@ -26,23 +26,34 @@ pub fn render_kitchen_order(order: &Value, now: NaiveDateTime) -> Result<Vec<Pri
     let items = get(order, "items", &empty).as_array().ok_or_else(|| err("items is not a list"))?;
     let delivery = delivery_block(order.get("delivery"));
     let date_str = now.format("%d/%m/%Y %H:%M").to_string();
+    // Comanda header: `orderNumber` and `station` are optional (old jobs print as before).
+    let title = match order.get("orderNumber").filter(|v| !v.is_null()) {
+        Some(number) => format!("COMANDA #{}", pystr(number)),
+        None => "COMANDA".to_string(),
+    };
+    let station = order.get("station").and_then(Value::as_object).and_then(|s| s.get("name")).filter(|v| py::truthy(v));
+    let station_lines: Vec<PrintLine> = station.map(|name| left(format!("Estaci\u{f3}n: {}", pystr(name)))).into_iter().collect();
 
     let mut lines = match &delivery {
-        None => vec![
-            PrintLine { text: format!("COMANDA \u{2014} Mesa {table}"), bold: true, align: Align::Center },
-            left(format!("Fecha:  {date_str}")),
-            left(format!("Mesero: {waiter}")),
-            center(RULE),
-        ],
+        None => [
+            vec![PrintLine { text: format!("{title} \u{2014} Mesa {table}"), bold: true, align: Align::Center }],
+            station_lines,
+            vec![left(format!("Fecha:  {date_str}")), left(format!("Mesero: {waiter}")), center(RULE)],
+        ]
+        .concat(),
         Some(d) => {
             let customer = d.get("customerName").filter(|v| py::truthy(v)).map(pystr).unwrap_or("N/A".into());
-            vec![
-                PrintLine { text: "COMANDA \u{2014} DOMICILIO".into(), bold: true, align: Align::Center },
-                left(format!("Fecha:  {date_str}")),
-                left(format!("Cliente: {customer}")),
-                left(format!("Mesero: {waiter}")),
-                center(RULE),
+            [
+                vec![PrintLine { text: format!("{title} \u{2014} DOMICILIO"), bold: true, align: Align::Center }],
+                station_lines,
+                vec![
+                    left(format!("Fecha:  {date_str}")),
+                    left(format!("Cliente: {customer}")),
+                    left(format!("Mesero: {waiter}")),
+                    center(RULE),
+                ],
             ]
+            .concat()
         }
     };
 

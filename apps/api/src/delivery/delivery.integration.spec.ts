@@ -278,8 +278,8 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       expect(res.body.consumption).toEqual({ orderId, enabled: false, consumedItems: 0, totalCost: 0, shortages: [] });
       expect(res.body.printJob).toEqual({ id: expect.any(String), kind: 'command', createdAt: expect.stringMatching(ISO) });
 
-      const [orderRow] = await db<{ order_type: string; status: string; subtotal: string; tax: string; waiter_id: string }>(
-        'SELECT order_type, status, subtotal::text, tax::text, waiter_id FROM orders WHERE id = $1',
+      const [{ order_number: orderNumber, ...orderRow }] = await db<{ order_type: string; status: string; subtotal: string; tax: string; waiter_id: string; order_number: number }>(
+        'SELECT order_type, status, subtotal::text, tax::text, waiter_id, order_number FROM orders WHERE id = $1',
         [orderId],
       );
       expect(orderRow).toEqual({ order_type: 'delivery', status: 'kitchen', subtotal: '11000.00', tax: '0.00', waiter_id: d.operatorProfile });
@@ -294,6 +294,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
         payload: {
           invoiceNumber: res.body.printJob.id,
           waiter: 'Delivery A',
+          orderNumber,
           table: null,
           items: [
             { name: 'Jugo', quantity: 2, comments: 'sin hielo' },
@@ -986,7 +987,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       try {
         const res = await create();
         expect(res.status).toBe(201);
-        const jobs = await db<{ id: string; station_id: string; payload: { items: { name: string }[]; station: { name: string }; delivery: unknown } }>(
+        const jobs = await db<{ id: string; station_id: string; payload: { items: { name: string }[]; station: { name: string }; delivery: unknown; orderNumber: number } }>(
           `SELECT id, station_id, payload FROM print_jobs WHERE payload->>'waiter' = 'Delivery A' AND station_id IS NOT NULL ORDER BY created_at, id`,
         );
         expect(jobs.map((j) => [j.station_id, j.payload.station.name, j.payload.items.map((i) => i.name)])).toEqual([
@@ -994,6 +995,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
           [bar, 'Barra', ['Jugo']],
         ]);
         expect(jobs.every((j) => j.payload.delivery)).toBe(true);
+        expect(jobs.map((j) => j.payload.orderNumber)).toEqual([res.body.delivery.orderNumber, res.body.delivery.orderNumber]);
         expect(JSON.stringify(jobs[0].payload.items)).not.toContain('dishId');
         expect(res.body.printJob.id).toBe(jobs[0].id);
         const lines = await db<{ name: string; station_id: string; station_source: string }>(

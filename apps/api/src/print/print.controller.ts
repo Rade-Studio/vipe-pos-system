@@ -14,6 +14,7 @@ import {
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
+import type { AuthenticatedRequest } from '../auth/auth-context';
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { idParamSchema, parseInput } from '../common/validation';
@@ -56,13 +57,15 @@ export class PrintController {
   @ApiBody({ type: CommandPrintRequest })
   @ApiCreatedResponse({
     type: PrintJobsCreated,
-    description: 'Queued kitchen command; its id is the payload invoiceNumber. With stations: one job per station and `jobs`; without: the single legacy job (no `jobs`).',
+    description:
+      "Queued kitchen command; its id is the payload invoiceNumber, with the order's orderNumber and the sender's name as waiter. With stations: one job per station and `jobs`; without: the single legacy job (no `jobs`).",
   })
   @ApiConflictResponse({ description: '`printing_disabled`: the restaurant does not use printers.' })
-  async printCommand(@Body() body: unknown): Promise<PrintJobCreated | PrintJobsCreated> {
+  @ApiNotFoundResponse({ description: "orderId is not an order of the caller's restaurant." })
+  async printCommand(@Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<PrintJobCreated | PrintJobsCreated> {
     const input = parseInput(commandPrintSchema, body);
     await this.print.assertPrinting();
-    return this.print.printCommand(input);
+    return this.print.printCommand(await this.print.commandFor(input, req.profile!));
   }
 
   @Get('jobs/pending')

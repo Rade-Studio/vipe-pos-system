@@ -13,7 +13,9 @@ const toast = vi.hoisted(() => vi.fn())
 vi.mock("@/components/ui/use-toast", () => ({ toast }))
 
 import { sendCommand, sendFactura } from "./print"
-import type { CommandPayload, PrintableInvoice } from "@/types"
+import type { PrintableInvoice } from "@/types"
+
+const ORDER = "0f0e0d0c-0000-4000-8000-000000000001"
 
 const FAILURE_TOAST = {
   title: "Error",
@@ -27,29 +29,28 @@ beforeEach(() => {
 })
 
 describe("sendCommand", () => {
-  it("posts the command without the client number", async () => {
-    const command: CommandPayload = { invoiceNumber: "1234", table: 4, waiter: "Ana", items: [{ name: "Ajiaco", quantity: 2 }] }
-    await sendCommand(command)
+  it("posts the order id and lines, never a client number or waiter (the API fills both)", async () => {
+    await sendCommand({ orderId: ORDER, table: 4, items: [{ name: "Ajiaco", quantity: 2 }] })
 
     expect(api.POST).toHaveBeenCalledTimes(1)
     expect(api.POST).toHaveBeenCalledWith("/api/print/commands", {
-      body: { table: 4, waiter: "Ana", items: [{ name: "Ajiaco", quantity: 2 }] },
+      body: { orderId: ORDER, table: 4, items: [{ name: "Ajiaco", quantity: 2 }] },
     })
     expect(toast).not.toHaveBeenCalled()
   })
 
   it("keeps a delivery command's null table and delivery block", async () => {
     const delivery = { customerName: "Ana", phone: "3001", address: "Calle 2", paymentMode: "prepaid" as const, deliveryFee: 5000 }
-    await sendCommand({ invoiceNumber: "9", table: null, waiter: "Domicilios", items: [{ name: "Ajiaco", quantity: 1 }], delivery })
+    await sendCommand({ orderId: ORDER, table: null, items: [{ name: "Ajiaco", quantity: 1 }], delivery })
 
     expect(api.POST).toHaveBeenCalledWith("/api/print/commands", {
-      body: { table: null, waiter: "Domicilios", items: [{ name: "Ajiaco", quantity: 1 }], delivery },
+      body: { orderId: ORDER, table: null, items: [{ name: "Ajiaco", quantity: 1 }], delivery },
     })
   })
 
   it("shows the former failure toast when the API refuses, and never throws", async () => {
     api.POST.mockRejectedValue(new Error("422"))
-    await expect(sendCommand({ invoiceNumber: "1", waiter: "Ana", items: [] })).resolves.toBeUndefined()
+    await expect(sendCommand({ orderId: ORDER, items: [] })).resolves.toBeUndefined()
     expect(toast).toHaveBeenCalledWith(FAILURE_TOAST)
   })
 })
@@ -76,7 +77,7 @@ describe("printing turned off (F6, S2)", () => {
     const { ApiError } = await import("./errors")
     const off = new ApiError(409, "Conflict", "Este restaurante no usa impresoras", { code: "printing_disabled" })
     api.POST.mockRejectedValue(off)
-    await expect(sendCommand({ invoiceNumber: "1", waiter: "Ana", items: [{ name: "Ajiaco", quantity: 1 }] })).resolves.toBeUndefined()
+    await expect(sendCommand({ orderId: ORDER, items: [{ name: "Ajiaco", quantity: 1 }] })).resolves.toBeUndefined()
     await expect(sendFactura("F-1", { invoiceNumber: "F-1" } as unknown as PrintableInvoice, [])).resolves.toBeUndefined()
     expect(toast).toHaveBeenCalledTimes(2)
     expect(toast).toHaveBeenCalledWith({

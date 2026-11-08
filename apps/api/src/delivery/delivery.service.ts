@@ -217,7 +217,7 @@ export class DeliveryService {
     // orders); a restaurant without printers (S2) queues nothing.
     const printJob = (await this.print.printingEnabled())
       ? await this.print.printCommand(
-          { items: lines, waiter: caller.name.trim() || FALLBACK_WAITER, table: null, delivery: printInfo(delivery) },
+          { items: lines, waiter: caller.name.trim() || FALLBACK_WAITER, orderNumber: delivery.orderNumber, table: null, delivery: printInfo(delivery) },
           input.items.map((item) => item.dishId),
         )
       : null;

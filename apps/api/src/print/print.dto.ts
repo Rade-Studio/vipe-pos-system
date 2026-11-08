@@ -25,15 +25,26 @@ export const invoicePrintSchema = z.strictObject({
 
 /**
  * `CommandPayload` without `invoiceNumber`: the job id takes its place, so the
- * stored payload is the former `new_command` broadcast. The printing service
- * drops commands without items or waiter, so the API refuses them up front.
+ * stored payload is the former `new_command` broadcast. `orderId` names the
+ * order the comanda belongs to: the API fills `waiter` (the acting profile)
+ * and `orderNumber` from it, so a sent `waiter` is accepted and ignored.
  */
 export const commandPrintSchema = z.strictObject({
+  orderId: z.guid(),
   items: z.array(jsonObject).min(1).max(MAX_LINES),
-  waiter: text(200),
+  waiter: z.string().max(200).optional(),
   table: z.number().nullable().optional(),
   delivery: jsonObject.optional(),
 });
+
+/** The stored command fields (PrintService.printCommand), filled by the server. */
+export interface CommandJobInput {
+  items: Record<string, unknown>[];
+  waiter: string;
+  orderNumber: number;
+  table?: number | null;
+  delivery?: Record<string, unknown>;
+}
 
 export const pendingQuerySchema = z.strictObject({ after: z.guid().optional() });
 
@@ -52,12 +63,16 @@ export class InvoicePrintRequest {
 }
 
 export class CommandPrintRequest {
+  @ApiProperty({ format: 'uuid', description: "The order of the caller's restaurant this comanda belongs to (404 otherwise)." })
+  orderId!: string;
+
   @ApiProperty({ type: 'array', items: { type: 'object', additionalProperties: true }, minItems: 1, maxItems: MAX_LINES })
   items!: Record<string, unknown>[];
 
-  @ApiProperty({ minLength: 1 }) waiter!: string;
+  @ApiPropertyOptional({ deprecated: true, description: "Ignored: the API prints the sender's profile name." })
+  waiter?: string;
 
-  @ApiPropertyOptional({ type: Number, nullable: true, description: 'Null or absent for delivery orders.' })
+  @ApiPropertyOptional({ type: Number, nullable: true, description: "Null or absent for delivery orders; the order's table wins." })
   table?: number | null;
 
   @ApiPropertyOptional({ type: 'object', additionalProperties: true, description: 'DeliveryPrintInfo (types/index.ts).' })
@@ -83,7 +98,7 @@ export class PendingPrintJob {
     type: 'object',
     additionalProperties: true,
     description:
-      'invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices.',
+      'invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices.',
   })
   payload!: Record<string, unknown>;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;

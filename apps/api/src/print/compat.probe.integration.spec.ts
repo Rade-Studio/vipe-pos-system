@@ -10,8 +10,12 @@ describe('print payloads without stations (F6 compat)', () => {
   let database: TestDatabase;
   let app: INestApplication;
   let cookie = '';
+  let order = { id: '', number: 0 };
   beforeAll(async () => {
     database = await startTestDatabase();
+    const [row] = await superuserQuery<{ id: string; order_number: number }>(
+      database.superuserUrl, 'SELECT id, order_number FROM orders WHERE restaurant_id = $1 LIMIT 1', [fixtures.restaurantA]);
+    order = { id: row.id, number: row.order_number };
     await superuserQuery(database.superuserUrl, `INSERT INTO dishes (id, name, price, restaurant_id) VALUES ($1, 'Bandeja', 30000, $2)`, [dish, fixtures.restaurantA]);
     app = await createTestApp(database.apiUrl);
     const res = await request(app.getHttpServer()).post('/api/auth/login').send({ email: fixtures.waiterA.email, password: PASSWORD });
@@ -24,6 +28,7 @@ describe('print payloads without stations (F6 compat)', () => {
 
   it('stores exactly the legacy job and answers {id, kind, createdAt}', async () => {
     const out: unknown[] = [];
+    // Commands carry the order (orderId); the stored payload gains the server's waiter and orderNumber.
     const bodies = [
       ['command', '/api/print/commands', { items: [{ id: `${dish}-1700000000000`, name: 'Bandeja', price: 30000, quantity: 2, comments: 'sin cebolla', categoryId: 'x' }, { id: 'custom-1', name: 'Fuera', price: 1, quantity: 1 }], waiter: 'Waiter A', table: 8 }],
       ['command-delivery', '/api/print/commands', { items: [{ name: 'Jugo', quantity: 2 }], waiter: 'Op', table: null, delivery: { customerName: 'Ana', phone: '300', address: 'Calle 1', paymentMode: 'cash_on_delivery', deliveryFee: 4000 } }],
@@ -32,7 +37,8 @@ describe('print payloads without stations (F6 compat)', () => {
     ] as const;
     for (const [label, url, body] of bodies) {
       await superuserQuery(database.superuserUrl, 'DELETE FROM print_jobs');
-      const res = await request(app.getHttpServer()).post(url).set('Cookie', cookie).send(body);
+      const sent = url === '/api/print/commands' ? { orderId: order.id, ...body } : body;
+      const res = await request(app.getHttpServer()).post(url).set('Cookie', cookie).send(sent);
       const jobs = await superuserQuery<{ id: string; kind: string; payload: Record<string, unknown>; printed_at: unknown }>(
         database.superuserUrl, 'SELECT id, kind, payload, printed_at FROM print_jobs ORDER BY created_at, id');
       const norm = (v: unknown) => JSON.parse(JSON.stringify(v).replaceAll(String(res.body.id), '<jobid>'));
@@ -46,7 +52,8 @@ describe('print payloads without stations (F6 compat)', () => {
     expect(out.map((o) => (o as { label: string }).label)).toEqual(['command', 'command-delivery', 'invoice', 'bad-command']);
     for (const [index, kind] of ['command', 'command', 'invoice'].entries()) {
       const [, , body] = bodies[index];
-      const expected = kind === 'command' ? { invoiceNumber: '<jobid>', ...body } : { invoiceNumber: 'F-100', ...body };
+      const expected =
+        kind === 'command' ? { invoiceNumber: '<jobid>', ...body, waiter: 'Waiter A', orderNumber: order.number } : { invoiceNumber: 'F-100', ...body };
       expect(out[index]).toMatchObject({ status: 201, kind, ...legacy, jobs: [{ idIsResponse: true, kind, printed: null }] });
       const [job] = (out[index] as { jobs: { payloadText: string }[] }).jobs;
       expect(JSON.parse(job.payloadText)).toEqual(expected);

@@ -32,15 +32,21 @@ export interface KitchenOrderRender {
  * Mirrors `pos/print_renderer.render_kitchen_order(order)` in Python.
  */
 export function renderKitchenOrder(order: {
-  orderNumber?: string
+  /** orders.order_number: the header says `COMANDA #<n>` (the job id in invoiceNumber is never printed). */
+  orderNumber?: string | number | null
   invoiceNumber?: string
+  /** The prep station of this comanda (one per station, F6): adds `Estación: <name>`. */
+  station?: { id?: string; name?: string } | null
   /** Absent / null for delivery orders. */
   table?: string | number | null
   waiter: string
   items: Array<{ name: string; quantity: number; comments?: string }>
   delivery?: DeliveryPrintInfo
 }): KitchenOrderRender {
-  const orderNumber = order.orderNumber ?? order.invoiceNumber ?? ''
+  const title = order.orderNumber != null ? `COMANDA #${order.orderNumber}` : 'COMANDA'
+  const stationLines: PrintLine[] = order.station?.name
+    ? [{ text: `Estación: ${order.station.name}`, bold: false, align: 'left' }]
+    : []
   const delivery = order.delivery
   const tableDisplay = typeof order.table === 'number' ? `Mesa ${order.table}` : order.table
   const dateDisplay = new Date().toLocaleString('es-CO', {
@@ -53,14 +59,16 @@ export function renderKitchenOrder(order: {
 
   const lines: PrintLine[] = delivery
     ? [
-        { text: 'COMANDA — DOMICILIO', bold: true, align: 'center' },
+        { text: `${title} — DOMICILIO`, bold: true, align: 'center' },
+        ...stationLines,
         { text: `Fecha:  ${dateDisplay}`, bold: false, align: 'left' },
         { text: `Cliente: ${delivery.customerName || 'N/A'}`, bold: false, align: 'left' },
         { text: `Mesero: ${order.waiter}`, bold: false, align: 'left' },
         { text: '--------------------------------', bold: false, align: 'center' },
       ]
     : [
-        { text: `COMANDA — ${tableDisplay}`, bold: true, align: 'center' },
+        { text: `${title} — ${tableDisplay}`, bold: true, align: 'center' },
+        ...stationLines,
         { text: `Fecha:  ${dateDisplay}`, bold: false, align: 'left' },
         { text: `Mesero: ${order.waiter}`, bold: false, align: 'left' },
         { text: '--------------------------------', bold: false, align: 'center' },

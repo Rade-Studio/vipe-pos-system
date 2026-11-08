@@ -248,7 +248,7 @@ describe('renderKitchenOrder', () => {
       items: [{ name: 'Pizza', quantity: 2, comments: 'sin cebolla' }],
     })
     const text = result.lines.map((l) => l.text).join('\n')
-    expect(text).toContain('COMANDA — Mesa 3')
+    expect(text).toContain('COMANDA #ORD-1 — Mesa 3')
     expect(text).toContain('Mesero: Ana')
     expect(text).toContain('PIZZA')
     expect(text).toContain('2x')
@@ -344,6 +344,32 @@ describe('dine-in output is unchanged (golden, captured before the delivery bloc
       '¡GRACIAS POR SU COMPRA!',
       'VUELVA PRONTO',
     ])
+  })
+})
+
+describe('renderKitchenOrder - comanda header (orderNumber, station)', () => {
+  const texts = (order: Partial<Parameters<typeof renderKitchenOrder>[0]>) =>
+    renderKitchenOrder({ table: 1, waiter: 'Ana', items: KITCHEN_ITEMS, ...order }).lines.map((l) => l.text)
+
+  it('prints the order number and the station, then Fecha and Mesero', () => {
+    const lines = texts({ invoiceNumber: 'job-id', orderNumber: 130, station: { id: 's1', name: 'Cocina' } })
+    expect(lines[0]).toBe('COMANDA #130 — Mesa 1')
+    expect(lines[1]).toBe('Estación: Cocina')
+    expect(lines[2]).toMatch(/^Fecha: {2}/)
+    expect(lines[3]).toBe('Mesero: Ana')
+  })
+
+  it('prints the number on a delivery comanda', () => {
+    const lines = texts({ table: null, orderNumber: 131, station: { name: 'Bar' }, delivery: DELIVERY })
+    expect(lines.slice(0, 2)).toEqual(['COMANDA #131 — DOMICILIO', 'Estación: Bar'])
+    expect(lines[3]).toBe('Cliente: Ana Perez')
+  })
+
+  it('never prints the job id (invoiceNumber) as the number, and adds no station line without one', () => {
+    const lines = texts({ invoiceNumber: 'job-id', orderNumber: 7 })
+    expect(lines[0]).toBe('COMANDA #7 — Mesa 1')
+    expect(lines.join('\n')).not.toContain('Estación')
+    expect(texts({ invoiceNumber: 'job-id' })[0]).toBe('COMANDA — Mesa 1')
   })
 })
 

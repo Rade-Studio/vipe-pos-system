@@ -87,7 +87,7 @@ export function KitchenOrderPrintView({ order, onClose }: KitchenOrderPrintViewP
       </div>
 
       <div className="border rounded-lg p-6 bg-white dark:bg-gray-800 dark:text-white max-w-md mx-auto" ref={printRef}>
-        <h4 className="text-center font-bold text-xl mb-4">COMANDA {order.orderNumber}</h4>
+        <h4 className="text-center font-bold text-xl mb-4">{rendered.lines[0].text}</h4>
 
         <div className="flex justify-between mb-1">
           <span>Fecha:</span>
