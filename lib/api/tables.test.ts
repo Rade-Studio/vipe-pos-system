@@ -96,6 +96,10 @@ describe("mapping", () => {
       seats: undefined,
       isActive: true,
       updated_at: undefined,
+      reservationName: undefined,
+      reservationArrivalAt: undefined,
+      reservedAt: undefined,
+      reservedByName: undefined,
     })
     expect(toTable({ ...table, isActive: false }).isActive).toBe(false)
   })
@@ -116,6 +120,41 @@ describe("mapping", () => {
       rotation: 45,
       seats: 6,
       updated_at: "2026-11-04T12:00:00.000Z",
+      reservation_name: null,
+      reservation_arrival_at: null,
+      reserved_at: null,
+      reserved_by_name: null,
+    })
+  })
+
+  const reserved: TableDto = {
+    ...table,
+    status: "reserved",
+    waiterId: null,
+    waiterName: null,
+    reservationName: "Familia López",
+    reservationArrivalAt: "2026-11-07T01:30:00.000Z",
+    reservedAt: "2026-11-06T22:00:00.000Z",
+    reservedByName: "Ana",
+  }
+
+  it("toTable carries the reservation (T2, S2)", () => {
+    expect(toTable(reserved)).toMatchObject({
+      status: "reserved",
+      reservationName: "Familia López",
+      reservationArrivalAt: "2026-11-07T01:30:00.000Z",
+      reservedAt: "2026-11-06T22:00:00.000Z",
+      reservedByName: "Ana",
+    })
+  })
+
+  it("toTableRow carries the reservation (T2, S2)", () => {
+    expect(toTableRow(reserved)).toMatchObject({
+      status: "reserved",
+      reservation_name: "Familia López",
+      reservation_arrival_at: "2026-11-07T01:30:00.000Z",
+      reserved_at: "2026-11-06T22:00:00.000Z",
+      reserved_by_name: "Ana",
     })
   })
 })

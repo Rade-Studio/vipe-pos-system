@@ -18,6 +18,7 @@ import { ToastAction } from "@/components/ui/toast"
 import { AlertTriangle, ArrowLeft, ChevronRight, Send, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
+import { ReserveSheet } from "@/components/tables/ReserveSheet"
 import { KitchenOrderPrintView } from "@/components/printing/KitchenOrderPrintView"
 import type { PrintableKitchenOrder } from "@/types"
 import * as tablesApi from "@/lib/api/tables"
@@ -102,6 +103,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // Estados para modales y diálogos
   const [showWaiterModal, setShowWaiterModal] = useState(false)
   const [selectedTableForWaiter, setSelectedTableForWaiter] = useState<string | null>(null)
+  // reservas-mesas T2: the free table whose reserve sheet is open.
+  const [reserveTarget, setReserveTarget] = useState<{ id: string; number: number } | null>(null)
   const [showKitchenOrder, setShowKitchenOrder] = useState(false)
   const [kitchenOrderData, setKitchenOrderData] = useState<PrintableKitchenOrder | null>(null)
   // S2 (F6): whether the restaurant uses thermal printers.
@@ -499,29 +502,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
             })
         }
       } else {
-        // Mesa libre sin mesero: si soy mesero, me asigno a mí mismo;
-        // si soy admin/cashier, abro el modal para asignar manualmente.
-        if (profile.role === "waiter") {
-          // Usar authProfile.id (UUID real de la DB) en vez de profile.id
-          // (que es "waiter-1" mock cuando admin está impersonando).
-          const realWaiterId = authProfile?.id ?? profile.id
-          localTableChanges.mark([tableId])
-          tablesApi.assignWaiter(tableId, realWaiterId)
-            .then(() => {
-              useTableStore.getState().assignWaiterToTable(tableId, realWaiterId)
-              setActiveTable(tableId)
-            })
-            .catch((err: any) => {
-              toast({
-                title: "Error",
-                description: `No se pudo asignar la mesa. ${err?.message ?? "Intente nuevamente."}`,
-                variant: "destructive",
-              })
-            })
-        } else {
-          setSelectedTableForWaiter(tableId)
-          setShowWaiterModal(true)
-        }
+        // reservas-mesas T2 (S1, S5): a free or reserved table is only
+        // selected, so its panel can reserve it; "Agregar productos" or
+        // "Sentar clientes" takes it (takeTable).
+        setActiveTable(tableId)
       }
 
       // Si estamos en móvil y seleccionamos una mesa, mostrar su panel
@@ -530,6 +514,40 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       }
     },
     [activeTable, checkEmptyCartAndReleaseTable, tables, isMobile, profile, openByTable, toast],
+  )
+
+  // Takes a free or reserved table (POST assign: occupied, a reservation is
+  // cleared): a waiter takes it themselves; admin and caja pick the waiter.
+  // Resolves true once the table is the signed-in waiter's.
+  const addItemsAfterPick = useRef<string | null>(null)
+  const takeTable = useCallback(
+    async (tableId: string, options: { thenAddItems?: boolean } = {}): Promise<boolean> => {
+      if (profile.role !== "waiter") {
+        // "Agregar productos" goes on to the order once the waiter is picked.
+        addItemsAfterPick.current = options.thenAddItems ? tableId : null
+        setSelectedTableForWaiter(tableId)
+        setShowWaiterModal(true)
+        return false
+      }
+      // Usar authProfile.id (UUID real de la DB) en vez de profile.id
+      // (que es "waiter-1" mock cuando admin está impersonando).
+      const realWaiterId = authProfile?.id ?? profile.id
+      localTableChanges.mark([tableId])
+      try {
+        await tablesApi.assignWaiter(tableId, realWaiterId)
+        useTableStore.getState().assignWaiterToTable(tableId, realWaiterId)
+        setActiveTable(tableId)
+        return true
+      } catch (err: any) {
+        toast({
+          title: "Error",
+          description: `No se pudo asignar la mesa. ${conflictMessage(err, "Intente nuevamente.")}`,
+          variant: "destructive",
+        })
+        return false
+      }
+    },
+    [profile, authProfile, toast],
   )
 
   // Manejar selección de mesero
@@ -557,8 +575,13 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           setSelectedTableForWaiter(null)
           setShowWaiterModal(false)
 
-          // Si estamos en móvil, mostrar el panel de la mesa
-          if (isMobile) {
+          if (addItemsAfterPick.current === selectedTableForWaiter) {
+            // A table just taken has no open order: the guests come first (T22).
+            addItemsAfterPick.current = null
+            const seats = tables.find((t) => t.id === selectedTableForWaiter)?.seats
+            setGuestsPrompt({ tableId: selectedTableForWaiter, guests: seats && seats > 0 ? seats : 2 })
+          } else if (isMobile) {
+            // Si estamos en móvil, mostrar el panel de la mesa
             setShowTableSheet(true)
           }
         } catch (err) {
@@ -570,50 +593,21 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         }
       }
     },
-    [selectedTableForWaiter, toast, isMobile],
+    [selectedTableForWaiter, toast, isMobile, tables],
   )
 
-  // Completar reserva después de seleccionar mesero
-  const completeReservation = useCallback(
-    async (waiterId: string) => {
-      if (selectedTableForWaiter) {
-        try {
-          // Evitar mostrar loading
-          setLoading(false)
-
-          // Registrar este cambio como local
-          localTableChanges.mark([selectedTableForWaiter])
-
-          // Actualizar en base de datos
-          await tablesApi.assignWaiter(selectedTableForWaiter, waiterId)
-
-          // Actualizar directamente en el store (single owner, S3).
-          useTableStore.getState().assignWaiterToTable(selectedTableForWaiter, waiterId)
-
-          setActiveTable(selectedTableForWaiter)
-          setSelectedTableForWaiter(null)
-          setShowWaiterModal(false)
-
-          // Si estamos en móvil, mostrar el panel de la mesa
-          if (isMobile) {
-            setShowTableSheet(true)
-          }
-        } catch (err) {
-          toast({
-            title: "Error",
-            description: "No se pudo reservar la mesa. Intente nuevamente.",
-            variant: "destructive",
-          })
-        }
-      }
+  // Reservar (free tables only, S1): the reserve sheet; no waiter is assigned.
+  const handleReserveTable = useCallback(
+    (tableId: string) => {
+      const table = tables.find((t) => t.id === tableId)
+      if (table) setReserveTarget({ id: table.id, number: table.number })
     },
-    [selectedTableForWaiter, toast, isMobile],
+    [tables],
   )
-
-  // Manejar reserva de mesa
-  const handleReserveTable = useCallback((tableId: string) => {
-    setSelectedTableForWaiter(tableId)
-    setShowWaiterModal(true)
+  const completeReservation = useCallback((dto: tablesApi.TableDto) => {
+    localTableChanges.mark([dto.id])
+    useTableStore.getState().updateTable(dto.id, tablesApi.toTable(dto))
+    setReserveTarget(null)
   }, [])
 
   // Manejar liberación de mesa
@@ -628,7 +622,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           return
         }
 
-        if (["kitchen", "delivered", "served", "reserved"].includes(table.status)) {
+        // A reserved table is released too: the API cancels the reservation (L5).
+        if (["kitchen", "delivered", "served"].includes(table.status)) {
           toast({
             title: "Acción no permitida",
             description: `No se puede liberar una mesa en estado ${table.status}`,
@@ -926,8 +921,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // after the identified person's profile reached this screen, with the
   // handlers of that render.
   const terminal = useTerminal()
-  const latestHandlers = useRef({ handleTableSelect, handleReserveTable, handleReleaseTable, handleSendToKitchen })
-  latestHandlers.current = { handleTableSelect, handleReserveTable, handleReleaseTable, handleSendToKitchen }
+  const latestHandlers = useRef({ handleTableSelect, handleReserveTable, handleReleaseTable, handleSendToKitchen, takeTable })
+  latestHandlers.current = { handleTableSelect, handleReserveTable, handleReleaseTable, handleSendToKitchen, takeTable }
   const [pendingEntry, setPendingEntry] = useState<(() => void) | null>(null)
   useEffect(() => {
     if (!pendingEntry) return
@@ -961,6 +956,11 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   )
   const releaseTable = useCallback(
     (tableId: string) => withIdentity(tableId, () => latestHandlers.current.handleReleaseTable(tableId)),
+    [withIdentity],
+  )
+  // "Sentar clientes" (S5): the guests of a reservation arrived.
+  const seatTable = useCallback(
+    (tableId: string) => withIdentity(tableId, () => void latestHandlers.current.takeTable(tableId)),
     [withIdentity],
   )
   const sendToKitchen = useCallback(() => {
@@ -1004,6 +1004,14 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     setOrderFlowOpen(true)
   }
   const handleAddItems = () => {
+    // A free table is taken on its first products (reservas-mesas T2).
+    if (activeTableRow && !activeTableRow.waiter && (activeTableRow.status === "available" || activeTableRow.status === "reserved")) {
+      void takeTable(activeTableRow.id, { thenAddItems: true }).then((taken) => taken && askGuestsOrOpen())
+      return
+    }
+    askGuestsOrOpen()
+  }
+  const askGuestsOrOpen = () => {
     if (activeTableRow && !activeOrder && !activeDraft.asked) {
       setShowTableSheet(false)
       setGuestsPrompt({ tableId: activeTableRow.id, guests: activeTableRow.seats && activeTableRow.seats > 0 ? activeTableRow.seats : 2 })
@@ -1141,6 +1149,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       onAddItems={handleAddItems}
       onReserve={reserveTable}
       onRelease={releaseTable}
+      onSeat={seatTable}
       onShowOrder={onShowOrder}
       orderCount={cartItems.reduce((sum, item) => sum + item.quantity, 0)}
       orderNumber={activeOrder?.orderNumber}
@@ -1321,6 +1330,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
               onSelectTable={selectTable}
               onReserveTable={reserveTable}
               onReleaseTable={releaseTable}
+              onSeatTable={seatTable}
               isTableAccessible={checkTableAccess}
               floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id, elapsedOf }}
             />
@@ -1451,9 +1461,11 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       <WaiterSelectionModal
         open={showWaiterModal}
         onOpenChange={setShowWaiterModal}
-        onSelect={selectedTableForWaiter ? completeReservation : handleWaiterSelect}
+        onSelect={handleWaiterSelect}
         defaultWaiterId={undefined}
       />
+
+      <ReserveSheet table={reserveTarget} onClose={() => setReserveTarget(null)} onReserved={completeReservation} />
 
       {/* Diálogo de advertencia de stock insuficiente detallado */}
       <Dialog open={showStockDetailWarning} onOpenChange={setShowStockDetailWarning}>

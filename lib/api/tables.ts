@@ -46,6 +46,10 @@ export function toTable(dto: TableDto): Table {
     seats: dto.seats ?? undefined,
     isActive: dto.isActive,
     updated_at: dto.updatedAt ? new Date(dto.updatedAt) : undefined,
+    reservationName: dto.reservationName ?? undefined,
+    reservationArrivalAt: dto.reservationArrivalAt ?? undefined,
+    reservedAt: dto.reservedAt ?? undefined,
+    reservedByName: dto.reservedByName ?? undefined,
   }
 }
 
@@ -66,6 +70,10 @@ export function toTableRow(dto: TableDto): TableRow & { id: string } {
     rotation: dto.rotation,
     seats: dto.seats,
     updated_at: dto.updatedAt,
+    reservation_name: dto.reservationName,
+    reservation_arrival_at: dto.reservationArrivalAt,
+    reserved_at: dto.reservedAt,
+    reserved_by_name: dto.reservedByName,
   }
 }
 

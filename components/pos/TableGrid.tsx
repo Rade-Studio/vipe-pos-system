@@ -1,18 +1,23 @@
 "use client"
+import type { ReactNode } from "react"
 import type { Profile } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getStatusColor, getStatusLabel } from "@/utils/helpers"
-import { LockIcon, UnlockIcon, Users2, Coffee, UtensilsCrossed, CheckCircle2, Clock } from "lucide-react"
+import { Armchair, LockIcon, UnlockIcon, Users2, Coffee, UtensilsCrossed, CheckCircle2, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTableStore } from "@/store/useTableStore"
+import { isFreeTable, reservationLine } from "@/lib/tables/reservation"
 
 interface TableGridProps {
   activeTable: string | null
   waiterId: string
   onSelectTable: (tableId: string | null) => void
   onReserveTable: (tableId: string) => void
+  /** Also "Cancelar reserva" on a reserved table. */
   onReleaseTable: (tableId: string) => void
+  /** "Sentar clientes" on a reserved table (reservas-mesas S5); hidden without it. */
+  onSeatTable?: (tableId: string) => void
   isAccessible: (tableId: string) => boolean
   profiles: Profile[] // Asegurarnos de recibir todos los perfiles
   isAdminView?: boolean
@@ -66,10 +71,10 @@ const getInitials = (name: string): string => {
 
 export function TableGrid({
   activeTable,
-  waiterId,
   onSelectTable,
   onReserveTable,
   onReleaseTable,
+  onSeatTable,
   isAccessible,
   profiles = [], // Valor por defecto como array vacío
   isAdminView = false,
@@ -126,7 +131,9 @@ export function TableGrid({
             const isActive = activeTable === table.id
             const accessible = isAccessible(table.id)
             const isReserved = table.status === "reserved"
-            const isOwnedByCurrentWaiter = table.waiter === waiterId
+            // S1: only a free table can be reserved (the grid has no orders: its status says it).
+            const isFree = isFreeTable(table, false)
+            const reservation = reservationLine(table)
 
             // Obtener el nombre del mesero
             const waiterName = getWaiterName(table.waiter)
@@ -154,6 +161,10 @@ export function TableGrid({
                     {getStatusLabel(table.status)}
                   </Badge>
 
+                  {reservation && (
+                    <span className="line-clamp-2 max-w-full text-center text-xs font-medium [overflow-wrap:anywhere]">{reservation}</span>
+                  )}
+
                   {/* Mostrar el mesero con un avatar de iniciales */}
                   {waiterName && (
                     <div className="flex flex-col items-center mt-1">
@@ -165,20 +176,24 @@ export function TableGrid({
                   )}
                 </div>
 
-                {/* Botón de reservar/liberar */}
-                {accessible && !isAdminView && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute bottom-2 right-2 h-7 w-7 bg-white/80 dark:bg-black/50 rounded-full shadow-sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      isReserved ? onReleaseTable(table.id) : onReserveTable(table.id)
-                    }}
-                    title={isReserved ? "Liberar mesa" : "Reservar mesa"}
-                  >
-                    {isReserved ? <UnlockIcon className="h-4 w-4" /> : <LockIcon className="h-4 w-4" />}
-                  </Button>
+                {/* Reservar (free) / Sentar clientes and Cancelar reserva (reserved) */}
+                {accessible && !isAdminView && (isFree || isReserved) && (
+                  <div className="absolute bottom-1 right-1 flex gap-1">
+                    {isReserved && onSeatTable && (
+                      <GridAction label="Sentar clientes" onClick={() => onSeatTable(table.id)}>
+                        <Armchair className="h-4 w-4" aria-hidden />
+                      </GridAction>
+                    )}
+                    {isReserved ? (
+                      <GridAction label="Cancelar reserva" onClick={() => onReleaseTable(table.id)}>
+                        <UnlockIcon className="h-4 w-4" aria-hidden />
+                      </GridAction>
+                    ) : (
+                      <GridAction label="Reservar mesa" onClick={() => onReserveTable(table.id)}>
+                        <LockIcon className="h-4 w-4" aria-hidden />
+                      </GridAction>
+                    )}
+                  </div>
                 )}
               </div>
             )
@@ -209,5 +224,24 @@ export function TableGrid({
         </div>
       </div>
     </div>
+  )
+}
+
+/** A 44 px round icon action on a grid card; the card's own click (select) is not triggered. */
+function GridAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="min-h-11 min-w-11 rounded-full bg-white/80 shadow-sm dark:bg-black/50"
+      aria-label={label}
+      title={label}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+    >
+      {children}
+    </Button>
   )
 }

@@ -15,6 +15,7 @@ import { FloorTable } from "@/components/floor/FloorTable"
 import { StatusChip } from "@/components/floor/StatusChip"
 import { FLOOR_TOKENS, toneClasses } from "@/components/floor/tones"
 import { Button } from "@/components/ui/button"
+import { reservationLine } from "@/lib/tables/reservation"
 import { Skeleton } from "@/components/ui/skeleton"
 
 /** Elapsed minutes are re-read from the clock this often. */
@@ -71,6 +72,7 @@ function Details({ table, info, onClose }: { table: Table; info: LiveTableInfo |
         </Button>
       </div>
       {table.isActive === false && <p className="text-xs text-muted-fg">Inactiva: no recibe órdenes nuevas.</p>}
+      {reservationLine(table) && <p className="text-sm font-medium [overflow-wrap:anywhere]">{reservationLine(table)}</p>}
       <dl className="divide-y divide-line">
         {rows.map(([label, value]) => (
           <div key={label} className="flex items-center justify-between gap-3 py-1.5">

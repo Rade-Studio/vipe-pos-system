@@ -1,6 +1,6 @@
-import { act, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { useState } from "react"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useTableStore } from "@/store/useTableStore"
 import { TableGrid } from "./TableGrid"
@@ -109,5 +109,39 @@ describe("TableGrid — F1 remount invariant (Selection State Must Not Force A G
 
     expect(screen.getByText("Mesa 1")).toBeInTheDocument()
     expect(container.querySelector(".grid")).toBe(gridBefore)
+  })
+})
+
+describe("TableGrid — reserve only free tables (reservas-mesas T2, S1, S2, S5)", () => {
+  const renderGrid = () => {
+    const handlers = { onReserveTable: vi.fn(), onReleaseTable: vi.fn(), onSeatTable: vi.fn() }
+    render(
+      <TableGrid activeTable={null} waiterId="w-1" onSelectTable={() => {}} isAccessible={() => true} profiles={[]} {...handlers} />,
+    )
+    return handlers
+  }
+
+  it("free: Reservar mesa; occupied: no reserve button; reserved: name, Sentar clientes and Cancelar reserva", () => {
+    useTableStore.setState({
+      tables: [
+        { id: "t-1", number: 1, status: "available" },
+        { id: "t-2", number: 2, status: "occupied", waiter: "w-1" },
+        { id: "t-3", number: 3, status: "reserved", reservationName: "Familia López" },
+      ],
+    })
+    const { onReserveTable, onReleaseTable, onSeatTable } = renderGrid()
+
+    const reserve = screen.getAllByRole("button", { name: "Reservar mesa" })
+    expect(reserve).toHaveLength(1)
+    expect(reserve[0]).toHaveClass("min-h-11")
+    fireEvent.click(reserve[0])
+    expect(onReserveTable).toHaveBeenCalledWith("t-1")
+
+    expect(screen.getByText("Reserva: Familia López")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Sentar clientes" }))
+    expect(onSeatTable).toHaveBeenCalledWith("t-3")
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar reserva" }))
+    expect(onReleaseTable).toHaveBeenCalledWith("t-3")
+    expect(onReserveTable).toHaveBeenCalledTimes(1)
   })
 })

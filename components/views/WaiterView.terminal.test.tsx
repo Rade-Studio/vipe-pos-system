@@ -154,9 +154,14 @@ describe("WaiterView on a shared terminal (F4b)", () => {
     })
     await flush()
     expect(env.identifyByPin).toHaveBeenCalledWith("4829")
-    // The normal waiter flow: a free table is assigned to the identified waiter.
-    expect(env.assignWaiter).toHaveBeenCalledWith("t-7", "p-andres")
     expect(screen.getByRole("status")).toHaveTextContent("Andrés ·")
     expect(screen.getByRole("region", { name: "Mesa 7" })).toBeInTheDocument()
+    // The normal waiter flow: a free table is assigned to the identified waiter
+    // on its first products (reservas-mesas T2: the tap only selects it).
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Agregar productos" }))
+    })
+    await flush()
+    expect(env.assignWaiter).toHaveBeenCalledWith("t-7", "p-andres")
   })
 })

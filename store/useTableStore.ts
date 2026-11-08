@@ -2,6 +2,14 @@ import { create } from "zustand"
 import type { Table } from "@/types"
 import { mergeTableList, type TableChange } from "@/lib/realtime/table-merge"
 
+/** Leaving `reserved` (release, seat) clears the reservation, as the API does. */
+const NO_RESERVATION = {
+  reservationName: undefined,
+  reservationArrivalAt: undefined,
+  reservedAt: undefined,
+  reservedByName: undefined,
+} satisfies Partial<Table>
+
 interface TableState {
   tables: Table[]
   activeTable: string | null
@@ -38,7 +46,9 @@ export const useTableStore = create<TableState>((set, get) => ({
           (newTable) =>
             newTable.id === currentTable.id &&
             newTable.status === currentTable.status &&
-            newTable.waiter === currentTable.waiter,
+            newTable.waiter === currentTable.waiter &&
+            newTable.reservationName === currentTable.reservationName &&
+            newTable.reservationArrivalAt === currentTable.reservationArrivalAt,
         ),
       )
     ) {
@@ -70,7 +80,7 @@ export const useTableStore = create<TableState>((set, get) => ({
         return state
       }
       const tables: Table[] = state.tables.map((table) =>
-        table.id === tableId ? { ...table, status: "available", waiter: undefined } : table,
+        table.id === tableId ? { ...table, status: "available", waiter: undefined, ...NO_RESERVATION } : table,
       )
       return { tables } as Partial<TableState>
     })
@@ -106,7 +116,7 @@ export const useTableStore = create<TableState>((set, get) => ({
       }
       const tables = state.tables.map((table) => {
         if (table.id === tableId) {
-          return { ...table, waiter: waiterId, status: "occupied" as Table["status"] }
+          return { ...table, waiter: waiterId, status: "occupied" as Table["status"], ...NO_RESERVATION }
         }
         return table
       })
