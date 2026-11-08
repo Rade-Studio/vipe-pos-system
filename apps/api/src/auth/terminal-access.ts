@@ -46,6 +46,8 @@ const TERMINAL_ROUTES: Readonly<Record<string, TerminalRoute>> = {
   'PATCH /api/orders/:id/status': write,
   'POST /api/tables/:id/assign': write,
   'POST /api/tables/:id/release': write,
+  // reservas-mesas: the identified waiter reserves a free table (reserved_by is them).
+  'POST /api/tables/:id/reserve': write,
   'POST /api/print/commands': write,
   // F1: the identified staff member asks for the supervisor authorization and
   // cancels or voids with it (it is bound to the requester). Payment voids are
