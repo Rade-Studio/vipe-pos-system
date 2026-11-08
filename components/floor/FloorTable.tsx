@@ -173,7 +173,7 @@ export function FloorTable({
             // Short under the table so it never reaches a neighbour's chip (the
             // floor is narrow next to the panel); the arrival shows from 1280 px,
             // the panel and the accessible name always have both.
-            <span className="min-w-0 max-w-[4.5rem] truncate xl:max-w-[14rem]">
+            <span className="min-w-0 max-w-[3.5rem] truncate sm:max-w-[4.5rem] xl:max-w-[14rem]">
               {`· ${table.reservationName}`}
               {table.reservationArrivalAt && (
                 <span className="hidden tabular-nums xl:inline">{` · ${arrivalLabel(table.reservationArrivalAt)}`}</span>

@@ -229,3 +229,11 @@ describe("FloorPlan — live details (T22)", () => {
     expect(screen.queryByRole("button", { name: /^Minimapa/ })).not.toBeInTheDocument()
   })
 })
+
+describe("FloorPlan — reservations off the map (reservas-mesas T3, S2)", () => {
+  it("an unplaced reserved table shows the reservation name in the Sin ubicar strip", () => {
+    renderPlan([{ id: "t-9", number: 9, status: "reserved", reservationName: "Familia López" }])
+    const strip = screen.getByRole("region", { name: "Sin ubicar" })
+    expect(within(strip).getByRole("button", { name: /Mesa 9.*Reserva: Familia López/ })).toBeInTheDocument()
+  })
+})

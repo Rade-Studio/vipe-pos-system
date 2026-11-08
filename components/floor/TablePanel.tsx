@@ -16,7 +16,8 @@ interface TablePanelProps {
   table: Table | null
   waiterName?: string
   zoneName?: string
-  onAddItems: () => void
+  /** Omitted where the view takes no orders (caja's "Mesas", T3): the button is hidden. */
+  onAddItems?: () => void
   /** Free tables only (S1): opens the reserve sheet. */
   onReserve: (tableId: string) => void
   /** Also "Cancelar reserva" on a reserved table (the API cancels it). */
@@ -140,10 +141,12 @@ export function TablePanel({
           </>
         ) : (
           <>
-            <Button className="col-span-2 h-11" onClick={onAddItems}>
-              <Plus className="mr-1.5 h-4 w-4" aria-hidden />
-              Agregar productos
-            </Button>
+            {onAddItems && (
+              <Button className="col-span-2 h-11" onClick={onAddItems}>
+                <Plus className="mr-1.5 h-4 w-4" aria-hidden />
+                Agregar productos
+              </Button>
+            )}
             {onShowOrder && (
               <Button variant="outline" className="col-span-2 h-11" onClick={onShowOrder}>
                 <ShoppingCart className="mr-1.5 h-4 w-4" aria-hidden />
