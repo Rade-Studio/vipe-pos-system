@@ -169,6 +169,26 @@ describe('first-run setup (design/instalador-vipe/02-asistente.html)', () => {
     expect(last.setup).toMatchObject({ step: 'details', deferred: true, completed: false });
   });
 
+  it('the search step adds a network printer typed by IP and port', async () => {
+    const ctx = setup('resume');
+    const s = await ctx.bridge.loadSettings();
+    await ctx.bridge.saveSettings({ ...s, printers: [], setup: { ...s.setup, step: 'discover', maxStep: 4 } });
+    render(<Setup api={ctx.api} bridge={ctx.bridge} initial={await ctx.bridge.loadSettings()} onDone={ctx.onDone} onDefer={ctx.onDefer} skipResume />);
+    expect(await screen.findByRole('heading', { name: 'Encontramos 2 impresoras' })).toBeTruthy();
+    await click('Escribir IP a mano');
+    fireEvent.change(screen.getByLabelText('IP o nombre del equipo'), { target: { value: 'barra-pc' } });
+    fireEvent.change(screen.getByLabelText('Puerto'), { target: { value: '0' } });
+    await click('Usar esta IP');
+    expect(screen.getByText('El puerto es un número entre 1 y 65535.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Puerto'), { target: { value: '9101' } });
+    await click('Usar esta IP');
+    expect(screen.getByRole('button', { name: /Impresora de red/ }).getAttribute('aria-pressed')).toBe('true');
+    await click(/Configurar 3 impresoras/);
+    const last = ctx.saved[ctx.saved.length - 1];
+    expect(last.setup.step).toBe('details');
+    expect(last.printers[2]).toMatchObject({ connection: 'network', address: 'barra-pc:9101', model: 'Impresora de red' });
+  });
+
   it('resumes a half-done setup where it stopped', async () => {
     const ctx = setup('resume');
     await mount(ctx);

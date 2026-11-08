@@ -1,7 +1,8 @@
 import { Clock, History, Home, List, Printer, Settings } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { Station, VipeApiClient } from '../api/contract';
-import type { Bridge, StationSettings, StationStatus } from '../bridge/types';
+import type { Bridge, LocalPrinter, StationSettings, StationStatus } from '../bridge/types';
+import { registrations } from '../setup/steps/Startup';
 import { agoText, trayMenu } from './model';
 import { Ajustes } from './pages/Ajustes';
 import { Cola } from './pages/Cola';
@@ -16,8 +17,10 @@ export interface PanelProps {
   bridge: Bridge;
   initial: StationSettings;
   initialPage?: string;
-  onAddPrinter: () => void;
 }
+
+/** The in-panel printer card on the Impresoras page (S1). */
+export type PrinterCardState = { mode: 'add' } | { mode: 'edit'; id: string };
 
 export interface PanelContext {
   api: VipeApiClient;
@@ -28,7 +31,10 @@ export interface PanelContext {
   go: (page: Page) => void;
   refresh: () => Promise<void>;
   saveSettings: (patch: Partial<StationSettings>) => Promise<void>;
-  onAddPrinter: () => void;
+  /** Saves the printer list here and tells VIPE web (best effort). */
+  savePrinters: (printers: LocalPrinter[], patch?: Partial<StationSettings>) => Promise<void>;
+  card: PrinterCardState | null;
+  openCard: (card: PrinterCardState | null) => void;
 }
 
 const PAGES: { id: Page; label: string; Icon: typeof Home }[] = [
@@ -42,8 +48,9 @@ const PAGES: { id: Page; label: string; Icon: typeof Home }[] = [
 const asPage = (p?: string): Page => (PAGES.some((x) => x.id === p) ? (p as Page) : 'estado');
 
 /** Estación panel: Estado, Impresoras, Cola, Historial, Ajustes. */
-export function Panel({ api, bridge, initial, initialPage, onAddPrinter }: PanelProps) {
+export function Panel({ api, bridge, initial, initialPage }: PanelProps) {
   const [page, setPage] = useState<Page>(asPage(initialPage));
+  const [card, setCard] = useState<PrinterCardState | null>(null);
   const [settings, setSettings] = useState(initial);
   const [status, setStatus] = useState<StationStatus | null>(null);
   const [stations, setStations] = useState<Station[]>([]);
@@ -66,19 +73,33 @@ export function Panel({ api, bridge, initial, initialPage, onAddPrinter }: Panel
   }, [api]);
 
   if (!status) return null;
+  const go = (next: Page) => {
+    setCard(null);
+    setPage(next);
+  };
+  const saveSettings = async (patch: Partial<StationSettings>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    await bridge.saveSettings(next);
+  };
   const ctx: PanelContext = {
     api,
     bridge,
     settings,
     status,
     stations,
-    go: setPage,
+    go,
     refresh,
-    onAddPrinter,
-    saveSettings: async (patch) => {
-      const next = { ...settings, ...patch };
-      setSettings(next);
-      await bridge.saveSettings(next);
+    saveSettings,
+    savePrinters: async (printers, patch) => {
+      await saveSettings({ ...patch, printers });
+      // Local printing already works; VIPE web catches up on the next save.
+      await api.savePrinters(registrations(printers)).catch(() => undefined);
+    },
+    card,
+    openCard: (next) => {
+      setPage('impresoras');
+      setCard(next);
     },
   };
   const failed = status.queue.filter((q) => q.status === 'failed').length;
@@ -102,7 +123,7 @@ export function Panel({ api, bridge, initial, initialPage, onAddPrinter }: Panel
             {PAGES.map(({ id, label, Icon }) => {
               const count = id === 'impresoras' ? settings.printers.length : id === 'cola' ? status.queue.length : 0;
               return (
-                <button key={id} type="button" aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}>
+                <button key={id} type="button" aria-current={page === id ? 'page' : undefined} onClick={() => go(id)}>
                   <Icon aria-hidden size={18} />
                   {label}
                   {count > 0 && <span className={`count ${id === 'cola' && failed ? 's-danger' : ''}`}>{count}</span>}

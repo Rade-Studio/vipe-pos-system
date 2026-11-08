@@ -1,5 +1,6 @@
 import { Check, Clock, FileWarning, Printer, Usb, Network, Bluetooth } from 'lucide-react';
-import type { Station } from '../api/contract';
+import type { ConnectionKind, Station } from '../api/contract';
+import { describeAddress } from '../bridge/printer-address';
 import type { HistoryItem, LocalPrinter, PrinterState, QueueItem } from '../bridge/types';
 import { healthLabel } from './model';
 
@@ -41,12 +42,16 @@ export function HealthChip({ state }: { state: PrinterState | undefined }) {
   );
 }
 
+export function ConnectionIcon({ kind }: { kind: ConnectionKind }) {
+  const Icon = kind === 'usb' ? Usb : kind === 'bluetooth' ? Bluetooth : kind === 'network' ? Network : Printer;
+  return <Icon />;
+}
+
 export function PrinterIcon({ printer, state }: { printer: LocalPrinter; state: PrinterState | undefined }) {
-  const Icon = printer.connection === 'usb' ? Usb : printer.connection === 'bluetooth' ? Bluetooth : printer.connection === 'network' ? Network : Printer;
   const tone = state?.health === 'error' || state?.health === 'offline' ? 's-danger' : state?.health === 'printing' ? 's-served' : 's-ok';
   return (
     <span className={`pr-ic ${tone}`} aria-hidden>
-      <Icon />
+      <ConnectionIcon kind={printer.connection} />
     </span>
   );
 }
@@ -92,9 +97,7 @@ export function whatPrints(printer: LocalPrinter, stations: Station[]): string {
     .join(' · ');
 }
 
-export const CONNECTION_LABEL = { usb: 'USB', network: 'Red', bluetooth: 'Bluetooth' } as const;
-
+/** "Xprinter XP-80 · Red · 192.168.1.50 · puerto 9100 · 80 mm" (S2). */
 export function printerLine(p: LocalPrinter) {
-  const where = p.connection === 'network' ? p.address.replace(/:9100$/, '') : CONNECTION_LABEL[p.connection];
-  return `${p.model} · ${where} · ${p.paperMm} mm`;
+  return `${p.model} · ${describeAddress(p)} · ${p.paperMm} mm`;
 }
