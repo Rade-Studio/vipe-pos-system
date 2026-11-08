@@ -26,6 +26,10 @@ const envSchema = z.object({
   S3_PUBLIC_BASE_URL: optional(z.url({ protocol: /^https?$/, message: 'must be an http(s) URL' })),
   S3_FORCE_PATH_STYLE: optional(z.enum(['true', 'false'], { message: 'must be true or false' })),
   DESKTOP_RELEASES_BASE_URL: optional(z.url({ protocol: /^https?$/, message: 'must be an http(s) URL' })),
+  TRUST_PROXY_HOPS: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.coerce.number({ message: 'must be an integer from 0 to 5' }).int('must be an integer from 0 to 5').min(0).max(5).default(0),
+  ),
 });
 
 /** S3-compatible object storage (MinIO in development, R2 or any S3 service in production). */
@@ -60,6 +64,12 @@ export interface Env {
    * /desktop/updates always answers 204 (no update offered).
    */
   readonly desktopReleasesBaseUrl: string | null;
+  /**
+   * Reverse proxies in front of the API whose X-Forwarded-For entry Express
+   * trusts for req.ip (pairing limits per client). 0 (default) ignores the
+   * header; 1 behind a single Traefik or Caddy, as the compose files set.
+   */
+  readonly trustProxyHops: number;
 }
 
 /** Injection token for the validated environment. */
@@ -102,5 +112,6 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
         }
       : null,
     desktopReleasesBaseUrl: result.data.DESKTOP_RELEASES_BASE_URL?.replace(/\/+$/, '') ?? null,
+    trustProxyHops: result.data.TRUST_PROXY_HOPS,
   };
 }

@@ -435,6 +435,7 @@ Desarrollo: `apps/api/env.example`. Producción: las arma el compose a partir de
 | `WEB_ORIGIN` | sí | | Origen de la web autorizado por CORS con credenciales. |
 | `JWT_SECRET` | sí | | Clave HS256 del token de acceso; mínimo 32 caracteres. |
 | `COOKIE_SECURE` | no | `true` | Marca las cookies como `Secure`; `false` solo en desarrollo local por http. |
+| `TRUST_PROXY_HOPS` | no | `0` | Proxies delante de la API cuya IP reenviada (`X-Forwarded-For`) se confía para los límites por cliente; los compose usan `1` (Traefik o Caddy). Nunca más que los saltos reales. |
 | `ACCESS_TOKEN_TTL_SECONDS` | no | `900` | Vida del token y la cookie de acceso. |
 | `REFRESH_TOKEN_TTL_SECONDS` | no | `2592000` | Vida de la sesión de refresco (30 días). |
 | `S3_ENDPOINT` | no | | Endpoint S3 (MinIO local, R2 en producción); vacío para AWS S3. |

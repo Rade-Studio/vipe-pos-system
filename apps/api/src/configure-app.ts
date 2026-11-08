@@ -15,6 +15,7 @@ export const API_PREFIX = 'api';
 export function configureApp<T extends INestApplication>(app: T): T {
   const env = app.get<Env>(ENV);
 
+  applyTrustProxy(app.getHttpAdapter().getInstance(), env.trustProxyHops);
   app.setGlobalPrefix(API_PREFIX);
   app.enableCors(corsOptionsFor(env.webOrigin));
   app.useWebSocketAdapter(new RealtimeIoAdapter(app, env.webOrigin));
@@ -22,6 +23,18 @@ export function configureApp<T extends INestApplication>(app: T): T {
   SwaggerModule.setup(`${API_PREFIX}/docs`, app, createOpenApiDocument(app));
 
   return app;
+}
+
+/**
+ * Express `trust proxy` as a hop count: req.ip is the entry the Nth proxy from
+ * the right appended to X-Forwarded-For, so addresses a client puts in that
+ * header (to the left) are never used. 0 leaves Express's default (the socket
+ * peer, header ignored).
+ */
+export function applyTrustProxy(http: { set(setting: string, value: unknown): unknown }, hops: number): void {
+  if (hops > 0) {
+    http.set('trust proxy', hops);
+  }
 }
 
 /** The OpenAPI document served at /api/docs and written by `pnpm openapi`. */
