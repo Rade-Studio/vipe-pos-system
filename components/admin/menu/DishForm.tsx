@@ -10,16 +10,25 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
-import { createDish, updateDish, type CategoryDto, type DishDto } from "@/lib/api/catalog"
+import {
+  createDish,
+  fetchDishModifierGroups,
+  fetchModifierGroups,
+  setDishModifierGroups,
+  updateDish,
+  type CategoryDto,
+  type DishDto,
+  type ModifierGroupDto,
+} from "@/lib/api/catalog"
 import type { SubcategoryDto } from "@/lib/api/subcategories"
 import { ImageUpload } from "@/components/ui/image-upload"
-import { Loader2, Trash2, RefreshCw, Plus, X } from "lucide-react"
+import { Loader2, Trash2, RefreshCw } from "lucide-react"
 import Image from "next/image"
 import { deleteImage, getPlaceholderUrl, isImageAccessible, isPlaceholderUrl } from "@/lib/api/storage"
 import { log } from "@/lib/log"
-import { checkQuickNote, QUICK_NOTES_MAX } from "@/lib/admin/catalog"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { DishModifierGroups } from "./DishModifierGroups"
 
 interface DishFormProps {
   dish?: DishDto | null
@@ -45,7 +54,6 @@ const initialFormState = {
   image_url: "",
   active: true,
   allow_comments: false,
-  quick_notes: [] as string[],
 }
 
 export function DishForm({
@@ -64,9 +72,10 @@ export function DishForm({
   // Set when a category change cleared the subcategory: the API refuses a dish
   // left in a subcategory of its old category, so the admin picks one (or none).
   const [subcategoryPending, setSubcategoryPending] = useState(false)
-  // T27: the chip being typed and why it was refused (the API's own message).
-  const [noteDraft, setNoteDraft] = useState("")
-  const [noteError, setNoteError] = useState<string | null>(null)
+  // F7: every modifier group, and the ones this dish offers in order (saved apart, PUT .../modifier-groups).
+  const [modifierGroups, setModifierGroups] = useState<ModifierGroupDto[]>([])
+  const [groupIds, setGroupIds] = useState<string[]>([])
+  const savedGroupIdsRef = useRef<string[]>([])
   const newDishState = () => ({ ...initialFormState, category_id: defaultCategoryId ?? "" })
   const previousDishIdRef = useRef<string | number | null>(null)
   const originalImageUrlRef = useRef<string>("")
@@ -139,7 +148,6 @@ export function DishForm({
         image_url: dish.imageUrl || "",
         active: dish.active !== undefined ? dish.active : true,
         allow_comments: dish.allowComments !== undefined ? dish.allowComments : false,
-        quick_notes: dish.quickNotes ?? [],
       })
       setSubcategoryPending(false)
     } else {
@@ -151,6 +159,37 @@ export function DishForm({
     }
     // `newDishState` only reads `defaultCategoryId`.
   }, [dish, categories, isNewDish, defaultCategoryId])
+
+  useEffect(() => {
+    let live = true
+    fetchModifierGroups({ includeInactive: true })
+      .then((groups) => live && setModifierGroups(groups))
+      .catch((error) => log.error("Error fetching the modifier groups:", { error: String(error) }))
+    return () => {
+      live = false
+    }
+  }, [])
+
+  // The dish's own list includes inactive groups, which `dish.modifierGroups` leaves out.
+  const editedDishId = !isNewDish && dish ? dish.id : null
+  useEffect(() => {
+    const initial = editedDishId && dish ? (dish.modifierGroups ?? []).map((g) => g.id) : []
+    setGroupIds(initial)
+    savedGroupIdsRef.current = initial
+    if (!editedDishId) return
+    let live = true
+    fetchDishModifierGroups(editedDishId)
+      .then((ids) => {
+        if (!live) return
+        setGroupIds(ids)
+        savedGroupIdsRef.current = ids
+      })
+      .catch((error) => log.error("Error fetching the dish modifier groups:", { error: String(error) }))
+    return () => {
+      live = false
+    }
+    // Reloads per dish, not when the parent passes a refreshed copy of it.
+  }, [editedDishId])
 
   const categorySubcategories = subcategories.filter(
     (s) => s.categoryId === formData.category_id && (s.active || s.id === formData.subcategory_id),
@@ -184,22 +223,6 @@ export function DishForm({
 
   const handleSwitchChange = (name: string, checked: boolean) => {
     setFormData((prev) => ({ ...prev, [name]: checked }))
-  }
-
-  const addQuickNote = () => {
-    const result = checkQuickNote(formData.quick_notes, noteDraft)
-    if ("error" in result) {
-      setNoteError(result.error)
-      return
-    }
-    setFormData((prev) => ({ ...prev, quick_notes: [...prev.quick_notes, result.note] }))
-    setNoteDraft("")
-    setNoteError(null)
-  }
-
-  const removeQuickNote = (note: string) => {
-    setFormData((prev) => ({ ...prev, quick_notes: prev.quick_notes.filter((n) => n !== note) }))
-    setNoteError(null)
   }
 
   const handleImageUpload = (url: string) => {
@@ -282,11 +305,12 @@ export function DishForm({
         imageUrl: formData.image_url || null,
         active: formData.active,
         allowComments: formData.allow_comments,
-        quickNotes: formData.quick_notes,
       }
+      const groupsChanged = groupIds.join() !== savedGroupIdsRef.current.join()
 
       if (dish) {
         await updateDish(dish.id, dishData)
+        if (groupsChanged) savedGroupIdsRef.current = await setDishModifierGroups(dish.id, groupIds)
 
         // Only once the dish points at a new successful upload, delete the
         // object it replaced. A failed update keeps the old image.
@@ -306,7 +330,8 @@ export function DishForm({
           }
         }
       } else {
-        await createDish(dishData)
+        const created = await createDish(dishData)
+        if (groupsChanged) await setDishModifierGroups(created.id, groupIds)
       }
 
       toast({
@@ -319,6 +344,7 @@ export function DishForm({
       // Limpiar el formulario después de un envío exitoso
       if (!dish) {
         setFormData(newDishState())
+        setGroupIds([])
         originalImageUrlRef.current = ""
       }
 
@@ -589,66 +615,10 @@ export function DishForm({
                 />
               </div>
 
-              <div className="space-y-2 border-t pt-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="quick_note" className="text-sm">
-                    Nueva nota rápida
-                  </Label>
-                  <p id="quick_note_help" className="text-xs text-muted-fg">
-                    Botones que el mesero toca al agregar el plato (máx. {QUICK_NOTES_MAX}).
-                  </p>
-                </div>
-                <div className="flex min-w-0 flex-wrap gap-2">
-                  <Input
-                    id="quick_note"
-                    value={noteDraft}
-                    placeholder="Ej: Sin cebolla"
-                    aria-describedby={noteError ? "quick_note_error" : "quick_note_help"}
-                    aria-invalid={noteError ? true : undefined}
-                    onChange={(e) => {
-                      setNoteDraft(e.target.value)
-                      setNoteError(null)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter") return
-                      e.preventDefault()
-                      addQuickNote()
-                    }}
-                    className="h-11 min-w-0 flex-1 basis-40"
-                  />
-                  <Button type="button" variant="outline" className="min-h-11 shrink-0 max-sm:flex-1" onClick={addQuickNote}>
-                    <Plus className="mr-1 h-4 w-4" aria-hidden />
-                    Agregar nota
-                  </Button>
-                </div>
-                {noteError && (
-                  <p id="quick_note_error" role="alert" className="text-xs text-status-danger-fg">
-                    {noteError}
-                  </p>
-                )}
-                <ul aria-label="Notas rápidas" className="flex min-w-0 flex-wrap gap-1.5">
-                  {formData.quick_notes.map((note) => (
-                    <li
-                      key={note}
-                      className="inline-flex min-h-9 min-w-0 max-w-full items-center gap-1 rounded-pill border border-line bg-surface pl-3 pr-1 text-[13px]"
-                    >
-                      <span data-note className="min-w-0 break-words [overflow-wrap:anywhere]">
-                        {note}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`Quitar nota ${note}`}
-                        onClick={() => removeQuickNote(note)}
-                        className="grid h-8 w-8 shrink-0 place-items-center rounded-pill text-muted-fg hover:text-fg focus-visible:outline-dashed focus-visible:outline-2 focus-visible:outline-focus"
-                      >
-                        <X className="h-4 w-4" aria-hidden />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
             </CardContent>
           </Card>
+
+          <DishModifierGroups groups={modifierGroups} value={groupIds} onChange={setGroupIds} />
 
           <div className="flex items-center justify-center pt-4">
             <Button type="submit" className="w-full" disabled={loading || deletingImage || subcategoryPending} size="lg">

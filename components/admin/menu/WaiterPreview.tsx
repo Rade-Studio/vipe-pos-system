@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useId, useState } from "react"
-import type { DishDto } from "@/lib/api/catalog"
+import type { DishDto, DishModifierGroupDto } from "@/lib/api/catalog"
 import type { AdminCategoryNode } from "@/lib/admin/catalog"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/utils/helpers"
+import { RuleChip } from "./ModifierRuleChip"
 import { CategoryIcon, colorClasses } from "./tones"
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
@@ -82,29 +83,47 @@ function Tile({
   )
 }
 
-/** The waiter's step 4 for one dish: name, price and the quick-note chips they can tap. */
+/** The waiter's step 4 for one dish: name, price and its modifier groups in the order the sheet shows them. */
 function AddStep({ dish }: { dish: DishDto }) {
+  const groups = dish.modifierGroups ?? []
   return (
     <div className="grid min-w-0 gap-2.5 rounded-card border border-line bg-card p-3">
       <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <b className="min-w-0 break-words text-[15.5px] font-semibold [overflow-wrap:anywhere]">{dish.name}</b>
         <span className="text-sm tabular-nums text-fg-2">{formatCurrency(dish.price)}</span>
       </div>
-      <p className="text-xs font-medium text-muted-fg">Notas rápidas</p>
-      {dish.quickNotes.length === 0 ? (
-        <p className="text-sm text-muted-fg">Sin notas rápidas: el mesero solo escribe la nota para cocina.</p>
+      {groups.length === 0 ? (
+        <p className="text-sm text-muted-fg">Sin modificadores: el mesero lo agrega directo, con su cantidad y la nota para cocina.</p>
       ) : (
-        <ul aria-label={`Notas rápidas de ${dish.name}`} className="flex min-w-0 flex-wrap gap-1.5">
-          {dish.quickNotes.map((note) => (
-            <li
-              key={note}
-              className="inline-flex min-h-9 min-w-0 max-w-full items-center rounded-pill border border-line bg-surface px-3 text-[13px] break-words [overflow-wrap:anywhere]"
-            >
-              {note}
-            </li>
-          ))}
-        </ul>
+        groups.map((group) => <PreviewGroup key={group.id} group={group} />)
       )}
+    </div>
+  )
+}
+
+function PreviewGroup({ group }: { group: DishModifierGroupDto }) {
+  const labelId = useId()
+  return (
+    <div role="group" aria-labelledby={labelId} className="grid min-w-0 gap-1.5 border-t border-line pt-2.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <b id={labelId} className="min-w-0 break-words text-sm font-semibold [overflow-wrap:anywhere]">
+          {group.name}
+        </b>
+        <RuleChip group={group} />
+      </div>
+      <ul className="flex min-w-0 flex-wrap gap-1.5">
+        {group.options.map((option) => (
+          <li
+            key={option.id}
+            className="inline-flex min-h-9 min-w-0 max-w-full items-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-[13px]"
+          >
+            <span className="min-w-0 break-words [overflow-wrap:anywhere]">{option.name}</span>
+            <span className="whitespace-nowrap tabular-nums text-muted-fg">
+              {option.price > 0 ? `+${formatCurrency(option.price)}` : formatCurrency(0)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -112,8 +131,8 @@ function AddStep({ dish }: { dish: DishDto }) {
 /**
  * "Así lo ve el mesero": the waiter's step 1 (categories), step 2
  * (subcategories, or the dishes straight away for a category without them),
- * step 3 (the dishes of a subcategory) and step 4 (a dish with its quick
- * notes), from the draft the next publication serves (T27).
+ * step 3 (the dishes of a subcategory) and step 4 (a dish with its modifier
+ * groups), from the draft the next publication serves (T27).
  */
 export function WaiterPreview({
   nodes,

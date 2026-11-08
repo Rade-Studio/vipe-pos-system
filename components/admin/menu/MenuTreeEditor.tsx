@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils"
 import { CategoryForm } from "./CategoryForm"
 import { CategoryInspector } from "./CategoryInspector"
 import { DishOrderList } from "./DishOrderList"
+import { ModifierGroupsEditor } from "./ModifierGroupsEditor"
 import { PublishBar } from "./PublishBar"
 import { CategorySwatch } from "./tones"
 import { plural, WaiterPreview } from "./WaiterPreview"
@@ -43,6 +44,12 @@ const ROW_GAP = 8
 
 const focusRing =
   "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
+
+const SECTIONS = [
+  { value: "tree", label: "Categorías y platos" },
+  { value: "modifiers", label: "Modificadores" },
+] as const
+type Section = (typeof SECTIONS)[number]["value"]
 
 function useWide() {
   const [wide, setWide] = useState(() => typeof window === "undefined" || window.innerWidth >= INLINE_INSPECTOR_FROM)
@@ -130,11 +137,14 @@ function TreeChildren({ node, reorder }: { node: AdminCategoryNode; reorder: Dis
  * T27: dishes reorder inside their group the same way (PUT /catalog/dishes/order);
  * the waiters get structure edits only through "Publicar a meseros", so the
  * preview reads the draft (GET /catalog/menu/draft).
+ *
+ * F7: a second section, "Modificadores", holds the reusable modifier groups.
  */
 export function MenuTreeEditor() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const wide = useWide()
+  const [section, setSection] = useState<Section>("tree")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
@@ -349,21 +359,48 @@ export function MenuTreeEditor() {
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Menú para meseros"
-        description="Categorías, subcategorías y platos en el orden y los colores de la toma de pedidos."
+        description={
+          section === "tree"
+            ? "Categorías, subcategorías y platos en el orden y los colores de la toma de pedidos."
+            : "Grupos de opciones con precio que el mesero elige al agregar un plato."
+        }
         actions={
-          <Button className="min-h-11" onClick={() => setCreating(true)}>
-            <Plus className="mr-2 h-4 w-4" aria-hidden />
-            Nueva categoría
-          </Button>
+          section === "tree" && (
+            <Button className="min-h-11" onClick={() => setCreating(true)}>
+              <Plus className="mr-2 h-4 w-4" aria-hidden />
+              Nueva categoría
+            </Button>
+          )
         }
       />
+      <nav aria-label="Secciones del menú" className="flex min-w-0 gap-1.5 overflow-x-auto [scrollbar-width:none]">
+        {SECTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-current={section === option.value ? "page" : undefined}
+            onClick={() => setSection(option.value)}
+            className={cn(
+              "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-pill border border-line px-4 text-sm font-medium text-fg-2",
+              "aria-[current=page]:border-[var(--accent-line)] aria-[current=page]:bg-brand-tint aria-[current=page]:text-fg",
+              focusRing,
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </nav>
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>
       {/* Phone: last in the section and stuck to the bottom of the screen while the tree scrolls. */}
-      <PublishBar className="z-20 max-md:sticky max-md:bottom-0 max-md:order-last max-md:bg-canvas max-md:pb-2 max-md:pt-1" />
+      {section === "tree" && (
+        <PublishBar className="z-20 max-md:sticky max-md:bottom-0 max-md:order-last max-md:bg-canvas max-md:pb-2 max-md:pt-1" />
+      )}
 
-      {categoriesQuery.isLoading ? (
+      {section === "modifiers" ? (
+        <ModifierGroupsEditor />
+      ) : categoriesQuery.isLoading ? (
         <p className="py-8 text-center text-sm text-muted-foreground">Cargando categorías...</p>
       ) : nodes.length === 0 ? (
         <EmptyState title="No hay categorías registradas" />
@@ -471,7 +508,7 @@ export function MenuTreeEditor() {
         </div>
       )}
 
-      {!wide && (
+      {!wide && section === "tree" && (
         <Sheet open={sheetOpen && Boolean(selected)} onOpenChange={setSheetOpen}>
           <SheetContent
             side="right"

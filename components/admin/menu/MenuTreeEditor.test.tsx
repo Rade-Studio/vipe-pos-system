@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ApiError } from "@/lib/api/errors"
 import { queryClient } from "@/lib/queryClient"
+import { formatCurrency } from "@/utils/helpers"
 
 /**
  * T9 (redesign, S2/S5) — the admin Menú tree: categories in waiter order
@@ -29,6 +30,7 @@ const api = vi.hoisted(() => ({
   getMenuDraft: vi.fn(),
   getMenuPublication: vi.fn(),
   publishMenu: vi.fn(),
+  fetchModifierGroups: vi.fn(async () => []),
 }))
 vi.mock("@/lib/api/catalog", () => api)
 const subApi = vi.hoisted(() => ({
@@ -47,6 +49,7 @@ vi.mock("@/lib/api/storage", () => ({
 }))
 vi.mock("@/components/ui/image-upload", () => ({ ImageUpload: () => null }))
 vi.mock("next/image", () => ({ default: () => null }))
+vi.mock("@/hooks/inventory", () => ({ useInventoryItems: () => ({ data: [] }) }))
 const toastMock = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
 
@@ -92,7 +95,7 @@ const dish = (id: string, name: string, categoryId: string, subcategoryId: strin
   active: true,
   allowComments: false,
   sortOrder: 0,
-  quickNotes: [] as string[],
+  modifierGroups: [] as { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: { id: string; groupId: string; name: string; price: number; ingredientId: null; ingredientQty: null; sortOrder: number; isActive: boolean }[] }[],
   createdAt: null,
   updatedAt: null,
 })
@@ -625,7 +628,7 @@ describe("MenuTreeEditor — dish order (T27)", () => {
   })
 })
 
-describe("MenuTreeEditor — tile name hint and quick notes in the preview (T27)", () => {
+describe("MenuTreeEditor — tile name hint (T27) and modifier groups in the preview (F7)", () => {
   it("counts a new subcategory name against 22 and warns above it", async () => {
     await renderEditor()
     await select("Bebidas")
@@ -638,8 +641,12 @@ describe("MenuTreeEditor — tile name hint and quick notes in the preview (T27)
     expect(within(inspector()).getByText("Más de 22 caracteres: puede cortarse en el botón del mesero.")).toBeInTheDocument()
   })
 
-  it("step 4 of the preview shows the dish with its quick notes", async () => {
-    dishes = dishes.map((d) => (d.id === "d-natas" ? { ...d, quickNotes: ["Sin azúcar", "Tibio"] } : d))
+  it("step 4 of the preview shows the dish with its modifier groups", async () => {
+    const opt = (id: string, name: string, price: number, sortOrder: number) => ({ id, groupId: "g-1", name, price, ingredientId: null, ingredientQty: null, sortOrder, isActive: true })
+    const groups = [
+      { id: "g-1", name: "Término", required: true, minSelect: 1, maxSelect: 1, options: [opt("o-1", "Tibio", 0, 0), opt("o-2", "Con helado", 3000, 1)] },
+    ]
+    dishes = dishes.map((d) => (d.id === "d-natas" ? { ...d, modifierGroups: groups } : d))
     await renderEditor()
     await select("Postres")
     const preview = () => screen.getByRole("region", { name: "Así lo ve el mesero" })
@@ -648,7 +655,24 @@ describe("MenuTreeEditor — tile name hint and quick notes in the preview (T27)
     fireEvent.click(within(preview()).getByRole("button", { name: "Platos de Postres" }))
     fireEvent.click(await within(preview()).findByRole("button", { name: /^Natas/ }))
 
-    const notes = within(preview()).getByRole("list", { name: "Notas rápidas de Natas" })
-    expect(within(notes).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Sin azúcar", "Tibio"])
+    const group = within(preview()).getByRole("group", { name: "Término" })
+    expect(group).toHaveTextContent("Obligatorio · elige 1")
+    expect(within(group).getAllByRole("listitem").map((li) => li.textContent)).toEqual([`Tibio${formatCurrency(0)}`, `Con helado+${formatCurrency(3000)}`])
+    expect(within(preview()).queryByText(/Notas rápidas/)).not.toBeInTheDocument()
+  })
+})
+
+describe("MenuTreeEditor — Modificadores section (F7)", () => {
+  it("switches between the menu tree and the modifier groups", async () => {
+    await renderEditor()
+    const sections = screen.getByRole("navigation", { name: "Secciones del menú" })
+    expect(within(sections).getByRole("button", { name: "Categorías y platos" })).toHaveAttribute("aria-current", "page")
+
+    fireEvent.click(within(sections).getByRole("button", { name: "Modificadores" }))
+
+    expect(within(sections).getByRole("button", { name: "Modificadores" })).toHaveAttribute("aria-current", "page")
+    expect(await screen.findByText("Aún no hay grupos de modificadores")).toBeInTheDocument()
+    expect(screen.queryByRole("list", { name: "Categorías" })).not.toBeInTheDocument()
+    for (const button of within(sections).getAllByRole("button")) expect(button.className).toMatch(/\bmin-h-11\b/)
   })
 })

@@ -152,7 +152,7 @@ export function DishList({ onNavigate }: { onNavigate?: (sectionId: string) => v
               Nuevo Plato
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[600px]">
             <DialogHeader>
               <DialogTitle>{selectedDish ? "Editar Plato" : "Nuevo Plato"}</DialogTitle>
             </DialogHeader>

@@ -16,6 +16,7 @@
  *      issues zero requests AND does not blank the list.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { formatCurrency } from "@/utils/helpers"
 
 // T7b: categories, dishes and promotions come from the catalog API.
 const catalogApi = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ const catalogApi = vi.hoisted(() => ({
   fetchPromotions: vi.fn(),
   getMenuDraft: vi.fn(),
   getMenuPublication: vi.fn(),
+  fetchModifierGroups: vi.fn(),
 }))
 vi.mock("@/lib/api/catalog", () => catalogApi)
 
@@ -51,7 +53,12 @@ import {
   fetchStaff,
   invalidateCatalogReaders,
   invalidateMenuReaders,
-  checkQuickNote,
+  checkModifierGroup,
+  dishesUsingGroup,
+  fetchAdminModifierGroups,
+  MODIFIER_GROUP_MESSAGES,
+  modifierPriceRange,
+  modifierRuleText,
   draftMenuTree,
   fetchMenuDraft,
   fetchMenuPublication,
@@ -204,17 +211,18 @@ describe("menu publication (T27)", () => {
   })
 
   it("builds the editor nodes from the draft tree", () => {
+    const mods = { id: "g-1", name: "Sin", required: false, minSelect: 0, maxSelect: null, options: [] }
     const tree = {
       categories: [
         {
           ...cat("c-2", "Postres", 1),
           subcategories: [],
-          dishes: [{ ...dish("d-5", "Natas", "c-2"), quickNotes: ["Sin azúcar"], available: true }],
+          dishes: [{ ...dish("d-5", "Natas", "c-2"), modifierGroups: [mods], available: true }],
         },
         {
           ...cat("c-1", "Bebidas", 0),
           subcategories: [sub("s-1", "c-1", "Jugos", 0)],
-          dishes: [{ ...dish("d-1", "Lulo", "c-1", "s-1"), quickNotes: [], available: true }],
+          dishes: [{ ...dish("d-1", "Lulo", "c-1", "s-1"), modifierGroups: [], available: true }],
         },
       ],
       uncategorized: [],
@@ -224,31 +232,64 @@ describe("menu publication (T27)", () => {
 
     expect(nodes.map((node) => node.category.name)).toEqual(["Bebidas", "Postres"])
     expect(nodes[0].subcategories[0].dishes.map((d) => d.name)).toEqual(["Lulo"])
-    expect(nodes[1].looseDishes[0].quickNotes).toEqual(["Sin azúcar"])
+    expect(nodes[1].looseDishes[0].modifierGroups).toEqual([mods])
     expect(nodes[1].skipsSubcategoryStep).toBe(true)
   })
 })
 
-describe("checkQuickNote (T27, the API's rules and messages)", () => {
-  it("accepts a note, trimmed and with inner spaces collapsed", () => {
-    expect(checkQuickNote([], "  Sin   cebolla ")).toEqual({ note: "Sin cebolla" })
+describe("modifier groups (F7, the API's rules and messages)", () => {
+  const rules = (required: boolean, minSelect: number, maxSelect: number | null) => ({ required, minSelect, maxSelect })
+
+  it("reads every group, inactive ones too, under the menu prefix", async () => {
+    catalogApi.fetchModifierGroups.mockReset().mockResolvedValue([])
+    await fetchAdminModifierGroups()
+
+    expect(catalogApi.fetchModifierGroups).toHaveBeenCalledWith({ includeInactive: true })
+    expect(catalogKeys.modifierGroups.slice(0, 2)).toEqual(["catalog", "menu"])
   })
 
-  it("refuses an empty or a too long note", () => {
-    const message = "Cada nota rápida debe tener entre 1 y 30 caracteres"
-    expect(checkQuickNote([], "   ")).toEqual({ error: message })
-    expect(checkQuickNote([], "x".repeat(31))).toEqual({ error: message })
-    expect(checkQuickNote([], "x".repeat(30))).toEqual({ note: "x".repeat(30) })
+  it("describes the rule of a group as the chip shows it", () => {
+    expect(modifierRuleText(rules(true, 1, 1))).toBe("Obligatorio · elige 1")
+    expect(modifierRuleText(rules(true, 1, 3))).toBe("Obligatorio · de 1 a 3")
+    expect(modifierRuleText(rules(true, 2, null))).toBe("Obligatorio · 2 o más")
+    expect(modifierRuleText(rules(false, 0, 3))).toBe("Opcional · hasta 3")
+    expect(modifierRuleText(rules(false, 0, null))).toBe("Opcional · sin límite")
   })
 
-  it("refuses a duplicate ignoring case", () => {
-    expect(checkQuickNote(["Sin hielo"], "SIN HIELO")).toEqual({ error: "Las notas rápidas no se pueden repetir" })
+  it("accepts a valid group and refuses what the API refuses", () => {
+    const options = [{ name: "Queso", price: "3000", ingredientId: "", ingredientQty: "" }]
+    expect(checkModifierGroup({ name: "Adiciones", ...rules(false, 0, 3), options })).toEqual([])
+    expect(checkModifierGroup({ name: "Término", ...rules(true, 0, 1), options })).toEqual([MODIFIER_GROUP_MESSAGES.required])
+    expect(checkModifierGroup({ name: "Término", ...rules(false, 1, 1), options })).toEqual([MODIFIER_GROUP_MESSAGES.required])
+    expect(checkModifierGroup({ name: "Término", ...rules(true, 3, 2), options })).toEqual([MODIFIER_GROUP_MESSAGES.minMax])
+    expect(checkModifierGroup({ name: "  ", ...rules(false, 0, null), options })).toEqual([MODIFIER_GROUP_MESSAGES.name])
+    expect(MODIFIER_GROUP_MESSAGES.required).toBe("Un grupo obligatorio pide al menos una opción y uno opcional ninguna")
+    expect(MODIFIER_GROUP_MESSAGES.minMax).toBe("El máximo debe ser mayor o igual al mínimo")
   })
 
-  it("refuses a 13th note", () => {
-    const twelve = Array.from({ length: 12 }, (_, i) => `Nota ${i}`)
-    expect(checkQuickNote(twelve, "Otra")).toEqual({ error: "Máximo 12 notas rápidas" })
-    expect(checkQuickNote(twelve.slice(1), "Otra")).toEqual({ note: "Otra" })
+  it("refuses an option without name, with a bad price or with half an ingredient", () => {
+    const group = (option: { name: string; price: string; ingredientId: string; ingredientQty: string }) =>
+      checkModifierGroup({ name: "Adiciones", ...rules(false, 0, null), options: [option] })
+    expect(group({ name: "", price: "0", ingredientId: "", ingredientQty: "" })).toEqual([MODIFIER_GROUP_MESSAGES.optionName])
+    expect(group({ name: "Queso", price: "-1", ingredientId: "", ingredientQty: "" })).toEqual([MODIFIER_GROUP_MESSAGES.optionPrice])
+    expect(group({ name: "Queso", price: "2,5", ingredientId: "", ingredientQty: "" })).toEqual([MODIFIER_GROUP_MESSAGES.optionPrice])
+    expect(group({ name: "Queso", price: "0", ingredientId: "i-1", ingredientQty: "" })).toEqual([MODIFIER_GROUP_MESSAGES.ingredient])
+    expect(group({ name: "Queso", price: "0", ingredientId: "i-1", ingredientQty: "0" })).toEqual([MODIFIER_GROUP_MESSAGES.ingredient])
+    expect(group({ name: "Queso", price: "0", ingredientId: "i-1", ingredientQty: "0.25" })).toEqual([])
+    expect(MODIFIER_GROUP_MESSAGES.ingredient).toBe("El ingrediente y su cantidad van juntos")
+  })
+
+  it("lists the dishes that offer a group and the price range of its options", () => {
+    const g = { id: "g-1", name: "Adiciones", required: false, minSelect: 0, maxSelect: null, options: [] }
+    const dishes = [
+      { ...dish("d-1", "Hamburguesa", null), modifierGroups: [g] },
+      { ...dish("d-2", "Papas", null) },
+      { ...dish("d-3", "Combo", null), modifierGroups: [g] },
+    ]
+    expect(dishesUsingGroup(dishes as never, "g-1").map((d) => d.name)).toEqual(["Hamburguesa", "Combo"])
+    expect(modifierPriceRange([{ price: 0 }, { price: 3000 }])).toBe(`${formatCurrency(0)} a +${formatCurrency(3000)}`)
+    expect(modifierPriceRange([{ price: 0 }])).toBe(`Todas ${formatCurrency(0)}`)
+    expect(modifierPriceRange([])).toBe("Sin opciones")
   })
 })
 
@@ -302,7 +343,7 @@ const dish = (id: string, name: string, categoryId: string | null, subcategoryId
   active: true,
   allowComments: false,
   sortOrder,
-  quickNotes: [],
+  modifierGroups: [],
   createdAt: null,
   updatedAt: null,
 })
