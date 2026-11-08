@@ -20,7 +20,16 @@ describe('parseEnv', () => {
       refreshTokenTtlSeconds: 2592000,
       storage: null,
       desktopReleasesBaseUrl: null,
+      trustProxyHops: 0,
     });
+  });
+
+  it('reads TRUST_PROXY_HOPS 0..5 (default 0, off) and rejects anything else', () => {
+    expect(parseEnv({ ...valid, TRUST_PROXY_HOPS: '1' }).trustProxyHops).toBe(1);
+    expect(parseEnv({ ...valid, TRUST_PROXY_HOPS: '' }).trustProxyHops).toBe(0);
+    for (const bad of ['-1', '6', '1.5', 'yes']) {
+      expect(() => parseEnv({ ...valid, TRUST_PROXY_HOPS: bad })).toThrow(/TRUST_PROXY_HOPS/);
+    }
   });
 
   it('reads DESKTOP_RELEASES_BASE_URL without its trailing slash and rejects a non-http URL', () => {

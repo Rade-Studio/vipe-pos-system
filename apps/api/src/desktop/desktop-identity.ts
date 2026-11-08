@@ -24,10 +24,11 @@ export function newDeviceToken(): { token: string; hash: string } {
 export const newPairingCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
 
 /**
- * The client address the pairing limits count. Express `req.ip` is the socket
- * peer while `trust proxy` is not configured (configure-app.ts); behind a
- * reverse proxy every client then shares one bucket and the global limit is
- * the backstop. Hashed: the raw address is never stored.
+ * The client address the pairing limits count: Express `req.ip`, which is the
+ * client behind the TRUST_PROXY_HOPS trusted proxies (configure-app.ts) or the
+ * socket peer when none is trusted (every client behind a proxy then shares one
+ * bucket and the global limit is the backstop). Hashed: the raw address is
+ * never stored.
  */
 export const clientIpKey = (req: Request) => `ip:${sha256(req.ip ?? req.socket.remoteAddress ?? 'unknown')}`;
 

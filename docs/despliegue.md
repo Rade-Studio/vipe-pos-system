@@ -272,7 +272,7 @@ Después, la aplicación:
 5. **Environment**: obligatorias `VIPE_IMAGE_TAG` (`dev` en staging, `main` en producción),
    `DATABASE_HOST` (UUID del recurso de base de datos),
    `VIPE_MIGRATOR_PASSWORD`, `VIPE_API_PASSWORD`, `JWT_SECRET` y `WEB_ORIGIN=https://<sitio>`;
-   opcionales `DATABASE_PORT` (por defecto `5432`), `POSTGRES_DB`, `COOKIE_SECURE` (dejar `true`),
+   opcionales `DATABASE_PORT` (por defecto `5432`), `POSTGRES_DB`, `COOKIE_SECURE` (dejar `true`), `TRUST_PROXY_HOPS` (por defecto `1`: un proxy, Traefik o Caddy; con Cloudflare delante usar `2` solo si Traefik confía en sus rangos),
    `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_SECONDS`. El grupo `S3_*` es obligatorio
    y sale del MinIO compartido (sección 4.3): ejecutar
    `provision-app.sh vipe-pos-<ambiente> vipe-pos-<ambiente>` y pegar el bloque impreso.
