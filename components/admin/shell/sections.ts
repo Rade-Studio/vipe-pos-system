@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   Ban,
+  BadgePercent,
   BookOpen,
   Boxes,
   Building2,
@@ -35,6 +36,7 @@ export const SECTION_ICONS: Record<AdminSectionId, LucideIcon> = {
   tables: Table2,
   cash: Wallet,
   menu: BookOpen,
+  promotions: BadgePercent,
   formulas: FlaskConical,
   "inventory/overview": Boxes,
   "inventory/items": Package,

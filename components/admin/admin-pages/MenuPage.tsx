@@ -1,7 +1,6 @@
 import { PageHeader } from "@/components/admin/common/PageHeader"
 import { DishList } from "@/components/admin/menu/DishList"
 import { MenuTreeEditor } from "@/components/admin/menu/MenuTreeEditor"
-import { PromotionList } from "@/components/admin/promotions/PromotionList"
 
 export function MenuPage({
   description,
@@ -15,7 +14,6 @@ export function MenuPage({
       <PageHeader title="Menú" description={description} />
       <MenuTreeEditor />
       <DishList onNavigate={onNavigate} />
-      <PromotionList />
     </div>
   )
 }

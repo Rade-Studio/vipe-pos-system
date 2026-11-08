@@ -20,6 +20,7 @@ import { OrdersPage } from "@/components/admin/admin-pages/OrdersPage"
 import { TablesPage } from "@/components/admin/admin-pages/TablesPage"
 import { CashPage } from "@/components/admin/admin-pages/CashPage"
 import { MenuPage } from "@/components/admin/admin-pages/MenuPage"
+import { PromotionsPage } from "@/components/admin/admin-pages/PromotionsPage"
 import { FormulasPage } from "@/components/admin/formulas/FormulasPage"
 import { ItemsPage } from "@/components/admin/stock/ItemsPage"
 import { MovementsPage } from "@/components/admin/stock/MovementsPage"
@@ -320,6 +321,8 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         )
       case "menu":
         return <MenuPage description={meta.description} onNavigate={navigateTo} />
+      case "promotions":
+        return <PromotionsPage description={meta.description} />
       case "formulas":
         return <FormulasPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/overview":
