@@ -409,6 +409,11 @@ describe("OrdersPage — F3 anular plato y cancelar orden (hoja por pasos)", () 
 })
 
 describe("OrdersPage — F3 Canceladas", () => {
+  // Today, never a fixed date: the page only lists the selected day's cancellations (#144, the time-bomb rule).
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const todayKey = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
   const cancelledRow = (id: string, orderNumber: number, total: number, over: Record<string, unknown> = {}) => ({
     id,
     orderNumber,
@@ -428,7 +433,7 @@ describe("OrdersPage — F3 Canceladas", () => {
       tip: 0,
       total,
       sentItems: 3,
-      cancelledAt: new Date(2026, 10, 7, 11, 58).toISOString(),
+      cancelledAt: new Date(today.getTime() + 60_000).toISOString(),
     },
     ...over,
   })
@@ -446,12 +451,12 @@ describe("OrdersPage — F3 Canceladas", () => {
         },
       }),
     ]
-    renderPage({ selectedDate: new Date(2026, 10, 7) })
+    renderPage({ selectedDate: today })
     await waitFor(() => expect(screen.getByRole("tab", { name: /Canceladas\s*2/ })).toBeInTheDocument())
     act(() => {
       fireEvent.mouseDown(screen.getByRole("tab", { name: /Canceladas/ }))
     })
-    expect(cancelled.dates).toContain("2026-11-07")
+    expect(cancelled.dates).toContain(todayKey)
     const table = await screen.findByRole("table", { name: "Órdenes canceladas" })
     const rows = within(table).getAllByRole("row")
     expect(rows[1]).toHaveTextContent("#130")
@@ -490,7 +495,7 @@ describe("OrdersPage — F3 Canceladas", () => {
         },
       }),
     ]
-    renderPage({ selectedDate: new Date(2026, 10, 7) })
+    renderPage({ selectedDate: today })
     await waitFor(() => expect(screen.getByRole("tab", { name: /Canceladas\s*2/ })).toBeInTheDocument())
     act(() => {
       fireEvent.mouseDown(screen.getByRole("tab", { name: /Canceladas/ }))
