@@ -179,7 +179,9 @@ describe('F6 verifier probes', () => {
     expect((await adminB().get(`/api/orders?stationId=${ids.Cocina}`)).body).toEqual([]);
     expect((await as('cook@a.test').get(`/api/orders?status=kitchen&stationId=${ids.Caja}`)).body).toEqual([]);
     await db('DELETE FROM print_jobs');
+    const [{ id: orderId }] = await db<{ id: string }>('SELECT id FROM orders WHERE restaurant_id = $1 LIMIT 1', [fixtures.restaurantA]);
     const cmd = await as(fixtures.waiterA.email).post('/api/print/commands', {
+      orderId,
       items: [{ id: `${v.lulo}-1`, name: 'Lulo', quantity: 1 }, { id: `${v.bandeja}-2`, name: 'Bandeja', quantity: 1 }, { dishId: v.dishB, id: 'z', name: 'Foreign', quantity: 1 }],
       waiter: 'W', table: 31,
     });
@@ -214,6 +216,7 @@ describe('F6 verifier probes', () => {
     const postres = (await admin().post('/api/stations', { name: 'Postres' })).body.id as string;
     await admin().put(`/api/stations/routes/dishes/${v.lulo}`, { stationId: postres });
     await db('DELETE FROM print_jobs');
+    const [{ id: orderId }] = await db<{ id: string }>('SELECT id FROM orders WHERE restaurant_id = $1 LIMIT 1', [fixtures.restaurantA]);
     const { pool } = createDb(database.apiUrl, { max: 1 });
     const deleting = await pool.connect();
     try {
@@ -221,7 +224,7 @@ describe('F6 verifier probes', () => {
       await deleting.query(`SELECT set_config('app.user_id', $1, true)`, [fixtures.adminA.userId]);
       await deleting.query('SELECT public.delete_station($1, $2)', [postres, ids.Cocina]);
       const order = as(fixtures.waiterA.email).post('/api/orders', { tableId: v.t2, orderType: 'dine_in', items: [{ dishId: v.lulo, quantity: 1 }] }).then((res) => res);
-      const cmd = as(fixtures.waiterA.email).post('/api/print/commands', { items: [{ id: `${v.lulo}-9`, name: 'Lulo', quantity: 1 }], waiter: 'W', table: 31 }).then((res) => res);
+      const cmd = as(fixtures.waiterA.email).post('/api/print/commands', { orderId, items: [{ id: `${v.lulo}-9`, name: 'Lulo', quantity: 1 }], waiter: 'W', table: 31 }).then((res) => res);
       await new Promise((resolve) => setTimeout(resolve, 500));
       await deleting.query('COMMIT');
       const [o, c] = await Promise.all([order, cmd]);

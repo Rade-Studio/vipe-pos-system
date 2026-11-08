@@ -19,7 +19,8 @@ const r = {
 } as const;
 
 /** Today's command body; cart ids start with the dish id (lib/menu/cart-dish-id). */
-const command = (items: { id: string; name: string; quantity: number }[]) => ({ items, waiter: 'Waiter A', table: 8 });
+let orderA = '';
+const command = (items: { id: string; name: string; quantity: number }[]) => ({ orderId: orderA, items, waiter: 'Waiter A', table: 8 });
 const cartId = (dishId: string) => `${dishId}-1700000000000`;
 
 describe('station routing of orders, comandas and the kitchen (Testcontainers, vipe_api)', () => {
@@ -43,6 +44,7 @@ describe('station routing of orders, comandas and the kitchen (Testcontainers, v
       [r.bandeja, r.lulo, r.limonada, r.lechona, r.mains, r.drinks, r.specials, A, r.dishB, fixtures.restaurantB],
     );
     await q(`INSERT INTO tables (id, number, status, restaurant_id) VALUES ($1, 8, 'available', $3), ($2, 9, 'available', $3)`, [r.t1, r.t2, A]);
+    orderA = ((await q('SELECT id FROM orders WHERE restaurant_id = $1 LIMIT 1', [A])) as { id: string }[])[0].id;
     app = await createTestApp(database.apiUrl);
     for (const user of [fixtures.adminA, fixtures.waiterA, fixtures.adminB]) {
       const res = await request(app.getHttpServer()).post('/api/auth/login').send({ email: user.email, password: PASSWORD });
@@ -82,7 +84,7 @@ describe('station routing of orders, comandas and the kitchen (Testcontainers, v
     expect(Object.keys(res.body).sort()).toEqual(['createdAt', 'id', 'kind']);
     const stored = await jobs(fixtures.restaurantA);
     expect(stored).toHaveLength(1);
-    expect(stored[0].payload).toEqual({ invoiceNumber: res.body.id, ...body });
+    const { orderId: _o, ...lines } = body; const [{ order_number }] = await db<{ order_number: number }>('SELECT order_number FROM orders WHERE id = $1', [orderA]); expect(stored[0].payload).toEqual({ invoiceNumber: res.body.id, ...lines, orderNumber: order_number });
     expect(stored[0].station_id).toBeNull();
     expect((await adminA().get('/api/config')).body.printingEnabled).toBe(true);
   });

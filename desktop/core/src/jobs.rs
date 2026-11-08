@@ -108,17 +108,24 @@ pub fn render_job(job: &PrintJob, encoding: Encoding, now: NaiveDateTime) -> Res
     }
 }
 
-/// `_command`: invoiceNumber, items and waiter are required (truthy).
+/// `_command`: invoiceNumber, items and waiter are required (truthy); orderNumber and station pass through.
 fn command_order(payload: &Value) -> Option<Value> {
     let p = payload.as_object()?;
     let field = |k: &str| p.get(k).filter(|v| py_truthy(v)).cloned();
-    Some(json!({
+    let mut order = json!({
         "invoiceNumber": field("invoiceNumber")?,
         "table": p.get("table").cloned().unwrap_or(Value::Null),
         "waiter": field("waiter")?,
         "items": field("items")?,
         "delivery": p.get("delivery").cloned().unwrap_or(Value::Null),
-    }))
+    });
+    // Comanda header (orderNumber, station): passed through only when present.
+    for key in ["orderNumber", "station"] {
+        if let Some(value) = p.get(key).filter(|v| !v.is_null()) {
+            order[key] = value.clone();
+        }
+    }
+    Some(order)
 }
 
 /// `_invoice`: invoiceNumber required; invoice and displayItems default empty.

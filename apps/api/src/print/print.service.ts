@@ -7,7 +7,9 @@ import { DbClient } from '../db/db-client';
 import { UnitOfWork } from '../db/unit-of-work';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ConfigService } from '../settings/config.service';
+import type { CallerProfile } from '../auth/auth-context';
 import type {
+  CommandJobInput,
   commandPrintSchema,
   CreatedPrinterDevice,
   invoicePrintSchema,
@@ -42,6 +44,9 @@ function dishIdOf(item: Record<string, unknown>): string | null {
   }
   return null;
 }
+
+/** The comanda's "Mesero:" when neither the sender nor the order names one. */
+const FALLBACK_WAITER = 'Mesero';
 
 interface StationRef {
   id: string;
@@ -114,7 +119,7 @@ export class PrintService implements OnApplicationBootstrap {
    * takes exclusively, so a comanda sent during a delete lands on the target.
    */
   async printCommand(
-    input: z.infer<typeof commandPrintSchema>,
+    input: CommandJobInput,
     dishIds?: readonly (string | null)[],
   ): Promise<PrintJobCreated | PrintJobsCreated> {
     await this.uow.db.execute(
@@ -148,6 +153,32 @@ export class PrintService implements OnApplicationBootstrap {
       jobs.push(await this.enqueue(id, 'command', payload, station.id, jobs.length));
     }
     return { ...jobs[0], jobs };
+  }
+
+  /**
+   * POST /print/commands: the comanda's header comes from the server, never
+   * the client. `waiter` is the acting profile's name (on a shared terminal,
+   * the person who entered the PIN), else the order's waiter, else "Mesero";
+   * `orderNumber` is orders.order_number; the order's table wins over the sent
+   * one. An order outside the caller's restaurant is 404.
+   */
+  async commandFor(request: z.infer<typeof commandPrintSchema>, caller: CallerProfile): Promise<CommandJobInput> {
+    const [order] = await this.rows<{ order_number: number; table_number: number | null; waiter_name: string | null }>(sql`
+      SELECT o.order_number, t.number AS table_number, p.full_name AS waiter_name
+        FROM public.orders o
+        LEFT JOIN public.tables t ON t.id = o.table_id
+        LEFT JOIN public.profiles p ON p.id = o.waiter_id
+       WHERE o.id = ${request.orderId} AND o.restaurant_id = private.current_restaurant_id()`);
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    const { orderId: _orderId, waiter: _waiter, ...rest } = request;
+    return {
+      ...rest,
+      ...(order.table_number !== null ? { table: order.table_number } : {}),
+      waiter: caller.name.trim() || order.waiter_name?.trim() || FALLBACK_WAITER,
+      orderNumber: order.order_number,
+    };
   }
 
   /** S2: whether the restaurant uses thermal printers (business_config printing_enabled, default true). */

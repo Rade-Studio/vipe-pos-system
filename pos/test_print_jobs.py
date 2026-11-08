@@ -130,6 +130,15 @@ class PrintJobHandlerTests(unittest.TestCase):
         }, encoding="cp1252")
         self.assertEqual(comandas.ticket, [expected])
 
+    def test_command_with_order_number_and_station_prints_the_new_header(self):
+        comandas = FakePrinter()
+        payload = {**COMMAND_JOB["payload"], "orderNumber": 130, "table": 1, "station": {"id": "s1", "name": "Cocina"}}
+        self.assertTrue(make_handler(comandas=comandas).handle({**COMMAND_JOB, "payload": payload}))
+        expected = print_renderer.build_comanda_bytes({**payload, "delivery": None}, encoding="cp1252")
+        self.assertEqual(comandas.ticket, [expected])
+        self.assertIn("COMANDA #130 \u2014 Mesa 1".encode("cp1252"), comandas.ticket[0])
+        self.assertIn("Estaci\u00f3n: Cocina".encode("cp1252"), comandas.ticket[0])
+
     def test_delivery_command_prints_the_delivery_variant(self):
         comandas = FakePrinter()
         self.assertTrue(make_handler(comandas=comandas).handle(DELIVERY_COMMAND_JOB))
@@ -208,7 +217,7 @@ class PrintJobHandlerTests(unittest.TestCase):
         self.assertEqual(comandas.raw, [])
 
     def test_station_key_ignored_same_bytes(self):
-        """F6: the API tags comandas and facturas with `station`; the tickets do not change."""
+        """F6: facturas tagged with `station` do not change; comandas (S3, comanda-encabezado) only gain `Estación: <name>`."""
         station = {"id": "22222222-2222-2222-2222-222222222222", "name": "Cocina"}
         for job, kind in ((COMMAND_JOB, "comandas"), (DELIVERY_COMMAND_JOB, "comandas"), (INVOICE_JOB, "facturas")):
             tagged = {**job, "payload": {**job["payload"], "station": station}}
@@ -216,8 +225,12 @@ class PrintJobHandlerTests(unittest.TestCase):
             self.assertTrue(make_handler(**{kind: legacy_printer}).handle(job), job["id"])
             self.assertTrue(make_handler(**{kind: tagged_printer}).handle(tagged), job["id"])
             self.assertTrue(legacy_printer.ticket, job["id"])
-            self.assertEqual(tagged_printer.ticket, legacy_printer.ticket, job["id"])
-
+            expected = legacy_printer.ticket
+            if kind == "comandas":
+                line = b"\x1ba\x00" + "Estaci\u00f3n: Cocina".encode("cp1252") + b"\n"
+                head, sep, rest = expected[0].partition(b"\x1ba\x00Fecha:")
+                expected = [head + line + sep + rest]
+            self.assertEqual(tagged_printer.ticket, expected, job["id"])
 
 NOW = _datetime.datetime(2026, 11, 4, 15, 0, 52, tzinfo=_datetime.timezone.utc)
 

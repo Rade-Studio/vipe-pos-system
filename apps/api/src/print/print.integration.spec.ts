@@ -2,6 +2,7 @@ import { Controller, type INestApplication, Post, Query } from '@nestjs/common';
 import { io, type Socket } from 'socket.io-client';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ACTING_HEADER } from '../auth/terminal-access';
 import { UnitOfWork } from '../db/unit-of-work';
 import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
 import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabase } from '../testing/test-database';
@@ -49,11 +50,18 @@ class AfterCommitProbe {
 
 const settle = (ms = 400) => new Promise((resolve) => setTimeout(resolve, ms));
 
+interface OrderRef {
+  id: string;
+  number: number;
+}
+
+/** The fixture orders have no table, so the sent table is kept. */
 const COMMAND = {
   items: [{ name: 'Ajiaco', quantity: 2, comments: 'sin alcaparras' }],
-  waiter: 'Waiter A',
+  waiter: 'Client name',
   table: 4,
 };
+const { waiter: _clientWaiter, ...COMMAND_LINES } = COMMAND;
 
 const INVOICE = {
   invoice: {
@@ -77,9 +85,25 @@ describe('printing bridge (Testcontainers, vipe_api)', () => {
   let url: string;
   const sockets: Socket[] = [];
   const cookies: Record<string, string> = {};
+  let orderA: OrderRef;
+  let orderB: OrderRef;
+  /** The request body for an order (orderId plus COMMAND). */
+  const command = (order: OrderRef) => ({ orderId: order.id, ...COMMAND });
+  /** The stored payload: the server's waiter and orderNumber, never the client's waiter. */
+  const stored = (id: string, waiter: string, order: OrderRef) => ({ invoiceNumber: id, ...COMMAND_LINES, waiter, orderNumber: order.number });
 
   beforeAll(async () => {
     database = await startTestDatabase();
+    const first = async (restaurantId: string) => {
+      const [row] = await superuserQuery<{ id: string; order_number: number }>(
+        database.superuserUrl,
+        'SELECT id, order_number FROM public.orders WHERE restaurant_id = $1 ORDER BY order_number LIMIT 1',
+        [restaurantId],
+      );
+      return { id: row.id, number: row.order_number };
+    };
+    orderA = await first(fixtures.restaurantA);
+    orderB = await first(fixtures.restaurantB);
     app = await createTestApp(database.apiUrl, [AfterCommitProbe]);
     await app.listen(0, '127.0.0.1');
     url = `${await app.getUrl()}/realtime`.replace('[::1]', '127.0.0.1');
@@ -200,7 +224,7 @@ describe('printing bridge (Testcontainers, vipe_api)', () => {
       const printerB = await connectPrinter((await createPrinter(fixtures.adminB.email, 'Cocina B')).token);
       const webA = await connectWeb(fixtures.waiterA.email);
 
-      const res = await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(COMMAND);
+      const res = await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(command(orderA));
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({ kind: 'command' });
       const jobId = (res.body as { id: string }).id;
@@ -208,7 +232,7 @@ describe('printing bridge (Testcontainers, vipe_api)', () => {
       await eventually(() => printerA.jobs.length >= 1);
       await settle();
       expect(printerA.jobs).toEqual([
-        { id: jobId, kind: 'command', payload: { invoiceNumber: jobId, ...COMMAND }, createdAt: (res.body as { createdAt: string }).createdAt },
+        { id: jobId, kind: 'command', payload: stored(jobId, 'Waiter A', orderA), createdAt: (res.body as { createdAt: string }).createdAt },
       ]);
       expect(printerB.jobs).toEqual([]);
       expect(webA.jobs).toEqual([]);
@@ -247,11 +271,11 @@ describe('printing bridge (Testcontainers, vipe_api)', () => {
     it('a delivery command keeps table null and the delivery block', async () => {
       const printer = await connectPrinter((await createPrinter(fixtures.adminA.email, 'Domicilios')).token);
       const delivery = { customerName: 'Ana', phone: '3001', address: 'Calle 2', paymentMode: 'prepaid', deliveryFee: 5000 };
-      const body = { items: [{ name: 'Ajiaco', quantity: 1 }], waiter: 'Domicilios', table: null, delivery };
-      const res = await http().post('/api/print/commands').set(as(fixtures.adminA.email)).send(body);
+      const body = { items: [{ name: 'Ajiaco', quantity: 1 }], table: null, delivery };
+      const res = await http().post('/api/print/commands').set(as(fixtures.adminA.email)).send({ orderId: orderA.id, ...body });
       expect(res.status).toBe(201);
       await eventually(() => printer.jobs.length >= 1);
-      expect(printer.jobs[0].payload).toEqual({ invoiceNumber: (res.body as { id: string }).id, ...body });
+      expect(printer.jobs[0].payload).toEqual({ invoiceNumber: (res.body as { id: string }).id, ...body, waiter: 'Admin A', orderNumber: orderA.number });
       printer.socket.close();
     });
 
@@ -280,17 +304,124 @@ describe('printing bridge (Testcontainers, vipe_api)', () => {
     expect(effects).toEqual(['after commit']);
   });
 
+  describe('comanda header: server-filled waiter and order number (S1-S3)', () => {
+    const jobPayload = async (id: string) =>
+      (await superuserQuery<{ payload: Record<string, unknown> }>(database.superuserUrl, 'SELECT payload FROM public.print_jobs WHERE id = $1', [id]))[0]
+        .payload;
+    const jobCount = async () =>
+      Number((await superuserQuery<{ n: string }>(database.superuserUrl, 'SELECT count(*) AS n FROM public.print_jobs'))[0].n);
+
+    it('refuses a missing orderId (422) and an order of another restaurant or unknown (404), queuing nothing', async () => {
+      const before = await jobCount();
+      const send = (body: object) => http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(body);
+      expect((await send(COMMAND)).status).toBe(422);
+      expect((await send({ ...COMMAND, orderId: 'nope' })).status).toBe(422);
+      const foreign = await send(command(orderB));
+      expect(foreign.status).toBe(404);
+      expect(foreign.body).toMatchObject({ message: 'Order not found' });
+      expect((await send({ ...COMMAND, orderId: '00000000-0000-4000-8000-000000000000' })).status).toBe(404);
+      expect(await jobCount()).toBe(before);
+    });
+
+    it("prints the PIN-identified person's name on a shared terminal", async () => {
+      expect((await http().put(`/api/staff/${fixtures.waiterA.profileId}/pin`).set(as(fixtures.adminA.email)).send({ pin: '4829' })).status).toBe(204);
+      const login = await http().post('/api/auth/terminal/login').send({ email: fixtures.adminA.email, password: PASSWORD });
+      const terminal = cookiePair(setCookies(login).vipe_access);
+      const identified = await http().post('/api/auth/identify').set('Cookie', terminal).send({ pin: '4829' });
+      expect(identified.status).toBe(200);
+      const res = await http()
+        .post('/api/print/commands')
+        .set('Cookie', terminal)
+        .set(ACTING_HEADER, identified.body.token as string)
+        .send(command(orderA));
+      expect(res.status).toBe(201);
+      expect(await jobPayload(res.body.id as string)).toEqual(stored(res.body.id as string, 'Waiter A', orderA));
+    });
+
+    it("takes the order's table, and falls back to the order's waiter, then Mesero, when the sender has no name", async () => {
+      const [table] = await superuserQuery<{ id: string }>(
+        database.superuserUrl,
+        "INSERT INTO public.tables (number, status, restaurant_id) VALUES (61, 'available', $1) RETURNING id",
+        [fixtures.restaurantA],
+      );
+      const [order] = await superuserQuery<{ id: string; order_number: number }>(
+        database.superuserUrl,
+        `INSERT INTO public.orders (status, subtotal, tax, tax_percentage, total, restaurant_id, table_id, waiter_id)
+         VALUES ('active', 10, 0, 0, 10, $1, $2, $3) RETURNING id, order_number`,
+        [fixtures.restaurantA, table.id, fixtures.waiterA.profileId],
+      );
+      const ref = { id: order.id, number: order.order_number };
+      const send = async () => {
+        const res = await http().post('/api/print/commands').set(as(fixtures.adminA.email)).send(command(ref));
+        expect(res.status).toBe(201);
+        return jobPayload(res.body.id as string);
+      };
+      expect(await send()).toMatchObject({ waiter: 'Admin A', table: 61, orderNumber: order.order_number });
+      const rename = (id: string, name: string) =>
+        superuserQuery(database.superuserUrl, 'UPDATE public.profiles SET full_name = $2 WHERE id = $1', [id, name]);
+      try {
+        await rename(fixtures.adminA.profileId, '  ');
+        expect(await send()).toMatchObject({ waiter: 'Waiter A', table: 61 });
+        await rename(fixtures.waiterA.profileId, ' ');
+        expect(await send()).toMatchObject({ waiter: 'Mesero', table: 61 });
+      } finally {
+        await rename(fixtures.adminA.profileId, 'Admin A');
+        await rename(fixtures.waiterA.profileId, 'Waiter A');
+      }
+    });
+
+    it('still sends one job per station, each with the order number and its station', async () => {
+      const q = (text: string, values: unknown[] = []) => superuserQuery<{ id: string }>(database.superuserUrl, text, values);
+      const B = fixtures.restaurantB;
+      const [cocina] = await q(`INSERT INTO stations (name, sort_order, is_default, restaurant_id) VALUES ('Cocina', 0, true, $1) RETURNING id`, [B]);
+      const [bar] = await q(`INSERT INTO stations (name, sort_order, restaurant_id) VALUES ('Bar', 1, $1) RETURNING id`, [B]);
+      const [dish] = await q(`INSERT INTO dishes (name, price, station_id, restaurant_id) VALUES ('Gaseosa', 5000, $1, $2) RETURNING id`, [bar.id, B]);
+      try {
+        const items = [{ id: 'custom-1', name: 'Ajiaco', quantity: 1 }, { id: `${dish.id}-1700000000000`, name: 'Gaseosa', quantity: 2 }];
+        const res = await http().post('/api/print/commands').set(as(fixtures.adminB.email)).send({ orderId: orderB.id, items, table: 3 });
+        expect(res.status).toBe(201);
+        const jobs = res.body.jobs as { id: string }[];
+        expect(jobs).toHaveLength(2);
+        expect(await jobPayload(jobs[0].id)).toEqual({
+          invoiceNumber: jobs[0].id, items: [items[0]], table: 3, waiter: 'Admin B', orderNumber: orderB.number, station: { id: cocina.id, name: 'Cocina' },
+        });
+        expect(await jobPayload(jobs[1].id)).toEqual({
+          invoiceNumber: jobs[1].id, items: [items[1]], table: 3, waiter: 'Admin B', orderNumber: orderB.number, station: { id: bar.id, name: 'Bar' },
+        });
+      } finally {
+        await q('DELETE FROM print_jobs WHERE station_id IS NOT NULL');
+        await q('DELETE FROM dishes WHERE id = $1', [dish.id]);
+        await q('DELETE FROM stations WHERE restaurant_id = $1', [B]);
+      }
+    });
+
+    it('a restaurant that turned printing off still answers 409 and queues nothing', async () => {
+      const before = await jobCount();
+      await superuserQuery(database.superuserUrl, "INSERT INTO business_config (key, value, restaurant_id) VALUES ('printing_enabled', 'false', $1)", [
+        fixtures.restaurantA,
+      ]);
+      try {
+        const res = await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(command(orderA));
+        expect(res.status).toBe(409);
+        expect(res.body).toMatchObject({ code: 'printing_disabled' });
+        expect(await jobCount()).toBe(before);
+      } finally {
+        await superuserQuery(database.superuserUrl, "DELETE FROM business_config WHERE key = 'printing_enabled'");
+      }
+    });
+  });
+
   describe('print jobs', () => {
     it('keeps jobs created while offline pending for the restaurant, and ack is idempotent', async () => {
       const printerA = await createPrinter(fixtures.adminA.email, 'Offline A');
       const printerB = await createPrinter(fixtures.adminB.email, 'Offline B');
-      const created = await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(COMMAND);
+      const created = await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(command(orderA));
       const jobId = (created.body as { id: string }).id;
 
       const pendingA = await http().get('/api/print/jobs/pending').set(bearer(printerA.token));
       expect(pendingA.status).toBe(200);
       const job = (pendingA.body as PrintJobEvent[]).find((pending) => pending.id === jobId);
-      expect(job).toMatchObject({ id: jobId, kind: 'command', payload: { invoiceNumber: jobId, ...COMMAND } });
+      expect(job).toMatchObject({ id: jobId, kind: 'command', payload: stored(jobId, 'Waiter A', orderA) });
       expect(typeof (job as unknown as { createdAt: string }).createdAt).toBe('string');
 
       const pendingB = await http().get('/api/print/jobs/pending').set(bearer(printerB.token));
@@ -324,7 +455,7 @@ describe('printing bridge (Testcontainers, vipe_api)', () => {
       const printer = await createPrinter(fixtures.adminB.email, 'Paging B');
       const ids: string[] = [];
       for (let i = 0; i < 3; i += 1) {
-        ids.push(((await http().post('/api/print/commands').set(as(fixtures.adminB.email)).send(COMMAND)).body as { id: string }).id);
+        ids.push(((await http().post('/api/print/commands').set(as(fixtures.adminB.email)).send(command(orderB))).body as { id: string }).id);
       }
       const all = (await http().get('/api/print/jobs/pending').set(bearer(printer.token))).body as PrintJobEvent[];
       const start = all.findIndex((job) => job.id === ids[0]);
@@ -337,17 +468,19 @@ describe('printing bridge (Testcontainers, vipe_api)', () => {
       expect((await http().get('/api/print/jobs/pending?other=1').set(bearer(printer.token))).status).toBe(422);
     });
 
-    it('stores waiter and item text verbatim (validation does not trim)', async () => {
-      const body = { items: [{ name: ' Ajiaco ', quantity: 1 }], waiter: ' Ana ', table: 2 };
-      const res = await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(body);
+    it('stores item text verbatim (validation does not trim) and ignores the sent waiter', async () => {
+      const body = { items: [{ name: ' Ajiaco ', quantity: 1 }], table: 2 };
+      const res = await http()
+        .post('/api/print/commands')
+        .set(as(fixtures.waiterA.email))
+        .send({ orderId: orderA.id, ...body, waiter: '   ' });
       expect(res.status).toBe(201);
       const [row] = await superuserQuery<{ payload: Record<string, unknown> }>(
         database.superuserUrl,
         'SELECT payload FROM public.print_jobs WHERE id = $1',
         [(res.body as { id: string }).id],
       );
-      expect(row.payload).toEqual({ invoiceNumber: (res.body as { id: string }).id, ...body });
-      expect((await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send({ ...body, waiter: '   ' })).status).toBe(422);
+      expect(row.payload).toEqual({ invoiceNumber: (res.body as { id: string }).id, ...body, waiter: 'Waiter A', orderNumber: orderA.number });
     });
 
     it('printer routes need a bearer token and refuse the web cookie', async () => {
@@ -359,11 +492,11 @@ describe('printing bridge (Testcontainers, vipe_api)', () => {
     });
 
     it('needs a session to enqueue and validates the payloads', async () => {
-      expect((await http().post('/api/print/commands').send(COMMAND)).status).toBe(401);
+      expect((await http().post('/api/print/commands').send(command(orderA))).status).toBe(401);
       const send = (path: string, body: unknown) => http().post(path).set(as(fixtures.waiterA.email)).send(body as object);
-      expect((await send('/api/print/commands', { ...COMMAND, items: [] })).status).toBe(422);
-      expect((await send('/api/print/commands', { ...COMMAND, waiter: '' })).status).toBe(422);
-      expect((await send('/api/print/commands', { ...COMMAND, invoiceNumber: '1234' })).status).toBe(422);
+      expect((await send('/api/print/commands', { ...command(orderA), items: [] })).status).toBe(422);
+      expect((await send('/api/print/commands', { ...command(orderA), invoiceNumber: '1234' })).status).toBe(422);
+      expect((await send('/api/print/commands', { ...command(orderA), orderNumber: 1 })).status).toBe(422);
       expect((await send('/api/print/invoices', { displayItems: [] })).status).toBe(422);
       expect((await send('/api/print/invoices', { ...INVOICE, invoice: { ...INVOICE.invoice, invoiceNumber: '' } })).status).toBe(422);
       const [{ count }] = await superuserQuery<{ count: string }>(

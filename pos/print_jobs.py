@@ -181,6 +181,10 @@ def _command(payload):
         "items": items,
         "delivery": payload.get("delivery"),
     }
+    # Comanda header (orderNumber, station): passed through only when present.
+    for key in ("orderNumber", "station"):
+        if payload.get(key) is not None:
+            order[key] = payload[key]
     return lambda encoding: print_renderer.build_comanda_bytes(order, encoding=encoding)
 
 

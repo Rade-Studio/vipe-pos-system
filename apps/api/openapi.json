@@ -5457,7 +5457,7 @@
         },
         "responses": {
           "201": {
-            "description": "Queued kitchen command; its id is the payload invoiceNumber. With stations: one job per station and `jobs`; without: the single legacy job (no `jobs`).",
+            "description": "Queued kitchen command; its id is the payload invoiceNumber, with the order's orderNumber and the sender's name as waiter. With stations: one job per station and `jobs`; without: the single legacy job (no `jobs`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5465,6 +5465,9 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "orderId is not an order of the caller's restaurant."
           },
           "409": {
             "description": "`printing_disabled`: the restaurant does not use printers."
@@ -13987,6 +13990,11 @@
       "CommandPrintRequest": {
         "type": "object",
         "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The order of the caller's restaurant this comanda belongs to (404 otherwise)."
+          },
           "items": {
             "type": "array",
             "items": {
@@ -13998,12 +14006,13 @@
           },
           "waiter": {
             "type": "string",
-            "minLength": 1
+            "deprecated": true,
+            "description": "Ignored: the API prints the sender's profile name."
           },
           "table": {
             "type": "number",
             "nullable": true,
-            "description": "Null or absent for delivery orders."
+            "description": "Null or absent for delivery orders; the order's table wins."
           },
           "delivery": {
             "type": "object",
@@ -14012,8 +14021,8 @@
           }
         },
         "required": [
-          "items",
-          "waiter"
+          "orderId",
+          "items"
         ]
       },
       "PrintJobsCreated": {
@@ -14067,7 +14076,7 @@
           "payload": {
             "type": "object",
             "additionalProperties": true,
-            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
+            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
           },
           "createdAt": {
             "type": "string",
