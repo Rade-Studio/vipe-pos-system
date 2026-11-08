@@ -331,3 +331,27 @@ describe("mergeRowList — raw-row merge (D9)", () => {
     expect(result).toBe(prev)
   })
 })
+
+describe("toTable — reservation fields (reservas-mesas T2, S2)", () => {
+  it("keeps the reservation of a realtime row and drops it once cleared", () => {
+    const prev = [makeTable({ id: "t-1" })]
+    const reserved: TableRow = {
+      id: "t-1",
+      number: 1,
+      status: "reserved",
+      reservation_name: "Familia López",
+      reservation_arrival_at: "2026-11-07T01:30:00.000Z",
+      reserved_at: "2026-11-06T22:00:00.000Z",
+    }
+    const next = mergeTableList(prev, { eventType: "UPDATE", new: reserved })
+    expect(next[0]).toMatchObject({
+      status: "reserved",
+      reservationName: "Familia López",
+      reservationArrivalAt: "2026-11-07T01:30:00.000Z",
+      reservedAt: "2026-11-06T22:00:00.000Z",
+    })
+    const seated = mergeTableList(next, { eventType: "UPDATE", new: { id: "t-1", number: 1, status: "occupied", reservation_name: null } })
+    expect(seated[0].reservationName).toBeUndefined()
+    expect(seated[0].reservationArrivalAt).toBeUndefined()
+  })
+})

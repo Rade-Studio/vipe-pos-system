@@ -15,6 +15,8 @@ interface TablesSectionProps {
   onSelectTable: (tableId: string | null) => void
   onReserveTable: (tableId: string) => void
   onReleaseTable: (tableId: string) => void
+  /** "Sentar clientes" on a reserved table (reservas-mesas S5). */
+  onSeatTable?: (tableId: string) => void
   isTableAccessible: (tableId: string) => boolean
   /**
    * T6: the zone floor map instead of the grid. `zones` undefined while they
@@ -35,6 +37,7 @@ export function TablesSection({
   onSelectTable,
   onReserveTable,
   onReleaseTable,
+  onSeatTable,
   isTableAccessible,
   floor,
 }: TablesSectionProps) {
@@ -87,6 +90,7 @@ export function TablesSection({
         onSelectTable={onSelectTable}
         onReserveTable={onReserveTable}
         onReleaseTable={onReleaseTable}
+        onSeatTable={onSeatTable}
         isAccessible={isTableAccessible}
         profiles={profiles} // Pasar perfiles a TableGrid
       />

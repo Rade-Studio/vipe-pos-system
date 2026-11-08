@@ -4,6 +4,7 @@ import { useId } from "react"
 import type { Table } from "@/types"
 import { cn } from "@/lib/utils"
 import { isInactive } from "@/lib/floor/layout"
+import { reservationLine } from "@/lib/tables/reservation"
 import { StatusChip } from "./StatusChip"
 
 interface UnplacedStripProps {
@@ -25,6 +26,7 @@ export function UnplacedStrip({ tables, selectedTableId, onSelectTable, waiterNa
       <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
         {tables.map((table) => {
           const waiterName = waiterNameOf?.(table)
+          const reservation = reservationLine(table)
           return (
             <button
               key={table.id}
@@ -43,6 +45,7 @@ export function UnplacedStrip({ tables, selectedTableId, onSelectTable, waiterNa
                 <StatusChip status={table.status} inactive={isInactive(table)} />
               </span>
               {waiterName && <span className="max-w-[12rem] truncate text-xs text-muted-fg">{waiterName}</span>}
+              {reservation && <span className="max-w-[12rem] truncate text-xs font-medium text-fg">{reservation}</span>}
             </button>
           )
         })}

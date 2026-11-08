@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Filter, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { getStatusLabel } from "@/utils/helpers"
 import type { TableStatus } from "@/types"
+import { NAME_MAX, arrivalLabel, validateReservation } from "@/lib/tables/reservation"
 
 /** The panel holds the `pos_changes` row shape, so events merge as they arrive. */
 type PanelTable = TableEventRow & { id: string; number: number; status: string }
@@ -33,6 +34,11 @@ export function TableManagementPanel() {
   const [editTableId, setEditTableId] = useState<string | null>(null)
   const [editTableNumber, setEditTableNumber] = useState("")
   const [editTableStatus, setEditTableStatus] = useState("")
+  // reservas-mesas T2 (S2, S3): "Reservada" asks the name and the arrival.
+  const [editReservationName, setEditReservationName] = useState("")
+  const [editReservationTime, setEditReservationTime] = useState("")
+  const [savedReservationTime, setSavedReservationTime] = useState("")
+  const [editReservationError, setEditReservationError] = useState<{ field: "name" | "time"; message: string } | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -129,6 +135,10 @@ export function TableManagementPanel() {
     setEditTableId(table.id)
     setEditTableNumber(table.number.toString())
     setEditTableStatus(table.status)
+    setEditReservationName(table.reservation_name ?? "")
+    setEditReservationTime(table.reservation_arrival_at ? timeOfDay(table.reservation_arrival_at) : "")
+    setSavedReservationTime(table.status === "reserved" && table.reservation_arrival_at ? timeOfDay(table.reservation_arrival_at) : "")
+    setEditReservationError(null)
     setShowEditDialog(true)
   }
 
@@ -143,10 +153,24 @@ export function TableManagementPanel() {
       return
     }
 
+    let reservation: { reservationName: string; reservationArrivalAt?: string } | null = null
+    if (editTableStatus === "reserved") {
+      // An unchanged arrival is not sent again (it may be minutes ago by now).
+      const unchanged = savedReservationTime !== "" && editReservationTime === savedReservationTime
+      const check = validateReservation({ name: editReservationName, time: unchanged ? "" : editReservationTime })
+      if (!check.ok) {
+        setEditReservationError({ field: check.field, message: check.message })
+        return
+      }
+      setEditReservationError(null)
+      reservation = { reservationName: check.body.name, ...(check.body.arrivalAt ? { reservationArrivalAt: check.body.arrivalAt } : {}) }
+    }
+
     try {
       await tablesApi.update(editTableId, {
         number: Number.parseInt(editTableNumber),
         status: editTableStatus as TableStatus,
+        ...reservation,
       })
       setShowEditDialog(false)
 
@@ -286,6 +310,12 @@ export function TableManagementPanel() {
                   <TableCell className={`${cellClass} font-medium`}>Mesa {table.number}</TableCell>
                   <TableCell className={`${cellClass} text-right sm:text-left`}>
                     <StatusBadge status={table.status} />
+                    {table.status === "reserved" && (
+                      <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                        Reserva: {table.reservation_name ?? "Sin nombre"}
+                        {table.reservation_arrival_at ? ` · llega ${arrivalLabel(table.reservation_arrival_at)}` : ""}
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell className={`${cellClass} text-muted-foreground sm:text-foreground`}>
                     {table.waiter_id ? table.waiter_name || "Desconocido" : "Sin mesero"}
@@ -394,6 +424,41 @@ export function TableManagementPanel() {
                   </SelectContent>
                 </Select>
               </div>
+              {editTableStatus === "reserved" && (
+                <>
+                  <div>
+                    <Label htmlFor="editReservationName">¿A nombre de quién?</Label>
+                    <Input
+                      id="editReservationName"
+                      autoComplete="off"
+                      maxLength={NAME_MAX}
+                      value={editReservationName}
+                      onChange={(e) => setEditReservationName(e.target.value)}
+                      aria-invalid={editReservationError?.field === "name" ? true : undefined}
+                      className="mt-1 min-h-11"
+                    />
+                    {editReservationError?.field === "name" && (
+                      <p className="mt-1 text-sm text-destructive">{editReservationError.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="editReservationTime">
+                      Hora de llegada <span className="font-normal text-muted-foreground">(opcional, hoy)</span>
+                    </Label>
+                    <Input
+                      id="editReservationTime"
+                      type="time"
+                      value={editReservationTime}
+                      onChange={(e) => setEditReservationTime(e.target.value)}
+                      aria-invalid={editReservationError?.field === "time" ? true : undefined}
+                      className="mt-1 min-h-11"
+                    />
+                    {editReservationError?.field === "time" && (
+                      <p className="mt-1 text-sm text-destructive">{editReservationError.message}</p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowEditDialog(false)}>
@@ -441,4 +506,10 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "warn
 /** Table status as a neutral badge; only "available" and "kitchen" stand out. */
 function StatusBadge({ status }: { status: string }) {
   return <Badge variant={STATUS_VARIANT[status] ?? "outline"}>{getStatusLabel(status)}</Badge>
+}
+
+/** "20:30" of an ISO instant, for the time input (local clock, like the sheet). */
+function timeOfDay(iso: string): string {
+  const at = new Date(iso)
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`
 }

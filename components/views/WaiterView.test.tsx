@@ -32,6 +32,7 @@ const env = vi.hoisted(() => ({
   dishesByCategory: vi.fn(),
   menuTree: vi.fn(),
   assignWaiter: vi.fn(),
+  reserveTable: vi.fn(),
   updateTableStatus: vi.fn(),
   releaseTable: vi.fn(),
   subscribeToTables: vi.fn(),
@@ -57,6 +58,7 @@ const env = vi.hoisted(() => ({
     this.dishesByCategory.mockReset()
     this.menuTree.mockReset()
     this.assignWaiter.mockReset()
+    this.reserveTable.mockReset()
     this.updateTableStatus.mockReset()
     this.releaseTable.mockReset()
     this.subscribeToTables.mockReset()
@@ -80,6 +82,7 @@ const env = vi.hoisted(() => ({
     // The table DTO the floor actions answer with.
     const table = { id: "t-1", number: 1, status: "occupied", waiterId: "w-1", waiterName: null, createdAt: null, updatedAt: null }
     this.assignWaiter.mockResolvedValue(table)
+    this.reserveTable.mockImplementation(async (id: string, body: { name: string }) => ({ ...table, id, status: "reserved", waiterId: null, reservationName: body.name }))
     this.updateTableStatus.mockResolvedValue(table)
     this.releaseTable.mockResolvedValue({ ...table, status: "available", waiterId: null })
     this.orderCreate.mockImplementation(async () => orderDto("o-new", "t-1"))
@@ -112,6 +115,8 @@ vi.mock("@/lib/api/client", () => {
         return { data: await env.waiterGetAll() }
       case "POST /api/tables/{id}/assign":
         return { data: await env.assignWaiter(id, body.waiterId) }
+      case "POST /api/tables/{id}/reserve":
+        return { data: await env.reserveTable(id, body) }
       case "POST /api/tables/{id}/release":
         return { data: await env.releaseTable(id, body) }
       case "PATCH /api/tables/{id}":
@@ -341,6 +346,8 @@ describe("WaiterView — selecting a table does not rebuild the screen (T6/S2)",
       screen.getByText("Mesa 1").click()
     })
     await flush()
+    // reservas-mesas T2: a free table is taken by "Agregar productos".
+    await tap("Agregar productos")
 
     // The picker is served by the same shared query.
     expect(env.waiterGetAll).toHaveBeenCalledTimes(1)
@@ -386,6 +393,10 @@ describe("WaiterView — selecting a table does not rebuild the screen (T6/S2)",
       screen.getByText("Mesa 1").click()
     })
     await flush()
+    // reservas-mesas T2: the tap only selects a free table (it can still be
+    // reserved); "Agregar productos" takes it.
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+    await openOrderFlow()
 
     expect(env.assignWaiter).toHaveBeenCalledTimes(1)
     expect(env.assignWaiter).toHaveBeenCalledWith("t-1", "w-1")
@@ -450,7 +461,8 @@ describe("WaiterView — zone map (T6)", () => {
     expect(panel).toHaveTextContent("Ocupada")
     expect(panel).toHaveTextContent("Ana Gómez")
     expect(panel).toHaveTextContent("4 sillas")
-    expect(screen.getByRole("button", { name: "Reservar" })).toBeInTheDocument()
+    // reservas-mesas S1: an occupied table cannot be reserved.
+    expect(screen.queryByRole("button", { name: "Reservar" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Liberar mesa" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Agregar productos" })).toBeInTheDocument()
     // T10: the old menu under the map is gone; "Agregar productos" opens the step flow.
@@ -552,6 +564,8 @@ describe("WaiterView — existing behavior (preserve)", () => {
       screen.getByText("Mesa 1").click()
     })
     await flush()
+    // reservas-mesas T2: a free table is taken by "Agregar productos".
+    await tap("Agregar productos")
 
     const stored = useTableStore.getState().tables.find((table) => table.id === "t-1")
     expect(stored?.status).toBe("occupied")
@@ -1578,5 +1592,100 @@ describe("WaiterView — F3 anular plato y cancelar orden", () => {
     await flush()
     const cached = queryClient.getQueryData(["orders"]) as { id: string; items: { id: string }[] }[]
     expect(cached.find((order) => order.id === "o-9")?.items.map((item) => item.id)).toEqual(["live"])
+  })
+})
+
+describe("WaiterView — reservations (reservas-mesas T2, S1, S2, S5)", () => {
+  const zone = { id: "z-1", name: "Salón principal", aspect: 1.6, sortOrder: 0, labels: [], active: true, createdAt: null, updatedAt: null }
+  const placed = (status: string, extra: object = {}) => ({
+    ...tableRow("t-1", 1, status, status === "occupied" ? "w-1" : null),
+    zoneId: "z-1", x: 0.3, y: 0.4, w: 0.1, h: 0.1, shape: "round", rotation: 0, seats: 4,
+    ...extra,
+  })
+
+  it("Reservar on a free table opens the reserve sheet and reserves it, never assigning a waiter", async () => {
+    env.zoneGetAll.mockResolvedValue([zone])
+    env.tableGetAll.mockResolvedValue([placed("available")])
+    renderView()
+    await flush()
+    await tap(/^Mesa 1,/)
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+
+    await tap("Reservar")
+    expect(screen.queryByText("Seleccionar Mesero")).not.toBeInTheDocument()
+    const sheet = screen.getByRole("dialog")
+    expect(within(sheet).getByRole("heading", { name: "Reservar mesa 1" })).toBeInTheDocument()
+    fireEvent.change(within(sheet).getByLabelText("¿A nombre de quién?"), { target: { value: "Familia López" } })
+    await act(async () => {
+      fireEvent.click(within(sheet).getByRole("button", { name: "Reservar" }))
+    })
+    await flush()
+
+    expect(env.reserveTable).toHaveBeenCalledWith("t-1", { name: "Familia López" })
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    const panel = screen.getByRole("region", { name: "Mesa 1" })
+    expect(panel).toHaveTextContent("Reservada")
+    expect(panel).toHaveTextContent("Reserva: Familia López")
+    expect(within(panel).getByRole("button", { name: "Sentar clientes" })).toBeInTheDocument()
+  })
+
+  it("a reserved table: the tap only selects it; Sentar clientes seats it through assign", async () => {
+    env.zoneGetAll.mockResolvedValue([zone])
+    env.tableGetAll.mockResolvedValue([placed("reserved", { reservationName: "Familia López" })])
+    renderView()
+    await flush()
+    await tap(/^Mesa 1,/)
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+    expect(screen.getByRole("region", { name: "Mesa 1" })).toHaveTextContent("Reserva: Familia López")
+
+    await tap("Sentar clientes")
+    expect(env.assignWaiter).toHaveBeenCalledWith("t-1", "w-1")
+    expect(env.reserveTable).not.toHaveBeenCalled()
+  })
+
+  it("a tap alone on a free table does not call assign (user's answer A)", async () => {
+    env.zoneGetAll.mockResolvedValue([zone])
+    env.tableGetAll.mockResolvedValue([placed("available")])
+    renderView()
+    await flush()
+    await tap(/^Mesa 1,/)
+
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+    const panel = screen.getByRole("region", { name: "Mesa 1" })
+    expect(panel).toHaveTextContent("Libre")
+    expect(within(panel).getByRole("button", { name: "Agregar productos" })).toBeInTheDocument()
+    expect(within(panel).getByRole("button", { name: "Reservar" })).toBeInTheDocument()
+  })
+
+  it("admin: Agregar productos on a free table picks the waiter, assigns and goes on to the guests", async () => {
+    env.zoneGetAll.mockResolvedValue([zone])
+    env.tableGetAll.mockResolvedValue([placed("available")])
+    env.waiterGetAll.mockResolvedValue(waiterRows)
+    renderView(adminProfile)
+    await flush()
+    await tap(/^Mesa 1,/)
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+
+    await tap("Agregar productos")
+    expect(screen.getByText("Seleccionar Mesero")).toBeInTheDocument()
+    await act(async () => {
+      screen.getByText("Ana Gómez").click()
+    })
+    await flush()
+    expect(env.assignWaiter).toHaveBeenCalledWith("t-1", "w-1")
+    expect(screen.getByRole("button", { name: "Sin indicar" })).toBeInTheDocument()
+  })
+
+  it("Cancelar reserva releases a reserved table (no refusal toast)", async () => {
+    env.zoneGetAll.mockResolvedValue([zone])
+    env.tableGetAll.mockResolvedValue([placed("reserved", { reservationName: "Familia López" })])
+    renderView()
+    await flush()
+    await tap(/^Mesa 1,/)
+    await tap("Cancelar reserva")
+
+    expect(env.releaseTable).toHaveBeenCalledWith("t-1", {})
+    expect(env.toastFn).not.toHaveBeenCalledWith(expect.objectContaining({ title: "Acción no permitida" }))
   })
 })

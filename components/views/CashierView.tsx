@@ -50,6 +50,7 @@ import type { VoidLine, VoidTarget } from "@/components/voids/flow"
 import type { PaidOrderRow } from "@/lib/cashier/paid-orders"
 import { ShiftSummarySheet } from "@/components/cashier/ShiftSummarySheet"
 import { LivePill } from "@/components/cashier/LivePill"
+import { CashierTablesView } from "@/components/cashier/CashierTablesView"
 import { useZones } from "@/hooks/use-zones"
 import type { CashRegisterWithOpener } from "@/lib/api/registers"
 import { useActiveDeliveries } from "@/hooks/use-active-deliveries"
@@ -66,6 +67,9 @@ import {
 import { useOnlineStatus } from "@/lib/cashier/use-online-status"
 import { cn } from "@/lib/utils"
 
+type CashierTab = "orders" | "tables" | "transactions"
+const TAB_TITLES: Record<CashierTab, string> = { orders: "Caja", tables: "Plano de mesas", transactions: "Resumen del turno" }
+
 /** Stable empty reference so the query's default value never re-allocates. */
 const NO_ORDERS: Order[] = []
 
@@ -76,7 +80,7 @@ interface CashierViewProps {
 }
 
 export function CashierView({ profile, onChangeProfile, authRole }: CashierViewProps) {
-  const [activeTab, setActiveTab] = useState<"orders" | "transactions">("orders")
+  const [activeTab, setActiveTab] = useState<CashierTab>("orders")
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   const [partialPaymentDialogOpen, setPartialPaymentDialogOpen] = useState(false)
   // T14: the queue row whose detail and payment panel are on screen.
@@ -653,12 +657,12 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         profile={profile}
         onChangeProfile={onChangeProfile}
         authRole={authRole}
-        title={activeTab === "orders" ? "Caja" : "Resumen del turno"}
+        title={TAB_TITLES[activeTab]}
       />
 
       <Tabs
         value={activeTab}
-        onValueChange={(value) => setActiveTab(value as "orders" | "transactions")}
+        onValueChange={(value) => setActiveTab(value as CashierTab)}
         className="flex flex-1 flex-col gap-3 pb-3 min-[1180px]:min-h-0"
       >
         {/* Top bar: real register state and its actions, the shift summary, refresh. */}
@@ -669,6 +673,9 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
           <TabsList className="h-11 bg-surface-2">
             <TabsTrigger value="orders" className="h-9 px-3">
               Cobro
+            </TabsTrigger>
+            <TabsTrigger value="tables" className="h-9 px-3">
+              Plano de mesas
             </TabsTrigger>
             <TabsTrigger value="transactions" className="h-9 px-3">
               Resumen del turno
@@ -867,6 +874,11 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
               </Button>
             </div>
           )}
+        </TabsContent>
+
+        {/* reservas-mesas T3 (S4): the waiter's floor map and table panel. */}
+        <TabsContent value="tables" className="mt-0">
+          <CashierTablesView />
         </TabsContent>
 
         <TabsContent value="transactions" className="mt-0">

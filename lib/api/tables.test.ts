@@ -21,6 +21,7 @@ import {
   getAll,
   getWaiters,
   releaseTable,
+  reserveTable,
   saveLayout,
   toTable,
   toTableRow,
@@ -47,6 +48,10 @@ const table: TableDto = {
   isActive: true,
   createdAt: "2026-11-04T11:00:00.000Z",
   updatedAt: "2026-11-04T12:00:00.000Z",
+  reservationName: null,
+  reservationArrivalAt: null,
+  reservedAt: null,
+  reservedByName: null,
 }
 
 const byId = { params: { path: { id: "t-1" } } }
@@ -91,6 +96,10 @@ describe("mapping", () => {
       seats: undefined,
       isActive: true,
       updated_at: undefined,
+      reservationName: undefined,
+      reservationArrivalAt: undefined,
+      reservedAt: undefined,
+      reservedByName: undefined,
     })
     expect(toTable({ ...table, isActive: false }).isActive).toBe(false)
   })
@@ -111,6 +120,41 @@ describe("mapping", () => {
       rotation: 45,
       seats: 6,
       updated_at: "2026-11-04T12:00:00.000Z",
+      reservation_name: null,
+      reservation_arrival_at: null,
+      reserved_at: null,
+      reserved_by_name: null,
+    })
+  })
+
+  const reserved: TableDto = {
+    ...table,
+    status: "reserved",
+    waiterId: null,
+    waiterName: null,
+    reservationName: "Familia López",
+    reservationArrivalAt: "2026-11-07T01:30:00.000Z",
+    reservedAt: "2026-11-06T22:00:00.000Z",
+    reservedByName: "Ana",
+  }
+
+  it("toTable carries the reservation (T2, S2)", () => {
+    expect(toTable(reserved)).toMatchObject({
+      status: "reserved",
+      reservationName: "Familia López",
+      reservationArrivalAt: "2026-11-07T01:30:00.000Z",
+      reservedAt: "2026-11-06T22:00:00.000Z",
+      reservedByName: "Ana",
+    })
+  })
+
+  it("toTableRow carries the reservation (T2, S2)", () => {
+    expect(toTableRow(reserved)).toMatchObject({
+      status: "reserved",
+      reservation_name: "Familia López",
+      reservation_arrival_at: "2026-11-07T01:30:00.000Z",
+      reserved_at: "2026-11-06T22:00:00.000Z",
+      reserved_by_name: "Ana",
     })
   })
 })
@@ -165,5 +209,16 @@ describe("requests", () => {
 
     await releaseTable("t-1", { force: true })
     expect(api.POST).toHaveBeenLastCalledWith("/api/tables/{id}/release", { ...byId, body: { force: true } })
+  })
+
+  it("reserves a table under a name, with an optional arrival time", async () => {
+    const reserved = { ...table, status: "reserved", reservationName: "Ana", reservedByName: "Luis" }
+    api.POST.mockResolvedValue({ data: reserved })
+    await expect(reserveTable("t-1", { name: "Ana" })).resolves.toEqual(reserved)
+    expect(api.POST).toHaveBeenLastCalledWith("/api/tables/{id}/reserve", { ...byId, body: { name: "Ana" } })
+
+    const arrivalAt = new Date(Date.now() + 3_600_000).toISOString()
+    await reserveTable("t-1", { name: "Ana", arrivalAt })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/tables/{id}/reserve", { ...byId, body: { name: "Ana", arrivalAt } })
   })
 })

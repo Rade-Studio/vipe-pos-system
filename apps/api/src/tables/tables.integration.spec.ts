@@ -28,6 +28,10 @@ const TABLE_KEYS = [
   'id',
   'isActive',
   'number',
+  'reservationArrivalAt',
+  'reservationName',
+  'reservedAt',
+  'reservedByName',
   'rotation',
   'seats',
   'shape',
@@ -268,7 +272,6 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
     it.each([
       ['kitchen', t.kitchen],
       ['served', t.served],
-      ['reserved', t.reserved],
     ])('answers 409 when releasing a %s table, even with force from a waiter', async (status, id) => {
       const res = await waiterA().post(`/api/tables/${id}/release`, { force: true });
       expect(res.status).toBe(409);
@@ -378,11 +381,15 @@ async function seedTables(superuserUrl: string) {
        ($2, 2, 'occupied', $8, $9, now() - interval '1 hour'),
        ($3, 3, 'kitchen', $8, $9, now() - interval '1 hour'),
        ($4, 4, 'served', $8, $9, now() - interval '1 hour'),
-       ($5, 5, 'reserved', NULL, $9, now() - interval '1 hour'),
+       ($5, 5, 'available', NULL, $9, now() - interval '1 hour'),
        ($6, 6, 'available', NULL, $9, now() - interval '1 hour'),
        ($7, 101, 'available', NULL, $10, now() - interval '1 hour')`,
     [t.free, t.busy, t.kitchen, t.served, t.reserved, t.paidOnly, t.otherTable, fixtures.waiterA.profileId, A, B],
   );
+  // tables_reservation_check (0022): a reserved table has a name.
+  await q(`UPDATE tables SET status = 'reserved', reservation_name = 'Sin nombre', updated_at = now() - interval '1 hour' WHERE id = $1`, [
+    t.reserved,
+  ]);
   await q(
     `UPDATE tables SET zone_id = $2, x = 0.0625, y = 0.0625, w = 0.1, h = 0.1, shape = 'round', seats = 4 WHERE id = $1`,
     [t.free, t.hall],

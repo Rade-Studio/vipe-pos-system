@@ -6,6 +6,7 @@ import type { Table, TableStatus } from "@/types"
 import { cn } from "@/lib/utils"
 import { chairPositions, initials, isInactive, seatsText, tableAccessibleName, tableBox } from "@/lib/floor/layout"
 import { SHAPE_LABELS } from "@/lib/floor/editor"
+import { arrivalLabel, reservationLine } from "@/lib/tables/reservation"
 import { StatusChip } from "./StatusChip"
 import { INACTIVE_TONE, toneClasses } from "./tones"
 
@@ -68,6 +69,8 @@ export function FloorTable({
   const inactive = isInactive(table)
   const tone = inactive ? INACTIVE_TONE : toneClasses(table.status)
   const elapsedChip = mode === "live" && !inactive ? elapsed : null
+  // S2: a reserved table names its reservation under it and in its name.
+  const reservation = mode === "live" ? reservationLine(table) : null
   const shadow = [
     selected ? "0 0 0 3px var(--floor), 0 0 0 6px var(--accent)" : null,
     "0 6px 0 -1px var(--thick)",
@@ -87,7 +90,11 @@ export function FloorTable({
     // around the tabletop on purpose (design/system.md); the floor is checked.
     <Root
       data-qa-ignore
-      aria-label={mode === "edit" ? editAccessibleName(table) : tableAccessibleName(table, waiterName, elapsedChip)}
+      aria-label={
+        mode === "edit"
+          ? editAccessibleName(table)
+          : [tableAccessibleName(table, waiterName, elapsedChip), reservation].filter(Boolean).join(", ")
+      }
       data-inactive={inactive && mode !== "edit" ? "true" : undefined}
       {...(interactive
         ? {
@@ -162,7 +169,17 @@ export function FloorTable({
         // T22/S6: the time since the order opened rides in the status chip under the
         // table, so it never covers the number, the waiter badge or a neighbour.
         extra={
-          elapsedChip ? (
+          reservation ? (
+            // Short under the table so it never reaches a neighbour's chip (the
+            // floor is narrow next to the panel); the arrival shows from 1280 px,
+            // the panel and the accessible name always have both.
+            <span className="min-w-0 max-w-[3.5rem] truncate sm:max-w-[4.5rem] xl:max-w-[14rem]">
+              {`· ${table.reservationName}`}
+              {table.reservationArrivalAt && (
+                <span className="hidden tabular-nums xl:inline">{` · ${arrivalLabel(table.reservationArrivalAt)}`}</span>
+              )}
+            </span>
+          ) : elapsedChip ? (
             <span className="tabular-nums">
               {" · "}
               <span className="lg:hidden">{shortElapsed(elapsedChip)}</span>

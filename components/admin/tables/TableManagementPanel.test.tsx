@@ -177,3 +177,66 @@ describe("TableManagementPanel — edit dialog statuses", () => {
     expect(patch?.init.body).toEqual({ number: 1, status: "served" })
   })
 })
+
+describe("TableManagementPanel — reserve with a name (reservas-mesas T2, S2, S3)", () => {
+  const chooseReserved = async () => {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Editar/ }))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("combobox"))
+    })
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("option", { name: "Reservada" }))
+    })
+  }
+  const save = async () => {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
+    })
+  }
+
+  it("Reservada reveals the name (required) and arrival fields and sends them in the PATCH", async () => {
+    render(<TableManagementPanel />)
+    await waitFor(() => expect(screen.getByText("Ana")).toBeInTheDocument())
+    expect(screen.queryByLabelText("¿A nombre de quién?")).not.toBeInTheDocument()
+    await chooseReserved()
+
+    const name = screen.getByLabelText("¿A nombre de quién?")
+    expect(name).toHaveClass("min-h-11")
+    await save()
+    expect(screen.getByText("Escribe a nombre de quién")).toBeInTheDocument()
+    expect(env.calls.filter((call) => call.method === "PATCH")).toEqual([])
+
+    const now = new Date()
+    const later = new Date(now.getTime() + 60 * 60_000)
+    const sameDay = later.getDate() === now.getDate()
+    const hhmm = `${String(later.getHours()).padStart(2, "0")}:${String(later.getMinutes()).padStart(2, "0")}`
+    fireEvent.change(name, { target: { value: " Familia López " } })
+    if (sameDay) fireEvent.change(screen.getByLabelText(/Hora de llegada/), { target: { value: hhmm } })
+    await save()
+
+    const expectedArrival = new Date(now)
+    expectedArrival.setHours(later.getHours(), later.getMinutes(), 0, 0)
+    const patch = env.calls.find((call) => call.method === "PATCH")
+    expect(patch?.init.body).toEqual({
+      number: 1,
+      status: "reserved",
+      reservationName: "Familia López",
+      ...(sameDay ? { reservationArrivalAt: expectedArrival.toISOString() } : {}),
+    })
+  })
+
+  it("lists a reserved table with its name", async () => {
+    render(<TableManagementPanel />)
+    await waitFor(() => expect(screen.getByText("Ana")).toBeInTheDocument())
+    await act(async () => {
+      capturedCallback?.({
+        eventType: "UPDATE",
+        new: { id: "t-1", number: 1, status: "reserved", waiter_id: null, reservation_name: "Familia López", updated_at: "2026-01-02T00:00:00.000Z" },
+        old: {},
+      })
+    })
+    expect(screen.getByText("Reserva: Familia López")).toBeInTheDocument()
+  })
+})

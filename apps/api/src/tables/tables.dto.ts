@@ -7,7 +7,12 @@ export type TableStatus = (typeof TABLE_STATUSES)[number];
  * Release is refused from these (moved from WaiterView's client guard).
  * `delivered` is not a table status the app sets, but the guard listed it.
  */
-export const UNRELEASABLE_STATUSES: readonly string[] = ['kitchen', 'delivered', 'served', 'reserved'];
+export const UNRELEASABLE_STATUSES: readonly string[] = ['kitchen', 'delivered', 'served'];
+
+/** tables_reservation_name_check (0022): trimmed, 1..80 characters. */
+export const RESERVATION_NAME_MAX = 80;
+const reservationName = z.string().trim().min(1).max(RESERVATION_NAME_MAX);
+const reservationArrivalAt = z.iso.datetime({ offset: true });
 
 export const TABLE_SHAPES = ['round', 'square', 'rect', 'bar'] as const;
 export type TableShape = (typeof TABLE_SHAPES)[number];
@@ -64,6 +69,8 @@ export const updateTableSchema = z.strictObject({
   rotation: layoutFields.rotation.optional(),
   seats: layoutFields.seats.optional(),
   isActive: z.boolean().optional(),
+  reservationName: reservationName.optional(),
+  reservationArrivalAt: reservationArrivalAt.nullable().optional(),
 });
 
 export const tableLayoutSchema = z.strictObject({ id: z.guid(), ...layoutFields }).refine(allOrNoCoordinates, COORDINATES_MESSAGE);
@@ -78,6 +85,7 @@ export const saveLayoutSchema = z.strictObject({
 
 export const assignTableSchema = z.strictObject({ waiterId: z.guid() });
 export const releaseTableSchema = z.strictObject({ force: z.boolean().optional() });
+export const reserveTableSchema = z.strictObject({ name: reservationName, arrivalAt: reservationArrivalAt.optional() });
 
 export class Table {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -103,6 +111,13 @@ export class Table {
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Set by the server on every write.' })
   updatedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Name the table is reserved under; set exactly when status is reserved.' })
+  reservationName!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Expected arrival, optional.' })
+  reservationArrivalAt!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) reservedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Who reserved; null for legacy reservations.' })
+  reservedByName!: string | null;
 }
 
 /** Layout fields shared by the create, update and layout requests. */
@@ -130,6 +145,14 @@ export class UpdateTableRequest extends TableLayoutFields {
   status?: TableStatus;
   @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) waiterId?: string | null;
   @ApiPropertyOptional({ description: 'false: no new order on the table; its open orders are unaffected.' }) isActive?: boolean;
+  @ApiPropertyOptional({
+    minLength: 1,
+    maxLength: RESERVATION_NAME_MAX,
+    description: 'Trimmed. Required when status becomes reserved (422 reservation_name_required); only with status reserved or on a reserved table.',
+  })
+  reservationName?: string;
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true, description: 'Not more than 5 minutes ago (422 arrival_in_past).' })
+  reservationArrivalAt?: string | null;
 }
 
 export class TableLayout {
@@ -154,8 +177,14 @@ export class AssignTableRequest {
 }
 
 export class ReleaseTableRequest {
-  @ApiPropertyOptional({ default: false, description: 'Admin only: release from kitchen, delivered, served or reserved.' })
+  @ApiPropertyOptional({ default: false, description: 'Admin only: release from kitchen, delivered or served.' })
   force?: boolean;
+}
+
+export class ReserveTableRequest {
+  @ApiProperty({ minLength: 1, maxLength: RESERVATION_NAME_MAX, description: 'Trimmed.' }) name!: string;
+  @ApiPropertyOptional({ format: 'date-time', description: 'Expected arrival; not more than 5 minutes ago (422 arrival_in_past).' })
+  arrivalAt?: string;
 }
 
 export class Waiter {

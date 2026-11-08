@@ -125,6 +125,7 @@ vi.mock("@/lib/api/client", () => {
             })),
           }
         }
+        if (path === "/api/tables") return { data: [] }
         if (path === "/api/orders/{id}") return { data: orderDtoFromWire(await getById(init.params.path.id)) }
         throw new Error(`unexpected GET ${path}`)
       },
@@ -137,7 +138,7 @@ vi.mock("@/lib/api/registers", () => ({
   getCurrentRegister: () => getCurrentRegister(),
   getRegisterPaidOrders: (registerId: string) => getRegisterPaidOrders(registerId),
 }))
-const zones = vi.hoisted(() => ({ list: [] as Array<{ id: string; name: string }> }))
+const zones = vi.hoisted(() => ({ list: [] as Array<{ id: string; name: string; aspect?: number; labels?: unknown[] }> }))
 vi.mock("@/hooks/use-zones", () => ({ useZones: () => ({ data: zones.list }) }))
 vi.mock("@/lib/api/payments", () => ({
   listPaymentMethods: () => listPaymentMethods(),
@@ -419,6 +420,29 @@ describe("Resumen del turno (S1: no duplicate register load, one summary query)"
     expect(getRegisterSummary.mock.calls.length).toBe(summariesAtMount)
     // The payments ledger loads once, for the open register only.
     expect(listRegisterPayments).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("Mesas (reservas-mesas T3, S4: the floor map in caja)", () => {
+  it("keeps Cobro as the default tab, with its queue", async () => {
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    expect(screen.getByRole("tab", { name: "Cobro" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("tab", { name: "Plano de mesas" })).toHaveAttribute("aria-selected", "false")
+    expect(screen.getByRole("heading", { name: "Caja" })).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Órdenes por cobrar" })).toBeInTheDocument()
+  })
+
+  it("the Mesas tab renders the floor map with the store's tables", async () => {
+    useTableStore.setState({
+      tables: [{ id: "t-1", number: 1, status: "reserved", reservationName: "Familia López", zoneId: "z-1", x: 0.2, y: 0.3, w: 0.1, h: 0.1 }],
+    })
+    zones.list = [{ id: "z-1", name: "Salón", aspect: 1.6, labels: [] }]
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Plano de mesas" }), { button: 0, ctrlKey: false })
+    expect(await screen.findByRole("button", { name: /^Mesa 1,.*Familia López/ })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Plano de mesas" })).toBeInTheDocument()
   })
 })
 

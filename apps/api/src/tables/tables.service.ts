@@ -6,6 +6,7 @@ import { UnitOfWork } from '../db/unit-of-work';
 import {
   type createTableSchema,
   type saveLayoutSchema,
+  type reserveTableSchema,
   type Table,
   type TableShape,
   UNRELEASABLE_STATUSES,
@@ -21,6 +22,11 @@ import {
  * unplaced (no coordinates) and the admin drags it from the editor.
  */
 const GRID = 8;
+/** An arrival time this far in the past is still accepted (clock skew, a late tap). */
+const ARRIVAL_GRACE_MS = 5 * 60_000;
+const RESERVED = 'reserved';
+/** Leaving 'reserved' clears these (tables_reservation_check, migration 0022). */
+const CLEAR_RESERVATION = sql`reservation_name = NULL, reservation_arrival_at = NULL, reserved_by = NULL, reserved_at = NULL`;
 const SLOT_SIZE = 0.1;
 
 const LAYOUT_COLUMNS = ['zoneId', 'x', 'y', 'w', 'h', 'shape', 'rotation', 'seats'] as const;
@@ -52,6 +58,10 @@ interface TableRow {
   is_active: boolean;
   created_at: Date | string | null;
   updated_at: Date | string | null;
+  reservation_name: string | null;
+  reservation_arrival_at: Date | string | null;
+  reserved_at: Date | string | null;
+  reserved_by_name: string | null;
 }
 
 /** timestamptz from a raw query: a Date or Postgres text depending on the driver's type parsers. */
@@ -74,7 +84,17 @@ const toTable = (row: TableRow): Table => ({
   isActive: row.is_active,
   createdAt: iso(row.created_at),
   updatedAt: iso(row.updated_at),
+  reservationName: row.reservation_name,
+  reservationArrivalAt: iso(row.reservation_arrival_at),
+  reservedAt: iso(row.reserved_at),
+  reservedByName: row.reserved_by_name,
 });
+
+function assertArrival(arrivalAt: string | null | undefined): void {
+  if (arrivalAt && Date.parse(arrivalAt) < Date.now() - ARRIVAL_GRACE_MS) {
+    throw new UnprocessableEntityException({ message: 'Arrival time is in the past', code: 'arrival_in_past' });
+  }
+}
 
 /**
  * Tables of the caller's restaurant; RLS scopes every statement. Every write
@@ -129,8 +149,22 @@ export class TablesService {
     return this.list();
   }
 
-  async update(id: string, input: z.infer<typeof updateTableSchema>): Promise<Table> {
-    await this.lock(id);
+  /**
+   * status 'reserved' needs reservationName unless the table is already
+   * reserved (422 reservation_name_required); the admin becomes reserved_by.
+   * Any other status clears the reservation.
+   */
+  async update(id: string, input: z.infer<typeof updateTableSchema>, callerProfileId: string): Promise<Table> {
+    const table = await this.lock(id);
+    const reserved = (input.status ?? table.status) === RESERVED;
+    const touchesReservation = input.reservationName !== undefined || input.reservationArrivalAt !== undefined;
+    if (touchesReservation && !reserved) {
+      throw new UnprocessableEntityException('Reservation fields need status reserved');
+    }
+    if (reserved && table.status !== RESERVED && input.reservationName === undefined) {
+      throw new UnprocessableEntityException({ message: 'A reservation needs a name', code: 'reservation_name_required' });
+    }
+    assertArrival(input.reservationArrivalAt);
     if (input.waiterId) {
       await this.assertWaiter(input.waiterId);
     }
@@ -141,6 +175,10 @@ export class TablesService {
     if (input.status !== undefined) sets.push(sql`status = ${input.status}`);
     if (waiterId !== undefined) sets.push(sql`waiter_id = ${waiterId}`);
     if (input.isActive !== undefined) sets.push(sql`is_active = ${input.isActive}`);
+    if (input.reservationName !== undefined) sets.push(sql`reservation_name = ${input.reservationName}`);
+    if (input.reservationArrivalAt !== undefined) sets.push(sql`reservation_arrival_at = ${input.reservationArrivalAt}`);
+    if (reserved && table.status !== RESERVED) sets.push(sql`reserved_by = ${callerProfileId}, reserved_at = now()`);
+    if (!reserved && table.status === RESERVED) sets.push(CLEAR_RESERVATION);
     for (const key of LAYOUT_COLUMNS) {
       if (input[key] !== undefined) sets.push(sql`${COLUMN[key]} = ${input[key]}`);
     }
@@ -167,18 +205,39 @@ export class TablesService {
     await this.lock(id);
     await this.assertWaiter(waiterId);
     await this.uow.db.execute(sql`
-      UPDATE public.tables SET waiter_id = ${waiterId}, status = 'occupied', updated_at = now() WHERE id = ${id}`);
+      UPDATE public.tables SET waiter_id = ${waiterId}, status = 'occupied', ${CLEAR_RESERVATION}, updated_at = now() WHERE id = ${id}`);
     return this.get(id);
   }
 
-  /** Release guard of WaiterView, now on the server; only an admin may force it. */
+  /**
+   * Only a free table: available with no open order (active, kitchen or
+   * delivered, like remove), else 409 table_not_available.
+   */
+  async reserve(id: string, input: z.infer<typeof reserveTableSchema>, callerProfileId: string): Promise<Table> {
+    const table = await this.lock(id);
+    assertArrival(input.arrivalAt);
+    const [open] = await this.rows(sql`
+      SELECT 1 FROM public.orders WHERE table_id = ${id} AND status IN ('active', 'kitchen', 'delivered') LIMIT 1`);
+    if (table.status !== 'available' || open) {
+      throw new ConflictException({ message: 'Table is not available', code: 'table_not_available' });
+    }
+    await this.uow.db.execute(sql`
+      UPDATE public.tables
+         SET status = ${RESERVED}, waiter_id = NULL, reservation_name = ${input.name},
+             reservation_arrival_at = ${input.arrivalAt ?? null}, reserved_by = ${callerProfileId},
+             reserved_at = now(), updated_at = now()
+       WHERE id = ${id}`);
+    return this.get(id);
+  }
+
+  /** Release guard of WaiterView, now on the server; only an admin may force it. Releasing a reserved table cancels the reservation. */
   async release(id: string, force: boolean, callerRole: string): Promise<Table> {
     const table = await this.lock(id);
     if (UNRELEASABLE_STATUSES.includes(table.status) && !(force && callerRole === 'admin')) {
       throw new ConflictException(`Table cannot be released while ${table.status}`);
     }
     await this.uow.db.execute(sql`
-      UPDATE public.tables SET waiter_id = NULL, status = 'available', updated_at = now() WHERE id = ${id}`);
+      UPDATE public.tables SET waiter_id = NULL, status = 'available', ${CLEAR_RESERVATION}, updated_at = now() WHERE id = ${id}`);
     return this.get(id);
   }
 
@@ -238,9 +297,11 @@ export class TablesService {
     return this.rows<TableRow>(sql`
       SELECT t.id, t.number, t.status, t.waiter_id, p.full_name AS waiter_name,
              t.zone_id, t.x::float8 AS x, t.y::float8 AS y, t.w::float8 AS w, t.h::float8 AS h,
-             t.shape, t.rotation::float8 AS rotation, t.seats, t.is_active, t.created_at, t.updated_at
+             t.shape, t.rotation::float8 AS rotation, t.seats, t.is_active, t.created_at, t.updated_at,
+             t.reservation_name, t.reservation_arrival_at, t.reserved_at, rp.full_name AS reserved_by_name
         FROM public.tables t
         LEFT JOIN public.profiles p ON p.id = t.waiter_id
+        LEFT JOIN public.profiles rp ON rp.id = t.reserved_by
        ${tail}`);
   }
 

@@ -57,6 +57,11 @@ export type Table = {
   isActive?: boolean
   updated_at?: Date
   restaurantId?: string
+  /** Set exactly while `status` is reserved (migration 0022): the name, the optional arrival (ISO), when and by whom. */
+  reservationName?: string
+  reservationArrivalAt?: string
+  reservedAt?: string
+  reservedByName?: string
 }
 
 // Order types

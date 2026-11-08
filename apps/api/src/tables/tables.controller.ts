@@ -21,6 +21,8 @@ import {
   createTableSchema,
   ReleaseTableRequest,
   releaseTableSchema,
+  ReserveTableRequest,
+  reserveTableSchema,
   SaveLayoutRequest,
   saveLayoutSchema,
   Table,
@@ -73,8 +75,8 @@ export class TablesController {
   @ApiBody({ type: UpdateTableRequest })
   @ApiOkResponse({ type: Table })
   @ApiNotFoundResponse()
-  update(@Param('id') id: string, @Body() body: unknown): Promise<Table> {
-    return this.tables.update(parseInput(idParamSchema, id), parseInput(updateTableSchema, body));
+  update(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Table> {
+    return this.tables.update(parseInput(idParamSchema, id), parseInput(updateTableSchema, body), req.profile!.id);
   }
 
   @Delete(':id')
@@ -91,18 +93,29 @@ export class TablesController {
   @Roles(...FLOOR)
   @HttpCode(200)
   @ApiBody({ type: AssignTableRequest })
-  @ApiOkResponse({ type: Table, description: 'The table is occupied by the waiter.' })
+  @ApiOkResponse({ type: Table, description: 'The table is occupied by the waiter; a reservation is cleared (seated).' })
   @ApiNotFoundResponse()
   assign(@Param('id') id: string, @Body() body: unknown): Promise<Table> {
     return this.tables.assign(parseInput(idParamSchema, id), parseInput(assignTableSchema, body).waiterId);
+  }
+
+  @Post(':id/reserve')
+  @Roles(...FLOOR)
+  @HttpCode(200)
+  @ApiBody({ type: ReserveTableRequest })
+  @ApiOkResponse({ type: Table, description: 'reserved under the name; the caller is reservedBy.' })
+  @ApiConflictResponse({ description: 'table_not_available: not available or it has an open order.' })
+  @ApiNotFoundResponse()
+  reserve(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Table> {
+    return this.tables.reserve(parseInput(idParamSchema, id), parseInput(reserveTableSchema, body), req.profile!.id);
   }
 
   @Post(':id/release')
   @Roles(...FLOOR)
   @HttpCode(200)
   @ApiBody({ type: ReleaseTableRequest, required: false })
-  @ApiOkResponse({ type: Table, description: 'available, no waiter.' })
-  @ApiConflictResponse({ description: 'kitchen, delivered, served or reserved, unless an admin sends force: true.' })
+  @ApiOkResponse({ type: Table, description: 'available, no waiter; a reservation is cancelled.' })
+  @ApiConflictResponse({ description: 'kitchen, delivered or served, unless an admin sends force: true.' })
   @ApiNotFoundResponse()
   release(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Table> {
     const { force } = parseInput(releaseTableSchema, body);

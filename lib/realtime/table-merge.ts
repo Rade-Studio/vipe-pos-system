@@ -23,6 +23,12 @@ export interface TableRow {
   /** Migration 0015; absent on older rows: active. */
   is_active?: boolean | null
   updated_at?: string | null
+  /** Migration 0022: set exactly while the table is reserved. */
+  reservation_name?: string | null
+  reservation_arrival_at?: string | null
+  reserved_at?: string | null
+  /** Mapped from the API DTO only; realtime rows carry `reserved_by` (an id). */
+  reserved_by_name?: string | null
 }
 
 /**
@@ -72,6 +78,10 @@ export function toTable(row: TableRow): Table | null {
     isActive: row.is_active !== false,
     // D4: makes the out-of-order guard live for the first time — see design.md
     updated_at: row.updated_at ? new Date(row.updated_at) : undefined,
+    reservationName: row.reservation_name ?? undefined,
+    reservationArrivalAt: row.reservation_arrival_at ?? undefined,
+    reservedAt: row.reserved_at ?? undefined,
+    reservedByName: row.reserved_by_name ?? undefined,
   }
 }
 

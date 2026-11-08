@@ -1269,6 +1269,11 @@ export const tables = pgTable("tables", {
 	seats: integer(),
 	// No new order on an inactive table: trigger orders_table_active (23514, 0015).
 	isActive: boolean("is_active").default(true).notNull(),
+	// Set exactly when status = 'reserved' (tables_reservation_check, 0022).
+	reservationName: text("reservation_name"),
+	reservationArrivalAt: timestamp("reservation_arrival_at", { withTimezone: true, mode: 'string' }),
+	reservedBy: uuid("reserved_by"),
+	reservedAt: timestamp("reserved_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	index("idx_tables_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	index("idx_tables_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
@@ -1301,6 +1306,13 @@ export const tables = pgTable("tables", {
 	check("tables_shape_check", sql`shape = ANY (ARRAY['round'::text, 'square'::text, 'rect'::text, 'bar'::text])`),
 	check("tables_rotation_check", sql`(rotation >= (0)::numeric) AND (rotation < (360)::numeric)`),
 	check("tables_seats_check", sql`(seats >= 0) AND (seats <= 20)`),
+	foreignKey({
+			columns: [table.reservedBy],
+			foreignColumns: [profiles.id],
+			name: "tables_reserved_by_fkey"
+		}).onDelete("set null"),
+	check("tables_reservation_name_check", sql`(length(btrim(reservation_name)) >= 1) AND (length(btrim(reservation_name)) <= 80)`),
+	check("tables_reservation_check", sql`(status::text = 'reserved'::text) = (reservation_name IS NOT NULL)`),
 ]);
 
 export const users = pgTable("users", {
