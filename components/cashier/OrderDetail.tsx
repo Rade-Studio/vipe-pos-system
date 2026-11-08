@@ -5,7 +5,8 @@ import { usePrintingEnabled } from "@/lib/api/printing"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
 import type { CartItem } from "@/types"
-import { entryHeader, type QueueEntry, type QueueTotals } from "@/lib/cashier/queue"
+import { billLineKey, entryHeader, type QueueEntry, type QueueTotals } from "@/lib/cashier/queue"
+import { ModifierLines } from "@/components/modifiers/ModifierLines"
 import { Chip, Eyebrow, Money } from "./cashier-ui"
 
 interface OrderDetailProps {
@@ -105,9 +106,10 @@ export function OrderDetail({
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={`${item.name}-${item.comments || ""}`} className="border-b border-line align-top last:border-0">
+            <tr key={billLineKey(item)} className="border-b border-line align-top last:border-0">
               <td className="py-2 pr-2">
                 <span className="block break-words font-semibold text-fg">{item.name}</span>
+                <ModifierLines modifiers={item.modifiers} className="my-0.5" />
                 {item.comments && <span className="block break-words text-xs italic text-muted-fg">{item.comments}</span>}
                 <span className="block text-xs text-muted-fg min-[1180px]:hidden">
                   <Money>{formatCurrency(item.price)}</Money> c/u

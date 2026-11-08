@@ -3,8 +3,8 @@
  * guests and zone; the search finds a row by its folio.
  */
 import { describe, expect, it } from "vitest"
-import type { Order } from "@/types"
-import { entryHeader, entryMeta, matchesQueueSearch, partialEntries, tableEntries } from "./queue"
+import type { CartItem, Order } from "@/types"
+import { entryHeader, entryMeta, groupItems, matchesQueueSearch, partialEntries, tableEntries } from "./queue"
 
 const order = (over: Partial<Order> = {}): Order => ({
   id: "o-1",
@@ -73,5 +73,33 @@ describe("waiter name (T24 review)", () => {
     expect(entry!.waiterName).toBe("Laura Ruiz")
     const [fallback] = tableEntries(sources({ "t-1": [order()] }))
     expect(fallback!.waiterName).toBe("Carlos Pérez")
+  })
+})
+
+describe("groupItems (F7 T4: options are part of a bill line)", () => {
+  const mod = (optionId: string, name: string, price: number) => ({ groupId: "g", groupName: "Adiciones", optionId, name, price })
+  const line = (id: string, extra: Partial<CartItem> = {}): CartItem =>
+    ({ id, name: "Hamburguesa", price: 22_000, quantity: 1, categoryId: "", image: "", ...extra }) as CartItem
+
+  it("keeps lines with different options apart and merges the same options in any order", () => {
+    const ched = mod("o-ched", "Queso cheddar", 3000)
+    const toc = mod("o-toc", "Tocineta", 4000)
+    const grouped = groupItems([
+      line("a", { price: 29_000, modifiers: [ched, toc] }),
+      line("b", { price: 29_000, modifiers: [toc, ched] }),
+      line("c", { price: 25_000, modifiers: [ched] }),
+    ])
+    expect(grouped.map((item) => [item.quantity, item.price, item.modifiers?.length])).toEqual([
+      [2, 29_000, 2],
+      [1, 25_000, 1],
+    ])
+  })
+
+  it("still merges identical plain lines by name and comment, as before", () => {
+    const grouped = groupItems([line("a"), line("b"), line("c", { comments: "sin sal" })])
+    expect(grouped.map((item) => [item.quantity, item.comments])).toEqual([
+      [2, undefined],
+      [1, "sin sal"],
+    ])
   })
 })

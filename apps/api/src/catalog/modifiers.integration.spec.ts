@@ -248,7 +248,9 @@ describe('priced modifiers (Testcontainers, vipe_api)', () => {
         { name: 'Hamburguesa', quantity: 1, dishId: m.burger, comments: 'Sin sal', modifiers: [{ group: 'Término', name: 'Medio', price: 0 }] },
         { name: 'Limonada', quantity: 1, dishId: m.lemonade },
       ];
-      const res = await waiterA().post('/api/print/commands', { items, waiter: 'Waiter A', table: 4 });
+      // #157: a comanda names its order; the latest order of this spec (restaurant A) will do.
+      const [{ id: orderId }] = await db<{ id: string }>('SELECT id FROM orders ORDER BY created_at DESC LIMIT 1');
+      const res = await waiterA().post('/api/print/commands', { orderId, items, table: 4 });
       expect(res.status).toBe(201);
       const [job] = await db<{ payload: { items: unknown[] } }>('SELECT payload FROM print_jobs WHERE id = $1', [res.body.id]);
       expect(job.payload.items).toEqual(items);

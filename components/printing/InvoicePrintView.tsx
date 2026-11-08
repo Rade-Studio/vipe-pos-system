@@ -12,6 +12,7 @@ import { Printer, Check, X, ArrowLeft, Receipt, Tag } from "lucide-react"
 import { renderInvoice } from "@/lib/print/renderKitchenOrder"
 import type { PrintableInvoice } from "@/types"
 import { log } from "@/lib/log"
+import { ModifierLines } from "@/components/modifiers/ModifierLines"
 
 interface InvoicePrintViewProps {
   invoice: PrintableInvoice
@@ -109,10 +110,11 @@ export function InvoicePrintView({
   const displayWaiter = waiter || "No asignado"
   const displayTable = table || "N/A"
 
-  // Agrupar items por nombre y comentario
+  // Agrupar items por nombre, opciones (F7) y comentario
   const groupedItems: Record<string, (typeof invoice.items)[0]> = {}
   invoice.items.forEach((item) => {
-    const key = `${item.name}-${item.comments || ""}`
+    const options = (item.modifiers ?? []).map((modifier) => modifier.optionId).sort().join(",")
+    const key = `${item.name}-${options}-${item.comments || ""}`
     if (!groupedItems[key]) {
       groupedItems[key] = { ...item }
     } else {
@@ -220,6 +222,7 @@ export function InvoicePrintView({
                                 <Tag className="h-3 w-3 ml-1 text-red-500 flex-shrink-0" />
                               )}
                             </div>
+                            <ModifierLines modifiers={item.modifiers} className="text-xs text-gray-600 dark:text-gray-300" />
                             {item.comments && (
                               <div className="text-xs text-gray-500 dark:text-gray-400">({item.comments})</div>
                             )}

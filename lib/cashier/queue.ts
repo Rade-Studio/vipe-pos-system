@@ -154,10 +154,20 @@ export function matchesQueueSearch(entry: QueueEntry, query: string): boolean {
 }
 
 /** Items grouped by name + comments (the same grouping the cards used). */
+/**
+ * The identity of a bill line: name + comment, plus the sorted option ids
+ * (F7), so two burgers with different options never merge.
+ */
+export function billLineKey(item: Pick<CartItem, "name" | "comments" | "modifiers">): string {
+  const options = (item.modifiers ?? []).map((modifier) => modifier.optionId).sort()
+  const key = `${item.name}-${item.comments || ""}`
+  return options.length ? `${key}|${options.join(",")}` : key
+}
+
 export function groupItems(items: readonly CartItem[]): CartItem[] {
   const grouped: Record<string, CartItem> = {}
   for (const item of items) {
-    const key = `${item.name}-${item.comments || ""}`
+    const key = billLineKey(item)
     if (!grouped[key]) grouped[key] = { ...item }
     else grouped[key].quantity += item.quantity
   }

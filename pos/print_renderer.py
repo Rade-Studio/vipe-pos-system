@@ -149,6 +149,8 @@ def render_kitchen_order(order: dict) -> KitchenOrderRender:
         qty = item.get("quantity", 1)
         comments = (item.get("comments") or "").strip()
         lines.append({"text": f"{name:<30} x{qty}", "bold": False, "align": "left"})
+        for label, _price in _modifier_rows(item):
+            lines.append({"text": f"  {label}", "bold": False, "align": "left"})
         if comments:
             lines.append({"text": f"  {comments.capitalize()}", "bold": False, "align": "left"})
 
@@ -269,6 +271,10 @@ def render_invoice(invoice_number: str, invoice: dict, display_items: list[dict]
                 "align": "left",
             }
         )
+        # F7: the options with their unit price; the line total above already includes them.
+        for label, opt_price in _modifier_rows(item):
+            text = f"  {label:<22.22}{'$' + _format_currency(opt_price):>10}" if opt_price > 0 else f"  {label:.32}"
+            lines.append({"text": text, "bold": False, "align": "left"})
 
     lines.append({"text": "--------------------------------", "bold": False, "align": "center"})
 
@@ -456,6 +462,32 @@ def _delivery_invoice_lines(delivery: dict) -> list[PrintLine]:
     ):
         rows.append(f"CAMBIO PARA: {_format_currency(change_for)}")
     return [{"text": text, "bold": False, "align": "left"} for text in rows]
+
+
+def _modifier_rows(item: dict) -> list[tuple[str, float]]:
+    """F7: (label, price) per option of a line, ``modifiers [{group, name, price}]``.
+
+    A priced option reads "+ name"; a $0 one "Group: name" unless the name already
+    starts with the group ("Sin cebolla"), as ``lib/modifiers/rules.modifierLabel``.
+    Missing or malformed entries print nothing, so old lines print as before.
+    """
+    raw = item.get("modifiers")
+    rows: list[tuple[str, float]] = []
+    for modifier in raw if isinstance(raw, list) else []:
+        if not isinstance(modifier, dict):
+            continue
+        name = str(modifier.get("name") or "")
+        group = str(modifier.get("group") or "").strip()
+        price = modifier.get("price")
+        price = price if isinstance(price, (int, float)) and not isinstance(price, bool) else 0
+        if price > 0:
+            label = f"+ {name}"
+        elif name.lower().startswith(group.lower()):
+            label = name
+        else:
+            label = f"{group}: {name}"
+        rows.append((label, price))
+    return rows
 
 
 def _format_currency(value: float) -> str:

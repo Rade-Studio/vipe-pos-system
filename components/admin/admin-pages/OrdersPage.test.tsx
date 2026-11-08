@@ -333,6 +333,22 @@ describe("OrdersPage — selection and detail panel", () => {
     expect(screen.getByTestId("admin-order-a")).toHaveAttribute("data-selected", "true")
   })
 
+  it("F7: shows a line's options with their price under the dish", async () => {
+    const modifiers = [
+      { groupId: "g-t", groupName: "Término", optionId: "o-m", name: "Medio", price: 0 },
+      { groupId: "g-a", groupName: "Adiciones", optionId: "o-c", name: "Queso cheddar", price: 3000 },
+    ]
+    const withOptions = ORDERS.map((o) =>
+      o.id === "a" ? { ...o, items: [{ ...item("Hamburguesa", 1, "kitchen"), price: 25000, modifiers }] } : o,
+    )
+    renderPage({ orders: withOptions })
+    fireEvent.click(within(screen.getByTestId("admin-order-a")).getByRole("button", { name: /Abrir orden 128/ }))
+    const panel = await screen.findByRole("dialog", { name: /#128/ })
+    const options = within(panel).getByRole("list", { name: "Opciones" })
+    expect(options).toHaveTextContent("Término: Medio")
+    expect(options).toHaveTextContent(/\+ Queso cheddar\s*\$\s3\.000/)
+  })
+
   it("shows the delivery customer, address and courier in the detail", async () => {
     renderPage()
     await waitFor(() => expect(screen.getByTestId("admin-order-b")).toHaveTextContent("Laura Gómez"))

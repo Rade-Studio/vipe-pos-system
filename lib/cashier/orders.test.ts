@@ -255,6 +255,14 @@ describe("billSourceFromOrder (S1: the dialog reuses the loaded order)", () => {
     expect(source.waiter_id).toBe("w-1")
   })
 
+  it("carries each line's options (F7) so the invoice prints them, and none on a plain line", () => {
+    const modifiers = [{ groupId: "g", groupName: "Adiciones", optionId: "o", name: "Queso cheddar", price: 3000 }]
+    const base = order({ id: "o-8" })
+    const source = billSourceFromOrder({ ...base, items: [{ ...base.items[0], modifiers }, base.items[0]] })
+    expect(source.order_items[0].modifiers).toEqual(modifiers)
+    expect(source.order_items[1]).not.toHaveProperty("modifiers")
+  })
+
   it("passes table_id as null for a delivery order (no table to print)", () => {
     expect(billSourceFromOrder(order({ orderType: "delivery", tableId: "" })).table_id).toBeNull()
   })

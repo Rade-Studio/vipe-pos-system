@@ -117,3 +117,18 @@ fn a_command_with_order_number_and_station_prints_the_python_bytes() {
         assert_eq!(hex, case["hex"].as_str().unwrap(), "{name}");
     }
 }
+
+/// F7: the mapper copies items whole, so a stored job's modifiers print as pos/ does (probe_modifiers_comanda).
+#[test]
+fn a_command_with_modifiers_prints_the_python_bytes() {
+    let doc: serde_json::Value = serde_json::from_str(include_str!("fixtures/golden_plus.json")).unwrap();
+    let at = NaiveDateTime::parse_from_str(doc["now"].as_str().unwrap(), "%Y-%m-%dT%H:%M:%S").unwrap();
+    for (name, encoding) in [("probe_modifiers_comanda/cp1252", Encoding::Cp1252), ("probe_modifiers_comanda/utf-8", Encoding::Utf8)] {
+        let case = doc["cases"].as_array().unwrap().iter().find(|c| c["name"] == name).unwrap();
+        assert!(case["lines"].as_array().unwrap().iter().any(|l| l == "  + Queso cheddar"));
+        let job = PrintJob { id: "job-4".into(), kind: "command".into(), station: None, created_at: None, payload: case["order"].clone() };
+        let bytes = render_job(&job, encoding, at).unwrap();
+        let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(hex, case["hex"].as_str().unwrap(), "{name}");
+    }
+}

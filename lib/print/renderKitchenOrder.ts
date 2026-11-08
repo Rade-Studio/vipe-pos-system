@@ -13,7 +13,26 @@
  * compare the resulting byte streams.
  */
 
+import { modifierLabel } from '@/lib/modifiers/rules'
 import type { DeliveryPrintInfo } from '@/types'
+
+/**
+ * One chosen option of a printed line (F7): the print payload shape
+ * `{group, name, price}`, or a cart / order line's `{groupName, name, price}`.
+ */
+export interface PrintModifier {
+  group?: string
+  groupName?: string
+  name: string
+  price: number
+}
+
+/** (label, price) per option, as `pos/print_renderer._modifier_rows`. */
+const modifierRows = (modifiers: readonly PrintModifier[] | null | undefined) =>
+  (modifiers ?? []).map((m) => ({
+    label: modifierLabel({ groupName: m.group ?? m.groupName ?? '', name: m.name ?? '', price: m.price ?? 0 }),
+    price: m.price ?? 0,
+  }))
 
 export interface PrintLine {
   text: string
@@ -40,7 +59,7 @@ export function renderKitchenOrder(order: {
   /** Absent / null for delivery orders. */
   table?: string | number | null
   waiter: string
-  items: Array<{ name: string; quantity: number; comments?: string }>
+  items: Array<{ name: string; quantity: number; comments?: string; modifiers?: readonly PrintModifier[] | null }>
   delivery?: DeliveryPrintInfo
 }): KitchenOrderRender {
   const title = order.orderNumber != null ? `COMANDA #${order.orderNumber}` : 'COMANDA'
@@ -81,6 +100,9 @@ export function renderKitchenOrder(order: {
       bold: false,
       align: 'left',
     })
+    for (const { label } of modifierRows(item.modifiers)) {
+      lines.push({ text: `  ${label}`, bold: false, align: 'left' })
+    }
     if (item.comments?.trim()) {
       lines.push({ text: `  ${item.comments.trim()}`, bold: false, align: 'left' })
     }
@@ -162,6 +184,8 @@ export function renderInvoice(params: {
     originalPrice?: number
     comments?: string
     promotionName?: string
+    /** F7: the options; `price` already includes them. */
+    modifiers?: readonly PrintModifier[] | null
   }>
 }): InvoiceRender {
   const { invoice, displayItems } = params
@@ -225,6 +249,12 @@ export function renderInvoice(params: {
       text: `${item.quantity.toString().padEnd(4)}${(item.name || '').slice(0, 20).padEnd(20)}${formatCurrency(price).padStart(10)}`,
       align: 'left',
     })
+    for (const { label, price: optionPrice } of modifierRows(item.modifiers)) {
+      lines.push({
+        text: optionPrice > 0 ? `  ${label.slice(0, 22).padEnd(22)}${`$${formatCurrency(optionPrice)}`.padStart(10)}` : `  ${label.slice(0, 32)}`,
+        align: 'left',
+      })
+    }
     if (item.comments) {
       lines.push({ text: `  (${item.comments})`, align: 'left' })
     }

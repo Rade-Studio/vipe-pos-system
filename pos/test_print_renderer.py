@@ -608,5 +608,65 @@ class DeliveryInvoiceTests(unittest.TestCase):
         self.assertNotIn("CAMBIO PARA", "\n".join(_render_lines(self._invoice(delivery=cod))))
 
 
+
+_MODIFIERS = [
+    {"group": "T\u00e9rmino", "name": "Medio", "price": 0},
+    {"group": "Adiciones", "name": "Queso cheddar", "price": 3000},
+    {"group": "Sin", "name": "Sin cebolla", "price": 0},
+]
+
+
+class ModifierLinesTests(unittest.TestCase):
+    """F7 T4: a line's options print under it; lines without options print as before."""
+
+    def test_comanda_prints_one_indented_line_per_option_before_the_comments(self):
+        lines = _kitchen_lines({
+            "invoiceNumber": "j", "table": 1, "waiter": "Ana",
+            "items": [{"name": "Hamburguesa", "quantity": 2, "comments": "bien caliente", "modifiers": _MODIFIERS}],
+        })
+        self.assertEqual(
+            lines[4:9],
+            [
+                "HAMBURGUESA                    x2",
+                "  T\u00e9rmino: Medio",
+                "  + Queso cheddar",
+                "  Sin cebolla",
+                "  Bien caliente",
+            ],
+        )
+
+    def test_invoice_prints_the_options_with_their_price_under_the_line(self):
+        item = {"name": "Hamburguesa", "quantity": 2, "price": 25000, "modifiers": _MODIFIERS}
+        lines = _render_lines({"businessInfo": _BASE_BUSINESS, "bill": _BASE_BILL, "paymentMethod": "cash"}, [item])
+        start = lines.index("CANT DESCRIPCION            IMPORTE") + 1
+        self.assertEqual(
+            lines[start:start + 4],
+            [
+                "2   Hamburguesa             50.000",
+                "  T\u00e9rmino: Medio",
+                "  + Queso cheddar           $3.000",
+                "  Sin cebolla",
+            ],
+        )
+        self.assertEqual(len(lines[start + 2]), 34)
+
+    def test_lines_without_options_print_the_same_bytes(self):
+        order = {"invoiceNumber": "1234", "table": 5, "waiter": "Juan", "items": _KITCHEN_ITEMS}
+        with_empty = {**order, "items": [{**i, "modifiers": []} for i in _KITCHEN_ITEMS]}
+        self.assertEqual(build_comanda_bytes(order), build_comanda_bytes(with_empty))
+        invoice = {"businessInfo": _BASE_BUSINESS, "bill": _BASE_BILL, "paymentMethod": "cash", "date": "2025-01-15T12:30:00"}
+        self.assertEqual(
+            build_invoice_bytes("I", invoice, [_BASE_ITEM]),
+            build_invoice_bytes("I", invoice, [{**_BASE_ITEM, "modifiers": None}]),
+        )
+
+    def test_options_encode_in_cp1252(self):
+        raw = build_comanda_bytes(
+            {"invoiceNumber": "j", "table": 1, "waiter": "Ana", "items": [{"name": "X", "quantity": 1, "modifiers": _MODIFIERS}]},
+            encoding="cp1252",
+        )
+        self.assertIn("  T\u00e9rmino: Medio\n".encode("cp1252"), raw)
+
+
 if __name__ == "__main__":
     unittest.main()

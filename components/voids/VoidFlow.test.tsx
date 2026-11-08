@@ -357,3 +357,41 @@ describe("VoidFlow — an order with no live lines but a live payment", () => {
     expect(screen.getByRole("button", { name: "Elegir quién autoriza" })).toBeEnabled()
   })
 })
+
+describe("F7: the void sheet names the options of each line", () => {
+  const medio = { groupId: "g-t", groupName: "Término", optionId: "o-m", name: "Medio", price: 0 }
+  const ched = { groupId: "g-a", groupName: "Adiciones", optionId: "o-c", name: "Queso cheddar", price: 3000 }
+  const burger = { name: "Hamburguesa", quantity: 1 }
+
+  beforeEach(() => {
+    loadSupervisors = vi.fn(async () => [carlos])
+  })
+
+  it("shows the options of the line being voided", () => {
+    renderFlow({ ...itemTarget, lines: [{ ...burger, id: "l-1", price: 25000, modifiers: [medio, ched] }] })
+    const options = screen.getByRole("list", { name: "Opciones" })
+    expect(options).toHaveTextContent("Término: Medio")
+    expect(options).toHaveTextContent("+ Queso cheddar")
+  })
+
+  it("tells two burgers apart in the line picker by their options", () => {
+    renderFlow({
+      ...itemTarget,
+      lineId: undefined,
+      lines: [
+        { ...burger, id: "l-1", price: 25000, modifiers: [medio, ched] },
+        { ...burger, id: "l-2", price: 22000, modifiers: [medio] },
+      ],
+    })
+    const picker = screen.getByRole("radiogroup", { name: "Plato a anular" })
+    const [first, second] = within(picker).getAllByRole("radio")
+    expect(first).toHaveTextContent("Término: Medio, + Queso cheddar")
+    expect(second).toHaveTextContent(/Término: Medio$|Término: Medio\s*\$/)
+  })
+
+  it("still shows a plain line with its comment and no options", () => {
+    renderFlow({ ...itemTarget, lines: [{ ...itemTarget.lines[0], comments: "sin sal" }] })
+    expect(screen.getByText("“sin sal”")).toBeInTheDocument()
+    expect(screen.queryByRole("list", { name: "Opciones" })).toBeNull()
+  })
+})
