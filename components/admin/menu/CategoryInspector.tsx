@@ -2,9 +2,8 @@
 
 import { useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Edit, Plus, Trash } from "lucide-react"
+import { ArrowDown, ArrowUp, Plus, Trash } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,15 +16,15 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { log } from "@/lib/log"
-import { deleteCategory, type CategoryDto, type DishDto } from "@/lib/api/catalog"
+import { deleteCategory, type CategoryDto } from "@/lib/api/catalog"
 import { ApiError } from "@/lib/api/errors"
 import type { SubcategoryDto } from "@/lib/api/subcategories"
 import { catalogKeys, errorMessage, invalidateCatalogReaders, type AdminCategoryNode } from "@/lib/admin/catalog"
-import { formatCurrency } from "@/utils/helpers"
 import { CategoryForm } from "./CategoryForm"
-import { DishForm } from "./DishForm"
+import { DishDialog } from "./DishDialog"
 import { SubcategoryManager } from "./SubcategoryManager"
 import { SubcategoryStep } from "./SubcategoryStep"
+import { plural } from "./WaiterPreview"
 
 interface CategoryInspectorProps {
   node: AdminCategoryNode
@@ -35,6 +34,8 @@ interface CategoryInspectorProps {
   subcategories: SubcategoryDto[]
   onMove: (delta: -1 | 1) => void
   onDeleted: () => void
+  /** "Ver N platos →": Menú → Platos filtered to this category (dishes are listed only there). */
+  onShowDishes: () => void
   moving: boolean
 }
 
@@ -47,17 +48,15 @@ export function CategoryInspector({
   subcategories,
   onMove,
   onDeleted,
+  onShowDishes,
   moving,
 }: CategoryInspectorProps) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [dishDialog, setDishDialog] = useState<{ dish: DishDto | null } | null>(null)
+  const [creatingDish, setCreatingDish] = useState(false)
   const { category } = node
-  const dishes = [...node.subcategories.flatMap((s) => s.dishes), ...node.looseDishes].sort((a, b) =>
-    a.name.localeCompare(b.name, "es"),
-  )
-  const subcategoryName = (id: string | null) => node.subcategories.find((s) => s.subcategory.id === id)?.subcategory.name
+  const dishCount = node.dishCount
 
   const handleDelete = async () => {
     setConfirmDelete(false)
@@ -119,37 +118,17 @@ export function CategoryInspector({
           <h3 id={`dishes-${category.id}`} className="text-sm font-semibold">
             Platos de {category.name}
           </h3>
-          <Button type="button" variant="outline" className="min-h-11" onClick={() => setDishDialog({ dish: null })}>
+          <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreatingDish(true)}>
             <Plus className="mr-1 h-4 w-4" aria-hidden />
             Nuevo plato
           </Button>
         </div>
-        {dishes.length === 0 ? (
+        {dishCount === 0 ? (
           <p className="text-sm text-muted-fg">Sin platos todavía.</p>
         ) : (
-          <ul className="divide-y divide-line rounded-xl border border-line bg-card">
-            {dishes.map((dish) => (
-              <li key={dish.id} className="flex min-w-0 items-center gap-2 py-1 pl-3 pr-1">
-                <span className="min-w-0 flex-1">
-                  <span className="block break-words text-sm [overflow-wrap:anywhere]">{dish.name}</span>
-                  <span className="block text-xs text-muted-fg">
-                    {subcategoryName(dish.subcategoryId) ?? "Sin subcategoría"} · {formatCurrency(dish.price)}
-                    {!dish.active && " · Inactivo"}
-                  </span>
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-11 w-11 shrink-0 focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-focus focus-visible:ring-0"
-                  aria-label={`Editar ${dish.name}`}
-                  onClick={() => setDishDialog({ dish })}
-                >
-                  <Edit className="h-4 w-4" aria-hidden />
-                </Button>
-              </li>
-            ))}
-          </ul>
+          <Button type="button" variant="link" className="min-h-11 px-0 text-sm font-semibold" onClick={onShowDishes}>
+            Ver {plural(dishCount, "plato", "platos")} →
+          </Button>
         )}
       </section>
 
@@ -160,27 +139,19 @@ export function CategoryInspector({
         </Button>
       </div>
 
-      <Dialog open={dishDialog !== null} onOpenChange={(open) => !open && setDishDialog(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>{dishDialog?.dish ? "Editar Plato" : "Nuevo Plato"}</DialogTitle>
-          </DialogHeader>
-          {dishDialog && (
-            <DishForm
-              dish={dishDialog.dish}
-              isNewDish={!dishDialog.dish}
-              categories={categories}
-              subcategories={subcategories}
-              defaultCategoryId={category.id}
-              onSuccess={() => {
-                void invalidateCatalogReaders(queryClient, catalogKeys.dishes)
-                void queryClient.invalidateQueries({ queryKey: catalogKeys.categories })
-                setDishDialog(null)
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      <DishDialog
+        open={creatingDish}
+        onOpenChange={setCreatingDish}
+        dish={null}
+        categories={categories}
+        subcategories={subcategories}
+        defaultCategoryId={category.id}
+        onSaved={() => {
+          void invalidateCatalogReaders(queryClient, catalogKeys.dishes)
+          void queryClient.invalidateQueries({ queryKey: catalogKeys.categories })
+          setCreatingDish(false)
+        }}
+      />
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

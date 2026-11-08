@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/admin/common/PageHeader"
-import { DishList } from "@/components/admin/menu/DishList"
 import { MenuTreeEditor } from "@/components/admin/menu/MenuTreeEditor"
 
 export function MenuPage({
@@ -12,8 +11,7 @@ export function MenuPage({
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title="Menú" description={description} />
-      <MenuTreeEditor />
-      <DishList onNavigate={onNavigate} />
+      <MenuTreeEditor onNavigate={onNavigate} />
     </div>
   )
 }

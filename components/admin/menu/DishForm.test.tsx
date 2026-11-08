@@ -128,7 +128,7 @@ describe("DishForm", () => {
 
     fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "9500" } })
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
     })
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
@@ -152,7 +152,7 @@ describe("DishForm", () => {
     fireEvent.change(screen.getByLabelText("Nombre del plato"), { target: { value: "Jugo" } })
     fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "4000" } })
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Crear Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Crear plato" }))
     })
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
@@ -174,7 +174,7 @@ describe("DishForm", () => {
     await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
     })
 
     await waitFor(() =>
@@ -212,7 +212,7 @@ describe("DishForm", () => {
 
     fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "9900" } })
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
     })
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
@@ -238,7 +238,7 @@ describe("DishForm", () => {
     await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
     await replaceImage()
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
     })
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
     expect(order).toEqual(["update", "delete"])
@@ -253,7 +253,7 @@ describe("DishForm", () => {
     await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
     await replaceImage()
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
     })
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" })))
     expect(storage.deleteImage).not.toHaveBeenCalled()
@@ -301,7 +301,7 @@ describe("DishForm — subcategory", () => {
 
     await pick("Subcategoría", "Cremas")
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
     })
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
@@ -317,7 +317,7 @@ describe("DishForm — subcategory", () => {
     fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "5000" } })
     await pick("Subcategoría", "Jugos")
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Crear Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Crear plato" }))
     })
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
@@ -336,12 +336,12 @@ describe("DishForm — subcategory", () => {
     expect(
       screen.getByText("Cambiaste la categoría: elige una subcategoría de Bebidas o «Sin subcategoría».", { exact: false }),
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Actualizar Plato" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled()
 
     await pick("Subcategoría", "Sin subcategoría")
-    expect(screen.getByRole("button", { name: "Actualizar Plato" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled()
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
     })
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
@@ -354,7 +354,7 @@ describe("DishForm — subcategory", () => {
     await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Actualizar Plato" }))
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
     })
 
     await waitFor(() =>
@@ -407,7 +407,7 @@ describe("DishForm — modifier groups (F7)", () => {
     fireEvent.click(within(block()).getByRole("button", { name: "Quitar Término del plato" }))
     expect(attached()).toEqual(["Sin", "Adiciones"])
 
-    await submit("Actualizar Plato")
+    await submit("Guardar cambios")
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
     expect(catalog.setDishModifierGroups).toHaveBeenCalledWith("d-1", ["g-sin", "g-adic"])
     expect(catalog.updateDish).toHaveBeenCalledWith("d-1", expect.not.objectContaining({ quickNotes: expect.anything() }))
@@ -415,7 +415,7 @@ describe("DishForm — modifier groups (F7)", () => {
 
   it("does not rewrite the groups when they did not change", async () => {
     const onSuccess = await renderEdit(["g-term"])
-    await submit("Actualizar Plato")
+    await submit("Guardar cambios")
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
     expect(catalog.updateDish).toHaveBeenCalled()
     expect(catalog.setDishModifierGroups).not.toHaveBeenCalled()
@@ -430,7 +430,7 @@ describe("DishForm — modifier groups (F7)", () => {
     fireEvent.change(screen.getByLabelText("Nombre del plato"), { target: { value: "Combo" } })
     fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "28000" } })
 
-    await submit("Crear Plato")
+    await submit("Crear plato")
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
     expect(catalog.fetchDishModifierGroups).not.toHaveBeenCalled()
     expect(catalog.setDishModifierGroups).toHaveBeenCalledWith("d-2", ["g-adic"])
@@ -448,5 +448,57 @@ describe("DishForm — modifier groups (F7)", () => {
     await renderEdit(["g-term", "g-adic"])
     const controls = [...within(block()).getAllByRole("button"), within(block()).getByLabelText("Agregar grupo")]
     for (const control of controls) expect(control.className).toMatch(/\bmin-h-11\b|\bh-11\b/)
+  })
+})
+
+describe("DishForm — sections (menu-platos T2)", () => {
+  it("groups the fields in Datos, Imagen, Disponibilidad, Fórmula, Modificadores and Opciones", async () => {
+    const onOpenFormula = vi.fn()
+    render(<DishForm dish={dish} categories={categories} onSuccess={vi.fn()} onOpenFormula={onOpenFormula} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+    const regions = screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby") && document.getElementById(r.getAttribute("aria-labelledby")!)?.textContent)
+    expect(regions).toEqual(["Datos", "Imagen", "Disponibilidad", "Fórmula", "Modificadores", "Opciones"])
+    const datos = screen.getByRole("region", { name: "Datos" })
+    for (const label of ["Nombre del plato", "Precio", "Descripción"]) expect(within(datos).getByLabelText(label)).toBeInTheDocument()
+    expect(within(screen.getByRole("region", { name: "Disponibilidad" })).getByRole("switch", { name: "Activo" })).toBeChecked()
+    expect(within(screen.getByRole("region", { name: "Opciones" })).getByRole("switch", { name: "Permitir comentarios" })).toBeChecked()
+
+    fireEvent.click(within(screen.getByRole("region", { name: "Fórmula" })).getByRole("button", { name: /Abrir en Fórmulas/ }))
+    expect(onOpenFormula).toHaveBeenCalled()
+  })
+
+  it("marks name, price and category as required", () => {
+    render(<DishForm categories={categories} onSuccess={vi.fn()} isNewDish />)
+    expect(screen.getByLabelText("Nombre del plato")).toBeRequired()
+    expect(screen.getByLabelText("Precio")).toBeRequired()
+    expect(screen.getByText("Obligatorio")).toBeInTheDocument()
+    expect(within(screen.getByRole("region", { name: "Fórmula" })).getByText("Guarda el plato para vincular su fórmula en Fórmulas.")).toBeInTheDocument()
+  })
+
+  it("an empty name saves nothing", async () => {
+    render(<DishForm categories={categories} defaultCategoryId="c-1" onSuccess={vi.fn()} isNewDish />)
+    fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "5000" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Crear plato" }))
+    })
+    expect(catalog.createDish).not.toHaveBeenCalled()
+  })
+
+  it("Cancelar sits next to the save button and calls onCancel; both are 44 px", async () => {
+    const onCancel = vi.fn()
+    render(<DishForm dish={dish} categories={categories} onSuccess={vi.fn()} onCancel={onCancel} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+    const cancel = screen.getByRole("button", { name: "Cancelar" })
+    expect(cancel.className).toMatch(/\bmin-h-11\b/)
+    expect(screen.getByRole("button", { name: "Guardar cambios" }).className).toMatch(/\bmin-h-11\b/)
+    fireEvent.click(cancel)
+    expect(onCancel).toHaveBeenCalled()
+    expect(catalog.updateDish).not.toHaveBeenCalled()
+  })
+
+  it("shows Agotado as read-only information when the dish is sold out", async () => {
+    render(<DishForm dish={dish} categories={categories} onSuccess={vi.fn()} soldOut />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+    expect(within(screen.getByRole("region", { name: "Disponibilidad" })).getByText(/Agotado ahora/)).toBeInTheDocument()
   })
 })

@@ -2,20 +2,20 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 /**
- * T9 (redesign) — the Menú section is the tree editor; the full dish list (search,
- * pages, Fórmula) stays reachable below it. Promotions live in their own
- * section (menu-platos T1).
+ * T9 (redesign) — the Menú section is the tree editor. menu-platos: promotions
+ * live in their own section (T1) and the dish list is the editor's Platos tab
+ * (T2), so nothing about dishes renders outside it.
  */
 
 vi.mock("@/components/admin/menu/MenuTreeEditor", () => ({
-  MenuTreeEditor: () => <section aria-label="stub-tree" />,
-}))
-vi.mock("@/components/admin/menu/DishList", () => ({
-  DishList: ({ onNavigate }: { onNavigate?: (id: string) => void }) => (
+  MenuTreeEditor: ({ onNavigate }: { onNavigate?: (id: string) => void }) => (
     <button type="button" onClick={() => onNavigate?.("formulas")}>
-      stub-dishes
+      stub-tree
     </button>
   ),
+}))
+vi.mock("@/components/admin/menu/DishList", () => ({
+  DishList: () => <section aria-label="stub-dishes" />,
 }))
 vi.mock("@/components/admin/promotions/PromotionList", () => ({
   PromotionList: () => <section aria-label="stub-promotions" />,
@@ -24,17 +24,15 @@ vi.mock("@/components/admin/promotions/PromotionList", () => ({
 import { MenuPage } from "./MenuPage"
 
 describe("MenuPage", () => {
-  it("shows the tree editor, then every dish, and no promotions", () => {
+  it("shows only the tree editor (with its tabs), no dish list or promotions of its own", () => {
     const onNavigate = vi.fn()
     render(<MenuPage description="Carta" onNavigate={onNavigate} />)
 
     expect(screen.getByRole("heading", { name: "Menú" })).toBeInTheDocument()
-    const tree = screen.getByRole("region", { name: "stub-tree" })
-    const dishes = screen.getByRole("button", { name: "stub-dishes" })
-    expect(tree.compareDocumentPosition(dishes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByRole("region", { name: "stub-dishes" })).not.toBeInTheDocument()
     expect(screen.queryByRole("region", { name: "stub-promotions" })).not.toBeInTheDocument()
 
-    fireEvent.click(dishes)
+    fireEvent.click(screen.getByRole("button", { name: "stub-tree" }))
     expect(onNavigate).toHaveBeenCalledWith("formulas")
   })
 })

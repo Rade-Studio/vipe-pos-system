@@ -666,7 +666,7 @@ describe("MenuTreeEditor — Modificadores section (F7)", () => {
   it("switches between the menu tree and the modifier groups", async () => {
     await renderEditor()
     const sections = screen.getByRole("navigation", { name: "Secciones del menú" })
-    expect(within(sections).getByRole("button", { name: "Categorías y platos" })).toHaveAttribute("aria-current", "page")
+    expect(within(sections).getByRole("button", { name: "Categorías" })).toHaveAttribute("aria-current", "page")
 
     fireEvent.click(within(sections).getByRole("button", { name: "Modificadores" }))
 
@@ -674,5 +674,45 @@ describe("MenuTreeEditor — Modificadores section (F7)", () => {
     expect(await screen.findByText("Aún no hay grupos de modificadores")).toBeInTheDocument()
     expect(screen.queryByRole("list", { name: "Categorías" })).not.toBeInTheDocument()
     for (const button of within(sections).getAllByRole("button")) expect(button.className).toMatch(/\bmin-h-11\b/)
+  })
+})
+
+describe("MenuTreeEditor — Platos tab (menu-platos T2)", () => {
+  const sections = () => screen.getByRole("navigation", { name: "Secciones del menú" })
+  const tab = (name: string) => within(sections()).getByRole("button", { name: new RegExp(`^${name}`) })
+  const dishList = () => screen.queryByRole("list", { name: "Platos" })
+
+  it("has three tabs and only Platos lists the dishes", async () => {
+    await renderEditor()
+    expect(within(sections()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Categorías", "Platos4", "Modificadores"])
+    expect(dishList()).not.toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Todos los platos" })).not.toBeInTheDocument()
+
+    fireEvent.click(tab("Platos"))
+    expect(tab("Platos")).toHaveAttribute("aria-current", "page")
+    expect(await screen.findByRole("heading", { name: "Todos los platos" })).toBeInTheDocument()
+    expect(within(dishList()!).getAllByRole("listitem")).toHaveLength(4)
+    expect(screen.queryByRole("list", { name: "Categorías" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "Publicación del menú" })).not.toBeInTheDocument()
+
+    fireEvent.click(tab("Modificadores"))
+    expect(await screen.findByText("Aún no hay grupos de modificadores")).toBeInTheDocument()
+    expect(dishList()).not.toBeInTheDocument()
+  })
+
+  it("the inspector links to the category's dishes instead of listing them", async () => {
+    await renderEditor()
+    await select("Postres")
+    expect(within(inspector()).queryByRole("button", { name: "Editar Natas" })).not.toBeInTheDocument()
+    const link = within(inspector()).getByRole("button", { name: "Ver 2 platos →" })
+    expect(link.className).toMatch(/\bmin-h-11\b/)
+
+    fireEvent.click(link)
+    expect(tab("Platos")).toHaveAttribute("aria-current", "page")
+    expect(await screen.findByRole("heading", { name: "Platos de Postres" })).toBeInTheDocument()
+    expect(within(dishList()!).getAllByRole("listitem").map((li) => li.querySelector("[data-dish-name]")?.textContent)).toEqual([
+      "Natas",
+      "Arroz con leche",
+    ])
   })
 })

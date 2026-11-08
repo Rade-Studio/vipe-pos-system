@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils"
 import { CategoryForm } from "./CategoryForm"
 import { CategoryInspector } from "./CategoryInspector"
+import { ALL_DISHES, DishList, type DishFilter } from "./DishList"
 import { DishOrderList } from "./DishOrderList"
 import { ModifierGroupsEditor } from "./ModifierGroupsEditor"
 import { PublishBar } from "./PublishBar"
@@ -46,7 +47,8 @@ const focusRing =
   "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
 
 const SECTIONS = [
-  { value: "tree", label: "Categorías y platos" },
+  { value: "tree", label: "Categorías" },
+  { value: "dishes", label: "Platos" },
   { value: "modifiers", label: "Modificadores" },
 ] as const
 type Section = (typeof SECTIONS)[number]["value"]
@@ -139,12 +141,16 @@ function TreeChildren({ node, reorder }: { node: AdminCategoryNode; reorder: Dis
  * preview reads the draft (GET /catalog/menu/draft).
  *
  * F7: a second section, "Modificadores", holds the reusable modifier groups.
+ *
+ * menu-platos T2: a third one, "Platos", lists every dish (DishList); the
+ * inspector's "Ver N platos →" opens it filtered to the selected category.
  */
-export function MenuTreeEditor() {
+export function MenuTreeEditor({ onNavigate }: { onNavigate?: (sectionId: string) => void } = {}) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const wide = useWide()
   const [section, setSection] = useState<Section>("tree")
+  const [dishFilter, setDishFilter] = useState<DishFilter>(ALL_DISHES)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
@@ -348,6 +354,11 @@ export function MenuTreeEditor() {
       subcategories={subcategories}
       moving={saving}
       onMove={(delta) => moveCategory(selected.category.id, delta, false)}
+      onShowDishes={() => {
+        setDishFilter({ categoryId: selected.category.id, subcategoryId: null })
+        setSection("dishes")
+        setSheetOpen(false)
+      }}
       onDeleted={() => {
         setSelectedId(null)
         setSheetOpen(false)
@@ -362,7 +373,9 @@ export function MenuTreeEditor() {
         description={
           section === "tree"
             ? "Categorías, subcategorías y platos en el orden y los colores de la toma de pedidos."
-            : "Grupos de opciones con precio que el mesero elige al agregar un plato."
+            : section === "dishes"
+              ? "Los platos de la carta: precio, estado, fórmula y modificadores."
+              : "Grupos de opciones con precio que el mesero elige al agregar un plato."
         }
         actions={
           section === "tree" && (
@@ -387,6 +400,9 @@ export function MenuTreeEditor() {
             )}
           >
             {option.label}
+            {option.value === "dishes" && (
+              <span className="ml-1.5 rounded-pill bg-surface-2 px-1.5 text-xs tabular-nums text-muted-fg">{dishes.length}</span>
+            )}
           </button>
         ))}
       </nav>
@@ -400,6 +416,8 @@ export function MenuTreeEditor() {
 
       {section === "modifiers" ? (
         <ModifierGroupsEditor />
+      ) : section === "dishes" ? (
+        <DishList onNavigate={onNavigate} filter={dishFilter} onFilterChange={setDishFilter} />
       ) : categoriesQuery.isLoading ? (
         <p className="py-8 text-center text-sm text-muted-foreground">Cargando categorías...</p>
       ) : nodes.length === 0 ? (
