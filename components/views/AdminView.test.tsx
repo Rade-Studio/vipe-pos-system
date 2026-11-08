@@ -101,7 +101,9 @@ vi.mock("@/components/admin/couriers/CouriersManager", () => ({ CouriersManager:
 vi.mock("@/components/admin/couriers/DeliveryFeeSetting", () => ({ DeliveryFeeSetting: () => null }))
 vi.mock("@/components/admin/menu/CategoryList", () => ({ CategoryList: () => null }))
 vi.mock("@/components/admin/menu/DishList", () => ({ DishList: () => null }))
-vi.mock("@/components/admin/promotions/PromotionList", () => ({ PromotionList: () => null }))
+vi.mock("@/components/admin/promotions/PromotionList", () => ({
+  PromotionList: () => <section aria-label="stub-promotions" />,
+}))
 vi.mock("@/components/admin/staff/WaiterList", () => ({ WaiterList: () => null }))
 vi.mock("@/components/admin/CompletedOrdersTable", () => ({ CompletedOrdersTable: () => null }))
 vi.mock("@/components/admin/CashRegisterSummary", () => ({ CashRegisterSummary: () => null }))
@@ -537,5 +539,14 @@ describe("F3 — a cancellation made on another device", () => {
       state.realtime.subscribeToOrders?.({ eventType: "UPDATE", new: { id: "o-1", status: "cancelled", order_items: [] }, old: { id: "o-1" } })
     })
     await waitFor(() => expect(panel).not.toBeInTheDocument())
+  })
+})
+
+describe("menu-platos T1 — Promociones section", () => {
+  it("renders the promotions list under its own header", async () => {
+    render(wrap(<AdminView profile={{ id: "p-1", name: "Admin", role: "admin" }} onChangeProfile={() => {}} authRole="admin" />))
+    await openSection("promotions")
+    expect(await screen.findByRole("heading", { name: "Promociones" })).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "stub-promotions" })).toBeInTheDocument()
   })
 })

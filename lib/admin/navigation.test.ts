@@ -25,7 +25,7 @@ describe("admin navigation registry", () => {
     const labels = (groupId: string) => sectionsInGroup(groupId as never).map((section) => section.label)
 
     expect(labels("general")).toEqual(["Resumen", "Órdenes", "Anulaciones", "Mesas", "Caja"])
-    expect(labels("catalog")).toEqual(["Menú", "Fórmulas"])
+    expect(labels("catalog")).toEqual(["Menú", "Promociones", "Fórmulas"])
     expect(labels("inventory")).toEqual([
       "Resumen",
       "Artículos",
@@ -109,6 +109,19 @@ describe("parseSectionHash / serializeSectionHash", () => {
       expect(serializeSectionHash(section.id)).toBe(`#${section.id}`)
       expect(parseSectionHash(serializeSectionHash(section.id))).toBe(section.id)
     }
+  })
+})
+
+describe("Promociones section (menu-platos T1)", () => {
+  it("opens from #promotions, under Catálogo right after Menú", () => {
+    expect(getAdminSection("promotions" as never)).toMatchObject({
+      id: "promotions",
+      group: "catalog",
+      label: "Promociones",
+      description: "Descuentos por porcentaje o monto fijo con vigencia",
+    })
+    expect(parseSectionHash("#promotions")).toBe("promotions")
+    expect(getAdminSection("menu").description).toBe("Categorías, platos y modificadores.")
   })
 })
 

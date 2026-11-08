@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { log } from "@/lib/log"
 import { Button } from "@/components/ui/button"
-import { SectionHeader, Toolbar } from "@/components/admin/common/Panel"
 import { EmptyState } from "@/components/admin/common/EmptyState"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -114,16 +113,13 @@ export function PromotionList() {
 
   return (
     <section className="min-w-0 space-y-3">
-      <SectionHeader
-        title="Promociones y descuentos"
-        description="Descuentos por porcentaje o monto fijo con vigencia."
-        actions={
-          <Button size="sm" onClick={handleCreatePromotion}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nueva Promoción
-          </Button>
-        }
-      />
+      {/* The Promociones page header names the section; the list only adds its action. */}
+      <div className="flex justify-end">
+        <Button className="min-h-11" onClick={handleCreatePromotion}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nueva Promoción
+        </Button>
+      </div>
         {promotions.length === 0 ? (
           isLoading ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Cargando promociones...</p>

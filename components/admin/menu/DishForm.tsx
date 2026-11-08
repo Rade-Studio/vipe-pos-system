@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useId, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,7 +22,7 @@ import {
 } from "@/lib/api/catalog"
 import type { SubcategoryDto } from "@/lib/api/subcategories"
 import { ImageUpload } from "@/components/ui/image-upload"
-import { Loader2, Trash2, RefreshCw } from "lucide-react"
+import { BookOpen, ExternalLink, Loader2, Trash2, RefreshCw } from "lucide-react"
 import Image from "next/image"
 import { deleteImage, getPlaceholderUrl, isImageAccessible, isPlaceholderUrl } from "@/lib/api/storage"
 import { log } from "@/lib/log"
@@ -37,7 +37,15 @@ interface DishFormProps {
   subcategories?: SubcategoryDto[]
   /** Category a new dish starts in (the menu tree's selected category). */
   defaultCategoryId?: string
+  /** Subcategory a new dish starts in (the Platos tab filter). */
+  defaultSubcategoryId?: string
   onSuccess: () => void
+  /** Shows "Cancelar" next to the save button. */
+  onCancel?: () => void
+  /** Opens the dish's recipe in Fórmulas; without it an existing dish shows no Fórmula block. */
+  onOpenFormula?: () => void
+  /** The draft menu says the dish is out of stock (read-only here). */
+  soldOut?: boolean
   isNewDish?: boolean
 }
 
@@ -61,7 +69,11 @@ export function DishForm({
   categories,
   subcategories = [],
   defaultCategoryId,
+  defaultSubcategoryId,
   onSuccess,
+  onCancel,
+  onOpenFormula,
+  soldOut = false,
   isNewDish = false,
 }: DishFormProps) {
   const { toast } = useToast()
@@ -76,7 +88,11 @@ export function DishForm({
   const [modifierGroups, setModifierGroups] = useState<ModifierGroupDto[]>([])
   const [groupIds, setGroupIds] = useState<string[]>([])
   const savedGroupIdsRef = useRef<string[]>([])
-  const newDishState = () => ({ ...initialFormState, category_id: defaultCategoryId ?? "" })
+  const newDishState = () => ({
+    ...initialFormState,
+    category_id: defaultCategoryId ?? "",
+    subcategory_id: (defaultCategoryId && defaultSubcategoryId) || "",
+  })
   const previousDishIdRef = useRef<string | number | null>(null)
   const originalImageUrlRef = useRef<string>("")
 
@@ -157,8 +173,8 @@ export function DishForm({
       setSubcategoryPending(false)
       originalImageUrlRef.current = ""
     }
-    // `newDishState` only reads `defaultCategoryId`.
-  }, [dish, categories, isNewDish, defaultCategoryId])
+    // `newDishState` only reads `defaultCategoryId` and `defaultSubcategoryId`.
+  }, [dish, categories, isNewDish, defaultCategoryId, defaultSubcategoryId])
 
   useEffect(() => {
     let live = true
@@ -361,139 +377,142 @@ export function DishForm({
     }
   }
 
+  const imageButton = "h-11 w-11 rounded-full shadow-md"
+
   return (
     <form
       key={`dish-form-${dish?.id || "new"}-${isNewDish ? "new" : "edit"}`}
       onSubmit={handleSubmit}
-      className="space-y-6 py-2"
+      aria-label={dish ? `Editar ${dish.name}` : "Nuevo plato"}
+      className="grid min-w-0 gap-4 pt-1"
     >
-      {/* Primera fila: Nombre y Precio */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
-          <Label htmlFor="name" className="text-sm font-medium">
-            Nombre del plato
-          </Label>
-          <Input
-            id="name"
-            name="name"
-            key="name"
-            value={formData.name}
-            onChange={handleChange}
-            required
-            placeholder="Ej: Ensalada César"
-            className="w-full"
-          />
-        </div>
+      {/* Sections keep the dialog gutter; the footer spans the full width under them. */}
+      <div className="grid min-w-0 gap-4 px-4 sm:px-6">
+        <p className="text-[13px] text-muted-fg">
+          <span aria-hidden className="text-status-danger-fg">*</span> <span>Obligatorio</span>
+        </p>
 
-        <div className="space-y-2">
-          <Label htmlFor="price" className="text-sm font-medium">
-            Precio
-          </Label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-            <Input
-              id="price"
-              name="price"
-              type="number"
-              key="price"
-              step="1"
-              min="0"
-              value={formData.price}
-              onChange={handleChange}
-              required
-              placeholder="0.00"
-              className="pl-7"
-            />
+        <FormSection title="Datos">
+          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="name" className={required}>
+                Nombre del plato
+              </Label>
+              <Input
+                id="name"
+                name="name"
+                key="name"
+                value={formData.name}
+                onChange={handleChange}
+                required
+                placeholder="Ej: Ensalada César"
+                className="min-h-11 w-full"
+              />
+            </div>
+
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="price" className={required}>
+                Precio
+              </Label>
+              <div className="relative">
+                <span aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-fg">
+                  $
+                </span>
+                <Input
+                  id="price"
+                  name="price"
+                  type="number"
+                  key="price"
+                  step="1"
+                  min="0"
+                  value={formData.price}
+                  onChange={handleChange}
+                  required
+                  placeholder="0"
+                  className="min-h-11 pl-7"
+                />
+              </div>
+            </div>
+
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="category_id" className={required}>
+                Categoría
+              </Label>
+              <Select
+                key={`category-select-${formData.category_id || "empty"}-${Date.now()}`}
+                defaultValue={formData.category_id}
+                value={formData.category_id}
+                onValueChange={handleCategoryChange}
+                required
+              >
+                <SelectTrigger id="category_id" className="min-h-11 w-full">
+                  <SelectValue placeholder="Selecciona una categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={String(category.id)}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="subcategory_id">
+                Subcategoría
+              </Label>
+              <Select
+                value={subcategoryPending ? "" : formData.subcategory_id || NO_SUBCATEGORY}
+                onValueChange={handleSubcategoryChange}
+                disabled={!formData.category_id}
+              >
+                <SelectTrigger
+                  id="subcategory_id"
+                  className="min-h-11 w-full"
+                  aria-describedby={subcategoryPending ? "subcategory_pending" : undefined}
+                >
+                  <SelectValue placeholder="Elige una subcategoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_SUBCATEGORY}>Sin subcategoría</SelectItem>
+                  {categorySubcategories.map((subcategory) => (
+                    <SelectItem key={subcategory.id} value={subcategory.id}>
+                      {subcategory.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {subcategoryPending ? (
+                <p id="subcategory_pending" role="alert" className="text-xs text-status-warning-fg">
+                  Cambiaste la categoría: elige una subcategoría de {chosenCategoryName} o «Sin subcategoría».
+                </p>
+              ) : (
+                formData.category_id &&
+                categorySubcategories.length === 0 && (
+                  <p className="text-xs text-muted-fg">Esta categoría no tiene subcategorías: el mesero ve el plato directo.</p>
+                )
+              )}
+            </div>
+
+            <div className="min-w-0 space-y-2 sm:col-span-2">
+              <Label htmlFor="description">Descripción</Label>
+              <Textarea
+                id="description"
+                name="description"
+                key="description"
+                value={formData.description}
+                onChange={handleChange}
+                placeholder="Breve descripción del plato..."
+                rows={3}
+                className="resize-none"
+              />
+            </div>
           </div>
-        </div>
-      </div>
+        </FormSection>
 
-      {/* Segunda fila: Categoría y Descripción */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
-          <Label htmlFor="category_id" className="text-sm font-medium">
-            Categoría
-          </Label>
-          <Select
-            key={`category-select-${formData.category_id || "empty"}-${Date.now()}`}
-            defaultValue={formData.category_id}
-            value={formData.category_id}
-            onValueChange={handleCategoryChange}
-            required
-          >
-            <SelectTrigger id="category_id" className="w-full">
-              <SelectValue placeholder="Selecciona una categoría" />
-            </SelectTrigger>
-            <SelectContent>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={String(category.id)}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Label htmlFor="subcategory_id" className="block pt-2 text-sm font-medium">
-            Subcategoría
-          </Label>
-          <Select
-            value={subcategoryPending ? "" : formData.subcategory_id || NO_SUBCATEGORY}
-            onValueChange={handleSubcategoryChange}
-            disabled={!formData.category_id}
-          >
-            <SelectTrigger
-              id="subcategory_id"
-              className="w-full"
-              aria-describedby={subcategoryPending ? "subcategory_pending" : undefined}
-            >
-              <SelectValue placeholder="Elige una subcategoría" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_SUBCATEGORY}>Sin subcategoría</SelectItem>
-              {categorySubcategories.map((subcategory) => (
-                <SelectItem key={subcategory.id} value={subcategory.id}>
-                  {subcategory.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {subcategoryPending ? (
-            <p id="subcategory_pending" role="alert" className="text-xs text-status-warning-fg">
-              Cambiaste la categoría: elige una subcategoría de {chosenCategoryName} o «Sin subcategoría».
-            </p>
-          ) : (
-            formData.category_id &&
-            categorySubcategories.length === 0 && (
-              <p className="text-xs text-muted-foreground">Esta categoría no tiene subcategorías: el mesero ve el plato directo.</p>
-            )
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="description" className="text-sm font-medium">
-            Descripción
-          </Label>
-          <Textarea
-            id="description"
-            name="description"
-            key="description"
-            value={formData.description}
-            onChange={handleChange}
-            placeholder="Breve descripción del plato..."
-            rows={3}
-            className="resize-none"
-          />
-        </div>
-      </div>
-
-      {/* Tercera fila: Imagen y Opciones */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <Label className="text-sm font-medium">Imagen del plato</Label>
-          </div>
-
-          <Card className="overflow-hidden border rounded-lg">
+        <FormSection title="Imagen">
+          <Card className="overflow-hidden rounded-lg border sm:max-w-sm">
             <CardContent className="p-0">
               {formData.image_url ? (
                 <div className="relative">
@@ -502,18 +521,18 @@ export function DishForm({
                       src={imageError ? getPlaceholderUrl(formData.name) : formData.image_url}
                       alt={formData.name || "Vista previa"}
                       fill
-                      className="object-cover rounded-t-lg"
-                      sizes="(max-width: 768px) 100vw, 400px"
+                      className="rounded-t-lg object-cover"
+                      sizes="(max-width: 640px) 100vw, 384px"
                       onError={handleImageError}
                     />
                     {imageError && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No se pudo cargar la imagen</p>
+                      <div className="absolute inset-0 flex items-center justify-center bg-surface-2">
+                        <p className="text-sm text-muted-fg">No se pudo cargar la imagen</p>
                       </div>
                     )}
                   </div>
 
-                  <div className="absolute top-2 right-2 flex gap-2">
+                  <div className="absolute right-2 top-2 flex gap-2">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -521,16 +540,12 @@ export function DishForm({
                             type="button"
                             variant="destructive"
                             size="icon"
-                            className="h-8 w-8 rounded-full shadow-md"
+                            className={imageButton}
                             onClick={handleDeleteImage}
                             disabled={deletingImage}
                             aria-label="Eliminar imagen"
                           >
-                            {deletingImage ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
+                            {deletingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -546,16 +561,12 @@ export function DishForm({
                             type="button"
                             variant="secondary"
                             size="icon"
-                            className="h-8 w-8 rounded-full bg-gray-200/90 hover:bg-gray-300 shadow-md dark:bg-gray-700 dark:hover:bg-gray-600"
+                            className={imageButton}
                             onClick={handleChangeImage}
                             disabled={deletingImage}
                             aria-label="Cambiar imagen"
                           >
-                            {deletingImage ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-4 w-4" />
-                            )}
+                            {deletingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -566,7 +577,7 @@ export function DishForm({
                   </div>
                 </div>
               ) : (
-                <div className="aspect-[4/3] flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div className="flex aspect-[4/3] items-center justify-center rounded-lg bg-surface-2">
                   <ImageUpload
                     value={formData.image_url}
                     onChange={handleImageUpload}
@@ -578,56 +589,112 @@ export function DishForm({
               )}
             </CardContent>
           </Card>
-        </div>
+        </FormSection>
 
-        <div className="space-y-6">
-          <Card className="border rounded-lg shadow-sm">
-            <CardContent className="p-4 space-y-4">
-              <h3 className="text-sm font-medium mb-2">Opciones del plato</h3>
+        <FormSection title="Disponibilidad">
+          <SwitchRow
+            id="active"
+            label="Activo"
+            hint="El plato estará disponible para ordenar."
+            checked={formData.active}
+            onChange={(checked) => handleSwitchChange("active", checked)}
+          />
+          {soldOut && (
+            <p className="rounded-xl border border-status-warning-line bg-status-warning-bg p-3 text-[13px] text-status-warning-fg">
+              <b>Agotado ahora</b> · el inventario no tiene stock suficiente. Se libera solo cuando entra stock; no se cambia aquí.
+            </p>
+          )}
+        </FormSection>
 
-              <div className="flex items-center justify-between py-2 border-b">
-                <div className="space-y-0.5">
-                  <Label htmlFor="active" className="text-sm">
-                    Activo
-                  </Label>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">El plato estará disponible para ordenar</p>
-                </div>
-                <Switch
-                  id="active"
-                  checked={formData.active}
-                  onCheckedChange={(checked) => handleSwitchChange("active", checked)}
-                />
-              </div>
+        {(!dish || onOpenFormula) && (
+          <FormSection title="Fórmula">
+            {dish && onOpenFormula ? (
+              <button
+                type="button"
+                onClick={onOpenFormula}
+                className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-xl border border-line bg-card p-2.5 text-left hover:bg-surface-2 focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                <BookOpen className="h-5 w-5 shrink-0 text-muted-fg" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <b className="block text-sm font-semibold">Abrir en Fórmulas</b>
+                  <span className="block break-words text-xs text-muted-fg [overflow-wrap:anywhere]">
+                    Ingredientes y cantidades de {dish.name}
+                  </span>
+                </span>
+                <ExternalLink className="h-4 w-4 shrink-0 text-muted-fg" aria-hidden />
+              </button>
+            ) : (
+              <p className="text-sm text-muted-fg">Guarda el plato para vincular su fórmula en Fórmulas.</p>
+            )}
+          </FormSection>
+        )}
 
-              <div className="flex items-center justify-between py-2">
-                <div className="space-y-0.5">
-                  <Label htmlFor="allow_comments" className="text-sm">
-                    Permitir comentarios
-                  </Label>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Los clientes podrán añadir instrucciones especiales
-                  </p>
-                </div>
-                <Switch
-                  id="allow_comments"
-                  checked={formData.allow_comments}
-                  onCheckedChange={(checked) => handleSwitchChange("allow_comments", checked)}
-                />
-              </div>
+        <DishModifierGroups groups={modifierGroups} value={groupIds} onChange={setGroupIds} />
 
-            </CardContent>
-          </Card>
+        <FormSection title="Opciones">
+          <SwitchRow
+            id="allow_comments"
+            label="Permitir comentarios"
+            hint="Los clientes podrán añadir instrucciones especiales."
+            checked={formData.allow_comments}
+            onChange={(checked) => handleSwitchChange("allow_comments", checked)}
+          />
+        </FormSection>
+      </div>
 
-          <DishModifierGroups groups={modifierGroups} value={groupIds} onChange={setGroupIds} />
-
-          <div className="flex items-center justify-center pt-4">
-            <Button type="submit" className="w-full" disabled={loading || deletingImage || subcategoryPending} size="lg">
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {dish ? "Actualizar Plato" : "Crear Plato"}
-            </Button>
-          </div>
-        </div>
+      <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-2 border-t border-line bg-background px-4 py-3 sm:px-6">
+        {onCancel && (
+          <Button type="button" variant="outline" className="min-h-11" onClick={onCancel}>
+            Cancelar
+          </Button>
+        )}
+        <Button type="submit" className="min-h-11" disabled={loading || deletingImage || subcategoryPending}>
+          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {dish ? "Guardar cambios" : "Crear plato"}
+        </Button>
       </div>
     </form>
+  )
+}
+
+/** Marks a field label as required; the "*" is decoration, `required` on the control carries the rule. */
+const required = "after:ml-0.5 after:text-status-danger-fg after:content-['*']"
+
+/** One titled block of the dish dialog. */
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const titleId = useId()
+  return (
+    <section aria-labelledby={titleId} className="grid min-w-0 gap-3 rounded-lg border p-4 shadow-sm">
+      <h3 id={titleId} className="text-sm font-medium">
+        {title}
+      </h3>
+      {children}
+    </section>
+  )
+}
+
+function SwitchRow({
+  id,
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  id: string
+  label: string
+  hint: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex min-h-11 items-center justify-between gap-3">
+      <div className="min-w-0 space-y-0.5">
+        <Label htmlFor={id} className="text-sm">
+          {label}
+        </Label>
+        <p className="text-xs text-muted-fg">{hint}</p>
+      </div>
+      <Switch id={id} checked={checked} onCheckedChange={onChange} />
+    </div>
   )
 }
