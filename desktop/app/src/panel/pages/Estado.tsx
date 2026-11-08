@@ -19,7 +19,7 @@ export function EmptyPrinters({ ctx }: { ctx: PanelContext }) {
       </span>
       <h2>Agrega tu primera impresora</h2>
       <p>VIPE funciona sin impresoras: las comandas se ven en la pantalla de cocina. Si este computador tiene una impresora térmica, agrégala aquí.</p>
-      <button type="button" className="btn primary" onClick={ctx.onAddPrinter}>
+      <button type="button" className="btn primary" onClick={() => ctx.openCard({ mode: 'add' })}>
         <Plus aria-hidden /> Agregar impresora
       </button>
     </div>

@@ -67,13 +67,7 @@ function Station({ bridge, api }: { bridge: Bridge; api: VipeApiClient }) {
         skipResume={params.has('paso')}
       />
     );
-  const addPrinter = async () => {
-    const next = { ...settings, setup: { ...settings.setup, step: 'discover' as const, printerIndex: 0, completed: false, deferred: false, prints: true } };
-    await bridge.saveSettings(next);
-    setSettings(next);
-    setMode('setup');
-  };
-  return <Panel api={api} bridge={bridge} initial={settings} initialPage={route[1] ?? params.get('vista') ?? undefined} onAddPrinter={() => void addPrinter()} />;
+  return <Panel api={api} bridge={bridge} initial={settings} initialPage={route[1] ?? params.get('vista') ?? undefined} />;
 }
 
 function Root({ bridge, api, demo }: { bridge: Bridge; api: VipeApiClient; demo: boolean }) {
