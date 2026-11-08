@@ -1,12 +1,13 @@
 "use client"
 
-import { Check, List, Minus, Plus, Trash2 } from "lucide-react"
+import { Check, List, Minus, Pencil, Plus, Trash2 } from "lucide-react"
 
 import type { CartItem } from "@/types"
 import { cn } from "@/lib/utils"
 import { sentGroups } from "@/lib/order-steps/details"
 import { formatCurrency } from "@/utils/helpers"
 import { Button } from "@/components/ui/button"
+import { ModifierLines } from "@/components/modifiers/ModifierLines"
 
 const FOCUS = "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
 
@@ -46,6 +47,8 @@ interface OrderReviewProps {
   sentLines: readonly SentLine[]
   onChangeQuantity: (lineId: string, change: number) => void
   onRemove: (lineId: string) => void
+  /** F7: "Cambiar opciones" of a new line with options reopens the modifier sheet. */
+  onEditOptions?: (lineId: string) => void
   onContinue: () => void
   /** "Nota del pedido" (orders.notes, T22): optional when `onNoteChange` is given. */
   note?: string
@@ -65,6 +68,7 @@ export function OrderReview({
   sentLines,
   onChangeQuantity,
   onRemove,
+  onEditOptions,
   onContinue,
   note,
   onNoteChange,
@@ -101,6 +105,7 @@ export function OrderReview({
               <li key={line.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-t border-line px-3.5 py-3 first:border-t-0">
                 <span className="min-w-0 text-[15.5px] font-semibold leading-snug [overflow-wrap:anywhere]">{line.name}</span>
                 <span className="text-right font-semibold tabular-nums">{formatCurrency(line.quantity * line.price)}</span>
+                <ModifierLines modifiers={line.modifiers} unitPrice={line.price} />
                 {line.comments && <span className="col-start-1 text-[13px] text-muted-fg">“{line.comments}”</span>}
                 <span className="col-span-full flex flex-wrap items-center gap-2">
                   <span role="group" aria-label={`Cantidad de ${line.name}`} className="inline-flex items-center gap-1">
@@ -123,6 +128,12 @@ export function OrderReview({
                       <Plus className="h-[18px] w-[18px]" aria-hidden />
                     </button>
                   </span>
+                  {onEditOptions && (line.modifiers?.length ?? 0) > 0 && (
+                    <Button variant="outline" aria-label={`Cambiar opciones de ${line.name}`} onClick={() => onEditOptions(line.id)} className="h-11">
+                      <Pencil className="mr-1.5 h-4 w-4" aria-hidden />
+                      Cambiar opciones
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     aria-label={`Quitar ${line.name}`}
@@ -153,6 +164,7 @@ export function OrderReview({
                       {line.quantity}× {line.name}
                     </span>
                     <span className="text-right font-semibold tabular-nums">{formatCurrency(line.quantity * line.price)}</span>
+                    <ModifierLines modifiers={line.modifiers} />
                     {line.comments && <span className="col-start-1 text-[13px] text-muted-fg">“{line.comments}”</span>}
                   </li>
                 ))}
@@ -219,6 +231,7 @@ export function OrderColumn({ title, newLines, sentLines, onReview }: OrderColum
       <span className="tabular-nums text-muted-fg">{line.quantity}×</span>
       <span className={cn("min-w-0 [overflow-wrap:anywhere]", sent ? "text-fg-2" : "font-medium")}>
         {line.name}
+        <ModifierLines modifiers={line.modifiers} className="mt-0.5 text-xs" />
         {line.comments && <small className="block text-xs text-muted-fg">“{line.comments}”</small>}
       </span>
       <span className="tabular-nums">{formatCurrency(line.quantity * line.price)}</span>

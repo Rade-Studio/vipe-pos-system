@@ -28,6 +28,7 @@ import {
   getByStatus,
   orderConflictOf,
   orderDtoFromWire,
+  orderItemsFromCart,
   serveItems,
   toOrder,
   updateDetails,
@@ -72,6 +73,7 @@ function dto(overrides: Partial<OrderDto> = {}): OrderDto {
         addedAt: "2026-11-04T12:00:00.000Z",
         createdAt: "2026-11-04T12:00:00.000Z",
         updatedAt: null,
+        modifiers: [],
       },
     ],
     ...overrides,
@@ -376,5 +378,39 @@ describe("orderConflictOf", () => {
     expect(orderConflictOf(conflict({ message: "Order is closed" }))).toBeNull()
     expect(orderConflictOf(new ApiError(422, "Unprocessable Entity", "Unknown waiter"))).toBeNull()
     expect(orderConflictOf(new Error("boom"))).toBeNull()
+  })
+})
+
+describe("modifiers (F7)", () => {
+  const D = "3f1c2a9e-0b4d-4c55-9a1e-6d2f7b8c9d01"
+  const medio = { groupId: "g-t", groupName: "Término", optionId: "o-medio", name: "Medio", price: 0 }
+  const ched = { groupId: "g-a", groupName: "Adiciones", optionId: "o-ched", name: "Queso cheddar", price: 3000 }
+  const line = { name: "Hamburguesa", quantity: 2, categoryId: "", image: "" }
+
+  it("sends modifiers [{optionId}] per line and the unit price with the options", () => {
+    const items = orderItemsFromCart([{ ...line, id: `${D}-x`, price: 25000, comments: "poca sal", modifiers: [medio, ched] }])
+    expect(items).toEqual([
+      { dishId: D, quantity: 2, unitPrice: 25000, comments: "poca sal", modifiers: [{ optionId: "o-medio" }, { optionId: "o-ched" }] },
+    ])
+  })
+
+  it("a line without options is sent exactly as before (no modifiers key)", () => {
+    expect(orderItemsFromCart([{ ...line, id: `${D}-y`, price: 22000 }])).toEqual([
+      { dishId: D, quantity: 2, unitPrice: 22000, comments: null },
+    ])
+  })
+
+  it("maps the line snapshot onto the domain item, and a realtime row without it to []", () => {
+    const order = toOrder(dto({ items: [{ ...dto().items[0]!, modifiers: [ched] }] }))
+    expect(order.items[0]!.modifiers).toEqual([ched])
+    const wire = orderDtoFromWire({ id: "o-1", status: "kitchen", order_items: [{ id: "i-1", name: "X" }] })
+    expect(wire!.items[0]!.modifiers).toEqual([])
+  })
+
+  it("the 409 Price changed body keeps the per-line unit prices when the request had options", () => {
+    const lines = [{ index: 0, dishId: D, unitPrice: 26000 }]
+    const prices = [{ dishId: D, price: 23000 }]
+    const error = new ApiError(409, "Conflict", "Price changed", { statusCode: 409, prices, lines })
+    expect(orderConflictOf(error)).toEqual({ kind: "priceChanged", prices, lines })
   })
 })

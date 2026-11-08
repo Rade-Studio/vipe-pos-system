@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { menuCategory, menuDish } from "@/lib/order-steps/fixtures"
+import { modifierGroup } from "@/lib/modifiers/fixtures"
+import { formatCurrency } from "@/utils/helpers"
 
 const toastFn = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastFn }) }))
@@ -168,60 +170,84 @@ describe("StepPicker (T10, S5)", () => {
   })
 })
 
-describe("StepPicker quick-note chips (T22)", () => {
-  const withNotes = [
+describe("StepPicker modifier sheet (F7)", () => {
+  const termino = modifierGroup({ id: "g-t", name: "Término de la carne", minSelect: 1, maxSelect: 1, options: [["o-azul", "Azul", 0], ["o-medio", "Medio", 0]] })
+  const adic = modifierGroup({
+    id: "g-a",
+    name: "Adiciones",
+    maxSelect: 3,
+    options: [["o-ched", "Queso cheddar", 3000], ["o-toc", "Tocineta", 4000], ["o-hue", "Huevo", 2500], ["o-agu", "Aguacate", 3500]],
+  })
+  const withGroups = [
     menuCategory({
       id: "c-9",
-      name: "Carnes",
+      name: "Hamburguesas",
       dishes: [
-        menuDish({ id: "d-9", name: "Churrasco", price: 38000, quickNotes: ["Término medio", "Sin cebolla", "Bien asado"] }),
+        menuDish({ id: "d-9", name: "Hamburguesa artesanal", price: 22000, modifierGroups: [termino, adic] }),
         menuDish({ id: "d-8", name: "Limonada", price: 5000 }),
       ],
     }),
   ]
   const open = async (dish: RegExp) => {
     const onAdd = vi.fn<(item: StepPickerItem) => (() => void) | void>()
-    render(<StepPicker menu={withNotes} onAdd={onAdd} onExit={vi.fn()} />)
-    await click(screen.getByRole("button", { name: /Carnes/ }))
+    render(<StepPicker menu={withGroups} onAdd={onAdd} onExit={vi.fn()} />)
+    await click(screen.getByRole("button", { name: /Hamburguesas/ }))
     await click(screen.getByRole("button", { name: dish }))
     return onAdd
   }
+  const sheet = () => screen.getByRole("dialog", { name: "Hamburguesa artesanal" })
+  const option = (name: string) => within(sheet()).getByRole(name === "Medio" || name === "Azul" ? "radio" : "checkbox", { name: new RegExp(`^${name}`) })
+  const addButton = () => within(sheet()).getByRole("button", { name: /^Agregar ·/ })
 
-  it("offers the dish's quick notes as toggles and appends them to the comment with the free note", async () => {
-    const onAdd = await open(/^Churrasco,/)
-    const group = screen.getByRole("group", { name: "Indicaciones rápidas" })
-    const chip = (name: string) => within(group).getByRole("button", { name })
-    expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Término medio",
-      "Sin cebolla",
-      "Bien asado",
-    ])
-    await click(chip("Sin cebolla"))
-    await click(chip("Término medio"))
-    await click(chip("Bien asado"))
-    await click(chip("Bien asado"))
-    expect(chip("Sin cebolla")).toHaveAttribute("aria-pressed", "true")
-    expect(chip("Bien asado")).toHaveAttribute("aria-pressed", "false")
-    fireEvent.change(screen.getByLabelText("Nota para cocina (opcional)"), { target: { value: " poca sal " } })
-    // The free note stays as typed: the chips do not write into it.
-    expect(screen.getByLabelText("Nota para cocina (opcional)")).toHaveValue(" poca sal ")
-
-    await click(screen.getByRole("button", { name: /^Agregar 1 ·/ }))
-    expect(onAdd.mock.calls[0][0].comments).toBe("Sin cebolla, Término medio, poca sal")
+  it("opens the sheet with the groups in order; the required one blocks the add and names what is missing", async () => {
+    await open(/^Hamburguesa artesanal,/)
+    expect(within(sheet()).getAllByRole("group").length).toBeGreaterThan(0)
+    expect(sheet()).toHaveTextContent(/Término de la carne.*Obligatorio · elige 1.*Falta elegir.*Adiciones.*Opcional · hasta 3.*0 de 3/)
+    expect(addButton()).toBeDisabled()
+    expect(within(sheet()).getByText("Falta: Término de la carne")).toBeInTheDocument()
+    await click(option("Medio"))
+    expect(addButton()).toBeEnabled()
+    expect(within(sheet()).queryByText(/^Falta:/)).not.toBeInTheDocument()
+    expect(option("Medio")).toHaveClass("min-h-11")
   })
 
-  it("chips alone make the comment; a dish without quick notes shows no chips", async () => {
-    const onAdd = await open(/^Churrasco,/)
-    await click(screen.getByRole("button", { name: "Término medio" }))
-    await click(screen.getByRole("button", { name: /^Agregar 1 ·/ }))
-    expect(onAdd.mock.calls[0][0].comments).toBe("Término medio")
+  it("prices the line live and adds dish, quantity, note, options and unit price", async () => {
+    const onAdd = await open(/^Hamburguesa artesanal,/)
+    await click(option("Medio"))
+    await click(option("Queso cheddar"))
+    await click(option("Tocineta"))
+    const flat = (text: string | null) => (text ?? "").replace(/\s+/g, " ")
+    expect(flat(sheet().textContent)).toContain(flat(`Hamburguesa ${formatCurrency(22000)} + ${formatCurrency(7000)} = ${formatCurrency(29000)} c/u`))
+    expect(within(sheet()).getByText("2 de 3")).toBeInTheDocument()
+    await click(within(sheet()).getByRole("button", { name: "Sumar uno" }))
+    expect(flat(addButton().textContent)).toContain(flat(formatCurrency(58000)))
+    fireEvent.change(within(sheet()).getByLabelText("Nota para cocina (opcional)"), { target: { value: " pan sin tostar " } })
+    await click(addButton())
+    const item = onAdd.mock.calls[0][0]
+    expect(item).toMatchObject({ quantity: 2, comments: "pan sin tostar", unitPrice: 29000 })
+    expect(item.dish.id).toBe("d-9")
+    expect(item.modifiers?.map((m) => m.optionId)).toEqual(["o-medio", "o-ched", "o-toc"])
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(heading()).toHaveTextContent("¿Qué categoría?")
+  })
 
-    // Back on Categoría after the add, the chips start off.
-    await click(screen.getByRole("button", { name: /Carnes/ }))
-    await click(screen.getByRole("button", { name: /^Churrasco,/ }))
-    expect(screen.getByRole("button", { name: "Término medio" })).toHaveAttribute("aria-pressed", "false")
-    await click(screen.getByRole("button", { name: "Volver al paso anterior" }))
-    await click(screen.getByRole("button", { name: /^Limonada,/ }))
-    expect(screen.queryByRole("group", { name: "Indicaciones rápidas" })).not.toBeInTheDocument()
+  it("enforces the max: the 4th addition is refused with a toast", async () => {
+    await open(/^Hamburguesa artesanal,/)
+    for (const name of ["Queso cheddar", "Tocineta", "Huevo"]) await click(option(name))
+    expect(option("Aguacate")).toHaveAttribute("aria-disabled", "true")
+    await click(option("Aguacate"))
+    expect(option("Aguacate")).toHaveAttribute("aria-checked", "false")
+    expect(toastFn).toHaveBeenCalledWith({ title: "Máximo 3 en Adiciones" })
+    expect(within(sheet()).getByText("3 de 3")).toBeInTheDocument()
+  })
+
+  it("a dish without groups goes to step 4 as before and adds with only the free note", async () => {
+    const onAdd = await open(/^Limonada,/)
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(heading()).toHaveTextContent("Limonada")
+    expect(screen.queryByText("Indicaciones rápidas")).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Nota para cocina (opcional)"), { target: { value: " sin hielo " } })
+    await click(screen.getByRole("button", { name: /^Agregar 1 ·/ }))
+    expect(onAdd.mock.calls[0][0]).toEqual({ dish: withGroups[0].dishes[1], category: withGroups[0], quantity: 1, comments: "sin hielo" })
   })
 })

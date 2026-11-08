@@ -23,6 +23,12 @@ export type OrderItemDto = Schemas["OrderItem"]
 export type OrderItemInput = Schemas["OrderItemInput"]
 export type StockShortage = Schemas["StockShortage"]
 export type DishPrice = Schemas["DishPrice"]
+/** F7: a line of the 409 `Price changed` body, sent only when the request had options. */
+export interface LinePrice {
+  index: number
+  dishId: string
+  unitPrice: number
+}
 /** PATCH /orders/:id: guests and/or the order note; null (or a blank note) clears. */
 export type OrderDetails = Schemas["UpdateOrderDetailsRequest"]
 /** F1: reason (fixed list), optional text and the supervisor authorization of a cancellation. */
@@ -65,6 +71,7 @@ function toOrderItem(item: OrderItemDto): ApiOrderItem {
     price: item.price,
     quantity: item.quantity,
     comments: item.comments ?? undefined,
+    modifiers: item.modifiers?.length ? item.modifiers : undefined,
     categoryId: "",
     image: ITEM_IMAGE,
     status: item.status,
@@ -121,6 +128,8 @@ function itemDtoFromWire(row: WireRow): OrderItemDto {
     addedAt: str(row.added_at),
     createdAt: str(row.created_at),
     updatedAt: str(row.updated_at),
+    // Realtime rows do not carry the snapshot; the next read fills it.
+    modifiers: [],
   }
 }
 
@@ -160,14 +169,17 @@ export function orderDtoFromWire(row: unknown): OrderDto | null {
 
 /**
  * Cart lines -> order lines: the dish behind each cart id, the price the waiter
- * saw (the server answers 409 `Price changed` when it no longer holds) and the
- * comments. A line with no dish cannot be priced, so it is refused here.
+ * saw (the server answers 409 `Price changed` when it no longer holds), the
+ * comments and, with F7, the chosen options as `modifiers: [{optionId}]`. A line with no dish cannot be priced, so it is refused here.
  */
 export function orderItemsFromCart(cart: readonly CartItem[]): OrderItemInput[] {
   return cart.map((item) => {
     const dishId = dishIdFromCartItemId(item.id)
     if (!dishId) throw new Error(`El producto ${item.name} no corresponde a un plato del menú`)
-    return { dishId, quantity: item.quantity, unitPrice: item.price, comments: item.comments || null }
+    const line: OrderItemInput = { dishId, quantity: item.quantity, unitPrice: item.price, comments: item.comments || null }
+    // F7: only lines with options carry the key, so plain lines go out as before.
+    if (item.modifiers?.length) line.modifiers = item.modifiers.map(({ optionId }) => ({ optionId }))
+    return line
   })
 }
 
@@ -175,18 +187,19 @@ export function orderItemsFromCart(cart: readonly CartItem[]): OrderItemInput[] 
 
 export type OrderConflict =
   | { kind: "shortage"; shortages: StockShortage[] }
-  | { kind: "priceChanged"; prices: DishPrice[] }
+  | { kind: "priceChanged"; prices: DishPrice[]; lines?: LinePrice[] }
   | { kind: "openOrder"; orderId: string }
 
 /** The 409 answers of `POST /orders` and `POST /orders/:id/items` the waiter acts on. */
 export function orderConflictOf(error: unknown): OrderConflict | null {
   if (!(error instanceof ApiError) || error.status !== 409) return null
-  const { shortages, prices, orderId } = error.body
+  const { shortages, prices, orderId, lines } = error.body
   if (error.message === "Insufficient stock" && Array.isArray(shortages)) {
     return { kind: "shortage", shortages: shortages as StockShortage[] }
   }
   if (error.message === "Price changed" && Array.isArray(prices)) {
-    return { kind: "priceChanged", prices: prices as DishPrice[] }
+    const priced = { kind: "priceChanged" as const, prices: prices as DishPrice[] }
+    return Array.isArray(lines) ? { ...priced, lines: lines as LinePrice[] } : priced
   }
   if (error.message === "Table has an open order" && typeof orderId === "string") {
     return { kind: "openOrder", orderId }

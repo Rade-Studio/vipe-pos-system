@@ -13,7 +13,7 @@ export function menuDish(overrides: Partial<MenuTreeDishDto>): MenuTreeDishDto {
     active: true,
     allowComments: true,
     sortOrder: 0,
-    quickNotes: [],
+    modifierGroups: [],
     createdAt: null,
     updatedAt: null,
     available: true,

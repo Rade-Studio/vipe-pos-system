@@ -26,7 +26,6 @@ describe("step picker reducer (T10, S5)", () => {
       dishId: null,
       quantity: 1,
       note: "",
-      quickNotes: [],
     })
   })
 
@@ -102,27 +101,16 @@ describe("step picker reducer (T10, S5)", () => {
   })
 })
 
-describe("quick-note chips of step 4 (T22)", () => {
-  const onDish = run(pickDirect, { type: "dish", id: "d-1", available: true })
-
-  it("a tap toggles a chip, keeping the tap order", () => {
-    const two = [{ type: "quickNote", note: "Sin cebolla" }, { type: "quickNote", note: "Término medio" }] as StepAction[]
-    const picked = two.reduce(stepReducer, onDish)
-    expect(picked.quickNotes).toEqual(["Sin cebolla", "Término medio"])
-    expect(stepReducer(picked, { type: "quickNote", note: "Sin cebolla" }).quickNotes).toEqual(["Término medio"])
+describe("the line comment of step 4 (S5: no quick-note chips)", () => {
+  it("is the free note, trimmed (empty when blank)", () => {
+    expect(composeComment("  poca sal ")).toBe("poca sal")
+    expect(composeComment("   ")).toBe("")
+    expect(composeComment("")).toBe("")
   })
 
-  it("another dish, a step back or an add clears the chips", () => {
-    const picked = stepReducer(onDish, { type: "quickNote", note: "Sin hielo" })
-    expect(stepReducer(picked, { type: "back" }).quickNotes).toEqual([])
-    expect(stepReducer(picked, { type: "added" }).quickNotes).toEqual([])
-    expect(stepReducer(picked, { type: "dish", id: "d-2", available: true }).quickNotes).toEqual([])
-  })
-
-  it("the comment is the chips, then the free note, joined with ', '", () => {
-    expect(composeComment(["Término medio", "Sin cebolla"], "  poca sal ")).toBe("Término medio, Sin cebolla, poca sal")
-    expect(composeComment(["Sin hielo"], "   ")).toBe("Sin hielo")
-    expect(composeComment([], " sin sal ")).toBe("sin sal")
-    expect(composeComment([], "")).toBe("")
+  it("another dish, a step back or an add clears the note", () => {
+    const noted = stepReducer(run(pickDirect, { type: "dish", id: "d-1", available: true }), { type: "note", note: "sin hielo" })
+    expect(stepReducer(noted, { type: "back" }).note).toBe("")
+    expect(stepReducer(noted, { type: "added" }).note).toBe("")
   })
 })
