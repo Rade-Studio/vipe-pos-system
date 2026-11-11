@@ -3825,6 +3825,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseRegisterRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "close_register result; a replay answers already_closed.",
@@ -3841,6 +3851,9 @@
           },
           "404": {
             "description": "Unknown or of another restaurant (P0002)."
+          },
+          "409": {
+            "description": "code open_orders (with count): the restaurant has open orders (active, kitchen, delivered) and the body lacks leaveOpenOrders: true; the register stays open."
           },
           "422": {
             "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
@@ -12354,6 +12367,15 @@
         "required": [
           "initialCash"
         ]
+      },
+      "CloseRegisterRequest": {
+        "type": "object",
+        "properties": {
+          "leaveOpenOrders": {
+            "type": "boolean",
+            "description": "Close even though the restaurant has open orders; they stay open for the next register."
+          }
+        }
       },
       "CloseRegisterResult": {
         "type": "object",

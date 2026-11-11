@@ -27,6 +27,8 @@ export const paidOrdersQuerySchema = z.strictObject({
  * `openedBy` field is an unknown field, 422).
  */
 export const openRegisterSchema = z.strictObject({ initialCash: money.min(0) });
+/** Optional close body: `leaveOpenOrders: true` confirms that open orders pass to the next register. */
+export const closeRegisterSchema = z.strictObject({ leaveOpenOrders: z.boolean().optional() });
 export const createCashTransactionSchema = z.strictObject({
   amount: money.positive(),
   type: z.enum(CASH_TRANSACTION_TYPES),
@@ -69,6 +71,11 @@ export class CashRegister {
 
 export class OpenRegisterRequest {
   @ApiProperty({ minimum: 0 }) initialCash!: number;
+}
+
+export class CloseRegisterRequest {
+  @ApiPropertyOptional({ description: 'Close even though the restaurant has open orders; they stay open for the next register.' })
+  leaveOpenOrders?: boolean;
 }
 
 export class CreateCashTransactionRequest {

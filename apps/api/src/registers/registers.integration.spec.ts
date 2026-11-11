@@ -18,7 +18,12 @@ const r = {
   legacyOrder: '9a000000-0000-0000-0000-000000000011',
   legacyTx: '9a000000-0000-0000-0000-000000000021',
   cashTx: '9a000000-0000-0000-0000-000000000031',
+  openOrder1: '9a000000-0000-0000-0000-000000000041',
+  openOrder2: '9a000000-0000-0000-0000-000000000042',
 } as const;
+
+const OPEN_ORDERS_MANY = 'Hay 2 órdenes abiertas. Cóbralas o cancélalas, o confirma que pasan a la siguiente caja.';
+const OPEN_ORDERS_ONE = 'Hay 1 orden abierta. Cóbrala o cancélala, o confirma que pasa a la siguiente caja.';
 
 const REGISTER_KEYS = ['closingTimestamp', 'createdAt', 'finalCash', 'id', 'initialCash', 'openedBy', 'openingTimestamp', 'status', 'updatedAt'];
 const CASH_TX_KEYS = ['amount', 'cashRegisterId', 'description', 'id', 'timestamp', 'type'];
@@ -247,6 +252,33 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
       expect(foreign.body.code).toBe('P0002');
     });
 
+    it('answers 409 open_orders while the restaurant has open orders and keeps the register open', async () => {
+      // The shared fixtures carry open orders; only this spec's orders are counted from here on.
+      await db(`UPDATE orders SET status = 'cancelled' WHERE status IN ('active', 'kitchen', 'delivered')`);
+      await db(
+        `INSERT INTO orders (id, status, subtotal, tax, tax_percentage, total, restaurant_id) VALUES
+           ($1, 'kitchen', 1000, 0, 0, 1000, $3), ($2, 'delivered', 2000, 0, 0, 2000, $3)`,
+        [r.openOrder1, r.openOrder2, fixtures.restaurantA],
+      );
+      const many = await cashierA().post(`/api/registers/${openId}/close`);
+      expect(many.status).toBe(409);
+      expect(many.body).toEqual({ statusCode: 409, error: 'Conflict', message: OPEN_ORDERS_MANY, code: 'open_orders', count: 2 });
+      await db(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [r.openOrder2]);
+      const one = await cashierA().post(`/api/registers/${openId}/close`, { leaveOpenOrders: false });
+      expect(one.status).toBe(409);
+      expect(one.body).toEqual({ statusCode: 409, error: 'Conflict', message: OPEN_ORDERS_ONE, code: 'open_orders', count: 1 });
+      expect(await db('SELECT status, closing_timestamp FROM cash_registers WHERE id = $1', [openId])).toEqual([
+        { status: 'open', closing_timestamp: null },
+      ]);
+    });
+
+    it('validates the close body (unknown keys are 422)', async () => {
+      for (const body of [{ leaveOpen: true }, { leaveOpenOrders: 'yes' }]) {
+        expect((await cashierA().post(`/api/registers/${openId}/close`, body)).status).toBe(422);
+      }
+      await db(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [r.openOrder1]);
+    });
+
     it('closes through close_register and returns the server closingTimestamp', async () => {
       const res = await cashierA().post(`/api/registers/${openId}/close`);
       expect(res.status).toBe(200);
@@ -271,6 +303,19 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
       expect(cash.status).toBe(409);
       expect(cash.body.message).toBe('Register is closed');
       expect((await cashierA().post('/api/registers/open', { initialCash: 0 })).status).toBe(201);
+    });
+
+    it('closes with leaveOpenOrders: true and leaves the orders open; a replay keeps already_closed', async () => {
+      const [{ id }] = await db<{ id: string }>(`SELECT id FROM cash_registers WHERE restaurant_id = $1 AND status = 'open'`, [fixtures.restaurantA]);
+      await db(`UPDATE orders SET status = 'active' WHERE id = $1`, [r.openOrder1]);
+      expect((await cashierA().post(`/api/registers/${id}/close`)).status).toBe(409);
+      const res = await cashierA().post(`/api/registers/${id}/close`, { leaveOpenOrders: true });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ status: 'closed', cashRegisterId: id });
+      expect(await db('SELECT status FROM orders WHERE id = $1', [r.openOrder1])).toEqual([{ status: 'active' }]);
+      const replay = await cashierA().post(`/api/registers/${id}/close`);
+      expect(replay.status).toBe(200);
+      expect(replay.body.status).toBe('already_closed');
     });
   });
 });

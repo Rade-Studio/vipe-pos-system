@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,16 @@ import {
 } from "@/lib/payments/register-summary"
 import { createSingleFlight } from "@/lib/payments/single-flight"
 import { AlertTriangle, Loader2 } from "lucide-react"
+import { VoidFlow } from "@/components/voids/VoidFlow"
+import type { VoidTarget } from "@/components/voids/flow"
+import { getByStatus, type OrderDto } from "@/lib/api/orders"
+import { openOrdersConflictOf } from "@/lib/api/payments"
+import {
+  OPEN_ORDER_STATUSES,
+  OpenOrdersList,
+  cancelTarget,
+  leaveOpenOrdersLabel,
+} from "./close-register/OpenOrdersList"
 
 interface CloseRegisterDialogProps {
   open: boolean
@@ -50,6 +60,11 @@ interface CloseRegisterDialogProps {
  *   6. legacy block only when `hasLegacy(summary)`
  *   7. success screen showing the server `final_cash`
  *
+ * Open orders (ordenes-abiertas-caja S2) are listed above the preview, each
+ * cancellable through the audited VoidFlow; with any left, the close needs
+ * the "Dejar N órdenes abiertas" confirmation and sends `leaveOpenOrders`
+ * (the API answers 409 open_orders otherwise, shown here on a race).
+ *
  * The confirm button is gated by `createSingleFlight` so a double-click
  * cannot fire two `close_register` calls back-to-back (the RPC would
  * idempotently no-op the second, but the brief spinner flicker is still
@@ -67,11 +82,35 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
   )
   const { data: preview, isLoading: loadingPreview } = useRegisterSummary(ids)
 
+  const [openOrders, setOpenOrders] = useState<OrderDto[] | null>(null)
+  const [leaveOpen, setLeaveOpen] = useState(false)
+  const [conflict, setConflict] = useState<string | null>(null)
+  const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
+
+  const loadOpenOrders = useCallback(async () => {
+    try {
+      setOpenOrders(await getByStatus(OPEN_ORDER_STATUSES, { include: ["table", "waiter"] }))
+    } catch {
+      setOpenOrders([])
+      toast.error("No se pudieron cargar las órdenes abiertas")
+    }
+    setLeaveOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    setConflict(null)
+    void loadOpenOrders()
+  }, [open, loadOpenOrders])
+
+  const openCount = openOrders?.length ?? 0
+
   const handleClose = async () => {
     const flight = closeFlight.run(async () => {
       setRunning(true)
+      setConflict(null)
       try {
-        const result = await closeRegister()
+        const result = await closeRegister(openCount > 0 ? { leaveOpenOrders: true } : undefined)
         if (!result) {
           toast.error("No se pudo cerrar la caja")
           return
@@ -81,6 +120,11 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
           `La caja ha sido cerrada correctamente con un total de ${formatCurrency(result.totalSales)}`,
         )
         if (onSuccess) onSuccess(result)
+      } catch (error) {
+        const openOrdersConflict = openOrdersConflictOf(error)
+        if (!openOrdersConflict) throw error
+        setConflict(openOrdersConflict.message)
+        await loadOpenOrders()
       } finally {
         setRunning(false)
       }
@@ -128,6 +172,31 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
         <div className="py-4 space-y-4">
           <p>¿Está seguro que desea cerrar la caja?</p>
 
+          {conflict && (
+            <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+              {conflict}
+            </p>
+          )}
+
+          {openCount > 0 && openOrders && (
+            <div className="space-y-2">
+              <h3 className="font-semibold">Órdenes abiertas</h3>
+              <p className="text-sm text-muted-foreground">
+                Cóbralas o cancélalas antes de cerrar, o confirma que pasan a la siguiente caja.
+              </p>
+              <OpenOrdersList orders={openOrders} now={Date.now()} onCancel={(order) => setVoidTarget(cancelTarget(order))} />
+              <label className="flex min-h-[44px] items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5"
+                  checked={leaveOpen}
+                  onChange={(event) => setLeaveOpen(event.target.checked)}
+                />
+                {leaveOpenOrdersLabel(openCount)}
+              </label>
+            </div>
+          )}
+
           {preview ? (
             <CloseSummaryView summary={preview} heading="Vista Previa del Cierre" compact />
           ) : loadingPreview ? (
@@ -143,11 +212,19 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={running}>
             Cancelar
           </Button>
-          <Button onClick={handleClose} disabled={running || !preview}>
+          <Button
+            onClick={handleClose}
+            disabled={running || !preview || openOrders === null || (openCount > 0 && !leaveOpen)}
+          >
             {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Cerrar Caja
           </Button>
         </DialogFooter>
+        <VoidFlow
+          target={voidTarget}
+          onClose={() => setVoidTarget(null)}
+          onDone={() => void loadOpenOrders()}
+        />
       </DialogContent>
     </Dialog>
   )

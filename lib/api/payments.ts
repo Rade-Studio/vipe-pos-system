@@ -232,12 +232,26 @@ export interface CloseRegisterResult {
 }
 
 /** `close_register`: a replay answers `already_closed` with the stored values. */
-export function closeRegisterRpc(cashRegisterId: string): Promise<CloseRegisterResult> {
+export function closeRegisterRpc(
+  cashRegisterId: string,
+  options: { leaveOpenOrders?: boolean } = {},
+): Promise<CloseRegisterResult> {
   return call(async () => {
-    const { data } = await api.POST("/api/registers/{id}/close", byId(cashRegisterId))
+    // The body goes only with the confirmation: without open orders the close needs none.
+    const request = options.leaveOpenOrders
+      ? { ...byId(cashRegisterId), body: { leaveOpenOrders: true } }
+      : byId(cashRegisterId)
+    const { data } = await api.POST("/api/registers/{id}/close", request)
     const result = required(data)
     return { ...result, closingTimestamp: new Date(result.closingTimestamp) }
   })
+}
+
+/** The close's 409 `open_orders` (ordenes-abiertas-caja S1): its message and count, or null for any other error. */
+export function openOrdersConflictOf(error: unknown): { count: number; message: string } | null {
+  const cause = error instanceof PaymentServiceError ? error.cause : error
+  if (!(cause instanceof ApiError) || cause.status !== 409 || cause.body.code !== "open_orders") return null
+  return { count: Number(cause.body.count), message: cause.message }
 }
 
 // ---- Payments ledger reads ---------------------------------------------------------------
