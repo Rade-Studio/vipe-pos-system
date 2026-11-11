@@ -8,8 +8,8 @@ import type { Table, TableStatus } from "@/types"
  * Tables and the waiters directory through the API (T8b). The server sets
  * every `updated_at` (no client clock reaches `mergeTableList`'s out-of-order
  * guard) and owns the release guard: releasing a table in kitchen, delivered,
- * or served answers 409 `Table cannot be released while <status>`; releasing a
- * reserved table cancels the reservation and assigning one seats it.
+ * or served answers 409 `La mesa no se puede liberar mientras está <estado>`;
+ * releasing a reserved table cancels the reservation and assigning one seats it.
  */
 
 type Schemas = components["schemas"]
@@ -89,7 +89,12 @@ export async function create(body: { number: number; status?: TableStatus } & Pa
   return required(data)
 }
 
-/** Admin. `status: available` also clears the waiter unless `waiterId` is given. */
+/**
+ * Admin. `status: available` also clears the waiter unless `waiterId` is given.
+ * A status change must agree with the orders: 409 when it sets kitchen or
+ * served on a table without an open order, or available or reserved while one
+ * is open; an unchanged status (a rename) always passes.
+ */
 export async function update(tableId: string, body: UpdateTableBody): Promise<TableDto> {
   const { data } = await api.PATCH("/api/tables/{id}", { ...byId(tableId), body })
   return required(data)
@@ -114,7 +119,7 @@ export async function saveLayout(tables: TableLayoutDto[]): Promise<TableDto[]> 
   return required(data)
 }
 
-/** Admin. 409 `Table has open orders` while any order of the table is not paid. */
+/** Admin. 409 `La mesa tiene órdenes abiertas` while any order of the table is not paid. */
 async function deleteTable(tableId: string): Promise<void> {
   await api.DELETE("/api/tables/{id}", byId(tableId))
 }

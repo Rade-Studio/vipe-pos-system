@@ -8,6 +8,26 @@ export type TableStatus = (typeof TABLE_STATUSES)[number];
  * `delivered` is not a table status the app sets, but the guard listed it.
  */
 export const UNRELEASABLE_STATUSES: readonly string[] = ['kitchen', 'delivered', 'served'];
+/** Only an open order puts a table here (orders flows, pay_order, cancel_order); PATCH refuses them on an empty table. */
+export const ORDER_STATUSES: readonly string[] = ['kitchen', 'served'];
+/** PATCH refuses these while the table has an open order, so the table never says "libre" over an unpaid order. */
+export const NO_ORDER_STATUSES: readonly string[] = ['available', 'reserved'];
+/** Statuses as the 409 messages say them ("mientras está servida"). */
+export const STATUS_WORDS: Record<string, string> = {
+  available: 'libre',
+  reserved: 'reservada',
+  occupied: 'ocupada',
+  kitchen: 'en cocina',
+  served: 'servida',
+  delivered: 'entregada',
+};
+/** 409 messages of the tables endpoints, in the language the screens show them. */
+export const TABLE_MESSAGES = {
+  openOrders: 'La mesa tiene órdenes abiertas',
+  statusNeedsOrder: 'La mesa no tiene una orden abierta: solo el flujo de pedidos la pone en cocina o servida.',
+  statusHasOrder: 'La mesa tiene una orden abierta: cóbrala o cancélala antes de dejarla libre o reservada.',
+  cannotRelease: (status: string) => `La mesa no se puede liberar mientras está ${STATUS_WORDS[status] ?? status}`,
+} as const;
 
 /** tables_reservation_name_check (0022): trimmed, 1..80 characters. */
 export const RESERVATION_NAME_MAX = 80;

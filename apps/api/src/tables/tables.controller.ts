@@ -75,6 +75,10 @@ export class TablesController {
   @ApiBody({ type: UpdateTableRequest })
   @ApiOkResponse({ type: Table })
   @ApiNotFoundResponse()
+  @ApiConflictResponse({
+    description:
+      'Status change refused: kitchen or served on a table without an open order, available or reserved while one is open.',
+  })
   update(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Table> {
     return this.tables.update(parseInput(idParamSchema, id), parseInput(updateTableSchema, body), req.profile!.id);
   }
@@ -84,7 +88,7 @@ export class TablesController {
   @HttpCode(204)
   @ApiNoContentResponse()
   @ApiNotFoundResponse()
-  @ApiConflictResponse({ description: 'Table has open orders.' })
+  @ApiConflictResponse({ description: 'La mesa tiene órdenes abiertas.' })
   remove(@Param('id') id: string): Promise<void> {
     return this.tables.remove(parseInput(idParamSchema, id));
   }

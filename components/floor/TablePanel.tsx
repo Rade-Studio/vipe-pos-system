@@ -39,7 +39,7 @@ interface TablePanelProps {
   children?: ReactNode
 }
 
-/** The API refuses to release these (409 `Table cannot be released while <status>`). */
+/** The API refuses to release these (409 `La mesa no se puede liberar mientras está <estado>`). */
 const LOCKED = new Set(["kitchen", "served"])
 
 /**

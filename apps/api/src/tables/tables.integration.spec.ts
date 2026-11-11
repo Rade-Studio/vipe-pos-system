@@ -22,6 +22,10 @@ const t = {
   zoneB: 'f9100000-0000-0000-0000-0000000000b1',
 } as const;
 
+const NEEDS_ORDER = 'La mesa no tiene una orden abierta: solo el flujo de pedidos la pone en cocina o servida.';
+const HAS_ORDER = 'La mesa tiene una orden abierta: cóbrala o cancélala antes de dejarla libre o reservada.';
+const STATUS_WORDS: Record<string, string> = { kitchen: 'en cocina', served: 'servida', reserved: 'reservada' };
+
 const TABLE_KEYS = [
   'createdAt',
   'h',
@@ -144,10 +148,38 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       expect(await tableRow(t.reserved)).toMatchObject({ number: 5, waiter_id: t.waiter2Profile });
     });
 
+    it.each(['kitchen', 'served'])('answers 409 for status %s on a table without an open order and keeps it', async (status) => {
+      const [before] = await db<{ updated_at: Date }>('SELECT updated_at FROM tables WHERE id = $1', [t.free]);
+      const res = await adminA().patch(`/api/tables/${t.free}`, { status });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: NEEDS_ORDER });
+      expect(await tableRow(t.free)).toEqual({ status: 'available', waiter_id: null, number: 1 });
+      const [after] = await db<{ updated_at: Date }>('SELECT updated_at FROM tables WHERE id = $1', [t.free]);
+      expect(after.updated_at.getTime()).toBe(before.updated_at.getTime());
+    });
+
+    it.each(['available', 'reserved'])('answers 409 for status %s while the table has an open order and keeps it', async (status) => {
+      const res = await adminA().patch(`/api/tables/${t.kitchen}`, { status, number: 30 });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: HAS_ORDER });
+      expect(await tableRow(t.kitchen)).toEqual({ status: 'kitchen', waiter_id: fixtures.waiterA.profileId, number: 3 });
+    });
+
+    it('accepts an unchanged status with a rename, and kitchen <-> served while an order is open', async () => {
+      const renamed = await adminA().patch(`/api/tables/${t.kitchen}`, { number: 30, status: 'kitchen' });
+      expect(renamed.status).toBe(200);
+      expect(renamed.body).toMatchObject({ number: 30, status: 'kitchen' });
+      expect((await adminA().patch(`/api/tables/${t.kitchen}`, { status: 'served' })).body).toMatchObject({ status: 'served' });
+      expect((await adminA().patch(`/api/tables/${t.kitchen}`, { status: 'kitchen', number: 3 })).status).toBe(200);
+      expect(await tableRow(t.kitchen)).toEqual({ status: 'kitchen', waiter_id: fixtures.waiterA.profileId, number: 3 });
+      expect((await adminA().patch(`/api/tables/${t.free}`, { status: 'occupied' })).body).toMatchObject({ status: 'occupied' });
+      expect((await adminA().patch(`/api/tables/${t.free}`, { status: 'available' })).body).toMatchObject({ status: 'available' });
+    });
+
     it('answers 409 Table has open orders and keeps the table', async () => {
       const res = await adminA().delete(`/api/tables/${t.kitchen}`);
       expect(res.status).toBe(409);
-      expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: 'Table has open orders' });
+      expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: 'La mesa tiene órdenes abiertas' });
       expect(await tableRow(t.kitchen)).toBeDefined();
     });
 
@@ -278,7 +310,7 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       expect(res.body).toEqual({
         statusCode: 409,
         error: 'Conflict',
-        message: `Table cannot be released while ${status}`,
+        message: `La mesa no se puede liberar mientras está ${STATUS_WORDS[status]}`,
       });
       expect(await tableRow(id)).toMatchObject({ status });
       expect((await adminA().post(`/api/tables/${id}/release`, {})).status).toBe(409);
@@ -288,7 +320,7 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       await db("UPDATE tables SET status = 'delivered' WHERE id = $1", [t.busy]);
       const res = await waiterA().post(`/api/tables/${t.busy}/release`, {});
       expect(res.status).toBe(409);
-      expect(res.body.message).toBe('Table cannot be released while delivered');
+      expect(res.body.message).toBe('La mesa no se puede liberar mientras está entregada');
     });
 
     it('lets an admin force the release', async () => {

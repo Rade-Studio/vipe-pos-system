@@ -825,7 +825,7 @@ describe("WaiterView — sending through the API (T8b)", () => {
     env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
     useCartStore.setState({ cartItems: {} })
     env.releaseTable.mockRejectedValueOnce(
-      new ApiError(409, "Conflict", "Table cannot be released while kitchen"),
+      new ApiError(409, "Conflict", "La mesa no se puede liberar mientras está en cocina"),
     )
     renderView()
     await flush()
@@ -850,7 +850,7 @@ describe("WaiterView — sending through the API (T8b)", () => {
 
     expect(env.releaseTable).toHaveBeenCalledWith("t-1", {})
     expect(env.toastFn).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Error", description: "Table cannot be released while kitchen" }),
+      expect.objectContaining({ title: "Error", description: "La mesa no se puede liberar mientras está en cocina" }),
     )
   })
 })

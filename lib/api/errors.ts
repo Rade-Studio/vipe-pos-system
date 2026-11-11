@@ -40,8 +40,9 @@ export class ApiError extends Error {
 }
 
 /**
- * The API's own words for a business conflict (409: `Table has open orders`,
- * `Order is paid`, `Table cannot be released while kitchen`...); anything else
+ * The API's own words for a business conflict (409: `La mesa tiene órdenes
+ * abiertas`, `Order is paid`, `La mesa no se puede liberar mientras está en
+ * cocina`...); anything else
  * (network, 5xx, validation) gets the screen's generic `fallback`.
  */
 export function conflictMessage(error: unknown, fallback: string): string {
