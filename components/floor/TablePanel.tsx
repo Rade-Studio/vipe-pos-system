@@ -39,7 +39,7 @@ interface TablePanelProps {
   children?: ReactNode
 }
 
-/** The API refuses to release these (409 `Table cannot be released while <status>`). */
+/** The API refuses to release these (409 `La mesa no se puede liberar mientras está <estado>`). */
 const LOCKED = new Set(["kitchen", "served"])
 
 /**
@@ -166,7 +166,7 @@ export function TablePanel({
               </Button>
             )}
             {!canRelease && (
-              <p className="col-span-2 text-xs leading-snug text-muted-fg">No se puede liberar en cocina o servida.</p>
+              <p className="col-span-2 text-xs leading-snug text-muted-fg">Se libera sola cuando caja cobra o cancela la orden.</p>
             )}
           </>
         )}

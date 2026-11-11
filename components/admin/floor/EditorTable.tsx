@@ -15,7 +15,7 @@ interface EditorTableProps {
   onKeyDown: (tableId: string, event: KeyboardEvent<HTMLButtonElement>) => void
 }
 
-const TOP_RADIUS = { round: "rounded-full", bar: "rounded-pill", square: "rounded-[18px]", rect: "rounded-[18px]" } as const
+const TOP_RADIUS = { round: "rounded-full", bar: "rounded-[8px]", square: "rounded-[18px]", rect: "rounded-[18px]" } as const
 
 /** "Mesa 4, Redonda, 4 sillas, inactiva". */
 export const editorTableName = (table: Table): string => editAccessibleName(table) + (table.isActive === false ? ", inactiva" : "")

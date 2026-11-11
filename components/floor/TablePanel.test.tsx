@@ -69,3 +69,12 @@ describe("FloorTable — a reserved tile names the reservation (T2, S2)", () => 
     expect(screen.getByTestId("table-status")).toHaveTextContent("Familia López · 8:30 p. m.")
   })
 })
+
+describe("TablePanel — release (QA S1, L3)", () => {
+  it.each(["kitchen", "served"] as const)("a %s table has no release button and says caja frees it", (status) => {
+    renderPanel(table({ status, waiter: "w-1" }))
+
+    expect(screen.queryByRole("button", { name: "Liberar mesa" })).not.toBeInTheDocument()
+    expect(screen.getByText("Se libera sola cuando caja cobra o cancela la orden.")).toBeInTheDocument()
+  })
+})

@@ -5,9 +5,12 @@ import { toIso } from '../common/validation';
 import { UnitOfWork } from '../db/unit-of-work';
 import {
   type createTableSchema,
+  NO_ORDER_STATUSES,
+  ORDER_STATUSES,
   type saveLayoutSchema,
   type reserveTableSchema,
   type Table,
+  TABLE_MESSAGES,
   type TableShape,
   UNRELEASABLE_STATUSES,
   type updateTableSchema,
@@ -152,10 +155,22 @@ export class TablesService {
   /**
    * status 'reserved' needs reservationName unless the table is already
    * reserved (422 reservation_name_required); the admin becomes reserved_by.
-   * Any other status clears the reservation.
+   * Any other status clears the reservation. A status change must agree with
+   * the orders (QA S7, S8): kitchen and served only with an open order,
+   * available and reserved only without one. The screens always send the
+   * status, so an unchanged status (a rename) passes.
    */
   async update(id: string, input: z.infer<typeof updateTableSchema>, callerProfileId: string): Promise<Table> {
     const table = await this.lock(id);
+    if (input.status !== undefined && input.status !== table.status) {
+      const open = await this.hasOpenOrder(id);
+      if (!open && ORDER_STATUSES.includes(input.status)) {
+        throw new ConflictException(TABLE_MESSAGES.statusNeedsOrder);
+      }
+      if (open && NO_ORDER_STATUSES.includes(input.status)) {
+        throw new ConflictException(TABLE_MESSAGES.statusHasOrder);
+      }
+    }
     const reserved = (input.status ?? table.status) === RESERVED;
     const touchesReservation = input.reservationName !== undefined || input.reservationArrivalAt !== undefined;
     if (touchesReservation && !reserved) {
@@ -193,10 +208,8 @@ export class TablesService {
    */
   async remove(id: string): Promise<void> {
     await this.lock(id);
-    const [open] = await this.rows(sql`
-      SELECT 1 FROM public.orders WHERE table_id = ${id} AND status IN ('active', 'kitchen', 'delivered') LIMIT 1`);
-    if (open) {
-      throw new ConflictException('Table has open orders');
+    if (await this.hasOpenOrder(id)) {
+      throw new ConflictException(TABLE_MESSAGES.openOrders);
     }
     await this.uow.db.execute(sql`DELETE FROM public.tables WHERE id = ${id}`);
   }
@@ -230,11 +243,15 @@ export class TablesService {
     return this.get(id);
   }
 
-  /** Release guard of WaiterView, now on the server; only an admin may force it. Releasing a reserved table cancels the reservation. */
+  /** Release guard of WaiterView, now on the server; only an admin may force it. Releasing a reserved table cancels the reservation; a table with an open order is never released (409). */
   async release(id: string, force: boolean, callerRole: string): Promise<Table> {
     const table = await this.lock(id);
     if (UNRELEASABLE_STATUSES.includes(table.status) && !(force && callerRole === 'admin')) {
-      throw new ConflictException(`Table cannot be released while ${table.status}`);
+      throw new ConflictException(TABLE_MESSAGES.cannotRelease(table.status));
+    }
+    // Not even an admin's force frees a table over an unpaid order (QA S10).
+    if (await this.hasOpenOrder(id)) {
+      throw new ConflictException(TABLE_MESSAGES.releaseHasOrder);
     }
     await this.uow.db.execute(sql`
       UPDATE public.tables SET waiter_id = NULL, status = 'available', ${CLEAR_RESERVATION}, updated_at = now() WHERE id = ${id}`);
@@ -274,6 +291,12 @@ export class TablesService {
       throw new NotFoundException('Table not found');
     }
     return toTable(row);
+  }
+
+  private async hasOpenOrder(id: string): Promise<boolean> {
+    const [open] = await this.rows(sql`
+      SELECT 1 FROM public.orders WHERE table_id = ${id} AND status IN ('active', 'kitchen', 'delivered') LIMIT 1`);
+    return !!open;
   }
 
   private async lock(id: string): Promise<{ status: string }> {

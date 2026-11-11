@@ -615,7 +615,7 @@ function FlowBody({
           ) : (
             <>
             {!tiles.some((tile) => tile.hasPin) && (
-              <Alert tone="warning">Nadie tiene PIN de supervisor. El admin lo asigna en Configuración → Personal.</Alert>
+              <Alert tone="warning">Nadie tiene PIN de supervisor. El admin lo asigna en Configuración → Acceso de meseros.</Alert>
             )}
             {tiles.length > 0 && (
             <Options label="Quién autoriza">
@@ -648,7 +648,7 @@ function FlowBody({
           )}
           {problem?.kind === "self" && (
             <Alert tone="danger">
-              <b>Debe autorizar otra persona.</b> Tu PIN no sirve para tus propias anulaciones. El admin puede permitirlo en Configuración.
+              <b>Debe autorizar otra persona.</b> Tu PIN no sirve para tus propias anulaciones. El admin puede permitirlo en Configuración → Acceso de meseros.
             </Alert>
           )}
           <p className="text-xs text-muted-fg">Solo admin y cajeros con PIN pueden autorizar.</p>

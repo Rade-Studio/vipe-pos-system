@@ -120,12 +120,14 @@ export function freeSpot(tables: Table[], size: { w: number; h: number; shape?: 
 export const nextTableNumber = (tables: Table[]): number => tables.reduce((max, table) => Math.max(max, table.number), 0) + 1
 
 /**
- * An inspector edit: sizes within MIN..MAX_SIZE, round and square tables kept
- * square, rotation 0..359, seats 0..20, and the table moved back inside the
- * zone when it grew.
+ * An inspector edit: a new shape starts from its own default size (a bar's
+ * size never leaks into a round table and back), sizes within MIN..MAX_SIZE,
+ * round and square tables kept square, rotation 0..359, seats 0..20, and the
+ * table moved back inside the zone when it grew.
  */
 export function editTable(table: Table, edit: LayoutEdit, aspect: number): Table {
-  const next: Table = { ...table, ...edit }
+  const reshaped = edit.shape !== undefined && edit.shape !== (table.shape ?? "square")
+  const next: Table = { ...table, ...(reshaped && edit.shape ? SHAPE_DEFAULTS[edit.shape] : {}), ...edit }
   if (edit.w !== undefined) next.w = round4(clamp(edit.w ?? 0.1, MIN_SIZE, MAX_SIZE))
   if (edit.h !== undefined) next.h = round4(clamp(edit.h ?? 0.1, MIN_SIZE, MAX_SIZE))
   if (keepsSquare(next.shape)) next.h = next.w

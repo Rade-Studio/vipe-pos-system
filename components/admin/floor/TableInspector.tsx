@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useId, useState, type ReactNode } from "react"
-import { Trash2, X } from "lucide-react"
+import { useEffect, useId, useRef, useState, type ReactNode, type SelectHTMLAttributes } from "react"
+import { ChevronDown, Trash2, X } from "lucide-react"
 import type { Profile, Table, TableShape, TableStatus } from "@/types"
 import type { ZoneDto } from "@/lib/api/zones"
 import { cn } from "@/lib/utils"
 import { MAX_SEATS, MAX_SIZE, MIN_SIZE, SHAPE_LABELS, type LayoutEdit } from "@/lib/floor/editor"
-import { TABLE_STATUS } from "@/lib/floor/layout"
+import { manualStatusOptions } from "@/lib/floor/layout"
+import { NAME_MAX, validateReservation } from "@/lib/tables/reservation"
 import { fromCm, hasDimensions, sizeText, toCm, yFromCm, yToCm, type ZoneUnits } from "@/lib/admin/floor/units"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,6 +18,15 @@ export interface TableData {
   number: number
   status: TableStatus
   waiterId: string | null
+  /** Sent only with status "reserved" (the API answers 422 without the name). */
+  reservationName?: string
+  reservationArrivalAt?: string
+}
+
+/** "20:30" of an ISO instant, for the time input (local clock). */
+function timeOfDay(iso: string): string {
+  const at = new Date(iso)
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`
 }
 
 interface TableInspectorProps {
@@ -29,7 +39,8 @@ interface TableInspectorProps {
   /** Switch "Activa" at once with PATCH /tables/:id (not part of the unsaved layout). */
   onSetActive: (isActive: boolean) => Promise<void>
   onPlace: () => void
-  onSaveData: (data: TableData) => Promise<void>
+  /** Resolves false when the save failed: the inspector goes back to the saved data. */
+  onSaveData: (data: TableData) => Promise<boolean>
   onDelete: () => Promise<void>
   onClose?: () => void
   className?: string
@@ -38,10 +49,23 @@ interface TableInspectorProps {
 const FIELD = "flex flex-col gap-1.5 text-sm"
 const LABEL = "text-xs font-medium text-muted-fg"
 const NATIVE_SELECT =
-  "h-11 w-full rounded-md border border-line bg-surface px-3 text-sm text-fg focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
+  "h-11 w-full appearance-none rounded-md border border-line bg-surface pl-3 pr-10 text-sm text-fg focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
 const SHAPES: TableShape[] = ["round", "square", "rect", "bar"]
 
-/** Integer input that reports only valid numbers. */
+/** Native select with its own chevron, clear of the right edge. */
+function NativeSelect(props: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div className="relative">
+      <select {...props} className={NATIVE_SELECT} />
+      <ChevronDown aria-hidden className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" />
+    </div>
+  )
+}
+
+/**
+ * Number input that reports only valid numbers. While typing it may be empty
+ * or partial; on blur it shows the current value again.
+ */
 function NumberField({
   label,
   value,
@@ -60,6 +84,12 @@ function NumberField({
   onValue: (value: number) => void
 }) {
   const id = useId()
+  const shown = Number.isFinite(value) ? String(value) : ""
+  const [text, setText] = useState<string | null>(null)
+  // A value changed from outside (undo, a failed save, clamping) replaces what was typed.
+  useEffect(() => {
+    setText((typed) => (typed !== null && Number.parseFloat(typed) === value ? typed : null))
+  }, [value])
   return (
     <div className={FIELD}>
       <label htmlFor={id} className={LABEL}>
@@ -70,15 +100,17 @@ function NumberField({
         type="number"
         inputMode="numeric"
         className="h-11 tabular-nums"
-        value={Number.isFinite(value) ? value : ""}
+        value={text ?? shown}
         min={min}
         max={max}
         step={step}
         disabled={disabled}
         onChange={(event) => {
+          setText(event.target.value)
           const next = Number.parseFloat(event.target.value)
           if (Number.isFinite(next)) onValue(next)
         }}
+        onBlur={() => setText(null)}
       />
     </div>
   )
@@ -116,13 +148,26 @@ export function TableInspector({
   const headingId = useId()
   const [data, setData] = useState<TableData>({ number: table.number, status: table.status, waiterId: table.waiter ?? null })
   const [savingData, setSavingData] = useState(false)
+  // S11: "Reservada" asks the name (required) and the arrival (optional), as the table list does.
+  const savedTime = table.status === "reserved" && table.reservationArrivalAt ? timeOfDay(table.reservationArrivalAt) : ""
+  const [reservationName, setReservationName] = useState(table.reservationName ?? "")
+  const [reservationTime, setReservationTime] = useState(savedTime)
+  const [reservationError, setReservationError] = useState<{ field: "name" | "time"; message: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  // Clicks that land before the disabled state renders must not delete twice.
+  const deletingRef = useRef(false)
   const [savingActive, setSavingActive] = useState(false)
 
   useEffect(() => {
     setData({ number: table.number, status: table.status, waiterId: table.waiter ?? null })
+    setReservationName(table.reservationName ?? "")
+    setReservationTime(savedTime)
+    setReservationError(null)
     setConfirmDelete(false)
-  }, [table.id, table.number, table.status, table.waiter])
+  }, [table.id, table.number, table.status, table.waiter, table.reservationName, savedTime])
+
+  const reserving = data.status === "reserved"
 
   const shape = table.shape ?? "square"
   const square = shape === "round" || shape === "square"
@@ -285,8 +330,7 @@ export function TableInspector({
       <Section title="Zona">
         <label className={FIELD}>
           <span className={LABEL}>Zona</span>
-          <select
-            className={NATIVE_SELECT}
+          <NativeSelect
             value={zoneValue}
             onChange={(event) => event.target.value && onEdit({ zoneId: event.target.value })}
           >
@@ -297,7 +341,7 @@ export function TableInspector({
                 {zone.active ? "" : " (inactiva)"}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       </Section>
 
@@ -333,22 +377,47 @@ export function TableInspector({
         />
         <label className={FIELD}>
           <span className={LABEL}>Estado</span>
-          <select
-            className={NATIVE_SELECT}
+          <NativeSelect
             value={data.status}
             onChange={(event) => setData((prev) => ({ ...prev, status: event.target.value as TableStatus }))}
           >
-            {(Object.keys(TABLE_STATUS) as TableStatus[]).map((status) => (
-              <option key={status} value={status}>
-                {TABLE_STATUS[status].label}
+            {manualStatusOptions(table.status).map((option) => (
+              <option key={option.value} value={option.value} disabled={option.disabled}>
+                {option.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
+        {reserving && (
+          <>
+            <label className={FIELD}>
+              <span className={LABEL}>¿A nombre de quién?</span>
+              <Input
+                className="h-11"
+                autoComplete="off"
+                maxLength={NAME_MAX}
+                value={reservationName}
+                aria-invalid={reservationError?.field === "name" ? true : undefined}
+                onChange={(event) => setReservationName(event.target.value)}
+              />
+              {reservationError?.field === "name" && <span className="text-xs text-destructive">{reservationError.message}</span>}
+            </label>
+            <label className={FIELD}>
+              <span className={LABEL}>Hora de llegada (opcional, hoy)</span>
+              <Input
+                type="time"
+                className="h-11"
+                value={reservationTime}
+                aria-invalid={reservationError?.field === "time" ? true : undefined}
+                onChange={(event) => setReservationTime(event.target.value)}
+              />
+              {reservationError?.field === "time" && <span className="text-xs text-destructive">{reservationError.message}</span>}
+            </label>
+          </>
+        )}
         <label className={FIELD}>
           <span className={LABEL}>Mesero</span>
-          <select
-            className={NATIVE_SELECT}
+          <NativeSelect
             value={data.waiterId ?? ""}
             onChange={(event) => setData((prev) => ({ ...prev, waiterId: event.target.value || null }))}
           >
@@ -361,16 +430,30 @@ export function TableInspector({
                 {waiter.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <Button
           variant="outline"
           className="h-11"
-          disabled={savingData}
+          disabled={savingData || (reserving && !reservationName.trim())}
           onClick={async () => {
+            let body: TableData = { number: data.number, status: data.status, waiterId: data.waiterId }
+            if (reserving) {
+              // An unchanged arrival is not sent again (it may be minutes ago by now).
+              const unchanged = savedTime !== "" && reservationTime === savedTime
+              const check = validateReservation({ name: reservationName, time: unchanged ? "" : reservationTime })
+              if (!check.ok) {
+                setReservationError({ field: check.field, message: check.message })
+                return
+              }
+              setReservationError(null)
+              body = { ...body, reservationName: check.body.name, ...(check.body.arrivalAt ? { reservationArrivalAt: check.body.arrivalAt } : {}) }
+            }
             setSavingData(true)
             try {
-              await onSaveData(data)
+              if (!(await onSaveData(body))) {
+                setData({ number: table.number, status: table.status, waiterId: table.waiter ?? null })
+              }
             } finally {
               setSavingData(false)
             }
@@ -388,8 +471,25 @@ export function TableInspector({
               <Button variant="outline" className="h-11 flex-1" onClick={() => setConfirmDelete(false)}>
                 Cancelar
               </Button>
-              <Button variant="destructive" className="h-11 flex-1" onClick={() => void onDelete()}>
-                Eliminar
+              <Button
+                variant="destructive"
+                className="h-11 flex-1"
+                disabled={deleting}
+                onClick={async () => {
+                  if (deletingRef.current) return
+                  deletingRef.current = true
+                  setDeleting(true)
+                  try {
+                    await onDelete()
+                  } finally {
+                    deletingRef.current = false
+                    setDeleting(false)
+                    // A refused delete closes the confirm: one message per attempt.
+                    setConfirmDelete(false)
+                  }
+                }}
+              >
+                {deleting ? "Eliminando…" : "Eliminar"}
               </Button>
             </div>
           </div>

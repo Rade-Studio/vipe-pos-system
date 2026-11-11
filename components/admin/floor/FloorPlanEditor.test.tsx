@@ -13,6 +13,7 @@ const env = vi.hoisted(() => ({
   calls: [] as { method: string; path: string; init?: any }[],
   errors: {} as Record<string, unknown>,
   zones: null as unknown[] | null,
+  tables: null as unknown[] | null,
 }))
 
 const tableDto = (id: string, number: number, extra: Record<string, unknown> = {}) => ({
@@ -56,7 +57,7 @@ vi.mock("@/lib/api/client", () => {
     env.calls.push({ method, path, init })
     const error = env.errors[`${method} ${path}`]
     if (error) throw error
-    if (method === "GET" && path === "/api/tables") return { data: TABLES }
+    if (method === "GET" && path === "/api/tables") return { data: env.tables ?? TABLES }
     if (method === "GET" && path === "/api/zones") return { data: env.zones ?? ZONES }
     if (method === "GET" && path === "/api/staff/waiters") return { data: [{ id: "w-1", name: "Ana Gómez", username: "ana" }] }
     if (method === "PUT" && path === "/api/tables/layout") {
@@ -104,6 +105,7 @@ beforeEach(() => {
   env.calls.length = 0
   env.errors = {}
   env.zones = null
+  env.tables = null
   toastMock.mockReset()
 })
 
@@ -227,6 +229,123 @@ describe("FloorPlanEditor — inspector", () => {
       params: { path: { id: "t-1" } },
       body: { number: 12, status: "available", waiterId: null },
     })
+  })
+
+  it("asks the reservation name when Estado is Reservada and sends it with the save", async () => {
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    expect(within(inspector).queryByLabelText("¿A nombre de quién?")).not.toBeInTheDocument()
+    fireEvent.change(within(inspector).getByLabelText("Estado"), { target: { value: "reserved" } })
+    const name = within(inspector).getByLabelText("¿A nombre de quién?")
+    const save = within(inspector).getByRole("button", { name: "Guardar datos" })
+    expect(save).toBeDisabled()
+    fireEvent.change(name, { target: { value: "  Familia López " } })
+    expect(save).toBeEnabled()
+    await act(async () => {
+      fireEvent.click(save)
+    })
+    expect(calls("PATCH", "/api/tables/{id}")[0].init).toEqual({
+      params: { path: { id: "t-1" } },
+      body: { number: 1, status: "reserved", waiterId: null, reservationName: "Familia López" },
+    })
+  })
+
+  it("hides the reservation fields and sends none when Estado goes back to Libre", async () => {
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    const status = within(inspector).getByLabelText("Estado")
+    fireEvent.change(status, { target: { value: "reserved" } })
+    fireEvent.change(within(inspector).getByLabelText("¿A nombre de quién?"), { target: { value: "Ana" } })
+    fireEvent.change(status, { target: { value: "available" } })
+    expect(within(inspector).queryByLabelText("¿A nombre de quién?")).not.toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(inspector).getByRole("button", { name: "Guardar datos" }))
+    })
+    expect(calls("PATCH", "/api/tables/{id}")[0].init).toEqual({
+      params: { path: { id: "t-1" } },
+      body: { number: 1, status: "available", waiterId: null },
+    })
+  })
+
+  it("lets a number field be emptied while typing and puts the value back on blur", async () => {
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    const rotation = within(inspector).getByLabelText("Rotación (°)")
+    fireEvent.change(rotation, { target: { value: "" } })
+    expect(rotation).toHaveValue(null)
+    fireEvent.blur(rotation)
+    expect(rotation).toHaveValue(0)
+    expect(screen.queryByText(/cambios? sin guardar/)).not.toBeInTheDocument()
+
+    const number = within(inspector).getByLabelText("Número")
+    fireEvent.change(number, { target: { value: "" } })
+    expect(number).toHaveValue(null)
+    fireEvent.change(number, { target: { value: "7" } })
+    fireEvent.blur(number)
+    expect(number).toHaveValue(7)
+  })
+
+  it("offers only Libre, Reservada and Ocupada as manual statuses", async () => {
+    env.tables = [tableDto("t-1", 1), tableDto("t-3", 3, { x: 0.8, status: "served" })]
+    await ready()
+    act(() => table(1).click())
+    const status = within(screen.getByRole("region", { name: "Mesa 1" })).getByLabelText("Estado")
+    expect(within(status).getAllByRole("option").map((option) => option.textContent)).toEqual(["Libre", "Reservada", "Ocupada"])
+
+    act(() => table(3).click())
+    const served = within(screen.getByRole("region", { name: "Mesa 3" })).getByLabelText("Estado")
+    expect(served).toHaveValue("served")
+    const options = within(served).getAllByRole("option") as HTMLOptionElement[]
+    expect(options.map((option) => [option.textContent, option.disabled])).toEqual([
+      ["Libre", false],
+      ["Reservada", false],
+      ["Ocupada", false],
+      ["Servida (la pone el pedido)", true],
+    ])
+  })
+
+  it("puts the saved data back and shows the API's 409 when Guardar datos fails", async () => {
+    const message = "La mesa tiene una orden abierta: cóbrala o cancélala antes de dejarla libre o reservada."
+    env.errors["PATCH /api/tables/{id}"] = new ApiError(409, "Conflict", message)
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    fireEvent.change(within(inspector).getByLabelText("Estado"), { target: { value: "reserved" } })
+    fireEvent.change(within(inspector).getByLabelText("¿A nombre de quién?"), { target: { value: "Ana" } })
+    fireEvent.change(within(inspector).getByLabelText("Número"), { target: { value: "12" } })
+    await act(async () => {
+      fireEvent.click(within(inspector).getByRole("button", { name: "Guardar datos" }))
+    })
+    expect(toastMock).toHaveBeenCalledTimes(1)
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ description: message, variant: "destructive" }))
+    expect(within(inspector).getByLabelText("Estado")).toHaveValue("available")
+    expect(within(inspector).getByLabelText("Número")).toHaveValue(1)
+    expect(table(1)).toBeInTheDocument()
+  })
+
+  it("deletes once per confirm and closes the confirm after the API's 409", async () => {
+    env.errors["DELETE /api/tables/{id}"] = new ApiError(409, "Conflict", "La mesa tiene órdenes abiertas")
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    act(() => within(inspector).getByRole("button", { name: "Eliminar mesa" }).click())
+    const confirm = within(inspector).getByRole("button", { name: "Eliminar" })
+    await act(async () => {
+      confirm.click()
+      confirm.click()
+      confirm.click()
+    })
+    expect(calls("DELETE", "/api/tables/{id}")).toHaveLength(1)
+    expect(toastMock).toHaveBeenCalledTimes(1)
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "No se puede eliminar", description: "La mesa tiene órdenes abiertas" }),
+    )
+    expect(within(inspector).queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument()
+    expect(within(inspector).getByRole("button", { name: "Eliminar mesa" })).toBeInTheDocument()
+    expect(table(1)).toBeInTheDocument()
   })
 })
 

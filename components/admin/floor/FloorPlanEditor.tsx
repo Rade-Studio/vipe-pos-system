@@ -270,14 +270,16 @@ export function FloorPlanEditor() {
     setSaveError(null)
   }
 
-  const saveData = async (tableId: string, data: TableData) => {
+  const saveData = async (tableId: string, data: TableData): Promise<boolean> => {
     try {
       const updated = tablesApi.toTable(await tablesApi.update(tableId, data))
       setBase((prev) => prev.map((table) => (table.id === tableId ? updated : table)))
       toast({ title: "Mesa actualizada", description: `La mesa ${updated.number} ha sido actualizada.` })
+      return true
     } catch (error) {
       log.error("Error al actualizar mesa:", { error: String(error) })
       toast({ title: "Error", description: conflictMessage(error, "No se pudo actualizar la mesa."), variant: "destructive" })
+      return false
     }
   }
 

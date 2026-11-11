@@ -2755,6 +2755,9 @@
           "404": {
             "description": ""
           },
+          "409": {
+            "description": "Status change refused: kitchen or served on a table without an open order, available or reserved while one is open."
+          },
           "422": {
             "description": "Invalid input, unknown fields or unknown waiter."
           }
@@ -2788,7 +2791,7 @@
             "description": ""
           },
           "409": {
-            "description": "Table has open orders."
+            "description": "La mesa tiene órdenes abiertas."
           },
           "422": {
             "description": "Invalid input, unknown fields or unknown waiter."
@@ -2947,7 +2950,7 @@
             "description": ""
           },
           "409": {
-            "description": "kitchen, delivered or served, unless an admin sends force: true."
+            "description": "kitchen, delivered or served, unless an admin sends force: true; always while the table has an open order."
           },
           "422": {
             "description": "Invalid input, unknown fields or unknown waiter."
@@ -11364,7 +11367,7 @@
           "force": {
             "type": "boolean",
             "default": false,
-            "description": "Admin only: release from kitchen, delivered or served."
+            "description": "Admin only: release from kitchen, delivered or served (never over an open order)."
           }
         }
       },

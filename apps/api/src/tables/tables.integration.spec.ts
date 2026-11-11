@@ -22,6 +22,11 @@ const t = {
   zoneB: 'f9100000-0000-0000-0000-0000000000b1',
 } as const;
 
+const NEEDS_ORDER = 'La mesa no tiene una orden abierta: solo el flujo de pedidos la pone en cocina o servida.';
+const HAS_ORDER = 'La mesa tiene una orden abierta: cóbrala o cancélala antes de dejarla libre o reservada.';
+const OPEN_ORDER_RELEASE = 'La mesa tiene una orden abierta: cóbrala o cancélala antes de liberarla.';
+const STATUS_WORDS: Record<string, string> = { kitchen: 'en cocina', served: 'servida', reserved: 'reservada' };
+
 const TABLE_KEYS = [
   'createdAt',
   'h',
@@ -144,10 +149,38 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       expect(await tableRow(t.reserved)).toMatchObject({ number: 5, waiter_id: t.waiter2Profile });
     });
 
+    it.each(['kitchen', 'served'])('answers 409 for status %s on a table without an open order and keeps it', async (status) => {
+      const [before] = await db<{ updated_at: Date }>('SELECT updated_at FROM tables WHERE id = $1', [t.free]);
+      const res = await adminA().patch(`/api/tables/${t.free}`, { status });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: NEEDS_ORDER });
+      expect(await tableRow(t.free)).toEqual({ status: 'available', waiter_id: null, number: 1 });
+      const [after] = await db<{ updated_at: Date }>('SELECT updated_at FROM tables WHERE id = $1', [t.free]);
+      expect(after.updated_at.getTime()).toBe(before.updated_at.getTime());
+    });
+
+    it.each(['available', 'reserved'])('answers 409 for status %s while the table has an open order and keeps it', async (status) => {
+      const res = await adminA().patch(`/api/tables/${t.kitchen}`, { status, number: 30 });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: HAS_ORDER });
+      expect(await tableRow(t.kitchen)).toEqual({ status: 'kitchen', waiter_id: fixtures.waiterA.profileId, number: 3 });
+    });
+
+    it('accepts an unchanged status with a rename, and kitchen <-> served while an order is open', async () => {
+      const renamed = await adminA().patch(`/api/tables/${t.kitchen}`, { number: 30, status: 'kitchen' });
+      expect(renamed.status).toBe(200);
+      expect(renamed.body).toMatchObject({ number: 30, status: 'kitchen' });
+      expect((await adminA().patch(`/api/tables/${t.kitchen}`, { status: 'served' })).body).toMatchObject({ status: 'served' });
+      expect((await adminA().patch(`/api/tables/${t.kitchen}`, { status: 'kitchen', number: 3 })).status).toBe(200);
+      expect(await tableRow(t.kitchen)).toEqual({ status: 'kitchen', waiter_id: fixtures.waiterA.profileId, number: 3 });
+      expect((await adminA().patch(`/api/tables/${t.free}`, { status: 'occupied' })).body).toMatchObject({ status: 'occupied' });
+      expect((await adminA().patch(`/api/tables/${t.free}`, { status: 'available' })).body).toMatchObject({ status: 'available' });
+    });
+
     it('answers 409 Table has open orders and keeps the table', async () => {
       const res = await adminA().delete(`/api/tables/${t.kitchen}`);
       expect(res.status).toBe(409);
-      expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: 'Table has open orders' });
+      expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: 'La mesa tiene órdenes abiertas' });
       expect(await tableRow(t.kitchen)).toBeDefined();
     });
 
@@ -278,7 +311,7 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       expect(res.body).toEqual({
         statusCode: 409,
         error: 'Conflict',
-        message: `Table cannot be released while ${status}`,
+        message: `La mesa no se puede liberar mientras está ${STATUS_WORDS[status]}`,
       });
       expect(await tableRow(id)).toMatchObject({ status });
       expect((await adminA().post(`/api/tables/${id}/release`, {})).status).toBe(409);
@@ -288,13 +321,32 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       await db("UPDATE tables SET status = 'delivered' WHERE id = $1", [t.busy]);
       const res = await waiterA().post(`/api/tables/${t.busy}/release`, {});
       expect(res.status).toBe(409);
-      expect(res.body.message).toBe('Table cannot be released while delivered');
+      expect(res.body.message).toBe('La mesa no se puede liberar mientras está entregada');
     });
 
     it('lets an admin force the release', async () => {
       const res = await adminA().post(`/api/tables/${t.served}/release`, { force: true });
       expect(res.status).toBe(200);
       expect(await tableRow(t.served)).toEqual({ status: 'available', waiter_id: null, number: 4 });
+    });
+
+    it('answers 409 when releasing a table with an open order, even an admin with force, and keeps it', async () => {
+      await db("UPDATE tables SET status = 'occupied', waiter_id = $2 WHERE id = $1", [t.busy, fixtures.waiterA.profileId]);
+      const [order] = await db<{ id: string }>(
+        `INSERT INTO orders (table_id, status, subtotal, tax, tax_percentage, total, restaurant_id)
+         VALUES ($1, 'active', 10, 0, 0, 10, $2) RETURNING id`,
+        [t.busy, fixtures.restaurantA],
+      );
+      for (const caller of [waiterA(), adminA()]) {
+        const res = await caller.post(`/api/tables/${t.busy}/release`, { force: true });
+        expect(res.status).toBe(409);
+        expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: OPEN_ORDER_RELEASE });
+      }
+      expect((await adminA().post(`/api/tables/${t.kitchen}/release`, { force: true })).body.message).toBe(OPEN_ORDER_RELEASE);
+      expect(await tableRow(t.busy)).toEqual({ status: 'occupied', waiter_id: fixtures.waiterA.profileId, number: 2 });
+      expect(await tableRow(t.kitchen)).toMatchObject({ status: 'kitchen' });
+      await db("UPDATE orders SET status = 'paid' WHERE id = $1", [order.id]);
+      expect((await waiterA().post(`/api/tables/${t.busy}/release`, {})).status).toBe(200);
     });
 
     it('answers 404 for a table of another restaurant', async () => {

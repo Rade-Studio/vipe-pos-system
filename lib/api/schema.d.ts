@@ -3401,7 +3401,7 @@ export interface components {
         };
         ReleaseTableRequest: {
             /**
-             * @description Admin only: release from kitchen, delivered or served.
+             * @description Admin only: release from kitchen, delivered or served (never over an open order).
              * @default false
              */
             force: boolean;
@@ -7540,7 +7540,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Table has open orders. */
+            /** @description La mesa tiene órdenes abiertas. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7580,6 +7580,13 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Status change refused: kitchen or served on a table without an open order, available or reserved while one is open. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7709,7 +7716,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description kitchen, delivered or served, unless an admin sends force: true. */
+            /** @description kitchen, delivered or served, unless an admin sends force: true; always while the table has an open order. */
             409: {
                 headers: {
                     [name: string]: unknown;
