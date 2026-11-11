@@ -127,7 +127,7 @@ describe("TableManagementPanel — writes through the API", () => {
   })
 
   it("deletes with DELETE /tables/:id and shows the API's 409 message", async () => {
-    env.deleteError = new ApiError(409, "Conflict", "Table has open orders")
+    env.deleteError = new ApiError(409, "Conflict", "La mesa tiene órdenes abiertas")
     render(<TableManagementPanel />)
     await waitFor(() => expect(screen.getByText("Ana")).toBeInTheDocument())
 
@@ -137,44 +137,33 @@ describe("TableManagementPanel — writes through the API", () => {
     const confirm = screen.getAllByRole("button", { name: "Eliminar" }).at(-1)!
     await act(async () => {
       fireEvent.click(confirm)
+      fireEvent.click(confirm)
+      fireEvent.click(confirm)
     })
 
     expect(env.calls.filter((call) => call.method === "DELETE")).toEqual([
       { method: "DELETE", path: "/api/tables/{id}", init: { params: { path: { id: "t-1" } } } },
     ])
     expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "No se puede eliminar", description: "Table has open orders" }),
+      expect.objectContaining({ title: "No se puede eliminar", description: "La mesa tiene órdenes abiertas" }),
     )
+    expect(toastMock).toHaveBeenCalledTimes(1)
   })
 })
 
 describe("TableManagementPanel — edit dialog statuses", () => {
-  it("sends served (a table status) when Servida is chosen", async () => {
+  it("offers only Libre, Reservada and Ocupada as manual statuses", async () => {
     render(<TableManagementPanel />)
     await waitFor(() => expect(screen.getByText("Ana")).toBeInTheDocument())
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Editar/ }))
     })
-    const native = document.querySelector("select") as HTMLSelectElement | null
-    if (native) {
-      await act(async () => {
-        fireEvent.change(native, { target: { value: "served" } })
-      })
-    } else {
-      await act(async () => {
-        fireEvent.click(screen.getByRole("combobox"))
-      })
-      await act(async () => {
-        fireEvent.click(await screen.findByRole("option", { name: "Servida" }))
-      })
-    }
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
+      fireEvent.click(screen.getByRole("combobox", { name: "Estado" }))
     })
-
-    const patch = env.calls.find((call) => call.method === "PATCH")
-    expect(patch?.init.body).toEqual({ number: 1, status: "served" })
+    const options = await screen.findAllByRole("option")
+    expect(options.map((option) => option.textContent)).toEqual(["Libre", "Reservada", "Ocupada"])
   })
 })
 

@@ -106,6 +106,18 @@ describe("editTable", () => {
     expect(editTable(table(), { seats: -1 }, 1.6).seats).toBe(0)
   })
 
+  it("gives a new shape its own default size, so sizes never leak between shapes", () => {
+    const bar = editTable(table({ shape: "bar", w: 0.3, h: 0.05 }), { shape: "round" }, 1.6)
+    expect(bar).toMatchObject({ shape: "round", w: 0.1, h: 0.1 })
+    const back = editTable(bar, { shape: "bar" }, 1.6)
+    expect(back).toMatchObject({ shape: "bar", w: 0.4, h: 0.075 })
+    expect(editTable(back, { shape: "rect" }, 1.6)).toMatchObject({ w: 0.18, h: 0.09 })
+    // Picking the shape it already has keeps the size.
+    expect(editTable(back, { shape: "bar" }, 1.6)).toMatchObject({ w: 0.4, h: 0.075 })
+    // A size edit alone keeps the shape and the other side.
+    expect(editTable(back, { w: 0.5 }, 1.6)).toMatchObject({ shape: "bar", w: 0.5, h: 0.075 })
+  })
+
   it("normalises the rotation to 0..359", () => {
     expect(editTable(table(), { rotation: 370 }, 1.6).rotation).toBe(10)
     expect(editTable(table(), { rotation: -90 }, 1.6).rotation).toBe(270)

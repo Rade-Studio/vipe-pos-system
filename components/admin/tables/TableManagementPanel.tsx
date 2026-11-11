@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +21,7 @@ import { Filter, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { getStatusLabel } from "@/utils/helpers"
 import type { TableStatus } from "@/types"
 import { NAME_MAX, arrivalLabel, validateReservation } from "@/lib/tables/reservation"
+import { manualStatusOptions } from "@/lib/floor/layout"
 
 /** The panel holds the `pos_changes` row shape, so events merge as they arrive. */
 type PanelTable = TableEventRow & { id: string; number: number; status: string }
@@ -39,6 +40,10 @@ export function TableManagementPanel() {
   const [editReservationTime, setEditReservationTime] = useState("")
   const [savedReservationTime, setSavedReservationTime] = useState("")
   const [editReservationError, setEditReservationError] = useState<{ field: "name" | "time"; message: string } | null>(null)
+  const [editTableCurrentStatus, setEditTableCurrentStatus] = useState<TableStatus>("available")
+  const [deleting, setDeleting] = useState(false)
+  // Clicks that land before the disabled state renders must not delete twice.
+  const deletingRef = useRef(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -139,6 +144,7 @@ export function TableManagementPanel() {
     setEditReservationTime(table.reservation_arrival_at ? timeOfDay(table.reservation_arrival_at) : "")
     setSavedReservationTime(table.status === "reserved" && table.reservation_arrival_at ? timeOfDay(table.reservation_arrival_at) : "")
     setEditReservationError(null)
+    setEditTableCurrentStatus(table.status as TableStatus)
     setShowEditDialog(true)
   }
 
@@ -198,7 +204,9 @@ export function TableManagementPanel() {
 
   // Eliminar mesa
   const handleDeleteTable = async () => {
-    if (!tableToDelete) return
+    if (!tableToDelete || deletingRef.current) return
+    deletingRef.current = true
+    setDeleting(true)
 
     try {
       await tablesApi.delete(tableToDelete)
@@ -212,7 +220,7 @@ export function TableManagementPanel() {
     } catch (error) {
       log.error("Error al eliminar mesa:", { error: String(error) })
 
-      // 409 `Table has open orders`: the API's own message.
+      // 409 `La mesa tiene órdenes abiertas`: the API's own message.
       if (error instanceof ApiError && error.status === 409) {
         toast({
           title: "No se puede eliminar",
@@ -227,6 +235,8 @@ export function TableManagementPanel() {
         })
       }
     } finally {
+      deletingRef.current = false
+      setDeleting(false)
       setShowDeleteDialog(false)
       setTableToDelete(null)
     }
@@ -416,11 +426,11 @@ export function TableManagementPanel() {
                     <SelectValue placeholder="Seleccione un estado" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="available">Disponible</SelectItem>
-                    <SelectItem value="reserved">Reservada</SelectItem>
-                    <SelectItem value="occupied">Ocupada</SelectItem>
-                    <SelectItem value="kitchen">En cocina</SelectItem>
-                    <SelectItem value="served">Servida</SelectItem>
+                    {manualStatusOptions(editTableCurrentStatus).map((option) => (
+                      <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -485,8 +495,8 @@ export function TableManagementPanel() {
               <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
                 Cancelar
               </Button>
-              <Button variant="destructive" onClick={handleDeleteTable}>
-                Eliminar
+              <Button variant="destructive" disabled={deleting} onClick={handleDeleteTable}>
+                {deleting ? "Eliminando…" : "Eliminar"}
               </Button>
             </DialogFooter>
           </DialogContent>

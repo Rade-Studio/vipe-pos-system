@@ -44,7 +44,7 @@ export const editAccessibleName = (table: Table): string =>
 /** "18 min" → "18m", "1 h 05" → "1h05": the status chip below 1024 px. */
 const shortElapsed = (label: string) => label.replace(" min", "m").replace(" h ", "h")
 
-const TOP_RADIUS = { round: "rounded-full", bar: "rounded-pill", square: "rounded-[18px]", rect: "rounded-[18px]" } as const
+const TOP_RADIUS = { round: "rounded-full", bar: "rounded-[8px]", square: "rounded-[18px]", rect: "rounded-[18px]" } as const
 
 /**
  * One table on the floor: tabletop at its x/y, rotated, chairs from `seats`,

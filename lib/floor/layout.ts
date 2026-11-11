@@ -29,6 +29,20 @@ export const TABLE_STATUS: Record<TableStatus, { label: string; tone: "free" | "
 
 export const statusLabel = (status: TableStatus): string => TABLE_STATUS[status]?.label ?? status
 
+/** Statuses an admin may set by hand; kitchen and served come only from an order (the API refuses them otherwise). */
+export const MANUAL_STATUSES: readonly TableStatus[] = ["available", "reserved", "occupied"]
+
+/**
+ * The admin status select: the manual statuses, plus the table's current one
+ * when an order set it, shown but not selectable.
+ */
+export function manualStatusOptions(current: TableStatus): { value: TableStatus; label: string; disabled: boolean }[] {
+  const options = MANUAL_STATUSES.map((value) => ({ value, label: statusLabel(value), disabled: false }))
+  return MANUAL_STATUSES.includes(current)
+    ? options
+    : [...options, { value: current, label: `${statusLabel(current)} (la pone el pedido)`, disabled: true }]
+}
+
 const isFraction = (value: number | undefined): value is number => typeof value === "number" && Number.isFinite(value)
 
 /** On a known zone with all four coordinates; anything else goes to "Sin ubicar". */
