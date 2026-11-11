@@ -84,6 +84,17 @@ function withoutTable<T>(record: Record<string, T>, tableId: string): Record<str
 }
 
 // Definir un ancho personalizado para el sidebar
+const RELEASE_REFUSAL: Record<string, string> = {
+  kitchen: "en cocina",
+  delivered: "servida",
+  served: "servida",
+}
+
+/** The manual release refusal, with the table status in Spanish (S1). */
+export function releaseRefusal(status: string): string {
+  return `No se puede liberar una mesa ${RELEASE_REFUSAL[status] ?? "en este estado"}.`
+}
+
 const CUSTOM_SIDEBAR_WIDTH = "22rem" // Ajustado para optimizar espacio
 
 interface WaiterViewProps {
@@ -410,7 +421,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       if (elapsedTime > twoMinutesInMs) {
         const cartItems = getCartByTable(activeTable)
         if (cartItems.length === 0) {
-          handleReleaseTable(activeTable)
+          // Silent: only an occupied table is freed, never with a toast (S1).
+          latestHandlers.current.handleReleaseTable(activeTable, { auto: true })
         }
       }
     }
@@ -451,11 +463,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
             useTableStore.getState().releaseTable(tableId)
           }
         } catch (err) {
-          toast({
-            title: "Error",
-            description: conflictMessage(err, "No se pudo verificar/liberar la mesa. Intente nuevamente."),
-            variant: "destructive",
-          })
+          // An automatic release never toasts (S1): the waiter did nothing.
+          log.warn("[WaiterView] automatic table release failed:", { tableId, error: String(err) })
         }
       }
     },
@@ -619,7 +628,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
   // Manejar liberación de mesa
   const handleReleaseTable = useCallback(
-    async (tableId: string) => {
+    async (tableId: string, { auto = false }: { auto?: boolean } = {}) => {
       try {
         // Evitar mostrar loading
         setLoading(false)
@@ -629,11 +638,16 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           return
         }
 
+        // The inactivity timer frees only an occupied table, silently (S1).
+        if (auto && table.status !== "occupied") {
+          return
+        }
+
         // A reserved table is released too: the API cancels the reservation (L5).
         if (["kitchen", "delivered", "served"].includes(table.status)) {
           toast({
             title: "Acción no permitida",
-            description: `No se puede liberar una mesa en estado ${table.status}`,
+            description: releaseRefusal(table.status),
             variant: "destructive",
           })
           return
@@ -666,6 +680,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           return newTimes
         })
       } catch (err) {
+        if (auto) {
+          log.warn("[WaiterView] automatic table release failed:", { tableId, error: String(err) })
+          return
+        }
         toast({
           title: "Error",
           description: conflictMessage(err, "No se pudo liberar la mesa. Intente nuevamente."),

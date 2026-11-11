@@ -187,7 +187,7 @@ vi.mock("@/lib/api/realtime", () => ({
 
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
 
-import { WaiterView } from "./WaiterView"
+import { WaiterView, releaseRefusal } from "./WaiterView"
 import { ApiError } from "@/lib/api/errors"
 import { menuCategory, menuDish } from "@/lib/order-steps/fixtures"
 import { modifierGroup } from "@/lib/modifiers/fixtures"
@@ -821,7 +821,7 @@ describe("WaiterView — sending through the API (T8b)", () => {
     expect(env.orderGetByStatus).toHaveBeenCalledWith({ status: "active,kitchen,delivered" })
   })
 
-  it("releases a table through the API and shows the API refusal", async () => {
+  it("releases a table through the API on a switch and does not toast its refusal (S1)", async () => {
     env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
     useCartStore.setState({ cartItems: {} })
     env.releaseTable.mockRejectedValueOnce(
@@ -849,9 +849,7 @@ describe("WaiterView — sending through the API (T8b)", () => {
     await flush()
 
     expect(env.releaseTable).toHaveBeenCalledWith("t-1", {})
-    expect(env.toastFn).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Error", description: "La mesa no se puede liberar mientras está en cocina" }),
-    )
+    expect(env.toastFn).not.toHaveBeenCalled()
   })
 })
 
@@ -1805,5 +1803,66 @@ describe("WaiterView — modifiers (F7 T3)", () => {
     await tap("Enviar a cocina (1)")
     expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ description: "Falta elegir Término de la carne", variant: "destructive" }))
     expect(cart()).toHaveLength(1)
+  })
+})
+
+/**
+ * QA S1 — the inactivity timer freed the selected table after two minutes of an
+ * empty cart through the manual path, so a kitchen or served table (empty cart
+ * right after the send) showed "No se puede liberar una mesa en estado served"
+ * every minute. The automatic release is silent and only frees `occupied`.
+ */
+describe("WaiterView — automatic release is silent (S1)", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function selectAndWait(status: string) {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, status, "w-1")])
+    useCartStore.setState({ cartItems: {} })
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000)
+    })
+    await flush()
+  }
+
+  it.each(["kitchen", "served"])("never toasts nor releases a %s table with an empty cart", async (status) => {
+    await selectAndWait(status)
+
+    expect(env.releaseTable).not.toHaveBeenCalled()
+    expect(env.toastFn).not.toHaveBeenCalled()
+  })
+
+  it("still frees an occupied table with an empty cart after two minutes, without a toast (PRESERVE)", async () => {
+    await selectAndWait("occupied")
+
+    expect(env.releaseTable).toHaveBeenCalledWith("t-1", {})
+    expect(env.toastFn).not.toHaveBeenCalled()
+  })
+
+  it("does not toast an API refusal of the automatic release", async () => {
+    env.releaseTable.mockRejectedValue(new ApiError(409, "Conflict", "La mesa no se puede liberar mientras está en cocina"))
+    await selectAndWait("occupied")
+
+    expect(env.releaseTable).toHaveBeenCalled()
+    expect(env.toastFn).not.toHaveBeenCalled()
+  })
+})
+
+// The panel hides "Liberar mesa" on these statuses, so the guard is the
+// fallback of a stale tap: its message is checked directly.
+describe("WaiterView — manual release refusal (S1)", () => {
+  it.each([
+    ["served", "No se puede liberar una mesa servida."],
+    ["kitchen", "No se puede liberar una mesa en cocina."],
+  ] as const)("names a %s table in Spanish", (status, message) => {
+    expect(releaseRefusal(status)).toBe(message)
   })
 })
