@@ -7,6 +7,7 @@ import type { ZoneDto } from "@/lib/api/zones"
 import { cn } from "@/lib/utils"
 import { MAX_SEATS, MAX_SIZE, MIN_SIZE, SHAPE_LABELS, type LayoutEdit } from "@/lib/floor/editor"
 import { manualStatusOptions } from "@/lib/floor/layout"
+import { NAME_MAX, validateReservation } from "@/lib/tables/reservation"
 import { fromCm, hasDimensions, sizeText, toCm, yFromCm, yToCm, type ZoneUnits } from "@/lib/admin/floor/units"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,6 +18,15 @@ export interface TableData {
   number: number
   status: TableStatus
   waiterId: string | null
+  /** Sent only with status "reserved" (the API answers 422 without the name). */
+  reservationName?: string
+  reservationArrivalAt?: string
+}
+
+/** "20:30" of an ISO instant, for the time input (local clock). */
+function timeOfDay(iso: string): string {
+  const at = new Date(iso)
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`
 }
 
 interface TableInspectorProps {
@@ -138,6 +148,11 @@ export function TableInspector({
   const headingId = useId()
   const [data, setData] = useState<TableData>({ number: table.number, status: table.status, waiterId: table.waiter ?? null })
   const [savingData, setSavingData] = useState(false)
+  // S11: "Reservada" asks the name (required) and the arrival (optional), as the table list does.
+  const savedTime = table.status === "reserved" && table.reservationArrivalAt ? timeOfDay(table.reservationArrivalAt) : ""
+  const [reservationName, setReservationName] = useState(table.reservationName ?? "")
+  const [reservationTime, setReservationTime] = useState(savedTime)
+  const [reservationError, setReservationError] = useState<{ field: "name" | "time"; message: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   // Clicks that land before the disabled state renders must not delete twice.
@@ -146,8 +161,13 @@ export function TableInspector({
 
   useEffect(() => {
     setData({ number: table.number, status: table.status, waiterId: table.waiter ?? null })
+    setReservationName(table.reservationName ?? "")
+    setReservationTime(savedTime)
+    setReservationError(null)
     setConfirmDelete(false)
-  }, [table.id, table.number, table.status, table.waiter])
+  }, [table.id, table.number, table.status, table.waiter, table.reservationName, savedTime])
+
+  const reserving = data.status === "reserved"
 
   const shape = table.shape ?? "square"
   const square = shape === "round" || shape === "square"
@@ -368,6 +388,33 @@ export function TableInspector({
             ))}
           </NativeSelect>
         </label>
+        {reserving && (
+          <>
+            <label className={FIELD}>
+              <span className={LABEL}>¿A nombre de quién?</span>
+              <Input
+                className="h-11"
+                autoComplete="off"
+                maxLength={NAME_MAX}
+                value={reservationName}
+                aria-invalid={reservationError?.field === "name" ? true : undefined}
+                onChange={(event) => setReservationName(event.target.value)}
+              />
+              {reservationError?.field === "name" && <span className="text-xs text-destructive">{reservationError.message}</span>}
+            </label>
+            <label className={FIELD}>
+              <span className={LABEL}>Hora de llegada (opcional, hoy)</span>
+              <Input
+                type="time"
+                className="h-11"
+                value={reservationTime}
+                aria-invalid={reservationError?.field === "time" ? true : undefined}
+                onChange={(event) => setReservationTime(event.target.value)}
+              />
+              {reservationError?.field === "time" && <span className="text-xs text-destructive">{reservationError.message}</span>}
+            </label>
+          </>
+        )}
         <label className={FIELD}>
           <span className={LABEL}>Mesero</span>
           <NativeSelect
@@ -388,11 +435,23 @@ export function TableInspector({
         <Button
           variant="outline"
           className="h-11"
-          disabled={savingData}
+          disabled={savingData || (reserving && !reservationName.trim())}
           onClick={async () => {
+            let body: TableData = { number: data.number, status: data.status, waiterId: data.waiterId }
+            if (reserving) {
+              // An unchanged arrival is not sent again (it may be minutes ago by now).
+              const unchanged = savedTime !== "" && reservationTime === savedTime
+              const check = validateReservation({ name: reservationName, time: unchanged ? "" : reservationTime })
+              if (!check.ok) {
+                setReservationError({ field: check.field, message: check.message })
+                return
+              }
+              setReservationError(null)
+              body = { ...body, reservationName: check.body.name, ...(check.body.arrivalAt ? { reservationArrivalAt: check.body.arrivalAt } : {}) }
+            }
             setSavingData(true)
             try {
-              if (!(await onSaveData(data))) {
+              if (!(await onSaveData(body))) {
                 setData({ number: table.number, status: table.status, waiterId: table.waiter ?? null })
               }
             } finally {

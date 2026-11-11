@@ -231,6 +231,44 @@ describe("FloorPlanEditor — inspector", () => {
     })
   })
 
+  it("asks the reservation name when Estado is Reservada and sends it with the save", async () => {
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    expect(within(inspector).queryByLabelText("¿A nombre de quién?")).not.toBeInTheDocument()
+    fireEvent.change(within(inspector).getByLabelText("Estado"), { target: { value: "reserved" } })
+    const name = within(inspector).getByLabelText("¿A nombre de quién?")
+    const save = within(inspector).getByRole("button", { name: "Guardar datos" })
+    expect(save).toBeDisabled()
+    fireEvent.change(name, { target: { value: "  Familia López " } })
+    expect(save).toBeEnabled()
+    await act(async () => {
+      fireEvent.click(save)
+    })
+    expect(calls("PATCH", "/api/tables/{id}")[0].init).toEqual({
+      params: { path: { id: "t-1" } },
+      body: { number: 1, status: "reserved", waiterId: null, reservationName: "Familia López" },
+    })
+  })
+
+  it("hides the reservation fields and sends none when Estado goes back to Libre", async () => {
+    await ready()
+    act(() => table(1).click())
+    const inspector = screen.getByRole("region", { name: "Mesa 1" })
+    const status = within(inspector).getByLabelText("Estado")
+    fireEvent.change(status, { target: { value: "reserved" } })
+    fireEvent.change(within(inspector).getByLabelText("¿A nombre de quién?"), { target: { value: "Ana" } })
+    fireEvent.change(status, { target: { value: "available" } })
+    expect(within(inspector).queryByLabelText("¿A nombre de quién?")).not.toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(inspector).getByRole("button", { name: "Guardar datos" }))
+    })
+    expect(calls("PATCH", "/api/tables/{id}")[0].init).toEqual({
+      params: { path: { id: "t-1" } },
+      body: { number: 1, status: "available", waiterId: null },
+    })
+  })
+
   it("lets a number field be emptied while typing and puts the value back on blur", async () => {
     await ready()
     act(() => table(1).click())
@@ -276,6 +314,7 @@ describe("FloorPlanEditor — inspector", () => {
     act(() => table(1).click())
     const inspector = screen.getByRole("region", { name: "Mesa 1" })
     fireEvent.change(within(inspector).getByLabelText("Estado"), { target: { value: "reserved" } })
+    fireEvent.change(within(inspector).getByLabelText("¿A nombre de quién?"), { target: { value: "Ana" } })
     fireEvent.change(within(inspector).getByLabelText("Número"), { target: { value: "12" } })
     await act(async () => {
       fireEvent.click(within(inspector).getByRole("button", { name: "Guardar datos" }))
