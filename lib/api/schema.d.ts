@@ -3401,7 +3401,7 @@ export interface components {
         };
         ReleaseTableRequest: {
             /**
-             * @description Admin only: release from kitchen, delivered or served.
+             * @description Admin only: release from kitchen, delivered or served (never over an open order).
              * @default false
              */
             force: boolean;
@@ -7716,7 +7716,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description kitchen, delivered or served, unless an admin sends force: true. */
+            /** @description kitchen, delivered or served, unless an admin sends force: true; always while the table has an open order. */
             409: {
                 headers: {
                     [name: string]: unknown;

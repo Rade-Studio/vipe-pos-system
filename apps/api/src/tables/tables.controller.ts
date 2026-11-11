@@ -119,7 +119,7 @@ export class TablesController {
   @HttpCode(200)
   @ApiBody({ type: ReleaseTableRequest, required: false })
   @ApiOkResponse({ type: Table, description: 'available, no waiter; a reservation is cancelled.' })
-  @ApiConflictResponse({ description: 'kitchen, delivered or served, unless an admin sends force: true.' })
+  @ApiConflictResponse({ description: 'kitchen, delivered or served, unless an admin sends force: true; always while the table has an open order.' })
   @ApiNotFoundResponse()
   release(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Table> {
     const { force } = parseInput(releaseTableSchema, body);

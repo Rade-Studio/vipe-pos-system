@@ -243,11 +243,15 @@ export class TablesService {
     return this.get(id);
   }
 
-  /** Release guard of WaiterView, now on the server; only an admin may force it. Releasing a reserved table cancels the reservation. */
+  /** Release guard of WaiterView, now on the server; only an admin may force it. Releasing a reserved table cancels the reservation; a table with an open order is never released (409). */
   async release(id: string, force: boolean, callerRole: string): Promise<Table> {
     const table = await this.lock(id);
     if (UNRELEASABLE_STATUSES.includes(table.status) && !(force && callerRole === 'admin')) {
       throw new ConflictException(TABLE_MESSAGES.cannotRelease(table.status));
+    }
+    // Not even an admin's force frees a table over an unpaid order (QA S10).
+    if (await this.hasOpenOrder(id)) {
+      throw new ConflictException(TABLE_MESSAGES.releaseHasOrder);
     }
     await this.uow.db.execute(sql`
       UPDATE public.tables SET waiter_id = NULL, status = 'available', ${CLEAR_RESERVATION}, updated_at = now() WHERE id = ${id}`);

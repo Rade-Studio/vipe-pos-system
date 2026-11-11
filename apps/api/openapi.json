@@ -2950,7 +2950,7 @@
             "description": ""
           },
           "409": {
-            "description": "kitchen, delivered or served, unless an admin sends force: true."
+            "description": "kitchen, delivered or served, unless an admin sends force: true; always while the table has an open order."
           },
           "422": {
             "description": "Invalid input, unknown fields or unknown waiter."
@@ -11367,7 +11367,7 @@
           "force": {
             "type": "boolean",
             "default": false,
-            "description": "Admin only: release from kitchen, delivered or served."
+            "description": "Admin only: release from kitchen, delivered or served (never over an open order)."
           }
         }
       },

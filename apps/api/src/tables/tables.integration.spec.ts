@@ -24,6 +24,7 @@ const t = {
 
 const NEEDS_ORDER = 'La mesa no tiene una orden abierta: solo el flujo de pedidos la pone en cocina o servida.';
 const HAS_ORDER = 'La mesa tiene una orden abierta: cóbrala o cancélala antes de dejarla libre o reservada.';
+const OPEN_ORDER_RELEASE = 'La mesa tiene una orden abierta: cóbrala o cancélala antes de liberarla.';
 const STATUS_WORDS: Record<string, string> = { kitchen: 'en cocina', served: 'servida', reserved: 'reservada' };
 
 const TABLE_KEYS = [
@@ -327,6 +328,25 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       const res = await adminA().post(`/api/tables/${t.served}/release`, { force: true });
       expect(res.status).toBe(200);
       expect(await tableRow(t.served)).toEqual({ status: 'available', waiter_id: null, number: 4 });
+    });
+
+    it('answers 409 when releasing a table with an open order, even an admin with force, and keeps it', async () => {
+      await db("UPDATE tables SET status = 'occupied', waiter_id = $2 WHERE id = $1", [t.busy, fixtures.waiterA.profileId]);
+      const [order] = await db<{ id: string }>(
+        `INSERT INTO orders (table_id, status, subtotal, tax, tax_percentage, total, restaurant_id)
+         VALUES ($1, 'active', 10, 0, 0, 10, $2) RETURNING id`,
+        [t.busy, fixtures.restaurantA],
+      );
+      for (const caller of [waiterA(), adminA()]) {
+        const res = await caller.post(`/api/tables/${t.busy}/release`, { force: true });
+        expect(res.status).toBe(409);
+        expect(res.body).toEqual({ statusCode: 409, error: 'Conflict', message: OPEN_ORDER_RELEASE });
+      }
+      expect((await adminA().post(`/api/tables/${t.kitchen}/release`, { force: true })).body.message).toBe(OPEN_ORDER_RELEASE);
+      expect(await tableRow(t.busy)).toEqual({ status: 'occupied', waiter_id: fixtures.waiterA.profileId, number: 2 });
+      expect(await tableRow(t.kitchen)).toMatchObject({ status: 'kitchen' });
+      await db("UPDATE orders SET status = 'paid' WHERE id = $1", [order.id]);
+      expect((await waiterA().post(`/api/tables/${t.busy}/release`, {})).status).toBe(200);
     });
 
     it('answers 404 for a table of another restaurant', async () => {

@@ -141,7 +141,7 @@ export async function assignWaiter(tableId: string, waiterId: string): Promise<T
   return required(data)
 }
 
-/** `available` with no waiter; `force` (admin only) skips the status guard. */
+/** `available` with no waiter; `force` (admin only) skips the status guard, never the open-order one (409). */
 export async function releaseTable(tableId: string, options: { force?: boolean } = {}): Promise<TableDto> {
   const body = (options.force ? { force: true } : {}) as Schemas["ReleaseTableRequest"]
   const { data } = await api.POST("/api/tables/{id}/release", { ...byId(tableId), body })

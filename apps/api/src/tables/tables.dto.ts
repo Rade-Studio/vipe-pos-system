@@ -26,6 +26,7 @@ export const TABLE_MESSAGES = {
   openOrders: 'La mesa tiene órdenes abiertas',
   statusNeedsOrder: 'La mesa no tiene una orden abierta: solo el flujo de pedidos la pone en cocina o servida.',
   statusHasOrder: 'La mesa tiene una orden abierta: cóbrala o cancélala antes de dejarla libre o reservada.',
+  releaseHasOrder: 'La mesa tiene una orden abierta: cóbrala o cancélala antes de liberarla.',
   cannotRelease: (status: string) => `La mesa no se puede liberar mientras está ${STATUS_WORDS[status] ?? status}`,
 } as const;
 
@@ -197,7 +198,7 @@ export class AssignTableRequest {
 }
 
 export class ReleaseTableRequest {
-  @ApiPropertyOptional({ default: false, description: 'Admin only: release from kitchen, delivered or served.' })
+  @ApiPropertyOptional({ default: false, description: 'Admin only: release from kitchen, delivered or served (never over an open order).' })
   force?: boolean;
 }
 
