@@ -169,6 +169,13 @@
       "when": 1793874881411,
       "tag": "0023_priced_modifiers",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793878481411,
+      "tag": "0024_repair_table_status",
+      "breakpoints": true
     }
   ]
 }
