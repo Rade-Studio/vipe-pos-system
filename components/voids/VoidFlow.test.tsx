@@ -154,6 +154,7 @@ describe("VoidFlow — anular plato", () => {
     expect(within(own).getByText("Cajero · eres tú")).toBeInTheDocument()
     fireEvent.click(own)
     expect(screen.getByRole("alert")).toHaveTextContent("Debe autorizar otra persona.")
+    expect(screen.getByRole("alert")).toHaveTextContent("El admin puede permitirlo en Configuración → Acceso de meseros.")
     expect(screen.queryByRole("group", { name: "Teclado del PIN" })).not.toBeInTheDocument()
   })
 
@@ -176,7 +177,7 @@ describe("VoidFlow — anular plato", () => {
     pickReason("Plato devuelto")
     click("Elegir quién autoriza")
     expect(await screen.findByRole("radio", { name: /Nora Ruiz/ })).toHaveAttribute("aria-disabled", "true")
-    expect(screen.getByText(/Nadie tiene PIN de supervisor/)).toBeInTheDocument()
+    expect(screen.getByText(/Nadie tiene PIN de supervisor/)).toHaveTextContent("El admin lo asigna en Configuración → Acceso de meseros.")
   })
 
   it("accepts the actor's own tile when the restaurant allows self-authorization", async () => {

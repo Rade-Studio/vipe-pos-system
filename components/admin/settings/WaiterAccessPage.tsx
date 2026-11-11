@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Check, KeyRound, ShieldCheck, Smartphone, Tablet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   AlertDialog,
@@ -111,6 +112,14 @@ export function WaiterAccessPage() {
     onSettled: () => setPendingMode(null),
   })
 
+  const saveSelf = useMutation({
+    mutationFn: (allow: boolean) => saveConfig({ allowSelfAuthorization: allow }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData<BusinessConfig>(CONFIG_QUERY_KEY, (old: BusinessConfig | undefined) => ({ ...(old ?? {}), ...saved }) as BusinessConfig)
+    },
+    onError: fail,
+  })
+
   const remove = useMutation({
     mutationFn: (member: StaffMember) => removeStaffPin(member.id),
     onSuccess: (_, member) => {
@@ -211,12 +220,31 @@ export function WaiterAccessPage() {
         )}
       </section>
 
-      {/*
-        F1 slot: "Permitir que el supervisor se autorice a sí mismo" (switch,
-        off by default; self-authorized voids are marked «autoautorizada»).
-        Render it here once the business config field lands with F1; it is not
-        in lib/api/schema.d.ts yet.
-      */}
+      <section aria-labelledby="self-auth-h" className="rounded-card border bg-card p-4 text-card-foreground sm:px-5">
+        <div className="flex items-start gap-4">
+          <div className="min-w-0 flex-1">
+            <h2 id="self-auth-h" className="font-semibold">
+              Permitir que un supervisor autorice sus propias anulaciones
+            </h2>
+            <p id="self-auth-help" className="mt-1 text-sm text-muted-foreground">
+              Si está apagado, otro supervisor debe escribir su PIN para anular o cancelar lo que tú registraste.
+            </p>
+          </div>
+          {configQuery.isLoading ? (
+            <Skeleton className="h-6 w-11" />
+          ) : (
+            <label className="grid min-h-11 min-w-11 flex-none cursor-pointer place-items-center">
+              <Switch
+                aria-labelledby="self-auth-h"
+                aria-describedby="self-auth-help"
+                checked={configQuery.data?.allowSelfAuthorization === true}
+                disabled={configQuery.isError || saveSelf.isPending}
+                onCheckedChange={(next) => saveSelf.mutate(next)}
+              />
+            </label>
+          )}
+        </div>
+      </section>
 
       <section aria-labelledby="pin-rules-h" className="rounded-card border bg-card p-4 text-card-foreground sm:px-5">
         <h2 id="pin-rules-h" className="font-semibold">

@@ -144,6 +144,42 @@ describe("WaiterAccessPage — mode", () => {
   })
 })
 
+describe("WaiterAccessPage — self-authorization (S9)", () => {
+  const SELF = "Permitir que un supervisor autorice sus propias anulaciones"
+
+  it("shows the stored value", async () => {
+    configApi.fetchConfig.mockResolvedValue({ waiterAccessMode: "own_accounts", allowSelfAuthorization: true })
+    renderPage()
+    await waitFor(() => expect(screen.getByRole("switch", { name: SELF })).toBeChecked())
+  })
+
+  it("saves allowSelfAuthorization: true and stays on", async () => {
+    configApi.fetchConfig.mockResolvedValue({ waiterAccessMode: "own_accounts", allowSelfAuthorization: false })
+    renderPage()
+    const sw = await screen.findByRole("switch", { name: SELF })
+    expect(sw).not.toBeChecked()
+    await act(async () => {
+      fireEvent.click(sw)
+    })
+    expect(configApi.saveConfig).toHaveBeenCalledWith({ allowSelfAuthorization: true })
+    await waitFor(() => expect(screen.getByRole("switch", { name: SELF })).toBeChecked())
+  })
+
+  it("leaves the switch off and shows an error when saving fails", async () => {
+    configApi.fetchConfig.mockResolvedValue({ waiterAccessMode: "own_accounts", allowSelfAuthorization: false })
+    configApi.saveConfig.mockRejectedValueOnce(new Error("Sin conexión"))
+    renderPage()
+    const sw = await screen.findByRole("switch", { name: SELF })
+    await act(async () => {
+      fireEvent.click(sw)
+    })
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ description: "Sin conexión", variant: "destructive" })),
+    )
+    expect(screen.getByRole("switch", { name: SELF })).not.toBeChecked()
+  })
+})
+
 describe("WaiterAccessPage — PIN del personal", () => {
   it("lists every active member with the state of their PIN", async () => {
     renderPage()
