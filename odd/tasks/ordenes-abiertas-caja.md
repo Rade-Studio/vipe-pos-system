@@ -12,7 +12,7 @@ Orders stay open for days (tables "En cocina · 145 h") while the cash register 
 ## Tasks
 
 - [ ] T1. S1, S2: API close gate, store, CloseRegisterDialog with open orders and cancel. Route: worker. Commit: -
-- [ ] T2. S3: old-order flag on the floor chip and the admin Órdenes banner. Route: worker. Commit: -
+- [x] T2. S3: old-order flag on the floor chip and the admin Órdenes banner. Route: worker. Commit: 28adf00. RED: 4 failed + banner import ("24 h 00" vs "1 d 0 h", OLD_ORDER_HOURS, data-old, banner). GREEN: floor/admin/views/pos 622 passed, 1 skipped. The floor reads the age from the label (`isOldElapsed`), since the callers pass only the string.
 - [x] T3. S4: extra pgTAP probes for 0024 (6 assertions: delivered table status, available + kitchen order, kept waiter, delivery order, occupied with an open order, second restaurant). Route: inline. Commit: see git log. `pnpm test:db` (isolated compose project): Files=44, Tests=2056, PASS. No RED: the migration is already applied, the probes pin its behavior.
 
 ## Log
