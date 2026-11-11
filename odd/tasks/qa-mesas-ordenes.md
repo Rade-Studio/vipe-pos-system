@@ -1,0 +1,31 @@
+# QA report: tables, floor editor and order cancellation
+
+Fixes from the QA report on waiter table release, the admin floor editor (Mesas) and order cancellation (Órdenes), option B: quick fixes plus server-side table status guards. Branch `fix/qa-mesas-ordenes` from `dev` (6caa48b).
+
+## Specs
+
+- S1 (ACC): "no se encuentra una manera rápida o sencilla de liberar una mesa una vez termina desde mesero y de la nada sale un aviso de que no se puede liberar cuando no se ha hecho nada". The waiter's automatic release (inactivity timer, table switch) never shows a toast and only acts on an `occupied` table; a manual refusal names the status in Spanish (`statusLabel`), never `served`; a table in kitchen or served tells the waiter it is freed when caja charges it (assumption L3).
+- S2 (MESAS-1): "la mesa barra es la misma que la redonda , no se puede borrar el ancho, alto una vez escrito un numero". A bar table draws with square-ish corners distinct from round; every inspector number field can be emptied while typing and restores the current value on blur when left empty.
+- S3 (MESAS-2): "al cambiar el ancho o alto y te pasas a otra forma como circulo o cuadrado se ve afectada el ancho y forma de esa tambien y al volver se encuentra cambiada la que ya tenias en barra colocando tamaños que no colocaste". Changing the shape gives the table that shape's default size (`SHAPE_DEFAULTS`), so sizes never leak between shapes.
+- S4 (MESAS-3): "mensaje de error se repite muchas veces de forma recurrente al borrar una mesa y alguna necesidad de que haya cosas en español y otras en ingles???". Delete is disabled while it runs and the confirm closes after a failure (one toast per attempt); table API conflict messages are Spanish.
+- S5 (MESAS-4): "Cambie le estado de una mesa de libre a reservada me salio el error de que no se pudo pero se sigue viendo seleccionado reservada da la sensacion de que si hizo aunque saliera el error y que sentido tiene que tenga la opcion de reservar una mesa si no puede hacerlo desde amdin". A failed "Guardar datos" puts the inspector back on the saved values and shows the API's 409 message (other errors keep the generic one, L5).
+- S6 (MESAS-5): "el icono del desplegable se muy al borde". Inspector selects draw their own chevron with right padding.
+- S7 (MESAS-6): "coloque una mesa en estado servida con absolutamente nada que tipo de control tiene esto para evitar esas confusiones mi sugerencia es evitar en lo mas posible el error humano". Admin manual status offers only Libre, Reservada, Ocupada (the current status stays visible); PATCH /tables/:id refuses a change to `kitchen` or `served` when the table has no open order (409).
+- S8 (ORDENES-1): "los estados de las mesas y las ordenes no concuerdan y no se cambian ... si cambio desde mesa no se cambia en ordenes". PATCH /tables/:id refuses a change to `available` or `reserved` while the table has an open order (`active`, `kitchen`, `delivered`) with 409; an unchanged status (rename) passes.
+- S9 (ORDENES-2): "Si soy el administrador porque me pide que busque un administrador para cancelar una orden y dice que se puede cambiar en configuración pero que configuración no se logra encontrar ese apartado". Configuración → Acceso de meseros has a switch for `allowSelfAuthorization`; the VoidFlow message names that page.
+
+## Tasks
+
+- [x] T1. S4 (API part), S7, S8: tables.service guards and Spanish 409 messages, integration spec, README/lib docs, OpenAPI regenerated. Route: inline. Commit: 269194b. RED: tables.integration.spec 10 failed. GREEN: 31/31; full API suite 46 files / 704 tests.
+- [x] T2. S4 (UI part), S5, S6, S7 (UI part): TableInspector / FloorPlanEditor / TableManagementPanel status options, rollback, delete guard, chevron. Route: inline. Commit: 7e4db1b. RED: FloorPlanEditor.test 4 failed (3 DELETE calls per confirm reproduced), TableManagementPanel.test 2 failed. GREEN: 46/46 in components/admin/floor, components/admin/tables, lib/floor. S6 chevron: visual, no meaningful RED.
+- [x] T3. S2, S3: NumberField, shape defaults on shape change, bar radius. Route: inline. Commit: 7e4db1b (shares TableInspector with T2). RED: editor.test shape defaults, FloorPlanEditor.test empty number field. Bar radius: visual, no meaningful RED.
+- [ ] T4. S1: WaiterView automatic release, Spanish status, TablePanel hint. Route: inline. Commit: -
+- [ ] T5. S9: self-authorization switch and VoidFlow message. Route: inline. Commit: -
+
+## Log
+
+- L1 (user, 2026-11-11): QA report (verbatim in S1-S9) — "Me dieron un informe sobre cosas a mejorar o identificar, porque no se sabe que es para vipepos". Screenshots and videos were not available.
+- L2 (user, 2026-11-11): "opcion B" — quick fixes plus status guards; manual statuses limited to libre, reservada y ocupada as proposed.
+- L3 (decision, 2026-11-11): the waiter release question was not answered; kept the current rule (a kitchen or served table is freed by payment or cancellation in caja) and made it explicit in the waiter panel instead of hiding it.
+- L4 (evidence, 2026-11-11): explorer map. Order flows set table status inside their own transactions (orders.service deliver/create, pay_order, cancel_order, void_* in 0018/0019), never through PATCH /tables/:id; the admin inspector and the list dialog always send `status`, so the guard applies only when the status changes. MESAS-4 cause not confirmed: nothing in the API rejects `reserved`. Follow-up not in scope: POST /tables/:id/release does not check open orders (an `occupied` table with an `active` order, or admin `force`).
+- L5 (decision, 2026-11-11): S5 shows only 409 messages from the API; 422/404 messages are English validation text, so they keep the generic Spanish fallback. The real cause of the tester's "reservada" failure stays unconfirmed (L4).
