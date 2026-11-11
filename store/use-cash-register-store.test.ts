@@ -22,10 +22,14 @@ const service = vi.hoisted(() => ({
 vi.mock("@/lib/api/registers", () => service)
 
 const payments = vi.hoisted(() => ({ closeRegisterRpc: vi.fn() }))
-vi.mock("@/lib/api/payments", () => payments)
+vi.mock("@/lib/api/payments", async (importActual) => ({
+  openOrdersConflictOf: (await importActual<typeof import("@/lib/api/payments")>()).openOrdersConflictOf,
+  ...payments,
+}))
 
 import { useCashRegisterStore } from "./use-cash-register-store"
 import { PaymentServiceError } from "@/lib/payments/types"
+import { ApiError } from "@/lib/api/errors"
 
 const register = {
   id: "r-1",
@@ -186,5 +190,37 @@ describe("closeRegister (T9: the server clock)", () => {
     const state = useCashRegisterStore.getState()
     expect(state.currentRegister).toBeNull()
     expect(state.registers[0]).toMatchObject({ status: "closed", finalCash: 60000, closingTimestamp: closedAt })
+  })
+})
+
+describe("closeRegister with open orders (S1, S2)", () => {
+  const closed = { status: "closed", cashRegisterId: "r-1", finalCash: 0, closingTimestamp: new Date(), summary: {} }
+
+  beforeEach(() => {
+    payments.closeRegisterRpc.mockReset()
+    useCashRegisterStore.setState({ currentRegister: register, registers: [register] })
+  })
+
+  it("passes leaveOpenOrders to the API", async () => {
+    payments.closeRegisterRpc.mockResolvedValue(closed)
+    await useCashRegisterStore.getState().closeRegister({ leaveOpenOrders: true })
+    expect(payments.closeRegisterRpc).toHaveBeenCalledWith("r-1", { leaveOpenOrders: true })
+  })
+
+  it("rethrows the 409 open_orders conflict and keeps the register open", async () => {
+    const message = "Hay 2 órdenes abiertas. Cóbralas o cancélalas, o confirma que pasan a la siguiente caja."
+    const conflict = new PaymentServiceError({
+      kind: "unknown",
+      message,
+      cause: new ApiError(409, "Conflict", message, { code: "open_orders", count: 2, message }),
+    })
+    payments.closeRegisterRpc.mockRejectedValue(conflict)
+    await expect(useCashRegisterStore.getState().closeRegister()).rejects.toBe(conflict)
+    expect(useCashRegisterStore.getState().currentRegister).toBe(register)
+  })
+
+  it("still answers null on other errors", async () => {
+    payments.closeRegisterRpc.mockRejectedValue(new Error("boom"))
+    await expect(useCashRegisterStore.getState().closeRegister()).resolves.toBeNull()
   })
 })

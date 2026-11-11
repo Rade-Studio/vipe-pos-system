@@ -21,6 +21,7 @@ vi.mock("@/lib/api/client", () => ({ api }))
 import {
   PaymentServiceError,
   closeRegisterRpc,
+  openOrdersConflictOf,
   createPaymentMethod,
   getPaymentsByOrderIds,
   getRegisterSummary,
@@ -231,6 +232,31 @@ describe("register summary and close", () => {
       closingTimestamp: new Date("2026-11-04T23:10:00.000Z"),
       summary,
     })
+  })
+})
+
+describe("closeRegisterRpc with open orders (S1)", () => {
+  const closed = { status: "closed", cashRegisterId: "r-1", finalCash: 0, closingTimestamp: "2026-11-04T23:10:00.000Z", summary }
+
+  it("sends leaveOpenOrders: true only when asked", async () => {
+    api.POST.mockResolvedValue({ data: closed })
+    await closeRegisterRpc("r-1", { leaveOpenOrders: true })
+    expect(api.POST).toHaveBeenCalledWith("/api/registers/{id}/close", {
+      params: { path: { id: "r-1" } },
+      body: { leaveOpenOrders: true },
+    })
+    api.POST.mockClear()
+    await closeRegisterRpc("r-1", { leaveOpenOrders: false })
+    expect(api.POST).toHaveBeenCalledWith("/api/registers/{id}/close", { params: { path: { id: "r-1" } } })
+  })
+
+  it("reads the 409 open_orders conflict (message and count)", async () => {
+    const message = "Hay 1 orden abierta. Cóbrala o cancélala, o confirma que pasa a la siguiente caja."
+    api.POST.mockRejectedValue(new ApiError(409, "Conflict", message, { code: "open_orders", count: 1, message }))
+    const error = await closeRegisterRpc("r-1").catch((e: unknown) => e)
+    expect(openOrdersConflictOf(error)).toEqual({ count: 1, message })
+    expect(openOrdersConflictOf(new ApiError(409, "Conflict", "Register is closed"))).toBeNull()
+    expect(openOrdersConflictOf(new Error("x"))).toBeNull()
   })
 })
 

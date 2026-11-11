@@ -3704,6 +3704,10 @@ export interface components {
         OpenRegisterRequest: {
             initialCash: number;
         };
+        CloseRegisterRequest: {
+            /** @description Close even though the restaurant has open orders; they stay open for the next register. */
+            leaveOpenOrders?: boolean;
+        };
         CloseRegisterResult: {
             /** @enum {string} */
             status: "closed" | "already_closed";
@@ -8481,7 +8485,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CloseRegisterRequest"];
+            };
+        };
         responses: {
             /** @description close_register result; a replay answers already_closed. */
             200: {
@@ -8501,6 +8509,13 @@ export interface operations {
             };
             /** @description Unknown or of another restaurant (P0002). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description code open_orders (with count): the restaurant has open orders (active, kitchen, delivered) and the body lacks leaveOpenOrders: true; the register stays open. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

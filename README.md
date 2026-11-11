@@ -402,7 +402,7 @@ Cada escritura es una sola transacción; la cuenta la calcula la base de datos c
 
 ### Pagos y caja
 
-`/api/payments` (métodos de pago con código y orden calculados en el servidor, cobro con `pay_order`, división de cuentas) y `/api/registers` (apertura con hora del servidor, una sola caja abierta por restaurante, resumen y cierre con `register_summary`/`close_register`, movimientos de efectivo). Las fechas de caja y de órdenes completadas (`?date=AAAA-MM-DD`) usan la zona horaria del restaurante (columna `restaurants.timezone`, por defecto `America/Bogota`).
+`/api/payments` (métodos de pago con código y orden calculados en el servidor, cobro con `pay_order`, división de cuentas) y `/api/registers` (apertura con hora del servidor, una sola caja abierta por restaurante, resumen y cierre con `register_summary`/`close_register`; con órdenes abiertas el cierre responde 409 `open_orders` salvo `{ "leaveOpenOrders": true }`, movimientos de efectivo). Las fechas de caja y de órdenes completadas (`?date=AAAA-MM-DD`) usan la zona horaria del restaurante (columna `restaurants.timezone`, por defecto `America/Bogota`).
 
 ### Inventario
 

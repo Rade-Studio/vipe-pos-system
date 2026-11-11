@@ -8,7 +8,7 @@ import type {
 import * as cashRegisterService from "@/lib/api/registers"
 import { log } from "@/lib/log"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
-import { closeRegisterRpc } from "@/lib/api/payments"
+import { closeRegisterRpc, openOrdersConflictOf } from "@/lib/api/payments"
 
 type CashRegisterState = {
   currentRegister: CashRegister | null
@@ -28,7 +28,8 @@ type CashRegisterState = {
    * `finalCash` lives on the returned summary's `expectedCashAfterTips`
    * (the value the server stored in `cash_registers.final_cash`).
    */
-  closeRegister: () => Promise<RegisterSummary | null>
+  /** Rethrows the API's 409 open_orders so the dialog can show it; other errors answer null. */
+  closeRegister: (options?: { leaveOpenOrders?: boolean }) => Promise<RegisterSummary | null>
 
   // Acciones para transacciones de efectivo
   addCashToRegister: (amount: number) => Promise<boolean>
@@ -189,14 +190,16 @@ export const useCashRegisterStore = create<CashRegisterState>()(
        * the UI should display. The browser does NOT recompute anything
        * from the local transactions.
        */
-      closeRegister: async () => {
+      closeRegister: async (options) => {
         const { currentRegister } = get()
         if (!currentRegister || currentRegister.status === "closed") {
           return null
         }
 
         try {
-          const result = await closeRegisterRpc(currentRegister.id)
+          const result = options
+            ? await closeRegisterRpc(currentRegister.id, options)
+            : await closeRegisterRpc(currentRegister.id)
 
           const closedRegister: CashRegister = {
             ...currentRegister,
@@ -212,6 +215,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           return result.summary
         } catch (error) {
+          if (openOrdersConflictOf(error)) throw error
           log.error("Error al cerrar la caja:", { error: String(error) })
           return null
         }

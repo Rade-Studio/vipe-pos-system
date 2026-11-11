@@ -17,6 +17,12 @@ import { type RegisterRow, toCashTransaction, toCloseResult, toPaidOrder, toRegi
 type Json = Record<string, unknown>;
 export const ALREADY_OPEN = 'A register is already open';
 const ONE_OPEN_INDEX = 'one_open_register_per_restaurant';
+const OPEN_ORDER_STATUSES = sql`('active', 'kitchen', 'delivered')`;
+
+export const openOrdersMessage = (count: number): string =>
+  count === 1
+    ? 'Hay 1 orden abierta. Cóbrala o cancélala, o confirma que pasa a la siguiente caja.'
+    : `Hay ${count} órdenes abiertas. Cóbralas o cancélalas, o confirma que pasan a la siguiente caja.`;
 
 export interface RegisterIncludes {
   transactions?: boolean;
@@ -82,11 +88,23 @@ export class RegistersService {
   }
 
   /**
-   * close_register, unchanged. Its first close does not return the
+   * close_register, gated: while the register is still open and the
+   * restaurant (RLS) has open orders, the close is 409 open_orders unless
+   * `leaveOpenOrders` confirms they pass to the next register. A closed or
+   * unknown register goes straight to close_register (replay, 404). Its first close does not return the
    * closing_timestamp it wrote (only the replay does), so it is read back from
    * the row in the same transaction.
    */
-  async close(id: string): Promise<CloseRegisterResult> {
+  async close(id: string, options: { leaveOpenOrders?: boolean } = {}): Promise<CloseRegisterResult> {
+    if (!options.leaveOpenOrders) {
+      const [{ count }] = await this.rows<{ count: number }>(sql`
+        SELECT count(*)::int AS count FROM public.orders
+         WHERE status IN ${OPEN_ORDER_STATUSES}
+           AND EXISTS (SELECT 1 FROM public.cash_registers WHERE id = ${id} AND status = 'open')`);
+      if (count > 0) {
+        throw new ConflictException({ message: openOrdersMessage(count), code: 'open_orders', count });
+      }
+    }
     const [{ result }] = await this.rows<{ result: Json }>(sql`SELECT public.close_register(${id}::uuid) AS result`);
     let closing = result.closing_timestamp as string | null | undefined;
     if (!closing) {

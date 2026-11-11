@@ -4,6 +4,7 @@ import { format, isSameDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { RefreshCw } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
+import { StaleOrdersBanner } from "@/components/admin/orders/StaleOrdersBanner"
 import { CancelledOrdersTable } from "@/components/admin/orders/CancelledOrdersTable"
 import type { VoidResult } from "@/components/voids/VoidFlow"
 import { localDayKey } from "@/lib/admin/dates"
@@ -110,6 +111,7 @@ export function OrdersPage({
       </div>
 
       <TabsContent value="active" className="mt-0 min-w-0">
+        <StaleOrdersBanner orders={orders} nowMs={nowMs} />
         <ActiveOrdersGrid orders={orders} isLoading={isLoading} onVoided={onVoided} onRefresh={onRefresh} />
       </TabsContent>
       <TabsContent value="completed" className="mt-0 min-w-0">

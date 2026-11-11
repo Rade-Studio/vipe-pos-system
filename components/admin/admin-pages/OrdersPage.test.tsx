@@ -539,6 +539,19 @@ describe("OrdersPage — F3 Canceladas", () => {
   })
 })
 
+describe("OrdersPage — S3 old open orders", () => {
+  it("shows the banner above the active orders for an order open 12 h or more", () => {
+    renderPage({ orders: [...ORDERS, order({ id: "old", orderNumber: 90, tableId: "t8", waiter: "w1", createdAt: minutesAgo(145 * 60 + 27) })] })
+    const banner = screen.getByRole("region", { name: "1 orden lleva abierta más de 12 horas" })
+    expect(banner).toHaveTextContent("hace 6 d 1 h")
+  })
+
+  it("shows no banner without old orders", () => {
+    renderPage()
+    expect(screen.queryByText(/más de 12 horas/)).toBeNull()
+  })
+})
+
 describe("OrdersPage — tab switch shape", () => {
   it("rounds the active tab like its pill container", async () => {
     renderPage()

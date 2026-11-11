@@ -17,7 +17,9 @@ import { idParamSchema, parseInput } from '../common/validation';
 import {
   CashRegister,
   CashTransaction,
+  CloseRegisterRequest,
   CloseRegisterResult,
+  closeRegisterSchema,
   CreateCashTransactionRequest,
   createCashTransactionSchema,
   OpenRegisterRequest,
@@ -99,11 +101,16 @@ export class RegistersController {
   @Post(':id/close')
   @Roles(...DRAWER_ROLES)
   @HttpCode(200)
+  @ApiBody({ type: CloseRegisterRequest, required: false })
   @ApiOkResponse({ type: CloseRegisterResult, description: 'close_register result; a replay answers already_closed.' })
+  @ApiConflictResponse({
+    description: 'code open_orders (with count): the restaurant has open orders (active, kitchen, delivered) and the body lacks leaveOpenOrders: true; the register stays open.',
+  })
   @ApiNotFoundResponse({ description: 'Unknown or of another restaurant (P0002).' })
   @ApiForbiddenResponse({ description: 'Not admin or cashier.' })
-  close(@Param('id') id: string): Promise<CloseRegisterResult> {
-    return this.registers.close(parseInput(idParamSchema, id));
+  close(@Param('id') id: string, @Body() body: unknown): Promise<CloseRegisterResult> {
+    const { leaveOpenOrders } = parseInput(closeRegisterSchema, body);
+    return this.registers.close(parseInput(idParamSchema, id), { leaveOpenOrders });
   }
 
   @Get(':id/paid-orders')
