@@ -6,6 +6,7 @@ import type { Table, TableStatus } from "@/types"
 import { cn } from "@/lib/utils"
 import { chairPositions, initials, isInactive, seatsText, tableAccessibleName, tableBox } from "@/lib/floor/layout"
 import { SHAPE_LABELS } from "@/lib/floor/editor"
+import { isOldElapsed } from "@/lib/floor/live"
 import { arrivalLabel, reservationLine } from "@/lib/tables/reservation"
 import { StatusChip } from "./StatusChip"
 import { INACTIVE_TONE, toneClasses } from "./tones"
@@ -71,6 +72,8 @@ export function FloorTable({
   const elapsedChip = mode === "live" && !inactive ? elapsed : null
   // S2: a reserved table names its reservation under it and in its name.
   const reservation = mode === "live" ? reservationLine(table) : null
+  // S3: an order open 12 h or more turns the chip to the warning tone.
+  const oldOrder = !reservation && isOldElapsed(elapsedChip)
   const shadow = [
     selected ? "0 0 0 3px var(--floor), 0 0 0 6px var(--accent)" : null,
     "0 6px 0 -1px var(--thick)",
@@ -166,6 +169,7 @@ export function FloorTable({
         status={table.status}
         inactive={inactive}
         data-testid="table-status"
+        data-old={oldOrder ? "true" : undefined}
         // T22/S6: the time since the order opened rides in the status chip under the
         // table, so it never covers the number, the waiter badge or a neighbour.
         extra={
@@ -190,6 +194,7 @@ export function FloorTable({
         className={cn(
           "absolute left-1/2 top-full z-20 -translate-x-1/2 px-1.5 text-[11px] shadow-sm sm:text-xs",
           chairs.length > 0 ? "mt-[calc(var(--cs)*1.3+4px)]" : "mt-2",
+          oldOrder && "bg-status-warning-bg border-status-warning-line text-status-warning-fg",
         )}
       />}
     </Root>
