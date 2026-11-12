@@ -7,6 +7,7 @@ import { useOrderStore } from "@/store/useOrderStore"
 import { useProfileStore } from "@/store/useProfileStore"
 import type { Profile, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
+import { AssignedCountsEntry } from "@/components/counts/AssignedCountsEntry"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { TablePanel } from "@/components/floor/TablePanel"
 import { GuestsStepper } from "@/components/floor/GuestsStepper"
@@ -1611,6 +1612,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       <div className="flex-1 overflow-auto bg-muted/20 p-0">
         <div className="p-1 md:p-2">
           <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
+          <AssignedCountsEntry />
 
           <div className="mb-1 flex justify-end px-1">
             <Button variant="outline" className="min-h-11 gap-2" onClick={startTakeaway}>

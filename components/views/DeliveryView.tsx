@@ -1,6 +1,7 @@
 "use client"
 
 import { Header } from "@/components/layout/Header"
+import { AssignedCountsEntry } from "@/components/counts/AssignedCountsEntry"
 import type { Profile } from "@/types"
 import type { DeliveryRole } from "@/lib/delivery/types"
 import { DeliveryBoard } from "@/components/delivery/DeliveryBoard"
@@ -41,6 +42,7 @@ export function DeliveryView({ profile, onChangeProfile, authRole }: DeliveryVie
           authRole={authRole}
           title="Domicilios"
         />
+        <AssignedCountsEntry />
       </div>
       {withRoleNav && <RoleNav />}
       <main className="min-w-0 flex-1 overflow-auto">
