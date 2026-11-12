@@ -1,23 +1,32 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import type { CashDay, CashLedger } from "@/lib/api/cash"
+import type { CashDay, CashLedger, CashZReport } from "@/lib/api/cash"
 
 /**
  * caja-cierres T3 (S6-S7): the Día view (tablero 02) rendered
  * directly: names instead of ids, every method, tips apart, validate, and
- * the Libro (03) with its search and CSV export.
+ * the Libro (03) with its search and CSV export; S8: emit and reprint the Z.
  */
 
 const api = vi.hoisted(() => ({
   day: vi.fn(),
   ledger: vi.fn(),
   validate: vi.fn(),
+  emit: vi.fn(),
+  zOne: vi.fn(),
+  print: vi.fn(),
 }))
 vi.mock("@/lib/api/cash", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchCashDay: api.day,
   fetchCashLedger: api.ledger,
+  emitZReport: api.emit,
+  fetchZReport: api.zOne,
+}))
+vi.mock("@/components/printing/slip-format", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  printSlip: api.print,
 }))
 vi.mock("@/lib/api/registers", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -180,6 +189,19 @@ const LEDGER: CashLedger = {
   ],
 }
 
+const Z_EMITTED = { number: 215, emittedAt: "2026-11-11T04:12:00.000Z", emittedBy: { id: "p-mariana", name: "Mariana Restrepo Gil" } }
+const zReport = (number: number, businessDay: string): CashZReport => {
+  const snapshot: Partial<CashDay> = { ...DAY }
+  delete snapshot.z
+  return {
+    number,
+    businessDay,
+    emittedAt: Z_EMITTED.emittedAt,
+    emittedBy: Z_EMITTED.emittedBy,
+    snapshot: { ...(snapshot as Omit<CashDay, "z">), date: businessDay, taxes: { rate: 8, base: 5760278, tax: 460822 }, orders: { first: 18231, last: 18385 }, discounts: 0, tipsByMethod: [] },
+  }
+}
+
 function renderPage(date = "2026-11-11") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onDateChange = vi.fn()
@@ -195,6 +217,9 @@ beforeEach(() => {
   api.day.mockReset().mockResolvedValue(DAY)
   api.ledger.mockReset().mockResolvedValue(LEDGER)
   api.validate.mockReset().mockResolvedValue({})
+  api.emit.mockReset().mockResolvedValue(zReport(215, "2026-11-11"))
+  api.zOne.mockReset().mockImplementation(async (number: number) => zReport(number, "2026-11-10"))
+  api.print.mockReset().mockReturnValue(true)
 })
 
 describe("CashDayView", () => {
@@ -308,6 +333,55 @@ describe("CashDayView", () => {
     expect(csv).toContain("Mesa 12 · Orden #1118 · Sara Gómez")
     expect(csv).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/)
     click.mockRestore()
+  })
+
+  it("Emitir informe Z asks to confirm, numbers the day, prints it and then offers Reimprimir Z", async () => {
+    renderPage()
+    const emit = await screen.findByRole("button", { name: "Emitir informe Z" })
+    expect(emit).toBeEnabled()
+    fireEvent.click(emit)
+    const dialog = await screen.findByRole("alertdialog", { name: "¿Emitir el informe Z del día?" })
+    expect(within(dialog).getByText(/le da el siguiente número consecutivo/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/no se puede deshacer/)).toBeInTheDocument()
+    expect(api.emit).not.toHaveBeenCalled()
+    api.day.mockResolvedValue({ ...DAY, z: Z_EMITTED })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Emitir informe Z" }))
+    })
+    await waitFor(() => expect(api.emit).toHaveBeenCalledWith("2026-11-11"))
+    await waitFor(() => expect(api.print).toHaveBeenCalledTimes(1))
+    expect(api.print.mock.calls[0][1]).toMatchObject({ title: "Informe Z N.º 000215" })
+    expect(await screen.findByText(/Z N\.º 000215 emitido · por Mariana Restrepo Gil · /)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Emitir informe Z" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Reimprimir Z" })).toBeInTheDocument()
+  })
+
+  it("Cancelar closes the confirmation without emitting", async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "Emitir informe Z" }))
+    const dialog = await screen.findByRole("alertdialog")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
+    expect(api.emit).not.toHaveBeenCalled()
+  })
+
+  it("keeps Emitir informe Z disabled while a turno is open", async () => {
+    api.day.mockResolvedValue({ ...DAY, status: "open", registers: [DAY.registers[0], { ...DAY.registers[1], status: "open", closedAt: null }] })
+    renderPage()
+    expect(await screen.findByRole("button", { name: "Emitir informe Z" })).toBeDisabled()
+    expect(screen.getByText("Cierra todos los turnos del día para emitir el informe Z.")).toBeInTheDocument()
+  })
+
+  it("Reimprimir Z reads the stored Z by number and prints it", async () => {
+    api.day.mockResolvedValue({ ...DAY, z: Z_EMITTED })
+    renderPage()
+    expect(await screen.findByText(/Z N\.º 000215 emitido/)).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reimprimir Z" }))
+    })
+    await waitFor(() => expect(api.zOne).toHaveBeenCalledWith(215))
+    await waitFor(() => expect(api.print).toHaveBeenCalledTimes(1))
+    expect(api.emit).not.toHaveBeenCalled()
   })
 
   it("shows an empty state for a day without turnos", async () => {
