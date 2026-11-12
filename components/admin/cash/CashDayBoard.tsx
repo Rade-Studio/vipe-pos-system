@@ -61,7 +61,7 @@ export function DayKpis({ day }: { day: CashDay }) {
       <StatCard
         title="Mesas atendidas"
         value={totals.tables}
-        hint={`+ ${totals.deliveries.count} domicilios (${formatCop(totals.deliveries.amount)})`}
+        hint={`+ ${totals.deliveries.count} domicilios (${formatCop(totals.deliveries.amount)}) · ${totals.takeaway?.count ?? 0} para llevar (${formatCop(totals.takeaway?.amount ?? 0)})`}
       />
       <StatCard
         title="Cuadre del día"

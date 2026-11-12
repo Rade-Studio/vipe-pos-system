@@ -414,6 +414,32 @@ describe('renderKitchenOrder - takeaway (S8)', () => {
   })
 })
 
+describe('renderInvoice - takeaway (S8)', () => {
+  const takeawayTexts = (invoice: { orderType?: 'dine_in' | 'takeaway' | 'delivery'; customerName?: string | null; table?: string | number }) =>
+    renderInvoice({
+      invoiceNumber: 'INV-2',
+      invoice: {
+        businessInfo: BUSINESS,
+        bill: { subtotal: 10000, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 10000, totalDiscounts: 0 },
+        waiter: 'Luis',
+        ...invoice,
+      },
+      displayItems: [{ name: 'Hamburguesa', quantity: 1, price: 10000 }],
+    }).lines.map((l) => l.text)
+
+  it('prints only PARA LLEVAR · <nombre> instead of the MESA line, keeping the waiter', () => {
+    const texts = takeawayTexts({ orderType: 'takeaway', customerName: 'Ana María', table: 'Para llevar · Ana María' })
+    expect(texts).toContain('PARA LLEVAR · Ana María')
+    expect(texts).toContain('MESERO: Luis')
+    expect(texts.join('\n')).not.toMatch(/MESA:/)
+  })
+
+  it('prints PARA LLEVAR without a name when the customer is missing, and MESA for a dine-in table', () => {
+    expect(takeawayTexts({ orderType: 'takeaway', customerName: null })).toContain('PARA LLEVAR')
+    expect(takeawayTexts({ orderType: 'dine_in', table: 7 })).toContain('MESA: Mesa 7')
+  })
+})
+
 describe('renderInvoice - delivery', () => {
   it('prints customer, phone and address instead of MESA / MESERO', () => {
     const texts = invoiceTexts(DELIVERY, { tip: 0, total: 14900 })

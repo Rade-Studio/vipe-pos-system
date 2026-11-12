@@ -129,6 +129,7 @@ export const toPaidOrder = (row: Json): RegisterPaidOrder => ({
   orderId: String(row.order_id),
   orderNumber: numOrNull(row.order_number),
   orderType: row.order_type as RegisterPaidOrder['orderType'],
+  customerName: text(row.customer_name),
   tableNumber: numOrNull(row.table_number),
   zoneName: text(row.zone_name),
   waiter: profileRef(row.waiter_id, row.waiter_name),

@@ -4623,7 +4623,9 @@ export interface components {
             /** @description Per-restaurant order number. */
             orderNumber: number | null;
             /** @enum {string} */
-            orderType: "dine_in" | "delivery";
+            orderType: "dine_in" | "takeaway" | "delivery";
+            /** @description Who picks up a takeaway order; null for the other types. */
+            customerName?: string | null;
             tableNumber: number | null;
             zoneName: string | null;
             /** @description The order's waiter. */
@@ -4704,6 +4706,11 @@ export interface components {
             /** @description Amount due of the delivery payments. */
             amount: number;
         };
+        CashTakeaway: {
+            count: number;
+            /** @description Amount due of the takeaway payments. */
+            amount: number;
+        };
         CashDayTotals: {
             salesNet: number;
             tickets: number;
@@ -4712,6 +4719,8 @@ export interface components {
             /** @description Distinct tables of the paid dine-in orders. */
             tables: number;
             deliveries: components["schemas"]["CashDeliveries"];
+            /** @description Paid takeaway (para llevar) orders; never counted in tables. Always on a day; absent from Z snapshots stored before it. */
+            takeaway?: components["schemas"]["CashTakeaway"];
             tips: number;
             methods: components["schemas"]["CashMethodTotal"][];
             deposits: number;
@@ -4739,7 +4748,7 @@ export interface components {
             kind: "payment_void" | "order_cancellation" | "item_void";
             /** @description orders.order_number. */
             orderNumber: number | null;
-            /** @description Table number as text, "Domicilio" for a delivery order, null without table. */
+            /** @description Table number as text, "Domicilio" for a delivery order, "Para llevar · <customer>" for a takeaway order, null without table. */
             table: string | null;
             /** @description Payment amount due, order total or voided line amount. */
             amount: number;
@@ -4819,7 +4828,7 @@ export interface components {
             amount?: number;
             openedBy?: components["schemas"]["ProfileRef"] | null;
             orderNumber?: number | null;
-            /** @description Table number as text, "Domicilio" for a delivery order, null without table. */
+            /** @description Table number as text, "Domicilio" for a delivery order, "Para llevar · <customer>" for a takeaway order, null without table. */
             table?: string | null;
             waiter?: components["schemas"]["ProfileRef"] | null;
             /** @description Who took the payment. */

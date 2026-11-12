@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button"
 import type { VoidTarget } from "@/components/voids/flow"
 import type { OrderDto } from "@/lib/api/orders"
+import { takeawayLabel } from "@/lib/cashier/queue"
 import { formatCurrency } from "@/utils/helpers"
 
 /** Statuses of an order that is neither paid nor cancelled (the API's close gate counts the same). */
@@ -19,7 +20,11 @@ export function openOrderAge(createdAt: string | null, now: number): string {
 }
 
 export const openOrderPlace = (order: OrderDto): string =>
-  order.orderType === "delivery" ? "Domicilio" : order.tableNumber != null ? `Mesa ${order.tableNumber}` : "Sin mesa"
+  order.orderType === "delivery"
+    ? "Domicilio"
+    : order.orderType === "takeaway"
+      ? takeawayLabel({ customerName: order.customerName ?? undefined })
+      : order.tableNumber != null ? `Mesa ${order.tableNumber}` : "Sin mesa"
 
 export const leaveOpenOrdersLabel = (count: number): string =>
   count === 1

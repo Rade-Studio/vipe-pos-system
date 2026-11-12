@@ -23,6 +23,13 @@ type DiscountedInvoice = PrintableInvoice & {
   bill: PrintableInvoice["bill"] & { grossSubtotal?: number }
 }
 
+const TAKEAWAY_PREFIX = "Para llevar"
+/** S8: the cashier names a takeaway invoice `table: "Para llevar · <nombre>"` (takeawayLabel); the thermal ticket gets its type and customer. */
+const takeawayOf = (table: string | number) =>
+  String(table).startsWith(TAKEAWAY_PREFIX)
+    ? { orderType: "takeaway" as const, customerName: String(table).slice(TAKEAWAY_PREFIX.length).replace(/^\s*·\s*/, "") || null }
+    : {}
+
 interface InvoicePrintViewProps {
   invoice: PrintableInvoice
   open: boolean
@@ -208,7 +215,7 @@ export function InvoicePrintView({
                   ) : (
                     <>
                       <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded">
-                        {String(displayTable).startsWith("Para llevar") ? (
+                        {String(displayTable).startsWith(TAKEAWAY_PREFIX) ? (
                           <span className="font-medium dark:text-white">{displayTable}</span>
                         ) : (
                           <>
@@ -520,6 +527,7 @@ export function InvoicePrintView({
                   tenders,
                   change,
                   delivery,
+                  ...takeawayOf(displayTable),
                   taxType,
                 },
                 displayItems,

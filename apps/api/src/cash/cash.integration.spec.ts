@@ -73,8 +73,8 @@ const DAY_REGISTER_KEYS = [
   'openedAt', 'openedBy', 'salesNet', 'status', 'tickets', 'tips', 'tipsPayout', 'validatedAt', 'validatedBy', 'withdrawals',
 ];
 const TOTALS_KEYS = [
-  'avgTicket', 'counted', 'deliveries', 'deposits', 'difference', 'expected', 'methods', 'salesNet', 'tables', 'tickets', 'tips',
-  'withdrawals',
+  'avgTicket', 'counted', 'deliveries', 'deposits', 'difference', 'expected', 'methods', 'salesNet', 'tables', 'takeaway', 'tickets',
+  'tips', 'withdrawals',
 ];
 const BUCKET_KEYS = ['avgTicket', 'difference', 'end', 'methods', 'salesNet', 'start', 'tickets', 'tips', 'voids'];
 const ADMIN_A = { id: fixtures.adminA.profileId, name: 'Admin A' };
@@ -196,7 +196,8 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       const { totals } = (await adminA().get('/api/cash/days/2026-11-10')).body;
       expect(Object.keys(totals).sort()).toEqual(TOTALS_KEYS);
       expect(totals).toMatchObject({
-        salesNet: 145000, tickets: 4, avgTicket: 36250, tables: 2, deliveries: { count: 1, amount: 25000 }, tips: 12000,
+        salesNet: 145000, tickets: 4, avgTicket: 36250, tables: 2, deliveries: { count: 1, amount: 25000 }, takeaway: { count: 0, amount: 0 },
+        tips: 12000,
         deposits: 50000, withdrawals: 45000, expected: 373000, counted: 371000, difference: -2000,
       });
       expect(byCode(totals.methods)).toEqual({ cash: [80000, 2], transfer: [33000, 1], nequi: [44000, 1], bancolombia: [0, 0] });
@@ -533,6 +534,80 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       expect(b.body).toMatchObject({ number: 1, businessDay: '2026-11-10', snapshot: { totals: { salesNet: 3000 } } });
       expect((await adminA().get('/api/cash/z/1')).body.snapshot.totals.salesNet).toBe(145000);
       expect((await adminA().get('/api/cash/z?from=2026-09-01&to=2026-11-30')).body.items).toHaveLength(3);
+    });
+  });
+
+  describe('para llevar orders (promociones S8)', () => {
+    // 2026-09-01: one closed register with two paid takeaway orders, a dine_in at table 7, a delivery and a cancelled takeaway.
+    const reg = '97000000-0000-0000-0000-000000000901';
+    const [t1, t2, dine, del, gone] = [1, 2, 3, 4, 5].map((n) => `97000000-0000-0000-0000-00000000091${n}`);
+    beforeAll(async () => {
+      const A = fixtures.restaurantA;
+      await db(
+        `INSERT INTO cash_registers (id, opening_timestamp, closing_timestamp, initial_cash, final_cash, status, restaurant_id, opened_by, closed_by,
+                                     counted_cash, cash_difference) VALUES ($1, '2026-09-01 10:00-05', '2026-09-01 20:00-05', 0, 0, 'closed', $2, $3, $3, 0, 0)`,
+        [reg, A, c.cashierProfile],
+      );
+      await db(
+        `INSERT INTO orders (id, status, subtotal, tax, tax_percentage, total, restaurant_id, table_id, order_type, customer_name) VALUES
+           ($1, 'paid', 12000, 0, 0, 12000, $6, NULL, 'takeaway', 'Ana María'),
+           ($2, 'paid', 8000, 0, 0, 8000, $6, NULL, 'takeaway', 'Luis'),
+           ($3, 'paid', 10000, 0, 0, 10000, $6, $7, 'dine_in', NULL),
+           ($4, 'paid', 5000, 0, 0, 5000, $6, NULL, 'delivery', NULL),
+           ($5, 'cancelled', 4000, 0, 0, 4000, $6, NULL, 'takeaway', 'Pedro')`,
+        [t1, t2, dine, del, gone, A, c.table7],
+      );
+      for (const [order, due, hour] of [[t1, 12000, 11], [t2, 8000, 12], [dine, 10000, 13], [del, 5000, 14]] as const) {
+        await db(
+          `WITH pay AS (
+             INSERT INTO payments (id, order_id, cash_register_id, cashier_profile_id, amount_due, tip_amount, total_charged, change_given,
+                                   idempotency_key, created_at, restaurant_id)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, 0, $4, 0, gen_random_uuid(), $5::timestamptz, $6) RETURNING id)
+           INSERT INTO payment_tenders (restaurant_id, payment_id, line_no, payment_method_id, method_code, method_kind, amount, cash_received)
+             SELECT $6, pay.id, 1, m.id, m.code, m.kind, $4, $4 FROM pay JOIN payment_methods m ON m.restaurant_id = $6 AND m.code = 'cash'`,
+          [order, reg, c.cashierProfile, due, `2026-09-01 ${hour}:00-05`, A],
+        );
+      }
+      const audit = '97000000-0000-0000-0000-000000000921';
+      await db(
+        `INSERT INTO audit_log (id, restaurant_id, event_type, order_id, actor_profile_id, actor_name, authorized_by_profile_id,
+                                authorized_by_name, authorization_id, reason_code, reason_text, amount, created_at)
+           VALUES ($1, $2, 'order_cancelled', $3, $4, 'Cashier A', $5, 'Admin A', gen_random_uuid(), 'other', 'No volvió', 4000, '2026-09-01 15:00-05')`,
+        [audit, A, gone, c.cashierProfile, fixtures.adminA.profileId],
+      );
+      await db(
+        `INSERT INTO order_cancellations (restaurant_id, order_id, audit_id, previous_status, reason_code, reason_text, cancelled_by,
+                                          cancelled_by_name, authorized_by, authorized_by_name, authorization_id, subtotal, tax, tip, total,
+                                          items, sent_items, cancelled_at)
+           VALUES ($1, $2, $3, 'kitchen', 'other', 'No volvió', $4, 'Cashier A', $5, 'Admin A', gen_random_uuid(), 4000, 0, 0, 4000,
+                   '[]', 0, '2026-09-01 15:00-05')`,
+        [A, gone, audit, c.cashierProfile, fixtures.adminA.profileId],
+      );
+    });
+
+    it('counts the takeaway orders apart from tables and deliveries in the day totals and the Z', async () => {
+      const { totals, voids } = (await adminA().get('/api/cash/days/2026-09-01')).body;
+      expect(totals).toMatchObject({ salesNet: 35000, tickets: 4, tables: 1, deliveries: { count: 1, amount: 5000 }, takeaway: { count: 2, amount: 20000 } });
+      expect(voids.items).toEqual([expect.objectContaining({ kind: 'order_cancellation', table: 'Para llevar · Pedro', amount: 4000 })]);
+      const z = (await adminA().post('/api/cash/days/2026-09-01/z')).body;
+      expect(z.snapshot.totals).toMatchObject({ tables: 1, takeaway: { count: 2, amount: 20000 } });
+    });
+
+    it("labels a takeaway payment 'Para llevar · <cliente>' in the ledger, keeping the table and Domicilio labels", async () => {
+      const entries: { kind: string; table?: string | null }[] = (await adminA().get('/api/cash/days/2026-09-01/ledger')).body.entries;
+      expect(entries.filter((e) => e.kind === 'payment').map((e) => e.table)).toEqual(['Para llevar · Ana María', 'Para llevar · Luis', '7', 'Domicilio']);
+      expect(entries.find((e) => e.kind === 'order_cancellation')).toMatchObject({ table: 'Para llevar · Pedro' });
+    });
+
+    it('lists the takeaway paid orders of the register with orderType takeaway and the customer name', async () => {
+      const res = await adminA().get(`/api/registers/${reg}/paid-orders`);
+      expect(res.status).toBe(200);
+      expect(res.body.map((o: { orderType: string; customerName: string | null; tableNumber: number | null }) => [o.orderType, o.customerName, o.tableNumber])).toEqual([
+        ['delivery', null, null],
+        ['dine_in', null, 7],
+        ['takeaway', 'Luis', null],
+        ['takeaway', 'Ana María', null],
+      ]);
     });
   });
 

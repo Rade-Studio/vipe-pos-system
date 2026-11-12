@@ -153,7 +153,9 @@ export class CashService {
       WITH ${scope}
       SELECT count(DISTINCT o.table_id) FILTER (WHERE o.order_type = 'dine_in') AS tables,
              count(*) FILTER (WHERE o.order_type = 'delivery') AS deliveries,
-             coalesce(sum(p.amount_due) FILTER (WHERE o.order_type = 'delivery'), 0) AS delivery_amount
+             coalesce(sum(p.amount_due) FILTER (WHERE o.order_type = 'delivery'), 0) AS delivery_amount,
+             count(*) FILTER (WHERE o.order_type = 'takeaway') AS takeaways,
+             coalesce(sum(p.amount_due) FILTER (WHERE o.order_type = 'takeaway'), 0) AS takeaway_amount
         FROM pays p JOIN public.orders o ON o.id = p.order_id`);
     const salesNet = sumOf(registers, 'salesNet');
     const tickets = sumOf(registers, 'tickets');
@@ -170,6 +172,7 @@ export class CashService {
         avgTicket: avg(salesNet, tickets),
         tables: num(extra.tables),
         deliveries: { count: num(extra.deliveries), amount: num(extra.delivery_amount) },
+        takeaway: { count: num(extra.takeaways), amount: num(extra.takeaway_amount) },
         tips: sumOf(registers, 'tips'),
         methods: mergeMethods(catalog, registers.map((reg) => reg.methods)),
         deposits: sumOf(registers, 'deposits'),
@@ -599,8 +602,10 @@ const zRef = (row: Row): CashZRef => ({
   emittedBy: profileRef(row.emitted_by, row.emitted_by_name),
 });
 
-/** Table label of the joined order `o` and table `t`. */
-const tableLabel = sql`CASE WHEN o.order_type = 'delivery' THEN 'Domicilio' ELSE t.number::text END`;
+/** Table label of the joined order `o` and table `t`; a takeaway order reads "Para llevar · <customer_name>". */
+const tableLabel = sql`CASE WHEN o.order_type = 'delivery' THEN 'Domicilio'
+  WHEN o.order_type = 'takeaway' THEN 'Para llevar' || coalesce(' · ' || nullif(btrim(o.customer_name), ''), '')
+  ELSE t.number::text END`;
 /** Cash tenders of the joined payment `p` (each amount is already net of the change). */
 const cashTenders = sql`(SELECT coalesce(sum(ct.amount), 0) FROM public.payment_tenders ct WHERE ct.payment_id = p.id AND ct.method_kind = 'cash')`;
 const tenderList = sql`coalesce((
