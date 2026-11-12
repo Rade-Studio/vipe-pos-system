@@ -206,8 +206,14 @@ export function InvoicePrintView({
                   ) : (
                     <>
                       <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded">
-                        <span className="font-medium dark:text-white">Mesa:</span>
-                        <span className="float-right dark:text-gray-300">{displayTable}</span>
+                        {String(displayTable).startsWith("Para llevar") ? (
+                          <span className="font-medium dark:text-white">{displayTable}</span>
+                        ) : (
+                          <>
+                            <span className="font-medium dark:text-white">Mesa:</span>
+                            <span className="float-right dark:text-gray-300">{displayTable}</span>
+                          </>
+                        )}
                       </div>
                       <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded col-span-2">
                         <span className="font-medium dark:text-white">Mesero:</span>

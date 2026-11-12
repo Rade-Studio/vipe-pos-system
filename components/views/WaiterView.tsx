@@ -87,6 +87,7 @@ import { useWaiters } from "@/hooks/use-waiters"
 import { useZones } from "@/hooks/use-zones"
 import { MENU_TREE_KEY, useMenuTree } from "@/hooks/use-menu-tree"
 import { formatCurrency } from "@/utils/helpers"
+import { takeawayLabel } from "@/lib/cashier/queue"
 import { useConfigStore } from "@/store/use-config-store"
 import { invalidationsFor } from "@/hooks/inventory/invalidations"
 import {
@@ -122,6 +123,13 @@ const RELEASE_REFUSAL: Record<string, string> = {
 /** The manual release refusal, with the table status in Spanish (S1). */
 export function releaseRefusal(status: string): string {
   return `No se puede liberar una mesa ${RELEASE_REFUSAL[status] ?? "en este estado"}.`
+}
+
+/** S8: the status shown on a takeaway order in the waiter's list. */
+const TAKEAWAY_STATUS: Partial<Record<Order["status"], string>> = {
+  active: "Abierto",
+  kitchen: "En cocina",
+  delivered: "Entregado",
 }
 
 const CUSTOM_SIDEBAR_WIDTH = "22rem" // Ajustado para optimizar espacio
@@ -362,6 +370,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           ? orderDtoFromWire(withoutVoidedWireLines(payload.new))
           : null
       const patch = payload.new ? wireRowToPartialOrder(payload.new) : null
+      // S8: a partial UPDATE without order_type keeps the cached type (a takeaway stays takeaway).
+      if (patch && (payload.new as any)?.order_type === undefined) delete (patch as Partial<Order>).orderType
       const conv: OrderChange = {
         eventType: payload.eventType,
         new: inserted ? toOrder(inserted) : patch && updatedLines ? { ...patch, items: toOrder(updatedLines).items } : patch,
@@ -1045,6 +1055,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // S8: "Para llevar" asks the customer's name, then takes the order with the same step flow (no table).
   const [takeawayDialogOpen, setTakeawayDialogOpen] = useState(false)
   const [takeawayCustomer, setTakeawayCustomer] = useState<TakeawayCustomer | null>(null)
+  // S8 (M5c): the open takeaway orders, listed next to the button; opening one adds items to it.
+  const [openTakeawayId, setOpenTakeawayId] = useState<string | null>(null)
+  const takeawayOrders = useMemo(() => ordersData.filter((o) => o.orderType === "takeaway"), [ordersData])
   const startTakeaway = useCallback(() => {
     if (!terminal) return setTakeawayDialogOpen(true)
     void terminal.ensureIdentity({ label: "Para llevar" }).then((ok) => {
@@ -1578,7 +1591,15 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     )
   }
 
-  const takeawayFlow = takeawayCustomer ? (
+  const openTakeaway = openTakeawayId ? takeawayOrders.find((o) => o.id === openTakeawayId) : undefined
+  const takeawayFlow = openTakeaway ? (
+    <TakeawayOrderFlow
+      customer={{ name: openTakeaway.customerName ?? "", phone: openTakeaway.customerPhone ?? null }}
+      order={openTakeaway}
+      onClose={() => setOpenTakeawayId(null)}
+      onSent={() => setOpenTakeawayId(null)}
+    />
+  ) : takeawayCustomer ? (
     <TakeawayOrderFlow customer={takeawayCustomer} onClose={() => setTakeawayCustomer(null)} onSent={() => setTakeawayCustomer(null)} />
   ) : null
 
@@ -1597,6 +1618,18 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
               Para llevar
             </Button>
           </div>
+
+          {takeawayOrders.length > 0 && (
+            <section aria-label="Pedidos para llevar" className="mb-1 flex flex-wrap gap-1 px-1">
+              {takeawayOrders.map((o) => (
+                <Button key={o.id} variant="outline" className="min-h-11 gap-2" onClick={() => setOpenTakeawayId(o.id)}>
+                  <span>{takeawayLabel(o)}</span>
+                  <span className="text-muted-foreground">{TAKEAWAY_STATUS[o.status] ?? o.status}</span>
+                  <span className="tabular-nums">{formatCurrency(o.bill?.total ?? 0)}</span>
+                </Button>
+              ))}
+            </section>
+          )}
 
           <div className="mb-1">
             <TablesSection

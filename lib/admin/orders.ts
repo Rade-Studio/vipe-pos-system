@@ -321,7 +321,7 @@ export function adminOrderRows(orders: readonly Order[], ctx: AdminRowContext): 
 }
 
 export type StatusFilter = "all" | ActiveStatus
-export type TypeFilter = "all" | "table" | "delivery"
+export type TypeFilter = "all" | "table" | "takeaway" | "delivery"
 export interface RowFilters {
   query: string
   status: StatusFilter
@@ -343,7 +343,8 @@ export function filterOrderRows(rows: readonly AdminOrderRow[], filters: RowFilt
   const words = normalizeSearch(filters.query.trim()).split(/\s+/).filter(Boolean)
   return rows.filter((row) => {
     if (filters.status !== "all" && row.status !== filters.status) return false
-    if (filters.type === "table" && row.isDelivery) return false
+    if (filters.type === "table" && (row.order.orderType ?? "dine_in") !== "dine_in") return false
+    if (filters.type === "takeaway" && row.order.orderType !== "takeaway") return false
     if (filters.type === "delivery" && !row.isDelivery) return false
     if (words.length === 0) return true
     const tokens = row.haystack.split(/[\s,#]+/)

@@ -453,6 +453,14 @@ describe("T28 admin orders table", () => {
     expect(statusCounts(rows)).toEqual({ all: 4, active: 1, kitchen: 2, delivered: 1 })
   })
 
+  it("filters takeaway rows under 'Para llevar' and keeps them out of 'Mesas' (S8)", () => {
+    const withTakeaway = [...rows, ...adminOrderRows([appOrder({ id: "t", orderType: "takeaway", customerName: "Laura" })], ctx)]
+    expect(ids(filterOrderRows(withTakeaway, { ...none, type: "takeaway" }))).toEqual(["t"])
+    expect(ids(filterOrderRows(withTakeaway, { ...none, type: "table" }))).toEqual(["a", "c", "d"])
+    expect(ids(filterOrderRows(withTakeaway, { ...none, type: "delivery" }))).toEqual(["b"])
+    expect(ids(filterOrderRows(withTakeaway, none))).toEqual(["a", "b", "c", "d", "t"])
+  })
+
   it("sorts by Tiempo (oldest first by default), Orden and Total, and toggles the direction", () => {
     expect(ids(sortOrderRows(rows, { key: "minutes", direction: "desc" }))).toEqual(["b", "c", "a", "d"])
     expect(ids(sortOrderRows(rows, { key: "number", direction: "asc" }))).toEqual(["d", "c", "b", "a"])

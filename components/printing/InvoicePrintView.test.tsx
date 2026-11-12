@@ -61,6 +61,17 @@ describe("InvoicePrintView", () => {
     expect(env.sendFactura).not.toHaveBeenCalled()
   })
 
+  it("labels a takeaway invoice 'Para llevar · <nombre>' without the Mesa: prefix (S8)", () => {
+    render(<InvoicePrintView invoice={{ ...invoice, table: "Para llevar · Ana" }} open onOpenChange={() => {}} />)
+    expect(screen.getByText("Para llevar · Ana")).toBeInTheDocument()
+    expect(screen.queryByText("Mesa:")).not.toBeInTheDocument()
+  })
+
+  it("keeps the Mesa: label on a table invoice", () => {
+    render(<InvoicePrintView invoice={invoice} open onOpenChange={() => {}} />)
+    expect(screen.getByText("Mesa:")).toBeInTheDocument()
+  })
+
   it("offers the three print actions when printing is on", () => {
     render(<InvoicePrintView invoice={invoice} open onOpenChange={() => {}} />)
     expect(screen.getAllByRole("button", { name: /Imprimir/ }).length).toBeGreaterThanOrEqual(2)
