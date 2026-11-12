@@ -147,3 +147,23 @@ describe("InvoicePrintView discounts (S14)", () => {
     expect(screen.queryByText(/Hoy ahorraste/)).toBeNull()
   })
 })
+
+describe("InvoicePrintView totals layout (S10)", () => {
+  const row = (label: string) => screen.getByText(label).parentElement!
+
+  it("shows an older invoice with only totalDiscounts in the previous layout: net Subtotal, IVA, then Descuentos", () => {
+    const older = {
+      ...invoice,
+      bill: { subtotal: 50000, tax: 4000, taxPercentage: 8, tip: 0, tipPercentage: 0, total: 54000, totalDiscounts: 6000 },
+    } as unknown as PrintableInvoice
+    render(<InvoicePrintView invoice={older} open onOpenChange={() => {}} />)
+
+    expect(row("Subtotal:").textContent).toBe(`Subtotal:${formatCurrency(50000)}`)
+    expect(screen.queryByText("Base:")).toBeNull()
+    expect(screen.queryByText(/Hoy ahorraste/)).toBeNull()
+    const totals = row("Subtotal:").parentElement!
+    const labels = Array.from(totals.children).map((el) => el.firstElementChild?.textContent)
+    expect(labels.indexOf("Descuentos:")).toBeGreaterThan(labels.indexOf("IVA (8%):"))
+    expect(within(totals).getByText("Descuentos:").parentElement!.textContent).toBe(`Descuentos:-${formatCurrency(6000)}`)
+  })
+})
