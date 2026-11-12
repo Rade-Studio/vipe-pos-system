@@ -27,7 +27,7 @@ const OPEN_ORDERS_ONE = 'Hay 1 orden abierta. Cóbrala o cancélala, o confirma 
 
 const REGISTER_KEYS = [
   'cashDifference', 'closeNote', 'closedBy', 'closingTimestamp', 'countedCash', 'createdAt', 'denominations', 'finalCash', 'id',
-  'initialCash', 'openedBy', 'openingTimestamp', 'status', 'updatedAt',
+  'initialCash', 'openedBy', 'openingTimestamp', 'status', 'updatedAt', 'validatedAt', 'validatedBy',
 ];
 const CASH_TX_KEYS = ['amount', 'cashRegisterId', 'createdBy', 'description', 'id', 'reason', 'timestamp', 'type'];
 const CLOSE_KEYS = [
@@ -38,6 +38,7 @@ const COUNTED_CASH_REQUIRED = 'Ingresa el efectivo contado para cerrar la caja.'
 const COUNT_MISMATCH = 'La suma de billetes y monedas no coincide con el efectivo contado.';
 const NOTE_REQUIRED = 'El contado no cuadra con lo esperado: escribe una nota de 3 a 300 caracteres.';
 const DESCRIPTION_REQUIRED = 'Describe el motivo del movimiento.';
+const REGISTER_OPEN = 'La caja sigue abierta: ciérrala antes de validar el turno.';
 const NO_COUNT = { countedCash: null, cashDifference: null, closeNote: null, denominations: null, closedBy: null };
 const LEGACY_KEYS = [
   'amount', 'cashChange', 'cashReceived', 'cashRegisterId', 'id', 'method', 'orderId', 'tableId', 'timestamp',
@@ -420,6 +421,34 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
       const replay = await cashierA().post(`/api/registers/${id}/close`);
       expect(replay.status).toBe(200);
       expect(replay.body.status).toBe('already_closed');
+    });
+  });
+
+  describe('POST /registers/:id/validate (S7)', () => {
+    const ADMIN_A = { id: fixtures.adminA.profileId, name: 'Admin A' };
+
+    it('refuses a cashier (403), an open register (409) and another restaurant (404), changing nothing', async () => {
+      const { id } = (await cashierA().post('/api/registers/open', { initialCash: 0 })).body;
+      expect((await cashierA().post(`/api/registers/${r.early}/validate`)).status).toBe(403);
+      const open = await adminA().post(`/api/registers/${id}/validate`);
+      expect(open.status).toBe(409);
+      expect(open.body).toMatchObject({ code: 'register_open', message: REGISTER_OPEN });
+      expect((await adminB().post(`/api/registers/${r.early}/validate`)).status).toBe(404);
+      expect(await db('SELECT validated_by, validated_at FROM cash_registers WHERE id = ANY($1)', [[r.early, id]])).toEqual([
+        { validated_by: null, validated_at: null },
+        { validated_by: null, validated_at: null },
+      ]);
+    });
+
+    it('stores the admin and the time once; a second call returns the stored values', async () => {
+      expect((await adminA().get(`/api/registers/${r.early}`)).body).toMatchObject({ validatedBy: null, validatedAt: null });
+      const first = await adminA().post(`/api/registers/${r.early}/validate`);
+      expect(first.status).toBe(200);
+      expect(first.body).toMatchObject({ id: r.early, status: 'closed', validatedBy: ADMIN_A, validatedAt: expect.stringMatching(ISO) });
+      const again = await adminA().post(`/api/registers/${r.early}/validate`);
+      expect(again.status).toBe(200);
+      expect(again.body).toMatchObject({ validatedBy: ADMIN_A, validatedAt: first.body.validatedAt });
+      expect((await adminA().get(`/api/registers/${r.early}`)).body).toMatchObject({ validatedBy: ADMIN_A, validatedAt: first.body.validatedAt });
     });
   });
 });

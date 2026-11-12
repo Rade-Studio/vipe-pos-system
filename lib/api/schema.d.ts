@@ -1108,6 +1108,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/registers/{id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["RegistersController_validate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/registers/{id}/paid-orders": {
         parameters: {
             query?: never;
@@ -3116,6 +3132,11 @@ export interface components {
              * @enum {string}
              */
             desktopUpdateChannel: "stable" | "pilot";
+            /**
+             * @description Hora de corte del día de negocio: a register belongs to the date of its opening in the restaurant's timezone minus this many hours (opened at 1:00 a.m. with 4 is the previous day).
+             * @default 4
+             */
+            businessDayCutoffHour: number;
         };
         UpdateBusinessConfigRequest: {
             taxPercentage?: number;
@@ -3136,6 +3157,7 @@ export interface components {
             printingEnabled?: boolean;
             /** @enum {string} */
             desktopUpdateChannel?: "stable" | "pilot";
+            businessDayCutoffHour?: number;
         };
         StaffRef: {
             /**
@@ -4214,6 +4236,13 @@ export interface components {
             updatedAt: string | null;
             /** @description Who opened it: always the caller's profile at open; null for registers opened before migration 0014 or a deleted profile. */
             openedBy: components["schemas"]["ProfileRef"] | null;
+            /** @description Admin who validated the closed shift (POST /registers/:id/validate); null when not validated. */
+            validatedBy: components["schemas"]["ProfileRef"] | null;
+            /**
+             * Format: date-time
+             * @description Server clock of the validation.
+             */
+            validatedAt: string | null;
             /** @description Only with include=transactions; legacy payment_transactions, newest first. */
             transactions?: components["schemas"]["LegacyPaymentTransaction"][];
             /** @description Only with include=cashTransactions; newest first. */
@@ -9368,6 +9397,56 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid body, or code counted_cash_required (open register without countedCash), count_mismatch (denominations do not add up to countedCash) or note_required (countedCash differs from the expected cash after tips and no note). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RegistersController_validate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validar turno: stores validatedBy (the caller) and validatedAt once; a second call returns the stored values. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegister"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or of another restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description code register_open: the register is still open. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
             422: {
                 headers: {
                     [name: string]: unknown;

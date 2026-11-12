@@ -24,6 +24,7 @@ import {
   getTransactionsByRegisterId,
   getTransactionsByRegisters,
   openRegister,
+  validateRegister,
 } from "./registers"
 import { PaymentServiceError } from "./payments"
 
@@ -284,5 +285,19 @@ describe("T18 getRegisterPaidOrders", () => {
   it("surfaces 403 as not-authorized", async () => {
     api.GET.mockRejectedValue(new ApiError(403, "Forbidden", "Forbidden resource", { statusCode: 403 }))
     await expect(getRegisterPaidOrders("r-1")).rejects.toMatchObject({ kind: "not-authorized" })
+  })
+})
+
+describe("caja-cierres S7 validateRegister", () => {
+  it("POSTs /registers/{id}/validate and returns the register with its validation", async () => {
+    const register = registerDto({ status: "closed", validatedBy: { id: "p-1", name: "Mariana" }, validatedAt: "2026-11-11T13:00:00.000Z" })
+    api.POST.mockResolvedValueOnce({ data: register })
+    await expect(validateRegister("r-1")).resolves.toEqual(register)
+    expect(api.POST).toHaveBeenCalledWith("/api/registers/{id}/validate", { params: { path: { id: "r-1" } } })
+  })
+
+  it("surfaces 403 as not-authorized", async () => {
+    api.POST.mockRejectedValueOnce(new ApiError(403, "Forbidden", "Forbidden resource", { statusCode: 403 }))
+    await expect(validateRegister("r-1")).rejects.toMatchObject({ kind: "not-authorized" })
   })
 })

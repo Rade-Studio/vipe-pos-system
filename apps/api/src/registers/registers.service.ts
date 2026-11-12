@@ -38,6 +38,7 @@ export const CLOSE_MESSAGES = {
   countMismatch: 'La suma de billetes y monedas no coincide con el efectivo contado.',
   noteRequired: 'El contado no cuadra con lo esperado: escribe una nota de 3 a 300 caracteres.',
   descriptionRequired: 'Describe el motivo del movimiento.',
+  registerOpen: 'La caja sigue abierta: ciérrala antes de validar el turno.',
 } as const;
 
 const unprocessable = (message: string, code: string) => new UnprocessableEntityException({ message, code });
@@ -162,6 +163,28 @@ export class RegistersService {
     return toCloseResult(result, toIso(closing), toRegisterCount(row.register, row.closed_by_name));
   }
 
+  /**
+   * S7: the admin validates a closed shift. The row is locked FOR UPDATE; an
+   * open register is 409 register_open, an unknown one 404. The first call
+   * stores validated_by (the caller's profile) and validated_at (database
+   * clock); a later call keeps and returns the stored values.
+   */
+  async validate(id: string): Promise<CashRegister> {
+    const [register] = await this.rows<{ status: string; validated_at: string | null }>(sql`
+      SELECT status, validated_at FROM public.cash_registers WHERE id = ${id} FOR UPDATE`);
+    if (!register) {
+      throw new NotFoundException('Register not found');
+    }
+    if (register.status !== 'closed') {
+      throw new ConflictException({ message: CLOSE_MESSAGES.registerOpen, code: 'register_open' });
+    }
+    if (register.validated_at === null) {
+      await this.rows(sql`
+        UPDATE public.cash_registers SET validated_by = private.current_profile_id(), validated_at = now() WHERE id = ${id}`);
+    }
+    return this.get(id);
+  }
+
   async summary(ids: string[]): Promise<RegisterSummary> {
     const [{ result }] = await this.rows<{ result: Json }>(sql`
       SELECT public.register_summary(${sql.param(ids)}::uuid[]) AS result`);
@@ -250,11 +273,12 @@ export class RegistersService {
       : sql`NULL::jsonb`;
     return this.rows<RegisterRow>(sql`
       SELECT to_jsonb(cr) AS register, op.full_name AS opened_by_name, cb.full_name AS closed_by_name,
-             ${transactions} AS transactions, ${cash} AS cash_transactions
+             vb.full_name AS validated_by_name, ${transactions} AS transactions, ${cash} AS cash_transactions
         FROM public.cash_registers cr
         JOIN public.restaurants r ON r.id = cr.restaurant_id
         LEFT JOIN public.profiles op ON op.id = cr.opened_by
         LEFT JOIN public.profiles cb ON cb.id = cr.closed_by
+        LEFT JOIN public.profiles vb ON vb.id = cr.validated_by
        ${where}
        ORDER BY cr.opening_timestamp DESC, cr.id`);
   }

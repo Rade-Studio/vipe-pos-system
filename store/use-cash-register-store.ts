@@ -9,11 +9,19 @@ import * as cashRegisterService from "@/lib/api/registers"
 import type { CashMovementReason } from "@/lib/api/registers"
 import { log } from "@/lib/log"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
-import { closeRegisterRpc, openOrdersConflictOf, type CloseRegisterOptions } from "@/lib/api/payments"
+import {
+  closeRefusalOf,
+  closeRegisterRpc,
+  openOrdersConflictOf,
+  type CloseRegisterOptions,
+  type CloseRegisterResult,
+} from "@/lib/api/payments"
 
 type CashRegisterState = {
   currentRegister: CashRegister | null
   registers: CashRegister[]
+  /** The last close answer with its stored count and closer (caja-cierres S3: reprint the slip). */
+  lastClose: CloseRegisterResult | null
 
   // Acciones de apertura y cierre
   /**
@@ -29,7 +37,11 @@ type CashRegisterState = {
    * `finalCash` lives on the returned summary's `expectedCashAfterTips`
    * (the value the server stored in `cash_registers.final_cash`).
    */
-  /** Rethrows the API's 409 open_orders so the dialog can show it; other errors answer null. */
+  /**
+   * Rethrows the API's 409 open_orders and the 422 close refusals
+   * (counted_cash_required, count_mismatch, note_required) so the dialog can
+   * show their message; other errors answer null.
+   */
   closeRegister: (options?: CloseRegisterOptions) => Promise<RegisterSummary | null>
 
   // Acciones para transacciones de efectivo (caja-cierres S2: siempre con motivo)
@@ -73,6 +85,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
     (set, get) => ({
       currentRegister: null,
       registers: [],
+      lastClose: null,
 
       // Neither load flips a shared `isLoading` any more. All twelve
       // `useCashRegisterStore()` consumers read the store without a selector,
@@ -212,12 +225,13 @@ export const useCashRegisterStore = create<CashRegisterState>()(
 
           set((state) => ({
             currentRegister: null,
+            lastClose: result,
             registers: state.registers.map((reg) => (reg.id === closedRegister.id ? closedRegister : reg)),
           }))
 
           return result.summary
         } catch (error) {
-          if (openOrdersConflictOf(error)) throw error
+          if (openOrdersConflictOf(error) || closeRefusalOf(error)) throw error
           log.error("Error al cerrar la caja:", { error: String(error) })
           return null
         }

@@ -4119,6 +4119,53 @@
         ]
       }
     },
+    "/api/registers/{id}/validate": {
+      "post": {
+        "operationId": "RegistersController_validate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validar turno: stores validatedBy (the caller) and validatedAt once; a second call returns the stored values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashRegister"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": "Unknown or of another restaurant."
+          },
+          "409": {
+            "description": "code register_open: the register is still open."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "registers"
+        ]
+      }
+    },
     "/api/registers/{id}/paid-orders": {
       "get": {
         "operationId": "RegistersController_paidOrders",
@@ -10565,6 +10612,13 @@
             ],
             "default": "stable",
             "description": "Update channel of the VIPE desktop app: pilot receives new versions before stable."
+          },
+          "businessDayCutoffHour": {
+            "type": "number",
+            "default": 4,
+            "minimum": 0,
+            "maximum": 6,
+            "description": "Hora de corte del día de negocio: a register belongs to the date of its opening in the restaurant's timezone minus this many hours (opened at 1:00 a.m. with 4 is the previous day)."
           }
         },
         "required": [
@@ -10582,7 +10636,8 @@
           "waiterAccessMode",
           "allowSelfAuthorization",
           "printingEnabled",
-          "desktopUpdateChannel"
+          "desktopUpdateChannel",
+          "businessDayCutoffHour"
         ]
       },
       "UpdateBusinessConfigRequest": {
@@ -10655,6 +10710,11 @@
               "stable",
               "pilot"
             ]
+          },
+          "businessDayCutoffHour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6
           }
         }
       },
@@ -13915,6 +13975,22 @@
               }
             ]
           },
+          "validatedBy": {
+            "nullable": true,
+            "description": "Admin who validated the closed shift (POST /registers/:id/validate); null when not validated.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "validatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Server clock of the validation."
+          },
           "transactions": {
             "description": "Only with include=transactions; legacy payment_transactions, newest first.",
             "type": "array",
@@ -13944,7 +14020,9 @@
           "status",
           "createdAt",
           "updatedAt",
-          "openedBy"
+          "openedBy",
+          "validatedBy",
+          "validatedAt"
         ]
       },
       "RegisterMethodSummary": {

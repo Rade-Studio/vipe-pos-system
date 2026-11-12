@@ -229,7 +229,7 @@ export interface CloseRegisterResult {
   /** Server clock of the close (the original one on a replay). */
   closingTimestamp: Date
   summary: RegisterSummary
-  /** The stored count (caja-cierres S1); null on registers closed before migration 0026. */
+  /** The stored count (caja-cierres S1); null on registers closed before migration 0025. */
   countedCash?: number | null
   cashDifference?: number | null
   closeNote?: string | null
@@ -275,6 +275,21 @@ export function openOrdersConflictOf(error: unknown): { count: number; message: 
   const cause = error instanceof PaymentServiceError ? error.cause : error
   if (!(cause instanceof ApiError) || cause.status !== 409 || cause.body.code !== "open_orders") return null
   return { count: Number(cause.body.count), message: cause.message }
+}
+
+const CLOSE_REFUSALS = new Set(["counted_cash_required", "count_mismatch", "note_required"])
+
+/**
+ * The close's 422 refusals (caja-cierres S1): `counted_cash_required`,
+ * `count_mismatch` or `note_required` with the API's Spanish message, or null
+ * for any other error. The close dialog shows the message inline.
+ */
+export function closeRefusalOf(error: unknown): { code: string; message: string } | null {
+  const cause = error instanceof PaymentServiceError ? error.cause : error
+  if (!(cause instanceof ApiError) || cause.status !== 422) return null
+  const code = cause.body.code
+  if (typeof code !== "string" || !CLOSE_REFUSALS.has(code)) return null
+  return { code, message: cause.message }
 }
 
 // ---- Payments ledger reads ---------------------------------------------------------------
