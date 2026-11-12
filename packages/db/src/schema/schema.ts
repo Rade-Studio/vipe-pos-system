@@ -448,6 +448,7 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
 	notes: text(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	recount: boolean().default(false).notNull(),
 }, (table) => [
 	foreignKey({
 			columns: [table.countId],
@@ -468,6 +469,7 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
 	pgPolicy("inventory_count_lines_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("inventory_count_lines_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("inventory_count_lines_counted_quantity_check", sql`(counted_quantity IS NULL) OR (counted_quantity >= (0)::numeric)`),
+	check("inventory_count_lines_notes_check", sql`(notes IS NULL) OR (length(notes) <= 500)`),
 ]);
 
 export const inventoryCounts = pgTable("inventory_counts", {
@@ -475,13 +477,34 @@ export const inventoryCounts = pgTable("inventory_counts", {
 	restaurantId: uuid("restaurant_id").default(sql`private.default_restaurant_id()`).notNull(),
 	number: integer().notNull(),
 	locationId: uuid("location_id").notNull(),
-	status: text().default('open').notNull(),
+	status: text().default('counting').notNull(),
 	notes: text(),
 	appliedAt: timestamp("applied_at", { withTimezone: true, mode: 'string' }),
 	createdBy: uuid("created_by"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	counterId: uuid("counter_id"),
+	approverId: uuid("approver_id"),
+	submittedAt: timestamp("submitted_at", { withTimezone: true, mode: 'string' }),
+	appliedBy: uuid("applied_by"),
 }, (table) => [
+	index("idx_inventory_counts_counter_id").using("btree", table.counterId.asc().nullsLast().op("uuid_ops")),
+	index("idx_inventory_counts_approver_id").using("btree", table.approverId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.counterId],
+			foreignColumns: [profiles.id],
+			name: "inventory_counts_counter_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.approverId],
+			foreignColumns: [profiles.id],
+			name: "inventory_counts_approver_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.appliedBy],
+			foreignColumns: [profiles.id],
+			name: "inventory_counts_applied_by_fkey"
+		}).onDelete("set null"),
 	foreignKey({
 			columns: [table.createdBy],
 			foreignColumns: [profiles.id],
@@ -500,7 +523,9 @@ export const inventoryCounts = pgTable("inventory_counts", {
 	unique("inventory_counts_restaurant_id_number_key").on(table.restaurantId, table.number),
 	pgPolicy("inventory_counts_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	pgPolicy("inventory_counts_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
-	check("inventory_counts_status_check", sql`status = ANY (ARRAY['open'::text, 'applied'::text, 'cancelled'::text])`),
+	check("inventory_counts_status_check", sql`status = ANY (ARRAY['draft'::text, 'counting'::text, 'review'::text, 'applied'::text, 'cancelled'::text])`),
+	check("inventory_counts_people_check", sql`(counter_id IS NULL) OR (approver_id IS NULL) OR (counter_id <> approver_id)`),
+	check("inventory_counts_submitted_check", sql`(status = 'review'::text) <= (submitted_at IS NOT NULL)`),
 ]);
 
 export const inventoryLocations = pgTable("inventory_locations", {

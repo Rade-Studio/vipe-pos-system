@@ -3,6 +3,7 @@ import { CountsService } from './counts.service';
 import { FormulasService } from './formulas.service';
 import {
   CountsController,
+  MyCountsController,
   FormulasController,
   InventoryCategoriesController,
   InventoryController,
@@ -31,6 +32,7 @@ import { TransfersService } from './transfers.service';
     PurchaseOrdersController,
     TransfersController,
     CountsController,
+    MyCountsController,
     FormulasController,
     InventoryController,
     ProductionTemplatesController,

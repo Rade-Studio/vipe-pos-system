@@ -1684,6 +1684,54 @@ export interface paths {
         patch: operations["CountsController_setCounted"];
         trace?: never;
     };
+    "/api/inventory/counts/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CountsController_start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/counts/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CountsController_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/counts/{id}/recount": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CountsController_recount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inventory/counts/{id}/apply": {
         parameters: {
             query?: never;
@@ -1710,6 +1758,70 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["CountsController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/my-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MyCountsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/my-counts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MyCountsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/my-counts/{id}/lines/{lineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["MyCountsController_setCounted"];
+        trace?: never;
+    };
+    "/api/inventory/my-counts/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MyCountsController_submit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5491,11 +5603,35 @@ export interface components {
             /** Format: uuid */
             locationId: string;
             locationName: string | null;
-            /** @enum {string} */
+            /**
+             * @description Legacy: open while draft, counting or review. Prefer stage.
+             * @enum {string}
+             */
             status: "open" | "applied" | "cancelled";
+            /** @enum {string} */
+            stage: "draft" | "counting" | "review" | "applied" | "cancelled";
             notes: string | null;
+            /**
+             * Format: uuid
+             * @description Who counts; null = the admin flow without counter.
+             */
+            counterId: string | null;
+            counterName: string | null;
+            /**
+             * Format: uuid
+             * @description The approving admin.
+             */
+            approverId: string | null;
+            approverName: string | null;
+            /** Format: date-time */
+            submittedAt: string | null;
             /** Format: date-time */
             appliedAt: string | null;
+            /** Format: uuid */
+            appliedBy: string | null;
+            appliedByName: string | null;
+            /** @description Sum of the counted lines differences in COP (counted - expected) * cost. */
+            differenceValue: number;
             /** Format: date-time */
             createdAt: string;
         };
@@ -5509,6 +5645,15 @@ export interface components {
             unit: string | null;
             expectedQuantity: number;
             countedQuantity: number | null;
+            /** @description counted - expected; null when not counted. */
+            difference: number | null;
+            /** @description difference * cost in COP. */
+            differenceValue: number | null;
+            /** @description |differenceValue| reaches reasonThreshold: applying a reviewed count needs notes. */
+            reasonRequired: boolean;
+            /** @description Sent back to the counter for recount. */
+            recount: boolean;
+            /** @description Reason of the difference. */
             notes: string | null;
         };
         InventoryCountDetail: {
@@ -5518,14 +5663,40 @@ export interface components {
             /** Format: uuid */
             locationId: string;
             locationName: string | null;
-            /** @enum {string} */
+            /**
+             * @description Legacy: open while draft, counting or review. Prefer stage.
+             * @enum {string}
+             */
             status: "open" | "applied" | "cancelled";
+            /** @enum {string} */
+            stage: "draft" | "counting" | "review" | "applied" | "cancelled";
             notes: string | null;
+            /**
+             * Format: uuid
+             * @description Who counts; null = the admin flow without counter.
+             */
+            counterId: string | null;
+            counterName: string | null;
+            /**
+             * Format: uuid
+             * @description The approving admin.
+             */
+            approverId: string | null;
+            approverName: string | null;
+            /** Format: date-time */
+            submittedAt: string | null;
             /** Format: date-time */
             appliedAt: string | null;
+            /** Format: uuid */
+            appliedBy: string | null;
+            appliedByName: string | null;
+            /** @description Sum of the counted lines differences in COP (counted - expected) * cost. */
+            differenceValue: number;
             /** Format: date-time */
             createdAt: string;
-            /** @description By item name (es). */
+            /** @description COP; private.inventory_count_reason_threshold(). */
+            reasonThreshold: number;
+            /** @description By |differenceValue| (largest first) in review and applied, else by item name (es). */
             lines: components["schemas"]["CountLine"][];
         };
         OpenCountInput: {
@@ -5537,6 +5708,16 @@ export interface components {
             /** @description null = every active item. */
             itemIds?: string[] | null;
             notes?: string | null;
+            /**
+             * Format: uuid
+             * @description Active profile of the restaurant; with approverId the count starts as a draft.
+             */
+            counterId?: string | null;
+            /**
+             * Format: uuid
+             * @description Active admin, not the counter.
+             */
+            approverId?: string | null;
         };
         OpenCountResult: {
             /** Format: uuid */
@@ -5546,11 +5727,19 @@ export interface components {
             locationId: string;
             /** @enum {string} */
             status: "open" | "applied" | "cancelled";
+            /** @enum {string} */
+            stage: "draft" | "counting" | "review" | "applied" | "cancelled";
             linesCount: number;
         };
         SetCountedQuantityRequest: {
-            /** @description null clears the line (not counted yet). */
-            countedQuantity: number | null;
+            /** @description null clears the line (not counted yet). Counting only. */
+            countedQuantity?: number | null;
+            /** @description Reason of the difference (line notes), counting or review. */
+            reason?: string | null;
+        };
+        RecountRequest: {
+            /** @description Lines sent back to the counter; only these are writable. */
+            lineIds: string[];
         };
         ApplyCountResult: {
             /** Format: uuid */
@@ -5559,6 +5748,62 @@ export interface components {
             status: "open" | "applied" | "cancelled";
             adjustedLines: number;
             valueDelta: number;
+        };
+        MyCount: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string | null;
+            /** @enum {string} */
+            stage: "draft" | "counting" | "review" | "applied" | "cancelled";
+            notes: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            submittedAt: string | null;
+            linesCount: number;
+            countedLines: number;
+            /** @description Lines sent back for recount. */
+            recountLines: number;
+        };
+        MyCountLine: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            itemId: string;
+            itemName: string | null;
+            sku: string | null;
+            unit: string | null;
+            countedQuantity: number | null;
+            /** @description Sent back for recount: while any line is, only those are writable. */
+            recount: boolean;
+        };
+        MyCountDetail: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string | null;
+            /** @enum {string} */
+            stage: "draft" | "counting" | "review" | "applied" | "cancelled";
+            notes: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            submittedAt: string | null;
+            linesCount: number;
+            countedLines: number;
+            /** @description Lines sent back for recount. */
+            recountLines: number;
+            /** @description By item name (es). */
+            lines: components["schemas"]["MyCountLine"][];
+        };
+        SetMyCountedQuantityRequest: {
+            /** @description null clears the line (not counted yet). */
+            countedQuantity: number | null;
         };
         FormulaLine: {
             /** Format: uuid */
@@ -12035,12 +12280,143 @@ export interface operations {
             };
         };
         responses: {
+            /** @description countedQuantity while counting; reason (line notes) while counting or in review. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["CountLine"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CountsController_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description start_inventory_count: draft -> counting, expected stock taken again. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CountsController_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description submit_inventory_count: counting -> review, every line counted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CountsController_recount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecountRequest"];
+            };
+        };
+        responses: {
+            /** @description request_inventory_count_recount: review -> counting for those lines only. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"];
                 };
             };
             /** @description Not admin. */
@@ -12076,7 +12452,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description apply_inventory_count. */
+            /** @description apply_inventory_count: from review (or counting without counter), by an admin who did not count; reviewed lines at reasonThreshold or more need a reason. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -12126,6 +12502,143 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MyCountsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Counting, in review and applied, newest first. Blind: never the expected stock, cost or difference. Any role; only counts assigned to the caller (404 otherwise). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCount"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MyCountsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lines by item name (es). Blind: never the expected stock, cost or difference. Any role; only counts assigned to the caller (404 otherwise). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCountDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MyCountsController_setCounted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                lineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMyCountedQuantityRequest"];
+            };
+        };
+        responses: {
+            /** @description While counting; during a recount only the marked lines. Blind: never the expected stock, cost or difference. Any role; only counts assigned to the caller (404 otherwise). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCountLine"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MyCountsController_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description counting -> review, every line counted. Blind: never the expected stock, cost or difference. Any role; only counts assigned to the caller (404 otherwise). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCount"];
+                };
             };
             404: {
                 headers: {

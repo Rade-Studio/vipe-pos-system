@@ -12,6 +12,10 @@ const line = (patch: Partial<CountLine>): CountLine => ({
   expectedQuantity: 10,
   countedQuantity: null,
   notes: null,
+  difference: null,
+  differenceValue: null,
+  reasonRequired: false,
+  recount: false,
   ...patch,
 })
 

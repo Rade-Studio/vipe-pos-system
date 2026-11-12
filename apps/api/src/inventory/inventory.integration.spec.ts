@@ -32,8 +32,14 @@ const PO_KEYS = [
   'receivedAt', 'status', 'supplierId', 'supplierName', 'total',
 ];
 const PO_LINE_KEYS = ['id', 'itemId', 'itemName', 'pendingQuantity', 'quantity', 'receivedQuantity', 'sku', 'total', 'unit', 'unitCost'];
-const COUNT_KEYS = ['appliedAt', 'createdAt', 'id', 'locationId', 'locationName', 'notes', 'number', 'status'];
-const COUNT_LINE_KEYS = ['countedQuantity', 'expectedQuantity', 'id', 'itemId', 'itemName', 'notes', 'sku', 'unit'];
+const COUNT_KEYS = [
+  'appliedAt', 'appliedBy', 'appliedByName', 'approverId', 'approverName', 'counterId', 'counterName', 'createdAt', 'differenceValue',
+  'id', 'locationId', 'locationName', 'notes', 'number', 'stage', 'status', 'submittedAt',
+];
+const COUNT_LINE_KEYS = [
+  'countedQuantity', 'difference', 'differenceValue', 'expectedQuantity', 'id', 'itemId', 'itemName', 'notes', 'reasonRequired', 'recount',
+  'sku', 'unit',
+];
 const BATCH_KEYS = [
   'createdAt', 'createdBy', 'expiresOn', 'id', 'itemId', 'itemName', 'locationId', 'locationName', 'lotCode', 'lotId', 'notes',
   'producedBy', 'producedOn', 'quantity', 'totalCost', 'unit', 'unitCost',
@@ -568,10 +574,10 @@ describe('inventory endpoints (Testcontainers, vipe_api)', () => {
     it('opens a count at the default location for the given items, sorted lines', async () => {
       const res = await adminA().post('/api/inventory/counts', { itemIds: [ids.queso, ids.harina], notes: 'c1' });
       expect(res.status).toBe(201);
-      expect(res.body).toEqual({ countId: res.body.countId, number: 1, locationId: defaultLocation, status: 'open', linesCount: 2 });
+      expect(res.body).toEqual({ countId: res.body.countId, number: 1, locationId: defaultLocation, status: 'open', stage: 'counting', linesCount: 2 });
       ids.count = res.body.countId;
       const detail = await adminA().get(`/api/inventory/counts/${ids.count}`);
-      expect(keys(detail.body)).toEqual([...COUNT_KEYS, 'lines'].sort());
+      expect(keys(detail.body)).toEqual([...COUNT_KEYS, 'lines', 'reasonThreshold'].sort());
       expect(keys(detail.body.lines[0])).toEqual(COUNT_LINE_KEYS);
       expect(detail.body.lines.map((l: { itemName: string; countedQuantity: null }) => [l.itemName, l.countedQuantity])).toEqual([
         ['Harina', null],
