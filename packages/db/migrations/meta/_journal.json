@@ -225,6 +225,13 @@
       "when": 1793907281411,
       "tag": "0033_takeaway_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793910881411,
+      "tag": "0034_inventory_count_roles",
+      "breakpoints": true
     }
   ]
 }
