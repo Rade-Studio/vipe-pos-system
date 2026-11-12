@@ -63,4 +63,22 @@ describe("XReportSlip", () => {
     const lines = screen.getByRole("document", { name: "Informe X" }).querySelectorAll("[data-line]")
     for (const line of lines) expect((line.textContent ?? "").length).toBeLessThanOrEqual(32)
   })
+
+  it("prints the base and the tax with the configured label, never a hard-coded IVA", () => {
+    const props = { business, cashierName: null, openedAt: new Date(), printedAt: new Date(), summary: slipSummary }
+    const { unmount } = render(<XReportSlip {...props} tax={{ type: "INC", rate: 8 }} />)
+    const slip = screen.getByRole("document", { name: "Informe X" })
+    expect(slip).toHaveTextContent(/Base\s+\$ 1\.376\.111/)
+    expect(slip).toHaveTextContent(/INC \(8 %\)\s+\$ 110\.089/)
+    expect(slip).not.toHaveTextContent("IVA")
+    unmount()
+    render(<XReportSlip {...props} tax={{ type: "IVA", rate: 19 }} />)
+    expect(screen.getByRole("document", { name: "Informe X" })).toHaveTextContent(/IVA \(19 %\)\s+\$ 237\.292/)
+  })
+
+  it("prints no tax line when the tax setting is not given", () => {
+    render(<XReportSlip business={business} cashierName={null} openedAt={new Date()} printedAt={new Date()} summary={slipSummary} />)
+    const slip = screen.getByRole("document", { name: "Informe X" })
+    expect(slip).not.toHaveTextContent(/IVA|INC|Base/)
+  })
 })

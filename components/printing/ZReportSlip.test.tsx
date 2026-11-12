@@ -82,7 +82,7 @@ const Z: CashZReport = {
       ],
     },
     previous: { date: "2026-11-03", salesNet: 5874300 },
-    taxes: { rate: 8, base: 5760278, tax: 460822 },
+    taxes: { type: "INC", name: "Impuesto nacional al consumo", label: "INC (8 %)", rate: 8, base: 5760278, tax: 460822 },
     orders: { first: 18231, last: 18385 },
     discounts: 38000,
     tipsByMethod: [
@@ -110,7 +110,7 @@ describe("ZReportSlip", () => {
     expect(slip).toHaveTextContent(/Impreso\s+10\/11\/2026 11:15 p\.m\./)
   })
 
-  it("prints sales, discounts, voids, the base and the tax with the stored rate, and the day counters", () => {
+  it("prints sales, discounts, voids, the base and the tax with the configured label, and the day counters", () => {
     const text = zReportLines({ business, z: Z, printedAt }).map((line) => line.text)
     const at = (pattern: RegExp) => text.findIndex((line) => pattern.test(line))
     expect(text[at(/^Ventas brutas/)]).toMatch(/\$ 6\.259\.100$/)
@@ -118,7 +118,8 @@ describe("ZReportSlip", () => {
     expect(text[at(/^VENTAS NETAS/)]).toMatch(/\$ 6\.221\.100$/)
     expect(text[at(/^Anulaciones \(3\)/)]).toMatch(/\$ 96\.000$/)
     expect(text[at(/^Base gravable/)]).toMatch(/\$ 5\.760\.278$/)
-    expect(text[at(/^Impuesto \(8 %\)/)]).toMatch(/\$ 460\.822$/)
+    expect(text[at(/^INC \(8 %\)/)]).toMatch(/\$ 460\.822$/)
+    expect(text.some((line) => /IVA/.test(line))).toBe(false)
     expect(text[at(/^Domicilios \(9\)/)]).toMatch(/\$ 412\.000$/)
     expect(text[at(/^Tiquetes/)]).toMatch(/155$/)
     expect(text[at(/^Ticket promedio/)]).toMatch(/\$ 40\.136$/)
@@ -129,20 +130,20 @@ describe("ZReportSlip", () => {
     expect(at(/^Bancolombia/)).toBe(-1)
   })
 
-  it("uses the rate stored with the Z (19 %)", () => {
-    const z19 = { ...Z, snapshot: { ...Z.snapshot, taxes: { ...Z.snapshot.taxes, rate: 19 } } }
-    const text = zReportLines({ business, z: z19, printedAt }).map((line) => line.text)
-    expect(text.some((line) => /^Impuesto \(19 %\)\s+\$ 460\.822$/.test(line))).toBe(true)
-    expect(text.some((line) => /^Impuesto \(8 %\)/.test(line))).toBe(false)
+  it("uses the label stored with the Z (IVA (19 %))", () => {
+    const iva = { ...Z, snapshot: { ...Z.snapshot, taxes: { ...Z.snapshot.taxes, type: "IVA" as const, name: "IVA", label: "IVA (19 %)", rate: 19 } } }
+    const text = zReportLines({ business, z: iva, printedAt }).map((line) => line.text)
+    expect(text.some((line) => /^IVA \(19 %\)\s+\$ 460\.822$/.test(line))).toBe(true)
+    expect(text.some((line) => /^INC/.test(line))).toBe(false)
   })
 
   it("prints the tips in their own block, by method and by waiter, after sales and the tax", () => {
     const text = zReportLines({ business, z: Z, printedAt }).map((line) => line.text)
     const block = text.findIndex((line) => line === "Propinas (no son ingreso del restaurante)")
-    expect(block).toBeGreaterThan(text.findIndex((line) => /^Impuesto \(8 %\)/.test(line)))
+    expect(block).toBeGreaterThan(text.findIndex((line) => /^INC \(8 %\)/.test(line)))
     expect(block).toBeGreaterThan(text.findIndex((line) => /^Efectivo \(64\)/.test(line)))
     const tips = text.slice(block)
-    expect(tips.some((line) => /^No suman a ventas ni al impuesto\.$/.test(line))).toBe(true)
+    expect(tips.some((line) => /^No suman a ventas ni a INC\.$/.test(line))).toBe(true)
     expect(tips.some((line) => /^Efectivo\s+\$ 202\.300$/.test(line))).toBe(true)
     expect(tips.some((line) => /^Nequi\s+\$ 111\.500$/.test(line))).toBe(true)
     expect(tips.some((line) => /^Valentina Cardona\s+\$ 162\.300$/.test(line))).toBe(true)

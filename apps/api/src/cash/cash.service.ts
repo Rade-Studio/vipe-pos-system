@@ -6,6 +6,7 @@ import type { PaymentMethodKind } from '../payments/payments.dto';
 import type { CashTransactionReason, CashTransactionType, RegisterSummary } from '../registers/registers.dto';
 import { profileRef } from '../registers/registers.mappers';
 import { RegistersService } from '../registers/registers.service';
+import { TAX_TYPE_NAMES, type TaxType } from '../settings/business-config';
 import { ConfigService } from '../settings/config.service';
 import {
   CASH_MESSAGES,
@@ -64,6 +65,11 @@ function bucketEnd(start: string, group: ReportGroup): string {
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
   }
   return group === 'week' ? addDays(start, 6) : start;
+}
+
+/** `INC (8 %)`, `IVA (19 %)`: the tax type with the configured rate (es-CO decimal comma). */
+export function taxLabel(type: TaxType, rate: number): string {
+  return `${type} (${String(rate).replace('.', ',')} %)`;
 }
 
 /** Prices include the tax: base = round(sales / (1 + rate / 100)), tax = sales - base, whole pesos. */
@@ -345,7 +351,7 @@ export class CashService {
    * (concurrent emits wait for each other): a day that already has a Z
    * returns it unchanged; a day without registers is 409 day_empty, one with
    * an open register 409 day_open. Otherwise the day summary is frozen with
-   * its taxes (configured rate, from salesNet, tax included), the
+   * its taxes (configured type and rate, from salesNet, tax included), the
    * order range, discounts and tips by method, and numbered max + 1.
    */
   async emitZ(date: string): Promise<CashZReport> {
@@ -370,6 +376,9 @@ export class CashService {
     const snapshot: CashZSnapshot = {
       ...day,
       taxes: {
+        type: config.taxType,
+        name: TAX_TYPE_NAMES[config.taxType],
+        label: taxLabel(config.taxType, config.taxPercentage),
         rate: config.taxPercentage,
         ...taxBreakdown(day.totals.salesNet, config.taxPercentage),
       },

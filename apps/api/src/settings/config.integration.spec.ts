@@ -21,6 +21,7 @@ const DEFAULTS = {
   printingEnabled: true,
   desktopUpdateChannel: 'stable',
   businessDayCutoffHour: 4,
+  taxType: 'INC',
 };
 
 describe('business config endpoints (Testcontainers, vipe_api)', () => {
@@ -219,6 +220,24 @@ describe('business config endpoints (Testcontainers, vipe_api)', () => {
     expect((await get(fixtures.waiterA)).body.businessDayCutoffHour).toBe(0);
     expect((await get(fixtures.adminB)).body.businessDayCutoffHour).toBe(4);
     expect((await put(fixtures.adminA, { businessDayCutoffHour: 4 })).body.businessDayCutoffHour).toBe(4);
+  });
+
+  it('stores taxType INC | IVA for the admin only (default INC) without touching the tax percentage', async () => {
+    const before = await rows(fixtures.restaurantA);
+    expect((await put(fixtures.waiterA, { taxType: 'IVA' })).status).toBe(403);
+    for (const value of ['iva', 'IVA19', 1, null]) {
+      expect((await put(fixtures.adminA, { taxType: value })).status).toBe(422);
+    }
+    expect(await rows(fixtures.restaurantA)).toEqual(before);
+    const percentage = (await get(fixtures.adminA)).body.taxPercentage;
+    const res = await put(fixtures.adminA, { taxType: 'IVA' });
+    expect(res.status).toBe(200);
+    expect(res.body.taxType).toBe('IVA');
+    expect(res.body.taxPercentage).toBe(percentage);
+    expect(await rows(fixtures.restaurantA)).toContainEqual({ key: 'tax_type', value: 'IVA' });
+    expect((await get(fixtures.waiterA)).body.taxType).toBe('IVA');
+    expect((await get(fixtures.adminB)).body.taxType).toBe('INC');
+    expect((await put(fixtures.adminA, { taxType: 'INC' })).body.taxType).toBe('INC');
   });
 
   it('rejects a waiter writing a late threshold with 403', async () => {

@@ -198,7 +198,7 @@ const zReport = (number: number, businessDay: string): CashZReport => {
     businessDay,
     emittedAt: Z_EMITTED.emittedAt,
     emittedBy: Z_EMITTED.emittedBy,
-    snapshot: { ...(snapshot as Omit<CashDay, "z">), date: businessDay, taxes: { rate: 8, base: 5760278, tax: 460822 }, orders: { first: 18231, last: 18385 }, discounts: 0, tipsByMethod: [] },
+    snapshot: { ...(snapshot as Omit<CashDay, "z">), date: businessDay, taxes: { type: "INC", name: "Impuesto nacional al consumo", label: "INC (8 %)", rate: 8, base: 5760278, tax: 460822 }, orders: { first: 18231, last: 18385 }, discounts: 0, tipsByMethod: [] },
   }
 }
 

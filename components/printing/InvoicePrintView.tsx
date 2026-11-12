@@ -13,6 +13,7 @@ import { billDiscounts, grossSubtotalOf, mergeDiscounts, renderInvoice, type Pri
 import type { CartItem, PrintableInvoice } from "@/types"
 import { log } from "@/lib/log"
 import { ModifierLines } from "@/components/modifiers/ModifierLines"
+import { taxLabel, useTaxType } from "./tax-label"
 
 /** S14: an order line carries its discounts (`toOrderItem`); a bill discount sits in `invoice.discounts`. */
 type InvoiceLine = CartItem & { discounts?: PrintDiscount[] }
@@ -45,6 +46,7 @@ export function InvoicePrintView({
   const printRef = useRef<HTMLDivElement>(null)
   // S2 (F6): without thermal printers the invoice stays on screen with no print action.
   const printingEnabled = usePrintingEnabled()
+  const taxType = useTaxType()
 
   useEffect(() => {
     setIsOpen(open)
@@ -271,7 +273,7 @@ export function InvoicePrintView({
                     </>
                   )}
                   <div className="flex justify-between text-sm">
-                    <span>IVA ({bill?.taxPercentage || 0}%):</span>
+                    <span>{taxLabel(taxType, bill?.taxPercentage || 0)}:</span>
                     <span>{formatCurrency(bill?.tax || 0)}</span>
                   </div>
                   {delivery && (
@@ -503,6 +505,7 @@ export function InvoicePrintView({
                   tenders,
                   change,
                   delivery,
+                  taxType,
                 },
                 displayItems,
               }) : { lines: [] }).lines.map((line, i) => (

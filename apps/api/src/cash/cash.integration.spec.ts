@@ -445,8 +445,8 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       expect(Object.keys(snapshot).sort()).toEqual(SNAPSHOT_KEYS);
       const { z: _z, ...daySummary } = day;
       expect(snapshot).toMatchObject(daySummary);
-      // Default rate 10, prices with the tax included: base = 145000 / 1.1.
-      expect(snapshot.taxes).toEqual({ rate: 10, base: 131818, tax: 13182 });
+      // Default INC at the default rate 10, prices with the tax included: base = 145000 / 1.1.
+      expect(snapshot.taxes).toEqual({ type: 'INC', name: 'Impuesto nacional al consumo', label: 'INC (10 %)', rate: 10, base: 131818, tax: 13182 });
       expect(snapshot.taxes.base + snapshot.taxes.tax).toBe(snapshot.totals.salesNet);
       const paid = [c.o1, c.o2, c.o4, c.o5].map((id) => numbers[id]);
       expect(snapshot.orders).toEqual({ first: Math.min(...paid), last: Math.max(...paid) });
@@ -473,9 +473,9 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       expect(await zRows()).toEqual([{ restaurant_id: fixtures.restaurantA, number: 1, business_day: '2026-11-10' }]);
     });
 
-    it('numbers the next day 2, and concurrent emits never share a number; the configured tax rate is used', async () => {
+    it('numbers the next day 2, and concurrent emits never share a number; the configured tax type is used', async () => {
       expect((await adminA().post('/api/cash/days/2026-11-03/z')).body).toMatchObject({ number: 2, businessDay: '2026-11-03' });
-      await db(`INSERT INTO business_config (key, value, restaurant_id) VALUES ('tax_percentage', '19', $1)`, [
+      await db(`INSERT INTO business_config (key, value, restaurant_id) VALUES ('tax_type', 'IVA', $1), ('tax_percentage', '19', $1)`, [
         fixtures.restaurantA,
       ]);
       try {
@@ -487,10 +487,10 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
         expect([a.status, b.status, again.status]).toEqual([200, 200, 200]);
         expect([a.body.number, b.body.number].sort()).toEqual([3, 4]);
         expect(again.body.number).toBe(b.body.number);
-        expect(a.body.snapshot.taxes).toEqual({ rate: 19, base: 0, tax: 0 });
+        expect(a.body.snapshot.taxes).toEqual({ type: 'IVA', name: 'IVA', label: 'IVA (19 %)', rate: 19, base: 0, tax: 0 });
         expect(a.body.snapshot.orders).toEqual({ first: null, last: null });
       } finally {
-        await db(`DELETE FROM business_config WHERE key = 'tax_percentage' AND restaurant_id = $1`, [fixtures.restaurantA]);
+        await db(`DELETE FROM business_config WHERE key IN ('tax_type', 'tax_percentage') AND restaurant_id = $1`, [fixtures.restaurantA]);
       }
       expect((await zRows()).map((row) => row.number)).toEqual([1, 2, 3, 4]);
     });

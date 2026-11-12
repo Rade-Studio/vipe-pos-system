@@ -82,4 +82,14 @@ describe("ShiftCloseSlip", () => {
     expect(slip).not.toHaveTextContent("×")
     expect(slip).not.toHaveTextContent("Nota:")
   })
+
+  it("prints the base and the tax of the shift's sales with the configured label", () => {
+    render(
+      <ShiftCloseSlip {...base} tax={{ type: "INC", rate: 8 }} closedAt={null} closedByName={null} countedCash={715000} difference={0} note={null} denominations={null} />,
+    )
+    const slip = screen.getByRole("document", { name: "Cierre de turno" })
+    expect(slip).toHaveTextContent(/Base\s+\$ 1\.376\.111/)
+    expect(slip).toHaveTextContent(/INC \(8 %\)\s+\$ 110\.089/)
+    expect(slip).not.toHaveTextContent("IVA")
+  })
 })

@@ -36,6 +36,7 @@ import { closeRefusalOf, openOrdersConflictOf } from "@/lib/api/payments"
 import { getCashTransactionsByRegisterId, type CashMovement, type CashRegisterWithOpener } from "@/lib/api/registers"
 import { ShiftCloseSlip, type ShiftCloseSlipProps } from "@/components/printing/ShiftCloseSlip"
 import { printSlip } from "@/components/printing/slip-format"
+import { useTaxType } from "@/components/printing/tax-label"
 import {
   OPEN_ORDER_STATUSES,
   OpenOrdersList,
@@ -88,7 +89,8 @@ const wholePesos = (input: string): number | null => {
  */
 export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegisterDialogProps) {
   const { closeRegister, currentRegister } = useCashRegisterStore()
-  const { businessName, businessNIT, businessAddress } = useConfigStore()
+  const { businessName, businessNIT, businessAddress, taxPercentage } = useConfigStore()
+  const taxType = useTaxType()
   const [closeFlight] = useState(createSingleFlight)
   const [running, setRunning] = useState(false)
   const [confirmedSummary, setConfirmedSummary] = useState<RegisterSummaryType | null>(null)
@@ -179,6 +181,7 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
     cashierName: (currentRegister as Partial<CashRegisterWithOpener> | null)?.openedBy?.name ?? null,
     openedAt: new Date(currentRegister?.openingTimestamp ?? Date.now()),
     movements: movements ?? [],
+    tax: { type: taxType, rate: taxPercentage },
   })
 
   const print = (slip: ShiftCloseSlipProps) => {

@@ -11,6 +11,8 @@ import type { components } from "./schema"
 
 export type BusinessConfig = components["schemas"]["BusinessConfig"]
 export type BusinessConfigUpdate = components["schemas"]["UpdateBusinessConfigRequest"]
+/** caja-cierres S9: INC (impuesto nacional al consumo, the server default) | IVA. */
+export type TaxType = BusinessConfig["taxType"]
 
 /**
  * Hora de corte del día de negocio (caja-cierres S5): a register opened before
