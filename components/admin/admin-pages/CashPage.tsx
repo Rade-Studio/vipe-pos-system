@@ -1,51 +1,63 @@
 "use client"
 
+import { useState } from "react"
 import { PageHeader } from "@/components/admin/common/PageHeader"
-import { SectionHeader, segmentedListClass, segmentedTriggerClass } from "@/components/admin/common/Panel"
-import { CashRegisterSummary } from "@/components/admin/CashRegisterSummary"
-import { TransactionsByRegisterId } from "@/components/admin/TransactionsByRegisterId"
-import { RegisterHistoryTable } from "@/components/cashier/RegisterHistoryTable"
-import { DatePicker } from "@/components/ui/date-picker"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CashDayView } from "@/components/admin/cash/CashDayView"
+import { CashPeriodView } from "@/components/admin/cash/CashPeriodView"
+import { Segmented } from "@/components/admin/cash/Segmented"
+import { useBusinessDayCutoff } from "@/hooks/admin/use-cash"
+import { businessDayFor } from "@/lib/admin/cash"
+
+type CashView = "day" | "period"
 
 interface CashPageProps {
   description: string
-  selectedDate: Date | undefined
-  onDateChange: (date: Date | undefined) => void
-  /** A row of the register history moves the page to that register's day. */
-  onRegisterDate: (date: Date) => void
+  /**
+   * Kept for the admin shell; Caja picks its own business day (S5), so the
+   * shell's calendar date is not used here.
+   */
+  selectedDate?: Date | undefined
+  onDateChange?: (date: Date | undefined) => void
+  onRegisterDate?: (date: Date) => void
 }
 
-export function CashPage({ description, selectedDate, onDateChange, onRegisterDate }: CashPageProps) {
+/** Admin Caja (caja-cierres S6): Día (tablero + libro) and Período. */
+export function CashPage({ description }: CashPageProps) {
+  const cutoffHour = useBusinessDayCutoff()
+  const today = businessDayFor(new Date(), cutoffHour)
+  const [view, setView] = useState<CashView>("day")
+  // null follows the current business day until the user picks one.
+  const [pickedDate, setPickedDate] = useState<string | null>(null)
+  const date = pickedDate ?? today
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Caja"
         description={description}
-        actions={<DatePicker date={selectedDate} onDateChange={onDateChange} />}
+        actions={
+          <Segmented
+            label="Vista de caja"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "day", label: "Día" },
+              { value: "period", label: "Período" },
+            ]}
+          />
+        }
       />
-
-      <Tabs defaultValue="summary" className="space-y-4">
-        <TabsList className={segmentedListClass}>
-          <TabsTrigger value="summary" className={segmentedTriggerClass}>
-            Resumen
-          </TabsTrigger>
-          <TabsTrigger value="transactions" className={segmentedTriggerClass}>
-            Transacciones
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="summary" className="mt-0">
-          <CashRegisterSummary selectedDate={selectedDate} />
-        </TabsContent>
-        <TabsContent value="transactions" className="mt-0">
-          <TransactionsByRegisterId selectedDate={selectedDate} />
-        </TabsContent>
-      </Tabs>
-
-      <section className="min-w-0 space-y-3">
-        <SectionHeader title="Historial de aperturas de caja" description="Seleccione una caja para ver su día." />
-        <RegisterHistoryTable changeRegisterDetails={onRegisterDate} />
-      </section>
+      {view === "day" ? (
+        <CashDayView date={date} today={today} onDateChange={setPickedDate} />
+      ) : (
+        <CashPeriodView
+          today={today}
+          onOpenDay={(day) => {
+            setPickedDate(day)
+            setView("day")
+          }}
+        />
+      )}
     </div>
   )
 }
