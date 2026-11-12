@@ -55,6 +55,7 @@ import {
   InventoryLocation,
   InventoryLocationInput,
   InventoryOverview,
+  InventoryTransfer,
   itemListQuerySchema,
   Lot,
   movementListQuerySchema,
@@ -81,6 +82,8 @@ import {
   ReceivePurchaseOrderRequest,
   receivePurchaseOrderSchema,
   ReceivePurchaseResult,
+  ReceiveTransferRequest,
+  receiveTransferSchema,
   SaveFormulaInput,
   SaveFormulaResult,
   saveFormulaSchema,
@@ -90,6 +93,9 @@ import {
   TransferStockInput,
   TransferStockResult,
   transferStockSchema,
+  TransferInput,
+  transferListQuerySchema,
+  transferSchema,
   UpdateInventoryCategoryRequest,
   UpdateInventoryLocationRequest,
   UpdateItemRequest,
@@ -106,6 +112,7 @@ import { ProductionTemplatesService } from './production-templates.service';
 import { PurchasesService } from './purchases.service';
 import { SalesService } from './sales.service';
 import { StockService } from './stock.service';
+import { TransfersService } from './transfers.service';
 
 /** Inventory writes: the RLS write policies and most RPCs admit admin only. */
 const ADMIN = 'admin';
@@ -409,6 +416,87 @@ export class PurchaseOrdersController {
   @ApiForbiddenResponse({ description: 'Not admin.' })
   receive(@Param('id') orderId: string, @Body() body: unknown): Promise<ReceivePurchaseResult> {
     return this.purchases.receive(id(orderId), parseInput(receivePurchaseOrderSchema, body));
+  }
+}
+
+@ApiTags('inventory')
+@ApiCookieAuth()
+@ApiUnprocessableEntityResponse({ description: `Invalid input or unknown fields. ${RPC_ERRORS}` })
+@Controller('inventory/transfers')
+export class TransfersController {
+  constructor(private readonly transfers: TransfersService) {}
+
+  @Get()
+  @ApiQuery({ name: 'status', required: false, description: 'Comma-separated statuses.' })
+  @ApiQuery({ name: 'locationId', required: false, description: 'Origin or destination.' })
+  @ApiQuery({ name: 'from', required: false, description: 'YYYY-MM-DD, local day of the restaurant, inclusive (created_at).' })
+  @ApiQuery({ name: 'to', required: false, description: 'YYYY-MM-DD, inclusive.' })
+  @ApiOkResponse({ type: [InventoryTransfer], description: `Newest first, lines included. Admin only by RLS. ${READS}` })
+  list(@Query() query: unknown): Promise<InventoryTransfer[]> {
+    return this.transfers.list(parseInput(transferListQuerySchema, query));
+  }
+
+  @Get(':id')
+  @ApiOkResponse({ type: InventoryTransfer })
+  @ApiNotFoundResponse()
+  get(@Param('id') transferId: string): Promise<InventoryTransfer> {
+    return this.transfers.get(id(transferId));
+  }
+
+  @Post()
+  @Roles(ADMIN)
+  @ApiBody({ type: TransferInput })
+  @ApiCreatedResponse({ type: InventoryTransfer, description: 'create_inventory_transfer: a draft; every line within the origin stock (422 P0001).' })
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  create(@Body() body: unknown): Promise<InventoryTransfer> {
+    return this.transfers.create(parseInput(transferSchema, body));
+  }
+
+  @Put(':id')
+  @Roles(ADMIN)
+  @ApiBody({ type: TransferInput })
+  @ApiOkResponse({ type: InventoryTransfer, description: 'update_inventory_transfer: drafts only (422 P0001), header and lines replaced.' })
+  @ApiNotFoundResponse()
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  update(@Param('id') transferId: string, @Body() body: unknown): Promise<InventoryTransfer> {
+    return this.transfers.update(id(transferId), parseInput(transferSchema, body));
+  }
+
+  @Post(':id/send')
+  @Roles(ADMIN)
+  @HttpCode(200)
+  @ApiOkResponse({
+    type: InventoryTransfer,
+    description: 'send_inventory_transfer: draft -> in_transit, the stock leaves the origin FEFO at once (all or nothing; 422 P0001 with `details` {shortages}).',
+  })
+  @ApiNotFoundResponse()
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  send(@Param('id') transferId: string): Promise<InventoryTransfer> {
+    return this.transfers.send(id(transferId));
+  }
+
+  @Post(':id/receive')
+  @Roles(ADMIN)
+  @HttpCode(200)
+  @ApiBody({ type: ReceiveTransferRequest })
+  @ApiOkResponse({
+    type: InventoryTransfer,
+    description: 'receive_inventory_transfer: in_transit -> received | received_short; a shortfall needs a reason and is written off as merma en tránsito. Idempotent.',
+  })
+  @ApiNotFoundResponse()
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  receive(@Param('id') transferId: string, @Body() body: unknown): Promise<InventoryTransfer> {
+    return this.transfers.receive(id(transferId), parseInput(receiveTransferSchema, body));
+  }
+
+  @Post(':id/cancel')
+  @Roles(ADMIN)
+  @HttpCode(200)
+  @ApiOkResponse({ type: InventoryTransfer, description: 'cancel_inventory_transfer: draft | in_transit only; the stock in transit returns to the origin.' })
+  @ApiNotFoundResponse()
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  cancel(@Param('id') transferId: string): Promise<InventoryTransfer> {
+    return this.transfers.cancel(id(transferId));
   }
 }
 

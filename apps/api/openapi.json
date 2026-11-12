@@ -5824,6 +5824,342 @@
         ]
       }
     },
+    "/api/inventory/transfers": {
+      "get": {
+        "operationId": "TransfersController_list",
+        "parameters": [
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "YYYY-MM-DD, inclusive.",
+            "schema": {}
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "YYYY-MM-DD, local day of the restaurant, inclusive (created_at).",
+            "schema": {}
+          },
+          {
+            "name": "locationId",
+            "required": false,
+            "in": "query",
+            "description": "Origin or destination.",
+            "schema": {}
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated statuses.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first, lines included. Admin only by RLS. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InventoryTransfer"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "post": {
+        "operationId": "TransfersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "create_inventory_transfer: a draft; every line within the origin stock (422 P0001).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryTransfer"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/transfers/{id}": {
+      "get": {
+        "operationId": "TransfersController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryTransfer"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "put": {
+        "operationId": "TransfersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "update_inventory_transfer: drafts only (422 P0001), header and lines replaced.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryTransfer"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/transfers/{id}/send": {
+      "post": {
+        "operationId": "TransfersController_send",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "send_inventory_transfer: draft -> in_transit, the stock leaves the origin FEFO at once (all or nothing; 422 P0001 with `details` {shortages}).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryTransfer"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/transfers/{id}/receive": {
+      "post": {
+        "operationId": "TransfersController_receive",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiveTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "receive_inventory_transfer: in_transit -> received | received_short; a shortfall needs a reason and is written off as merma en tránsito. Idempotent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryTransfer"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/transfers/{id}/cancel": {
+      "post": {
+        "operationId": "TransfersController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "cancel_inventory_transfer: draft | in_transit only; the stock in transit returns to the origin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryTransfer"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
     "/api/inventory/counts": {
       "get": {
         "operationId": "CountsController_list",
@@ -17056,6 +17392,276 @@
           "status",
           "receivedLines",
           "totalCost"
+        ]
+      },
+      "InventoryTransferLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sku": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedQuantity": {
+            "type": "number",
+            "description": "Sent as is."
+          },
+          "receivedQuantity": {
+            "type": "number",
+            "nullable": true,
+            "description": "null until received."
+          },
+          "shortfallQuantity": {
+            "type": "number",
+            "nullable": true,
+            "description": "requested - received, written off as merma en tránsito; null until received."
+          },
+          "shortfallReason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "itemId",
+          "itemName",
+          "sku",
+          "unit",
+          "requestedQuantity",
+          "receivedQuantity",
+          "shortfallQuantity",
+          "shortfallReason"
+        ]
+      },
+      "InventoryTransfer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "in_transit",
+              "received",
+              "received_short",
+              "cancelled"
+            ]
+          },
+          "fromLocationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fromLocationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "toLocationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toLocationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sentBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "sentByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "receivedBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "receivedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancelledBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "cancelledByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "cancelledAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lines": {
+            "description": "By item name.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InventoryTransferLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "fromLocationId",
+          "fromLocationName",
+          "toLocationId",
+          "toLocationName",
+          "notes",
+          "createdBy",
+          "createdByName",
+          "sentBy",
+          "sentByName",
+          "sentAt",
+          "receivedBy",
+          "receivedByName",
+          "receivedAt",
+          "cancelledBy",
+          "cancelledByName",
+          "cancelledAt",
+          "createdAt",
+          "updatedAt",
+          "lines"
+        ]
+      },
+      "TransferLineInput": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "> 0, at most the positive stock of the origin."
+          }
+        },
+        "required": [
+          "itemId",
+          "quantity"
+        ]
+      },
+      "TransferInput": {
+        "type": "object",
+        "properties": {
+          "fromLocationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toLocationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Another active location of the restaurant."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "lines": {
+            "description": "1..200, one per item.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransferLineInput"
+            }
+          }
+        },
+        "required": [
+          "fromLocationId",
+          "toLocationId",
+          "lines"
+        ]
+      },
+      "ReceiveTransferLineInput": {
+        "type": "object",
+        "properties": {
+          "lineId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "receivedQuantity": {
+            "type": "number",
+            "description": "0..requestedQuantity."
+          },
+          "shortfallReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Required when receivedQuantity < requestedQuantity."
+          }
+        },
+        "required": [
+          "lineId",
+          "receivedQuantity"
+        ]
+      },
+      "ReceiveTransferRequest": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "description": "Every line of the transfer, once.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReceiveTransferLineInput"
+            }
+          }
+        },
+        "required": [
+          "lines"
         ]
       },
       "InventoryCount": {
