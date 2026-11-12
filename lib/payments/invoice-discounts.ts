@@ -9,6 +9,9 @@ import type { PrintDiscount } from "@/types"
 export type PaymentOrderSource = CashierBillSource & {
   discounts?: readonly OrderDiscountDto[]
   gross_subtotal?: number
+  /** S8: the order's type and takeaway customer, copied onto the invoice. */
+  order_type?: "dine_in" | "takeaway" | "delivery"
+  customer_name?: string | null
 }
 
 /**

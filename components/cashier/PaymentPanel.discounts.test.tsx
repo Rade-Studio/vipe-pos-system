@@ -201,3 +201,33 @@ describe("PaymentPanel — invoice discounts (S14)", () => {
     expect(onPaid.mock.calls[0]![0].discounts).toEqual([{ label: "Cortesía", amount: 38000, orderItemId: null }])
   })
 })
+
+describe("PaymentPanel — invoice order type (S8)", () => {
+  async function paidInvoice(order: PaymentOrderSource) {
+    payments.payOrder.mockResolvedValue(result(0))
+    const { onPaid } = renderPanel(order)
+    const register = await screen.findByRole("button", { name: /Registrar/ })
+    await waitFor(() => expect(register).toBeEnabled())
+    fireEvent.click(register)
+    await waitFor(() => expect(onPaid).toHaveBeenCalled())
+    return onPaid.mock.calls[0]![0]
+  }
+  const free = { subtotal: 0, tax: 0, total_discounts: 141000 }
+
+  it("puts a takeaway order's type and customer on the invoice", async () => {
+    const invoice = await paidInvoice({ ...source({ ...free, table_id: null }), order_type: "takeaway", customer_name: "Ana" })
+    expect(invoice).toMatchObject({ orderType: "takeaway", customerName: "Ana" })
+  })
+
+  it("puts dine_in on a table order's invoice, with no customer", async () => {
+    const invoice = await paidInvoice({ ...source(free), order_type: "dine_in" })
+    expect(invoice.orderType).toBe("dine_in")
+    expect(invoice).not.toHaveProperty("customerName")
+  })
+
+  it("adds neither field when the order's type is unknown", async () => {
+    const invoice = await paidInvoice(source(free))
+    expect(invoice).not.toHaveProperty("orderType")
+    expect(invoice).not.toHaveProperty("customerName")
+  })
+})

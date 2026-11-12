@@ -65,6 +65,16 @@ describe("sendFactura", () => {
     expect(toast).not.toHaveBeenCalled()
   })
 
+  it("S8: sends the invoice's orderType and customerName when set, and adds no keys when absent", async () => {
+    const takeaway = { invoiceNumber: "F-3", table: "—", orderType: "takeaway", customerName: "Ana" } as unknown as PrintableInvoice
+    await sendFactura("F-3", takeaway, [])
+    expect(api.POST.mock.calls[0]![1].body.invoice).toEqual({ invoiceNumber: "F-3", table: "—", orderType: "takeaway", customerName: "Ana" })
+
+    const plain = { invoiceNumber: "F-4", table: 4 } as unknown as PrintableInvoice
+    await sendFactura("F-4", plain, [])
+    expect(JSON.stringify(api.POST.mock.calls[1]![1].body)).toBe('{"invoice":{"invoiceNumber":"F-4","table":4},"displayItems":[]}')
+  })
+
   it("S14: sends the invoice's discounts and list-price subtotal in the print job", async () => {
     const invoice = {
       invoiceNumber: "F-2",

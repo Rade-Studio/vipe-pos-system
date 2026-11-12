@@ -131,4 +131,10 @@ describe("PaymentMethodDialog — delivery invoice (S2)", () => {
     expect(invoice.items.some((item) => "discounts" in item)).toBe(false)
     expect(invoice.bill).toEqual({ subtotal: 141000, tax: 11280, taxPercentage: 8, tip: 0, tipPercentage: 0, total: 152280, totalDiscounts: 0 })
   })
+
+  it("puts the delivery order type on the invoice, with no customer (S8)", async () => {
+    const invoice = (await payDelivery(plain(), 152280)) as unknown as Record<string, unknown>
+    expect(invoice.orderType).toBe("delivery")
+    expect("customerName" in invoice).toBe(false)
+  })
 })

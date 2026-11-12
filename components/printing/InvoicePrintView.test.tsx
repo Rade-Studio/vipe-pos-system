@@ -77,6 +77,35 @@ describe("InvoicePrintView", () => {
     expect(ticket.textContent).not.toContain("MESA:")
   })
 
+  it("labels a takeaway invoice from its orderType, whatever its place text (S8)", () => {
+    const { container } = render(
+      <InvoicePrintView
+        invoice={{ ...invoice, table: "—", orderType: "takeaway", customerName: "Ana" }}
+        open
+        onOpenChange={() => {}}
+      />,
+    )
+    expect(screen.getByText("Para llevar · Ana")).toBeInTheDocument()
+    expect(screen.queryByText("Mesa:")).not.toBeInTheDocument()
+    const ticket = container.ownerDocument.querySelector(".ticket")!
+    expect(ticket.textContent).toContain("PARA LLEVAR · Ana")
+    expect(ticket.textContent).not.toContain("MESA:")
+  })
+
+  it("keeps the Mesa: label on a dine_in invoice even if its place text starts with Para llevar (S8)", () => {
+    render(
+      <InvoicePrintView invoice={{ ...invoice, table: "Para llevar 2", orderType: "dine_in" }} open onOpenChange={() => {}} />,
+    )
+    expect(screen.getByText("Mesa:")).toBeInTheDocument()
+    expect(screen.getByText("Para llevar 2")).toBeInTheDocument()
+  })
+
+  it("keeps the Mesa: label on a dine_in invoice", () => {
+    render(<InvoicePrintView invoice={{ ...invoice, orderType: "dine_in" }} open onOpenChange={() => {}} />)
+    expect(screen.getByText("Mesa:")).toBeInTheDocument()
+    expect(screen.getByText("4")).toBeInTheDocument()
+  })
+
   it("keeps the Mesa: label on a table invoice", () => {
     render(<InvoicePrintView invoice={invoice} open onOpenChange={() => {}} />)
     expect(screen.getByText("Mesa:")).toBeInTheDocument()

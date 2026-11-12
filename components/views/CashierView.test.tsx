@@ -1571,6 +1571,16 @@ describe("Para llevar (S8)", () => {
     expect(invoice).not.toHaveTextContent("N/A")
   })
 
+  it("reprints a takeaway order with its order type and customer on the invoice (S8)", async () => {
+    const { sendFactura } = await import("@/lib/api/print")
+    vi.mocked(sendFactura).mockClear()
+    await openTakeaway()
+    fireEvent.click(screen.getByRole("button", { name: "Reimprimir" }))
+    const invoice = await screen.findByRole("dialog")
+    fireEvent.click(within(invoice).getAllByRole("button", { name: /Imprimir/ })[0]!)
+    expect(vi.mocked(sendFactura).mock.calls[0]![1]).toMatchObject({ orderType: "takeaway", customerName: "Ana María" })
+  })
+
   it("Agregar productos reopens a sent takeaway order and sends only the new lines to it (M5b)", async () => {
     takeawayApi.addItems.mockImplementation(async (id: string) =>
       (await import("@/lib/api/orders")).orderDtoFromWire(takeawayRow({ id, status: "kitchen" })),

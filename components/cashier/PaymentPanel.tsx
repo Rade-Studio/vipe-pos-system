@@ -14,7 +14,7 @@ import { useConfigStore } from "@/store/use-config-store"
 import { formatCurrency } from "@/utils/helpers"
 import { toast } from "@/utils/toast"
 import { cn } from "@/lib/utils"
-import type { PrintableInvoice } from "@/types"
+import type { Order, PrintableInvoice } from "@/types"
 import type { DeliveryOrder } from "@/lib/delivery/types"
 import { buildDeliveryPrintInfo } from "@/lib/delivery/print"
 import { listPaymentMethods, payOrder } from "@/lib/api/payments"
@@ -112,6 +112,25 @@ interface OrderForBill extends PaymentOrderSource {
   tip: number
   table_id: string | null
   waiter_id: string | null
+}
+
+/** S8: the order's type and takeaway customer, in the bill-source shape. */
+function orderTypeFields(order: Order): Pick<PaymentOrderSource, "order_type" | "customer_name"> {
+  if (!order.orderType) return {}
+  return {
+    order_type: order.orderType,
+    ...(order.orderType === "takeaway" ? { customer_name: order.customerName ?? null } : {}),
+  }
+}
+
+/** S8: the invoice's `orderType` / `customerName`; absent when the order's type is unknown. */
+function invoiceOrderType(
+  order: PaymentOrderSource,
+  isDelivery: boolean,
+): Pick<PrintableInvoice, "orderType" | "customerName"> {
+  const orderType = isDelivery ? "delivery" : order.order_type
+  if (!orderType) return {}
+  return orderType === "takeaway" ? { orderType, customerName: order.customer_name ?? null } : { orderType }
 }
 
 const ERROR_TOAST: Record<PaymentServiceErrorKind, string> = {
@@ -235,6 +254,7 @@ export function PaymentPanel({
           ...billSourceFromOrder(toOrder(dto)),
           discounts: dto.discounts,
           gross_subtotal: dto.grossSubtotal,
+          ...orderTypeFields(toOrder(dto)),
         }
         if (cancelled) return
         setLoadedOrder({ orderId, data: fetched as OrderForBill })
@@ -480,6 +500,7 @@ export function PaymentPanel({
         ...(discounts?.bill.length ? { discounts: discounts.bill } : {}),
         waiter: orderData.waiter_id ?? "—",
         table: orderData.table_id ?? "—",
+        ...invoiceOrderType(orderData, Boolean(delivery)),
         paymentMethod: legacy.paymentMethod as PrintableInvoice["paymentMethod"],
         multiplePayments: undefined,
         cashReceived: legacy.cashReceived ?? undefined,

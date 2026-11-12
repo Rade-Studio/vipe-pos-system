@@ -279,6 +279,10 @@ export interface PrintableInvoice {
   discounts?: PrintDiscount[]
   waiter: string
   table: string | number
+  /** S8: the order's type; absent on invoices built before it (the view then reads `table`). */
+  orderType?: "dine_in" | "takeaway" | "delivery"
+  /** S8: takeaway only, who picks the order up. */
+  customerName?: string | null
   paymentMethod: PaymentMethod | "multiple"
   multiplePayments?: Record<PaymentMethod, boolean> | undefined
   cashReceived?: number

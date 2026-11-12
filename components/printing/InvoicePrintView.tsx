@@ -24,11 +24,23 @@ type DiscountedInvoice = PrintableInvoice & {
 }
 
 const TAKEAWAY_PREFIX = "Para llevar"
-/** S8: the cashier names a takeaway invoice `table: "Para llevar · <nombre>"` (takeawayLabel); the thermal ticket gets its type and customer. */
-const takeawayOf = (table: string | number) =>
-  String(table).startsWith(TAKEAWAY_PREFIX)
+/**
+ * S8: a takeaway invoice's type and customer. `orderType` decides; an invoice
+ * built without it falls back to its place text "Para llevar · <nombre>"
+ * (takeawayLabel). Null when the invoice is not a takeaway one.
+ */
+const takeawayOf = (invoice: PrintableInvoice, table: string | number) => {
+  if (invoice.orderType) {
+    return invoice.orderType === "takeaway"
+      ? { orderType: "takeaway" as const, customerName: invoice.customerName ?? null }
+      : null
+  }
+  return String(table).startsWith(TAKEAWAY_PREFIX)
     ? { orderType: "takeaway" as const, customerName: String(table).slice(TAKEAWAY_PREFIX.length).replace(/^\s*·\s*/, "") || null }
-    : {}
+    : null
+}
+const takeawayLabelOf = (takeaway: { customerName: string | null }) =>
+  takeaway.customerName ? `${TAKEAWAY_PREFIX} · ${takeaway.customerName}` : TAKEAWAY_PREFIX
 
 interface InvoicePrintViewProps {
   invoice: PrintableInvoice
@@ -126,6 +138,7 @@ export function InvoicePrintView({
   // Asegurarse de que siempre tengamos valores válidos para mostrar
   const displayWaiter = waiter || "No asignado"
   const displayTable = table || "N/A"
+  const takeaway = takeawayOf(invoice, displayTable)
 
   // Agrupar items por nombre, opciones (F7) y comentario
   // Agrupar items por nombre, opciones (F7) y comentario; sus descuentos se suman por promoción (S14)
@@ -215,8 +228,8 @@ export function InvoicePrintView({
                   ) : (
                     <>
                       <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded">
-                        {String(displayTable).startsWith(TAKEAWAY_PREFIX) ? (
-                          <span className="font-medium dark:text-white">{displayTable}</span>
+                        {takeaway ? (
+                          <span className="font-medium dark:text-white">{takeawayLabelOf(takeaway)}</span>
                         ) : (
                           <>
                             <span className="font-medium dark:text-white">Mesa:</span>
@@ -527,7 +540,7 @@ export function InvoicePrintView({
                   tenders,
                   change,
                   delivery,
-                  ...takeawayOf(displayTable),
+                  ...(takeaway ?? {}),
                   taxType,
                 },
                 displayItems,
