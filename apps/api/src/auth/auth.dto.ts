@@ -105,13 +105,13 @@ export class AuthorizeRequest {
   @ApiPropertyOptional({ format: 'uuid', description: 'Only this supervisor is tried; omitted, every supervisor with a PIN.' })
   profileId?: string;
 
-  @ApiProperty({ enum: AUTHORIZATION_TARGETS, description: 'order for cancel_order and void_item, payment for void_payment (else 422).' })
+  @ApiProperty({ enum: AUTHORIZATION_TARGETS, description: 'order for cancel_order, void_item and apply_discount, payment for void_payment (else 422).' })
   targetType!: (typeof AUTHORIZATION_TARGETS)[number];
 
   @ApiProperty({
     format: 'uuid',
     description:
-      'The order or payment to cancel or void. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member).',
+      'The order or payment to cancel, void or discount. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member).',
   })
   targetId!: string;
 }
