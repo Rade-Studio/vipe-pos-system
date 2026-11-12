@@ -7,7 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { log } from "@/lib/log"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
+import { CASH_MOVEMENT_REASONS, type CashMovementReason } from "@/lib/api/registers"
 import { formatCurrency } from "@/utils/helpers"
 import { NumericKeypad } from "@/components/ui/numeric-keypad"
 import { toast } from "@/utils/toast"
@@ -22,6 +24,8 @@ interface AddCashDialogProps {
 
 export function AddCashDialog({ open, onOpenChange, onSuccess }: AddCashDialogProps) {
   const [cashAmount, setCashAmount] = useState<string>("")
+  const [reason, setReason] = useState<CashMovementReason | "">("")
+  const [description, setDescription] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { addCashToRegister, currentRegister } = useCashRegisterStore()
@@ -48,14 +52,27 @@ export function AddCashDialog({ open, onOpenChange, onSuccess }: AddCashDialogPr
       return
     }
 
+    if (!reason) {
+      setError("Selecciona el motivo del ingreso")
+      return
+    }
+
+    const note = description.trim()
+    if (reason === "other" && !note) {
+      setError("Describe el motivo")
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
-      const success = await addCashToRegister(amount)
+      const success = await addCashToRegister(amount, reason, note)
 
       if (success) {
         toast.success(`Se ha agregado ${formatCurrency(amount)} a la caja`)
         setCashAmount("")
+        setReason("")
+        setDescription("")
         setError(null)
         onOpenChange(false)
 
@@ -98,8 +115,43 @@ export function AddCashDialog({ open, onOpenChange, onSuccess }: AddCashDialogPr
               <div className="h-12 flex items-center justify-end text-xl font-mono border rounded-md bg-muted/20 px-3">
                 {cashAmount ? formatCurrency(Number(cashAmount)) : formatCurrency(0)}
               </div>
-              {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="addReason">Motivo</Label>
+              <select
+                id="addReason"
+                value={reason}
+                onChange={(e) => {
+                  setReason(e.target.value as CashMovementReason | "")
+                  setError(null)
+                }}
+                className="h-11 min-h-[44px] w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Selecciona un motivo</option>
+                {CASH_MOVEMENT_REASONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="addDescription">Descripción</Label>
+              <Input
+                id="addDescription"
+                value={description}
+                onChange={(e) => {
+                  setDescription(e.target.value)
+                  setError(null)
+                }}
+                placeholder={reason === "other" ? "Obligatoria para Otro" : "Opcional"}
+                className="h-11"
+              />
+            </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
             <NumericKeypad
               value={cashAmount}

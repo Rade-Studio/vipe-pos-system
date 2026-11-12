@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
 import { toIso } from '../common/validation';
@@ -6,13 +6,22 @@ import { UnitOfWork } from '../db/unit-of-work';
 import {
   type CashRegister,
   type CashTransaction,
+  type CloseRegisterInput,
   type CloseRegisterResult,
   type createCashTransactionSchema,
   PAID_ORDERS_DEFAULT,
   type RegisterPaidOrder,
   type RegisterSummary,
 } from './registers.dto';
-import { type RegisterRow, toCashTransaction, toCloseResult, toPaidOrder, toRegister, toRegisterSummary } from './registers.mappers';
+import {
+  type RegisterRow,
+  toCashTransaction,
+  toCloseResult,
+  toPaidOrder,
+  toRegister,
+  toRegisterCount,
+  toRegisterSummary,
+} from './registers.mappers';
 
 type Json = Record<string, unknown>;
 export const ALREADY_OPEN = 'A register is already open';
@@ -23,6 +32,15 @@ export const openOrdersMessage = (count: number): string =>
   count === 1
     ? 'Hay 1 orden abierta. Cóbrala o cancélala, o confirma que pasa a la siguiente caja.'
     : `Hay ${count} órdenes abiertas. Cóbralas o cancélalas, o confirma que pasan a la siguiente caja.`;
+
+export const CLOSE_MESSAGES = {
+  countedCashRequired: 'Ingresa el efectivo contado para cerrar la caja.',
+  countMismatch: 'La suma de billetes y monedas no coincide con el efectivo contado.',
+  noteRequired: 'El contado no cuadra con lo esperado: escribe una nota de 3 a 300 caracteres.',
+  descriptionRequired: 'Describe el motivo del movimiento.',
+} as const;
+
+const unprocessable = (message: string, code: string) => new UnprocessableEntityException({ message, code });
 
 export interface RegisterIncludes {
   transactions?: boolean;
@@ -91,11 +109,16 @@ export class RegistersService {
    * close_register, gated: while the register is still open and the
    * restaurant (RLS) has open orders, the close is 409 open_orders unless
    * `leaveOpenOrders` confirms they pass to the next register. A closed or
-   * unknown register goes straight to close_register (replay, 404). Its first close does not return the
-   * closing_timestamp it wrote (only the replay does), so it is read back from
-   * the row in the same transaction.
+   * unknown register goes straight to close_register (replay, 404) and keeps
+   * its stored count. On an open register (locked FOR UPDATE first) the count
+   * is required (422 counted_cash_required) and its denominations must add
+   * up (422 count_mismatch); after close_register the difference against its
+   * final_cash (expected after tips at the lock) needs a note (422
+   * note_required, which rolls the close back), then the count and closed_by
+   * (the caller's profile) are written in the same transaction. The
+   * closing_timestamp and the count are read back from the row.
    */
-  async close(id: string, options: { leaveOpenOrders?: boolean } = {}): Promise<CloseRegisterResult> {
+  async close(id: string, options: CloseRegisterInput = {}): Promise<CloseRegisterResult> {
     if (!options.leaveOpenOrders) {
       const [{ count }] = await this.rows<{ count: number }>(sql`
         SELECT count(*)::int AS count FROM public.orders
@@ -105,14 +128,38 @@ export class RegistersService {
         throw new ConflictException({ message: openOrdersMessage(count), code: 'open_orders', count });
       }
     }
-    const [{ result }] = await this.rows<{ result: Json }>(sql`SELECT public.close_register(${id}::uuid) AS result`);
-    let closing = result.closing_timestamp as string | null | undefined;
-    if (!closing) {
-      const [row] = await this.rows<{ closing_timestamp: string }>(sql`
-        SELECT closing_timestamp::text FROM public.cash_registers WHERE id = ${id}`);
-      closing = row.closing_timestamp;
+    const [register] = await this.rows<{ status: string }>(sql`
+      SELECT status FROM public.cash_registers WHERE id = ${id} FOR UPDATE`);
+    const counted = options.countedCash;
+    if (register?.status === 'open') {
+      if (counted === undefined) {
+        throw unprocessable(CLOSE_MESSAGES.countedCashRequired, 'counted_cash_required');
+      }
+      if (options.denominations && options.denominations.reduce((sum, d) => sum + d.value * d.quantity, 0) !== counted) {
+        throw unprocessable(CLOSE_MESSAGES.countMismatch, 'count_mismatch');
+      }
     }
-    return toCloseResult(result, toIso(String(closing)));
+    const [{ result }] = await this.rows<{ result: Json }>(sql`SELECT public.close_register(${id}::uuid) AS result`);
+    if (result.status === 'closed' && counted !== undefined) {
+      const difference = counted - Number(result.final_cash);
+      const note = options.note ?? null;
+      if (difference !== 0 && !note) {
+        throw unprocessable(CLOSE_MESSAGES.noteRequired, 'note_required');
+      }
+      const denominations = options.denominations ? JSON.stringify(options.denominations) : null;
+      await this.rows(sql`
+        UPDATE public.cash_registers
+           SET counted_cash = ${counted}, cash_difference = ${difference}, close_note = ${note},
+               denominations = ${denominations}::jsonb, closed_by = private.current_profile_id()
+         WHERE id = ${id}`);
+    }
+    const [row] = await this.rows<{ register: Json; closed_by_name: string | null }>(sql`
+      SELECT to_jsonb(cr) AS register, cb.full_name AS closed_by_name
+        FROM public.cash_registers cr
+        LEFT JOIN public.profiles cb ON cb.id = cr.closed_by
+       WHERE cr.id = ${id}`);
+    const closing = (result.closing_timestamp as string | null | undefined) ?? String(row.register.closing_timestamp);
+    return toCloseResult(result, toIso(closing), toRegisterCount(row.register, row.closed_by_name));
   }
 
   async summary(ids: string[]): Promise<RegisterSummary> {
@@ -135,10 +182,18 @@ export class RegistersService {
     if (register.status !== 'open') {
       throw new ConflictException('Register is closed');
     }
+    const description = input.description ?? '';
+    if (input.reason === 'other' && !description) {
+      throw unprocessable(CLOSE_MESSAGES.descriptionRequired, 'description_required');
+    }
+    // created_by is left to its column default: the caller's profile (migration 0025).
     const [row] = await this.rows<{ tx: Json }>(sql`
-      INSERT INTO public.cash_transactions (amount, type, description, cash_register_id)
-      VALUES (${input.amount}, ${input.type}, ${input.description ?? ''}, ${registerId})
-      RETURNING to_jsonb(cash_transactions.*) AS tx`);
+      WITH tx AS (
+        INSERT INTO public.cash_transactions (amount, type, reason, description, cash_register_id)
+        VALUES (${input.amount}, ${input.type}, ${input.reason}, ${description}, ${registerId})
+        RETURNING *)
+      SELECT to_jsonb(tx) || jsonb_build_object('created_by_name', p.full_name) AS tx
+        FROM tx LEFT JOIN public.profiles p ON p.id = tx.created_by`);
     return toCashTransaction(row.tx);
   }
 
@@ -188,14 +243,18 @@ export class RegistersService {
                         FROM public.payment_transactions pt WHERE pt.cash_register_id = cr.id), '[]'::jsonb)`
       : sql`NULL::jsonb`;
     const cash = include.cashTransactions
-      ? sql`coalesce((SELECT jsonb_agg(to_jsonb(ct) ORDER BY ct.timestamp DESC, ct.id)
-                        FROM public.cash_transactions ct WHERE ct.cash_register_id = cr.id), '[]'::jsonb)`
+      ? sql`coalesce((SELECT jsonb_agg(to_jsonb(ct) || jsonb_build_object('created_by_name', cp.full_name) ORDER BY ct.timestamp DESC, ct.id)
+                        FROM public.cash_transactions ct
+                        LEFT JOIN public.profiles cp ON cp.id = ct.created_by
+                       WHERE ct.cash_register_id = cr.id), '[]'::jsonb)`
       : sql`NULL::jsonb`;
     return this.rows<RegisterRow>(sql`
-      SELECT to_jsonb(cr) AS register, op.full_name AS opened_by_name, ${transactions} AS transactions, ${cash} AS cash_transactions
+      SELECT to_jsonb(cr) AS register, op.full_name AS opened_by_name, cb.full_name AS closed_by_name,
+             ${transactions} AS transactions, ${cash} AS cash_transactions
         FROM public.cash_registers cr
         JOIN public.restaurants r ON r.id = cr.restaurant_id
         LEFT JOIN public.profiles op ON op.id = cr.opened_by
+        LEFT JOIN public.profiles cb ON cb.id = cr.closed_by
        ${where}
        ORDER BY cr.opening_timestamp DESC, cr.id`);
   }

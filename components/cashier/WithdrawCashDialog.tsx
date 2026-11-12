@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
+import { CASH_MOVEMENT_REASONS, type CashMovementReason } from "@/lib/api/registers"
 import { formatCurrency } from "@/utils/helpers"
 import { toast } from "@/utils/toast"
 import { NumericKeypad } from "@/components/ui/numeric-keypad"
@@ -25,6 +26,7 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
   const [amount, setAmount] = useState<string>("")
   const [formattedAmount, setFormattedAmount] = useState<string>("$ 0")
   const [description, setDescription] = useState<string>("")
+  const [reason, setReason] = useState<CashMovementReason | "">("")
   const [error, setError] = useState<string | null>(null)
 
   const { addCashTransaction, currentRegister } = useCashRegisterStore()
@@ -45,6 +47,7 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
       setAmount("")
       setFormattedAmount("$ 0")
       setDescription("")
+      setReason("")
       setError(null)
     }
   }, [open])
@@ -78,8 +81,14 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
       return
     }
 
-    if (!description.trim()) {
-      setError("Por favor ingrese una descripción")
+    if (!reason) {
+      setError("Selecciona el motivo del retiro")
+      return
+    }
+
+    const note = description.trim()
+    if (reason === "other" && !note) {
+      setError("Describe el motivo")
       return
     }
 
@@ -98,13 +107,11 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
     }
 
     try {
-      // Usar addCashTransaction en lugar de withdrawCash
-      await addCashTransaction(
-        currentRegister.id,
-        numericAmount,
-        "withdrawal", // Tipo de transacción: retiro
-        description,
-      )
+      const withdrawal = await addCashTransaction(currentRegister.id, numericAmount, "withdrawal", reason, note)
+      if (!withdrawal) {
+        setError("Ocurrió un error al retirar el efectivo")
+        return
+      }
 
       toast.success(`Se ha retirado ${formatCurrency(numericAmount)} de la caja`)
       onOpenChange(false)
@@ -146,12 +153,32 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Descripción / Motivo</Label>
+            <Label htmlFor="withdrawReason">Motivo</Label>
+            <select
+              id="withdrawReason"
+              value={reason}
+              onChange={(e) => {
+                setReason(e.target.value as CashMovementReason | "")
+                setError(null)
+              }}
+              className="h-11 min-h-[44px] w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="">Selecciona un motivo</option>
+              {CASH_MOVEMENT_REASONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Descripción</Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ingrese el motivo del retiro"
+              placeholder={reason === "other" ? "Obligatoria para Otro" : "Opcional"}
               className="min-h-[80px]"
             />
           </div>

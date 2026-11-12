@@ -25,8 +25,20 @@ const r = {
 const OPEN_ORDERS_MANY = 'Hay 2 órdenes abiertas. Cóbralas o cancélalas, o confirma que pasan a la siguiente caja.';
 const OPEN_ORDERS_ONE = 'Hay 1 orden abierta. Cóbrala o cancélala, o confirma que pasa a la siguiente caja.';
 
-const REGISTER_KEYS = ['closingTimestamp', 'createdAt', 'finalCash', 'id', 'initialCash', 'openedBy', 'openingTimestamp', 'status', 'updatedAt'];
-const CASH_TX_KEYS = ['amount', 'cashRegisterId', 'description', 'id', 'timestamp', 'type'];
+const REGISTER_KEYS = [
+  'cashDifference', 'closeNote', 'closedBy', 'closingTimestamp', 'countedCash', 'createdAt', 'denominations', 'finalCash', 'id',
+  'initialCash', 'openedBy', 'openingTimestamp', 'status', 'updatedAt',
+];
+const CASH_TX_KEYS = ['amount', 'cashRegisterId', 'createdBy', 'description', 'id', 'reason', 'timestamp', 'type'];
+const CLOSE_KEYS = [
+  'cashDifference', 'cashRegisterId', 'closeNote', 'closedBy', 'closingTimestamp', 'countedCash', 'denominations', 'finalCash', 'status',
+  'summary',
+];
+const COUNTED_CASH_REQUIRED = 'Ingresa el efectivo contado para cerrar la caja.';
+const COUNT_MISMATCH = 'La suma de billetes y monedas no coincide con el efectivo contado.';
+const NOTE_REQUIRED = 'El contado no cuadra con lo esperado: escribe una nota de 3 a 300 caracteres.';
+const DESCRIPTION_REQUIRED = 'Describe el motivo del movimiento.';
+const NO_COUNT = { countedCash: null, cashDifference: null, closeNote: null, denominations: null, closedBy: null };
 const LEGACY_KEYS = [
   'amount', 'cashChange', 'cashReceived', 'cashRegisterId', 'id', 'method', 'orderId', 'tableId', 'timestamp',
   'tipAmount', 'totalDiscounts', 'waiterId',
@@ -94,6 +106,7 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
         initialCash: 10000,
         finalCash: 15000,
         closingTimestamp: expect.stringMatching(ISO),
+        ...NO_COUNT,
       });
       expect(ids((await adminA().get('/api/registers?date=2026-03-11')).body)).toEqual([r.early]);
       expect((await adminA().get('/api/registers?date=2026-03-12')).body).toEqual([]);
@@ -133,7 +146,10 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
       expect(Object.keys(full.body.transactions[0]).sort()).toEqual(LEGACY_KEYS);
       expect(full.body.transactions[0]).toMatchObject({ id: r.legacyTx, orderId: r.legacyOrder, method: 'cash', amount: 5000, cashReceived: 10000, cashChange: 5000 });
       expect(full.body.cashTransactions).toEqual([
-        { id: r.cashTx, cashRegisterId: r.late, amount: 2000, type: 'withdrawal', description: 'Propinas', timestamp: expect.stringMatching(ISO) },
+        {
+          id: r.cashTx, cashRegisterId: r.late, amount: 2000, type: 'withdrawal', description: 'Propinas', timestamp: expect.stringMatching(ISO),
+          reason: null, createdBy: null,
+        },
       ]);
       const list = await waiterA().get('/api/registers?date=2026-03-10&include=cashTransactions');
       expect(list.body[0].cashTransactions).toHaveLength(1);
@@ -153,7 +169,7 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
       const after = Date.now();
       expect(res.status).toBe(201);
       expect(Object.keys(res.body).sort()).toEqual(REGISTER_KEYS);
-      expect(res.body).toMatchObject({ status: 'open', initialCash: 50000, closingTimestamp: null, finalCash: null });
+      expect(res.body).toMatchObject({ status: 'open', initialCash: 50000, closingTimestamp: null, finalCash: null, ...NO_COUNT });
       const opened = Date.parse(res.body.openingTimestamp);
       expect(opened).toBeGreaterThanOrEqual(before - 1000);
       expect(opened).toBeLessThanOrEqual(after + 1000);
@@ -191,26 +207,51 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
       expect(res.body).toMatchObject({ id: openId, status: 'open', transactions: [], cashTransactions: [] });
     });
 
-    it('records cash transactions with the server clock', async () => {
-      const deposit = await cashierA().post(`/api/registers/${openId}/cash-transactions`, { amount: 20000, type: 'deposit', description: 'Base' });
+    it('records cash transactions with the server clock, the reason and the caller as author', async () => {
+      const cashier = { id: r.cashierProfile, name: 'Cashier A' };
+      const deposit = await cashierA().post(`/api/registers/${openId}/cash-transactions`, {
+        amount: 20000, type: 'deposit', reason: 'change_fund', description: 'Base',
+      });
       expect(deposit.status).toBe(201);
       expect(Object.keys(deposit.body).sort()).toEqual(CASH_TX_KEYS);
-      expect(deposit.body).toMatchObject({ cashRegisterId: openId, amount: 20000, type: 'deposit', description: 'Base', timestamp: expect.stringMatching(ISO) });
+      expect(deposit.body).toMatchObject({
+        cashRegisterId: openId, amount: 20000, type: 'deposit', description: 'Base', timestamp: expect.stringMatching(ISO),
+        reason: 'change_fund', createdBy: cashier,
+      });
       expect(Math.abs(Date.parse(deposit.body.timestamp) - Date.now())).toBeLessThan(60_000);
-      const withdrawal = await cashierA().post(`/api/registers/${openId}/cash-transactions`, { amount: 5000, type: 'withdrawal' });
+      const withdrawal = await cashierA().post(`/api/registers/${openId}/cash-transactions`, { amount: 5000, type: 'withdrawal', reason: 'supplier' });
       expect(withdrawal.status).toBe(201);
-      expect(withdrawal.body.description).toBe('');
+      expect(withdrawal.body).toMatchObject({ description: '', reason: 'supplier', createdBy: cashier });
       const list = await waiterA().get(`/api/registers/${openId}/cash-transactions`);
-      expect(list.body.map((t: { type: string }) => t.type)).toEqual(['withdrawal', 'deposit']);
+      expect(list.body.map((t: { type: string; reason: string }) => [t.type, t.reason])).toEqual([['withdrawal', 'supplier'], ['deposit', 'change_fund']]);
+      expect(list.body.map((t: { createdBy: unknown }) => t.createdBy)).toEqual([cashier, cashier]);
+      expect(await db('SELECT reason, created_by FROM cash_transactions WHERE id = $1', [deposit.body.id])).toEqual([
+        { reason: 'change_fund', created_by: r.cashierProfile },
+      ]);
+      const embedded = await waiterA().get(`/api/registers/${openId}?include=cashTransactions`);
+      expect(embedded.body.cashTransactions[0]).toMatchObject({ reason: 'supplier', createdBy: cashier });
     });
 
     it('validates cash transactions and refuses the waiter and other restaurants', async () => {
       const url = `/api/registers/${openId}/cash-transactions`;
-      for (const body of [{ amount: 0, type: 'deposit' }, { amount: 1, type: 'refund' }, { amount: 1, type: 'deposit', timestamp: 'x' }]) {
+      for (const body of [
+        { amount: 0, type: 'deposit', reason: 'change_fund' },
+        { amount: 1, type: 'refund', reason: 'change_fund' },
+        { amount: 1, type: 'deposit', reason: 'change_fund', timestamp: 'x' },
+        { amount: 1, type: 'deposit' },
+        { amount: 1, type: 'deposit', reason: null },
+        { amount: 1, type: 'deposit', reason: 'refund' },
+        { amount: 1, type: 'deposit', reason: 'Otro' },
+      ]) {
         expect((await cashierA().post(url, body)).status).toBe(422);
       }
-      expect((await waiterA().post(url, { amount: 1, type: 'deposit' })).status).toBe(403);
-      expect((await adminB().post(url, { amount: 1, type: 'deposit' })).status).toBe(404);
+      for (const description of [undefined, null, '', '   ']) {
+        const other = await cashierA().post(url, { amount: 1, type: 'deposit', reason: 'other', description });
+        expect(other.status).toBe(422);
+        expect(other.body).toEqual({ statusCode: 422, error: 'Unprocessable Entity', message: DESCRIPTION_REQUIRED, code: 'description_required' });
+      }
+      expect((await waiterA().post(url, { amount: 1, type: 'deposit', reason: 'change_fund' })).status).toBe(403);
+      expect((await adminB().post(url, { amount: 1, type: 'deposit', reason: 'change_fund' })).status).toBe(404);
       expect(await db('SELECT count(*)::int AS n FROM cash_transactions WHERE cash_register_id = $1', [openId])).toEqual([{ n: 2 }]);
     });
 
@@ -273,17 +314,55 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
     });
 
     it('validates the close body (unknown keys are 422)', async () => {
-      for (const body of [{ leaveOpen: true }, { leaveOpenOrders: 'yes' }]) {
-        expect((await cashierA().post(`/api/registers/${openId}/close`, body)).status).toBe(422);
+      for (const body of [
+        { leaveOpen: true },
+        { leaveOpenOrders: 'yes' },
+        { countedCash: -1 },
+        { countedCash: 10.5 },
+        { countedCash: '65000' },
+        { countedCash: 65000, denominations: [{ value: 3000, quantity: 1 }] },
+        { countedCash: 65000, denominations: [{ value: 1000, quantity: -1 }] },
+        { countedCash: 65000, denominations: [{ value: 1000, quantity: 1.5 }] },
+        { countedCash: 65000, denominations: [{ value: 1000 }] },
+        { countedCash: 64000, note: '  ab ' },
+        { countedCash: 64000, note: 'x'.repeat(301) },
+      ]) {
+        expect((await cashierA().post(`/api/registers/${openId}/close`, { leaveOpenOrders: true, ...body })).status).toBe(422);
       }
       await db(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [r.openOrder1]);
     });
 
-    it('closes through close_register and returns the server closingTimestamp', async () => {
-      const res = await cashierA().post(`/api/registers/${openId}/close`);
+    it('requires the count while the register is open and leaves it open on every refusal', async () => {
+      const close = (body?: object) => cashierA().post(`/api/registers/${openId}/close`, body);
+      for (const body of [undefined, {}, { leaveOpenOrders: true }, { denominations: [{ value: 50000, quantity: 1 }] }]) {
+        const res = await close(body);
+        expect(res.status).toBe(422);
+        expect(res.body).toEqual({ statusCode: 422, error: 'Unprocessable Entity', message: COUNTED_CASH_REQUIRED, code: 'counted_cash_required' });
+      }
+      const mismatch = await close({ countedCash: 65000, denominations: [{ value: 50000, quantity: 1 }, { value: 10000, quantity: 1 }] });
+      expect(mismatch.status).toBe(422);
+      expect(mismatch.body).toEqual({ statusCode: 422, error: 'Unprocessable Entity', message: COUNT_MISMATCH, code: 'count_mismatch' });
+      for (const body of [{ countedCash: 64000 }, { countedCash: 66000, note: null }, { countedCash: 0 }]) {
+        const res = await close(body);
+        expect(res.status).toBe(422);
+        expect(res.body).toEqual({ statusCode: 422, error: 'Unprocessable Entity', message: NOTE_REQUIRED, code: 'note_required' });
+      }
+      expect(
+        await db('SELECT status, closing_timestamp, final_cash, counted_cash, closed_by FROM cash_registers WHERE id = $1', [openId]),
+      ).toEqual([{ status: 'open', closing_timestamp: null, final_cash: null, counted_cash: null, closed_by: null }]);
+    });
+
+    it('closes through close_register, stores the count and returns the server closingTimestamp', async () => {
+      const denominations = [{ value: 50000, quantity: 1 }, { value: 10000, quantity: 1 }, { value: 2000, quantity: 2 }];
+      const res = await cashierA().post(`/api/registers/${openId}/close`, { countedCash: 64000, denominations, note: '  Faltan dos mil  ' });
       expect(res.status).toBe(200);
-      expect(Object.keys(res.body).sort()).toEqual(['cashRegisterId', 'closingTimestamp', 'finalCash', 'status', 'summary']);
-      expect(res.body).toMatchObject({ status: 'closed', cashRegisterId: openId, finalCash: 65000, closingTimestamp: expect.stringMatching(ISO) });
+      expect(Object.keys(res.body).sort()).toEqual(CLOSE_KEYS);
+      const count = {
+        countedCash: 64000, cashDifference: -1000, closeNote: 'Faltan dos mil', denominations, closedBy: { id: r.cashierProfile, name: 'Cashier A' },
+      };
+      expect(res.body).toMatchObject({
+        status: 'closed', cashRegisterId: openId, finalCash: 65000, closingTimestamp: expect.stringMatching(ISO), ...count,
+      });
       expect(res.body.summary).toMatchObject({ expectedCashAfterTips: 65000, cashDeposits: 20000 });
       const [row] = await db<{ closing: string; status: string; final_cash: string }>(
         `SELECT to_char(closing_timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS closing, status, final_cash::text
@@ -291,15 +370,34 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
         [openId],
       );
       expect(row).toEqual({ closing: res.body.closingTimestamp, status: 'closed', final_cash: '65000.00' });
+      const stored = 'SELECT counted_cash::text, cash_difference::text, close_note, denominations, closed_by FROM cash_registers WHERE id = $1';
+      const storedRow = { counted_cash: '64000.00', cash_difference: '-1000.00', close_note: 'Faltan dos mil', denominations, closed_by: r.cashierProfile };
+      expect(await db(stored, [openId])).toEqual([storedRow]);
 
-      const replay = await cashierA().post(`/api/registers/${openId}/close`);
+      for (const body of [undefined, { countedCash: 0 }, { countedCash: 65000, note: 'Otro conteo' }]) {
+        const replay = await adminA().post(`/api/registers/${openId}/close`, body);
+        expect(replay.status).toBe(200);
+        expect(Object.keys(replay.body).sort()).toEqual(CLOSE_KEYS);
+        expect(replay.body).toMatchObject({ status: 'already_closed', finalCash: 65000, closingTimestamp: res.body.closingTimestamp, ...count });
+      }
+      expect(await db(stored, [openId])).toEqual([storedRow]);
+
+      const read = await waiterA().get(`/api/registers/${openId}`);
+      expect(Object.keys(read.body).sort()).toEqual(REGISTER_KEYS);
+      expect(read.body).toMatchObject({ status: 'closed', finalCash: 65000, ...count });
+      const listed = (await adminA().get('/api/registers')).body.find((reg: { id: string }) => reg.id === openId);
+      expect(listed).toMatchObject(count);
+    });
+
+    it('answers a replay on a register closed before the count with null count fields', async () => {
+      const replay = await cashierA().post(`/api/registers/${r.late}/close`);
       expect(replay.status).toBe(200);
-      expect(replay.body).toMatchObject({ status: 'already_closed', finalCash: 65000, closingTimestamp: res.body.closingTimestamp });
+      expect(replay.body).toMatchObject({ status: 'already_closed', finalCash: 15000, ...NO_COUNT });
     });
 
     it('has no current register after the close, refuses cash on it and lets a new one open', async () => {
       expect((await waiterA().get('/api/registers/current')).body).toBeNull();
-      const cash = await cashierA().post(`/api/registers/${openId}/cash-transactions`, { amount: 1, type: 'deposit' });
+      const cash = await cashierA().post(`/api/registers/${openId}/cash-transactions`, { amount: 1, type: 'deposit', reason: 'change_fund' });
       expect(cash.status).toBe(409);
       expect(cash.body.message).toBe('Register is closed');
       expect((await cashierA().post('/api/registers/open', { initialCash: 0 })).status).toBe(201);
@@ -309,9 +407,15 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
       const [{ id }] = await db<{ id: string }>(`SELECT id FROM cash_registers WHERE restaurant_id = $1 AND status = 'open'`, [fixtures.restaurantA]);
       await db(`UPDATE orders SET status = 'active' WHERE id = $1`, [r.openOrder1]);
       expect((await cashierA().post(`/api/registers/${id}/close`)).status).toBe(409);
-      const res = await cashierA().post(`/api/registers/${id}/close`, { leaveOpenOrders: true });
+      const gated = await cashierA().post(`/api/registers/${id}/close`, { countedCash: 0 });
+      expect(gated.status).toBe(409);
+      expect(gated.body).toMatchObject({ code: 'open_orders', count: 1 });
+      const res = await cashierA().post(`/api/registers/${id}/close`, { leaveOpenOrders: true, countedCash: 0 });
       expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ status: 'closed', cashRegisterId: id });
+      expect(res.body).toMatchObject({
+        status: 'closed', cashRegisterId: id, finalCash: 0, countedCash: 0, cashDifference: 0, closeNote: null, denominations: null,
+        closedBy: { id: r.cashierProfile, name: 'Cashier A' },
+      });
       expect(await db('SELECT status FROM orders WHERE id = $1', [r.openOrder1])).toEqual([{ status: 'active' }]);
       const replay = await cashierA().post(`/api/registers/${id}/close`);
       expect(replay.status).toBe(200);

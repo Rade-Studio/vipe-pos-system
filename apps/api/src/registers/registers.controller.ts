@@ -102,15 +102,21 @@ export class RegistersController {
   @Roles(...DRAWER_ROLES)
   @HttpCode(200)
   @ApiBody({ type: CloseRegisterRequest, required: false })
-  @ApiOkResponse({ type: CloseRegisterResult, description: 'close_register result; a replay answers already_closed.' })
+  @ApiOkResponse({
+    type: CloseRegisterResult,
+    description: 'close_register result with the stored count; a replay answers already_closed and keeps the count of the first close.',
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'Invalid body, or code counted_cash_required (open register without countedCash), count_mismatch (denominations do not add up to countedCash) or note_required (countedCash differs from the expected cash after tips and no note).',
+  })
   @ApiConflictResponse({
     description: 'code open_orders (with count): the restaurant has open orders (active, kitchen, delivered) and the body lacks leaveOpenOrders: true; the register stays open.',
   })
   @ApiNotFoundResponse({ description: 'Unknown or of another restaurant (P0002).' })
   @ApiForbiddenResponse({ description: 'Not admin or cashier.' })
   close(@Param('id') id: string, @Body() body: unknown): Promise<CloseRegisterResult> {
-    const { leaveOpenOrders } = parseInput(closeRegisterSchema, body);
-    return this.registers.close(parseInput(idParamSchema, id), { leaveOpenOrders });
+    return this.registers.close(parseInput(idParamSchema, id), parseInput(closeRegisterSchema, body));
   }
 
   @Get(':id/paid-orders')
@@ -137,6 +143,7 @@ export class RegistersController {
   @ApiBody({ type: CreateCashTransactionRequest })
   @ApiCreatedResponse({ type: CashTransaction, description: 'timestamp is the server clock.' })
   @ApiConflictResponse({ description: 'Register is closed.' })
+  @ApiUnprocessableEntityResponse({ description: 'Invalid body (reason missing or unknown), or code description_required (reason other without a description).' })
   @ApiNotFoundResponse()
   @ApiForbiddenResponse({ description: 'Not admin or cashier.' })
   addCashTransaction(@Param('id') id: string, @Body() body: unknown): Promise<CashTransaction> {

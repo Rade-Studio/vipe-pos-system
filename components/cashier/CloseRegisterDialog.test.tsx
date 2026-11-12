@@ -31,7 +31,7 @@ const summary = {
   cashWithdrawals: 0,
   expectedCash: 0,
   tipsPayout: 0,
-  expectedCashAfterTips: 0,
+  expectedCashAfterTips: 50000,
   legacy: { paymentsCount: 0, total: 0, tips: 0, change: 0, byMethod: {} },
 }
 vi.mock("@/hooks/use-register-summary", () => ({ useRegisterSummary: () => ({ data: summary, isLoading: false }) }))
@@ -94,6 +94,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 const closeButton = () => screen.getByRole("button", { name: "Cerrar Caja" })
+const typeCounted = (value: string) => fireEvent.change(screen.getByLabelText("Efectivo contado"), { target: { value } })
 
 describe("CloseRegisterDialog with open orders", () => {
   it("lists the open orders with place, waiter, total and age", async () => {
@@ -117,11 +118,12 @@ describe("CloseRegisterDialog with open orders", () => {
     payments.closeRegisterRpc.mockResolvedValue(closed)
     render(<CloseRegisterDialog open onOpenChange={() => {}} />)
     const checkbox = await screen.findByRole("checkbox", { name: "Dejar 2 órdenes abiertas para la siguiente caja" })
+    typeCounted("50000")
     expect(closeButton()).toBeDisabled()
     fireEvent.click(checkbox)
     expect(closeButton()).toBeEnabled()
     fireEvent.click(closeButton())
-    await waitFor(() => expect(payments.closeRegisterRpc).toHaveBeenCalledWith("r-1", { leaveOpenOrders: true }))
+    await waitFor(() => expect(payments.closeRegisterRpc).toHaveBeenCalledWith("r-1", { leaveOpenOrders: true, countedCash: 50000 }))
   })
 
   it("uses the singular for one order", async () => {
@@ -153,6 +155,7 @@ describe("CloseRegisterDialog with open orders", () => {
       new PaymentServiceError({ kind: "unknown", message, cause: new ApiError(409, "Conflict", message, { code: "open_orders", count: 1, message }) }),
     )
     render(<CloseRegisterDialog open onOpenChange={() => {}} />)
+    typeCounted("50000")
     await waitFor(() => expect(closeButton()).toBeEnabled())
     fireEvent.click(closeButton())
     expect(await screen.findByRole("alert")).toHaveTextContent(message)
@@ -162,16 +165,50 @@ describe("CloseRegisterDialog with open orders", () => {
 })
 
 describe("CloseRegisterDialog without open orders", () => {
-  it("shows no checkbox and closes with no body", async () => {
+  it("shows no checkbox and closes with only the count", async () => {
     orders.getByStatus.mockResolvedValue([])
     payments.closeRegisterRpc.mockResolvedValue(closed)
     render(<CloseRegisterDialog open onOpenChange={() => {}} />)
     await waitFor(() => expect(orders.getByStatus).toHaveBeenCalled())
+    expect(closeButton()).toBeDisabled()
+    typeCounted("50000")
     await waitFor(() => expect(closeButton()).toBeEnabled())
     expect(screen.queryByRole("checkbox")).toBeNull()
     expect(screen.queryByRole("list", { name: "Órdenes abiertas" })).toBeNull()
+    expect(screen.queryByLabelText("Nota del cierre")).toBeNull()
     fireEvent.click(closeButton())
-    await waitFor(() => expect(payments.closeRegisterRpc).toHaveBeenCalledWith("r-1"))
+    await waitFor(() => expect(payments.closeRegisterRpc).toHaveBeenCalledWith("r-1", { countedCash: 50000 }))
     expect(await screen.findByText("Cierre de Caja Completado")).toBeInTheDocument()
+  })
+})
+
+describe("CloseRegisterDialog count (caja-cierres S1)", () => {
+  beforeEach(() => orders.getByStatus.mockResolvedValue([]))
+
+  it("requires a note of 3+ characters when the count differs from the expected cash", async () => {
+    payments.closeRegisterRpc.mockResolvedValue(closed)
+    render(<CloseRegisterDialog open onOpenChange={() => {}} />)
+    await waitFor(() => expect(orders.getByStatus).toHaveBeenCalled())
+    typeCounted("48000")
+    expect(screen.getByText(/Faltante/)).toHaveTextContent(/2\.000/)
+    const note = screen.getByLabelText("Nota del cierre")
+    expect(closeButton()).toBeDisabled()
+    fireEvent.change(note, { target: { value: " ab " } })
+    expect(closeButton()).toBeDisabled()
+    fireEvent.change(note, { target: { value: "  Faltó un billete  " } })
+    expect(closeButton()).toBeEnabled()
+    fireEvent.click(closeButton())
+    await waitFor(() => expect(payments.closeRegisterRpc).toHaveBeenCalledWith("r-1", { countedCash: 48000, note: "Faltó un billete" }))
+  })
+
+  it("shows a surplus and refuses a non-whole amount", async () => {
+    render(<CloseRegisterDialog open onOpenChange={() => {}} />)
+    await waitFor(() => expect(orders.getByStatus).toHaveBeenCalled())
+    typeCounted("51000")
+    expect(screen.getByText(/Sobrante/)).toHaveTextContent(/1\.000/)
+    typeCounted("-5")
+    expect(closeButton()).toBeDisabled()
+    typeCounted("10.5")
+    expect(closeButton()).toBeDisabled()
   })
 })

@@ -3664,6 +3664,14 @@ export interface components {
         UndoSplitResult: {
             parent: components["schemas"]["OrderBillSummary"];
         };
+        Denomination: {
+            /**
+             * @description Bill or coin value in pesos.
+             * @enum {number}
+             */
+            value: 100000 | 50000 | 20000 | 10000 | 5000 | 2000 | 1000 | 500 | 200 | 100 | 50;
+            quantity: number;
+        };
         ProfileRef: {
             /** Format: uuid */
             id: string;
@@ -3685,8 +3693,23 @@ export interface components {
              * @description Server clock.
              */
             timestamp: string;
+            /**
+             * @description null for movements recorded before migration 0025.
+             * @enum {string|null}
+             */
+            reason: "change_fund" | "supplier" | "petty_cash" | "tips_payout" | "safe_deposit" | "other" | null;
+            /** @description Who recorded it (the caller); null for movements before migration 0025 or a deleted profile. */
+            createdBy: components["schemas"]["ProfileRef"] | null;
         };
         CashRegister: {
+            /** @description Cash counted by the cashier (whole pesos). */
+            countedCash: number | null;
+            /** @description countedCash - finalCash (expected after tips). */
+            cashDifference: number | null;
+            closeNote: string | null;
+            denominations: components["schemas"]["Denomination"][] | null;
+            /** @description Who closed it (the caller). */
+            closedBy: components["schemas"]["ProfileRef"] | null;
             /** Format: uuid */
             id: string;
             /**
@@ -3755,8 +3778,22 @@ export interface components {
         CloseRegisterRequest: {
             /** @description Close even though the restaurant has open orders; they stay open for the next register. */
             leaveOpenOrders?: boolean;
+            /** @description Cash counted (whole pesos); required while the register is open (422 counted_cash_required). Ignored on an already closed register. */
+            countedCash?: number;
+            /** @description Count by bill and coin; the sum must equal countedCash (422 count_mismatch). */
+            denominations?: components["schemas"]["Denomination"][];
+            /** @description Trimmed; required when countedCash differs from the expected cash after tips (422 note_required). */
+            note?: string | null;
         };
         CloseRegisterResult: {
+            /** @description Cash counted by the cashier (whole pesos). */
+            countedCash: number | null;
+            /** @description countedCash - finalCash (expected after tips). */
+            cashDifference: number | null;
+            closeNote: string | null;
+            denominations: components["schemas"]["Denomination"][] | null;
+            /** @description Who closed it (the caller). */
+            closedBy: components["schemas"]["ProfileRef"] | null;
             /** @enum {string} */
             status: "closed" | "already_closed";
             /** Format: uuid */
@@ -3810,6 +3847,9 @@ export interface components {
             amount: number;
             /** @enum {string} */
             type: "deposit" | "withdrawal";
+            /** @enum {string} */
+            reason: "change_fund" | "supplier" | "petty_cash" | "tips_payout" | "safe_deposit" | "other";
+            /** @description Required (not blank) when reason is other (422 description_required). */
             description?: string | null;
         };
         InventoryItem: {
@@ -8619,7 +8659,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description close_register result; a replay answers already_closed. */
+            /** @description close_register result with the stored count; a replay answers already_closed and keeps the count of the first close. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8649,7 +8689,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            /** @description Invalid body, or code counted_cash_required (open register without countedCash), count_mismatch (denominations do not add up to countedCash) or note_required (countedCash differs from the expected cash after tips and no note). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -8783,7 +8823,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`. */
+            /** @description Invalid body (reason missing or unknown), or code description_required (reason other without a description). */
             422: {
                 headers: {
                     [name: string]: unknown;

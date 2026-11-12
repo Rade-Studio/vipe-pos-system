@@ -402,7 +402,7 @@ Cada escritura es una sola transacción; la cuenta la calcula la base de datos c
 
 ### Pagos y caja
 
-`/api/payments` (métodos de pago con código y orden calculados en el servidor, cobro con `pay_order`, división de cuentas) y `/api/registers` (apertura con hora del servidor, una sola caja abierta por restaurante, resumen y cierre con `register_summary`/`close_register`; con órdenes abiertas el cierre responde 409 `open_orders` salvo `{ "leaveOpenOrders": true }`, movimientos de efectivo). Las fechas de caja y de órdenes completadas (`?date=AAAA-MM-DD`) usan la zona horaria del restaurante (columna `restaurants.timezone`, por defecto `America/Bogota`).
+`/api/payments` (métodos de pago con código y orden calculados en el servidor, cobro con `pay_order`, división de cuentas) y `/api/registers` (apertura con hora del servidor, una sola caja abierta por restaurante, resumen y cierre con `register_summary`/`close_register`; con órdenes abiertas el cierre responde 409 `open_orders` salvo `{ "leaveOpenOrders": true }`; el cierre exige el arqueo `countedCash` (pesos enteros, 422 `counted_cash_required`), acepta `denominations` cuya suma debe ser igual (422 `count_mismatch`) y pide `note` cuando hay diferencia con el esperado después de propinas (422 `note_required`), y guarda contado, diferencia, nota, denominaciones y quién cerró; movimientos de efectivo con motivo obligatorio `reason` —`change_fund`, `supplier`, `petty_cash`, `tips_payout`, `safe_deposit` u `other`, que exige `description`— y autor `createdBy`). Las fechas de caja y de órdenes completadas (`?date=AAAA-MM-DD`) usan la zona horaria del restaurante (columna `restaurants.timezone`, por defecto `America/Bogota`).
 
 ### Inventario
 
