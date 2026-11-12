@@ -73,18 +73,44 @@ export class StockService {
     }
     const filter = where.length ? sql`WHERE ${sql.join(where, sql` AND `)}` : sql``;
 
-    const [{ total }] = await rows<{ total: number }>(this.uow, sql`
-      SELECT count(*)::int AS total FROM public.inventory_movements m ${filter}`);
+    const [totals] = await rows<{ count: number; in_value: number; out_value: number }>(this.uow, sql`
+      SELECT count(*)::int AS count,
+             round(coalesce(sum(m.total_cost) FILTER (WHERE m.quantity > 0), 0), 2)::float8 AS in_value,
+             round(coalesce(-sum(m.total_cost) FILTER (WHERE m.quantity < 0), 0), 2)::float8 AS out_value
+        FROM public.inventory_movements m ${filter}`);
+    // Each document join is a primary-key lookup gated by reference_type; legacy 'transfer' has no document.
     const page = await rows<{ movement: Json }>(this.uow, sql`
-      SELECT to_jsonb(m) || jsonb_build_object('item_name', i.name, 'sku', i.sku, 'unit', i.unit,
-                                               'location_name', loc.name) AS movement
+      SELECT to_jsonb(m) || jsonb_build_object(
+               'item_name', i.name, 'sku', i.sku, 'unit', i.unit, 'location_name', loc.name,
+               'created_by_name', p.full_name,
+               'document_kind', CASE m.reference_type WHEN 'order_item' THEN 'order' ELSE m.reference_type END,
+               'document_id', CASE m.reference_type WHEN 'order_item' THEN o.id ELSE m.reference_id END,
+               'document_label', CASE m.reference_type
+                 WHEN 'order_item' THEN 'Orden #' || o.order_number
+                 WHEN 'purchase_order' THEN 'OC-' || lpad(po.number::text, 4, '0')
+                 WHEN 'inventory_count' THEN 'Conteo #' || c.number
+                 WHEN 'production_batch' THEN CASE WHEN b.id IS NOT NULL THEN coalesce('Lote ' || bl.lot_code, 'Producción') END
+                 WHEN 'inventory_transfer' THEN 'TR-' || lpad(tr.number::text, 4, '0')
+               END) AS movement
         FROM public.inventory_movements m
         LEFT JOIN public.ingredients i ON i.id = m.ingredient_id
         LEFT JOIN public.inventory_locations loc ON loc.id = m.location_id
+        LEFT JOIN public.profiles p ON p.id = m.created_by
+        LEFT JOIN public.order_items oi ON m.reference_type = 'order_item' AND oi.id = m.reference_id
+        LEFT JOIN public.orders o ON o.id = oi.order_id
+        LEFT JOIN public.purchase_orders po ON m.reference_type = 'purchase_order' AND po.id = m.reference_id
+        LEFT JOIN public.inventory_counts c ON m.reference_type = 'inventory_count' AND c.id = m.reference_id
+        LEFT JOIN public.production_batches b ON m.reference_type = 'production_batch' AND b.id = m.reference_id
+        LEFT JOIN public.inventory_lots bl ON bl.id = b.lot_id
+        LEFT JOIN public.inventory_transfers tr ON m.reference_type = 'inventory_transfer' AND tr.id = m.reference_id
         ${filter}
        ORDER BY m.created_at DESC, m.id
        LIMIT ${pageSize} OFFSET ${offset}`);
-    return { rows: page.map((row) => toMovement(row.movement)), total };
+    return {
+      rows: page.map((row) => toMovement(row.movement)),
+      total: totals.count,
+      totals: { count: totals.count, inValue: totals.in_value, outValue: totals.out_value },
+    };
   }
 
   async adjust(input: z.infer<typeof adjustStockSchema>): Promise<AdjustStockResult> {

@@ -17,6 +17,9 @@ export const MOVEMENT_TYPES = [
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 export const ADJUST_MOVEMENT_TYPES = ['opening', 'adjustment', 'waste'] as const;
 export type AdjustMovementType = (typeof ADJUST_MOVEMENT_TYPES)[number];
+/** Source documents a movement links to (order_item movements link to their order). */
+export const MOVEMENT_DOCUMENT_KINDS = ['order', 'purchase_order', 'inventory_count', 'production_batch', 'inventory_transfer'] as const;
+export type MovementDocumentKind = (typeof MOVEMENT_DOCUMENT_KINDS)[number];
 export const PURCHASE_ORDER_STATUSES = ['draft', 'ordered', 'partially_received', 'received', 'cancelled'] as const;
 export type PurchaseOrderStatus = (typeof PURCHASE_ORDER_STATUSES)[number];
 export const PAYMENT_STATUSES = ['pending', 'paid'] as const;
@@ -342,12 +345,28 @@ export class Movement {
   @ApiProperty({ type: String, nullable: true }) referenceType!: string | null;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) referenceId!: string | null;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) createdBy!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Full name of the author profile.' }) createdByName!: string | null;
+  @ApiProperty({ enum: MOVEMENT_DOCUMENT_KINDS, nullable: true, description: 'Source document; null without one.' })
+  documentKind!: MovementDocumentKind | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Id of the source document (the order for a sale).' })
+  documentId!: string | null;
+  @ApiProperty({
+    type: String, nullable: true, description: 'Orden #1042, OC-0005, Conteo #12, Lote <lot code>, TR-0007.',
+  })
+  documentLabel!: string | null;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
+}
+
+export class MovementTotals {
+  @ApiProperty({ description: 'Movements in the filtered range.' }) count!: number;
+  @ApiProperty({ description: 'Value of the entries (positive quantities) in the range.' }) inValue!: number;
+  @ApiProperty({ description: 'Value of the exits (negative quantities) in the range, as a positive number.' }) outValue!: number;
 }
 
 export class MovementPage {
   @ApiProperty({ type: [Movement], description: 'Newest first.' }) rows!: Movement[];
   @ApiProperty({ description: 'Exact count for the filters.' }) total!: number;
+  @ApiProperty({ type: MovementTotals, description: 'Totals for every page of the filters.' }) totals!: MovementTotals;
 }
 
 export class AdjustStockInput {

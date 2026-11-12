@@ -286,6 +286,16 @@ describe('inventory transfers (Testcontainers, vipe_api)', () => {
         { movement_type: 'waste', location_id: s.barra, quantity: '-1.000', reason: 'Bolsa rota', notes: 'Merma en tránsito' },
       ]);
       expect(await expectedInCount(s.barra, s.harina)).toBe(4);
+
+      const ledger = await adminA().get(`/api/inventory/movements?itemId=${s.harina}&types=transfer_in,waste`);
+      const label = `TR-${String(t1.number).padStart(4, '0')}`;
+      const ofT1 = ledger.body.rows.filter((m: { referenceId: string }) => m.referenceId === ids.t1);
+      const sum = (type: string) =>
+        ofT1.filter((m: { movementType: string }) => m.movementType === type).reduce((a: number, m: { quantity: number }) => a + m.quantity, 0);
+      expect([sum('transfer_in'), sum('waste')]).toEqual([5, -1]);
+      for (const m of ofT1) {
+        expect(m).toMatchObject({ documentKind: 'inventory_transfer', documentId: ids.t1, documentLabel: label, createdByName: 'Admin A' });
+      }
     });
 
     it('is idempotent: receiving again returns the stored transfer and moves nothing', async () => {

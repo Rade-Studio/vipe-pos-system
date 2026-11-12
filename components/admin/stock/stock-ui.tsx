@@ -2,24 +2,14 @@
 
 import { forwardRef, type SelectHTMLAttributes } from "react"
 import { Badge } from "@/components/ui/badge"
+import { MOVEMENT_LABEL } from "@/lib/inventory/movements"
 import { expiryStatus, stockStatus } from "@/lib/inventory/stock"
 import type { InventoryItem, ItemKind, MovementType } from "@/lib/api/inventory/types"
 import { cn } from "@/lib/utils"
 
 export const KIND_LABEL: Record<ItemKind, string> = { raw: "Materia prima", prep: "Preparación" }
 
-export const MOVEMENT_LABEL: Record<MovementType, string> = {
-  opening: "Saldo inicial",
-  purchase: "Compra",
-  sale: "Venta",
-  production_consume: "Consumo producción",
-  production_output: "Producción",
-  adjustment: "Ajuste",
-  waste: "Merma",
-  transfer_out: "Traslado salida",
-  transfer_in: "Traslado entrada",
-  count_adjustment: "Ajuste por conteo",
-}
+export { MOVEMENT_LABEL }
 
 export const MOVEMENT_TYPES = Object.keys(MOVEMENT_LABEL) as MovementType[]
 
