@@ -1,20 +1,23 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import type { CashDay } from "@/lib/api/cash"
+import type { CashDay, CashLedger } from "@/lib/api/cash"
 
 /**
  * caja-cierres T3 (S6-S7): the Día view (tablero 02) rendered
- * directly: names instead of ids, every method, tips apart, validate.
+ * directly: names instead of ids, every method, tips apart, validate, and
+ * the Libro (03) with its search and CSV export.
  */
 
 const api = vi.hoisted(() => ({
   day: vi.fn(),
+  ledger: vi.fn(),
   validate: vi.fn(),
 }))
 vi.mock("@/lib/api/cash", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchCashDay: api.day,
+  fetchCashLedger: api.ledger,
 }))
 vi.mock("@/lib/api/registers", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -127,6 +130,55 @@ const DAY: CashDay = {
   previous: { date: "2026-11-03", salesNet: 5874300 },
 }
 
+const LEDGER: CashLedger = {
+  date: "2026-11-10",
+  entries: [
+    { registerId: UUID_T1, at: "2026-11-10T12:58:00.000Z", kind: "opening", cashDelta: 200000, cashBalance: 200000, amount: 200000, openedBy: { id: "p-camilo", name: "Camilo Henao" } },
+    {
+      registerId: UUID_T1,
+      at: "2026-11-10T17:10:00.000Z",
+      kind: "payment",
+      cashDelta: 42000,
+      cashBalance: 242000,
+      amount: 38000,
+      orderNumber: 1046,
+      table: "7",
+      waiter: { id: "w1", name: "Valentina Cardona" },
+      cashier: { id: "p-camilo", name: "Camilo Henao" },
+      tenders: [{ method: "Efectivo", code: "cash", kind: "cash", amount: 42000 }],
+      tip: 4000,
+      change: 0,
+    },
+    {
+      registerId: UUID_T1,
+      at: "2026-11-10T17:30:00.000Z",
+      kind: "cash_movement",
+      cashDelta: -45000,
+      cashBalance: 197000,
+      type: "withdrawal",
+      amount: 45000,
+      reason: "supplier",
+      description: "Hielo",
+      createdBy: { id: "p-camilo", name: "Camilo Henao" },
+    },
+    {
+      registerId: UUID_T2,
+      at: "2026-11-10T21:00:00.000Z",
+      kind: "payment",
+      cashDelta: 0,
+      cashBalance: 200000,
+      amount: 86000,
+      orderNumber: 1118,
+      table: "12",
+      waiter: { id: "w4", name: "Sara Gómez" },
+      cashier: { id: "p-daniela", name: "Daniela Ríos" },
+      tenders: [{ method: "Nequi", code: "nequi", kind: "electronic", amount: 86000 }],
+      tip: 0,
+      change: 0,
+    },
+  ],
+}
+
 function renderPage(date = "2026-11-11") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onDateChange = vi.fn()
@@ -140,6 +192,7 @@ function renderPage(date = "2026-11-11") {
 
 beforeEach(() => {
   api.day.mockReset().mockResolvedValue(DAY)
+  api.ledger.mockReset().mockResolvedValue(LEDGER)
   api.validate.mockReset().mockResolvedValue({})
 })
 
@@ -209,6 +262,51 @@ describe("CashDayView", () => {
     for (const label of ["Fondo de caja", "Efectivo de ventas", "Entradas", "Salidas", "Propinas pagadas", "Esperado", "Contado", "Diferencia"]) {
       expect(within(drawer).getAllByText(label).length).toBeGreaterThan(0)
     }
+  })
+
+  it("Libro lists the ledger by turno with order number, table, waiter and movement reason, never raw ids", async () => {
+    renderPage()
+    await screen.findByRole("article", { name: "Turno 1 · Camilo Henao" })
+    expect(api.ledger).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Libro" }))
+    const table = await screen.findByRole("table", { name: "Libro de caja" })
+    expect(api.ledger).toHaveBeenCalledWith("2026-11-11")
+    expect(within(table).getByText("Mesa 7 · Orden #1046 · Valentina Cardona")).toBeInTheDocument()
+    expect(within(table).getByText("Pago a proveedor · Hielo · Camilo Henao")).toBeInTheDocument()
+    expect(within(table).getByText("Turno 2 · Daniela Ríos")).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/)
+
+    fireEvent.change(screen.getByLabelText("Buscar en el libro"), { target: { value: "1118" } })
+    expect(within(table).queryByText("Mesa 7 · Orden #1046 · Valentina Cardona")).not.toBeInTheDocument()
+    expect(within(table).getByText("Mesa 12 · Orden #1118 · Sara Gómez")).toBeInTheDocument()
+
+    const footer = screen.getByRole("region", { name: "Totales del día" })
+    expect(within(footer).getByText("Efectivo esperado")).toBeInTheDocument()
+    expect(within(footer).getByText("Ventas")).toBeInTheDocument()
+  })
+
+  it("Exportar CSV downloads the day ledger with turno names instead of ids", async () => {
+    const blobs: Blob[] = []
+    const create = vi.fn((blob: Blob) => {
+      blobs.push(blob)
+      return "blob:caja"
+    })
+    const revoke = vi.fn()
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    renderPage()
+    await screen.findByRole("article", { name: "Turno 1 · Camilo Henao" })
+    fireEvent.click(screen.getByRole("button", { name: "Libro" }))
+    await screen.findByRole("table", { name: "Libro de caja" })
+    fireEvent.click(screen.getByRole("button", { name: "Exportar CSV" }))
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(click).toHaveBeenCalledTimes(1)
+    const csv = await blobs[0].text()
+    expect(csv).toContain("Turno,Hora,Tipo,Detalle,Método,Propina,Valor,Saldo efectivo")
+    expect(csv).toContain("Turno 1 · Camilo Henao")
+    expect(csv).toContain("Mesa 12 · Orden #1118 · Sara Gómez")
+    expect(csv).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/)
+    click.mockRestore()
   })
 
   it("shows an empty state for a day without turnos", async () => {

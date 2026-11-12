@@ -1,11 +1,12 @@
 "use client"
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { fetchCashDay, fetchCashReport } from "@/lib/api/cash"
+import { fetchCashDay, fetchCashLedger, fetchCashReport } from "@/lib/api/cash"
 import { validateRegister } from "@/lib/api/registers"
 import { CONFIG_QUERY_KEY, DEFAULT_BUSINESS_DAY_CUTOFF_HOUR, fetchConfig } from "@/lib/api/config"
 import {
   cashDayQueryKey,
+  cashLedgerQueryKey,
   cashReportQueryKey,
   type PeriodRange,
 } from "@/lib/admin/cash"
@@ -20,6 +21,10 @@ export function useCashDay(date: string) {
   return useQuery({ queryKey: cashDayQueryKey(date), queryFn: () => fetchCashDay(date) })
 }
 
+export function useCashLedger(date: string, enabled: boolean) {
+  return useQuery({ queryKey: cashLedgerQueryKey(date), queryFn: () => fetchCashLedger(date), enabled })
+}
+
 export function useCashReport(range: PeriodRange | null) {
   return useQuery({
     queryKey: range ? cashReportQueryKey(range) : ["cash", "report", "none"],
@@ -28,11 +33,16 @@ export function useCashReport(range: PeriodRange | null) {
   })
 }
 
-/** "Validar turno" (S7): refreshes the day afterwards. */
+/** "Validar turno" (S7): refreshes the day and its ledger afterwards. */
 export function useValidateRegister(date: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => validateRegister(id),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: cashDayQueryKey(date) }),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: cashDayQueryKey(date) }),
+        queryClient.invalidateQueries({ queryKey: cashLedgerQueryKey(date) }),
+      ])
+    },
   })
 }
