@@ -4361,6 +4361,108 @@
         ]
       }
     },
+    "/api/cash/days/{date}/ledger": {
+      "get": {
+        "operationId": "CashController_ledger",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Business day YYYY-MM-DD: registers opened that day in the restaurant timezone, moved back by businessDayCutoffHour.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Day ledger (libro) with a running cash balance per register.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashLedger"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Invalid date."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "cash"
+        ]
+      }
+    },
+    "/api/cash/report": {
+      "get": {
+        "operationId": "CashController_report",
+        "parameters": [
+          {
+            "name": "group",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "Last business day, YYYY-MM-DD (included).",
+            "schema": {}
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "First business day, YYYY-MM-DD.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Period summary grouped by day, ISO week or month, with the previous period.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashReport"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Invalid query, or code range_inverted (from after to) or range_too_long (more than 366 days)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "cash"
+        ]
+      }
+    },
     "/api/inventory/items": {
       "get": {
         "operationId": "InventoryItemsController_list",
@@ -14886,6 +14988,374 @@
           "tipsByWaiter",
           "voids",
           "previous"
+        ]
+      },
+      "CashLedgerTender": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "description": "Method name."
+          },
+          "code": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "method",
+          "code",
+          "kind",
+          "amount"
+        ]
+      },
+      "CashLedgerEntry": {
+        "type": "object",
+        "properties": {
+          "registerId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Group key; null for a cancellation outside every register."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "opening",
+              "payment",
+              "cash_movement",
+              "payment_void",
+              "order_cancellation",
+              "close",
+              "validation"
+            ]
+          },
+          "cashDelta": {
+            "type": "number"
+          },
+          "cashBalance": {
+            "type": "number",
+            "nullable": true,
+            "description": "Running cash of the register after this entry."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Fondo (opening), amount due (payment, payment_void), movement amount or order total."
+          },
+          "openedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "orderNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "table": {
+            "type": "string",
+            "nullable": true,
+            "description": "Table number as text, \"Domicilio\" for a delivery order, null without table."
+          },
+          "waiter": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "cashier": {
+            "nullable": true,
+            "description": "Who took the payment.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "tenders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashLedgerTender"
+            }
+          },
+          "tip": {
+            "type": "number"
+          },
+          "voided": {
+            "type": "boolean",
+            "description": "Payment entries only: the payment was voided later (its payment_void entry takes the cash back)."
+          },
+          "change": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "deposit",
+              "withdrawal"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Movement reason (cash_movement) or reason_code (voids)."
+          },
+          "description": {
+            "type": "string"
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "reasonText": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedBy": {
+            "type": "string"
+          },
+          "authorizedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "expected": {
+            "type": "number",
+            "description": "Expected cash after tips (final_cash)."
+          },
+          "counted": {
+            "type": "number",
+            "nullable": true
+          },
+          "difference": {
+            "type": "number",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "closedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "validatedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          }
+        },
+        "required": [
+          "registerId",
+          "at",
+          "kind",
+          "cashDelta",
+          "cashBalance"
+        ]
+      },
+      "CashLedger": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-11-10"
+          },
+          "entries": {
+            "description": "Chronological; opening first and validation last on ties.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashLedgerEntry"
+            }
+          }
+        },
+        "required": [
+          "date",
+          "entries"
+        ]
+      },
+      "CashVoidTotals": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "amount"
+        ]
+      },
+      "CashPeriodBucket": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "example": "2026-11-02",
+            "description": "First business day of the bucket, clipped to the range."
+          },
+          "end": {
+            "type": "string",
+            "example": "2026-11-08",
+            "description": "Last business day of the bucket, clipped to the range."
+          },
+          "salesNet": {
+            "type": "number"
+          },
+          "tickets": {
+            "type": "number"
+          },
+          "avgTicket": {
+            "type": "number"
+          },
+          "tips": {
+            "type": "number"
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashMethodTotal"
+            }
+          },
+          "difference": {
+            "type": "number",
+            "description": "Sum of cash_difference of the registers."
+          },
+          "voids": {
+            "$ref": "#/components/schemas/CashVoidTotals"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "salesNet",
+          "tickets",
+          "avgTicket",
+          "tips",
+          "methods",
+          "difference",
+          "voids"
+        ]
+      },
+      "CashCashierDifference": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shifts": {
+            "type": "number",
+            "description": "Registers opened by the profile."
+          },
+          "difference": {
+            "type": "number",
+            "description": "Sum of cash_difference (sobrante +, faltante -)."
+          }
+        },
+        "required": [
+          "profileId",
+          "name",
+          "shifts",
+          "difference"
+        ]
+      },
+      "CashReport": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "buckets": {
+            "description": "Every bucket of the range, empty ones included; weeks start on Monday.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashPeriodBucket"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CashPeriodBucket"
+          },
+          "previous": {
+            "description": "The period of the same length right before `from`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashPeriodBucket"
+              }
+            ]
+          },
+          "byCashier": {
+            "description": "By name.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashCashierDifference"
+            }
+          },
+          "tipsByWaiter": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashWaiterTips"
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "group",
+          "buckets",
+          "totals",
+          "previous",
+          "byCashier",
+          "tipsByWaiter"
         ]
       },
       "InventoryItem": {
