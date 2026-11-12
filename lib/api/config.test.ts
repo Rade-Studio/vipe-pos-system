@@ -20,6 +20,7 @@ const config = {
   inventoryControlEnabled: false,
   deliveryDefaultFee: 0,
   businessDayCutoffHour: 4,
+  taxType: "INC",
 }
 
 beforeEach(() => {
@@ -51,6 +52,12 @@ describe("config", () => {
     expect(api.PUT).toHaveBeenCalledWith("/api/config", { body: { businessDayCutoffHour: 2 } })
     expect(DEFAULT_BUSINESS_DAY_CUTOFF_HOUR).toBe(4)
     expect(BUSINESS_DAY_CUTOFF_HOURS).toEqual([0, 1, 2, 3, 4, 5, 6])
+  })
+
+  it("saves the tax type (INC | IVA) without touching the percentage", async () => {
+    api.PUT.mockResolvedValueOnce({ data: { ...config, taxType: "IVA" } })
+    await expect(saveConfig({ taxType: "IVA" })).resolves.toMatchObject({ taxType: "IVA", taxPercentage: 10 })
+    expect(api.PUT).toHaveBeenCalledWith("/api/config", { body: { taxType: "IVA" } })
   })
 
   it("exposes one query key for every config reader", () => {

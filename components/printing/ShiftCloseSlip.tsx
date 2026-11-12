@@ -2,7 +2,8 @@ import type { CashMovement } from "@/lib/api/registers"
 import { CASH_MOVEMENT_REASONS } from "@/lib/api/registers"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
 import { BILL_VALUES, denominationSubtotal, differenceStatus } from "@/lib/payments/denominations"
-import { cashSalesOf, methodLines } from "./XReportSlip"
+import { cashSalesOf, methodLines, taxLines } from "./XReportSlip"
+import type { SlipTax } from "./tax-label"
 import {
   SlipDocument,
   businessLines,
@@ -33,6 +34,8 @@ export interface ShiftCloseSlipProps {
   note: string | null
   denominations: readonly { value: number; quantity: number }[] | null
   preview?: boolean
+  /** Configured tax type and rate; without it no tax line is printed. */
+  tax?: SlipTax
   paperMm?: PaperMm
 }
 
@@ -88,6 +91,7 @@ export function shiftCloseLines(props: ShiftCloseSlipProps): SlipLine[] {
     { text: "Ventas por método", bold: true },
     ...methodLines(summary, width),
     row("Ventas netas turno", pesos(summary.totalSales), true),
+    ...taxLines(summary.totalSales, props.tax, width),
     row("Tiquetes", String(summary.paymentsCount)),
     row("Propinas (aparte)", pesos(summary.totalTips)),
     ruleLine(width),

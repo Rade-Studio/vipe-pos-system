@@ -34,6 +34,13 @@ const minutes = (fallback: number) => (value: string) => {
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 240 ? parsed : fallback;
 };
 
+/** S9 (caja-cierres): the tax the restaurant charges; anything but IVA reads as INC. */
+export const TAX_TYPES = ['INC', 'IVA'] as const;
+export type TaxType = (typeof TAX_TYPES)[number];
+const taxType = (value: string): TaxType => (value === 'IVA' ? 'IVA' : 'INC');
+/** Printed name of each tax type. */
+export const TAX_TYPE_NAMES: Record<TaxType, string> = { INC: 'Impuesto nacional al consumo', IVA: 'IVA' };
+
 /** Business day cut-off: a stored value that is not an integer 0..6 reads as 4. */
 const cutoffHour = (value: string) => {
   const trimmed = value.trim();
@@ -65,6 +72,8 @@ export const CONFIG_KEYS = {
   desktopUpdateChannel: { key: 'desktop_update_channel', fallback: 'stable' as DesktopUpdateChannel, read: updateChannel },
   /** S5 (caja-cierres): hour 0..6 (default 4); a register opened before it belongs to the previous business day. */
   businessDayCutoffHour: { key: 'business_day_cutoff_hour', fallback: 4, read: cutoffHour },
+  /** S9 (caja-cierres): INC (default, impuesto nacional al consumo) | IVA; labels bills, slips and the Z. */
+  taxType: { key: 'tax_type', fallback: 'INC' as TaxType, read: taxType },
 } as const;
 
 export type ConfigField = keyof typeof CONFIG_KEYS;
@@ -90,6 +99,7 @@ export const updateConfigSchema = z.strictObject({
   printingEnabled: z.boolean().optional(),
   desktopUpdateChannel: z.enum(DESKTOP_UPDATE_CHANNELS).optional(),
   businessDayCutoffHour: z.number().int().min(0).max(6).optional(),
+  taxType: z.enum(TAX_TYPES).optional(),
 });
 
 /** Typed config built from the stored rows; missing or unreadable keys take the default. */
@@ -149,6 +159,13 @@ export class BusinessConfig {
       "Hora de corte del día de negocio: a register belongs to the date of its opening in the restaurant's timezone minus this many hours (opened at 1:00 a.m. with 4 is the previous day).",
   })
   businessDayCutoffHour!: number;
+  @ApiProperty({
+    enum: TAX_TYPES,
+    default: 'INC',
+    description:
+      'Tipo de impuesto: INC (impuesto nacional al consumo, what restaurants usually charge) or IVA. Labels bills, slips and the informe Z with taxPercentage; changing it never changes taxPercentage.',
+  })
+  taxType!: TaxType;
 }
 
 export class UpdateBusinessConfigRequest {
@@ -168,4 +185,5 @@ export class UpdateBusinessConfigRequest {
   @ApiPropertyOptional() printingEnabled?: boolean;
   @ApiPropertyOptional({ enum: DESKTOP_UPDATE_CHANNELS }) desktopUpdateChannel?: DesktopUpdateChannel;
   @ApiPropertyOptional({ minimum: 0, maximum: 6, type: 'integer' }) businessDayCutoffHour?: number;
+  @ApiPropertyOptional({ enum: TAX_TYPES }) taxType?: TaxType;
 }

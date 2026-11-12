@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -10,6 +11,8 @@ const env = vi.hoisted(() => ({ sendFactura: vi.fn(), success: vi.fn(), error: v
 vi.mock("@/lib/api/print", () => ({ sendFactura: env.sendFactura }))
 const printing = vi.hoisted(() => ({ enabled: true }))
 vi.mock("@/lib/api/printing", () => ({ usePrintingEnabled: () => printing.enabled }))
+const config = vi.hoisted(() => ({ fetch: vi.fn() }))
+vi.mock("@/lib/api/config", async (importOriginal) => ({ ...(await importOriginal<object>()), fetchConfig: config.fetch }))
 vi.mock("@/utils/toast", () => ({ toast: { success: env.success, error: env.error } }))
 
 import { InvoicePrintView } from "./InvoicePrintView"
@@ -108,6 +111,22 @@ describe("InvoicePrintView", () => {
   it("still groups identical lines without options into one (F7 preserve)", () => {
     render(<InvoicePrintView invoice={invoice} open onOpenChange={() => {}} />)
     expect(screen.queryByRole("list", { name: "Opciones" })).toBeNull()
+  })
+
+  it("labels the tax with the configured type (caja-cierres S9), INC by default", async () => {
+    const taxed = { ...invoice, bill: { ...invoice.bill, tax: 4480, taxPercentage: 8 } } as unknown as PrintableInvoice
+    const { unmount } = render(<InvoicePrintView invoice={taxed} open onOpenChange={() => {}} />)
+    expect(screen.getByText("INC (8 %):")).toBeInTheDocument()
+    expect(screen.queryByText(/^IVA \(/)).toBeNull()
+    unmount()
+
+    config.fetch.mockResolvedValue({ taxType: "IVA" })
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InvoicePrintView invoice={taxed} open onOpenChange={() => {}} />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText("IVA (8 %):")).toBeInTheDocument()
   })
 })
 

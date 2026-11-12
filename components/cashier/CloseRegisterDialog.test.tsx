@@ -57,6 +57,7 @@ import { CloseRegisterDialog } from "./CloseRegisterDialog"
 import { ApiError } from "@/lib/api/errors"
 import { PaymentServiceError } from "@/lib/payments/types"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
+import { useConfigStore } from "@/store/use-config-store"
 
 const NOW = new Date("2026-11-11T12:00:00.000Z")
 const register = {
@@ -373,5 +374,21 @@ describe("CloseRegisterDialog stepper (caja-cierres S3)", () => {
     expect(html).toContain("Daniela Ríos")
     expect(html).toMatch(/\$ 20\.000 × 2\s+\$ 40\.000/)
     expect(html).toContain("Nota: Faltó")
+  })
+
+  it("prints the configured tax label on the preview and the closed slip (S9)", async () => {
+    const written = printWindow()
+    payments.closeRegisterRpc.mockResolvedValue({ ...closed, countedCash: 50000, cashDifference: 0 })
+    useConfigStore.setState({ taxPercentage: 8 })
+    render(<CloseRegisterDialog open onOpenChange={() => {}} />)
+    await waitFor(() => expect(orders.getByStatus).toHaveBeenCalled())
+    quickCount("50000")
+    goTo("Confirmar")
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir cierre de turno" }))
+    expect(written()).toContain("INC (8 %)")
+    fireEvent.click(closeButton())
+    expect(await screen.findByText("Turno cerrado")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir cierre de turno" }))
+    expect(written()).toContain("INC (8 %)")
   })
 })

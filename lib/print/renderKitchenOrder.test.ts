@@ -600,3 +600,27 @@ describe('renderKitchenOrder - no prices or discounts (S14)', () => {
     expect(text).not.toMatch(/24\.000|Happy hour|-\d|\$/)
   })
 })
+
+// caja-cierres S9: the tax line prints the configured tax type and rate.
+describe('renderInvoice - tax type label', () => {
+  const bill = { subtotal: 10000, tax: 800, taxPercentage: 8, tip: 0, tipPercentage: 0, total: 10800, totalDiscounts: 0 }
+  const texts = (taxType?: 'INC' | 'IVA', taxPercentage = 8) =>
+    renderInvoice({
+      invoiceNumber: 'I',
+      invoice: { businessInfo: BUSINESS, bill: { ...bill, taxPercentage }, date: '2025-01-15T12:30:00', ...(taxType ? { taxType } : {}) },
+      displayItems: [{ name: 'Arepa', quantity: 1, price: 10000 }],
+    }).lines.map((l) => l.text)
+
+  it('prints INC (8 %) when the configured type is INC', () => {
+    expect(texts('INC')).toContain('INC (8 %): 800')
+    expect(texts('INC').some((t) => t.startsWith('IVA'))).toBe(false)
+  })
+
+  it('prints IVA (19 %) when the configured type is IVA', () => {
+    expect(texts('IVA', 19)).toContain('IVA (19 %): 800')
+  })
+
+  it('keeps the legacy IVA: line for callers that pass no type', () => {
+    expect(texts()).toContain('IVA: 800')
+  })
+})

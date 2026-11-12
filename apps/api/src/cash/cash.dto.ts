@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { z } from 'zod';
 import { dateQuery } from '../common/validation';
 import { PAYMENT_METHOD_KINDS, type PaymentMethodKind } from '../payments/payments.dto';
+import { TAX_TYPES, type TaxType } from '../settings/business-config';
 import { CASH_TRANSACTION_TYPES, type CashTransactionReason, type CashTransactionType, ProfileRef } from '../registers/registers.dto';
 
 /** GET /cash/report spans at most this many business days (from and to included). */
@@ -143,6 +144,9 @@ export class CashDay {
 }
 
 export class CashTaxes {
+  @ApiPropertyOptional({ enum: TAX_TYPES, description: 'Configured taxType at the emit; absent on legacy Zs.' }) type?: TaxType;
+  @ApiPropertyOptional({ example: 'Impuesto nacional al consumo' }) name?: string;
+  @ApiPropertyOptional({ example: 'INC (8 %)', description: 'Printed label: type and taxPercentage.' }) label?: string;
   @ApiProperty({ example: 8, description: 'Configured taxPercentage at the emit.' }) rate!: number;
   @ApiProperty({ description: 'Base gravable: round(salesNet / (1 + rate / 100)); prices include the tax, tips never do.' }) base!: number;
   @ApiProperty({ description: 'salesNet - base.' }) tax!: number;

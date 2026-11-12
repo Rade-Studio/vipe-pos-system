@@ -3271,6 +3271,12 @@ export interface components {
              * @default 4
              */
             businessDayCutoffHour: number;
+            /**
+             * @description Tipo de impuesto: INC (impuesto nacional al consumo, what restaurants usually charge) or IVA. Labels bills, slips and the informe Z with taxPercentage; changing it never changes taxPercentage.
+             * @default INC
+             * @enum {string}
+             */
+            taxType: "INC" | "IVA";
         };
         UpdateBusinessConfigRequest: {
             taxPercentage?: number;
@@ -3292,6 +3298,8 @@ export interface components {
             /** @enum {string} */
             desktopUpdateChannel?: "stable" | "pilot";
             businessDayCutoffHour?: number;
+            /** @enum {string} */
+            taxType?: "INC" | "IVA";
         };
         StaffRef: {
             /**
@@ -4812,6 +4820,18 @@ export interface components {
             tipsByWaiter: components["schemas"]["CashWaiterTips"][];
         };
         CashTaxes: {
+            /**
+             * @description Configured taxType at the emit; absent on legacy Zs.
+             * @enum {string}
+             */
+            type?: "INC" | "IVA";
+            /** @example Impuesto nacional al consumo */
+            name?: string;
+            /**
+             * @description Printed label: type and taxPercentage.
+             * @example INC (8 %)
+             */
+            label?: string;
             /**
              * @description Configured taxPercentage at the emit.
              * @example 8
