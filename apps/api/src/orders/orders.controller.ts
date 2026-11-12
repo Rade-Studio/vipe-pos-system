@@ -147,7 +147,11 @@ export class OrdersController {
   @ApiOkResponse({
     type: PricingPreview,
     description:
-      'As if sent now (server clock, restaurant timezone, channel): the order lines (with the promotions fixed when sent) and the draft lines, their discounts, the bill discount, totals and hints ("Falta 1 unidad para otro 2x1.", "Envía antes de las 19:00.", "Domicilio: faltan $X para el 10% de descuento."). Writes nothing.',
+      'As if sent now (server clock, restaurant timezone, channel; with orderId the order\'s channel): the order lines (with the promotions fixed when sent, minus `voids`) and the draft lines, their discounts, the bill discount, totals (tax, tip and total with orderId) and hints ("Falta 1 unidad para otro 2x1.", "Envía antes de las 19:00.", "Domicilio: faltan $X para el 10% de descuento."). Writes nothing.',
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'Invalid input or unknown fields (more than 20 combo lines: "lines: Máximo 20 combos por consulta"), a draft combo with the engine code, or an invalid void with body `code` void_order_required | void_item_unknown | void_quantity_invalid.',
   })
   @ApiNotFoundResponse({ description: 'orderId not found.' })
   @ApiForbiddenResponse({ description: 'Not admin, waiter, cashier or delivery operator.' })
