@@ -1,4 +1,4 @@
-import { pgTable, index, foreignKey, unique, pgPolicy, uuid, varchar, text, timestamp, uniqueIndex, numeric, check, boolean, bigint, integer, date, jsonb, smallint, primaryKey } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, unique, pgPolicy, uuid, varchar, text, timestamp, uniqueIndex, numeric, check, boolean, bigint, integer, date, jsonb, smallint, primaryKey, time } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 import { citext } from "./citext"
 
@@ -1555,6 +1555,8 @@ export const tables = pgTable("tables", {
 			name: "tables_zone_id_fkey"
 		}).onDelete("restrict"),
 	unique("tables_restaurant_id_number_key").on(table.number, table.restaurantId),
+	// Composite target of table_qr_tokens (0035).
+	unique("tables_restaurant_id_id_key").on(table.restaurantId, table.id),
 	pgPolicy("tables_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("tables_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("tables_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
@@ -2583,4 +2585,149 @@ export const orderDiscounts = pgTable("order_discounts", {
 	check("order_discounts_amount_check", sql`(amount > (0)::numeric) AND (amount = trunc(amount))`),
 	check("order_discounts_line_quantity_check", sql`(line_quantity IS NULL) OR (line_quantity > 0)`),
 	check("order_discounts_reason_check", sql`CASE WHEN (source = 'manual'::text) THEN ((reason IS NOT NULL) AND ((length(btrim(reason)) >= 3) AND (length(btrim(reason)) <= 200))) ELSE (reason IS NULL) END`),
+]);
+
+/** Public digital menu of a restaurant (0035): one row per restaurant, no row = not published. Staff read, admin writes. */
+export const cartaSettings = pgTable("carta_settings", {
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).primaryKey().notNull(),
+	published: boolean().default(false).notNull(),
+	description: text(),
+	brandColor: text("brand_color"),
+	logoUrl: text("logo_url"),
+	coverUrl: text("cover_url"),
+	instagram: text(),
+	tiktok: text(),
+	whatsapp: text(),
+	mapsUrl: text("maps_url"),
+	googleReviewUrl: text("google_review_url"),
+	tableOrderingEnabled: boolean("table_ordering_enabled").default(false).notNull(),
+	deliveryOrderingEnabled: boolean("delivery_ordering_enabled").default(false).notNull(),
+	showTableBill: boolean("show_table_bill").default(true).notNull(),
+	englishEnabled: boolean("english_enabled").default(true).notNull(),
+	// {"1".."7": null | {opens: "HH:MM", closes: "HH:MM"}}; private.carta_opening_hours_valid (0035).
+	openingHours: jsonb("opening_hours"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "carta_settings_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	pgPolicy("carta_settings_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("carta_settings_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: ADMIN_TENANT }),
+	pgPolicy("carta_settings_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: ADMIN_TENANT, withCheck: ADMIN_TENANT }),
+	check("carta_settings_description_check", sql`(description IS NULL) OR (length(description) <= 160)`),
+	check("carta_settings_brand_color_check", sql`(brand_color IS NULL) OR (brand_color ~ '^#[0-9a-f]{6}$'::text)`),
+	check("carta_settings_logo_url_check", sql`(logo_url IS NULL) OR ((logo_url ~ '^https?://\\S+$'::text) AND (length(logo_url) <= 1000))`),
+	check("carta_settings_cover_url_check", sql`(cover_url IS NULL) OR ((cover_url ~ '^https?://\\S+$'::text) AND (length(cover_url) <= 1000))`),
+	check("carta_settings_instagram_check", sql`(instagram IS NULL) OR (instagram ~ '^[A-Za-z0-9._]{1,30}$'::text)`),
+	check("carta_settings_tiktok_check", sql`(tiktok IS NULL) OR (tiktok ~ '^[A-Za-z0-9._]{1,30}$'::text)`),
+	check("carta_settings_whatsapp_check", sql`(whatsapp IS NULL) OR (whatsapp ~ '^[0-9]{7,15}$'::text)`),
+	check("carta_settings_maps_url_check", sql`(maps_url IS NULL) OR ((maps_url ~ '^https://\\S+$'::text) AND (length(maps_url) <= 500))`),
+	check("carta_settings_google_review_url_check", sql`(google_review_url IS NULL) OR ((google_review_url ~ '^https://\\S+$'::text) AND (length(google_review_url) <= 500))`),
+	check("carta_settings_opening_hours_check", sql`private.carta_opening_hours_valid(opening_hours)`),
+]);
+
+/** Dayparts of the public menu (0035), restaurant timezone, starts_at < ends_at; featured_dish_id is the "Plato del día". */
+export const cartaDayparts = pgTable("carta_dayparts", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	name: text().notNull(),
+	nameEn: text("name_en"),
+	startsAt: time("starts_at").notNull(),
+	endsAt: time("ends_at").notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	featuredDishId: uuid("featured_dish_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_carta_dayparts_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.sortOrder.asc().nullsLast().op("int4_ops")),
+	index("idx_carta_dayparts_featured_dish_id").using("btree", table.featuredDishId.asc().nullsLast().op("uuid_ops")).where(sql`(featured_dish_id IS NOT NULL)`),
+	unique("carta_dayparts_restaurant_id_id_key").on(table.restaurantId, table.id),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "carta_dayparts_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.featuredDishId],
+			foreignColumns: [dishes.restaurantId, dishes.id],
+			name: "carta_dayparts_featured_dish_id_fkey"
+		}).onDelete("set null"),
+	pgPolicy("carta_dayparts_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("carta_dayparts_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: ADMIN_TENANT }),
+	pgPolicy("carta_dayparts_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: ADMIN_TENANT, withCheck: ADMIN_TENANT }),
+	pgPolicy("carta_dayparts_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: ADMIN_TENANT }),
+	check("carta_dayparts_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 40)`),
+	check("carta_dayparts_name_en_check", sql`(name_en IS NULL) OR ((length(btrim(name_en)) >= 1) AND (length(btrim(name_en)) <= 40))`),
+	check("carta_dayparts_hours_check", sql`starts_at < ends_at`),
+	check("carta_dayparts_sort_order_check", sql`sort_order >= 0`),
+]);
+
+/** Categories a daypart lists (0035); same restaurant through the composite keys. */
+export const cartaDaypartCategories = pgTable("carta_daypart_categories", {
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	daypartId: uuid("daypart_id").notNull(),
+	categoryId: uuid("category_id").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.daypartId, table.categoryId], name: "carta_daypart_categories_pkey" }),
+	index("idx_carta_daypart_categories_category_id").using("btree", table.categoryId.asc().nullsLast().op("uuid_ops")),
+	index("idx_carta_daypart_categories_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId, table.daypartId],
+			foreignColumns: [cartaDayparts.restaurantId, cartaDayparts.id],
+			name: "carta_daypart_categories_daypart_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.categoryId],
+			foreignColumns: [categories.restaurantId, categories.id],
+			name: "carta_daypart_categories_category_id_fkey"
+		}).onDelete("cascade"),
+	pgPolicy("carta_daypart_categories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("carta_daypart_categories_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: ADMIN_TENANT }),
+	pgPolicy("carta_daypart_categories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: ADMIN_TENANT }),
+]);
+
+/** Public menu details of a dish (0035): tags and the English description. Staff read, admin writes. */
+export const dishPublicDetails = pgTable("dish_public_details", {
+	dishId: uuid("dish_id").primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	tags: text().array().default(sql`'{}'::text[]`).notNull(),
+	descriptionEn: text("description_en"),
+	descriptionEnReviewed: boolean("description_en_reviewed").default(false).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_dish_public_details_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId, table.dishId],
+			foreignColumns: [dishes.restaurantId, dishes.id],
+			name: "dish_public_details_dish_id_fkey"
+		}).onDelete("cascade"),
+	pgPolicy("dish_public_details_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("dish_public_details_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: ADMIN_TENANT }),
+	pgPolicy("dish_public_details_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: ADMIN_TENANT, withCheck: ADMIN_TENANT }),
+	pgPolicy("dish_public_details_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: ADMIN_TENANT }),
+	check("dish_public_details_tags_check", sql`(tags <@ ARRAY['vegetarian'::text, 'spicy'::text, 'gluten_free'::text, 'dairy'::text]) AND (array_position(tags, NULL::text) IS NULL)`),
+	check("dish_public_details_description_en_check", sql`(description_en IS NULL) OR (length(description_en) <= 400)`),
+]);
+
+/** Random QR token of a table (0035), created by a trigger; vipe_api only reads (private.regenerate_table_qr_token replaces it). */
+export const tableQrTokens = pgTable("table_qr_tokens", {
+	tableId: uuid("table_id").primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	token: text().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_table_qr_tokens_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
+	unique("table_qr_tokens_token_key").on(table.token),
+	foreignKey({
+			columns: [table.restaurantId, table.tableId],
+			foreignColumns: [tables.restaurantId, tables.id],
+			name: "table_qr_tokens_table_id_fkey"
+		}).onDelete("cascade"),
+	pgPolicy("table_qr_tokens_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	check("table_qr_tokens_token_check", sql`token ~ '^[A-Za-z0-9_-]{24}$'::text`),
 ]);
