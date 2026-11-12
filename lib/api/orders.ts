@@ -335,6 +335,40 @@ export async function voidOrderItems(orderId: string, body: VoidOrderItemsBody):
   return required(data)
 }
 
+/**
+ * S1: what the order's discounts and total would be if these quantities were
+ * voided now (`POST /orders/pricing-preview` with `voids` and no draft
+ * lines). Nothing is written. The server prices with the order's own channel.
+ */
+export interface VoidPreviewRequest {
+  orderId: string
+  voids: { orderItemId: string; quantity: number }[]
+  channel?: "dine_in" | "delivery"
+}
+
+export interface VoidPreview {
+  grossSubtotal: number
+  totalDiscounts: number
+  netSubtotal: number
+  /** The order total after the void, when the server sends it. */
+  total?: number
+  /** Each remaining sent line with the promotion it keeps. */
+  lines: { orderItemId: string | null; promotionName: string | null }[]
+}
+
+export async function getVoidPreview({ orderId, voids, channel = "dine_in" }: VoidPreviewRequest): Promise<VoidPreview> {
+  const body = { channel, orderId, lines: [], voids }
+  const { data } = await api.POST("/api/orders/pricing-preview", { body: body as Schemas["PricingPreviewRequest"] })
+  const preview = required(data) as Schemas["PricingPreview"] & { total?: number }
+  return {
+    grossSubtotal: preview.grossSubtotal,
+    totalDiscounts: preview.totalDiscounts,
+    netSubtotal: preview.netSubtotal,
+    ...(typeof preview.total === "number" ? { total: preview.total } : {}),
+    lines: (preview.lines ?? []).map(({ orderItemId, promotionName }) => ({ orderItemId, promotionName })),
+  }
+}
+
 /** Admin: orders cancelled on `date` (YYYY-MM-DD, restaurant day) with the bill at that moment and who cancelled. */
 export async function getCancelledOrders(date: string): Promise<CancelledOrderDto[]> {
   const { data } = await api.GET("/api/orders/cancelled", { params: { query: { date } } })

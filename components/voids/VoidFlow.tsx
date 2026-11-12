@@ -7,6 +7,7 @@ import { Check, Minus, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Chip, Money, focusRing } from "@/components/cashier/cashier-ui"
 import { VoidDiscountNote } from "@/components/cashier/VoidDiscountNote"
+import { useVoidPreview } from "@/hooks/use-void-preview"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/utils/helpers"
 import { authorizeSupervisor, pinFailureOf } from "@/lib/api/auth"
@@ -181,6 +182,13 @@ function FlowBody({
   const supervisor = tiles.find((tile) => tile.id === supervisorId) ?? null
 
   const line = target.action === "item" ? target.lines.find((candidate) => candidate.id === lineId) : undefined
+  const discountedItem = target.action === "item" && (target.totalDiscounts ?? 0) > 0
+  const { preview: voidPreview } = useVoidPreview({
+    orderId: target.orderId,
+    orderItemId: line?.id,
+    quantity,
+    enabled: discountedItem && step === "what",
+  })
   const payment = target.action === "payment" ? target.payments.find((candidate) => candidate.id === paymentId) : undefined
   const reasons = VOID_REASONS.filter((option) => target.action === "payment" || option.code !== "wrong_payment_method")
   const reasonLabel = reasons.find((option) => option.code === reason)?.label ?? ""
@@ -483,7 +491,21 @@ function FlowBody({
                   </div>
                 </>
               )}
-              <VoidDiscountNote totalDiscounts={target.totalDiscounts ?? 0} />
+              <VoidDiscountNote
+                totalDiscounts={target.totalDiscounts ?? 0}
+                preview={
+                  voidPreview && line
+                    ? {
+                        quantity,
+                        name: line.name,
+                        promotionName: voidPreview.lines.find((candidate) => candidate.orderItemId === line.id)?.promotionName ?? null,
+                        totalDiscounts: voidPreview.totalDiscounts,
+                        total: voidPreview.total,
+                        netSubtotal: voidPreview.netSubtotal,
+                      }
+                    : undefined
+                }
+              />
             </>
           )}
 

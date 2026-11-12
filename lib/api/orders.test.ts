@@ -26,6 +26,7 @@ import {
   deleteOrder,
   getCancelledOrders,
   getById,
+  getVoidPreview,
   getByStatus,
   orderConflictOf,
   orderDtoFromWire,
@@ -499,5 +500,38 @@ describe("promotions on the order (S8, S11, S12)", () => {
     expect((order.items[0] as { discounts?: unknown }).discounts).toEqual([
       { id: "od-2", kind: "manual_item", label: "Cortesía", amount: 5000, promotionId: null, authorizedBy: { id: "s-1", name: "Carlos Pérez" } },
     ])
+  })
+})
+
+describe("getVoidPreview (S1)", () => {
+  it("posts the void-aware preview with no draft lines and returns the recomputed figures", async () => {
+    api.POST.mockResolvedValueOnce({
+      data: {
+        grossSubtotal: 117000,
+        totalDiscounts: 24000,
+        netSubtotal: 93000,
+        total: 100440,
+        hints: [],
+        lines: [{ orderItemId: "i-1", promotionName: "2x1", name: "Mojito", quantity: 2 }],
+      },
+    })
+    const preview = await getVoidPreview({ orderId: "o-1", voids: [{ orderItemId: "i-1", quantity: 1 }] })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/orders/pricing-preview", {
+      body: { channel: "dine_in", orderId: "o-1", lines: [], voids: [{ orderItemId: "i-1", quantity: 1 }] },
+    })
+    expect(preview).toEqual({
+      grossSubtotal: 117000,
+      totalDiscounts: 24000,
+      netSubtotal: 93000,
+      total: 100440,
+      lines: [{ orderItemId: "i-1", promotionName: "2x1" }],
+    })
+  })
+
+  it("keeps the total out when the answer has none and sends the given channel", async () => {
+    api.POST.mockResolvedValueOnce({ data: { grossSubtotal: 50000, totalDiscounts: 0, netSubtotal: 50000 } })
+    const preview = await getVoidPreview({ channel: "delivery", orderId: "o-2", voids: [{ orderItemId: "i-9", quantity: 2 }] })
+    expect(api.POST.mock.calls.at(-1)![1].body.channel).toBe("delivery")
+    expect(preview).toEqual({ grossSubtotal: 50000, totalDiscounts: 0, netSubtotal: 50000, lines: [] })
   })
 })

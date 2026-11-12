@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { InvoicePrintView } from "@/components/printing/InvoicePrintView"
 import type { PrintableInvoice } from "@/types"
 import type { DeliveryOrder } from "@/lib/delivery/types"
-import type { CashierBillSource } from "@/lib/cashier/orders"
+import type { PaymentOrderSource } from "@/lib/payments/invoice-discounts"
 import { PaymentPanel } from "./PaymentPanel"
 
 interface PaymentMethodDialogProps {
@@ -16,9 +16,10 @@ interface PaymentMethodDialogProps {
    * The order the caller already holds, in the `orders` row shape. When it
    * carries its items the dialog bills straight from it and NEVER reads the
    * order again; when it is missing or itemless (the delivery panel, or a
-   * realtime stub) it falls back to `getById`.
+   * realtime stub) it falls back to `getById`. S2: its discount records and
+   * list-price subtotal go on the invoice, as in the cashier's column.
    */
-  order?: CashierBillSource | null
+  order?: PaymentOrderSource | null
   /** Null / omitted for delivery orders (no table). Unused by the dialog. */
   tableId?: string | null
   /** Bill total (subtotal + tax + tip) from the caller's cache. Kept for API compat. */

@@ -292,7 +292,7 @@ export function billSourceFromOrder(order: Order): CashierBillSource {
  * copies of the same order with the same signature charge the same amount;
  * a different signature means the bill changed (split, refresh, realtime).
  */
-export function billSignature(source: CashierBillSource | null | undefined): string | null {
+export function billSignature(source: BillSignatureSource | null | undefined): string | null {
   if (!hasBillableItems(source)) return null
   return JSON.stringify([
     source!.order_items.map((it) => [it.id, it.price, it.quantity]),
@@ -301,7 +301,17 @@ export function billSignature(source: CashierBillSource | null | undefined): str
     source!.subtotal,
     source!.tax,
     source!.tip,
+    // S5: a change of the discounts (same total or not) is a new bill too.
+    source!.total_discounts ?? 0,
+    source!.gross_subtotal ?? null,
+    (source!.discounts ?? []).map((d) => [d.id, d.amount, d.orderItemId ?? null]),
   ])
+}
+
+/** The bill source, with the discount records the payment panel also bills from. */
+export type BillSignatureSource = CashierBillSource & {
+  discounts?: readonly { id: string; amount: number; orderItemId?: string | null }[]
+  gross_subtotal?: number
 }
 
 export function hasBillableItems(source: CashierBillSource | null | undefined): boolean {

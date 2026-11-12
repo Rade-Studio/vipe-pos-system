@@ -36,6 +36,13 @@ export function useOrderDiscounts(orders: readonly CashierOrder[]) {
   })
   const inputs = fromList.map((input, index) => input ?? results[index]?.data ?? null)
   const bills = inputs.every((input) => input !== null) ? (inputs as BillOrderInput[]) : null
+  // S5: a failed read is shown as such (with Reintentar), never as the stale list totals.
+  const failed = results.some((result, index) => fromList[index] === null && result.isError)
+  const retry = useCallback(() => {
+    results.forEach((result, index) => {
+      if (fromList[index] === null && result.isError) void result.refetch()
+    })
+  }, [results, fromList])
 
   /** A discount changed: refresh the cashier list (new bill and records) and any order read. */
   const refresh = useCallback(async () => {
@@ -45,7 +52,7 @@ export function useOrderDiscounts(orders: readonly CashierOrder[]) {
     ])
   }, [client])
 
-  return { orders: bills, refresh }
+  return { orders: bills, refresh, isError: failed, retry }
 }
 
 /** The promotions the cashier applies by hand (GET /catalog/promotions, manual and manual_pin). */
