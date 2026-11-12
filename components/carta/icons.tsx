@@ -76,3 +76,10 @@ export const LinkIcon = (p: { className?: string }) => (
     <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
   </Svg>
 )
+
+export const BillIcon = (p: { className?: string }) => (
+  <Svg {...p}>
+    <path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" />
+    <path d="M9 8h6M9 12h6" />
+  </Svg>
+)

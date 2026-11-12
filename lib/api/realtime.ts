@@ -34,7 +34,15 @@ import { getById, toOrder } from "./orders"
 /** Supabase-shaped change event, as emitted by the API gateway. */
 export interface ChangeEvent {
   schema: "public"
-  table: "orders" | "order_items" | "tables" | "zones" | "order_deliveries"
+  table:
+    | "orders"
+    | "order_items"
+    | "tables"
+    | "zones"
+    | "order_deliveries"
+    | "carta_table_proposals"
+    | "carta_table_requests"
+    | "carta_delivery_requests"
   commit_timestamp: string
   eventType: "INSERT" | "UPDATE" | "DELETE"
   new: Record<string, any>
@@ -64,6 +72,8 @@ const orderListeners = new Set<ChangeCallback>()
 const kitchenListeners = new Set<ChangeCallback>()
 /** Delivery board subscriptions see order_deliveries events and delivery orders events. */
 const deliveryListeners = new Set<ChangeCallback>()
+/** Carta inbox (T5): guest proposals, table requests and delivery requests. */
+const cartaInboxListeners = new Set<ChangeCallback>()
 const statusListeners = new Set<ConnectionStatusCallback>()
 
 /** Item ids whose next realtime event is this kitchen's own write. */
@@ -80,7 +90,7 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null
 export const REFUSED_HANDSHAKE_RETRY_MS = 2_000
 
 const subscriberCount = () =>
-  tableListeners.size + zoneListeners.size + orderListeners.size + kitchenListeners.size + deliveryListeners.size
+  tableListeners.size + zoneListeners.size + orderListeners.size + kitchenListeners.size + deliveryListeners.size + cartaInboxListeners.size
 
 /** `orders.order_type` is on `new` for INSERT/UPDATE and on `old` for DELETE. */
 const isDeliveryOrder = (event: ChangeEvent): boolean =>
@@ -111,7 +121,11 @@ function dispatch(event: ChangeEvent): void {
             ? [kitchenListeners]
             : event.table === "order_deliveries"
               ? [deliveryListeners]
-              : []
+              : event.table === "carta_table_proposals" ||
+                  event.table === "carta_table_requests" ||
+                  event.table === "carta_delivery_requests"
+                ? [cartaInboxListeners]
+                : []
   // The payload is shared by reference across every consumer: read it, never mutate it.
   for (const listeners of targets) {
     for (const listener of [...listeners]) {
@@ -232,6 +246,9 @@ export const realtimeService = {
    */
   subscribeToDeliveries: (callback: ChangeCallback) => listen(deliveryListeners, callback),
 
+  /** Carta inbox (T5): `carta_table_proposals`, `carta_table_requests` and `carta_delivery_requests` changes. */
+  subscribeToCartaInbox: (callback: ChangeCallback) => listen(cartaInboxListeners, callback),
+
   /**
    * Kitchen stream (T7 contract, unchanged): every order/item event is queued
    * per order, the coalescer reads each order ONCE per burst and hands the
@@ -336,6 +353,7 @@ export const realtimeService = {
       ...(orderListeners.size ? ["orders"] : []),
       ...(kitchenListeners.size ? ["kitchen"] : []),
       ...(deliveryListeners.size ? ["deliveries"] : []),
+      ...(cartaInboxListeners.size ? ["carta-inbox"] : []),
     ]
     return {
       channels: channels.map((id) => ({ id, active: realtimeService.isConnected })),
@@ -384,6 +402,7 @@ export const realtimeService = {
     orderListeners.clear()
     kitchenListeners.clear()
     deliveryListeners.clear()
+    cartaInboxListeners.clear()
     statusListeners.clear()
     closeSocketIfUnused()
     realtimeService.knownItems = {}

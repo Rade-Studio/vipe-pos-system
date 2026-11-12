@@ -93,3 +93,59 @@ describe("share links (S9)", () => {
     expect(shareUrl("https://vipe.app/", "brasa-y-lena")).toBe("https://vipe.app/c/brasa-y-lena")
   })
 })
+
+describe("table ordering (T5, S11/S12)", () => {
+  it("proposes only on a table page with table ordering on", async () => {
+    const { orderingMode } = await import("./cart")
+    const { tableCarta } = await import("@/components/carta/carta-fixtures")
+    const on = (c: ReturnType<typeof carta>) => ({ ...c, settings: { ...c.settings, tableOrderingEnabled: true } })
+    expect(orderingMode(on(tableCarta()))).toBe("propose")
+    expect(orderingMode(tableCarta())).toBe("list")
+    expect(orderingMode(on(carta()))).toBe("list")
+  })
+
+  it("keeps one 24-char base64url guest key per slug", async () => {
+    const { guestKeyFor, guestKeyStorageKey } = await import("./table")
+    const store = new Map<string, string>()
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) }
+    const key = guestKeyFor(storage, "brasa")
+    expect(key).toMatch(/^[A-Za-z0-9_-]{24}$/)
+    expect(store.get(guestKeyStorageKey("brasa"))).toBe(key)
+    expect(guestKeyFor(storage, "brasa")).toBe(key)
+    expect(guestKeyFor(storage, "otro")).not.toBe(key)
+  })
+
+  it("normalizes cart lines into proposal items", async () => {
+    const { proposalItems } = await import("./table")
+    expect(
+      proposalItems([
+        { key: "a", dishId: "d-1", name: "A", qty: 2, unitPrice: 1, options: [{ groupId: "g", optionId: "o-1", name: "x", price: 0 }], note: "sin sal" },
+        { key: "b", dishId: "d-2", name: "B", qty: 1, unitPrice: 1, options: [], note: null },
+      ]),
+    ).toEqual([
+      { dishId: "d-1", quantity: 2, optionIds: ["o-1"], note: "sin sal" },
+      { dishId: "d-2", quantity: 1 },
+    ])
+  })
+
+  it("splits the bill equally or by line, spreading discounts, with the tip on the part", async () => {
+    const { billShare } = await import("./table")
+    const bill = {
+      lines: [
+        { name: "Churrasco", quantity: 1, unitPrice: 42900, lineTotal: 42900 },
+        { name: "Limonada", quantity: 2, unitPrice: 9900, lineTotal: 19800 },
+      ],
+      discounts: [],
+      grossSubtotal: 62700,
+      totalDiscounts: 0,
+      subtotal: 62700,
+      tipPercentage: 10,
+      updatedAt: "2026-11-12T13:00:00.000Z",
+    }
+    expect(billShare(bill, { mode: "equal", people: 3 }, false, 10)).toEqual({ part: 20900, tip: 0, total: 20900 })
+    expect(billShare(bill, { mode: "equal", people: 3 }, true, 10)).toEqual({ part: 20900, tip: 2090, total: 22990 })
+    expect(billShare(bill, { mode: "lines", shares: { 0: 1, 1: 2 } }, false, 10).total).toBe(52800)
+    const discounted = { ...bill, totalDiscounts: 6270, subtotal: 56430 }
+    expect(billShare(discounted, { mode: "lines", shares: { 0: 1 } }, false, 10).total).toBe(38610)
+  })
+})
