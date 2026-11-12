@@ -1556,6 +1556,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/inventory/transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["TransfersController_list"];
+        put?: never;
+        post: operations["TransfersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/transfers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["TransfersController_get"];
+        put: operations["TransfersController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/transfers/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TransfersController_send"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/transfers/{id}/receive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TransfersController_receive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/transfers/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TransfersController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inventory/counts": {
         parameters: {
             query?: never;
@@ -5286,6 +5366,90 @@ export interface components {
             status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
             receivedLines: number;
             totalCost: number;
+        };
+        InventoryTransferLine: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            itemId: string;
+            itemName: string | null;
+            sku: string | null;
+            unit: string | null;
+            /** @description Sent as is. */
+            requestedQuantity: number;
+            /** @description null until received. */
+            receivedQuantity: number | null;
+            /** @description requested - received, written off as merma en tránsito; null until received. */
+            shortfallQuantity: number | null;
+            shortfallReason: string | null;
+        };
+        InventoryTransfer: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** @enum {string} */
+            status: "draft" | "in_transit" | "received" | "received_short" | "cancelled";
+            /** Format: uuid */
+            fromLocationId: string;
+            fromLocationName: string | null;
+            /** Format: uuid */
+            toLocationId: string;
+            toLocationName: string | null;
+            notes: string | null;
+            /** Format: uuid */
+            createdBy: string | null;
+            createdByName: string | null;
+            /** Format: uuid */
+            sentBy: string | null;
+            sentByName: string | null;
+            /** Format: date-time */
+            sentAt: string | null;
+            /** Format: uuid */
+            receivedBy: string | null;
+            receivedByName: string | null;
+            /** Format: date-time */
+            receivedAt: string | null;
+            /** Format: uuid */
+            cancelledBy: string | null;
+            cancelledByName: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description By item name. */
+            lines: components["schemas"]["InventoryTransferLine"][];
+        };
+        TransferLineInput: {
+            /** Format: uuid */
+            itemId: string;
+            /** @description > 0, at most the positive stock of the origin. */
+            quantity: number;
+        };
+        TransferInput: {
+            /** Format: uuid */
+            fromLocationId: string;
+            /**
+             * Format: uuid
+             * @description Another active location of the restaurant.
+             */
+            toLocationId: string;
+            notes?: string | null;
+            /** @description 1..200, one per item. */
+            lines: components["schemas"]["TransferLineInput"][];
+        };
+        ReceiveTransferLineInput: {
+            /** Format: uuid */
+            lineId: string;
+            /** @description 0..requestedQuantity. */
+            receivedQuantity: number;
+            /** @description Required when receivedQuantity < requestedQuantity. */
+            shortfallReason?: string | null;
+        };
+        ReceiveTransferRequest: {
+            /** @description Every line of the transfer, once. */
+            lines: components["schemas"]["ReceiveTransferLineInput"][];
         };
         InventoryCount: {
             /** Format: uuid */
@@ -11414,6 +11578,290 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReceivePurchaseResult"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TransfersController_list: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM-DD, inclusive. */
+                to?: unknown;
+                /** @description YYYY-MM-DD, local day of the restaurant, inclusive (created_at). */
+                from?: unknown;
+                /** @description Origin or destination. */
+                locationId?: unknown;
+                /** @description Comma-separated statuses. */
+                status?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, lines included. Admin only by RLS. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"][];
+                };
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TransfersController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferInput"];
+            };
+        };
+        responses: {
+            /** @description create_inventory_transfer: a draft; every line within the origin stock (422 P0001). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TransfersController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TransfersController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferInput"];
+            };
+        };
+        responses: {
+            /** @description update_inventory_transfer: drafts only (422 P0001), header and lines replaced. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TransfersController_send: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description send_inventory_transfer: draft -> in_transit, the stock leaves the origin FEFO at once (all or nothing; 422 P0001 with `details` {shortages}). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TransfersController_receive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiveTransferRequest"];
+            };
+        };
+        responses: {
+            /** @description receive_inventory_transfer: in_transit -> received | received_short; a shortfall needs a reason and is written off as merma en tránsito. Idempotent. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TransfersController_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description cancel_inventory_transfer: draft | in_transit only; the stock in transit returns to the origin. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransfer"];
                 };
             };
             /** @description Not admin. */

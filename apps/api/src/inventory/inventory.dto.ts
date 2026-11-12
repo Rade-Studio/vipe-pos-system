@@ -23,6 +23,8 @@ export const PAYMENT_STATUSES = ['pending', 'paid'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const COUNT_STATUSES = ['open', 'applied', 'cancelled'] as const;
 export type CountStatus = (typeof COUNT_STATUSES)[number];
+export const TRANSFER_STATUSES = ['draft', 'in_transit', 'received', 'received_short', 'cancelled'] as const;
+export type TransferStatus = (typeof TRANSFER_STATUSES)[number];
 export const FORMULA_TARGET_TYPES = ['dish', 'prep'] as const;
 export type FormulaTargetType = (typeof FORMULA_TARGET_TYPES)[number];
 
@@ -515,6 +517,110 @@ export class ReceivePurchaseResult {
   @ApiProperty({ enum: PURCHASE_ORDER_STATUSES }) status!: PurchaseOrderStatus;
   @ApiProperty() receivedLines!: number;
   @ApiProperty() totalCost!: number;
+}
+
+// ---- Transfers -------------------------------------------------------------------
+
+const transferLineSchema = z.strictObject({ itemId: z.guid(), quantity: positive });
+
+/** Create and full-draft save: the final header and lines. */
+export const transferSchema = z
+  .strictObject({
+    fromLocationId: z.guid(),
+    toLocationId: z.guid(),
+    notes: nullableText(2000),
+    lines: z.array(transferLineSchema).min(1).max(MAX_DOCUMENT_LINES),
+  })
+  .refine((value) => value.fromLocationId !== value.toLocationId, {
+    message: 'Origin and destination must be two different locations',
+    path: ['toLocationId'],
+  })
+  .refine((value) => new Set(value.lines.map((line) => line.itemId)).size === value.lines.length, {
+    message: 'Each item appears once per transfer',
+    path: ['lines'],
+  });
+
+export const transferListQuerySchema = z.strictObject({
+  status: csvOf(TRANSFER_STATUSES).optional(),
+  /** Origin or destination. */
+  locationId: z.guid().optional(),
+  from: date.optional(),
+  to: date.optional(),
+});
+
+export const receiveTransferSchema = z.strictObject({
+  lines: z
+    .array(
+      z.strictObject({
+        lineId: z.guid(),
+        receivedQuantity: quantity.min(0),
+        shortfallReason: nullableText(200),
+      }),
+    )
+    .min(1)
+    .max(MAX_DOCUMENT_LINES),
+});
+
+export class InventoryTransferLine {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) itemId!: string;
+  @ApiProperty({ type: String, nullable: true }) itemName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) sku!: string | null;
+  @ApiProperty({ type: String, nullable: true }) unit!: string | null;
+  @ApiProperty({ description: 'Sent as is.' }) requestedQuantity!: number;
+  @ApiProperty({ type: Number, nullable: true, description: 'null until received.' }) receivedQuantity!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'requested - received, written off as merma en tránsito; null until received.' })
+  shortfallQuantity!: number | null;
+  @ApiProperty({ type: String, nullable: true }) shortfallReason!: string | null;
+}
+
+export class InventoryTransfer {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() number!: number;
+  @ApiProperty({ enum: TRANSFER_STATUSES }) status!: TransferStatus;
+  @ApiProperty({ format: 'uuid' }) fromLocationId!: string;
+  @ApiProperty({ type: String, nullable: true }) fromLocationName!: string | null;
+  @ApiProperty({ format: 'uuid' }) toLocationId!: string;
+  @ApiProperty({ type: String, nullable: true }) toLocationName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) createdBy!: string | null;
+  @ApiProperty({ type: String, nullable: true }) createdByName!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) sentBy!: string | null;
+  @ApiProperty({ type: String, nullable: true }) sentByName!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) sentAt!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) receivedBy!: string | null;
+  @ApiProperty({ type: String, nullable: true }) receivedByName!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) receivedAt!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) cancelledBy!: string | null;
+  @ApiProperty({ type: String, nullable: true }) cancelledByName!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) cancelledAt!: string | null;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+  @ApiProperty({ type: [InventoryTransferLine], description: 'By item name.' }) lines!: InventoryTransferLine[];
+}
+
+export class TransferLineInput {
+  @ApiProperty({ format: 'uuid' }) itemId!: string;
+  @ApiProperty({ description: '> 0, at most the positive stock of the origin.' }) quantity!: number;
+}
+
+export class TransferInput {
+  @ApiProperty({ format: 'uuid' }) fromLocationId!: string;
+  @ApiProperty({ format: 'uuid', description: 'Another active location of the restaurant.' }) toLocationId!: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) notes?: string | null;
+  @ApiProperty({ type: [TransferLineInput], description: '1..200, one per item.' }) lines!: TransferLineInput[];
+}
+
+export class ReceiveTransferLineInput {
+  @ApiProperty({ format: 'uuid' }) lineId!: string;
+  @ApiProperty({ description: '0..requestedQuantity.' }) receivedQuantity!: number;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Required when receivedQuantity < requestedQuantity.' })
+  shortfallReason?: string | null;
+}
+
+export class ReceiveTransferRequest {
+  @ApiProperty({ type: [ReceiveTransferLineInput], description: 'Every line of the transfer, once.' })
+  lines!: ReceiveTransferLineInput[];
 }
 
 // ---- Production ------------------------------------------------------------------

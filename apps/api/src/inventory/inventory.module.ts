@@ -12,12 +12,14 @@ import {
   ProductionTemplatesController,
   PurchaseOrdersController,
   SuppliersController,
+  TransfersController,
 } from './inventory.controller';
 import { ItemsService } from './items.service';
 import { ProductionTemplatesService } from './production-templates.service';
 import { PurchasesService } from './purchases.service';
 import { SalesService } from './sales.service';
 import { StockService } from './stock.service';
+import { TransfersService } from './transfers.service';
 
 @Module({
   controllers: [
@@ -27,12 +29,13 @@ import { StockService } from './stock.service';
     SuppliersController,
     MovementsController,
     PurchaseOrdersController,
+    TransfersController,
     CountsController,
     FormulasController,
     InventoryController,
     ProductionTemplatesController,
   ],
-  providers: [ItemsService, StockService, PurchasesService, CountsService, FormulasService, SalesService, ProductionTemplatesService],
+  providers: [ItemsService, StockService, PurchasesService, CountsService, FormulasService, SalesService, ProductionTemplatesService, TransfersService],
   exports: [SalesService],
 })
 export class InventoryModule {}
