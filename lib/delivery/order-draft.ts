@@ -22,6 +22,7 @@
  */
 
 import { lineKey, type LineModifier } from '@/lib/modifiers/rules'
+import type { PreviewDraft } from '@/lib/promotions/waiter'
 import { normalizePhone } from './phone'
 import type {
   CreateDeliveryAddressInput,
@@ -380,7 +381,7 @@ export interface DraftValidationIssue {
  *     courier can carry back; below this, the courier would have to
  *     hand back negative change)
  */
-export function validateDraft(draft: OrderDraft, taxPct = 8): DraftValidationIssue[] {
+export function validateDraft(draft: OrderDraft, taxPct = 8, pricing?: DraftPricing | null): DraftValidationIssue[] {
   const issues: DraftValidationIssue[] = []
 
   // phone
@@ -423,7 +424,7 @@ export function validateDraft(draft: OrderDraft, taxPct = 8): DraftValidationIss
 
   // cashChangeFor >= total when set
   if (draft.cashChangeFor !== null) {
-    const totals = draftTotals(draft, taxPct)
+    const totals = draftTotals(draft, taxPct, pricing)
     if (draft.cashChangeFor < totals.total) {
       issues.push({
         field: 'cashChangeFor',
@@ -463,22 +464,31 @@ function normalizeDraftPhone(draft: OrderDraft): string | null {
 // -----------------------------------------------------------
 
 export interface DraftTotals {
+  /** List prices, before promotions. */
   subtotal: number
+  /** Promotion discounts of the pricing preview; 0 without one. */
+  discounts: number
   tax: number
   fee: number
   total: number
 }
 
 /**
- * Display estimate. subtotal = Σ(unitPrice * quantity). tax =
- * round(subtotal * taxPct / 100) — no cents. fee is added as-is
+ * Display estimate. subtotal = Σ(unitPrice * quantity). With the
+ * pricing preview (S7) the promotions come off first: discounts =
+ * subtotal − netSubtotal. tax = round(net * taxPct / 100) — no cents. fee is added as-is
  * (no tax, no tip on the fee, matching `pay_order` amount_due).
  *
  * The server is still authoritative on `create_delivery_order`
  * (it resolves prices from the menu, not the form); the dialog
  * shows this number only as "preview / operator expectation".
  */
-export function draftTotals(draft: OrderDraft, taxPct: number): DraftTotals {
+/** S7: the server's pricing of the draft (`POST /orders/pricing-preview`, channel delivery). */
+export interface DraftPricing {
+  netSubtotal: number
+}
+
+export function draftTotals(draft: OrderDraft, taxPct: number, pricing?: DraftPricing | null): DraftTotals {
   if (!Number.isFinite(taxPct) || taxPct < 0) {
     throw new RangeError(`draftTotals: taxPct must be a non-negative finite number; received: ${taxPct}`)
   }
@@ -486,9 +496,23 @@ export function draftTotals(draft: OrderDraft, taxPct: number): DraftTotals {
     (sum, line) => sum + line.unitPrice * line.quantity,
     0,
   )
-  const tax = Math.round(subtotal * (taxPct / 100))
+  // With a preview the tax is on the net, as the server stores it.
+  const net = pricing ? Math.min(pricing.netSubtotal, subtotal) : subtotal
+  const tax = Math.round(net * (taxPct / 100))
   const fee = draft.fee
-  return { subtotal, tax, fee, total: subtotal + tax + fee }
+  return { subtotal, discounts: subtotal - net, tax, fee, total: net + tax + fee }
+}
+
+/** S7: the cart lines as pricing-preview dish lines, in cart order. */
+export function previewDraftLines(lines: readonly CartLine[]): PreviewDraft {
+  return {
+    lines: lines.map((line) => ({
+      dishId: line.dishId,
+      quantity: line.quantity,
+      ...(line.modifiers?.length ? { modifiers: line.modifiers.map(({ optionId }) => ({ optionId })) } : {}),
+    })),
+    lineIds: lines.map((line) => line.id),
+  }
 }
 
 // -----------------------------------------------------------

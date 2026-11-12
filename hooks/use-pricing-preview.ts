@@ -3,7 +3,8 @@
 /**
  * The order panel's pricing (S11): the cart (and the open order) priced by
  * `POST /orders/pricing-preview` as if sent now, debounced while the waiter
- * taps. It never blocks sending: a failed preview keeps the last good result
+ * taps. The delivery form (S7 of promociones-mejoras) passes its own `draft`
+ * lines instead of a waiter cart. It never blocks sending: a failed preview keeps the last good result
  * (or none), and the order is still sent at list price for the server to fix.
  */
 
@@ -31,12 +32,17 @@ interface Options {
   orderId?: string
   /** Changes when the open order's lines change, so the preview is asked again. */
   orderVersion?: string
-  cart: readonly CartItem[]
+  /** The waiter's cart; ignored when `draft` is given. */
+  cart?: readonly CartItem[]
+  /** Draft lines already built by the caller (the delivery form). */
+  draft?: PreviewDraft
   enabled?: boolean
 }
 
-export function usePricingPreview({ channel, orderId, orderVersion = "", cart, enabled = true }: Options) {
-  const draft = useMemo(() => previewDraft(cart), [cart])
+const NO_CART: readonly CartItem[] = []
+
+export function usePricingPreview({ channel, orderId, orderVersion = "", cart = NO_CART, draft: given, enabled = true }: Options) {
+  const draft = useMemo(() => given ?? previewDraft(cart), [given, cart])
   const draftKey = JSON.stringify(draft.lines)
   const [debounced, setDebounced] = useState<PreviewDraft>(draft)
   useEffect(() => {

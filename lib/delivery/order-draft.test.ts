@@ -21,6 +21,7 @@ import {
   validateDraft,
   draftTotals,
   toCreateInput,
+  previewDraftLines,
 } from './order-draft'
 import type {
   Customer,
@@ -773,5 +774,51 @@ describe('modifiers (F7 T3)', () => {
       { dishId: 'd1', quantity: 1, comments: 'pan sin tostar', modifiers: [{ optionId: 'o-medio' }, { optionId: 'o-ched' }] },
       { dishId: 'd2', quantity: 1 },
     ])
+  })
+})
+
+// -----------------------------------------------------------
+// S7 (promociones-mejoras): the pricing preview's net subtotal
+// -----------------------------------------------------------
+
+describe('promotions pricing (S7)', () => {
+  const withLines = () => {
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, { type: 'addItem', line: { dishId: 'd1', name: 'A', unitPrice: 50000, quantity: 2, comments: null } })
+    d = orderDraftReducer(d, {
+      type: 'addItem',
+      line: { dishId: 'd2', name: 'B', unitPrice: 12000, quantity: 1, comments: 'sin hielo', modifiers: [{ groupId: 'g-1', groupName: 'Tamaño', optionId: 'o-1', name: 'Grande', price: 2000 }] },
+    })
+    return orderDraftReducer(d, { type: 'setFee', value: 5000 })
+  }
+
+  it('draftTotals uses the net subtotal when given: discounts, tax on the net and the fee on top', () => {
+    const totals = draftTotals(withLines(), 8, { netSubtotal: 100000 })
+    expect(totals).toEqual({ subtotal: 112000, discounts: 12000, tax: 8000, fee: 5000, total: 113000 })
+  })
+
+  it('draftTotals without pricing keeps the list-price total and no discounts', () => {
+    expect(draftTotals(withLines(), 8)).toEqual({ subtotal: 112000, discounts: 0, tax: 8960, fee: 5000, total: 125960 })
+  })
+
+  it('the cash-change rule compares against the net total when the preview is there', () => {
+    const d = orderDraftReducer(withLines(), { type: 'setCashChangeFor', value: 113000 })
+    expect(validateDraft(d, 8, { netSubtotal: 100000 }).find((e) => e.field === 'cashChangeFor')).toBeUndefined()
+    expect(validateDraft(d, 8).find((e) => e.field === 'cashChangeFor')?.message).toBe(
+      'El cambio que lleva el domiciliario debe ser mayor o igual al total',
+    )
+    const below = orderDraftReducer(d, { type: 'setCashChangeFor', value: 112999 })
+    expect(validateDraft(below, 8, { netSubtotal: 100000 }).find((e) => e.field === 'cashChangeFor')).toBeDefined()
+  })
+
+  it('previewDraftLines maps the cart lines to preview dish lines keyed by line id', () => {
+    const d = withLines()
+    expect(previewDraftLines(d.cartLines)).toEqual({
+      lines: [
+        { dishId: 'd1', quantity: 2 },
+        { dishId: 'd2', quantity: 1, modifiers: [{ optionId: 'o-1' }] },
+      ],
+      lineIds: d.cartLines.map((l) => l.id),
+    })
   })
 })
