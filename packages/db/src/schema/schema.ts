@@ -1728,7 +1728,7 @@ export const printJobs = pgTable("print_jobs", {
 		}).onDelete("set null"),
 	pgPolicy("print_jobs_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("print_jobs_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
-	check("print_jobs_kind_check", sql`kind = ANY (ARRAY['invoice'::text, 'command'::text])`),
+	check("print_jobs_kind_check", sql`kind = ANY (ARRAY['invoice'::text, 'command'::text, 'x_report'::text])`),
 ]);
 
 export const zones = pgTable("zones", {

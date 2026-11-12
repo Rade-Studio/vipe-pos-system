@@ -4,13 +4,16 @@ pos/print_jobs.py
 Handler for the API ``print_job`` events (T8c of
 odd/tasks/migracion-backend-nestjs.md).
 
-A job is ``{"id", "kind": "invoice" | "command", "payload"}``. The payloads are
+A job is ``{"id", "kind": "invoice" | "command" | "x_report", "payload"}``. The payloads are
 the former Supabase broadcasts, unchanged:
 
 - ``command``: ``{invoiceNumber (the job id), items, waiter, table?, delivery?}``
   printed on the ``comandas`` printer with ``print_renderer.build_comanda_bytes``.
 - ``invoice``: ``{invoiceNumber, invoice, displayItems}`` printed on the
   ``facturas`` printer with ``print_renderer.build_invoice_bytes``.
+- ``x_report`` (Informe X): ``{business, cashierName, openedAt, printedAt,
+  summary, tax?}`` printed on the ``facturas`` printer at 80 mm with
+  ``print_renderer.build_x_report_bytes``.
 
 ``handle(job)`` returns True when the API should be told the job is done
 (``POST /api/print/jobs/<id>/ack``): printed now, printed before (the ack is
@@ -37,7 +40,7 @@ import print_renderer
 
 logger = logging.getLogger(__name__)
 
-PRINTER_BY_KIND = {"command": "comandas", "invoice": "facturas"}
+PRINTER_BY_KIND = {"command": "comandas", "invoice": "facturas", "x_report": "facturas"}
 
 # Commands older than this are acknowledged without printing.
 COMMAND_MAX_AGE_HOURS = 12
@@ -199,4 +202,10 @@ def _invoice(payload):
     )
 
 
-_RENDERERS = {"command": _command, "invoice": _invoice}
+def _x_report(payload):
+    if not isinstance(payload.get("summary"), dict):
+        return None
+    return lambda encoding: print_renderer.build_x_report_bytes(payload, encoding=encoding)
+
+
+_RENDERERS = {"command": _command, "invoice": _invoice, "x_report": _x_report}

@@ -79,6 +79,7 @@ entries (missing keys, non-numeric `amount`) are dropped, and a tender
 list that ends up empty after filtering falls back to the legacy block.
 """
 
+import math
 from datetime import datetime
 from typing import TypedDict
 
@@ -436,6 +437,153 @@ def build_invoice_bytes(
     chunks.append(b"\n\n\n")
     chunks.append(b"\x1d\x56\x00")  # GS V 0 — full cut
 
+    return b"".join(chunks)
+
+
+# ---------------------------------------------------------------------------
+# Informe X renderer (informe-x-termico S1)
+# ---------------------------------------------------------------------------
+#
+# Payload of an ``x_report`` job: ``{business {name, nit, address},
+# cashierName, openedAt, printedAt, summary, tax? {type, rate}}`` with the
+# summary exactly as GET /registers/summary answered and the times as ISO
+# date-times in the cashier's wall time. The lines are those of the web slip
+# (components/printing/XReportSlip.tsx, ``xReportLines``), pinned in
+# lib/print/x-report-fixture.json; desktop/core/src/escpos/x_report.rs prints
+# the same.
+
+_MINUS = "\u2212"
+
+
+def slip_chars(paper_mm: int = 80) -> int:
+    """~42 characters a line on 80 mm paper, ~32 on 58 mm."""
+    return 32 if paper_mm == 58 else 42
+
+
+def _js_round(value) -> float:
+    """``Math.round``: halves go up."""
+    return math.floor(value + 0.5)
+
+
+def _pesos(amount) -> str:
+    """``$ 1.234.567``; a negative amount reads ``−$ 3.500``."""
+    digits = f"{int(abs(_js_round(amount))):,}".replace(",", ".")
+    return f"{_MINUS if amount < 0 else ''}$ {digits}"
+
+
+def _js_number(value) -> str:
+    """``String(n)`` of a JSON number."""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _pad_line(left: str, right: str, width: int) -> str:
+    if not right:
+        return f"{left[:width - 1]}\u2026" if len(left) > width else left
+    room = width - len(right) - 1
+    label = f"{left[:max(0, room - 1)]}\u2026" if len(left) > room else left
+    return f"{label}{' ' * max(1, width - len(label) - len(right))}{right}"
+
+
+def _center_line(text: str, width: int) -> str:
+    cut = text[:width] if len(text) > width else text
+    return f"{' ' * ((width - len(cut)) // 2)}{cut}"
+
+
+def _slip_date_time(value) -> str:
+    """``10/11/2026 7:58 a.m.`` in the value's own wall time; the raw text when it does not parse."""
+    try:
+        at = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        try:  # Python < 3.11 refuses milliseconds with an offset; the wall time is the first 16 characters.
+            at = datetime.strptime(str(value)[:16], "%Y-%m-%dT%H:%M")
+        except ValueError:
+            return str(value or "")
+    hour = at.hour
+    return f"{at:%d/%m/%Y} {12 if hour % 12 == 0 else hour % 12}:{at.minute:02d} {'a.m.' if hour < 12 else 'p.m.'}"
+
+
+def render_x_report(payload: dict, paper_mm: int = 80) -> list[PrintLine]:
+    width = slip_chars(paper_mm)
+    summary = payload["summary"]
+    business = payload.get("business") or {}
+
+    def line(text, bold=False) -> PrintLine:
+        return {"text": text, "bold": bold, "align": "left"}
+
+    def row(left, right, bold=False) -> PrintLine:
+        return line(_pad_line(left, right, width), bold)
+
+    rule = line("-" * width)
+    lines = [line(_center_line(str(business.get("name") or "").upper(), width), True)]
+    if business.get("nit"):
+        lines.append(line(_center_line(f"NIT {business['nit']}", width)))
+    if business.get("address"):
+        lines.append(line(_center_line(business["address"], width)))
+    cashier = payload.get("cashierName")
+    lines += [
+        rule,
+        line(_center_line("INFORME X", width), True),
+        line(_center_line("Parcial \u00b7 No reinicia contadores", width)),
+        rule,
+        row("Cajero", cashier if isinstance(cashier, str) else "\u2014"),
+        row("Abierto", _slip_date_time(payload.get("openedAt"))),
+        row("Impreso", _slip_date_time(payload.get("printedAt"))),
+        rule,
+        line("Ventas por m\u00e9todo", True),
+    ]
+    methods = [m for m in summary.get("methods") or [] if isinstance(m, dict)]
+    for method in methods:
+        if method["total"] > 0 or method.get("isActive") is True:
+            lines.append(row(f"{method.get('name') or ''} ({_js_number(method.get('tendersCount'))})", _pesos(method["total"])))
+    cash_sales = sum(m["total"] for m in methods if m.get("kind") == "cash")
+    sales = summary["totalSales"]
+    lines.append(row("Ventas", _pesos(sales), True))
+    tax = payload.get("tax")
+    if isinstance(tax, dict):
+        rate = tax["rate"]
+        base = _js_round(sales * 100 / (100 + rate))
+        label = f"{tax.get('type') or 'INC'} ({_js_number(rate).replace('.', ',', 1)} %)"
+        lines += [row("Base", _pesos(base)), row(label, _pesos(sales - base))]
+    lines += [
+        row("Tiquetes", _js_number(summary["paymentsCount"])),
+        rule,
+        line("Efectivo en caja", True),
+        row("Fondo de caja", _pesos(summary["initialCash"])),
+        row("+ Ventas en efectivo", _pesos(cash_sales)),
+    ]
+    if summary["totalChange"] > 0:
+        lines.append(row(f"{_MINUS} Cambio entregado", _pesos(summary["totalChange"])))
+    lines += [
+        row("+ Entradas", _pesos(summary["cashDeposits"])),
+        row(f"{_MINUS} Salidas", _pesos(summary["cashWithdrawals"])),
+        row("Esperado ahora", _pesos(summary["expectedCash"]), True),
+        rule,
+        row("Propinas (aparte)", _pesos(summary["totalTips"])),
+        line("No son ingreso del restaurante."),
+        rule,
+        line(_center_line("Este informe no cierra el turno.", width)),
+    ]
+    return lines
+
+
+def build_x_report_bytes(payload: dict, encoding: str = "cp1252", paper_mm: int = 80) -> bytes:
+    """ESC/POS bytes of an Informe X; CP1252 has no U+2212, so its minus prints as a hyphen."""
+    chunks: list[bytes] = []
+    for line in render_x_report(payload, paper_mm):
+        text = line["text"]
+        if encoding != "utf-8":
+            text = text.replace(_MINUS, "-")
+        if line["bold"]:
+            chunks.append(b"\x1b\x45\x01")
+        chunks.append(b"\x1b\x61\x00")
+        chunks.append(text.encode("utf-8" if encoding == "utf-8" else "cp1252", errors="replace"))
+        chunks.append(b"\n")
+        if line["bold"]:
+            chunks.append(b"\x1b\x45\x00")
+    chunks.append(b"\n\n\n")
+    chunks.append(b"\x1d\x56\x00")  # GS V 0 — full cut
     return b"".join(chunks)
 
 

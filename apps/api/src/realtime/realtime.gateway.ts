@@ -6,6 +6,7 @@ import { hasLiveSession, loadProfile } from '../auth/identity';
 import { TokensService } from '../auth/tokens.service';
 import { DbClient } from '../db/db-client';
 import { UnitOfWork } from '../db/unit-of-work';
+import type { PrintJobKind } from '../print/print.dto';
 import { resolvePrinter } from '../print/printer-identity';
 import type { ChangeEvent } from './change-event';
 
@@ -24,7 +25,7 @@ type SocketData = { kind: 'web'; restaurantId: string } | { kind: 'printer'; res
 /** `print_job` event body. */
 export interface PrintJobEvent {
   id: string;
-  kind: 'invoice' | 'command';
+  kind: PrintJobKind;
   payload: Record<string, unknown>;
   createdAt: string;
 }

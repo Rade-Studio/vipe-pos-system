@@ -3,7 +3,7 @@
 //! of a job, queue titles and the updater endpoint (desktop/API-CONTRACT.md §7).
 
 use crate::escpos::{drawer_pulse, money, printer_preamble, Encoding, RenderError, FULL_CUT};
-use crate::jobs::{render_job, PrintJob};
+use crate::jobs::{render_job_on, PrintJob};
 use crate::transport::Connection;
 use chrono::NaiveDateTime;
 use serde::Deserialize;
@@ -89,13 +89,13 @@ pub fn connection_of(p: &Printer) -> Connection {
 /// Printers serving the job's station. The server decides routing (L10). A job
 /// without a station (restaurants without stations) prints on every printer,
 /// except an invoice, which prints on the Caja printers (`caja_station`) or on
-/// every printer when none serves Caja.
+/// every printer when none serves Caja; an Informe X (`x_report`) goes like an invoice.
 pub fn printers_for_job<'a>(job: &PrintJob, printers: &'a [Printer], caja_station: Option<&str>) -> Vec<&'a Printer> {
     let serving = |st: &str| printers.iter().filter(|p| p.station_ids.iter().any(|s| s == st)).collect::<Vec<_>>();
     match &job.station {
         Some(st) => serving(st),
         None => {
-            let caja = caja_station.filter(|_| job.kind == "invoice").map(serving).unwrap_or_default();
+            let caja = caja_station.filter(|_| matches!(job.kind.as_str(), "invoice" | "x_report")).map(serving).unwrap_or_default();
             if caja.is_empty() { printers.iter().collect() } else { caja }
         }
     }
@@ -115,7 +115,7 @@ pub fn job_bytes(job: &PrintJob, printer: &Printer, now: NaiveDateTime) -> Resul
     if printer.has_drawer && opens_drawer(job) {
         out.extend(drawer_pulse());
     }
-    let mut ticket = render_job(job, printer.encoding, now)?;
+    let mut ticket = render_job_on(job, printer.encoding, printer.paper_mm, now)?;
     if !printer.cut && ticket.ends_with(FULL_CUT) {
         ticket.truncate(ticket.len() - FULL_CUT.len());
     }
@@ -157,6 +157,10 @@ pub fn job_summary(job: &PrintJob) -> (String, String) {
         let total = money(&inv["bill"]["total"]).map(|m| format!("$ {m}")).unwrap_or_default();
         return (format!("Factura {} · {}", short(&p["invoiceNumber"]), place(&inv["table"], &inv["delivery"], &inv["takeaway"])), total);
     }
+    if job.kind == "x_report" {
+        let cashier = p["cashierName"].as_str().unwrap_or("\u{2014}");
+        return ("Informe X \u{b7} parcial".into(), format!("Cajero {cashier}"));
+    }
     let items = p["items"].as_array().map(Vec::as_slice).unwrap_or(&[]);
     let detail = items
         .iter()
@@ -185,6 +189,29 @@ pub fn idle_for_update(active_jobs: i64, last_print_ms: Option<i64>, now_ms: i64
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn printer(id: &str, paper_mm: u8, station_ids: &[&str]) -> Printer {
+        Printer { id: id.into(), name: id.into(), model: String::new(), connection: "spooler".into(), address: id.into(), paper_mm,
+            encoding: Encoding::Utf8, has_drawer: true, cut: true, station_ids: station_ids.iter().map(|s| s.to_string()).collect() }
+    }
+
+    #[test]
+    fn an_x_report_goes_to_caja_like_an_invoice_prints_on_its_paper_and_never_opens_the_drawer() {
+        let fixture: Value = serde_json::from_str(include_str!("../../../lib/print/x-report-fixture.json")).unwrap();
+        let job = PrintJob { id: "x".into(), kind: "x_report".into(), station: None, created_at: None, payload: fixture["payload"].clone() };
+        let printers = [printer("cocina", 80, &["prep"]), printer("caja", 58, &["caja"])];
+        let chosen: Vec<&str> = printers_for_job(&job, &printers, Some("caja")).iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(chosen, ["caja"]);
+        let command = PrintJob { kind: "command".into(), ..job.clone() };
+        assert_eq!(printers_for_job(&command, &printers, Some("caja")).len(), 2);
+        assert!(!opens_drawer(&job));
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 11, 10).unwrap().and_hms_opt(13, 30, 0).unwrap();
+        let bytes = job_bytes(&job, &printers[1], now).unwrap();
+        let mut expected = printer_preamble(Encoding::Utf8);
+        expected.extend(crate::escpos::build_x_report_bytes(&job.payload, Encoding::Utf8, 58).unwrap());
+        assert_eq!(bytes, expected);
+        assert_eq!(job_summary(&job), ("Informe X \u{b7} parcial".to_string(), "Cajero Camilo Henao".to_string()));
+    }
 
     #[test]
     fn a_takeaway_comanda_is_summarised_with_the_customer() {

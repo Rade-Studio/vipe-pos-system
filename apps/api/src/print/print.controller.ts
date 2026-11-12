@@ -31,6 +31,8 @@ import {
   PrinterDevice,
   PrintJobCreated,
   PrintJobsCreated,
+  xReportPrintSchema,
+  XReportPrintRequest,
 } from './print.dto';
 import { PrintService } from './print.service';
 import { type PrinterRequest, PrinterTokenGuard } from './printer-token.guard';
@@ -50,6 +52,17 @@ export class PrintController {
     const input = parseInput(invoicePrintSchema, body);
     await this.print.assertPrinting();
     return this.print.printInvoice(input);
+  }
+
+  @Post('x-reports')
+  @ApiCookieAuth()
+  @ApiBody({ type: XReportPrintRequest })
+  @ApiCreatedResponse({ type: PrintJobCreated, description: 'Queued "Informe X" (kind x_report); tagged to Caja when it exists.' })
+  @ApiConflictResponse({ description: '`printing_disabled`: the restaurant does not use printers.' })
+  async printXReport(@Body() body: unknown): Promise<PrintJobCreated> {
+    const input = parseInput(xReportPrintSchema, body);
+    await this.print.assertPrinting();
+    return this.print.printXReport(input);
   }
 
   @Post('commands')

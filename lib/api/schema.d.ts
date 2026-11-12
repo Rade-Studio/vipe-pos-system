@@ -2004,6 +2004,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/print/x-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PrintController_printXReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/print/commands": {
         parameters: {
             query?: never;
@@ -6098,9 +6114,37 @@ export interface components {
              */
             id: string;
             /** @enum {string} */
-            kind: "invoice" | "command";
+            kind: "invoice" | "command" | "x_report";
             /** Format: date-time */
             createdAt: string;
+        };
+        XReportBusiness: {
+            name: string;
+            nit: string;
+            address: string;
+        };
+        XReportTax: {
+            /** @enum {string} */
+            type: "INC" | "IVA";
+            rate: number;
+        };
+        XReportPrintRequest: {
+            business: components["schemas"]["XReportBusiness"];
+            cashierName: string | null;
+            /**
+             * Format: date-time
+             * @description Opening of the shift in the cashier's wall time with its offset (printed as written).
+             */
+            openedAt: string;
+            /**
+             * Format: date-time
+             * @description Print time in the cashier's wall time with its offset (printed as written).
+             */
+            printedAt: string;
+            /** @description GET /registers/summary exactly as it answered. */
+            summary: components["schemas"]["RegisterSummary"];
+            /** @description Configured tax; without it no Base / tax line is printed. */
+            tax?: components["schemas"]["XReportTax"];
         };
         CommandPrintRequest: {
             /**
@@ -6131,7 +6175,7 @@ export interface components {
              */
             id: string;
             /** @enum {string} */
-            kind: "invoice" | "command";
+            kind: "invoice" | "command" | "x_report";
             /** Format: date-time */
             createdAt: string;
             /** @description One comanda per station, in station order. */
@@ -6141,8 +6185,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            kind: "invoice" | "command";
-            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, takeaway? {customerName, label "PARA LLEVAR · <nombre>"} (instead of table), station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
+            kind: "invoice" | "command" | "x_report";
+            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; x_report: XReportPrintRequest plus station? (Caja); command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, takeaway? {customerName, label "PARA LLEVAR · <nombre>"} (instead of table), station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices and x_report. */
             payload: {
                 [key: string]: unknown;
             };
@@ -13160,6 +13204,44 @@ export interface operations {
         };
         responses: {
             /** @description Queued; sent to the restaurant printers after commit. Tagged to Caja when it exists. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintJobCreated"];
+                };
+            };
+            /** @description `printing_disabled`: the restaurant does not use printers. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PrintController_printXReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["XReportPrintRequest"];
+            };
+        };
+        responses: {
+            /** @description Queued "Informe X" (kind x_report); tagged to Caja when it exists. */
             201: {
                 headers: {
                     [name: string]: unknown;

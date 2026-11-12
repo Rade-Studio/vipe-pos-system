@@ -3,6 +3,9 @@ import { ApiError } from "./errors"
 import type { components } from "./schema"
 import { toast } from "@/components/ui/use-toast"
 import type { CartItem, DeliveryPrintInfo, PrintableInvoice } from "@/types"
+import type { RegisterSummary } from "@/lib/payments/register-summary"
+import type { SlipBusiness } from "@/components/printing/slip-format"
+import type { SlipTax } from "@/components/printing/tax-label"
 
 /**
  * Printing through the API (T8c). Each call queues a durable print job that
@@ -69,4 +72,53 @@ export async function sendCommand(command: CommandRequest): Promise<void> {
   } catch (error) {
     notifyFailure(error)
   }
+}
+
+/**
+ * "Informe X" (informe-x-termico S1): the register summary exactly as
+ * GET /registers/summary answered, the slip header and the times. The
+ * printers print the times as written, so they go in the cashier's wall time
+ * with its offset (`2026-11-10T07:58:00.000-05:00`).
+ */
+export type XReportJob = {
+  business: SlipBusiness
+  cashierName: string | null
+  openedAt: Date
+  printedAt: Date
+  summary: RegisterSummary
+  tax?: SlipTax
+}
+
+const two = (n: number) => String(Math.trunc(n)).padStart(2, "0")
+
+/** ISO date-time in the local wall time with its offset, e.g. `2026-11-10T07:58:00.000-05:00`. */
+export function localIso(date: Date): string {
+  const offset = -date.getTimezoneOffset()
+  const sign = offset < 0 ? "-" : "+"
+  const abs = Math.abs(offset)
+  return (
+    `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}` +
+    `T${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3, "0")}` +
+    `${sign}${two(abs / 60)}:${two(abs % 60)}`
+  )
+}
+
+/** Why the Informe X did not reach the printer, for the cashier. */
+export function xReportFailure(error: unknown): string {
+  if (isPrintingOff(error)) return "Este restaurante no usa impresoras. Actívalas en Ajustes → Estaciones y rutas."
+  return "No se pudo enviar el Informe X a la impresora. Intente nuevamente o véalo en pantalla."
+}
+
+/** Queues the Informe X on the restaurant's printers (Caja when it exists). Throws on failure; `xReportFailure` words it. */
+export async function sendXReport({ business, cashierName, openedAt, printedAt, summary, tax }: XReportJob): Promise<void> {
+  await api.POST("/api/print/x-reports", {
+    body: {
+      business,
+      cashierName,
+      openedAt: localIso(openedAt),
+      printedAt: localIso(printedAt),
+      summary,
+      ...(tax ? { tax } : {}),
+    } as Schemas["XReportPrintRequest"],
+  })
 }
