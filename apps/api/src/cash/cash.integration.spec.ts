@@ -538,14 +538,15 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
   });
 
   describe('para llevar orders (promociones S8)', () => {
-    // 2026-09-01: one closed register with two paid takeaway orders, a dine_in at table 7, a delivery and a cancelled takeaway.
+    // 2026-07-15: one closed register with two paid takeaway orders, a dine_in at table 7, a delivery and a cancelled takeaway.
+    // A day of its own: informe Z emits 2026-09-01 concurrently and may keep that empty Z, which a later emit would return as is.
     const reg = '97000000-0000-0000-0000-000000000901';
     const [t1, t2, dine, del, gone] = [1, 2, 3, 4, 5].map((n) => `97000000-0000-0000-0000-00000000091${n}`);
     beforeAll(async () => {
       const A = fixtures.restaurantA;
       await db(
         `INSERT INTO cash_registers (id, opening_timestamp, closing_timestamp, initial_cash, final_cash, status, restaurant_id, opened_by, closed_by,
-                                     counted_cash, cash_difference) VALUES ($1, '2026-09-01 10:00-05', '2026-09-01 20:00-05', 0, 0, 'closed', $2, $3, $3, 0, 0)`,
+                                     counted_cash, cash_difference) VALUES ($1, '2026-07-15 10:00-05', '2026-07-15 20:00-05', 0, 0, 'closed', $2, $3, $3, 0, 0)`,
         [reg, A, c.cashierProfile],
       );
       await db(
@@ -565,14 +566,14 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
              VALUES (gen_random_uuid(), $1, $2, $3, $4, 0, $4, 0, gen_random_uuid(), $5::timestamptz, $6) RETURNING id)
            INSERT INTO payment_tenders (restaurant_id, payment_id, line_no, payment_method_id, method_code, method_kind, amount, cash_received)
              SELECT $6, pay.id, 1, m.id, m.code, m.kind, $4, $4 FROM pay JOIN payment_methods m ON m.restaurant_id = $6 AND m.code = 'cash'`,
-          [order, reg, c.cashierProfile, due, `2026-09-01 ${hour}:00-05`, A],
+          [order, reg, c.cashierProfile, due, `2026-07-15 ${hour}:00-05`, A],
         );
       }
       const audit = '97000000-0000-0000-0000-000000000921';
       await db(
         `INSERT INTO audit_log (id, restaurant_id, event_type, order_id, actor_profile_id, actor_name, authorized_by_profile_id,
                                 authorized_by_name, authorization_id, reason_code, reason_text, amount, created_at)
-           VALUES ($1, $2, 'order_cancelled', $3, $4, 'Cashier A', $5, 'Admin A', gen_random_uuid(), 'other', 'No volvió', 4000, '2026-09-01 15:00-05')`,
+           VALUES ($1, $2, 'order_cancelled', $3, $4, 'Cashier A', $5, 'Admin A', gen_random_uuid(), 'other', 'No volvió', 4000, '2026-07-15 15:00-05')`,
         [audit, A, gone, c.cashierProfile, fixtures.adminA.profileId],
       );
       await db(
@@ -580,21 +581,21 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
                                           cancelled_by_name, authorized_by, authorized_by_name, authorization_id, subtotal, tax, tip, total,
                                           items, sent_items, cancelled_at)
            VALUES ($1, $2, $3, 'kitchen', 'other', 'No volvió', $4, 'Cashier A', $5, 'Admin A', gen_random_uuid(), 4000, 0, 0, 4000,
-                   '[]', 0, '2026-09-01 15:00-05')`,
+                   '[]', 0, '2026-07-15 15:00-05')`,
         [A, gone, audit, c.cashierProfile, fixtures.adminA.profileId],
       );
     });
 
     it('counts the takeaway orders apart from tables and deliveries in the day totals and the Z', async () => {
-      const { totals, voids } = (await adminA().get('/api/cash/days/2026-09-01')).body;
+      const { totals, voids } = (await adminA().get('/api/cash/days/2026-07-15')).body;
       expect(totals).toMatchObject({ salesNet: 35000, tickets: 4, tables: 1, deliveries: { count: 1, amount: 5000 }, takeaway: { count: 2, amount: 20000 } });
       expect(voids.items).toEqual([expect.objectContaining({ kind: 'order_cancellation', table: 'Para llevar · Pedro', amount: 4000 })]);
-      const z = (await adminA().post('/api/cash/days/2026-09-01/z')).body;
+      const z = (await adminA().post('/api/cash/days/2026-07-15/z')).body;
       expect(z.snapshot.totals).toMatchObject({ tables: 1, takeaway: { count: 2, amount: 20000 } });
     });
 
     it("labels a takeaway payment 'Para llevar · <cliente>' in the ledger, keeping the table and Domicilio labels", async () => {
-      const entries: { kind: string; table?: string | null }[] = (await adminA().get('/api/cash/days/2026-09-01/ledger')).body.entries;
+      const entries: { kind: string; table?: string | null }[] = (await adminA().get('/api/cash/days/2026-07-15/ledger')).body.entries;
       expect(entries.filter((e) => e.kind === 'payment').map((e) => e.table)).toEqual(['Para llevar · Ana María', 'Para llevar · Luis', '7', 'Domicilio']);
       expect(entries.find((e) => e.kind === 'order_cancellation')).toMatchObject({ table: 'Para llevar · Pedro' });
     });
