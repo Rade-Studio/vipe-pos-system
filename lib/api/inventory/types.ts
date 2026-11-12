@@ -108,6 +108,41 @@ export type PurchaseOrderLine = Schemas["PurchaseOrderLine"]
 
 export type PurchaseOrder = Schemas["PurchaseOrder"]
 
+export type TransferStatus = Schemas["InventoryTransfer"]["status"]
+
+export type InventoryTransferLine = Schemas["InventoryTransferLine"]
+
+export type InventoryTransfer = Schemas["InventoryTransfer"]
+
+export interface TransferFilters {
+  status?: TransferStatus[]
+  /** Origin or destination. */
+  locationId?: string
+  /** YYYY-MM-DD, local days of the restaurant, inclusive. */
+  from?: string
+  to?: string
+}
+
+export interface TransferLineInput {
+  itemId: string
+  quantity: number
+}
+
+/** Header and full line set of a draft. */
+export interface TransferInput {
+  fromLocationId: string
+  toLocationId: string
+  notes?: string | null
+  lines: TransferLineInput[]
+}
+
+export interface ReceiveTransferLineInput {
+  lineId: string
+  receivedQuantity: number
+  /** Required when less than the requested quantity arrived. */
+  shortfallReason?: string | null
+}
+
 export interface PurchaseOrderFilters {
   status?: PurchaseOrderStatus[]
   supplierId?: string
