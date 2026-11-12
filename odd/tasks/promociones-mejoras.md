@@ -19,7 +19,7 @@ Follow-up of `odd/tasks/promociones.md` (delivered to dev in PR #176, 7180922). 
 
 | ID | Specs | Route | Commit |
 | --- | --- | --- | --- |
-| M1 API: void-aware preview, orders and payments advisories | S1 (API), S3, S4 | worker | — |
+| M1 API: void-aware preview, orders and payments advisories | S1 (API), S3, S4 | worker | 7c054ff, contract 5303acf |
 | M2 Web: void sheet preview, delivery invoice, cashier advisories | S1 (web), S2, S5 | worker | M2 commit (L6) |
 | M3 Records | S6 | inline | 55d4604 |
 | M4 Delivery form parity | S7 (except combos → M8) | worker | M4 commit (L9) |
@@ -40,3 +40,4 @@ Follow-up of `odd/tasks/promociones.md` (delivered to dev in PR #176, 7180922). 
 - L8 (evidence, M7): the on-screen invoice uses `totalsLayout()` (components/printing/totals-layout.ts), the same rule as the receipt renderers; printing 55/55.
 - L9 (evidence, M4): delivery form shows promotion tags, per-line discounts, the delivery bill discount with its minimum hint and "Ahorro con promociones"; total and courier-change validation use the net (tax on the net + fee) when the preview is available; `usePricingPreview` accepts a prebuilt draft (waiter unchanged). 29 files 433 passed; typecheck and lint clean. Combos not possible yet: `createDeliveryOrderSchema` has no `combos` → M8.
 - L10 (evidence, M6): `GET /catalog/promotions/stats/week` (admin) with week = Monday at the business-day cutoff in the restaurant timezone through now (rule copied from CashService.scope, no shared helper), paid orders by created_at; admin cards "Descuento otorgado · esta semana" (X% de la venta) and "Venta con promoción · esta semana" (N cuentas). API catalog 107/107, web 60/60, typechecks and lints clean.
+- L11 (evidence, M1): pricing-preview accepts `voids` (validated with `void_order_required`, `void_item_unknown`, `void_quantity_invalid`; combos void whole; same evaluate path as recompute; no writes) and returns tax, tip, total (= Order.total, no delivery fee) and deliveryFee (null when RLS hides order_deliveries). Decision: combo option prices are charged on top of the combo price (discount = Σ list without options − comboPrice). Preview uses the order's own channel; max 20 combos; Spanish empty-lines message; short cash checked by payment method kind in the service. API 70 files 963/963; api lint clean. Contract regenerated; web typecheck clean after updating two preview fixtures; delivery/promotions/voids/cashier 30 files 220/220.
