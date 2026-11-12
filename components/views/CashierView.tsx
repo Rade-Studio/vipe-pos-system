@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
+import { AssignedCountsEntry } from "@/components/counts/AssignedCountsEntry"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useShallow } from "zustand/react/shallow"
@@ -687,6 +688,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         authRole={authRole}
         title={TAB_TITLES[activeTab]}
       />
+      <AssignedCountsEntry />
 
       <Tabs
         value={activeTab}

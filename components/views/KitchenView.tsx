@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Profile, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
+import { AssignedCountsEntry } from "@/components/counts/AssignedCountsEntry"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useOrderStore } from "@/store/useOrderStore"
@@ -634,6 +635,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-canvas px-4 text-fg md:px-6">
       <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Cocina" />
+      <AssignedCountsEntry />
 
       <div className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6">
         <div className="flex min-h-0 flex-1 flex-col">
