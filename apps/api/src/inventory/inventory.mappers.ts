@@ -14,6 +14,8 @@ import type {
   InventoryCount,
   InventoryItem,
   InventoryLocation,
+  InventoryTransfer,
+  InventoryTransferLine,
   InventoryOverview,
   Lot,
   Movement,
@@ -30,6 +32,7 @@ import type {
   SaveFormulaResult,
   StaffRef,
   Supplier,
+  TransferStatus,
   TransferStockResult,
 } from './inventory.dto';
 
@@ -265,6 +268,49 @@ export const toCount = (row: Json): InventoryCount => ({
   notes: text(row.notes),
   appliedAt: time(row.applied_at),
   createdAt: time(row.created_at)!,
+});
+
+/** `to_jsonb(inventory_transfer_lines) || {item_name, sku, unit}`. */
+const toTransferLine = (row: Json): InventoryTransferLine => {
+  const requestedQuantity = req(row, 'requested_quantity');
+  const receivedQuantity = numOrNull(row.received_quantity);
+  return {
+    id: String(row.id),
+    itemId: String(row.ingredient_id),
+    itemName: text(row.item_name),
+    sku: text(row.sku),
+    unit: text(row.unit),
+    requestedQuantity,
+    receivedQuantity,
+    shortfallQuantity: receivedQuantity === null ? null : Math.round((requestedQuantity - receivedQuantity) * 1000) / 1000,
+    shortfallReason: text(row.shortfall_reason),
+  };
+};
+
+/** `to_jsonb(inventory_transfers) || {location and staff names, lines}`. */
+export const toTransfer = (row: Json): InventoryTransfer => ({
+  id: String(row.id),
+  number: req(row, 'number'),
+  status: row.status as TransferStatus,
+  fromLocationId: String(row.from_location_id),
+  fromLocationName: text(row.from_location_name),
+  toLocationId: String(row.to_location_id),
+  toLocationName: text(row.to_location_name),
+  notes: text(row.notes),
+  createdBy: text(row.created_by),
+  createdByName: text(row.created_by_name),
+  sentBy: text(row.sent_by),
+  sentByName: text(row.sent_by_name),
+  sentAt: time(row.sent_at),
+  receivedBy: text(row.received_by),
+  receivedByName: text(row.received_by_name),
+  receivedAt: time(row.received_at),
+  cancelledBy: text(row.cancelled_by),
+  cancelledByName: text(row.cancelled_by_name),
+  cancelledAt: time(row.cancelled_at),
+  createdAt: time(row.created_at)!,
+  updatedAt: time(row.updated_at)!,
+  lines: list(row.lines).map(toTransferLine),
 });
 
 /** `to_jsonb(inventory_count_lines) || {item_name, sku, unit}`. */
