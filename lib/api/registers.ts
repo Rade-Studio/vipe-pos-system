@@ -23,7 +23,7 @@ export type RegisterOpener = Schemas["ProfileRef"]
 export type CashRegisterWithOpener = CashRegister & { openedBy: RegisterOpener | null }
 /** Why a cash movement happened (caja-cierres S2). */
 export type CashMovementReason = Schemas["CreateCashTransactionRequest"]["reason"]
-/** A cash movement with its reason and author; both null for movements before migration 0025. */
+/** A cash movement with its reason and author; both null for movements before migration 0026. */
 export type CashMovement = CashTransaction & { reason: CashMovementReason | null; createdBy: RegisterOpener | null }
 /** The six reasons with their Spanish labels, in display order; `other` requires a description. */
 export const CASH_MOVEMENT_REASONS: readonly { value: CashMovementReason; label: string }[] = [

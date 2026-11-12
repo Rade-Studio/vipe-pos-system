@@ -1,5 +1,5 @@
 -- Shift count and cash movement reasons (odd/tasks/caja-cierres.md T1, S1,
--- S2, migration 0025). cash_registers gains counted_cash, cash_difference,
+-- S2, migration 0026). cash_registers gains counted_cash, cash_difference,
 -- close_note, denominations and closed_by; cash_transactions gains reason
 -- and created_by (default: the caller's profile). The API stores the count
 -- right after close_register; these tests pin the columns and the rules the

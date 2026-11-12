@@ -12394,11 +12394,11 @@
               "other"
             ],
             "nullable": true,
-            "description": "null for movements recorded before migration 0025."
+            "description": "null for movements recorded before migration 0026."
           },
           "createdBy": {
             "nullable": true,
-            "description": "Who recorded it (the caller); null for movements before migration 0025 or a deleted profile.",
+            "description": "Who recorded it (the caller); null for movements before migration 0026 or a deleted profile.",
             "type": "object",
             "allOf": [
               {

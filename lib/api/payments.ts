@@ -229,7 +229,7 @@ export interface CloseRegisterResult {
   /** Server clock of the close (the original one on a replay). */
   closingTimestamp: Date
   summary: RegisterSummary
-  /** The stored count (caja-cierres S1); null on registers closed before migration 0025. */
+  /** The stored count (caja-cierres S1); null on registers closed before migration 0026. */
   countedCash?: number | null
   cashDifference?: number | null
   closeNote?: string | null

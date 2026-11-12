@@ -186,7 +186,7 @@ export class RegistersService {
     if (input.reason === 'other' && !description) {
       throw unprocessable(CLOSE_MESSAGES.descriptionRequired, 'description_required');
     }
-    // created_by is left to its column default: the caller's profile (migration 0025).
+    // created_by is left to its column default: the caller's profile (migration 0026).
     const [row] = await this.rows<{ tx: Json }>(sql`
       WITH tx AS (
         INSERT INTO public.cash_transactions (amount, type, reason, description, cash_register_id)

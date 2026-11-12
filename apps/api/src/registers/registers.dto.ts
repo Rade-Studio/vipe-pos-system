@@ -6,7 +6,7 @@ import { LegacyPaymentTransaction, PAYMENT_METHOD_KINDS, type PaymentMethodKind 
 export const REGISTER_INCLUDES = ['transactions', 'cashTransactions'] as const;
 export const CASH_TRANSACTION_TYPES = ['deposit', 'withdrawal'] as const;
 export type CashTransactionType = (typeof CASH_TRANSACTION_TYPES)[number];
-/** Why the cash moved (migration 0025); `other` requires a description. */
+/** Why the cash moved (migration 0026); `other` requires a description. */
 export const CASH_TRANSACTION_REASONS = ['change_fund', 'supplier', 'petty_cash', 'tips_payout', 'safe_deposit', 'other'] as const;
 export type CashTransactionReason = (typeof CASH_TRANSACTION_REASONS)[number];
 /** Colombian bills and coins, in pesos, accepted in the close count. */
@@ -69,12 +69,12 @@ export class CashTransaction {
   @ApiProperty({ enum: CASH_TRANSACTION_TYPES }) type!: CashTransactionType;
   @ApiProperty({ description: 'Empty string when none was given.' }) description!: string;
   @ApiProperty({ format: 'date-time', description: 'Server clock.' }) timestamp!: string;
-  @ApiProperty({ enum: CASH_TRANSACTION_REASONS, nullable: true, description: 'null for movements recorded before migration 0025.' })
+  @ApiProperty({ enum: CASH_TRANSACTION_REASONS, nullable: true, description: 'null for movements recorded before migration 0026.' })
   reason!: CashTransactionReason | null;
   @ApiProperty({
     type: () => ProfileRef,
     nullable: true,
-    description: 'Who recorded it (the caller); null for movements before migration 0025 or a deleted profile.',
+    description: 'Who recorded it (the caller); null for movements before migration 0026 or a deleted profile.',
   })
   createdBy!: ProfileRef | null;
 }
@@ -89,7 +89,7 @@ export class Denomination {
   @ApiProperty({ minimum: 0 }) quantity!: number;
 }
 
-/** The count stored at the close (migration 0025); every field is null for registers closed before it, or still open. */
+/** The count stored at the close (migration 0026); every field is null for registers closed before it, or still open. */
 export class RegisterCount {
   @ApiProperty({ type: Number, nullable: true, description: 'Cash counted by the cashier (whole pesos).' }) countedCash!: number | null;
   @ApiProperty({ type: Number, nullable: true, description: 'countedCash - finalCash (expected after tips).' }) cashDifference!: number | null;

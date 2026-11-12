@@ -3694,11 +3694,11 @@ export interface components {
              */
             timestamp: string;
             /**
-             * @description null for movements recorded before migration 0025.
+             * @description null for movements recorded before migration 0026.
              * @enum {string|null}
              */
             reason: "change_fund" | "supplier" | "petty_cash" | "tips_payout" | "safe_deposit" | "other" | null;
-            /** @description Who recorded it (the caller); null for movements before migration 0025 or a deleted profile. */
+            /** @description Who recorded it (the caller); null for movements before migration 0026 or a deleted profile. */
             createdBy: components["schemas"]["ProfileRef"] | null;
         };
         CashRegister: {
