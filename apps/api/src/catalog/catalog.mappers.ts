@@ -45,7 +45,8 @@ export const toPromotion = (row: PromotionRow): Promotion => ({
   discountType: row.discountType as DiscountType,
   discountValue: Number(row.discountValue),
   startDate: toIso(row.startDate),
-  endDate: toIso(row.endDate),
+  // end_date is nullable since 0027; this API still always writes it (T3 widens the DTO).
+  endDate: toIso(row.endDate as string),
   // Nullable in the schema; the web always treated a missing flag as inactive.
   active: row.active === true,
   createdAt: toIso(row.createdAt),

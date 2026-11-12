@@ -671,7 +671,13 @@ export const orderItems = pgTable("order_items", {
 	// Set once by the order_items_route_station trigger (0020): dish -> category -> default station.
 	stationId: uuid("station_id"),
 	stationSource: text("station_source"),
+	// 0025: the automatic promotion the line qualified for when sent, its rule then, and the shared id of a combo's lines.
+	promotionId: uuid("promotion_id"),
+	promotionSnapshot: jsonb("promotion_snapshot"),
+	comboId: uuid("combo_id"),
 }, (table) => [
+	index("idx_order_items_promotion_id").using("btree", table.promotionId.asc().nullsLast().op("uuid_ops")).where(sql`(promotion_id IS NOT NULL)`),
+	index("idx_order_items_combo_id").using("btree", table.comboId.asc().nullsLast().op("uuid_ops")).where(sql`(combo_id IS NOT NULL)`),
 	index("idx_order_items_order").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
 	index("idx_order_items_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
 	index("idx_order_items_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
@@ -695,6 +701,12 @@ export const orderItems = pgTable("order_items", {
 			columns: [table.restaurantId, table.createdByProfileId],
 			foreignColumns: [profiles.restaurantId, profiles.id],
 			name: "order_items_created_by_profile_fkey"
+		}).onDelete("set null"),
+	// ON DELETE SET NULL (promotion_id) in SQL: only promotion_id is cleared.
+	foreignKey({
+			columns: [table.restaurantId, table.promotionId],
+			foreignColumns: [promotions.restaurantId, promotions.id],
+			name: "order_items_promotion_id_fkey"
 		}).onDelete("set null"),
 	pgPolicy("order_items_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("order_items_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
@@ -834,7 +846,7 @@ export const paymentTenders = pgTable("payment_tenders", {
 	pgPolicy("payment_tenders_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("payment_tenders_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("payment_tenders_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
-	check("payment_tenders_amount_check", sql`amount > 0`),
+	check("payment_tenders_amount_check", sql`(amount > 0) OR ((amount = 0) AND (line_no = 1) AND (method_kind = 'cash'::text) AND (cash_received = 0))`),
 	check("payment_tenders_cash_received_check", sql`((method_kind = 'cash'::text) AND (cash_received IS NOT NULL) AND (cash_received >= amount)) OR ((method_kind = 'electronic'::text) AND (cash_received IS NULL))`),
 	check("payment_tenders_line_no_check", sql`line_no >= 1`),
 	check("payment_tenders_method_kind_check", sql`method_kind = ANY (ARRAY['cash'::text, 'electronic'::text])`),
@@ -1093,15 +1105,34 @@ export const promotions = pgTable("promotions", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	name: varchar({ length: 255 }).notNull(),
 	description: text(),
-	discountType: varchar("discount_type", { length: 20 }).notNull(),
-	discountValue: numeric("discount_value", { precision: 10, scale:  2 }).notNull(),
+	// Required for product_discount and bill_discount, NULL otherwise (promotions_discount_check, 0025).
+	discountType: varchar("discount_type", { length: 20 }),
+	discountValue: numeric("discount_value", { precision: 10, scale:  2 }),
 	startDate: timestamp("start_date", { withTimezone: true, mode: 'string' }).notNull(),
-	endDate: timestamp("end_date", { withTimezone: true, mode: 'string' }).notNull(),
+	// NULL = no end (0025).
+	endDate: timestamp("end_date", { withTimezone: true, mode: 'string' }),
 	active: boolean().default(true),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	kind: varchar({ length: 20 }).default('product_discount').notNull(),
+	mode: varchar({ length: 20 }).default('automatic').notNull(),
+	buyQuantity: integer("buy_quantity"),
+	payQuantity: integer("pay_quantity"),
+	restDiscountPercent: integer("rest_discount_percent"),
+	comboPrice: numeric("combo_price", { precision: 10, scale:  2 }),
+	minSubtotal: numeric("min_subtotal", { precision: 10, scale:  2 }),
+	maxDiscount: numeric("max_discount", { precision: 10, scale:  2 }),
+	// ISO 1 = Monday .. 7 = Sunday; {} = every day.
+	daysOfWeek: smallint("days_of_week").array().default(sql`'{}'::smallint[]`).notNull(),
+	// [{ from: "HH:MM", to: "HH:MM" }] with from < to; [] = all day.
+	timeWindows: jsonb("time_windows").default(sql`'[]'::jsonb`).notNull(),
+	// dine_in, takeaway, delivery; {} = every channel.
+	channels: text().array().default(sql`'{}'::text[]`).notNull(),
+	maxUsesPerOrder: integer("max_uses_per_order"),
 }, (table) => [
+	unique("promotions_restaurant_id_id_key").on(table.restaurantId, table.id),
+	index("idx_promotions_kind").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.kind.asc().nullsLast().op("text_ops")),
 	index("idx_promotions_active").using("btree", table.active.asc().nullsLast().op("bool_ops")),
 	index("idx_promotions_dates").using("btree", table.startDate.asc().nullsLast().op("timestamptz_ops"), table.endDate.asc().nullsLast().op("timestamptz_ops")),
 	index("idx_promotions_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
@@ -1115,6 +1146,16 @@ export const promotions = pgTable("promotions", {
 	pgPolicy("promotions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("promotions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("promotions_discount_type_check", sql`(discount_type)::text = ANY (ARRAY[('percentage'::character varying)::text, ('fixed_amount'::character varying)::text])`),
+	check("promotions_kind_check", sql`(kind)::text = ANY (ARRAY['product_discount'::text, 'buy_x_pay_y'::text, 'combo'::text, 'bill_discount'::text])`),
+	check("promotions_mode_check", sql`(mode)::text = ANY (ARRAY['automatic'::text, 'manual'::text, 'manual_pin'::text])`),
+	check("promotions_discount_check", sql`CASE WHEN ((kind)::text = ANY (ARRAY['product_discount'::text, 'bill_discount'::text])) THEN ((discount_type IS NOT NULL) AND (discount_value IS NOT NULL) AND (discount_value >= (0)::numeric)) ELSE ((discount_type IS NULL) AND (discount_value IS NULL)) END`),
+	check("promotions_buy_x_pay_y_check", sql`CASE WHEN ((kind)::text = 'buy_x_pay_y'::text) THEN COALESCE(((buy_quantity >= 2) AND (pay_quantity >= 1) AND (pay_quantity < buy_quantity) AND ((rest_discount_percent >= 1) AND (rest_discount_percent <= 100))), false) ELSE ((buy_quantity IS NULL) AND (pay_quantity IS NULL) AND (rest_discount_percent IS NULL)) END`),
+	check("promotions_combo_check", sql`CASE WHEN ((kind)::text = 'combo'::text) THEN COALESCE((combo_price > (0)::numeric), false) ELSE (combo_price IS NULL) END`),
+	check("promotions_bill_discount_check", sql`(((kind)::text = 'bill_discount'::text) OR ((min_subtotal IS NULL) AND (max_discount IS NULL))) AND ((min_subtotal IS NULL) OR (min_subtotal >= (0)::numeric)) AND ((max_discount IS NULL) OR (max_discount > (0)::numeric))`),
+	check("promotions_days_of_week_check", sql`(days_of_week <@ ARRAY[1, 2, 3, 4, 5, 6, 7]::smallint[]) AND (array_position(days_of_week, NULL::smallint) IS NULL)`),
+	check("promotions_time_windows_check", sql`private.promotion_time_windows_valid(time_windows)`),
+	check("promotions_channels_check", sql`(channels <@ ARRAY['dine_in'::text, 'takeaway'::text, 'delivery'::text]) AND (array_position(channels, NULL::text) IS NULL)`),
+	check("promotions_max_uses_per_order_check", sql`(max_uses_per_order IS NULL) OR (max_uses_per_order > 0)`),
 ]);
 
 export const purchaseOrderLines = pgTable("purchase_order_lines", {
@@ -1613,6 +1654,7 @@ export const subcategories = pgTable("subcategories", {
 			name: "subcategories_category_id_fkey"
 		}).onDelete("restrict"),
 	unique("subcategories_restaurant_id_category_id_id_key").on(table.restaurantId, table.categoryId, table.id),
+	unique("subcategories_restaurant_id_id_key").on(table.restaurantId, table.id),
 	pgPolicy("subcategories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("subcategories_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("subcategories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
@@ -2190,4 +2232,198 @@ export const orderItemModifiers = pgTable("order_item_modifiers", {
 	pgPolicy("order_item_modifiers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
 	check("order_item_modifiers_price_check", sql`price >= (0)::numeric`),
 	check("order_item_modifiers_ingredient_check", sql`((ingredient_id IS NULL) = (ingredient_qty IS NULL)) AND ((ingredient_qty IS NULL) OR (ingredient_qty > (0)::numeric))`),
+]);
+
+/** Categories a product_discount or buy_x_pay_y promotion targets (0025). */
+export const promotionCategories = pgTable("promotion_categories", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	promotionId: uuid("promotion_id").notNull(),
+	categoryId: uuid("category_id").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_promotion_categories_category_id").using("btree", table.categoryId.asc().nullsLast().op("uuid_ops")),
+	index("idx_promotion_categories_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "promotion_categories_restaurant_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.promotionId],
+			foreignColumns: [promotions.restaurantId, promotions.id],
+			name: "promotion_categories_promotion_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.categoryId],
+			foreignColumns: [categories.restaurantId, categories.id],
+			name: "promotion_categories_category_id_fkey"
+		}).onDelete("cascade"),
+	unique("promotion_categories_promotion_id_category_id_key").on(table.promotionId, table.categoryId),
+	pgPolicy("promotion_categories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("promotion_categories_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: TENANT }),
+	pgPolicy("promotion_categories_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: TENANT, withCheck: TENANT }),
+	pgPolicy("promotion_categories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: TENANT }),
+]);
+
+/** Subcategories a product_discount or buy_x_pay_y promotion targets (0025). */
+export const promotionSubcategories = pgTable("promotion_subcategories", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	promotionId: uuid("promotion_id").notNull(),
+	subcategoryId: uuid("subcategory_id").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_promotion_subcategories_subcategory_id").using("btree", table.subcategoryId.asc().nullsLast().op("uuid_ops")),
+	index("idx_promotion_subcategories_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "promotion_subcategories_restaurant_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.promotionId],
+			foreignColumns: [promotions.restaurantId, promotions.id],
+			name: "promotion_subcategories_promotion_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.subcategoryId],
+			foreignColumns: [subcategories.restaurantId, subcategories.id],
+			name: "promotion_subcategories_subcategory_id_fkey"
+		}).onDelete("cascade"),
+	unique("promotion_subcategories_promotion_id_subcategory_id_key").on(table.promotionId, table.subcategoryId),
+	pgPolicy("promotion_subcategories_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("promotion_subcategories_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: TENANT }),
+	pgPolicy("promotion_subcategories_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: TENANT, withCheck: TENANT }),
+	pgPolicy("promotion_subcategories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: TENANT }),
+]);
+
+/** Groups of a combo promotion in position order; one option of each is picked (0025). */
+export const promotionComboGroups = pgTable("promotion_combo_groups", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	promotionId: uuid("promotion_id").notNull(),
+	name: text().notNull(),
+	position: integer().default(0).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_promotion_combo_groups_promotion_id").using("btree", table.promotionId.asc().nullsLast().op("uuid_ops"), table.position.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "promotion_combo_groups_restaurant_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.promotionId],
+			foreignColumns: [promotions.restaurantId, promotions.id],
+			name: "promotion_combo_groups_promotion_id_fkey"
+		}).onDelete("cascade"),
+	unique("promotion_combo_groups_restaurant_id_id_key").on(table.restaurantId, table.id),
+	pgPolicy("promotion_combo_groups_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("promotion_combo_groups_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: TENANT }),
+	pgPolicy("promotion_combo_groups_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: TENANT, withCheck: TENANT }),
+	pgPolicy("promotion_combo_groups_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: TENANT }),
+	check("promotion_combo_groups_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 60)`),
+	check("promotion_combo_groups_position_check", sql`"position" >= 0`),
+]);
+
+/** Dishes the customer can pick in one combo group (0025). */
+export const promotionComboOptions = pgTable("promotion_combo_options", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	groupId: uuid("group_id").notNull(),
+	dishId: uuid("dish_id").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_promotion_combo_options_dish_id").using("btree", table.dishId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "promotion_combo_options_restaurant_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.groupId],
+			foreignColumns: [promotionComboGroups.restaurantId, promotionComboGroups.id],
+			name: "promotion_combo_options_group_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.dishId],
+			foreignColumns: [dishes.restaurantId, dishes.id],
+			name: "promotion_combo_options_dish_id_fkey"
+		}).onDelete("cascade"),
+	unique("promotion_combo_options_group_id_dish_id_key").on(table.groupId, table.dishId),
+	pgPolicy("promotion_combo_options_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("promotion_combo_options_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: TENANT }),
+	pgPolicy("promotion_combo_options_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: TENANT, withCheck: TENANT }),
+	pgPolicy("promotion_combo_options_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: TENANT }),
+]);
+
+/**
+ * One discount of an order (0025, S2): on a line or on the bill, from a promotion or manual.
+ * orders.total_discounts and the net orders.subtotal come from private.order_bill_base().
+ * The promotion, created_by and authorized_by foreign keys are ON DELETE SET NULL (column) in SQL.
+ */
+export const orderDiscounts = pgTable("order_discounts", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	orderId: uuid("order_id").notNull(),
+	orderItemId: uuid("order_item_id"),
+	promotionId: uuid("promotion_id"),
+	kind: text().notNull(),
+	source: text().notNull(),
+	label: text().notNull(),
+	amount: numeric({ precision: 10, scale:  2 }).notNull(),
+	comboId: uuid("combo_id"),
+	reason: text(),
+	createdBy: uuid("created_by"),
+	authorizedBy: uuid("authorized_by"),
+	requiresAuthorization: boolean("requires_authorization").default(true).notNull(),
+	lineQuantity: integer("line_quantity"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_order_discounts_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
+	index("idx_order_discounts_order_item_id").using("btree", table.orderItemId.asc().nullsLast().op("uuid_ops")).where(sql`(order_item_id IS NOT NULL)`),
+	index("idx_order_discounts_promotion_id").using("btree", table.promotionId.asc().nullsLast().op("uuid_ops")).where(sql`(promotion_id IS NOT NULL)`),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "order_discounts_restaurant_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.orderId],
+			foreignColumns: [orders.restaurantId, orders.id],
+			name: "order_discounts_order_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.orderItemId],
+			foreignColumns: [orderItems.restaurantId, orderItems.id],
+			name: "order_discounts_item_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.promotionId],
+			foreignColumns: [promotions.restaurantId, promotions.id],
+			name: "order_discounts_promotion_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.createdBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "order_discounts_created_by_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.authorizedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "order_discounts_authorized_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("order_discounts_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	pgPolicy("order_discounts_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"], withCheck: TENANT }),
+	pgPolicy("order_discounts_update_policy", { as: "permissive", for: "update", to: ["vipe_api"], using: TENANT, withCheck: TENANT }),
+	pgPolicy("order_discounts_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: TENANT }),
+	check("order_discounts_kind_check", sql`kind = ANY (ARRAY['promotion_item'::text, 'promotion_bill'::text, 'combo'::text, 'manual_item'::text, 'manual_bill'::text])`),
+	check("order_discounts_source_check", sql`source = ANY (ARRAY['automatic'::text, 'manual'::text])`),
+	check("order_discounts_kind_source_check", sql`((kind <> ALL (ARRAY['manual_item'::text, 'manual_bill'::text])) OR (source = 'manual'::text)) AND ((kind <> 'combo'::text) OR (source = 'automatic'::text))`),
+	check("order_discounts_item_check", sql`CASE kind WHEN 'promotion_item'::text THEN (order_item_id IS NOT NULL) WHEN 'manual_item'::text THEN (order_item_id IS NOT NULL) WHEN 'combo'::text THEN (combo_id IS NOT NULL) ELSE (order_item_id IS NULL) END`),
+	check("order_discounts_label_check", sql`(length(btrim(label)) >= 1) AND (length(btrim(label)) <= 255)`),
+	check("order_discounts_amount_check", sql`(amount > (0)::numeric) AND (amount = trunc(amount))`),
+	check("order_discounts_line_quantity_check", sql`(line_quantity IS NULL) OR (line_quantity > 0)`),
+	check("order_discounts_reason_check", sql`CASE WHEN (source = 'manual'::text) THEN ((reason IS NOT NULL) AND ((length(btrim(reason)) >= 3) AND (length(btrim(reason)) <= 200))) ELSE (reason IS NULL) END`),
 ]);

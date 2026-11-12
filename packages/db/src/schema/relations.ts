@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones, subcategories } from "./schema";
+import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, promotionCategories, promotionSubcategories, promotionComboGroups, promotionComboOptions, orderDiscounts, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones, subcategories } from "./schema";
 
 export const businessConfigRelations = relations(businessConfig, ({one}) => ({
 	restaurant: one(restaurants, {
@@ -179,6 +179,7 @@ export const ingredientTransactionsOrdersRelations = relations(ingredientTransac
 }));
 
 export const ordersRelations = relations(orders, ({one, many}) => ({
+	orderDiscounts: many(orderDiscounts),
 	ingredientTransactionsOrders: many(ingredientTransactionsOrders),
 	orderDeliveries: many(orderDeliveries),
 	orderItems: many(orderItems),
@@ -336,11 +337,16 @@ export const orderDeliveriesRelations = relations(orderDeliveries, ({one}) => ({
 	}),
 }));
 
-export const orderItemsRelations = relations(orderItems, ({one}) => ({
+export const orderItemsRelations = relations(orderItems, ({one, many}) => ({
 	dish: one(dishes, {
 		fields: [orderItems.dishId],
 		references: [dishes.id]
 	}),
+	promotion: one(promotions, {
+		fields: [orderItems.promotionId],
+		references: [promotions.id]
+	}),
+	orderDiscounts: many(orderDiscounts),
 	order: one(orders, {
 		fields: [orderItems.orderId],
 		references: [orders.id]
@@ -479,6 +485,11 @@ export const promotionDishesRelations = relations(promotionDishes, ({one}) => ({
 
 export const promotionsRelations = relations(promotions, ({one, many}) => ({
 	promotionDishes: many(promotionDishes),
+	promotionCategories: many(promotionCategories),
+	promotionSubcategories: many(promotionSubcategories),
+	promotionComboGroups: many(promotionComboGroups),
+	orderItems: many(orderItems),
+	orderDiscounts: many(orderDiscounts),
 	restaurant: one(restaurants, {
 		fields: [promotions.restaurantId],
 		references: [restaurants.id]
@@ -595,4 +606,60 @@ export const subcategoriesRelations = relations(subcategories, ({one, many}) => 
 		references: [categories.id]
 	}),
 	dishes: many(dishes),
+}));
+
+export const promotionCategoriesRelations = relations(promotionCategories, ({one}) => ({
+	promotion: one(promotions, {
+		fields: [promotionCategories.promotionId],
+		references: [promotions.id]
+	}),
+	category: one(categories, {
+		fields: [promotionCategories.categoryId],
+		references: [categories.id]
+	}),
+}));
+
+export const promotionSubcategoriesRelations = relations(promotionSubcategories, ({one}) => ({
+	promotion: one(promotions, {
+		fields: [promotionSubcategories.promotionId],
+		references: [promotions.id]
+	}),
+	subcategory: one(subcategories, {
+		fields: [promotionSubcategories.subcategoryId],
+		references: [subcategories.id]
+	}),
+}));
+
+export const promotionComboGroupsRelations = relations(promotionComboGroups, ({one, many}) => ({
+	promotion: one(promotions, {
+		fields: [promotionComboGroups.promotionId],
+		references: [promotions.id]
+	}),
+	options: many(promotionComboOptions),
+}));
+
+export const promotionComboOptionsRelations = relations(promotionComboOptions, ({one}) => ({
+	group: one(promotionComboGroups, {
+		fields: [promotionComboOptions.groupId],
+		references: [promotionComboGroups.id]
+	}),
+	dish: one(dishes, {
+		fields: [promotionComboOptions.dishId],
+		references: [dishes.id]
+	}),
+}));
+
+export const orderDiscountsRelations = relations(orderDiscounts, ({one}) => ({
+	order: one(orders, {
+		fields: [orderDiscounts.orderId],
+		references: [orders.id]
+	}),
+	orderItem: one(orderItems, {
+		fields: [orderDiscounts.orderItemId],
+		references: [orderItems.id]
+	}),
+	promotion: one(promotions, {
+		fields: [orderDiscounts.promotionId],
+		references: [promotions.id]
+	}),
 }));
