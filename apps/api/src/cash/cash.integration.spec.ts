@@ -434,7 +434,7 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       expect(await zRows()).toEqual([]);
     });
 
-    it('emits Z 1 for a closed day with the day snapshot, the taxes from salesNet, order range, tips apart and voids', async () => {
+    it('emits Z 1 for a closed day with the day snapshot, the taxes of the paid orders, order range, tips apart and voids', async () => {
       const day = (await adminA().get('/api/cash/days/2026-11-10')).body;
       expect(day.z).toBeNull();
       const res = await adminA().post('/api/cash/days/2026-11-10/z');
@@ -445,8 +445,8 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       expect(Object.keys(snapshot).sort()).toEqual(SNAPSHOT_KEYS);
       const { z: _z, ...daySummary } = day;
       expect(snapshot).toMatchObject(daySummary);
-      // Default INC at the default rate 10, prices with the tax included: base = 145000 / 1.1.
-      expect(snapshot.taxes).toEqual({ type: 'INC', name: 'Impuesto nacional al consumo', label: 'INC (10 %)', rate: 10, base: 131818, tax: 13182 });
+      // Default INC at the default rate 10; base and tax are the seeded orders' subtotal and tax (0).
+      expect(snapshot.taxes).toEqual({ type: 'INC', name: 'Impuesto nacional al consumo', label: 'INC (10 %)', rate: 10, base: 145000, tax: 0 });
       expect(snapshot.taxes.base + snapshot.taxes.tax).toBe(snapshot.totals.salesNet);
       const paid = [c.o1, c.o2, c.o4, c.o5].map((id) => numbers[id]);
       expect(snapshot.orders).toEqual({ first: Math.min(...paid), last: Math.max(...paid) });
@@ -533,6 +533,58 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       expect(b.body).toMatchObject({ number: 1, businessDay: '2026-11-10', snapshot: { totals: { salesNet: 3000 } } });
       expect((await adminA().get('/api/cash/z/1')).body.snapshot.totals.salesNet).toBe(145000);
       expect((await adminA().get('/api/cash/z?from=2026-09-01&to=2026-11-30')).body.items).toHaveLength(3);
+    });
+  });
+
+  describe('informe Z taxes from the paid orders (S8, S9)', () => {
+    // One closed register per August day, with one paid order shaped as pay_order leaves it:
+    // amount_due = subtotal (gross - discounts) + tax (on the subtotal) + delivery fee (untaxed).
+    const paidDay = async (day: string, n: number, order: { type: string; subtotal: number; discounts: number; tax: number; due: number }) => {
+      const register = `97000000-0000-0000-0000-00000000080${n}`;
+      const orderId = `97000000-0000-0000-0000-00000000081${n}`;
+      await db(
+        `INSERT INTO cash_registers (id, opening_timestamp, closing_timestamp, initial_cash, final_cash, status, restaurant_id, opened_by, closed_by,
+                                     counted_cash, cash_difference) VALUES ($1, $2::date + time '10:00', $2::date + time '20:00', 0, 0, 'closed', $3, $4, $4, 0, 0)`,
+        [register, day, fixtures.restaurantA, c.cashierProfile],
+      );
+      await db(
+        `INSERT INTO orders (id, status, subtotal, total_discounts, tax, tax_percentage, total, restaurant_id, order_type)
+           VALUES ($1, 'paid', $2, $3, $4, 8, $5, $6, $7)`,
+        [orderId, order.subtotal, order.discounts, order.tax, order.due, fixtures.restaurantA, order.type],
+      );
+      await db(
+        `WITH pay AS (
+           INSERT INTO payments (id, order_id, cash_register_id, cashier_profile_id, amount_due, tip_amount, total_charged, change_given,
+                                 idempotency_key, created_at, restaurant_id)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, 0, $4, 0, gen_random_uuid(), $5::date + time '12:00', $6) RETURNING id)
+         INSERT INTO payment_tenders (restaurant_id, payment_id, line_no, payment_method_id, method_code, method_kind, amount, cash_received)
+           SELECT $6, pay.id, 1, m.id, m.code, m.kind, $4, $4 FROM pay JOIN payment_methods m ON m.restaurant_id = $6 AND m.code = 'cash'`,
+        [orderId, register, c.cashierProfile, order.due, day, fixtures.restaurantA],
+      );
+      return (await adminA().post(`/api/cash/days/${day}/z`)).body;
+    };
+
+    it("takes base and tax from the order's subtotal and tax: a delivery fee is not taxed", async () => {
+      // 20000 food + 1600 INC (8 %) + 5000 delivery fee.
+      const z = await paidDay('2026-08-03', 1, { type: 'delivery', subtotal: 20000, discounts: 0, tax: 1600, due: 26600 });
+      expect(z.snapshot.totals).toMatchObject({ salesNet: 26600, tickets: 1 });
+      expect(z.snapshot.taxes).toEqual({ type: 'INC', name: 'Impuesto nacional al consumo', label: 'INC (10 %)', rate: 10, base: 20000, tax: 1600 });
+    });
+
+    it('reports a manual discount: salesNet is the amount due and the Z discounts the 2000', async () => {
+      // 20000 gross - 2000 manual discount = 18000 + 1440 INC.
+      const z = await paidDay('2026-08-04', 2, { type: 'dine_in', subtotal: 18000, discounts: 2000, tax: 1440, due: 19440 });
+      expect(z.snapshot.totals.salesNet).toBe(19440);
+      expect(z.snapshot.discounts).toBe(2000);
+      expect(z.snapshot.taxes).toMatchObject({ base: 18000, tax: 1440 });
+    });
+
+    it('counts a 100 % courtesy closed with a 0 cash tender as a ticket with no sales and no tax', async () => {
+      const z = await paidDay('2026-08-05', 3, { type: 'dine_in', subtotal: 0, discounts: 20000, tax: 0, due: 0 });
+      expect(z.snapshot.totals).toMatchObject({ salesNet: 0, tickets: 1 });
+      expect(byCode(z.snapshot.totals.methods).cash).toEqual([0, 1]);
+      expect(z.snapshot.discounts).toBe(20000);
+      expect(z.snapshot.taxes).toMatchObject({ base: 0, tax: 0 });
     });
   });
 });
