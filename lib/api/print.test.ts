@@ -12,7 +12,8 @@ vi.mock("@/lib/api/client", () => ({ api }))
 const toast = vi.hoisted(() => vi.fn())
 vi.mock("@/components/ui/use-toast", () => ({ toast }))
 
-import { sendCommand, sendFactura } from "./print"
+import { localIso, sendCommand, sendFactura, sendXReport, xReportFailure } from "./print"
+import type { RegisterSummary } from "@/lib/payments/register-summary"
 import type { PrintableInvoice } from "@/types"
 
 const ORDER = "0f0e0d0c-0000-4000-8000-000000000001"
@@ -109,5 +110,49 @@ describe("printing turned off (F6, S2)", () => {
       title: "Impresión apagada",
       description: "Este restaurante no usa impresoras. Actívalas en Ajustes → Estaciones y rutas.",
     })
+  })
+})
+
+describe("sendXReport (informe-x-termico S1)", () => {
+  const summary = { totalSales: 1486200, methods: [], legacy: { byMethod: {} } } as unknown as RegisterSummary
+  const job = {
+    business: { name: "La Fonda", nit: "900", address: "Calle 1" },
+    cashierName: "Camilo Henao",
+    openedAt: new Date(2026, 10, 10, 7, 58),
+    printedAt: new Date(2026, 10, 10, 13, 30, 5, 9),
+    summary,
+  }
+
+  it("posts the summary untouched with the header and the times in the local wall time", async () => {
+    await sendXReport({ ...job, tax: { type: "INC", rate: 8 } })
+    expect(api.POST).toHaveBeenCalledWith("/api/print/x-reports", {
+      body: {
+        business: job.business,
+        cashierName: "Camilo Henao",
+        openedAt: localIso(job.openedAt),
+        printedAt: localIso(job.printedAt),
+        summary,
+        tax: { type: "INC", rate: 8 },
+      },
+    })
+    expect(api.POST.mock.calls[0]![1].body.summary).toBe(summary)
+    expect(localIso(job.printedAt)).toMatch(/^2026-11-10T13:30:05\.009[+-]\d{2}:\d{2}$/)
+    expect(toast).not.toHaveBeenCalled()
+  })
+
+  it("sends no tax key without a tax setting", async () => {
+    await sendXReport(job)
+    expect(Object.keys(api.POST.mock.calls[0]![1].body)).not.toContain("tax")
+  })
+
+  it("throws so the caller can offer the screen view, worded by xReportFailure", async () => {
+    const { ApiError } = await import("./errors")
+    api.POST.mockRejectedValue(new TypeError("Failed to fetch"))
+    const error = await sendXReport(job).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(TypeError)
+    expect(xReportFailure(error)).toBe("No se pudo enviar el Informe X a la impresora. Intente nuevamente o véalo en pantalla.")
+    const off = new ApiError(409, "Conflict", "Este restaurante no usa impresoras", { code: "printing_disabled" })
+    expect(xReportFailure(off)).toBe("Este restaurante no usa impresoras. Actívalas en Ajustes → Estaciones y rutas.")
+    expect(toast).not.toHaveBeenCalled()
   })
 })

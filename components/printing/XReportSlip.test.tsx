@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { XReportSlip } from "./XReportSlip"
+import { XReportSlip, xReportLines } from "./XReportSlip"
+import type { SlipTax } from "./tax-label"
+import fixture from "@/lib/print/x-report-fixture.json"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
 
 /** caja-cierres S4: "Informe X", a partial summary of the open shift. */
@@ -81,4 +83,30 @@ describe("XReportSlip", () => {
     const slip = screen.getByRole("document", { name: "Informe X" })
     expect(slip).not.toHaveTextContent(/IVA|INC|Base/)
   })
+})
+
+/**
+ * informe-x-termico S1: the thermal printers (desktop/core escpos/x_report.rs,
+ * pos/print_renderer.py) print these same lines from the x_report payload.
+ */
+describe("x_report fixture shared with the thermal renderers", () => {
+  const wallTime = (iso: string) => {
+    const [y, m, d, h, min] = iso.split(/[-T:]/).map(Number)
+    return new Date(y, m - 1, d, h, min)
+  }
+  const { payload } = fixture
+  for (const paperMm of [80, 58] as const) {
+    it(`renders the fixture lines at ${paperMm} mm`, () => {
+      const lines = xReportLines({
+        business: payload.business,
+        cashierName: payload.cashierName,
+        openedAt: wallTime(payload.openedAt),
+        printedAt: wallTime(payload.printedAt),
+        summary: payload.summary as RegisterSummary,
+        tax: payload.tax as SlipTax,
+        paperMm,
+      })
+      expect(lines.map((line) => ({ text: line.text, bold: line.bold ?? false }))).toEqual(fixture.lines[String(paperMm) as "80" | "58"])
+    })
+  }
 })

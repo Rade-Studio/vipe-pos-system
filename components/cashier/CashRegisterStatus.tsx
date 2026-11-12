@@ -7,7 +7,7 @@ import { CloseRegisterDialog } from "@/components/cashier/CloseRegisterDialog"
 import { AddCashDialog } from "@/components/cashier/AddCashDialog"
 import { WithdrawCashDialog } from "@/components/cashier/WithdrawCashDialog"
 import { formatCurrency } from "@/utils/helpers"
-import { Lock, PlusCircle, MinusCircle, FileText } from "lucide-react"
+import { Lock, PlusCircle, MinusCircle, FileText, Eye } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { clockTime } from "@/lib/cashier/queue"
 import { Chip, Money, focusRing } from "@/components/cashier/cashier-ui"
@@ -17,16 +17,24 @@ import { registerSummaryQueryKey } from "@/lib/payments/register-summary"
 import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
 import type { CashRegisterWithOpener } from "@/lib/api/registers"
 import { useConfigStore } from "@/store/use-config-store"
-import { XReportSlip } from "@/components/printing/XReportSlip"
+import { XReportModal, type XReportData } from "@/components/printing/XReportModal"
 import { useTaxType } from "@/components/printing/tax-label"
-import { printSlip } from "@/components/printing/slip-format"
+import { usePrintingEnabled } from "@/lib/api/printing"
+import { sendXReport, xReportFailure } from "@/lib/api/print"
 import { toast } from "@/utils/toast"
+import { toast as notify } from "@/components/ui/use-toast"
+import { ToastAction } from "@/components/ui/toast"
 
 export function CashRegisterStatus() {
   const [openDialog, setOpenDialog] = useState(false)
   const [closeDialog, setCloseDialog] = useState(false)
   const [addCashDialog, setAddCashDialog] = useState(false)
   const [withdrawCashDialog, setWithdrawCashDialog] = useState(false)
+  const [xReport, setXReport] = useState<XReportData | null>(null)
+  const [xReportOpen, setXReportOpen] = useState(false)
+  const [sendingXReport, setSendingXReport] = useState(false)
+  // informe-x-termico S1/S2: the invoice's condition (lib/api/printing) picks the thermal printer or the screen.
+  const printingEnabled = usePrintingEnabled()
 
   const { isRegisterOpen, currentRegister } = useCashRegisterStore()
   const { businessName, businessNIT, businessAddress, taxPercentage } = useConfigStore()
@@ -63,20 +71,50 @@ export function CashRegisterStatus() {
     : `Caja abierta${openedAt ? ` · desde ${openedAt}` : ""}`
 
   // caja-cierres S4: "Informe X", a partial summary that resets nothing.
-  const printXReport = () => {
-    if (!currentRegister || !summary) return
-    const printed = printSlip(
-      <XReportSlip
-        business={{ name: businessName, nit: businessNIT, address: businessAddress }}
-        cashierName={openerName}
-        openedAt={new Date(currentRegister.openingTimestamp)}
-        printedAt={new Date()}
-        summary={summary}
-        tax={{ type: taxType, rate: taxPercentage }}
-      />,
-      { title: "Informe X" },
-    )
-    if (!printed) toast.error("El navegador bloqueó la ventana de impresión")
+  const xReportData = (): XReportData | null =>
+    currentRegister && summary
+      ? {
+          business: { name: businessName, nit: businessNIT, address: businessAddress },
+          cashierName: openerName,
+          openedAt: new Date(currentRegister.openingTimestamp),
+          printedAt: new Date(),
+          summary,
+          tax: { type: taxType, rate: taxPercentage },
+        }
+      : null
+
+  const showXReport = (report = xReportData()) => {
+    if (!report) return
+    setXReport(report)
+    setXReportOpen(true)
+  }
+
+  // informe-x-termico S1: with thermal printers the summary goes to them as the server answered it; S2: else on screen.
+  const xReportAction = async () => {
+    const report = xReportData()
+    if (!report) return
+    if (!printingEnabled) {
+      showXReport(report)
+      return
+    }
+    setSendingXReport(true)
+    try {
+      await sendXReport(report)
+      notify({ title: "Informe X enviado a la impresora" })
+    } catch (error) {
+      notify({
+        title: "Error",
+        description: xReportFailure(error),
+        variant: "destructive",
+        action: (
+          <ToastAction altText="Ver en pantalla" onClick={() => showXReport(report)}>
+            Ver en pantalla
+          </ToastAction>
+        ),
+      })
+    } finally {
+      setSendingXReport(false)
+    }
   }
 
   const action = cn(
@@ -106,10 +144,22 @@ export function CashRegisterStatus() {
                 <MinusCircle aria-hidden="true" className="h-4 w-4 text-status-danger-fg" />
                 <span className="hidden min-[1600px]:inline">Retirar efectivo</span>
               </button>
-              <button type="button" className={action} onClick={printXReport} disabled={!summary}>
+              <button type="button" className={action} onClick={xReportAction} disabled={!summary || sendingXReport}>
                 <FileText aria-hidden="true" className="h-4 w-4" />
                 Informe X
               </button>
+              {printingEnabled && (
+                <button
+                  type="button"
+                  className={action}
+                  onClick={() => showXReport()}
+                  disabled={!summary}
+                  aria-label="Ver Informe X en pantalla"
+                  title="Ver Informe X en pantalla"
+                >
+                  <Eye aria-hidden="true" className="h-4 w-4" />
+                </button>
+              )}
               <button type="button" className={action} onClick={() => setCloseDialog(true)}>
                 <Lock aria-hidden="true" className="h-4 w-4" />
                 Cerrar caja
@@ -137,6 +187,12 @@ export function CashRegisterStatus() {
       <CloseRegisterDialog open={closeDialog} onOpenChange={setCloseDialog} onSuccess={refreshSummary} />
       <AddCashDialog open={addCashDialog} onOpenChange={setAddCashDialog} onSuccess={refreshSummary} />
       <WithdrawCashDialog open={withdrawCashDialog} onOpenChange={setWithdrawCashDialog} onSuccess={refreshSummary} />
+      <XReportModal
+        open={xReportOpen}
+        onOpenChange={setXReportOpen}
+        report={xReport}
+        onPrintBlocked={() => toast.error("El navegador bloqueó la ventana de impresión")}
+      />
     </>
   )
 }
