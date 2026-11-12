@@ -208,6 +208,16 @@ export function buildPayOrderTenders(state: PaymentState): PayOrderTenderLine[] 
 }
 
 /**
+ * S13: a fully discounted order (amount due 0, no tip) is closed with one cash
+ * tender of 0 and cash received 0, the only zero tender `POST /payments`
+ * accepts. Empty when the catalog has no active cash method.
+ */
+export function zeroTotalTenders(methods: readonly PaymentMethodOption[]): PayOrderTenderLine[] {
+  const cash = methods.find((method) => method.kind === 'cash' && method.isActive)
+  return cash ? [{ payment_method_id: cash.id, amount: 0, cash_received: 0 }] : []
+}
+
+/**
  * A tender reference as the API stores it: tabs and line breaks become one
  * space, then trimmed. Null when nothing is left (the line has no reference).
  */

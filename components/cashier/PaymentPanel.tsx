@@ -14,19 +14,19 @@ import { useConfigStore } from "@/store/use-config-store"
 import { formatCurrency } from "@/utils/helpers"
 import { toast } from "@/utils/toast"
 import { cn } from "@/lib/utils"
-import type { PrintableInvoice, CartItem } from "@/types"
+import type { PrintableInvoice, PrintDiscount } from "@/types"
 import type { DeliveryOrder } from "@/lib/delivery/types"
 import { buildDeliveryPrintInfo } from "@/lib/delivery/print"
 import { listPaymentMethods, payOrder } from "@/lib/api/payments"
 import { PaymentServiceError } from "@/lib/payments/types"
 import type { PayOrderResult, PaymentMethodOption, PaymentServiceErrorKind } from "@/lib/payments/types"
-import { computeBill } from "@/lib/payments/bill"
-import { buildPayOrderTenders } from "@/lib/payments/tenders"
+import { serverBill } from "@/lib/payments/bill"
+import { buildPayOrderTenders, zeroTotalTenders } from "@/lib/payments/tenders"
 import { invoiceTendersFromPayOrder, legacyInvoiceFields } from "@/lib/payments/invoice-tenders"
 import { newIdempotencyKey } from "@/lib/payments/idempotency"
 import { computeSurplusAsTip, initialPaymentDraft, paymentDraftReducer, selectView } from "@/lib/payments/draft"
 import type { PaymentDraftAction, PaymentDraftState } from "@/lib/payments/draft"
-import { getById, toOrder } from "@/lib/api/orders"
+import { getById, toOrder, type OrderDiscountDto } from "@/lib/api/orders"
 import { log } from "@/lib/log"
 import { useRegisterSummary } from "@/hooks/use-register-summary"
 import { canGiveChange, registerSummaryQueryKey } from "@/lib/payments/register-summary"
@@ -56,7 +56,7 @@ export interface PaymentPanelProps {
    * order again; when it is missing or itemless (the delivery panel, or a
    * realtime stub) it falls back to `getById`.
    */
-  order?: CashierBillSource | null
+  order?: PaymentOrderSource | null
   /**
    * Delivery fee (whole pesos) of a delivery order, default 0. pay_order
    * charges subtotal + tax + delivery_fee, so the panel adds it to the amount
@@ -100,7 +100,29 @@ export interface PaymentPanelProps {
 /** pay_order's total mismatch (the bill changed on the server since it was read). */
 const TOTAL_MISMATCH = /tenders sum to (\d+) but amount_due \+ tip = (\d+)/
 
-interface OrderForBill extends CashierBillSource {
+/**
+ * S14: the bill source plus the order's discount records and list-price
+ * subtotal, so the invoice prints them; without them it prints as before.
+ */
+export type PaymentOrderSource = CashierBillSource & {
+  discounts?: readonly OrderDiscountDto[]
+  gross_subtotal?: number
+}
+
+/** The order's discounts for the invoice, only when the records match its bill (else none). */
+function invoiceDiscounts(order: PaymentOrderSource) {
+  const discounts = order.discounts ?? []
+  const total = order.total_discounts ?? 0
+  if (discounts.length === 0 || discounts.reduce((sum, d) => sum + d.amount, 0) !== total) return null
+  const print = (d: OrderDiscountDto): PrintDiscount => ({ label: d.label, amount: d.amount, orderItemId: d.orderItemId })
+  return {
+    bill: discounts.filter((d) => !d.orderItemId).map(print),
+    byItem: (itemId: string) => discounts.filter((d) => d.orderItemId === itemId).map(print),
+    grossSubtotal: order.gross_subtotal ?? order.subtotal + total,
+  }
+}
+
+interface OrderForBill extends PaymentOrderSource {
   order_items: CashierBillSource["order_items"]
   tax_percentage: number
   tip_percentage: number
@@ -227,7 +249,12 @@ export function PaymentPanel({
     setLoadingOrder(true)
     ;(async () => {
       try {
-        const fetched = billSourceFromOrder(toOrder(await getById(orderId)))
+        const dto = await getById(orderId)
+        const fetched: PaymentOrderSource = {
+          ...billSourceFromOrder(toOrder(dto)),
+          discounts: dto.discounts,
+          gross_subtotal: dto.grossSubtotal,
+        }
         if (cancelled) return
         setLoadedOrder({ orderId, data: fetched as OrderForBill })
       } catch (err) {
@@ -258,11 +285,8 @@ export function PaymentPanel({
     const signature = `${billSignature(orderData)}|${deliveryFee}`
     const previous = seededForRef.current
     if (previous?.orderId === orderId && previous.signature === signature) return
-    const bill = computeBill(
-      orderData.order_items.map((it) => ({ price: it.price, quantity: it.quantity })),
-      orderData.tax_percentage,
-      orderData.tip_percentage,
-    )
+    // S13: the server's net subtotal and tax; the line prices are list prices.
+    const bill = serverBill(orderData, orderData.tip_percentage)
     const amountDue = bill.amountDue + deliveryFee
     seededForRef.current = { orderId, signature, amountDue }
     // A bill change closes an open undo window: the old amount is never sent.
@@ -369,11 +393,13 @@ export function PaymentPanel({
     )
   }
 
-  const bill = computeBill(
-    orderData.order_items.map((it) => ({ price: it.price, quantity: it.quantity })),
-    orderData.tax_percentage,
-    orderData.tip_percentage,
-  )
+  const bill = serverBill(orderData, orderData.tip_percentage)
+  const totalDiscounts = orderData.total_discounts ?? 0
+  // S13: a fully discounted order (nothing due, no tip) closes with one cash tender of 0.
+  const zeroTotal = draft.amountDue === 0 && draft.tip === 0
+  const zeroTenders = zeroTotal ? zeroTotalTenders(activeMethods) : []
+  const canRegister = zeroTotal ? zeroTenders.length > 0 && !draft.submitting && !draft.lastError : view.canConfirm
+  const issues = zeroTotal ? view.issues.filter((issue) => issue.code !== "nothing-to-charge") : view.issues
 
   const drawerCurrent = drawerSummary?.expectedCash ?? 0
   const drawerWarning =
@@ -385,7 +411,7 @@ export function PaymentPanel({
   const progress = view.totalToCharge > 0 ? Math.min(100, Math.round((view.applied / view.totalToCharge) * 100)) : 0
 
   const handleConfirm = async () => {
-    if (!view.canConfirm) return
+    if (!canRegister) return
     if (!online) return
     if (!isRegisterOpen()) {
       toast.error("Debes abrir la caja antes de procesar pagos")
@@ -396,7 +422,7 @@ export function PaymentPanel({
       toast.error("La caja no está abierta")
       return
     }
-    const tenders = buildPayOrderTenders(view)
+    const tenders = zeroTotal ? zeroTenders : buildPayOrderTenders(view)
     setSubmitError(null)
     dispatch({ type: "startSubmit" })
 
@@ -430,16 +456,21 @@ export function PaymentPanel({
       // through the catalog by `code`), not from the client view, so they match
       // the ledger. The legacy single-label fields keep the old Python listener
       // printing a correct single-line ticket.
-      const items: CartItem[] = orderData.order_items.map((it) => ({
-        id: it.id,
-        name: it.name,
-        price: it.price,
-        quantity: it.quantity,
-        comments: it.comments ?? undefined,
-        ...(it.modifiers?.length ? { modifiers: it.modifiers } : {}),
-        categoryId: "",
-        image: "",
-      }))
+      const discounts = invoiceDiscounts(orderData)
+      const items: PrintableInvoice["items"] = orderData.order_items.map((it) => {
+        const lineDiscounts = discounts?.byItem(it.id) ?? []
+        return {
+          id: it.id,
+          name: it.name,
+          price: it.price,
+          quantity: it.quantity,
+          comments: it.comments ?? undefined,
+          ...(it.modifiers?.length ? { modifiers: it.modifiers } : {}),
+          categoryId: "",
+          image: "",
+          ...(lineDiscounts.length ? { discounts: lineDiscounts } : {}),
+        }
+      })
       const invoiceTenders = invoiceTendersFromPayOrder(result, allMethods)
       const legacy = legacyInvoiceFields(invoiceTenders)
 
@@ -461,8 +492,10 @@ export function PaymentPanel({
           tipPercentage: orderData.tip_percentage,
           // draft.amountDue already includes the delivery fee (0 for table orders).
           total: draft.amountDue + draft.tip,
-          totalDiscounts: 0,
+          totalDiscounts,
+          ...(discounts ? { grossSubtotal: discounts.grossSubtotal } : {}),
         },
+        ...(discounts?.bill.length ? { discounts: discounts.bill } : {}),
         waiter: orderData.waiter_id ?? "—",
         table: orderData.table_id ?? "—",
         paymentMethod: legacy.paymentMethod as PrintableInvoice["paymentMethod"],
@@ -501,7 +534,7 @@ export function PaymentPanel({
       void handleConfirm()
       return
     }
-    if (pendingRef.current || !view.canConfirm || !online) return
+    if (pendingRef.current || !canRegister || !online) return
     if (!isRegisterOpen()) {
       toast.error("Debes abrir la caja antes de procesar pagos")
       return
@@ -561,8 +594,20 @@ export function PaymentPanel({
 
         {layout === "dialog" && (
           <div className="space-y-1 rounded-card border border-line p-3 text-sm">
+            {totalDiscounts > 0 && (
+              <>
+                <div className="flex justify-between gap-2">
+                  <span>Subtotal (precio de lista)</span>
+                  <Money>{formatCurrency(bill.subtotal + totalDiscounts)}</Money>
+                </div>
+                <div className="flex justify-between gap-2 text-status-ok-fg">
+                  <span>Descuentos</span>
+                  <Money>−{formatCurrency(totalDiscounts)}</Money>
+                </div>
+              </>
+            )}
             <div className="flex justify-between gap-2">
-              <span>Subtotal</span>
+              <span>{totalDiscounts > 0 ? "Base" : "Subtotal"}</span>
               <Money>{formatCurrency(bill.subtotal)}</Money>
             </div>
             <div className="flex justify-between gap-2">
@@ -715,10 +760,18 @@ export function PaymentPanel({
           }}
         />
 
-        {view.issues.length > 0 && (
+        {zeroTotal && (
+          <p role="status" className="rounded-card border border-status-ok-line bg-status-ok-bg p-3 text-sm text-status-ok-fg">
+            {zeroTenders.length > 0
+              ? "La cuenta quedó en $0: se cierra sin cobro."
+              : "La cuenta quedó en $0. Activa un método de efectivo para cerrarla."}
+          </p>
+        )}
+
+        {issues.length > 0 && (
           <div className="rounded-card border border-status-warning-line bg-status-warning-bg p-3 text-sm text-status-warning-fg">
             <ul className="list-disc space-y-1 pl-4">
-              {view.issues.map((iss, i) => (
+              {issues.map((iss, i) => (
                 <li key={i}>{iss.message}</li>
               ))}
             </ul>
@@ -807,7 +860,7 @@ export function PaymentPanel({
             type="button"
             className="h-12 min-w-0 flex-1 bg-brand text-brand-contrast hover:bg-brand-strong"
             onClick={handleRegister}
-            disabled={!view.canConfirm || !registerOpen || !online}
+            disabled={!canRegister || !registerOpen || !online}
           >
             <Check aria-hidden="true" className="h-4 w-4" />
             {draft.submitting ? (

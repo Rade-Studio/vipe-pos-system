@@ -144,15 +144,35 @@ pub fn render_invoice(
                 lines.push(left(format!("  {label:.32}")));
             }
         }
+        // S14: each discount of the line, under it.
+        lines.extend(discount_rows(item.get("discounts"), false)?.into_iter().map(discount_line));
     }
+    // S14: bill discounts (`invoice.discounts` without `orderItemId`) after the items.
+    lines.extend(discount_rows(invoice.get("discounts"), true)?.into_iter().map(discount_line));
     lines.push(center(RULE));
 
     let subtotal = Num::of(get(bill, "subtotal", &zero))?;
     let tax = Num::of(get(bill, "tax", &zero))?;
-    lines.push(left(format!("SUBTOTAL: {}", currency(subtotal))));
-    lines.push(left(format!("IVA: {}", currency(tax))));
     let discounts = Num::of(get(bill, "totalDiscounts", &zero))?;
-    if discounts.gt(Num::Int(0)) {
+    // S14 payloads carry grossSubtotal or a discounts list; older ones keep the previous totals byte for byte.
+    let s14 = matches!(bill.get("grossSubtotal"), Some(Value::Number(_)))
+        || invoice.get("discounts").is_some_and(Value::is_array)
+        || items.iter().any(|i| i.get("discounts").is_some_and(Value::is_array));
+    let discounted = s14 && discounts.gt(Num::Int(0));
+    if discounted {
+        // Without grossSubtotal: list price = net + discounts.
+        let gross = match bill.get("grossSubtotal") {
+            Some(v @ Value::Number(_)) => Num::of(v)?,
+            _ => subtotal.add(discounts),
+        };
+        lines.push(left(format!("SUBTOTAL: {}", currency(gross))));
+        lines.push(left(format!("DESCUENTOS: -{}", currency(discounts))));
+        lines.push(left(format!("BASE: {}", currency(subtotal))));
+    } else {
+        lines.push(left(format!("SUBTOTAL: {}", currency(subtotal))));
+    }
+    lines.push(left(format!("IVA: {}", currency(tax))));
+    if !s14 && discounts.gt(Num::Int(0)) {
         lines.push(left(format!("DESCUENTOS: -{}", currency(discounts))));
     }
     let fee = match &delivery {
@@ -178,6 +198,9 @@ pub fn render_invoice(
     super::payment::payment_lines(invoice, &mut lines)?;
 
     lines.push(center(RULE));
+    if discounted {
+        lines.push(PrintLine { text: format!("HOY AHORRASTE ${}", currency(discounts)), bold: true, align: Align::Center });
+    }
     lines.push(center("GRACIAS POR SU COMPRA!"));
     lines.push(center("VUELVA PRONTO"));
     Ok(lines)
@@ -206,6 +229,36 @@ fn modifier_rows(item: &Map<String, Value>) -> Result<Vec<(String, Num)>, Render
         rows.push((label, price));
     }
     Ok(rows)
+}
+
+/// S14: (label, amount) of a `discounts` list, summed by label in first-seen order; entries
+/// without a positive numeric amount print nothing. `bill_only` keeps the ones without `orderItemId`.
+fn discount_rows(raw: Option<&Value>, bill_only: bool) -> Result<Vec<(String, Num)>, RenderError> {
+    let Some(Value::Array(raw)) = raw else { return Ok(vec![]) };
+    let mut rows: Vec<(String, Num)> = Vec::new();
+    for d in raw.iter().filter_map(Value::as_object) {
+        if bill_only && d.get("orderItemId").is_some_and(py::truthy) {
+            continue;
+        }
+        let amount = match d.get("amount") {
+            Some(v @ Value::Number(_)) => Num::of(v)?,
+            _ => continue,
+        };
+        if !amount.gt(Num::Int(0)) {
+            continue;
+        }
+        let label = d.get("label").filter(|v| py::truthy(v)).map(pystr).unwrap_or_default();
+        match rows.iter_mut().find(|(l, _)| *l == label) {
+            Some(row) => row.1 = row.1.add(amount),
+            None => rows.push((label, amount)),
+        }
+    }
+    Ok(rows)
+}
+
+/// `  label  -amount` in the option-row columns (22 + 10).
+fn discount_line((label, amount): (String, Num)) -> PrintLine {
+    left(format!("  {}{}", ljust_trunc(&label, 22), rjust(&format!("-{}", currency(amount)), 10)))
 }
 
 /// `_delivery_block`: the `delivery` dict with a numeric (non-bool) fee, else None.
@@ -237,4 +290,90 @@ fn delivery_invoice_lines(d: &Map<String, Value>) -> Result<Vec<PrintLine>, Rend
 
 pub(super) fn left_line(text: String) -> PrintLine {
     left(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn now() -> NaiveDateTime {
+        chrono::NaiveDate::from_ymd_opt(2026, 11, 13).unwrap().and_hms_opt(20, 36, 0).unwrap()
+    }
+
+    fn texts(lines: &[PrintLine]) -> Vec<String> {
+        lines.iter().map(|l| l.text.clone()).collect()
+    }
+
+    fn invoice(bill: Value, discounts: Option<Value>) -> Value {
+        let mut inv = json!({"businessInfo": {"name": "Casa"}, "bill": bill, "table": 7, "waiter": "Andrés", "paymentMethod": "cash"});
+        if let Some(d) = discounts {
+            inv["discounts"] = d;
+        }
+        inv
+    }
+
+    #[test]
+    fn prints_line_and_bill_discounts_totals_and_savings() {
+        let inv = invoice(
+            json!({"subtotal": 24000, "grossSubtotal": 62000, "tax": 0, "tip": 0, "tipPercentage": 0, "total": 24000, "totalDiscounts": 38000}),
+            Some(json!([
+                {"label": "Happy hour 2x1", "amount": 24000, "orderItemId": "m-1"},
+                {"label": "Cortesía cumpleaños", "amount": 14000, "orderItemId": null}
+            ])),
+        );
+        let items = json!([
+            {"name": "Mojito", "quantity": 2, "price": 24000, "discounts": [{"label": "Happy hour 2x1", "amount": 24000}]},
+            {"name": "Tres leches", "quantity": 1, "price": 14000}
+        ]);
+        let t = texts(&render_invoice("FE-1", &inv, &items, now()).unwrap());
+        let mojito = t.iter().position(|l| l.contains("Mojito")).unwrap();
+        assert_eq!(t[mojito + 1], "  Happy hour 2x1           -24.000");
+        let leches = t.iter().position(|l| l.contains("Tres leches")).unwrap();
+        assert_eq!(t[leches + 1], "  Cortesía cumpleaños      -14.000");
+        assert_eq!(t[leches + 2], RULE);
+        let at = t.iter().position(|l| l == "SUBTOTAL: 62.000").unwrap();
+        assert_eq!(t[at..at + 4], ["SUBTOTAL: 62.000", "DESCUENTOS: -38.000", "BASE: 24.000", "IVA: 0"]);
+        assert_eq!(t[t.len() - 3..], ["HOY AHORRASTE $38.000", "GRACIAS POR SU COMPRA!", "VUELVA PRONTO"]);
+        assert!(t.iter().all(|l| l.chars().count() <= 48));
+    }
+
+    #[test]
+    fn gross_falls_back_to_net_plus_discounts() {
+        let inv = invoice(
+            json!({"subtotal": 10000, "tax": 0, "tip": 0, "tipPercentage": 0, "total": 10000, "totalDiscounts": 2000}),
+            Some(json!([{"label": "Cortesía", "amount": 2000}])),
+        );
+        let t = texts(&render_invoice("FE-2", &inv, &json!([{"name": "Sopa", "quantity": 1, "price": 12000}]), now()).unwrap());
+        assert!(t.contains(&"SUBTOTAL: 12.000".to_string()));
+        assert!(t.contains(&"HOY AHORRASTE $2.000".to_string()));
+    }
+
+    #[test]
+    fn old_payload_without_discount_fields_keeps_the_previous_totals() {
+        let inv = invoice(json!({"subtotal": 10000, "tax": 0, "tip": 0, "tipPercentage": 0, "total": 10000, "totalDiscounts": 2000}), None);
+        let t = texts(&render_invoice("FE-2", &inv, &json!([{"name": "Sopa", "quantity": 1, "price": 12000}]), now()).unwrap());
+        let at = t.iter().position(|l| l == "SUBTOTAL: 10.000").unwrap();
+        assert_eq!(t[at..at + 3], ["SUBTOTAL: 10.000", "IVA: 0", "DESCUENTOS: -2.000"]);
+        assert!(!t.iter().any(|l| l.contains("BASE") || l.contains("AHORRASTE")));
+    }
+
+    #[test]
+    fn no_discounts_keeps_the_previous_totals() {
+        let inv = invoice(json!({"subtotal": 10000, "tax": 0, "tip": 0, "tipPercentage": 0, "total": 10000, "totalDiscounts": 0}), Some(json!([])));
+        let t = texts(&render_invoice("FE-3", &inv, &json!([{"name": "Sopa", "quantity": 1, "price": 10000}]), now()).unwrap());
+        assert!(t.contains(&"SUBTOTAL: 10.000".to_string()));
+        assert!(!t.iter().any(|l| l.contains("DESCUENTOS") || l.contains("BASE") || l.contains("AHORRASTE")));
+    }
+
+    #[test]
+    fn kitchen_ticket_has_no_prices_or_discounts() {
+        let order = json!({"table": 7, "waiter": "Andrés", "items": [
+            {"name": "Mojito", "quantity": 2, "price": 24000, "promotionName": "Happy hour 2x1",
+             "discounts": [{"label": "Happy hour 2x1", "amount": 24000}]}
+        ]});
+        let t = texts(&render_kitchen_order(&order, now()).unwrap()).join("\n");
+        assert!(t.contains("MOJITO"));
+        assert!(!t.contains("24.000") && !t.contains("Happy hour") && !t.contains('$'));
+    }
 }
