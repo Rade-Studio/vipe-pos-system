@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react"
 import { Loader2, Sparkles } from "lucide-react"
-import { Panel } from "@/components/admin/common/Panel"
 import { formatMoney } from "@/components/admin/inventory-shared"
 import { Button } from "@/components/ui/button"
 import { formatQuantity } from "@/lib/inventory/units"
@@ -66,60 +65,94 @@ export function PurchaseSuggestions({
 }) {
   const groups = useMemo(() => buildSuggestions(items, suppliers), [items, suppliers])
   const [pending, setPending] = useState<string | null>(null)
+  const [shown, setShown] = useState(true)
 
   if (groups.length === 0) return null
 
+  const lineCount = groups.reduce((sum, g) => sum + g.lines.length, 0)
+  const total = groups.reduce((sum, g) => sum + g.total, 0)
+
   return (
-    <Panel
-      title={
-        <span className="inline-flex items-center gap-2">
+    <section aria-labelledby="sg-h" className="rounded-2xl border bg-card">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
+        <h2 id="sg-h" className="inline-flex items-center gap-2 text-[15px] font-semibold">
           <Sparkles className="h-4 w-4 text-muted-foreground" aria-hidden /> Sugerencia de compra
-        </span>
-      }
-      description="Artículos en o bajo el mínimo, hasta el máximo (o el doble del mínimo)."
-      contentClassName="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3"
-    >
-      {groups.map((group) => {
-        const key = group.supplierId ?? "none"
-        return (
-          <section key={key} aria-label={`Sugerencia ${group.supplierName}`} className="flex flex-col rounded-md border p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h3 className="truncate text-sm font-medium">{group.supplierName}</h3>
-              <span className="text-xs tabular-nums text-muted-foreground">{formatMoney(group.total)}</span>
-            </div>
-            <ul className="mb-3 flex-1 space-y-1 text-sm">
-              {group.lines.map(({ item, quantity }) => (
-                <li key={item.id} className="flex justify-between gap-2">
-                  <span className="truncate">{item.name}</span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">
-                    {item.purchaseUnit && item.purchaseFactor > 0
-                      ? `${formatQuantity(quantity / item.purchaseFactor, item.purchaseUnit)} (${formatQuantity(quantity, item.unit)})`
-                      : formatQuantity(quantity, item.unit)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={pending !== null || !locationId}
-              onClick={async () => {
-                const draft = suggestionDraft(group, locationId)
-                if (!group.supplierId) return onOpenDraft(draft)
-                setPending(key)
-                try {
-                  await onCreate(toCreateInput(draft))
-                } finally {
-                  setPending(null)
-                }
-              }}
-            >
-              {pending === key && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {group.supplierId ? "Crear borrador" : "Elegir proveedor"}
-            </Button>
-          </section>
-        )
-      })}
-    </Panel>
+        </h2>
+        <p className="flex-1 text-sm text-muted-foreground" aria-live="polite">
+          <b className="font-semibold text-foreground">{lineCount} artículos</b> en o bajo el mínimo · {groups.length} proveedores ·{" "}
+          <b className="font-semibold tabular-nums text-foreground">{formatMoney(total)}</b> estimado
+        </p>
+        <Button variant="ghost" size="sm" className="min-h-11" aria-expanded={shown} aria-controls="sg-body" onClick={() => setShown(!shown)}>
+          {shown ? "Ocultar" : "Mostrar"}
+        </Button>
+      </div>
+      {shown && (
+        <div id="sg-body" className="border-t">
+          <table className="block w-full text-sm md:table">
+            <caption className="sr-only">
+              Artículos en o bajo el mínimo agrupados por proveedor; la cantidad sugerida llena hasta el máximo (o el doble del mínimo).
+            </caption>
+            <thead className="hidden md:table-header-group">
+              <tr className="text-xs text-muted-foreground">
+                <th scope="col" className="h-10 border-b px-3 text-left font-medium">Proveedor</th>
+                <th scope="col" className="h-10 border-b px-3 text-left font-medium">Artículos sugeridos</th>
+                <th scope="col" className="h-10 border-b px-3 text-right font-medium">Total estimado</th>
+                <th scope="col" className="h-10 w-px border-b px-3">
+                  <span className="sr-only">Acción</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="block md:table-row-group">
+              {groups.map((group) => {
+                const key = group.supplierId ?? "none"
+                return (
+                  <tr key={key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b px-3 py-2.5 last:border-b-0 md:table-row md:p-0">
+                    <td className="block min-w-0 truncate font-medium md:table-cell md:px-3 md:py-1.5">{group.supplierName}</td>
+                    <td className="col-span-2 row-start-2 block text-muted-foreground md:table-cell md:px-3 md:py-1.5">
+                      {group.lines.map(({ item, quantity }, i) => (
+                        <span key={item.id} className="mr-3 inline-block">
+                          <span className="text-foreground">{item.name}</span>{" "}
+                          <span className="tabular-nums">
+                            {item.purchaseUnit && item.purchaseFactor > 0
+                              ? `${formatQuantity(quantity / item.purchaseFactor, item.purchaseUnit)} (${formatQuantity(quantity, item.unit)})`
+                              : formatQuantity(quantity, item.unit)}
+                          </span>
+                          {i < group.lines.length - 1 && <span aria-hidden>,</span>}
+                        </span>
+                      ))}
+                    </td>
+                    <td className="col-start-2 row-start-1 block text-right tabular-nums md:table-cell md:px-3 md:py-1.5">{formatMoney(group.total)}</td>
+                    <td className="col-span-2 mt-1 block md:mt-0 md:table-cell md:w-px md:whitespace-nowrap md:px-3 md:py-1.5 md:text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="min-h-9 w-full md:w-auto"
+                        disabled={pending !== null || !locationId}
+                        onClick={async () => {
+                          const draft = suggestionDraft(group, locationId)
+                          if (!group.supplierId) return onOpenDraft(draft)
+                          setPending(key)
+                          try {
+                            await onCreate(toCreateInput(draft))
+                          } finally {
+                            setPending(null)
+                          }
+                        }}
+                      >
+                        {pending === key && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {group.supplierId ? "Crear borrador" : "Elegir proveedor"}
+                      </Button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+            Hasta el máximo de cada artículo, o el doble del mínimo si no tiene máximo. El borrador se puede editar antes de enviarlo.
+          </p>
+        </div>
+      )}
+    </section>
   )
 }

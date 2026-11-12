@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { InventoryItem, InventoryLocation, PurchaseOrder, Supplier } from "@/lib/api/inventory/types"
 
@@ -151,20 +151,32 @@ describe("purchase suggestion", () => {
     ]
   })
 
-  it("groups items to reorder by default supplier, with a Sin proveedor group", () => {
+  it("lists one compact row per supplier with a summary and Crear borrador", () => {
     render(<PurchasesPage description="" />)
-    const lacteos = screen.getByRole("region", { name: "Sugerencia Lácteos" })
-    expect(within(lacteos).getByText("Leche")).toBeInTheDocument()
-    expect(within(lacteos).queryByText("Arroz")).not.toBeInTheDocument()
-    expect(within(screen.getByRole("region", { name: "Sugerencia Verduras SAS" })).getByText("Tomate")).toBeInTheDocument()
-    const none = screen.getByRole("region", { name: "Sugerencia Sin proveedor" })
-    expect(within(none).getByText("Sal")).toBeInTheDocument()
+    expect(
+      screen.getByText((_, el) => el?.tagName === "P" && /^3 artículos en o bajo el mínimo · 3 proveedores · \$\s?[\d.]+ estimado$/.test(el.textContent ?? "")),
+    ).toBeInTheDocument()
+    const lacteos = screen.getByRole("row", { name: /Lácteos/ })
+    expect(within(lacteos).getByText(/Leche/)).toBeInTheDocument()
+    expect(within(lacteos).queryByText(/Arroz/)).not.toBeInTheDocument()
+    expect(within(screen.getByRole("row", { name: /Verduras SAS/ })).getByText(/Tomate/)).toBeInTheDocument()
+    const none = screen.getByRole("row", { name: /Sin proveedor/ })
+    expect(within(none).getByText(/Sal/)).toBeInTheDocument()
     expect(within(none).getByRole("button", { name: "Elegir proveedor" })).toBeInTheDocument()
+  })
+
+  it("Ocultar collapses the suggestion table and Mostrar brings it back", () => {
+    render(<PurchasesPage description="" />)
+    fireEvent.click(screen.getByRole("button", { name: "Ocultar" }))
+    expect(screen.queryByRole("row", { name: /Lácteos/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Mostrar" })).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar" }))
+    expect(screen.getByRole("row", { name: /Lácteos/ })).toBeInTheDocument()
   })
 
   it("Crear borrador creates the draft with suggested base quantities and last cost", async () => {
     render(<PurchasesPage description="" />)
-    const lacteos = screen.getByRole("region", { name: "Sugerencia Lácteos" })
+    const lacteos = screen.getByRole("row", { name: /Lácteos/ })
     await act(async () => fireEvent.click(within(lacteos).getByRole("button", { name: "Crear borrador" })))
     // need = 30 − 1 = 29 l → rounded up to 3 cajas of 12 = 36 l
     expect(h.createPurchaseOrder.mutateAsync).toHaveBeenCalledWith({
@@ -174,6 +186,69 @@ describe("purchase suggestion", () => {
       notes: null,
       lines: [{ itemId: "a", quantity: 36, unitCost: 3000 }],
     })
+  })
+})
+
+const openDraftRow = () => {
+  fireEvent.click(screen.getByRole("button", { name: /^Borradores/ }))
+  fireEvent.click(within(screen.getByRole("row", { name: /OC-0007/ })).getByText("Lácteos"))
+}
+
+describe("order list", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date(2026, 10, 12, 10))
+    h.orders = [
+      draftOrder({ id: "d", number: 4, status: "draft" }),
+      draftOrder({ id: "o", number: 1, status: "ordered", supplierName: "Verduras SAS", supplierId: "s2", expectedOn: "2026-11-06" }),
+      draftOrder({ id: "p", number: 2, status: "partially_received", expectedOn: "2026-11-13", paymentStatus: "paid" }),
+      draftOrder({ id: "r", number: 5, status: "received" }),
+    ]
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const orderNumbers = () =>
+    within(screen.getByRole("table", { name: /Órdenes de compra/ }))
+      .queryAllByText(/^OC-\d{4}$/)
+      .map((el) => el.textContent)
+
+  it("shows orders awaiting receipt first, partial before sent, with the late badge and Recibir in the row", () => {
+    render(<PurchasesPage description="" />)
+    expect(screen.getByRole("button", { name: /^Por recibir 2/ })).toHaveAttribute("aria-pressed", "true")
+    expect(orderNumbers()).toEqual(["OC-0002", "OC-0001"])
+    expect(within(screen.getByRole("row", { name: /OC-0001/ })).getByText("Atrasada 6 días")).toBeInTheDocument()
+    expect(within(screen.getByRole("row", { name: /OC-0002/ })).queryByText(/Atrasada/)).not.toBeInTheDocument()
+    expect(within(screen.getByRole("row", { name: /OC-0002/ })).getByText("Pagada")).toBeInTheDocument()
+    expect(within(screen.getByRole("row", { name: /OC-0001/ })).getByText("Por pagar")).toBeInTheDocument()
+    expect(screen.getByText("2 de 4 órdenes")).toBeInTheDocument()
+  })
+
+  it("Recibir opens the receive dialog for that order", () => {
+    render(<PurchasesPage description="" />)
+    fireEvent.click(within(screen.getByRole("row", { name: /OC-0001/ })).getByRole("button", { name: "Recibir" }))
+    expect(screen.getByRole("dialog", { name: "Recibir OC-0001" })).toBeInTheDocument()
+  })
+
+  it("filters by estado chip, proveedor and the Buscar orden… search", () => {
+    render(<PurchasesPage description="" />)
+    fireEvent.click(screen.getByRole("button", { name: /^Todas 4/ }))
+    expect(orderNumbers()).toEqual(["OC-0002", "OC-0001", "OC-0004", "OC-0005"])
+    fireEvent.click(screen.getByRole("button", { name: /^Recibidas 1/ }))
+    expect(orderNumbers()).toEqual(["OC-0005"])
+    fireEvent.click(screen.getByRole("button", { name: /^Todas/ }))
+    fireEvent.change(screen.getByLabelText("Proveedor"), { target: { value: "s2" } })
+    expect(orderNumbers()).toEqual(["OC-0001"])
+    fireEvent.change(screen.getByLabelText("Proveedor"), { target: { value: "" } })
+    fireEvent.change(screen.getByPlaceholderText("Buscar orden…"), { target: { value: "OC-0004" } })
+    expect(orderNumbers()).toEqual(["OC-0004"])
+  })
+
+  it("Enviar in a draft row sends the order", async () => {
+    render(<PurchasesPage description="" />)
+    fireEvent.click(screen.getByRole("button", { name: /^Borradores 1/ }))
+    await act(async () => fireEvent.click(within(screen.getByRole("row", { name: /OC-0004/ })).getByRole("button", { name: "Enviar" })))
+    expect(h.setStatus.mutateAsync).toHaveBeenCalledWith({ id: "d", status: "ordered" })
+    expect(h.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "OC-0004 enviada" }))
   })
 })
 
@@ -228,7 +303,7 @@ describe("order editor", () => {
     h.orders = [draftOrder()]
     h.order = draftOrder()
     render(<PurchasesPage description="" />)
-    fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
+    openDraftRow()
     expect(await screen.findByRole("textbox", { name: "Cantidad Leche" })).toHaveValue("2")
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /Enviar/ })))
     expect(h.updatePurchaseOrder.mutateAsync).toHaveBeenCalledTimes(1)
@@ -251,7 +326,7 @@ describe("order editor", () => {
     h.orders = [draftOrder()]
     h.order = draftOrder()
     render(<PurchasesPage description="" />)
-    fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
+    openDraftRow()
     await screen.findByRole("textbox", { name: "Cantidad Leche" })
     fireEvent.click(screen.getByRole("button", { name: "Quitar Leche" }))
     await typeAndEnter("Queso")
@@ -266,7 +341,7 @@ describe("order editor", () => {
     h.order = draftOrder()
     h.updatePurchaseOrder.mutateAsync.mockRejectedValue(new Error("La orden cambió mientras la editabas"))
     const view = render(<PurchasesPage description="" />)
-    fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
+    openDraftRow()
     await screen.findByRole("textbox", { name: "Cantidad Leche" })
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Guardar borrador" })))
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" })
@@ -274,7 +349,7 @@ describe("order editor", () => {
 
     // Reopen: the cache still holds the stale lines while the refetch runs.
     h.orderFetching = true
-    fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
+    openDraftRow()
     expect(screen.queryByRole("textbox", { name: "Cantidad Leche" })).not.toBeInTheDocument()
 
     h.items = [milk, makeItem({ id: "cheese", name: "Queso", sku: "MP-0003" })]
@@ -292,7 +367,7 @@ describe("order editor", () => {
     h.order = draftOrder()
     h.updatePurchaseOrder.mutateAsync.mockRejectedValue(new Error("La orden cambió mientras la editabas"))
     render(<PurchasesPage description="" />)
-    fireEvent.click(within(screen.getByRole("table")).getByText("Lácteos"))
+    openDraftRow()
     await screen.findByRole("textbox", { name: "Cantidad Leche" })
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Guardar borrador" })))
     expect(h.updatePurchaseOrder.mutateAsync).toHaveBeenCalledTimes(1)
