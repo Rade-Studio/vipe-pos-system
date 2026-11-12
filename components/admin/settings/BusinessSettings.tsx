@@ -1,6 +1,9 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/hooks/use-toast"
+import { fetchConfig, saveConfig } from "@/lib/api/config"
 import { SaveBar } from "@/components/admin/common/SaveBar"
 import { SettingsRow, SettingsSection } from "@/components/admin/common/SettingsSection"
 import { SettingsPage } from "./SettingsPage"
@@ -14,6 +17,57 @@ const FIELDS = [
   { key: "businessAddress", id: "businessAddress", label: "Dirección", description: undefined },
   { key: "businessPhone", id: "businessPhone", label: "Teléfono", description: undefined },
 ] as const
+
+// Same values as lib/api/config (0..6, server default 4); kept local so the
+// settings suites that stub that module whole still render this page.
+const BUSINESS_DAY_CUTOFF_HOURS = [0, 1, 2, 3, 4, 5, 6] as const
+const DEFAULT_BUSINESS_DAY_CUTOFF_HOUR = 4
+
+function cutoffLabel(hour: number): string {
+  return hour === 0 ? "12:00 a. m. (medianoche)" : `${hour}:00 a. m.`
+}
+
+/**
+ * Hora de corte del día de negocio (caja-cierres S5). The config store does
+ * not carry this key, so it is read and saved with `GET/PUT /config` directly;
+ * the same SaveBar saves it together with the business data.
+ */
+function useBusinessDayCutoff() {
+  const { toast } = useToast()
+  const [saved, setSaved] = useState(DEFAULT_BUSINESS_DAY_CUTOFF_HOUR)
+  const [draft, setDraft] = useState(DEFAULT_BUSINESS_DAY_CUTOFF_HOUR)
+
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      try {
+        const hour = (await fetchConfig()).businessDayCutoffHour ?? DEFAULT_BUSINESS_DAY_CUTOFF_HOUR
+        if (!active) return
+        setSaved(hour)
+        setDraft(hour)
+      } catch {
+        // Keep the server default (4 a.m.) on screen.
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const dirty = draft !== saved
+  const save = async () => {
+    try {
+      const hour = (await saveConfig({ businessDayCutoffHour: draft })).businessDayCutoffHour ?? draft
+      setSaved(hour)
+      setDraft(hour)
+      return true
+    } catch {
+      toast({ title: "Error", description: "No se pudo guardar la hora de corte. Intenta nuevamente.", variant: "destructive" })
+      return false
+    }
+  }
+  return { draft, setDraft, dirty, save, discard: () => setDraft(saved) }
+}
 
 /** Mirrors the header lines of the printed invoice (lib/print/renderKitchenOrder.ts). */
 function ReceiptPreview({ name, nit, address, phone }: { name: string; nit: string; address: string; phone: string }) {
@@ -33,7 +87,20 @@ function ReceiptPreview({ name, nit, address, phone }: { name: string; nit: stri
 }
 
 export function BusinessSettings() {
+  const { toast } = useToast()
   const { draft, update, dirty, save, discard, saving, isLoading } = useSettingsDraft(KEYS)
+  const cutoff = useBusinessDayCutoff()
+  const [savingCutoff, setSavingCutoff] = useState(false)
+
+  const saveAll = async () => {
+    if (cutoff.dirty) {
+      setSavingCutoff(true)
+      const ok = await cutoff.save()
+      setSavingCutoff(false)
+      if (ok && !dirty) toast({ title: "Configuración guardada", description: "Los cambios se han guardado correctamente." })
+    }
+    if (dirty) await save()
+  }
 
   return (
     <SettingsPage title="Negocio" description="Esta información aparece en las facturas y comandas impresas.">
@@ -49,6 +116,25 @@ export function BusinessSettings() {
               />
             </SettingsRow>
           ))}
+          <SettingsRow
+            label="Hora de corte del día de negocio"
+            description="Los turnos que abren antes de esta hora pertenecen al día anterior (caja, resúmenes y cierres)."
+            htmlFor="businessDayCutoffHour"
+          >
+            <select
+              id="businessDayCutoffHour"
+              value={cutoff.draft}
+              onChange={(event) => cutoff.setDraft(Number(event.target.value))}
+              disabled={saving || savingCutoff}
+              className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-56"
+            >
+              {BUSINESS_DAY_CUTOFF_HOURS.map((hour) => (
+                <option key={hour} value={hour}>
+                  {cutoffLabel(hour)}
+                </option>
+              ))}
+            </select>
+          </SettingsRow>
         </SettingsSection>
         <div className="space-y-2">
           <p className="text-sm font-medium">Vista previa</p>
@@ -60,7 +146,15 @@ export function BusinessSettings() {
           />
         </div>
       </div>
-      <SaveBar dirty={dirty} saving={saving} onSave={save} onDiscard={discard} />
+      <SaveBar
+        dirty={dirty || cutoff.dirty}
+        saving={saving || savingCutoff}
+        onSave={saveAll}
+        onDiscard={() => {
+          discard()
+          cutoff.discard()
+        }}
+      />
     </SettingsPage>
   )
 }
