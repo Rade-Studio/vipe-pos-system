@@ -5199,14 +5199,38 @@ export interface components {
             referenceId: string | null;
             /** Format: uuid */
             createdBy: string | null;
+            /** @description Full name of the author profile. */
+            createdByName: string | null;
+            /**
+             * @description Source document; null without one.
+             * @enum {string|null}
+             */
+            documentKind: "order" | "purchase_order" | "inventory_count" | "production_batch" | "inventory_transfer" | null;
+            /**
+             * Format: uuid
+             * @description Id of the source document (the order for a sale).
+             */
+            documentId: string | null;
+            /** @description Orden #1042, OC-0005, Conteo #12, Lote <lot code>, TR-0007. */
+            documentLabel: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        MovementTotals: {
+            /** @description Movements in the filtered range. */
+            count: number;
+            /** @description Value of the entries (positive quantities) in the range. */
+            inValue: number;
+            /** @description Value of the exits (negative quantities) in the range, as a positive number. */
+            outValue: number;
         };
         MovementPage: {
             /** @description Newest first. */
             rows: components["schemas"]["Movement"][];
             /** @description Exact count for the filters. */
             total: number;
+            /** @description Totals for every page of the filters. */
+            totals: components["schemas"]["MovementTotals"];
         };
         AdjustStockInput: {
             /** Format: uuid */

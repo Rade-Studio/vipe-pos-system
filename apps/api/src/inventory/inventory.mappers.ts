@@ -19,6 +19,7 @@ import type {
   InventoryOverview,
   Lot,
   Movement,
+  MovementDocumentKind,
   MovementType,
   OpenCountResult,
   PaymentStatus,
@@ -109,7 +110,7 @@ export const toLot = (row: Json): Lot => ({
   receivedAt: time(row.received_at)!,
 });
 
-/** `to_jsonb(inventory_movements) || {item_name, sku, unit, location_name}`. */
+/** `to_jsonb(inventory_movements) || {item_name, sku, unit, location_name, created_by_name, document_*}`. */
 export const toMovement = (row: Json): Movement => ({
   id: String(row.id),
   itemId: String(row.ingredient_id),
@@ -128,6 +129,10 @@ export const toMovement = (row: Json): Movement => ({
   referenceType: text(row.reference_type),
   referenceId: text(row.reference_id),
   createdBy: text(row.created_by),
+  createdByName: text(row.created_by_name),
+  documentKind: text(row.document_label) ? (text(row.document_kind) as MovementDocumentKind) : null,
+  documentId: text(row.document_label) ? text(row.document_id) : null,
+  documentLabel: text(row.document_label),
   createdAt: time(row.created_at)!,
 });
 

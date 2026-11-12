@@ -2,18 +2,30 @@
 
 import { useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight, Download } from "lucide-react"
-import { DataTable, type DataTableColumn } from "@/components/admin/common/DataTable"
-import { EmptyState } from "@/components/admin/common/EmptyState"
 import { PageHeader } from "@/components/admin/common/PageHeader"
-import { StatCard } from "@/components/admin/common/StatCard"
+import { formatMoney } from "@/components/admin/inventory-shared"
+import { downloadCsv } from "@/components/admin/production/production-ui"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useInventoryItems, useInventoryLocations, useInventoryMovements } from "@/hooks/inventory"
-import { formatQuantity } from "@/lib/inventory/units"
+import { isAdminSectionId } from "@/lib/admin/navigation"
 import type { Movement, MovementFilters, MovementType } from "@/lib/api/inventory/types"
-import { formatCurrency } from "@/utils/helpers"
-import { MOVEMENT_LABEL, MOVEMENT_TYPES, NativeSelect, signedClass } from "./stock-ui"
+import {
+  documentSection,
+  documentText,
+  groupMovementsByDay,
+  groupOfType,
+  MOVEMENT_GROUPS,
+  MOVEMENT_LABEL,
+  movementsCsv,
+  type MovementGroupId,
+} from "@/lib/inventory/movements"
+import { clockOf } from "@/lib/inventory/production-csv"
+import { addDaysIso, dayLabel, localIsoDate } from "@/lib/inventory/production-sheet"
+import { formatQuantity } from "@/lib/inventory/units"
+import { cn } from "@/lib/utils"
+import { NativeSelect, signedClass } from "./stock-ui"
 
 const PAGE_SIZE = 50
 
@@ -39,30 +51,6 @@ export function buildMovementFilters(state: MovementFilterState, pageSize = PAGE
   }
 }
 
-const csvCell = (value: string | number | null) => {
-  const text = value === null ? "" : String(value)
-  return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-}
-
-export function movementsCsv(rows: Movement[]): string {
-  const header = ["Fecha", "SKU", "Artículo", "Bodega", "Tipo", "Cantidad", "Unidad", "Costo unitario", "Costo total", "Motivo"]
-  const lines = rows.map((m) =>
-    [m.createdAt, m.sku, m.itemName, m.locationName, MOVEMENT_LABEL[m.movementType], m.quantity, m.unit, m.unitCost, m.totalCost, m.reason]
-      .map(csvCell)
-      .join(","),
-  )
-  return [header.join(","), ...lines].join("\n")
-}
-
-function downloadCsv(name: string, content: string) {
-  const url = URL.createObjectURL(new Blob(["\uFEFF" + content], { type: "text/csv;charset=utf-8" }))
-  const link = document.createElement("a")
-  link.href = url
-  link.download = name
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
 /** Server-side pager for the movements ledger. */
 export function MovementPager({ page, pageSize, total, onPage }: { page: number; pageSize: number; total: number; onPage: (page: number) => void }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
@@ -86,129 +74,205 @@ export function MovementPager({ page, pageSize, total, onPage }: { page: number;
 
 const EMPTY: MovementFilterState = { itemId: "", locationId: "", types: [], from: "", to: "", page: 1 }
 
-export function MovementsPage({ description }: { description: string; onNavigate?: (sectionId: string) => void }) {
+const CHIP =
+  "inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+const GROUP_DOT: Record<MovementGroupId, string> = {
+  sale: "bg-sky-500",
+  purchase: "bg-emerald-500",
+  production: "bg-orange-500",
+  adjustment: "bg-yellow-500",
+  waste: "bg-destructive",
+  transfer: "bg-violet-500",
+}
+
+/** "+$ 1.000" / "−$ 1.000". */
+const signedMoney = (value: number) => `${value < 0 ? "−" : "+"}${formatMoney(Math.abs(value))}`
+
+function TypeChip({ type }: { type: MovementType }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium">
+      <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", GROUP_DOT[groupOfType(type)])} />
+      {MOVEMENT_LABEL[type]}
+    </span>
+  )
+}
+
+function Origin({ movement, onNavigate }: { movement: Movement; onNavigate?: (sectionId: string) => void }) {
+  const text = documentText(movement)
+  if (!text) return <span className="text-muted-foreground">Manual</span>
+  const section = documentSection(movement.documentKind)
+  if (!onNavigate || !section || !isAdminSectionId(section)) return <span>{text}</span>
+  return (
+    <button
+      type="button"
+      aria-label={`Abrir ${movement.documentLabel}`}
+      onClick={() => onNavigate(section)}
+      className="inline-flex items-center gap-0.5 text-left font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {text}
+      <ChevronRight aria-hidden className="h-3 w-3" />
+    </button>
+  )
+}
+
+const COLUMNS = ["Hora", "Artículo", "Tipo", "Bodega", "Cantidad", "Valor", "Origen", "Motivo · quién"]
+const cellClass = "block md:table-cell md:px-3 md:py-1.5"
+
+/** S4: range totals on one line, rows by day, type chips and the link to each source document. */
+export function MovementsPage({ description, onNavigate }: { description: string; onNavigate?: (sectionId: string) => void }) {
   const [state, setState] = useState<MovementFilterState>(EMPTY)
   const items = useInventoryItems()
   const locations = useInventoryLocations()
   const filters = buildMovementFilters(state)
   const movements = useInventoryMovements(filters)
   const rows = useMemo(() => movements.data?.rows ?? [], [movements.data])
-
-  const totals = useMemo(() => {
-    let inValue = 0
-    let outValue = 0
-    for (const m of rows) {
-      if (m.quantity > 0) inValue += Math.abs(m.totalCost)
-      else outValue += Math.abs(m.totalCost)
-    }
-    return { inValue, outValue }
-  }, [rows])
+  const days = groupMovementsByDay(rows)
+  const totals = movements.data?.totals ?? { count: 0, inValue: 0, outValue: 0 }
+  const today = localIsoDate(new Date())
+  const yesterday = addDaysIso(today, -1)
 
   const update = (patch: Partial<MovementFilterState>) => setState((s) => ({ ...s, page: 1, ...patch }))
-  const toggleType = (type: MovementType) =>
-    update({ types: state.types.includes(type) ? state.types.filter((t) => t !== type) : [...state.types, type] })
-
-  const columns: DataTableColumn<Movement>[] = [
-    {
-      id: "date",
-      header: "Fecha",
-      cell: (m) => <span className="whitespace-nowrap">{new Date(m.createdAt).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" })}</span>,
-    },
-    {
-      id: "item",
-      header: "Artículo",
-      cell: (m) => (
-        <div className="min-w-0">
-          <div className="truncate">{m.itemName ?? "—"}</div>
-          <div className="font-mono text-xs text-muted-foreground">{m.sku}</div>
-        </div>
-      ),
-    },
-    { id: "type", header: "Tipo", cell: (m) => MOVEMENT_LABEL[m.movementType] },
-    { id: "location", header: "Bodega", cell: (m) => m.locationName ?? "—" },
-    {
-      id: "qty",
-      header: "Cantidad",
-      className: "text-right tabular-nums",
-      cell: (m) => (
-        <span className={signedClass(m.quantity)}>
-          {m.quantity > 0 ? "+" : ""}
-          {formatQuantity(m.quantity, m.unit ?? "")}
-        </span>
-      ),
-    },
-    { id: "value", header: "Valor", className: "text-right tabular-nums", cell: (m) => formatCurrency(m.totalCost) },
-    { id: "reason", header: "Motivo", cell: (m) => m.reason ?? "—" },
-  ]
-
-  const typesLabel = state.types.length === 0 ? "Todos los tipos" : state.types.length === 1 ? MOVEMENT_LABEL[state.types[0]] : `${state.types.length} tipos`
+  const group = MOVEMENT_GROUPS.find((g) => g.types.join() === state.types.join())?.id ?? null
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title="Movimientos"
         description={description}
         actions={
-          <Button variant="outline" onClick={() => downloadCsv("movimientos.csv", movementsCsv(rows))} disabled={rows.length === 0}>
-            <Download className="mr-2 h-4 w-4" /> Exportar CSV
+          <Button variant="outline" className="min-h-11" onClick={() => downloadCsv("movimientos.csv", movementsCsv(rows))} disabled={rows.length === 0}>
+            <Download aria-hidden className="mr-2 h-4 w-4" /> Exportar CSV
           </Button>
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <StatCard title="Entradas (página)" value={formatCurrency(totals.inValue)} />
-        <StatCard title="Salidas (página)" value={formatCurrency(totals.outValue)} />
-        <StatCard title="Movimientos" value={movements.data?.total ?? 0} className="col-span-2 lg:col-span-1" />
-      </div>
-
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        <NativeSelect aria-label="Artículo" value={state.itemId} onChange={(e) => update({ itemId: e.target.value })}>
-          <option value="">Todos los artículos</option>
-          {(items.data ?? []).map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.sku} · {i.name}
-            </option>
-          ))}
-        </NativeSelect>
-        <NativeSelect aria-label="Bodega" value={state.locationId} onChange={(e) => update({ locationId: e.target.value })}>
-          <option value="">Todas las bodegas</option>
-          {(locations.data ?? []).map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.name}
-            </option>
-          ))}
-        </NativeSelect>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="justify-between font-normal">
-              {typesLabel}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {MOVEMENT_TYPES.map((type) => (
-              <DropdownMenuCheckboxItem
-                key={type}
-                checked={state.types.includes(type)}
-                onSelect={(e) => e.preventDefault()}
-                onCheckedChange={() => toggleType(type)}
-              >
-                {MOVEMENT_LABEL[type]}
-              </DropdownMenuCheckboxItem>
+      <div className="space-y-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <NativeSelect aria-label="Artículo" className="h-11" value={state.itemId} onChange={(e) => update({ itemId: e.target.value })}>
+            <option value="">Todos los artículos</option>
+            {(items.data ?? []).map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.sku} · {i.name}
+              </option>
             ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Input type="date" aria-label="Desde" value={state.from} onChange={(e) => update({ from: e.target.value })} />
-        <Input type="date" aria-label="Hasta" value={state.to} onChange={(e) => update({ to: e.target.value })} />
+          </NativeSelect>
+          <NativeSelect aria-label="Bodega" className="h-11" value={state.locationId} onChange={(e) => update({ locationId: e.target.value })}>
+            <option value="">Todas las bodegas</option>
+            {(locations.data ?? []).map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </NativeSelect>
+          <Input type="date" className="h-11" aria-label="Desde" value={state.from} onChange={(e) => update({ from: e.target.value })} />
+          <Input type="date" className="h-11" aria-label="Hasta" value={state.to} onChange={(e) => update({ to: e.target.value })} />
+        </div>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Tipo de movimiento">
+          <button type="button" aria-pressed={state.types.length === 0} onClick={() => update({ types: [] })} className={cn(CHIP, state.types.length === 0 && "border-primary/50 bg-primary/10 text-foreground")}>
+            Todos
+          </button>
+          {MOVEMENT_GROUPS.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              aria-pressed={group === g.id}
+              onClick={() => update({ types: g.types })}
+              className={cn(CHIP, group === g.id && "border-primary/50 bg-primary/10 text-foreground")}
+            >
+              <span aria-hidden className={cn("h-2 w-2 rounded-full", GROUP_DOT[g.id])} />
+              {g.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <DataTable
-        rows={rows}
-        columns={columns}
-        getRowId={(m) => m.id}
-        isLoading={movements.isLoading}
-        pageSize={PAGE_SIZE}
-        empty={<EmptyState title="Sin movimientos" description="Ajusta los filtros o registra un movimiento desde un artículo." />}
-      />
+      <div className="rounded-lg border bg-card">
+        <div role="status" aria-label="Totales del rango" className="flex flex-wrap gap-x-1 gap-y-1 border-b px-3 py-2.5 text-sm text-muted-foreground">
+          <span>
+            <b className="tabular-nums text-foreground">{totals.count}</b> movimientos
+          </span>
+          <span aria-hidden>{" · "}</span>
+          <span>
+            Entradas <b className="tabular-nums text-emerald-600 dark:text-emerald-400">+{formatMoney(totals.inValue)}</b>
+          </span>
+          <span aria-hidden>{" · "}</span>
+          <span>
+            Salidas <b className="tabular-nums text-destructive">−{formatMoney(totals.outValue)}</b>
+          </span>
+          <span aria-hidden>{" · "}</span>
+          <span>
+            Neto <b className="tabular-nums text-foreground">{signedMoney(totals.inValue - totals.outValue)}</b>
+          </span>
+        </div>
+        <table className="block w-full text-sm md:table" aria-label="Movimientos agrupados por día, más recientes primero">
+          <thead className="hidden md:table-header-group">
+            <tr className="text-xs text-muted-foreground">
+              {COLUMNS.map((label, i) => (
+                <th key={label} scope="col" className={cn("h-10 border-b px-3 text-left font-medium", (i === 4 || i === 5) && "text-right")}>
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          {movements.isLoading ? (
+            <tbody className="block md:table-row-group">
+              <tr className="block md:table-row">
+                <td colSpan={COLUMNS.length} className="block p-3 md:table-cell">
+                  <Skeleton className="h-24" />
+                </td>
+              </tr>
+            </tbody>
+          ) : days.length === 0 ? (
+            <tbody className="block md:table-row-group">
+              <tr className="block md:table-row">
+                <td colSpan={COLUMNS.length} className="block px-3 py-6 text-center text-muted-foreground md:table-cell">
+                  No hay movimientos con estos filtros. Prueba con otro periodo o tipo.
+                </td>
+              </tr>
+            </tbody>
+          ) : (
+            days.map((day) => (
+              <tbody key={day.day} className="block md:table-row-group">
+                <tr className="block bg-muted/50 md:table-row">
+                  <th colSpan={COLUMNS.length} scope="rowgroup" className="block px-3 py-2 text-left text-sm font-semibold md:table-cell">
+                    {day.day === today ? "Hoy · " : day.day === yesterday ? "Ayer · " : ""}
+                    {dayLabel(day.day)}
+                    <span className="float-right font-normal text-muted-foreground">
+                      {day.rows.length} {day.rows.length === 1 ? "movimiento" : "movimientos"} · neto{" "}
+                      <span className="tabular-nums">{signedMoney(day.net)}</span>
+                    </span>
+                  </th>
+                </tr>
+                {day.rows.map((m) => (
+                  <tr key={m.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b px-3 py-2.5 md:table-row md:p-0">
+                    <td className={cn(cellClass, "order-6 text-xs tabular-nums text-muted-foreground md:text-sm")}>{clockOf(m.createdAt)}</td>
+                    <td className={cn(cellClass, "order-1 min-w-0")}>
+                      <span className="font-medium">{m.itemName ?? "—"}</span> <span className="font-mono text-xs text-muted-foreground">{m.sku}</span>
+                    </td>
+                    <td className={cn(cellClass, "order-3")}>
+                      <TypeChip type={m.movementType} />
+                    </td>
+                    <td className={cn(cellClass, "order-4 justify-self-end text-xs text-muted-foreground md:text-sm md:text-foreground")}>{m.locationName ?? "—"}</td>
+                    <td className={cn(cellClass, "order-2 justify-self-end font-semibold tabular-nums md:text-right md:font-normal")}>
+                      <span className={signedClass(m.quantity)}>
+                        {m.quantity < 0 ? "−" : "+"}
+                        {formatQuantity(Math.abs(m.quantity), m.unit ?? "")}
+                      </span>
+                    </td>
+                    <td className={cn(cellClass, "order-5 justify-self-end tabular-nums md:text-right")}>{signedMoney(m.totalCost)}</td>
+                    <td className={cn(cellClass, "order-7")}>
+                      <Origin movement={m} onNavigate={onNavigate} />
+                    </td>
+                    <td className={cn(cellClass, "order-8 col-span-2 text-xs text-muted-foreground md:text-sm")}>
+                      {[m.reason, m.createdByName].filter(Boolean).join(" · ") || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            ))
+          )}
+        </table>
+      </div>
       <MovementPager page={state.page} pageSize={PAGE_SIZE} total={movements.data?.total ?? 0} onPage={(page) => setState((s) => ({ ...s, page }))} />
     </div>
   )

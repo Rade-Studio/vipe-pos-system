@@ -22,9 +22,11 @@ const ITEM_KEYS = [
 ];
 const LOT_KEYS = ['expiresOn', 'id', 'itemId', 'locationId', 'locationName', 'lotCode', 'quantity', 'receivedAt', 'unitCost'];
 const MOVEMENT_KEYS = [
-  'createdAt', 'createdBy', 'id', 'itemId', 'itemName', 'locationId', 'locationName', 'lotId', 'movementType', 'notes',
-  'quantity', 'reason', 'referenceId', 'referenceType', 'sku', 'totalCost', 'unit', 'unitCost',
+  'createdAt', 'createdBy', 'createdByName', 'documentId', 'documentKind', 'documentLabel', 'id', 'itemId', 'itemName',
+  'locationId', 'locationName', 'lotId', 'movementType', 'notes', 'quantity', 'reason', 'referenceId', 'referenceType', 'sku',
+  'totalCost', 'unit', 'unitCost',
 ];
+const NO_MOVEMENTS = { rows: [], total: 0, totals: { count: 0, inValue: 0, outValue: 0 } };
 const PO_KEYS = [
   'createdAt', 'expectedOn', 'id', 'lines', 'locationId', 'locationName', 'notes', 'number', 'orderedAt', 'paymentStatus',
   'receivedAt', 'status', 'supplierId', 'supplierName', 'total',
@@ -288,7 +290,7 @@ describe('inventory endpoints (Testcontainers, vipe_api)', () => {
       );
       const page = await adminA().get(`/api/inventory/movements?itemId=${ids.harina}&page=1&pageSize=2`);
       expect(page.status).toBe(200);
-      expect(keys(page.body)).toEqual(['rows', 'total']);
+      expect(keys(page.body)).toEqual(['rows', 'total', 'totals']);
       expect(page.body.total).toBe(5);
       expect(page.body.rows).toHaveLength(2);
       expect(keys(page.body.rows[0])).toEqual(MOVEMENT_KEYS);
@@ -299,11 +301,11 @@ describe('inventory endpoints (Testcontainers, vipe_api)', () => {
       const untilToday = await adminA().get(`/api/inventory/movements?itemId=${ids.harina}&from=${today}&to=${today}`);
       expect(untilToday.body.total).toBe(5);
       const untilYesterday = await adminA().get(`/api/inventory/movements?itemId=${ids.harina}&to=${yesterday}`);
-      expect(untilYesterday.body).toEqual({ rows: [], total: 0 });
+      expect(untilYesterday.body).toEqual(NO_MOVEMENTS);
       const typed = await adminA().get(`/api/inventory/movements?types=transfer_in,transfer_out&locationId=${ids.bar}`);
       expect(typed.body.rows.map((m: { movementType: string }) => m.movementType)).toEqual(['transfer_in']);
       expect((await adminA().get('/api/inventory/movements?types=bogus')).status).toBe(422);
-      expect((await adminB().get('/api/inventory/movements')).body).toEqual({ rows: [], total: 0 });
+      expect((await adminB().get('/api/inventory/movements')).body).toEqual(NO_MOVEMENTS);
     });
   });
 
@@ -675,6 +677,78 @@ describe('inventory endpoints (Testcontainers, vipe_api)', () => {
       expect(foreign.body.code).toBe('P0002');
     });
   });
+  describe('movement documents and range totals', () => {
+    type Row = { referenceId: string | null; documentKind: string | null; documentId: string | null; documentLabel: string | null };
+    const find = async (type: string, referenceId: string) => {
+      const res = await adminA().get(`/api/inventory/movements?types=${type}&pageSize=500`);
+      return (res.body.rows as Row[]).find((m) => m.referenceId === referenceId)!;
+    };
+
+    it('labels each movement with its source document and link target', async () => {
+      const [order] = await db<{ id: string; order_number: number; item: string }>(
+        "SELECT o.id, o.order_number, m.reference_id AS item FROM inventory_movements m JOIN order_items oi ON oi.id = m.reference_id JOIN orders o ON o.id = oi.order_id WHERE m.reference_type = 'order_item' LIMIT 1",
+      );
+      expect(await find('sale', order.item)).toMatchObject({ documentKind: 'order', documentId: order.id, documentLabel: `Orden #${order.order_number}` });
+
+      const [po] = await db<{ id: string; number: number }>(
+        "SELECT p.id, p.number FROM purchase_orders p JOIN inventory_movements m ON m.reference_id = p.id AND m.reference_type = 'purchase_order' LIMIT 1",
+      );
+      expect(await find('purchase', po.id)).toMatchObject({
+        documentKind: 'purchase_order', documentId: po.id, documentLabel: `OC-${String(po.number).padStart(4, '0')}`,
+      });
+
+      const [count] = await db<{ id: string; number: number }>(
+        "SELECT c.id, c.number FROM inventory_counts c JOIN inventory_movements m ON m.reference_id = c.id AND m.reference_type = 'inventory_count' LIMIT 1",
+      );
+      expect(await find('count_adjustment', count.id)).toMatchObject({
+        documentKind: 'inventory_count', documentId: count.id, documentLabel: `Conteo #${count.number}`,
+      });
+
+      const [batch] = await db<{ id: string; lot_code: string }>(
+        "SELECT b.id, l.lot_code FROM production_batches b JOIN inventory_lots l ON l.id = b.lot_id WHERE l.lot_code IS NOT NULL LIMIT 1",
+      );
+      expect(await find('production_output', batch.id)).toMatchObject({
+        documentKind: 'production_batch', documentId: batch.id, documentLabel: `Lote ${batch.lot_code}`,
+      });
+
+      const [legacy] = await db<{ reference_id: string }>("SELECT reference_id FROM inventory_movements WHERE reference_type = 'transfer' LIMIT 1");
+      expect(await find('transfer_in', legacy.reference_id)).toMatchObject({ documentKind: null, documentId: null, documentLabel: null });
+
+      const manual = (await adminA().get('/api/inventory/movements?types=opening&pageSize=500')).body.rows[0];
+      expect(manual).toMatchObject({ referenceId: null, documentKind: null, documentId: null, documentLabel: null });
+    });
+
+    it("names the author and leaves the name empty when there is none", async () => {
+      const res = await adminA().get('/api/inventory/movements?types=opening&pageSize=500');
+      const byAdmin = res.body.rows.find((m: { createdBy: string | null }) => m.createdBy === fixtures.adminA.profileId);
+      expect(byAdmin.createdByName).toBe('Admin A');
+      const [seeded] = await db<{ id: string }>('SELECT id FROM inventory_movements WHERE created_by IS NULL LIMIT 1');
+      if (seeded) {
+        const all = await adminA().get('/api/inventory/movements?pageSize=500');
+        expect(all.body.rows.find((m: { id: string }) => m.id === seeded.id)).toMatchObject({ createdBy: null, createdByName: null });
+      }
+    });
+
+    it('totals the whole filtered range, not the page', async () => {
+      const [expected] = await db<{ count: number; in_value: string; out_value: string }>(
+        `SELECT count(*)::int AS count,
+                round(coalesce(sum(total_cost) FILTER (WHERE quantity > 0), 0), 2)::text AS in_value,
+                round(coalesce(-sum(total_cost) FILTER (WHERE quantity < 0), 0), 2)::text AS out_value
+           FROM inventory_movements WHERE restaurant_id = $1 AND ingredient_id = $2`,
+        [fixtures.restaurantA, ids.harina],
+      );
+      expect(expected.count).toBeGreaterThan(2);
+      const res = await adminA().get(`/api/inventory/movements?itemId=${ids.harina}&page=2&pageSize=1`);
+      expect(res.body.rows).toHaveLength(1);
+      expect(res.body.total).toBe(expected.count);
+      expect(res.body.totals).toEqual({ count: expected.count, inValue: Number(expected.in_value), outValue: Number(expected.out_value) });
+      expect(Number(expected.out_value)).toBeGreaterThan(0);
+      const typed = await adminA().get(`/api/inventory/movements?itemId=${ids.harina}&types=opening`);
+      expect(typed.body.totals.outValue).toBe(0);
+      expect(typed.body.totals.count).toBe(typed.body.total);
+    });
+  });
+
   describe('correction batch', () => {
     it('opening stock without cost falls back to the item cost', async () => {
       const res = await adminA().post('/api/inventory/items', {
@@ -785,7 +859,7 @@ describe('inventory endpoints (Testcontainers, vipe_api)', () => {
       expect((await adminB().get(`/api/inventory/items/${ids.harina}/lots`)).body).toEqual([]);
       const overview = await adminB().get('/api/inventory/overview');
       expect(overview.body.kpis.itemsCount).toBe(1);
-      expect((await waiterA().get('/api/inventory/movements')).body).toEqual({ rows: [], total: 0 });
+      expect((await waiterA().get('/api/inventory/movements')).body).toEqual(NO_MOVEMENTS);
       expect((await waiterA().get('/api/inventory/purchase-orders')).body).toEqual([]);
     });
   });
