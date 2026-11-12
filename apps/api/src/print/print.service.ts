@@ -18,6 +18,7 @@ import type {
   PrintJobCreated,
   PrintJobKind,
   PrintJobsCreated,
+  xReportPrintSchema,
 } from './print.dto';
 import { takeawayLabel } from './print.dto';
 import { newPrinterToken, type Printer } from './printer-identity';
@@ -106,6 +107,14 @@ export class PrintService implements OnApplicationBootstrap {
     return cashier
       ? this.enqueue(randomUUID(), 'invoice', { ...payload, station: { id: cashier.id, name: cashier.name } }, cashier.id)
       : this.enqueue(randomUUID(), 'invoice', payload);
+  }
+
+  /** "Informe X" (informe-x-termico S1): stored as sent, tagged to Caja like an invoice. */
+  async printXReport(input: z.infer<typeof xReportPrintSchema>): Promise<PrintJobCreated> {
+    const [cashier] = await this.rows<StationRef>(sql`SELECT id, name, is_default FROM public.stations WHERE kind = 'cashier'`);
+    return cashier
+      ? this.enqueue(randomUUID(), 'x_report', { ...input, station: { id: cashier.id, name: cashier.name } }, cashier.id)
+      : this.enqueue(randomUUID(), 'x_report', input);
   }
 
   /**
@@ -200,7 +209,7 @@ export class PrintService implements OnApplicationBootstrap {
   }
 
   /**
-   * S2: the web print actions (POST /print/commands and /print/invoices) of a
+   * S2: the web print actions (POST /print/commands, /print/invoices and /print/x-reports) of a
    * restaurant without thermal printers queue nothing. The delivery
    * console's server-side comanda (DeliveryService) skips printing instead.
    */

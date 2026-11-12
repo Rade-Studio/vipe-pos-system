@@ -9,7 +9,7 @@ import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabas
 
 interface PrintJobEvent {
   id: string;
-  kind: 'invoice' | 'command';
+  kind: 'invoice' | 'command' | 'x_report';
   payload: Record<string, unknown>;
   createdAt: string;
 }
@@ -77,6 +77,33 @@ const INVOICE = {
     cashChange: 2000,
   },
   displayItems: [{ id: 'd-1', name: 'Ajiaco', price: 28000, quantity: 1 }],
+};
+
+/** informe-x-termico S1: GET /registers/summary as it answered, plus the header and the times. */
+const X_REPORT = {
+  business: { name: 'Restaurant A', nit: '900', address: 'Calle 1' },
+  cashierName: 'Waiter A',
+  openedAt: '2026-11-10T07:58:00.000-05:00',
+  printedAt: '2026-11-10T13:30:00.000-05:00',
+  tax: { type: 'INC', rate: 8 },
+  summary: {
+    registersCount: 1,
+    initialCash: 200000,
+    paymentsCount: 39,
+    totalBilled: 1604900,
+    totalTips: 118700,
+    totalSales: 1486200,
+    totalChange: 0,
+    methods: [
+      { paymentMethodId: 'm-1', code: 'cash', name: 'Efectivo', kind: 'cash', sortOrder: 0, isActive: true, total: 584000, tendersCount: 15 },
+    ],
+    cashDeposits: 50000,
+    cashWithdrawals: 45000,
+    expectedCash: 789000,
+    tipsPayout: 0,
+    expectedCashAfterTips: 789000,
+    legacy: { paymentsCount: 0, total: 0, tips: 0, change: 0, byMethod: {} },
+  },
 };
 
 describe('printing bridge (Testcontainers, vipe_api)', () => {
@@ -402,6 +429,46 @@ describe('printing bridge (Testcontainers, vipe_api)', () => {
       ]);
       try {
         const res = await http().post('/api/print/commands').set(as(fixtures.waiterA.email)).send(command(orderA));
+        expect(res.status).toBe(409);
+        expect(res.body).toMatchObject({ code: 'printing_disabled' });
+        expect(await jobCount()).toBe(before);
+      } finally {
+        await superuserQuery(database.superuserUrl, "DELETE FROM business_config WHERE key = 'printing_enabled'");
+      }
+    });
+  });
+
+  describe('Informe X (informe-x-termico S1)', () => {
+    const jobCount = async () =>
+      Number((await superuserQuery<{ n: string }>(database.superuserUrl, 'SELECT count(*) AS n FROM public.print_jobs'))[0].n);
+
+    it('queues an x_report job with the summary exactly as sent, for any session, and validates it', async () => {
+      const printer = await connectPrinter((await createPrinter(fixtures.adminA.email, 'Informe X')).token);
+      const res = await http().post('/api/print/x-reports').set(as(fixtures.waiterA.email)).send(X_REPORT);
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ kind: 'x_report' });
+      await eventually(() => printer.jobs.some((job) => job.id === (res.body as { id: string }).id));
+      const job = printer.jobs.find((candidate) => candidate.id === (res.body as { id: string }).id);
+      expect(job).toEqual({ id: (res.body as { id: string }).id, kind: 'x_report', payload: X_REPORT, createdAt: (res.body as { createdAt: string }).createdAt });
+      printer.socket.close();
+
+      const before = await jobCount();
+      expect((await http().post('/api/print/x-reports').send(X_REPORT)).status).toBe(401);
+      const send = (body: unknown) => http().post('/api/print/x-reports').set(as(fixtures.waiterA.email)).send(body as object);
+      expect((await send({ ...X_REPORT, summary: { ...X_REPORT.summary, totalSales: 'mucho' } })).status).toBe(422);
+      expect((await send({ ...X_REPORT, printedAt: 'ayer' })).status).toBe(422);
+      expect((await send({ ...X_REPORT, tax: { type: 'IVA', rate: 101 } })).status).toBe(422);
+      expect((await send({ ...X_REPORT, extra: true })).status).toBe(422);
+      expect(await jobCount()).toBe(before);
+    });
+
+    it('a restaurant that turned printing off answers 409 and queues nothing', async () => {
+      const before = await jobCount();
+      await superuserQuery(database.superuserUrl, "INSERT INTO business_config (key, value, restaurant_id) VALUES ('printing_enabled', 'false', $1)", [
+        fixtures.restaurantA,
+      ]);
+      try {
+        const res = await http().post('/api/print/x-reports').set(as(fixtures.waiterA.email)).send(X_REPORT);
         expect(res.status).toBe(409);
         expect(res.body).toMatchObject({ code: 'printing_disabled' });
         expect(await jobCount()).toBe(before);

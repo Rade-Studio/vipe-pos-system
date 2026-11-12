@@ -7362,6 +7362,48 @@
         ]
       }
     },
+    "/api/print/x-reports": {
+      "post": {
+        "operationId": "PrintController_printXReport",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/XReportPrintRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Queued \"Informe X\" (kind x_report); tagged to Caja when it exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrintJobCreated"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`printing_disabled`: the restaurant does not use printers."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "print"
+        ]
+      }
+    },
     "/api/print/commands": {
       "post": {
         "operationId": "PrintController_printCommand",
@@ -19843,7 +19885,8 @@
             "type": "string",
             "enum": [
               "invoice",
-              "command"
+              "command",
+              "x_report"
             ]
           },
           "createdAt": {
@@ -19855,6 +19898,95 @@
           "id",
           "kind",
           "createdAt"
+        ]
+      },
+      "XReportBusiness": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "nit": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "address": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "name",
+          "nit",
+          "address"
+        ]
+      },
+      "XReportTax": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "INC",
+              "IVA"
+            ]
+          },
+          "rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "type",
+          "rate"
+        ]
+      },
+      "XReportPrintRequest": {
+        "type": "object",
+        "properties": {
+          "business": {
+            "$ref": "#/components/schemas/XReportBusiness"
+          },
+          "cashierName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Opening of the shift in the cashier's wall time with its offset (printed as written)."
+          },
+          "printedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Print time in the cashier's wall time with its offset (printed as written)."
+          },
+          "summary": {
+            "description": "GET /registers/summary exactly as it answered.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RegisterSummary"
+              }
+            ]
+          },
+          "tax": {
+            "description": "Configured tax; without it no Base / tax line is printed.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/XReportTax"
+              }
+            ]
+          }
+        },
+        "required": [
+          "business",
+          "cashierName",
+          "openedAt",
+          "printedAt",
+          "summary"
         ]
       },
       "CommandPrintRequest": {
@@ -19908,7 +20040,8 @@
             "type": "string",
             "enum": [
               "invoice",
-              "command"
+              "command",
+              "x_report"
             ]
           },
           "createdAt": {
@@ -19941,13 +20074,14 @@
             "type": "string",
             "enum": [
               "invoice",
-              "command"
+              "command",
+              "x_report"
             ]
           },
           "payload": {
             "type": "object",
             "additionalProperties": true,
-            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, takeaway? {customerName, label \"PARA LLEVAR · <nombre>\"} (instead of table), station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
+            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; x_report: XReportPrintRequest plus station? (Caja); command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, takeaway? {customerName, label \"PARA LLEVAR · <nombre>\"} (instead of table), station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices and x_report."
           },
           "createdAt": {
             "type": "string",
