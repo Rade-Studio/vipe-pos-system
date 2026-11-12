@@ -60,15 +60,23 @@ export const TENDER_REFERENCE_MAX = 60;
 const tenderReference = z.string().transform(normalizeTenderReference).pipe(z.string().min(1).max(TENDER_REFERENCE_MAX));
 /** 422 for a reference on a cash line (the RPC would store it). */
 export const CASH_REFERENCE_MESSAGE = 'Una línea en efectivo no lleva referencia';
+/** 422 for a 0 line that is not cash with cashReceived 0 (promociones S7: only a fully discounted order closes with one). */
+export const ZERO_TENDER_MESSAGE = 'Una línea en 0 solo cierra una cuenta sin saldo: en efectivo y con efectivo recibido 0';
+/** 422 for a cash line that receives less than it applies (pay_order would refuse it with P0001). */
+export const CASH_RECEIVED_SHORT_MESSAGE = 'El efectivo recibido no puede ser menor que el valor de la línea';
 
-const tenderInputSchema = z.strictObject({
-  paymentMethodId: z.guid(),
-  amount: pesos.positive(),
-  /** Cash handed over on a cash line; null (or omitted) on an electronic one. */
-  cashReceived: pesos.positive().nullable().optional(),
-  /** Manual card/transfer reference (non-cash lines only); null (or omitted) means none. */
-  reference: tenderReference.nullable().optional(),
-});
+const tenderInputSchema = z
+  .strictObject({
+    paymentMethodId: z.guid(),
+    /** 0 only on the single cash line of an order with nothing to charge (pay_order answers 22023 otherwise). */
+    amount: pesos.nonnegative(),
+    /** Cash handed over on a cash line; null (or omitted) on an electronic one. */
+    cashReceived: pesos.nonnegative().nullable().optional(),
+    /** Manual card/transfer reference (non-cash lines only); null (or omitted) means none. */
+    reference: tenderReference.nullable().optional(),
+  })
+  .refine((tender) => tender.amount > 0 || tender.cashReceived === 0, { error: ZERO_TENDER_MESSAGE })
+  .refine((tender) => tender.amount === 0 || tender.cashReceived == null || tender.cashReceived >= tender.amount, { error: CASH_RECEIVED_SHORT_MESSAGE });
 
 export const payOrderSchema = z.strictObject({
   orderId: z.guid(),
@@ -88,8 +96,12 @@ export const paymentListQuerySchema = z
 
 export class PayOrderTenderInput {
   @ApiProperty({ format: 'uuid' }) paymentMethodId!: string;
-  @ApiProperty({ minimum: 1, description: 'Applied amount in whole pesos (capped for cash).' }) amount!: number;
-  @ApiPropertyOptional({ type: Number, nullable: true, description: 'Cash handed over; required for cash, null for electronic.' })
+  @ApiProperty({
+    minimum: 0,
+    description: `Applied amount in whole pesos (capped for cash). 0 only as the single cash line, with cashReceived 0, of an order whose amount due and tip are 0 (a fully discounted order); a 0 line without cashReceived 0 is 422 \`${ZERO_TENDER_MESSAGE}\`, any other 0 line 422 22023.`,
+  })
+  amount!: number;
+  @ApiPropertyOptional({ type: Number, nullable: true, minimum: 0, description: 'Cash handed over; required for cash, null for electronic.' })
   cashReceived?: number | null;
   @ApiPropertyOptional({
     type: String,

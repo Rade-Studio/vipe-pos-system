@@ -36,7 +36,7 @@ import {
   VoidPaymentRequest,
   voidPaymentSchema,
 } from './payments.dto';
-import { PaymentsService } from './payments.service';
+import { COMBO_SPLIT_MESSAGE, PaymentsService } from './payments.service';
 
 /** The payment_methods write policies admit admin only. */
 const ADMIN = 'admin';
@@ -145,6 +145,9 @@ export class SplitController {
   @HttpCode(200)
   @ApiBody({ type: SplitOrderRequest })
   @ApiOkResponse({ type: SplitOrderResult, description: 'split_order: the items move to a new partial child order; both bills recomputed.' })
+  @ApiUnprocessableEntityResponse({
+    description: `Invalid input or unknown fields. ${RPC_ERRORS} Moving only part of a combo (promociones S5) is 422 \`combo_split_not_allowed\` (body \`code\`) "${COMBO_SPLIT_MESSAGE}"; nothing moves.`,
+  })
   @ApiNotFoundResponse()
   @ApiForbiddenResponse({ description: 'Not admin or cashier.' })
   split(@Param('id') id: string, @Body() body: unknown): Promise<SplitOrderResult> {

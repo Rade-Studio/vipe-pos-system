@@ -27,8 +27,12 @@ export const TERMINAL_OPENER_ROLES = ['admin', 'cashier'] as const;
 /** Roles that may identify on a terminal to take orders (same list in 0017). */
 export const ACTING_ROLES = ['admin', 'cashier', 'waiter'] as const;
 
-/** Actions a supervisor authorization can be bound to; F1 requires one per cancellation or void. */
-export const SUPERVISOR_ACTIONS = ['cancel_order', 'void_item', 'void_payment'] as const;
+/**
+ * Actions a supervisor authorization can be bound to; F1 requires one per
+ * cancellation or void, promociones S7 one per manual discount (apply_discount).
+ * Same list in supervisor_authorizations_target_action_check (0025).
+ */
+export const SUPERVISOR_ACTIONS = ['cancel_order', 'void_item', 'void_payment', 'apply_discount'] as const;
 export type SupervisorAction = (typeof SUPERVISOR_ACTIONS)[number];
 
 export const PIN_MESSAGES = {
@@ -62,7 +66,7 @@ export const IDENTIFY_CANDIDATES_MAX = 100;
 /** F4b: a new PIN is compared with at most this many PINs of other active members; above it the write is refused (409 `pin_check_unavailable`). */
 export const UNIQUE_PIN_CHECK_MAX = 200;
 
-/** What an authorization is for (F1): an order for cancel_order and void_item, a payment for void_payment. */
+/** What an authorization is for (F1): an order for cancel_order, void_item and apply_discount, a payment for void_payment. */
 export const AUTHORIZATION_TARGETS = ['order', 'payment'] as const;
 export type AuthorizationTarget = (typeof AUTHORIZATION_TARGETS)[number];
 export const targetTypeOf = (action: SupervisorAction): AuthorizationTarget => (action === 'void_payment' ? 'payment' : 'order');

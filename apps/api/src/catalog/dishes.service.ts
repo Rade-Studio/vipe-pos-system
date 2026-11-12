@@ -4,9 +4,10 @@ import type { z } from 'zod';
 import { UnitOfWork } from '../db/unit-of-work';
 import { type createDishSchema, type Dish, DISH_MESSAGES, type dishListQuerySchema, type updateDishSchema } from './catalog.dto';
 import { toDish } from './catalog.mappers';
-import { applyPromotionsToDishes } from './promotion-pricing';
+import { type EngineContext, scheduleState, selectPromotionForNewItem, unitSaving } from '../promotions/engine';
+import { PromotionCatalog, type PromotionChannel, type Rule } from '../promotions/promotion-catalog.service';
+import { clockText, promotionBadge } from '../promotions/promotion-text';
 import { ModifiersService } from './modifiers.service';
-import { PromotionsService } from './promotions.service';
 
 const dishes = schema.dishes;
 
@@ -17,11 +18,15 @@ type DishInput = z.infer<typeof updateDishSchema>;
 export class DishesService {
   constructor(
     private readonly uow: UnitOfWork,
-    private readonly promotions: PromotionsService,
+    private readonly promotions: PromotionCatalog,
     private readonly modifiers: ModifiersService,
   ) {}
 
-  /** Ordered by name; `pricing: 'promotions'` applies the promotions active now (server clock). */
+  /**
+   * Ordered by name. `price` is always the list price; `pricing: 'promotions'`
+   * adds the automatic product promotion a line of the dish would be sent with
+   * now (server clock, restaurant timezone) on `channel` (default dine_in).
+   */
   async list(query: z.infer<typeof dishListQuerySchema>): Promise<Dish[]> {
     const rows = await this.uow.db
       .select()
@@ -38,20 +43,13 @@ export class DishesService {
     if (query.pricing !== 'promotions' || list.length === 0) {
       return list;
     }
-    const active = await this.promotions.activeForPricing();
-    if (active.length === 0) {
+    const rules = (await this.promotions.rules()).filter((rule) => rule.kind === 'product_discount' || rule.kind === 'buy_x_pay_y');
+    if (rules.length === 0) {
       return list;
     }
-    const links = await this.uow.db
-      .select({ dishId: schema.promotionDishes.dishId, promotionId: schema.promotionDishes.promotionId })
-      .from(schema.promotionDishes)
-      .where(
-        and(
-          sql`${schema.promotionDishes.dishId} = ANY(${sql.param(list.map((dish) => dish.id))}::uuid[])`,
-          sql`${schema.promotionDishes.promotionId} = ANY(${sql.param(active.map((promotion) => promotion.id))}::uuid[])`,
-        ),
-      );
-    return applyPromotionsToDishes(list, links, active);
+    const now = await this.promotions.now();
+    const ctx: EngineContext<PromotionChannel> = { now: now.local, channel: query.channel ?? 'dine_in' };
+    return list.map((dish) => withPromotion(dish, rules, ctx));
   }
 
   async create(input: z.infer<typeof createDishSchema>): Promise<Dish> {
@@ -221,4 +219,32 @@ function pgConstraint(error: unknown): string | undefined {
 function toColumns(input: DishInput): Partial<typeof dishes.$inferInsert> {
   const { price, ...rest } = input;
   return price === undefined ? rest : { ...rest, price: String(price) };
+}
+
+/** The dish with the promotion fields of the promotion a line of it would get now; untouched when none. */
+function withPromotion(dish: Dish, rules: Rule[], ctx: EngineContext<PromotionChannel>): Dish {
+  const item = {
+    id: dish.id,
+    dishId: dish.id,
+    categoryId: dish.categoryId,
+    subcategoryId: dish.subcategoryId,
+    unitPrice: dish.price,
+    quantity: 1,
+    promotionId: null,
+    addedAt: '',
+    voided: false,
+    comboId: null,
+  };
+  const rule = rules.find((r) => r.id === selectPromotionForNewItem(item, rules, ctx));
+  if (!rule) {
+    return dish;
+  }
+  return {
+    ...dish,
+    promotionId: rule.id,
+    promotionName: rule.name,
+    promotionBadge: promotionBadge(rule),
+    promotionEndsAt: clockText(scheduleState(rule, ctx.now).endsAtMinutes),
+    ...(rule.kind === 'product_discount' ? { promoPrice: dish.price - unitSaving(dish.price, rule) } : {}),
+  };
 }

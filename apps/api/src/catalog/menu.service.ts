@@ -23,6 +23,9 @@ interface MenuSnapshot {
   dishes: Record<string, { name: string; category_id: string | null; subcategory_id: string | null; sort_order: number }>;
 }
 
+/** The order channel the promotion fields of the dishes are computed for. */
+type MenuChannel = 'dine_in' | 'delivery';
+
 const iso = (value: Date | string | null) => (value === null ? null : new Date(value).toISOString());
 
 /** Stable: rows already in name order stay so among equal sortOrder. */
@@ -49,15 +52,15 @@ export class MenuService {
   ) {}
 
   /** What waiters and delivery see: the published structure. */
-  async tree(): Promise<MenuTree> {
+  async tree(channel: MenuChannel = 'dine_in'): Promise<MenuTree> {
     const [latest] = await this.rows<{ snapshot: MenuSnapshot }>(sql`
       SELECT snapshot FROM public.menu_publications ORDER BY published_at DESC, id DESC LIMIT 1`);
-    return this.build(latest?.snapshot ?? null);
+    return this.build(latest?.snapshot ?? null, channel);
   }
 
   /** The admin editor's preview: the live structure, what the next publication would serve. */
-  draft(): Promise<MenuTree> {
-    return this.build(null);
+  draft(channel: MenuChannel = 'dine_in'): Promise<MenuTree> {
+    return this.build(null, channel);
   }
 
   async status(): Promise<MenuPublicationStatus> {
@@ -82,7 +85,7 @@ export class MenuService {
     return this.status();
   }
 
-  private async build(snapshot: MenuSnapshot | null): Promise<MenuTree> {
+  private async build(snapshot: MenuSnapshot | null, channel: MenuChannel): Promise<MenuTree> {
     const categories = this.structureCategories(await this.categories.list(), snapshot, await this.liveDishIds(snapshot));
     const shownCategories = new Set(categories.map((category) => category.id));
     const subcategories = this.structureSubcategories(await this.subcategories.list({ includeInactive: true }), snapshot).filter(
@@ -90,7 +93,7 @@ export class MenuService {
     );
     const shownSubcategories = new Set(subcategories.map((subcategory) => subcategory.id));
     // A dish of an inactive (or unpublished) subcategory would have no tile to sit under.
-    const dishes = this.structureDishes(await this.dishes.list({ active: true, pricing: 'promotions' }), snapshot).filter(
+    const dishes = this.structureDishes(await this.dishes.list({ active: true, pricing: 'promotions', channel }), snapshot).filter(
       (dish) =>
         (dish.categoryId === null || shownCategories.has(dish.categoryId)) &&
         (dish.subcategoryId === null || shownSubcategories.has(dish.subcategoryId)),

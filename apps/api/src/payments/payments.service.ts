@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import { toVoidException } from '../audit/voids';
 import { VoidsService } from '../audit/voids.service';
 import { UnitOfWork } from '../db/unit-of-work';
+import { OrderDiscountsService } from '../promotions/order-discounts.service';
 import {
   CASH_REFERENCE_MESSAGE,
   type Payment,
@@ -19,6 +20,20 @@ import { paymentJson, toPayment, toPaymentVoid, toPayOrderResult, toSplitResult,
 
 type Json = Record<string, unknown>;
 type TenderInput = z.infer<typeof payOrderSchema>['tenders'][number];
+
+/** split_order refuses to separate the lines of a combo (0025): a stable 422 code. */
+const COMBO_SPLIT = /^split_order: item\[\d+\] is part of a combo; move every line of the combo together$/;
+export const COMBO_SPLIT_MESSAGE = 'Un menú se mueve completo: pasa todos sus productos juntos';
+
+function toComboSplitException(error: unknown): UnprocessableEntityException | undefined {
+  for (let current = error, depth = 0; current instanceof Error && depth < 5; depth += 1) {
+    if (COMBO_SPLIT.test(current.message) && (current as { code?: unknown }).code === 'P0001') {
+      return new UnprocessableEntityException({ message: COMBO_SPLIT_MESSAGE, code: 'combo_split_not_allowed' });
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
 
 /**
  * The p_tenders jsonb of pay_order. Without a reference a line keeps the exact
@@ -45,6 +60,7 @@ export class PaymentsService {
   constructor(
     private readonly uow: UnitOfWork,
     private readonly voids: VoidsService,
+    private readonly discounts: OrderDiscountsService,
   ) {}
 
   async pay(input: z.infer<typeof payOrderSchema>): Promise<PayOrderResult> {
@@ -101,20 +117,45 @@ export class PaymentsService {
     return toPaymentVoid((rows[0] as { row: Json }).row);
   }
 
+  /**
+   * The moved lines carry their discounts pro rata; then both orders get
+   * their automatic discounts recomputed (buy_x_pay_y regroups on each side,
+   * the bill discount is evaluated again) in the same transaction, and the
+   * bills are read after it. Separating a combo is 422 combo_split_not_allowed.
+   */
   async split(parentOrderId: string, input: z.infer<typeof splitOrderSchema>): Promise<SplitOrderResult> {
     const items = input.items.map((item) => ({ order_item_id: item.orderItemId, quantity: item.quantity }));
-    return toSplitResult(
-      await this.rpc(sql`SELECT public.split_order(${parentOrderId}::uuid, ${JSON.stringify(items)}::jsonb) AS result`),
-    );
+    let result: Json;
+    try {
+      result = await this.rpc(sql`SELECT public.split_order(${parentOrderId}::uuid, ${JSON.stringify(items)}::jsonb) AS result`);
+    } catch (error) {
+      throw toComboSplitException(error) ?? error;
+    }
+    const childOrderId = String(result.child_order_id);
+    await this.discounts.recompute(parentOrderId);
+    await this.discounts.recompute(childOrderId);
+    return toSplitResult({ ...result, parent: await this.bill(parentOrderId), child: await this.bill(childOrderId) });
   }
 
   /** A split whose lines have void history is not undone: 409 split_has_voids (the void rows reference them). */
   async undoSplit(childOrderId: string): Promise<UndoSplitResult> {
+    let result: Json;
     try {
-      return toUndoSplitResult(await this.rpc(sql`SELECT public.undo_split(${childOrderId}::uuid) AS result`));
+      result = await this.rpc(sql`SELECT public.undo_split(${childOrderId}::uuid) AS result`);
     } catch (error) {
       throw toVoidException(error) ?? error;
     }
+    const parentOrderId = String((result.parent as Json).order_id);
+    await this.discounts.recompute(parentOrderId);
+    return toUndoSplitResult({ ...result, parent: await this.bill(parentOrderId) });
+  }
+
+  /** The bill of an order in the split_order/undo_split response shape, after the recompute. */
+  private async bill(orderId: string): Promise<Json> {
+    const { rows } = await this.uow.db.execute(sql`
+      SELECT jsonb_build_object('order_id', o.id, 'subtotal', o.subtotal, 'tax', o.tax, 'tip', o.tip, 'total', o.total) AS result
+        FROM public.orders o WHERE o.id = ${orderId}`);
+    return (rows[0] as { result: Json }).result;
   }
 
   private async rpc(query: SQL): Promise<Json> {

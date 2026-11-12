@@ -3,6 +3,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
 import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabase } from '../testing/test-database';
+import { CASH_RECEIVED_SHORT_MESSAGE, ZERO_TENDER_MESSAGE } from './payments.dto';
 
 /** Rows seeded as the superuser for this spec only. */
 const p = {
@@ -288,6 +289,35 @@ describe('payments endpoints (Testcontainers, vipe_api)', () => {
       });
       expect(foreign.status).toBe(404);
       expect(foreign.body).toEqual({ statusCode: 404, error: 'Not Found', message: 'Not found', code: 'P0002' });
+    });
+
+    it('refuses a 0 tender while the order still owes money with 422, and a 0 electronic line or short cash at the DTO', async () => {
+      const zero = await cashierA().post('/api/payments', {
+        orderId: p.o3, cashRegisterId: p.registerA, tipAmount: 0, tenders: [cashTender(0, 0)], idempotencyKey: p.otherKey,
+      });
+      expect(zero.status).toBe(422);
+      expect(zero.body.code).toBe('22023');
+      const electronic = await cashierA().post('/api/payments', {
+        orderId: p.o3, cashRegisterId: p.registerA, tipAmount: 0, tenders: [{ paymentMethodId: methods.nequi, amount: 0 }], idempotencyKey: p.otherKey,
+      });
+      expect(electronic.status).toBe(422);
+      expect(electronic.body.message).toBe(`tenders.0: ${ZERO_TENDER_MESSAGE}`);
+      const change = await cashierA().post('/api/payments', {
+        orderId: p.o3, cashRegisterId: p.registerA, tipAmount: 0, tenders: [cashTender(0, 5000)], idempotencyKey: p.otherKey,
+      });
+      expect(change.status).toBe(422);
+      expect(change.body.message).toBe(`tenders.0: ${ZERO_TENDER_MESSAGE}`);
+      const short = await cashierA().post('/api/payments', {
+        orderId: p.o3, cashRegisterId: p.registerA, tipAmount: 0, tenders: [cashTender(13000, 0)], idempotencyKey: p.otherKey,
+      });
+      expect(short.status).toBe(422);
+      expect(short.body.message).toBe(`tenders.0: ${CASH_RECEIVED_SHORT_MESSAGE}`);
+      const below = await cashierA().post('/api/payments', {
+        orderId: p.o3, cashRegisterId: p.registerA, tipAmount: 0, tenders: [cashTender(13000, 12999)], idempotencyKey: p.otherKey,
+      });
+      expect(below.status).toBe(422);
+      expect(below.body.message).toBe(`tenders.0: ${CASH_RECEIVED_SHORT_MESSAGE}`);
+      expect(await db('SELECT count(*)::int AS n FROM payments WHERE order_id = $1', [p.o3])).toEqual([{ n: 0 }]);
     });
 
     it('lets the delivery operator pay', async () => {
