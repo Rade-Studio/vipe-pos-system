@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -10,10 +10,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
+import { useConfigStore } from "@/store/use-config-store"
 import { formatCurrency } from "@/utils/helpers"
 import { toast } from "@/utils/toast"
 import { useRegisterSummary } from "@/hooks/use-register-summary"
@@ -24,17 +22,30 @@ import {
   tipsShortfall,
 } from "@/lib/payments/register-summary"
 import { createSingleFlight } from "@/lib/payments/single-flight"
-import { AlertTriangle, Loader2 } from "lucide-react"
+import {
+  closeNoteValid,
+  countedTotal,
+  denominationsOf,
+  type DenominationCounts,
+} from "@/lib/payments/denominations"
+import { AlertTriangle, Loader2, Printer } from "lucide-react"
 import { VoidFlow } from "@/components/voids/VoidFlow"
 import type { VoidTarget } from "@/components/voids/flow"
 import { getByStatus, type OrderDto } from "@/lib/api/orders"
-import { openOrdersConflictOf } from "@/lib/api/payments"
+import { closeRefusalOf, openOrdersConflictOf } from "@/lib/api/payments"
+import { getCashTransactionsByRegisterId, type CashMovement, type CashRegisterWithOpener } from "@/lib/api/registers"
+import { ShiftCloseSlip, type ShiftCloseSlipProps } from "@/components/printing/ShiftCloseSlip"
+import { printSlip } from "@/components/printing/slip-format"
 import {
   OPEN_ORDER_STATUSES,
   OpenOrdersList,
   cancelTarget,
   leaveOpenOrdersLabel,
 } from "./close-register/OpenOrdersList"
+import { CLOSE_STEP_PANEL_ID, CloseStepper, closeStepTabId, type CloseStep } from "./close-register/CloseStepper"
+import { MovementsStep } from "./close-register/MovementsStep"
+import { ArqueoStep } from "./close-register/ArqueoStep"
+import { ConfirmStep } from "./close-register/ConfirmStep"
 
 interface CloseRegisterDialogProps {
   open: boolean
@@ -42,47 +53,46 @@ interface CloseRegisterDialogProps {
   onSuccess?: (summary: RegisterSummaryType) => void
 }
 
+const STEP_TITLES = ["Órdenes abiertas", "Movimientos y propinas", "Arqueo", "Confirmar"] as const
+
+/** A whole, non-negative peso amount typed by the cashier, or null. */
+const wholePesos = (input: string): number | null => {
+  if (input.trim() === "") return null
+  const value = Number(input)
+  return Number.isInteger(value) && value >= 0 ? value : null
+}
+
 /**
- * Close drawer. The browser never recomputes totals: the server
- * `close_register` RPC takes the row lock, builds the summary at the
- * lock instant, sets `final_cash = expected_cash_after_tips`, and
- * returns it. Anything the user sees in the dialog comes from
- * `useRegisterSummary(ids)` (same call the admin reports use) so the
- * preview and the lock-time numbers are guaranteed to use the same
- * definition.
+ * "Cerrar turno" (caja-cierres S3, design 05): a four-step wizard. The
+ * browser never recomputes totals: the server `close_register` takes the row
+ * lock, builds the summary at that instant and stores the count; the preview
+ * comes from `useRegisterSummary(ids)`, the same definition.
  *
- * Render layout, in order:
- *   1. one row per catalog method (`summaryRows(summary)`)
- *   2. totals: ventas (totalSales), propinas (totalTips), cambio
- *      entregado (totalChange), ingresos (cashDeposits), retiros
- *      (cashWithdrawals)
- *   3. expected cash (`expectedCash`)
- *   4. "Propinas a entregar a meseros" line (`tipsPayout`) + expected
- *      cash after tips (`expectedCashAfterTips`)
- *   5. red advisory when `tipsShortfall(summary) > 0` (non-blocking)
- *   6. legacy block only when `hasLegacy(summary)`
- *   7. success screen showing the server `final_cash`
+ *   1. Órdenes abiertas (ordenes-abiertas-caja S2): each cancellable through
+ *      the audited VoidFlow; with any left the close needs "Dejar N órdenes
+ *      abiertas" and sends `leaveOpenOrders` (a 409 open_orders race brings
+ *      the cashier back here with the server message).
+ *   2. Movimientos y propinas: the shift's entries and withdrawals with reason
+ *      and author (GET cash-transactions), the tips and the cash tips payout.
+ *   3. Arqueo: bills and coins with steppers, or "Arqueo rápido: solo total";
+ *      the cuadre card compares with `expectedCashAfterTips`, and a
+ *      difference needs a 3–300 character note (the API's note_required).
+ *   4. Confirmar: the summary, "Imprimir cierre de turno" (a preview) and
+ *      "Cerrar turno", which sends countedCash (+ the non-zero denominations
+ *      when the grid was used) + note + leaveOpenOrders. The API's 422/409
+ *      messages show inline.
  *
- * Open orders (ordenes-abiertas-caja S2) are listed above the preview, each
- * cancellable through the audited VoidFlow; with any left, the close needs
- * the "Dejar N órdenes abiertas" confirmation and sends `leaveOpenOrders`
- * (the API answers 409 open_orders otherwise, shown here on a race).
- *
- * Count (caja-cierres S1, minimal until the T2 wizard): the cashier types
- * the "Efectivo contado" (whole pesos, required); when it differs from the
- * preview's `expectedCashAfterTips` a note of 3+ characters is required, as
- * the API demands (422 note_required).
- *
- * The confirm button is gated by `createSingleFlight` so a double-click
- * cannot fire two `close_register` calls back-to-back (the RPC would
- * idempotently no-op the second, but the brief spinner flicker is still
- * confusing for the cashier).
+ * The success screen reprints the slip with the stored count and closer.
+ * The close is gated by `createSingleFlight` so a double-click cannot fire
+ * two `close_register` calls back-to-back.
  */
 export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegisterDialogProps) {
   const { closeRegister, currentRegister } = useCashRegisterStore()
+  const { businessName, businessNIT, businessAddress } = useConfigStore()
   const [closeFlight] = useState(createSingleFlight)
   const [running, setRunning] = useState(false)
   const [confirmedSummary, setConfirmedSummary] = useState<RegisterSummaryType | null>(null)
+  const [closedSlip, setClosedSlip] = useState<ShiftCloseSlipProps | null>(null)
 
   const ids = useMemo(
     () => (currentRegister ? [currentRegister.id] : []),
@@ -90,11 +100,17 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
   )
   const { data: preview, isLoading: loadingPreview } = useRegisterSummary(ids)
 
+  const [step, setStep] = useState(0)
+  const [visited, setVisited] = useState<ReadonlySet<number>>(() => new Set([0]))
+  const panelHeading = useRef<HTMLHeadingElement>(null)
   const [openOrders, setOpenOrders] = useState<OrderDto[] | null>(null)
   const [leaveOpen, setLeaveOpen] = useState(false)
-  const [conflict, setConflict] = useState<string | null>(null)
+  const [serverError, setServerError] = useState<string | null>(null)
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
-  const [countedInput, setCountedInput] = useState("")
+  const [movements, setMovements] = useState<CashMovement[] | null>(null)
+  const [counts, setCounts] = useState<DenominationCounts>({})
+  const [quick, setQuick] = useState(false)
+  const [quickInput, setQuickInput] = useState("")
   const [note, setNote] = useState("")
 
   const loadOpenOrders = useCallback(async () => {
@@ -107,45 +123,128 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
     setLeaveOpen(false)
   }, [])
 
+  const registerId = currentRegister?.id
   useEffect(() => {
     if (!open) return
-    setConflict(null)
-    setCountedInput("")
+    setServerError(null)
+    setStep(0)
+    setVisited(new Set([0]))
+    setCounts({})
+    setQuick(false)
+    setQuickInput("")
     setNote("")
     void loadOpenOrders()
   }, [open, loadOpenOrders])
 
+  useEffect(() => {
+    if (!open || !registerId) return
+    let live = true
+    setMovements(null)
+    getCashTransactionsByRegisterId(registerId)
+      .then((rows) => live && setMovements(rows))
+      .catch(() => live && setMovements((useCashRegisterStore.getState().currentRegister?.cashTransactions ?? []) as CashMovement[]))
+    return () => {
+      live = false
+    }
+  }, [open, registerId])
+
   const openCount = openOrders?.length ?? 0
-  const counted = countedInput.trim() === "" ? null : Number(countedInput)
-  const countValid = counted !== null && Number.isInteger(counted) && counted >= 0
-  const difference = countValid && preview ? counted - preview.expectedCashAfterTips : 0
-  const noteValid = difference === 0 || note.trim().length >= 3
+  const counted = quick ? wholePesos(quickInput) : countedTotal(counts)
+  const difference = counted !== null && preview ? counted - preview.expectedCashAfterTips : 0
+  const trimmedNote = note.trim()
+  const noteValid = closeNoteValid(note, difference)
+  const ordersReady = openOrders !== null && (openCount === 0 || leaveOpen)
+  const countReady = counted !== null && noteValid
+  const denominations = quick ? [] : denominationsOf(counts)
+
+  const goTo = (index: number, focusPanel = false) => {
+    setStep(index)
+    setVisited((seen) => new Set(seen).add(index))
+    if (focusPanel) requestAnimationFrame(() => panelHeading.current?.focus())
+  }
+
+  const steps: CloseStep[] = [
+    {
+      title: STEP_TITLES[0],
+      done: ordersReady,
+      status: openOrders === null ? "Cargando…" : openCount === 0 ? "Listo" : leaveOpen ? `${openCount} dejadas` : `${openCount} abiertas`,
+    },
+    { title: STEP_TITLES[1], done: visited.has(1), status: visited.has(1) ? "Revisado" : "Revisar" },
+    { title: STEP_TITLES[2], done: countReady && visited.has(2), status: countReady && visited.has(2) ? "Listo" : "Contar efectivo" },
+    { title: STEP_TITLES[3], done: false, status: "Cerrar turno" },
+  ]
+
+  const slipBase = () => ({
+    business: { name: businessName, nit: businessNIT, address: businessAddress },
+    cashierName: (currentRegister as Partial<CashRegisterWithOpener> | null)?.openedBy?.name ?? null,
+    openedAt: new Date(currentRegister?.openingTimestamp ?? Date.now()),
+    movements: movements ?? [],
+  })
+
+  const print = (slip: ShiftCloseSlipProps) => {
+    if (!printSlip(<ShiftCloseSlip {...slip} />, { title: "Cierre de turno" })) {
+      toast.error("El navegador bloqueó la ventana de impresión")
+    }
+  }
+
+  const printPreview = () => {
+    if (!preview || counted === null) return
+    print({
+      ...slipBase(),
+      summary: preview,
+      preview: true,
+      closedAt: null,
+      closedByName: null,
+      countedCash: counted,
+      difference,
+      note: difference !== 0 && trimmedNote ? trimmedNote : null,
+      denominations: quick ? null : denominations,
+    })
+  }
 
   const handleClose = async () => {
     const flight = closeFlight.run(async () => {
       setRunning(true)
-      setConflict(null)
+      setServerError(null)
       try {
-        if (!countValid) return
-        const trimmedNote = note.trim()
+        if (counted === null) return
+        const base = slipBase()
         const result = await closeRegister({
           ...(openCount > 0 ? { leaveOpenOrders: true } : {}),
           countedCash: counted,
+          ...(denominations.length > 0 ? { denominations } : {}),
           ...(difference !== 0 && trimmedNote ? { note: trimmedNote } : {}),
         })
         if (!result) {
-          toast.error("No se pudo cerrar la caja")
+          setServerError("No se pudo cerrar la caja. Intenta de nuevo.")
           return
         }
+        const stored = useCashRegisterStore.getState().lastClose
+        setClosedSlip({
+          ...base,
+          summary: result,
+          closedAt: stored?.closingTimestamp ?? new Date(),
+          closedByName: stored?.closedBy?.name ?? null,
+          countedCash: stored?.countedCash ?? counted,
+          difference: stored?.cashDifference ?? counted - result.expectedCashAfterTips,
+          note: stored ? (stored.closeNote ?? null) : trimmedNote || null,
+          denominations: stored ? (stored.denominations ?? null) : denominations,
+        })
         setConfirmedSummary(result)
         toast.success(
           `La caja ha sido cerrada correctamente con un total de ${formatCurrency(result.totalSales)}`,
         )
         if (onSuccess) onSuccess(result)
       } catch (error) {
+        const refusal = closeRefusalOf(error)
+        if (refusal) {
+          setServerError(refusal.message)
+          return
+        }
         const openOrdersConflict = openOrdersConflictOf(error)
         if (!openOrdersConflict) throw error
-        setConflict(openOrdersConflict.message)
+        setServerError(openOrdersConflict.message)
+        goTo(0)
         await loadOpenOrders()
       } finally {
         setRunning(false)
@@ -160,122 +259,146 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
 
   const handleFinish = () => {
     setConfirmedSummary(null)
+    setClosedSlip(null)
     onOpenChange(false)
   }
+
+  const sheet =
+    "flex max-h-[100dvh] flex-col gap-3 max-sm:h-[100dvh] max-sm:max-w-none max-sm:rounded-none max-sm:border-0 sm:max-h-[92vh]"
 
   // Success screen.
   if (confirmedSummary) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className={`${sheet} sm:max-w-md`}>
           <DialogHeader>
-            <DialogTitle>Cierre de Caja Completado</DialogTitle>
+            <DialogTitle>Turno cerrado</DialogTitle>
           </DialogHeader>
-          <CloseSummaryView summary={confirmedSummary} heading="Resumen del Día" />
-          <DialogFooter>
-            <Button onClick={handleFinish}>Finalizar</Button>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <CloseSummaryView summary={confirmedSummary} heading="Resumen del turno" />
+          </div>
+          <DialogFooter className="gap-2">
+            {closedSlip && (
+              <Button variant="outline" className="h-11" onClick={() => print(closedSlip)}>
+                <Printer aria-hidden="true" className="h-4 w-4" />
+                Imprimir cierre de turno
+              </Button>
+            )}
+            <Button className="h-11" onClick={handleFinish}>Finalizar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     )
   }
 
+  const last = STEP_TITLES.length - 1
+  const canClose = !running && !!preview && ordersReady && countReady
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={`${sheet} sm:max-w-3xl`}>
         <DialogHeader>
-          <DialogTitle>Cerrar Caja</DialogTitle>
+          <DialogTitle>Cierre de turno</DialogTitle>
           <DialogDescription>
-            El servidor toma el lock de la caja y persiste el cierre. Esta es la vista previa
-            con los números que verás confirmados al cerrar.
+            Revisa las órdenes y los movimientos, cuenta el efectivo y confirma. El servidor guarda el cierre.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-4 space-y-4">
-          <p>¿Está seguro que desea cerrar la caja?</p>
+        <CloseStepper steps={steps} active={step} onSelect={(index) => goTo(index)} />
 
-          {conflict && (
-            <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
-              {conflict}
-            </p>
-          )}
+        {serverError && (
+          <p role="alert" className="rounded-md border border-status-danger-line bg-status-danger-bg p-3 text-sm text-status-danger-fg">
+            {serverError}
+          </p>
+        )}
 
-          {openCount > 0 && openOrders && (
-            <div className="space-y-2">
-              <h3 className="font-semibold">Órdenes abiertas</h3>
-              <p className="text-sm text-muted-foreground">
-                Cóbralas o cancélalas antes de cerrar, o confirma que pasan a la siguiente caja.
-              </p>
-              <OpenOrdersList orders={openOrders} now={Date.now()} onCancel={(order) => setVoidTarget(cancelTarget(order))} />
-              <label className="flex min-h-[44px] items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5"
-                  checked={leaveOpen}
-                  onChange={(event) => setLeaveOpen(event.target.checked)}
-                />
-                {leaveOpenOrdersLabel(openCount)}
-              </label>
-            </div>
-          )}
+        <div
+          role="tabpanel"
+          id={CLOSE_STEP_PANEL_ID}
+          aria-labelledby={closeStepTabId(step)}
+          className="min-h-0 flex-1 space-y-3 overflow-y-auto py-1"
+        >
+          <h3 ref={panelHeading} tabIndex={-1} className="text-base font-semibold focus:outline-none">
+            {STEP_TITLES[step]}
+          </h3>
 
-          <div className="space-y-2">
-            <Label htmlFor="countedCash">Efectivo contado</Label>
-            <Input
-              id="countedCash"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step={1}
-              value={countedInput}
-              onChange={(event) => setCountedInput(event.target.value)}
-              className="h-11"
+          {step === 0 &&
+            (openOrders === null ? (
+              <div className="flex items-center gap-2 text-sm text-muted-fg">
+                <Loader2 className="h-4 w-4 animate-spin" /> Cargando órdenes…
+              </div>
+            ) : openCount === 0 ? (
+              <p className="text-sm text-muted-fg">No hay órdenes abiertas.</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-fg">
+                  Cóbralas o cancélalas antes de cerrar, o confirma que pasan a la siguiente caja.
+                </p>
+                <OpenOrdersList orders={openOrders} now={Date.now()} onCancel={(order) => setVoidTarget(cancelTarget(order))} />
+                <label className="flex min-h-[44px] items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5"
+                    checked={leaveOpen}
+                    onChange={(event) => setLeaveOpen(event.target.checked)}
+                  />
+                  {leaveOpenOrdersLabel(openCount)}
+                </label>
+              </div>
+            ))}
+
+          {step === 1 && <MovementsStep movements={movements} summary={preview} />}
+
+          {step === 2 && (
+            <ArqueoStep
+              summary={preview}
+              counts={counts}
+              onCountsChange={setCounts}
+              quick={quick}
+              onQuickChange={setQuick}
+              quickInput={quickInput}
+              onQuickInputChange={setQuickInput}
+              counted={counted}
+              note={note}
+              onNoteChange={setNote}
             />
-            {countValid && preview && difference !== 0 && (
-              <p className="text-sm font-medium">
-                {difference > 0 ? "Sobrante" : "Faltante"}: {formatCurrency(Math.abs(difference))}
-              </p>
-            )}
-            {countValid && preview && difference === 0 && <p className="text-sm font-medium">Cuadra</p>}
-          </div>
-
-          {countValid && difference !== 0 && (
-            <div className="space-y-2">
-              <Label htmlFor="closeNote">Nota del cierre</Label>
-              <Textarea
-                id="closeNote"
-                value={note}
-                maxLength={300}
-                onChange={(event) => setNote(event.target.value)}
-                placeholder="Explica la diferencia (mínimo 3 caracteres)"
-              />
-            </div>
           )}
 
-          {preview ? (
-            <CloseSummaryView summary={preview} heading="Vista Previa del Cierre" compact />
-          ) : loadingPreview ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Calculando resumen...
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">No hay caja abierta.</div>
-          )}
+          {step === 3 &&
+            (preview ? (
+              <>
+                <ConfirmStep summary={preview} counted={counted} note={note} leftOpen={leaveOpen ? openCount : 0} />
+                <CloseSummaryAdvisories summary={preview} />
+              </>
+            ) : loadingPreview ? (
+              <div className="flex items-center gap-2 text-sm text-muted-fg">
+                <Loader2 className="h-4 w-4 animate-spin" /> Calculando resumen...
+              </div>
+            ) : (
+              <p className="text-sm text-muted-fg">No hay caja abierta.</p>
+            ))}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={running}>
-            Cancelar
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button variant="outline" className="h-11" onClick={() => goTo(step - 1, true)} disabled={step === 0 || running}>
+            Atrás
           </Button>
-          <Button
-            onClick={handleClose}
-            disabled={
-              running || !preview || openOrders === null || (openCount > 0 && !leaveOpen) || !countValid || !noteValid
-            }
-          >
-            {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Cerrar Caja
-          </Button>
+          {step < last ? (
+            <Button className="h-11" onClick={() => goTo(step + 1, true)}>
+              Continuar
+            </Button>
+          ) : (
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button variant="outline" className="h-11" onClick={printPreview} disabled={!preview || counted === null}>
+                <Printer aria-hidden="true" className="h-4 w-4" />
+                Imprimir cierre de turno
+              </Button>
+              <Button className="h-11" onClick={handleClose} disabled={!canClose}>
+                {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Cerrar turno
+              </Button>
+            </div>
+          )}
         </DialogFooter>
         <VoidFlow
           target={voidTarget}
@@ -284,6 +407,21 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
         />
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** The tips-shortfall advisory of the close (non-blocking). */
+function CloseSummaryAdvisories({ summary }: { summary: RegisterSummaryType }) {
+  const shortfall = tipsShortfall(summary)
+  if (shortfall <= 0) return null
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-status-danger-line bg-status-danger-bg p-3 text-sm text-status-danger-fg">
+      <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+      <p>
+        El efectivo en caja no alcanza para pagar las propinas del turno. Faltante: {formatCurrency(shortfall)}. No
+        bloquea el cierre.
+      </p>
+    </div>
   )
 }
 

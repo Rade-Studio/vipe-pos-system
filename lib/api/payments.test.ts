@@ -22,6 +22,7 @@ import {
   PaymentServiceError,
   closeRegisterRpc,
   openOrdersConflictOf,
+  closeRefusalOf,
   createPaymentMethod,
   getPaymentsByOrderIds,
   getRegisterSummary,
@@ -270,6 +271,20 @@ describe("closeRegisterRpc with open orders (S1)", () => {
     expect(openOrdersConflictOf(error)).toEqual({ count: 1, message })
     expect(openOrdersConflictOf(new ApiError(409, "Conflict", "Register is closed"))).toBeNull()
     expect(openOrdersConflictOf(new Error("x"))).toBeNull()
+  })
+
+  it.each(["counted_cash_required", "count_mismatch", "note_required"])("reads the 422 %s refusal with its Spanish message (caja-cierres S3)", async (code) => {
+    const message = "Escribe una nota de 3 a 300 caracteres."
+    api.POST.mockRejectedValue(new ApiError(422, "Unprocessable Entity", message, { code, message }))
+    const error = await closeRegisterRpc("r-1", { countedCash: 1 }).catch((e: unknown) => e)
+    expect(closeRefusalOf(error)).toEqual({ code, message })
+    expect(openOrdersConflictOf(error)).toBeNull()
+  })
+
+  it("answers null for any other close error", () => {
+    expect(closeRefusalOf(new ApiError(422, "Unprocessable Entity", "bad", { code: "other" }))).toBeNull()
+    expect(closeRefusalOf(new ApiError(409, "Conflict", "x", { code: "note_required" }))).toBeNull()
+    expect(closeRefusalOf(new Error("x"))).toBeNull()
   })
 })
 
