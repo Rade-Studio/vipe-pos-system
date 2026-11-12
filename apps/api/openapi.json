@@ -10900,6 +10900,15 @@
             "minimum": 0,
             "maximum": 6,
             "description": "Hora de corte del día de negocio: a register belongs to the date of its opening in the restaurant's timezone minus this many hours (opened at 1:00 a.m. with 4 is the previous day)."
+          },
+          "taxType": {
+            "type": "string",
+            "enum": [
+              "INC",
+              "IVA"
+            ],
+            "default": "INC",
+            "description": "Tipo de impuesto: INC (impuesto nacional al consumo, what restaurants usually charge) or IVA. Labels bills, slips and the informe Z with taxPercentage; changing it never changes taxPercentage."
           }
         },
         "required": [
@@ -10918,7 +10927,8 @@
           "allowSelfAuthorization",
           "printingEnabled",
           "desktopUpdateChannel",
-          "businessDayCutoffHour"
+          "businessDayCutoffHour",
+          "taxType"
         ]
       },
       "UpdateBusinessConfigRequest": {
@@ -10996,6 +11006,13 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 6
+          },
+          "taxType": {
+            "type": "string",
+            "enum": [
+              "INC",
+              "IVA"
+            ]
           }
         }
       },
@@ -15537,6 +15554,23 @@
       "CashTaxes": {
         "type": "object",
         "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "INC",
+              "IVA"
+            ],
+            "description": "Configured taxType at the emit; absent on legacy Zs."
+          },
+          "name": {
+            "type": "string",
+            "example": "Impuesto nacional al consumo"
+          },
+          "label": {
+            "type": "string",
+            "example": "INC (8 %)",
+            "description": "Printed label: type and taxPercentage."
+          },
           "rate": {
             "type": "number",
             "example": 8,

@@ -18,6 +18,7 @@ import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
 import type { CashRegisterWithOpener } from "@/lib/api/registers"
 import { useConfigStore } from "@/store/use-config-store"
 import { XReportSlip } from "@/components/printing/XReportSlip"
+import { useTaxType } from "@/components/printing/tax-label"
 import { printSlip } from "@/components/printing/slip-format"
 import { toast } from "@/utils/toast"
 
@@ -28,7 +29,8 @@ export function CashRegisterStatus() {
   const [withdrawCashDialog, setWithdrawCashDialog] = useState(false)
 
   const { isRegisterOpen, currentRegister } = useCashRegisterStore()
-  const { businessName, businessNIT, businessAddress } = useConfigStore()
+  const { businessName, businessNIT, businessAddress, taxPercentage } = useConfigStore()
+  const taxType = useTaxType()
   const isOpen = isRegisterOpen()
   // The drawer-cash value comes from the server's `register_summary`
   // (its `expected_cash` is initial + cash-tender + deposits - withdrawals).
@@ -70,6 +72,7 @@ export function CashRegisterStatus() {
         openedAt={new Date(currentRegister.openingTimestamp)}
         printedAt={new Date()}
         summary={summary}
+        tax={{ type: taxType, rate: taxPercentage }}
       />,
       { title: "Informe X" },
     )

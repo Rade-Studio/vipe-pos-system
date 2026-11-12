@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const toastMock = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
-vi.mock("@/lib/api/config", () => ({}))
+const config = vi.hoisted(() => ({ fetch: vi.fn(), save: vi.fn() }))
+vi.mock("@/lib/api/config", () => ({ fetchConfig: config.fetch, saveConfig: config.save }))
 
 import { useConfigStore } from "@/store/use-config-store"
 import { BusinessSettings } from "./BusinessSettings"
@@ -22,6 +23,8 @@ const loadConfigFromDB = vi.fn(async () => {})
 
 beforeEach(() => {
   toastMock.mockClear()
+  config.fetch.mockReset().mockResolvedValue({ taxType: "INC", businessDayCutoffHour: 4 })
+  config.save.mockReset().mockResolvedValue({ taxType: "IVA" })
   saveConfigToDB.mockReset().mockResolvedValue(undefined)
   loadConfigFromDB.mockClear()
   useConfigStore.setState({
@@ -52,7 +55,7 @@ describe("settings SaveBar", () => {
     })
 
     expect(saveBar()).toBeInTheDocument()
-    expect(screen.getByTestId("tax-example")).toHaveTextContent("Impuesto (19%)")
+    expect(screen.getByTestId("tax-example")).toHaveTextContent("INC (19 %)")
   })
 
   it("Discard restores the saved values and hides the bar", async () => {
@@ -110,5 +113,51 @@ describe("settings SaveBar", () => {
     expect(useConfigStore.getState().tipPercentage).toBe(10)
     expect(screen.getByLabelText("Propina sugerida")).toHaveValue(15)
     expect(saveBar()).toBeInTheDocument()
+  })
+})
+
+describe("TaxSettings · tipo de impuesto (caja-cierres S9)", () => {
+  const typeField = () => screen.getByLabelText("Tipo de impuesto") as HTMLSelectElement
+
+  it("shows the saved type, INC and IVA as choices and explains that restaurants usually charge INC 8 %", async () => {
+    config.fetch.mockResolvedValue({ taxType: "IVA" })
+    render(<TaxSettings />)
+    await act(async () => {})
+    expect(typeField().value).toBe("IVA")
+    expect([...typeField().options].map((option) => option.textContent)).toEqual(["INC · Impuesto nacional al consumo", "IVA"])
+    expect(screen.getByText(/Los restaurantes suelen cobrar INC del 8 %/)).toBeInTheDocument()
+    expect(screen.getByTestId("tax-example")).toHaveTextContent("IVA (8 %)")
+  })
+
+  it("saves only the type and never changes the percentage", async () => {
+    render(<TaxSettings />)
+    await act(async () => {})
+    expect(typeField().value).toBe("INC")
+    await act(async () => {
+      fireEvent.change(typeField(), { target: { value: "IVA" } })
+    })
+    expect(saveBar()).toBeInTheDocument()
+    expect(screen.getByTestId("tax-example")).toHaveTextContent("IVA (8 %)")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
+    })
+    expect(config.save).toHaveBeenCalledWith({ taxType: "IVA" })
+    expect(saveConfigToDB).not.toHaveBeenCalled()
+    expect(useConfigStore.getState().taxPercentage).toBe(8)
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Configuración guardada" }))
+    expect(saveBar()).not.toBeInTheDocument()
+  })
+
+  it("Discard restores the saved type", async () => {
+    render(<TaxSettings />)
+    await act(async () => {})
+    await act(async () => {
+      fireEvent.change(typeField(), { target: { value: "IVA" } })
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Descartar" }))
+    })
+    expect(typeField().value).toBe("INC")
+    expect(config.save).not.toHaveBeenCalled()
   })
 })

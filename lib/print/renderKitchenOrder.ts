@@ -210,6 +210,8 @@ export function renderInvoice(params: {
     change?: number
     /** Delivery block: prints customer / address / fee instead of MESA / MESERO. */
     delivery?: DeliveryPrintInfo
+    /** Configured tax type (caja-cierres S9): prints `INC (8 %):`; without it the legacy `IVA:` line. */
+    taxType?: 'INC' | 'IVA'
   }
   displayItems: Array<{
     name: string
@@ -310,7 +312,8 @@ export function renderInvoice(params: {
   } else {
     lines.push({ text: `SUBTOTAL: ${formatCurrency(bill.subtotal)}`, align: 'left' })
   }
-  lines.push({ text: `IVA: ${formatCurrency(bill.tax)}`, align: 'left' })
+  const taxName = invoice.taxType ? `${invoice.taxType} (${String(bill.taxPercentage).replace('.', ',')} %)` : 'IVA'
+  lines.push({ text: `${taxName}: ${formatCurrency(bill.tax)}`, align: 'left' })
   if (!s14 && bill.totalDiscounts > 0) {
     lines.push({ text: `DESCUENTOS: -${formatCurrency(bill.totalDiscounts)}`, align: 'left' })
   }

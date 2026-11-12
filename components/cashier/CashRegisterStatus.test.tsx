@@ -29,6 +29,8 @@ const summary = {
 }
 vi.mock("@/hooks/use-register-summary", () => ({ useRegisterSummary: () => ({ data: summary, isLoading: false }) }))
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { CONFIG_QUERY_KEY } from "@/lib/api/config"
 import { CashRegisterStatus } from "./CashRegisterStatus"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { useConfigStore } from "@/store/use-config-store"
@@ -62,6 +64,25 @@ describe("CashRegisterStatus Informe X", () => {
     expect(html).toContain("LA FONDA DE MARIANA")
     expect(html).toContain("Camilo Henao")
     expect(html).toMatch(/Esperado ahora\s+\$ 789\.000/)
+  })
+
+  it("prints the configured tax label (S9): INC by default, IVA from the config", () => {
+    useCashRegisterStore.setState({ currentRegister: register, registers: [register] })
+    useConfigStore.setState({ taxPercentage: 8 })
+    const doc = { open: vi.fn(), write: vi.fn(), close: vi.fn() }
+    vi.spyOn(window, "open").mockReturnValue({ document: doc } as unknown as Window)
+    const { unmount } = render(<CashRegisterStatus />)
+    fireEvent.click(screen.getByRole("button", { name: "Informe X" }))
+    expect(doc.write.mock.calls.at(-1)?.[0]).toContain("INC (8 %)")
+    unmount()
+    const client = new QueryClient()
+    client.setQueryData(CONFIG_QUERY_KEY, { taxType: "IVA" })
+    useConfigStore.setState({ taxPercentage: 19 })
+    render(<QueryClientProvider client={client}><CashRegisterStatus /></QueryClientProvider>)
+    fireEvent.click(screen.getByRole("button", { name: "Informe X" }))
+    const html = doc.write.mock.calls.at(-1)?.[0] as string
+    expect(html).toContain("IVA (19 %)")
+    expect(html).not.toContain("INC (")
   })
 
   it("keeps its other actions and has no Informe X while the register is closed", () => {

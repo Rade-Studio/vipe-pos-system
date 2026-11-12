@@ -12,6 +12,7 @@ import {
   type SlipBusiness,
   type SlipLine,
 } from "./slip-format"
+import { type SlipTax, taxBreakdown, taxLabel } from "./tax-label"
 
 export interface XReportSlipProps {
   business: SlipBusiness
@@ -19,6 +20,8 @@ export interface XReportSlipProps {
   openedAt: Date
   printedAt: Date
   summary: RegisterSummary
+  /** Configured tax type and rate; without it no tax line is printed. */
+  tax?: SlipTax
   paperMm?: PaperMm
 }
 
@@ -33,11 +36,18 @@ export function methodLines(summary: RegisterSummary, width: number): SlipLine[]
     .map((method) => ({ text: padLine(`${method.name} (${method.tendersCount})`, pesos(method.total), width) }))
 }
 
+/** "Base" and "INC (8 %)" of tax-included sales (S9); nothing without a tax setting. */
+export function taxLines(sales: number, tax: SlipTax | undefined, width: number): SlipLine[] {
+  if (!tax) return []
+  const { base, tax: amount } = taxBreakdown(sales, tax.rate)
+  return [{ text: padLine("Base", pesos(base), width) }, { text: padLine(taxLabel(tax.type, tax.rate), pesos(amount), width) }]
+}
+
 /**
  * "Informe X" (caja-cierres S4): a partial summary of the open shift. It
  * prints any time and resets nothing; tips are shown apart.
  */
-export function xReportLines({ business, cashierName, openedAt, printedAt, summary, paperMm = 80 }: XReportSlipProps): SlipLine[] {
+export function xReportLines({ business, cashierName, openedAt, printedAt, summary, tax, paperMm = 80 }: XReportSlipProps): SlipLine[] {
   const width = slipChars(paperMm)
   const row = (left: string, right: string, bold = false): SlipLine => ({ text: padLine(left, right, width), bold })
   return [
@@ -53,6 +63,7 @@ export function xReportLines({ business, cashierName, openedAt, printedAt, summa
     { text: "Ventas por método", bold: true },
     ...methodLines(summary, width),
     row("Ventas", pesos(summary.totalSales), true),
+    ...taxLines(summary.totalSales, tax, width),
     row("Tiquetes", String(summary.paymentsCount)),
     ruleLine(width),
     { text: "Efectivo en caja", bold: true },
