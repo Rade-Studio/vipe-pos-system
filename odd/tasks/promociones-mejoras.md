@@ -25,8 +25,8 @@ Follow-up of `odd/tasks/promociones.md` (delivered to dev in PR #176, 7180922). 
 | M4 Delivery form parity | S7 (except combos → M8) | worker | M4 commit (L9) |
 | M5 "Para llevar" order type | S8 | worker (after M1) | — |
 | M8 Delivery combos (API `combos` in create-delivery + combo builder in the form) | S7 | worker (after M1) | — |
-| M6 Weekly promotion stats | S9 | worker | — |
-| M7 Invoice layout rule | S10 | worker | — |
+| M6 Weekly promotion stats | S9 | worker | dc064ac |
+| M7 Invoice layout rule | S10 | worker | a41291e |
 
 ## Log
 
@@ -39,3 +39,4 @@ Follow-up of `odd/tasks/promociones.md` (delivered to dev in PR #176, 7180922). 
 - L7 (coordination, caja e67917ab): caja's pending PRs touch apps/api/src/cash, components/admin/cash, ZReportSlip, business-config/TaxSettings/tax-label, X/Shift/Z slips, InvoicePrintView, CashRegisterStatus, CloseRegisterDialog and renderInvoice in lib/print/renderKitchenOrder.ts (tax line). Not CashierView, cashier queue/lists, the orders API or registers.service. For takeaway (S8): touch only renderKitchenOrder (the kitchen ticket) in that file, never renderInvoice; takeaway keeps its own order_type (not counted as salón; caja adds a "para llevar" counter). caja's 0029_z_reports is on dev (d25b9dd, #181, when 1793896481411) → our takeaway migration is 0030 with a later when.
 - L8 (evidence, M7): the on-screen invoice uses `totalsLayout()` (components/printing/totals-layout.ts), the same rule as the receipt renderers; printing 55/55.
 - L9 (evidence, M4): delivery form shows promotion tags, per-line discounts, the delivery bill discount with its minimum hint and "Ahorro con promociones"; total and courier-change validation use the net (tax on the net + fee) when the preview is available; `usePricingPreview` accepts a prebuilt draft (waiter unchanged). 29 files 433 passed; typecheck and lint clean. Combos not possible yet: `createDeliveryOrderSchema` has no `combos` → M8.
+- L10 (evidence, M6): `GET /catalog/promotions/stats/week` (admin) with week = Monday at the business-day cutoff in the restaurant timezone through now (rule copied from CashService.scope, no shared helper), paid orders by created_at; admin cards "Descuento otorgado · esta semana" (X% de la venta) and "Venta con promoción · esta semana" (N cuentas). API catalog 107/107, web 60/60, typechecks and lints clean.
