@@ -21,6 +21,7 @@ export interface RegisterRow {
   register: Json;
   opened_by_name: string | null;
   closed_by_name: string | null;
+  validated_by_name: string | null;
   transactions: Json[] | null;
   cash_transactions: Json[] | null;
 }
@@ -64,6 +65,8 @@ export function toRegister(row: RegisterRow): CashRegister {
     createdAt: time(r.created_at),
     updatedAt: time(r.updated_at),
     openedBy: profileRef(r.opened_by, row.opened_by_name),
+    validatedBy: profileRef(r.validated_by, row.validated_by_name),
+    validatedAt: time(r.validated_at),
     ...toRegisterCount(r, row.closed_by_name),
   };
   if (row.transactions) {

@@ -119,6 +119,20 @@ export class RegistersController {
     return this.registers.close(parseInput(idParamSchema, id), parseInput(closeRegisterSchema, body));
   }
 
+  @Post(':id/validate')
+  @Roles('admin')
+  @HttpCode(200)
+  @ApiOkResponse({
+    type: CashRegister,
+    description: 'Validar turno: stores validatedBy (the caller) and validatedAt once; a second call returns the stored values.',
+  })
+  @ApiConflictResponse({ description: 'code register_open: the register is still open.' })
+  @ApiNotFoundResponse({ description: 'Unknown or of another restaurant.' })
+  @ApiForbiddenResponse({ description: 'Not an admin.' })
+  validate(@Param('id') id: string): Promise<CashRegister> {
+    return this.registers.validate(parseInput(idParamSchema, id));
+  }
+
   @Get(':id/paid-orders')
   @Roles(...DRAWER_ROLES)
   @ApiQuery({ name: 'limit', required: false, description: `1..${PAID_ORDERS_MAX}, default ${PAID_ORDERS_DEFAULT}.` })

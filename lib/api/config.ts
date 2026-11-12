@@ -12,6 +12,14 @@ import type { components } from "./schema"
 export type BusinessConfig = components["schemas"]["BusinessConfig"]
 export type BusinessConfigUpdate = components["schemas"]["UpdateBusinessConfigRequest"]
 
+/**
+ * Hora de corte del día de negocio (caja-cierres S5): a register opened before
+ * this hour belongs to the previous business day. The server stores 0..6 and
+ * reads a missing key as 4.
+ */
+export const DEFAULT_BUSINESS_DAY_CUTOFF_HOUR = 4
+export const BUSINESS_DAY_CUTOFF_HOURS: readonly number[] = [0, 1, 2, 3, 4, 5, 6]
+
 /** One cache slot shared by every config reader (store, delivery fee setting and dialog). */
 export const CONFIG_QUERY_KEY = ["config"] as const
 

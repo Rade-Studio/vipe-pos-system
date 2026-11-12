@@ -34,6 +34,13 @@ const minutes = (fallback: number) => (value: string) => {
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 240 ? parsed : fallback;
 };
 
+/** Business day cut-off: a stored value that is not an integer 0..6 reads as 4. */
+const cutoffHour = (value: string) => {
+  const trimmed = value.trim();
+  const parsed = trimmed.length === 0 ? Number.NaN : Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 6 ? parsed : 4;
+};
+
 export const CONFIG_KEYS = {
   taxPercentage: { key: 'tax_percentage', fallback: 10, read: (v: string) => number(v, 10) },
   tipPercentage: { key: 'tip_percentage', fallback: 10, read: (v: string) => number(v, 10) },
@@ -56,6 +63,8 @@ export const CONFIG_KEYS = {
   printingEnabled: { key: 'printing_enabled', fallback: true, read: (v: string) => v !== 'false' },
   /** F5a: stable (default) | pilot; anything else reads as stable. */
   desktopUpdateChannel: { key: 'desktop_update_channel', fallback: 'stable' as DesktopUpdateChannel, read: updateChannel },
+  /** S5 (caja-cierres): hour 0..6 (default 4); a register opened before it belongs to the previous business day. */
+  businessDayCutoffHour: { key: 'business_day_cutoff_hour', fallback: 4, read: cutoffHour },
 } as const;
 
 export type ConfigField = keyof typeof CONFIG_KEYS;
@@ -80,6 +89,7 @@ export const updateConfigSchema = z.strictObject({
   allowSelfAuthorization: z.boolean().optional(),
   printingEnabled: z.boolean().optional(),
   desktopUpdateChannel: z.enum(DESKTOP_UPDATE_CHANNELS).optional(),
+  businessDayCutoffHour: z.number().int().min(0).max(6).optional(),
 });
 
 /** Typed config built from the stored rows; missing or unreadable keys take the default. */
@@ -131,6 +141,14 @@ export class BusinessConfig {
     description: 'Update channel of the VIPE desktop app: pilot receives new versions before stable.',
   })
   desktopUpdateChannel!: DesktopUpdateChannel;
+  @ApiProperty({
+    default: 4,
+    minimum: 0,
+    maximum: 6,
+    description:
+      "Hora de corte del día de negocio: a register belongs to the date of its opening in the restaurant's timezone minus this many hours (opened at 1:00 a.m. with 4 is the previous day).",
+  })
+  businessDayCutoffHour!: number;
 }
 
 export class UpdateBusinessConfigRequest {
@@ -149,4 +167,5 @@ export class UpdateBusinessConfigRequest {
   @ApiPropertyOptional({ description: 'Admin only, like every key.' }) allowSelfAuthorization?: boolean;
   @ApiPropertyOptional() printingEnabled?: boolean;
   @ApiPropertyOptional({ enum: DESKTOP_UPDATE_CHANNELS }) desktopUpdateChannel?: DesktopUpdateChannel;
+  @ApiPropertyOptional({ minimum: 0, maximum: 6, type: 'integer' }) businessDayCutoffHour?: number;
 }

@@ -20,6 +20,7 @@ const DEFAULTS = {
   allowSelfAuthorization: false,
   printingEnabled: true,
   desktopUpdateChannel: 'stable',
+  businessDayCutoffHour: 4,
 };
 
 describe('business config endpoints (Testcontainers, vipe_api)', () => {
@@ -202,6 +203,22 @@ describe('business config endpoints (Testcontainers, vipe_api)', () => {
     expect((await get(fixtures.waiterA)).body.desktopUpdateChannel).toBe('pilot');
     expect((await get(fixtures.adminB)).body.desktopUpdateChannel).toBe('stable');
     expect((await put(fixtures.adminA, { desktopUpdateChannel: 'stable' })).body.desktopUpdateChannel).toBe('stable');
+  });
+
+  it('stores businessDayCutoffHour 0..6 for the admin only (default 4) and serves it per restaurant', async () => {
+    const before = await rows(fixtures.restaurantA);
+    expect((await put(fixtures.waiterA, { businessDayCutoffHour: 2 })).status).toBe(403);
+    for (const value of [7, -1, 2.5, '3']) {
+      expect((await put(fixtures.adminA, { businessDayCutoffHour: value })).status).toBe(422);
+    }
+    expect(await rows(fixtures.restaurantA)).toEqual(before);
+    const res = await put(fixtures.adminA, { businessDayCutoffHour: 0 });
+    expect(res.status).toBe(200);
+    expect(res.body.businessDayCutoffHour).toBe(0);
+    expect(await rows(fixtures.restaurantA)).toContainEqual({ key: 'business_day_cutoff_hour', value: '0' });
+    expect((await get(fixtures.waiterA)).body.businessDayCutoffHour).toBe(0);
+    expect((await get(fixtures.adminB)).body.businessDayCutoffHour).toBe(4);
+    expect((await put(fixtures.adminA, { businessDayCutoffHour: 4 })).body.businessDayCutoffHour).toBe(4);
   });
 
   it('rejects a waiter writing a late threshold with 403', async () => {

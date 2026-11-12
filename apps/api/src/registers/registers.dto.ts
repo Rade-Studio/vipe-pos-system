@@ -112,6 +112,10 @@ export class CashRegister extends RegisterCount {
     description: "Who opened it: always the caller's profile at open; null for registers opened before migration 0014 or a deleted profile.",
   })
   openedBy!: ProfileRef | null;
+  @ApiProperty({ type: ProfileRef, nullable: true, description: 'Admin who validated the closed shift (POST /registers/:id/validate); null when not validated.' })
+  validatedBy!: ProfileRef | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Server clock of the validation.' })
+  validatedAt!: string | null;
   @ApiPropertyOptional({ type: [LegacyPaymentTransaction], description: 'Only with include=transactions; legacy payment_transactions, newest first.' })
   transactions?: LegacyPaymentTransaction[];
   @ApiPropertyOptional({ type: [CashTransaction], description: 'Only with include=cashTransactions; newest first.' })
