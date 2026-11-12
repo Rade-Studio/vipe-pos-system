@@ -40,7 +40,7 @@ Implements the chosen artboard `design/produccion-minimal/04-produccion-diaria.h
 ## Tasks
 
 - [x] T1. S3 (save), S4 (template storage), S6: migration 0025, `produce_preparations` (atomic, netted shortages) + `POST /inventory/production/bulk`, `produce_preparation_on` for dated single production, produced_on / produced_by, batches `from`/`to`, production templates CRUD, OpenAPI, lib/api wrappers. Route: worker. Commit: see git log. RED: inventory spec 10 failed, lib 4 failed (pgTAP 360 written after the migration). GREEN: API 59 files / 827; lib 301; test:db 45 / 2087; typecheck, api typecheck, api lint clean. Independent verify: S3-save, S4-storage, S6 PASS (no blockers; backfill checked across timezones, all-or-nothing hashes unchanged after 11 rejections, 24 concurrent opposite-order requests without deadlock).
-- [ ] T2. S1–S5 UI: tabs, compact table, daily sheet, fill menu, CSV import/template, summary dialog, lots tab. Route: worker (after T1). Commit: -
+- [x] T2. S1–S5 UI: tabs, compact table, daily sheet, fill menu, CSV import/template, summary dialog, lots tab. Route: worker (after T1). Commit: see git log. RED: lib modules missing, hooks 6, ProductionPage 16/16. GREEN: production + lib/inventory + hooks/inventory + lib/api/inventory 16 files / 294; typecheck and eslint clean. Max producible per bodega from each ingredient's lots at the chosen bodega (useStockAtLocation), total stock as fallback while loading. Not checked in a browser.
 
 ## Log
 

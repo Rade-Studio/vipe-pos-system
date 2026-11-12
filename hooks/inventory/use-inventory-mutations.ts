@@ -8,10 +8,13 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
+import { ApiError } from "@/lib/api/errors"
 import { InventoryError, toInventoryError } from "@/lib/inventory/errors"
+import { parseBulkShortages, type BulkShortage } from "@/lib/inventory/production-sheet"
 import * as inventory from "@/lib/api/inventory"
 import type {
   AdjustStockInput,
+  BulkProduceInput,
   CreateItemInput,
   CreatePreparationInput,
   CreatePurchaseOrderInput,
@@ -19,6 +22,7 @@ import type {
   InventoryLocationInput,
   OpenCountInput,
   PaymentStatus,
+  ProductionTemplateInput,
   ProducePreparationInput,
   ReceiveLineInput,
   SaveFormulaInput,
@@ -27,6 +31,7 @@ import type {
   UpdatePurchaseOrderInput,
 } from "@/lib/api/inventory"
 import { type InventoryMutation, failureInvalidationsFor, invalidationsFor } from "./invalidations"
+import { productionTemplatesKey } from "./use-inventory-queries"
 
 function useInventoryMutation<TVars, TResult>(
   fn: (vars: TVars) => Promise<TResult>,
@@ -58,6 +63,58 @@ export const useTransferStock = () =>
 
 export const useProducePreparation = () =>
   useInventoryMutation((v: ProducePreparationInput) => inventory.producePreparation(v), () => ({ type: "produce" }))
+
+/** A refused daily report: the preparations that cannot be produced with their short inputs. */
+export class ProductionShortageError extends InventoryError {
+  readonly prepShortages: BulkShortage[]
+
+  constructor(prepShortages: BulkShortage[]) {
+    super("P0001", "Stock insuficiente: no se registró ningún lote.")
+    this.name = "ProductionShortageError"
+    this.prepShortages = prepShortages
+  }
+}
+
+/** All lines or none; a shortage rejects with `ProductionShortageError`. */
+export const useProducePreparations = () =>
+  useInventoryMutation(
+    async (v: BulkProduceInput) => {
+      try {
+        return await inventory.producePreparations(v)
+      } catch (error) {
+        const shortages = error instanceof ApiError ? parseBulkShortages(error.body.details) : []
+        throw shortages.length > 0 ? new ProductionShortageError(shortages) : error
+      }
+    },
+    () => ({ type: "produce" }),
+  )
+
+export const DUPLICATE_TEMPLATE_MESSAGE = "Ya existe una plantilla con ese nombre"
+
+function useTemplateMutation<TVars, TResult>(fn: (vars: TVars) => Promise<TResult>) {
+  const queryClient = useQueryClient()
+  return useMutation<TResult, InventoryError, TVars>({
+    mutationFn: async (vars) => {
+      try {
+        return await fn(vars)
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) throw new InventoryError("23505", DUPLICATE_TEMPLATE_MESSAGE)
+        throw toInventoryError(error)
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: productionTemplatesKey }),
+  })
+}
+
+export const useCreateProductionTemplate = () =>
+  useTemplateMutation((v: ProductionTemplateInput) => inventory.createProductionTemplate(v))
+
+export const useUpdateProductionTemplate = () =>
+  useTemplateMutation((v: { id: string; input: Partial<ProductionTemplateInput> }) =>
+    inventory.updateProductionTemplate(v.id, v.input),
+  )
+
+export const useDeleteProductionTemplate = () => useTemplateMutation((id: string) => inventory.deleteProductionTemplate(id))
 
 export const useConsumeOrderStock = () =>
   useInventoryMutation((orderId: string) => inventory.consumeOrderStock(orderId), () => ({ type: "consumeOrder" }))

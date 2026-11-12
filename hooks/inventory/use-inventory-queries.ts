@@ -6,13 +6,15 @@
  * optional shortages). No toasts here: the screens decide how to show errors.
  */
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query"
 
 import { toInventoryError } from "@/lib/inventory/errors"
 import { inventoryKeys } from "@/lib/inventory/query-keys"
 import * as inventory from "@/lib/api/inventory"
 import type { ListItemsOptions } from "@/lib/api/inventory"
-import type { MovementFilters, PurchaseOrderFilters } from "@/lib/api/inventory"
+import type { BatchListOptions, MovementFilters, PurchaseOrderFilters } from "@/lib/api/inventory"
+import { listStaff } from "@/lib/api/staff"
+import { stockAtLocation } from "@/lib/inventory/production-sheet"
 
 /** Wraps a service read so the query error is always an InventoryError. */
 export const mapped =
@@ -106,8 +108,42 @@ export function useInventoryCount(id: string | null | undefined) {
   })
 }
 
-export function useProductionBatches() {
-  return useQuery({ queryKey: inventoryKeys.batches(), queryFn: mapped(() => inventory.listBatches()) })
+/** Without options the newest 100; filtered lists stay under the batches prefix so production refreshes them. */
+export function useProductionBatches(options?: BatchListOptions) {
+  return useQuery({
+    queryKey: options ? [...inventoryKeys.batches(), options] : inventoryKeys.batches(),
+    queryFn: mapped(() => inventory.listBatches(options)),
+  })
+}
+
+/** Under ['inventory'] so a full inventory refresh includes it. */
+export const productionTemplatesKey = [...inventoryKeys.all, "production-templates"] as const
+
+export function useProductionTemplates() {
+  return useQuery({ queryKey: productionTemplatesKey, queryFn: mapped(() => inventory.listProductionTemplates()) })
+}
+
+/** Staff profiles (Responsable of a production); same cache as the other staff screens. */
+export function useStaffMembers() {
+  return useQuery({ queryKey: ["staff"], queryFn: listStaff })
+}
+
+/**
+ * Stock of each ingredient at one location, from its lots (the server checks
+ * production per location). Null until every list loaded or without a location.
+ */
+export function useStockAtLocation(itemIds: readonly string[], locationId: string): Map<string, number> | null {
+  return useQueries({
+    queries: itemIds.map((id) => ({
+      queryKey: inventoryKeys.lots(id),
+      queryFn: mapped(() => inventory.listLots(id)),
+      enabled: Boolean(locationId),
+    })),
+    combine: (results) =>
+      !locationId || results.some((r) => !r.data)
+        ? null
+        : new Map(itemIds.map((id, i) => [id, stockAtLocation(results[i].data ?? [], locationId)])),
+  })
 }
 
 export function useInventoryOverview(days = 30) {
