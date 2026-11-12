@@ -17,7 +17,7 @@ const notFound = () => new NotFoundException(CARTA_MESSAGES.notFound);
 /**
  * The guest side of the table QR (S12–S14): no login and no unit of work,
  * like CartaService. The restaurant comes only from the slug and the table
- * only from its token, inside the 0035 guest SECURITY DEFINER functions run
+ * only from its token, inside the 0036 guest SECURITY DEFINER functions run
  * on the pool without app.user_id; the staff identity is never read.
  */
 @Injectable()
