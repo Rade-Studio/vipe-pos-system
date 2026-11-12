@@ -107,8 +107,9 @@ export function PromotionList() {
   const isPromotionActive = (promotion: Promotion) => {
     const now = new Date()
     const startDate = new Date(promotion.startDate)
-    const endDate = new Date(promotion.endDate)
-    return promotion.active && now >= startDate && now <= endDate
+    // A null endDate is a promotion with no end.
+    const endDate = promotion.endDate ? new Date(promotion.endDate) : null
+    return promotion.active && now >= startDate && (endDate === null || now <= endDate)
   }
 
   return (
@@ -158,7 +159,7 @@ export function PromotionList() {
                   <TableCell className="hidden sm:table-cell">
                     <div className="whitespace-nowrap text-xs text-muted-foreground">
                       <div>Desde: {format(new Date(promotion.startDate), "dd/MM/yyyy", { locale: es })}</div>
-                      <div>Hasta: {format(new Date(promotion.endDate), "dd/MM/yyyy", { locale: es })}</div>
+                      <div>Hasta: {promotion.endDate ? format(new Date(promotion.endDate), "dd/MM/yyyy", { locale: es }) : "Sin fin"}</div>
                     </div>
                   </TableCell>
                   <TableCell>

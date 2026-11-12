@@ -37,9 +37,13 @@ interface PromotionFormProps {
   onSubmit: () => Promise<void> // Cambiado para no recibir parámetros
 }
 
-/** Form state; `discountValue` is null while the field is empty. */
-type PromotionDraft = Omit<PromotionDto, "id" | "createdAt" | "updatedAt" | "discountValue"> & {
-  discountValue: number | null
+/**
+ * Form state of a product_discount (the only kind this form edits until the
+ * new editor, T6); `discountValue` is null while the field is empty and a null
+ * `endDate` means no end.
+ */
+type PromotionDraft = Pick<PromotionDto, "name" | "description" | "startDate" | "endDate" | "active" | "discountValue"> & {
+  discountType: "percentage" | "fixed_amount"
 }
 
 const emptyDraft = (): PromotionDraft => ({
@@ -66,7 +70,7 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
         setFormData({
           name: promotion.name,
           description: promotion.description || "",
-          discountType: promotion.discountType,
+          discountType: promotion.discountType ?? "percentage",
           discountValue: promotion.discountValue,
           startDate: promotion.startDate,
           endDate: promotion.endDate,
@@ -165,7 +169,12 @@ export function PromotionForm({ open, onOpenChange, promotion, onSubmit }: Promo
     setLoading(true)
 
     try {
+      // New promotions are automatic product discounts; an edit keeps the kind,
+      // mode and buy_x_pay_y percent the promotion already has.
       const body = {
+        kind: promotion?.kind ?? ("product_discount" as const),
+        mode: promotion?.mode ?? ("automatic" as const),
+        restDiscountPercent: promotion?.restDiscountPercent ?? null,
         name: formData.name,
         description: formData.description ? formData.description : null,
         discountType: formData.discountType,

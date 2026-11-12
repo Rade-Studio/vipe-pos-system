@@ -19,6 +19,7 @@ const toastMock = vi.hoisted(() => vi.fn())
 vi.mock("@/components/ui/use-toast", () => ({ toast: toastMock }))
 
 import { PromotionForm } from "./PromotionForm"
+import type { PromotionDto } from "@/lib/api/catalog"
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -39,15 +40,33 @@ const dish = (id: string, name: string) => ({
   updatedAt: null,
 })
 
-const promotion = {
+const promotion: PromotionDto = {
   id: "p-1",
   name: "Martes",
   description: null,
-  discountType: "percentage" as const,
+  kind: "product_discount",
+  mode: "automatic",
+  discountType: "percentage",
   discountValue: 10,
+  buyQuantity: null,
+  payQuantity: null,
+  restDiscountPercent: null,
+  comboPrice: null,
+  comboGroups: [],
+  minSubtotal: null,
+  maxDiscount: null,
   startDate: "2026-11-01T00:00:00.000Z",
   endDate: "2026-12-01T00:00:00.000Z",
+  daysOfWeek: [],
+  timeWindows: [],
+  channels: [],
+  maxUsesPerOrder: null,
   active: true,
+  targets: { dishIds: [], categoryIds: [], subcategoryIds: [] },
+  stats: {} as PromotionDto["stats"],
+  schedule: {} as PromotionDto["schedule"],
+  sentence: "10% en Martes",
+  badge: "10%",
   createdAt: null,
   updatedAt: null,
 }
@@ -77,6 +96,9 @@ describe("PromotionForm", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(catalog.fetchDishes).toHaveBeenCalledWith()
     expect(catalog.updatePromotion).toHaveBeenCalledWith("p-1", {
+      kind: "product_discount",
+      mode: "automatic",
+      restDiscountPercent: null,
       name: "Martes",
       description: null,
       discountType: "percentage",
@@ -103,7 +125,14 @@ describe("PromotionForm", () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(catalog.createPromotion).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Combo", discountType: "percentage", discountValue: 15, active: true }),
+      expect.objectContaining({
+        kind: "product_discount",
+        mode: "automatic",
+        name: "Combo",
+        discountType: "percentage",
+        discountValue: 15,
+        active: true,
+      }),
     )
     expect(catalog.setPromotionDishes).toHaveBeenCalledTimes(1)
     expect(catalog.setPromotionDishes).toHaveBeenCalledWith("p-2", ["d-3"])

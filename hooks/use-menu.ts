@@ -33,8 +33,8 @@ export const fetchMenuCategories = async (): Promise<Category[]> =>
 
 /**
  * Active dishes of a category with the promotion pricing the server applies
- * (T7b): `price` is already the promoted price and the promotion fields come
- * from the API. Only the image placeholder is added for the grid.
+ * (T7b): `price` is the list price and the promotion fields (name, badge,
+ * window end, `promoPrice`) come from the API (S8). Only the image placeholder is added for the grid.
  */
 export const fetchMenuDishes = async (categoryId: string): Promise<Dish[]> => {
   const dishes = await fetchDishes({ categoryId, active: true, pricing: "promotions" })

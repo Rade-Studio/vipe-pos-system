@@ -308,6 +308,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/promotions/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PromotionsController_today"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/promotions/{id}": {
         parameters: {
             query?: never;
@@ -596,6 +612,22 @@ export interface paths {
         patch: operations["OrdersController_updateDetails"];
         trace?: never;
     };
+    "/api/orders/pricing-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["OrdersController_pricingPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/orders/{id}/items": {
         parameters: {
             query?: never;
@@ -671,6 +703,38 @@ export interface paths {
         put?: never;
         post: operations["OrdersController_voidItems"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}/discounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["OrdersController_addDiscount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}/discounts/{discountId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["OrdersController_removeDiscount"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2352,20 +2416,20 @@ export interface components {
             /** @description PIN of an admin or cashier of the restaurant. */
             pin: string;
             /** @enum {string} */
-            action: "cancel_order" | "void_item" | "void_payment";
+            action: "cancel_order" | "void_item" | "void_payment" | "apply_discount";
             /**
              * Format: uuid
              * @description Only this supervisor is tried; omitted, every supervisor with a PIN.
              */
             profileId?: string;
             /**
-             * @description order for cancel_order and void_item, payment for void_payment (else 422).
+             * @description order for cancel_order, void_item and apply_discount, payment for void_payment (else 422).
              * @enum {string}
              */
             targetType: "order" | "payment";
             /**
              * Format: uuid
-             * @description The order or payment to cancel or void. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member).
+             * @description The order or payment to cancel, void or discount. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member).
              */
             targetId: string;
         };
@@ -2381,7 +2445,7 @@ export interface components {
              */
             authorizationId: string;
             /** @enum {string} */
-            action: "cancel_order" | "void_item" | "void_payment";
+            action: "cancel_order" | "void_item" | "void_payment" | "apply_discount";
             /** @enum {string} */
             targetType: "order" | "payment";
             /** Format: uuid */
@@ -2470,7 +2534,7 @@ export interface components {
             id: string;
             name: string;
             description: string | null;
-            /** @description Price after the best active promotion when pricing=promotions applied one. */
+            /** @description List price; never rewritten by a promotion (S2). Send it, plus the options, as unitPrice. */
             price: number;
             /** Format: uuid */
             categoryId: string | null;
@@ -2491,19 +2555,25 @@ export interface components {
             createdAt: string | null;
             /** Format: date-time */
             updatedAt: string | null;
-            /** @description Only when a promotion applies (pricing=promotions). */
-            originalPrice?: number;
-            /** @description Only when a promotion applies. */
-            discountAmount?: number;
-            /** @description Only when a promotion applies; null for fixed amounts. */
-            discountPercentage?: number | null;
             /**
              * Format: uuid
-             * @description Only when a promotion applies.
+             * @description pricing=promotions: the automatic product_discount or buy_x_pay_y promotion a line of this dish would be sent with now on the channel.
              */
             promotionId?: string;
-            /** @description Only when a promotion applies. */
+            /** @description Only with promotionId. */
             promotionName?: string;
+            /**
+             * @description Only with promotionId: 2x1, 3x2, 20%, -$3.000.
+             * @example 2x1
+             */
+            promotionBadge?: string;
+            /**
+             * @description Only with promotionId: end of the current window (restaurant time); null = all day.
+             * @example 19:00
+             */
+            promotionEndsAt?: string | null;
+            /** @description Only for a product_discount: the unit price after the discount (the discount itself is an order line). */
+            promoPrice?: number;
         };
         CreateDishRequest: {
             name: string;
@@ -2556,48 +2626,250 @@ export interface components {
             /** @description The complete group set of the dish, in order; replaces the previous one. */
             groupIds: string[];
         };
+        ComboGroupDto: {
+            /** Format: uuid */
+            id: string;
+            /** @example Sopa */
+            name: string;
+            /** @description Dishes the customer can pick in this group (exactly one). */
+            dishIds: string[];
+        };
+        TimeWindowDto: {
+            /**
+             * @description HH:MM, inclusive.
+             * @example 17:00
+             */
+            from: string;
+            /**
+             * @description HH:MM, exclusive; from < to.
+             * @example 19:00
+             */
+            to: string;
+        };
+        PromotionTargetsDto: {
+            dishIds: string[];
+            categoryIds: string[];
+            subcategoryIds: string[];
+        };
+        PromotionStats: {
+            /** @description Distinct non-cancelled orders of the last 30 days with a discount of this promotion. */
+            usesLast30Days: number;
+            /** @description Sum of those discounts, whole pesos. */
+            discountLast30Days: number;
+        };
+        PromotionSchedule: {
+            /** @description Applies by itself right now (automatic, active, in dates, day and window); channels are not considered. */
+            activeNow: boolean;
+            /** @enum {string} */
+            reason: "active" | "paused" | "not_started" | "ended" | "other_day" | "outside_hours" | "manual";
+            /**
+             * @description End of the current window (restaurant time); null when all day or not active.
+             * @example 19:00
+             */
+            endsAt: string | null;
+            /**
+             * @description Start of the next window later today, when outside hours.
+             * @example 17:00
+             */
+            nextStartToday: string | null;
+        };
         Promotion: {
             /** Format: uuid */
             id: string;
             name: string;
             description: string | null;
-            /** @enum {string} */
-            discountType: "percentage" | "fixed_amount";
-            discountValue: number;
+            /**
+             * @description product_discount: discountType/discountValue per unit on the targets. buy_x_pay_y: buyQuantity N >= 2, payQuantity 1 <= M < N, restDiscountPercent 1-100 (100 = free) on the targets. combo: comboPrice > 0 and 1-6 comboGroups. bill_discount: discountType/discountValue on the bill, optional minSubtotal and maxDiscount. Fields of other kinds are stored as null.
+             * @enum {string}
+             */
+            kind: "product_discount" | "buy_x_pay_y" | "combo" | "bill_discount";
+            /**
+             * @description automatic applies by itself when items are sent; manual modes never do (the cashier applies them).
+             * @enum {string}
+             */
+            mode: "automatic" | "manual" | "manual_pin";
+            /** @enum {string|null} */
+            discountType: "percentage" | "fixed_amount" | null;
+            discountValue: number | null;
+            buyQuantity: number | null;
+            payQuantity: number | null;
+            restDiscountPercent: number | null;
+            comboPrice: number | null;
+            /** @description In order; empty unless combo. */
+            comboGroups: components["schemas"]["ComboGroupDto"][];
+            minSubtotal: number | null;
+            maxDiscount: number | null;
             /** Format: date-time */
             startDate: string;
-            /** Format: date-time */
-            endDate: string;
+            /**
+             * Format: date-time
+             * @description null = no end.
+             */
+            endDate: string | null;
+            /** @description ISO 1 = Monday … 7 = Sunday; empty = every day. */
+            daysOfWeek: number[];
+            /** @description Restaurant time; empty = all day. */
+            timeWindows: components["schemas"]["TimeWindowDto"][];
+            /** @description Empty = every channel. */
+            channels: ("dine_in" | "takeaway" | "delivery")[];
+            maxUsesPerOrder: number | null;
+            /** @description false = "Pausada". */
             active: boolean;
+            /** @description product_discount and buy_x_pay_y: a dish matches if listed or in a listed category/subcategory. */
+            targets: components["schemas"]["PromotionTargetsDto"];
+            stats: components["schemas"]["PromotionStats"];
+            /** @description Computed now (server clock, restaurant timezone). */
+            schedule: components["schemas"]["PromotionSchedule"];
+            /**
+             * @description The rule in Spanish.
+             * @example Lleva 2 cócteles y paga 1; sale gratis el más económico.
+             */
+            sentence: string;
+            /**
+             * @description Short label: 2x1, 3x2, 20%, -$3.000, Combo, 10%.
+             * @example 2x1
+             */
+            badge: string;
             /** Format: date-time */
             createdAt: string | null;
             /** Format: date-time */
             updatedAt: string | null;
         };
+        TodayActivePromotion: {
+            promotion: components["schemas"]["Promotion"];
+            sentence: string;
+            badge: string;
+            /**
+             * @description End of the current window; null = until the end of the day.
+             * @example 19:00
+             */
+            endsAt: string | null;
+            /** @description Minutes until endsAt. */
+            minutesLeft: number | null;
+        };
+        TodayLaterPromotion: {
+            promotion: components["schemas"]["Promotion"];
+            sentence: string;
+            badge: string;
+            /** @example 17:00 */
+            startsAt: string;
+            minutesUntilStart: number;
+        };
+        TodayOtherPromotion: {
+            promotion: components["schemas"]["Promotion"];
+            sentence: string;
+            badge: string;
+            /**
+             * @description Why it does not apply now on this channel.
+             * @enum {string}
+             */
+            reason: "other_day" | "outside_hours" | "other_channel" | "manual" | "not_started";
+        };
+        PromotionsToday: {
+            /** Format: date-time */
+            now: string;
+            /**
+             * @description Restaurant time.
+             * @example 18:05
+             */
+            localTime: string;
+            /** @enum {string} */
+            channel: "dine_in" | "delivery";
+            /** @description Automatic promotions applying now on the channel. */
+            active: components["schemas"]["TodayActivePromotion"][];
+            /** @description Automatic promotions of the channel with a window later today. */
+            laterToday: components["schemas"]["TodayLaterPromotion"][];
+            /** @description The rest that is neither paused nor ended. */
+            others: components["schemas"]["TodayOtherPromotion"][];
+        };
+        ComboGroupInput: {
+            /**
+             * Format: uuid
+             * @description Ignored on write: the groups are replaced as a whole and get new ids.
+             */
+            id?: string;
+            name: string;
+            dishIds: string[];
+        };
         CreatePromotionRequest: {
             name: string;
             description?: string | null;
-            /** @enum {string} */
-            discountType: "percentage" | "fixed_amount";
-            discountValue: number;
-            /** Format: date-time */
-            startDate: string;
-            /** Format: date-time */
-            endDate: string;
+            /**
+             * @description product_discount: discountType/discountValue per unit on the targets. buy_x_pay_y: buyQuantity N >= 2, payQuantity 1 <= M < N, restDiscountPercent 1-100 (100 = free) on the targets. combo: comboPrice > 0 and 1-6 comboGroups. bill_discount: discountType/discountValue on the bill, optional minSubtotal and maxDiscount. Fields of other kinds are stored as null.
+             * @default product_discount
+             * @enum {string}
+             */
+            kind: "product_discount" | "buy_x_pay_y" | "combo" | "bill_discount";
+            /**
+             * @default automatic
+             * @enum {string}
+             */
+            mode: "automatic" | "manual" | "manual_pin";
+            /** @enum {string|null} */
+            discountType?: "percentage" | "fixed_amount" | null;
+            /** @description percentage: 0 < v <= 100. */
+            discountValue?: number | null;
+            buyQuantity?: number | null;
+            payQuantity?: number | null;
+            /** @default 100 */
+            restDiscountPercent: number | null;
+            comboPrice?: number | null;
+            /** @description Replaces every group (new ids). */
+            comboGroups?: components["schemas"]["ComboGroupInput"][];
+            minSubtotal?: number | null;
+            maxDiscount?: number | null;
+            /** @description date-time, or YYYY-MM-DD = the start of that day in the restaurant timezone. Default: now. */
+            startDate?: string;
+            /** @description date-time, or YYYY-MM-DD = the end of that day in the restaurant timezone; null = no end. */
+            endDate?: string | null;
+            daysOfWeek?: number[];
+            timeWindows?: components["schemas"]["TimeWindowDto"][];
+            channels?: ("dine_in" | "takeaway" | "delivery")[];
+            maxUsesPerOrder?: number | null;
             /** @default true */
             active: boolean;
+            /** @description Replaces every target when sent. PUT :id/dishes still replaces only the dish targets. */
+            targets?: components["schemas"]["PromotionTargetsDto"];
         };
         UpdatePromotionRequest: {
             name?: string;
             description?: string | null;
-            /** @enum {string} */
-            discountType?: "percentage" | "fixed_amount";
-            discountValue?: number;
-            /** Format: date-time */
+            /**
+             * @description product_discount: discountType/discountValue per unit on the targets. buy_x_pay_y: buyQuantity N >= 2, payQuantity 1 <= M < N, restDiscountPercent 1-100 (100 = free) on the targets. combo: comboPrice > 0 and 1-6 comboGroups. bill_discount: discountType/discountValue on the bill, optional minSubtotal and maxDiscount. Fields of other kinds are stored as null.
+             * @default product_discount
+             * @enum {string}
+             */
+            kind: "product_discount" | "buy_x_pay_y" | "combo" | "bill_discount";
+            /**
+             * @default automatic
+             * @enum {string}
+             */
+            mode: "automatic" | "manual" | "manual_pin";
+            /** @enum {string|null} */
+            discountType?: "percentage" | "fixed_amount" | null;
+            /** @description percentage: 0 < v <= 100. */
+            discountValue?: number | null;
+            buyQuantity?: number | null;
+            payQuantity?: number | null;
+            /** @default 100 */
+            restDiscountPercent: number | null;
+            comboPrice?: number | null;
+            /** @description Replaces every group (new ids). */
+            comboGroups?: components["schemas"]["ComboGroupInput"][];
+            minSubtotal?: number | null;
+            maxDiscount?: number | null;
+            /** @description date-time, or YYYY-MM-DD = the start of that day in the restaurant timezone. Default: now. */
             startDate?: string;
-            /** Format: date-time */
-            endDate?: string;
-            active?: boolean;
+            /** @description date-time, or YYYY-MM-DD = the end of that day in the restaurant timezone; null = no end. */
+            endDate?: string | null;
+            daysOfWeek?: number[];
+            timeWindows?: components["schemas"]["TimeWindowDto"][];
+            channels?: ("dine_in" | "takeaway" | "delivery")[];
+            maxUsesPerOrder?: number | null;
+            /** @default true */
+            active: boolean;
+            /** @description Replaces every target when sent. PUT :id/dishes still replaces only the dish targets. */
+            targets?: components["schemas"]["PromotionTargetsDto"];
         };
         SetPromotionDishesRequest: {
             /** @description The complete dish set; replaces the previous one. */
@@ -2642,7 +2914,7 @@ export interface components {
             id: string;
             name: string;
             description: string | null;
-            /** @description Price after the best active promotion when pricing=promotions applied one. */
+            /** @description List price; never rewritten by a promotion (S2). Send it, plus the options, as unitPrice. */
             price: number;
             /** Format: uuid */
             categoryId: string | null;
@@ -2663,19 +2935,25 @@ export interface components {
             createdAt: string | null;
             /** Format: date-time */
             updatedAt: string | null;
-            /** @description Only when a promotion applies (pricing=promotions). */
-            originalPrice?: number;
-            /** @description Only when a promotion applies. */
-            discountAmount?: number;
-            /** @description Only when a promotion applies; null for fixed amounts. */
-            discountPercentage?: number | null;
             /**
              * Format: uuid
-             * @description Only when a promotion applies.
+             * @description pricing=promotions: the automatic product_discount or buy_x_pay_y promotion a line of this dish would be sent with now on the channel.
              */
             promotionId?: string;
-            /** @description Only when a promotion applies. */
+            /** @description Only with promotionId. */
             promotionName?: string;
+            /**
+             * @description Only with promotionId: 2x1, 3x2, 20%, -$3.000.
+             * @example 2x1
+             */
+            promotionBadge?: string;
+            /**
+             * @description Only with promotionId: end of the current window (restaurant time); null = all day.
+             * @example 19:00
+             */
+            promotionEndsAt?: string | null;
+            /** @description Only for a product_discount: the unit price after the discount (the discount itself is an order line). */
+            promoPrice?: number;
             /** @description One portion is in stock (the check_dishes_stock rule); always true with inventory control off. */
             available: boolean;
         };
@@ -2698,7 +2976,7 @@ export interface components {
             updatedAt: string | null;
             /** @description Active subcategories by sortOrder, then name. */
             subcategories: components["schemas"]["Subcategory"][];
-            /** @description Active dishes by sortOrder, then name, priced with the promotions active now; dishes of an inactive subcategory are left out. */
+            /** @description Active dishes by sortOrder, then name, at list price with the promotion a line would be sent with now (channel query); dishes of an inactive subcategory are left out. */
             dishes: components["schemas"]["MenuTreeDish"][];
         };
         MenuTree: {
@@ -2859,6 +3137,45 @@ export interface components {
             /** @enum {string} */
             desktopUpdateChannel?: "stable" | "pilot";
         };
+        StaffRef: {
+            /**
+             * Format: uuid
+             * @description Null when the profile was removed; the name stays.
+             */
+            id: string | null;
+            name: string;
+        };
+        OrderDiscount: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "promotion_item" | "promotion_bill" | "combo" | "manual_item" | "manual_bill";
+            /** @enum {string} */
+            source: "automatic" | "manual";
+            /**
+             * @description The promotion name when it was applied.
+             * @example Happy hour 2x1
+             */
+            label: string;
+            /** @description Whole pesos, > 0. */
+            amount: number;
+            /**
+             * Format: uuid
+             * @description Null for a free manual discount or a deleted promotion.
+             */
+            promotionId: string | null;
+            /**
+             * Format: uuid
+             * @description Null for a bill discount; a combo discount sits on its first line.
+             */
+            orderItemId: string | null;
+            /** Format: uuid */
+            comboId: string | null;
+            /** @description Manual discounts only. */
+            reason: string | null;
+            /** @description Manual discounts only. */
+            authorizedBy: components["schemas"]["StaffRef"] | null;
+        };
         OrderItemModifier: {
             /** Format: uuid */
             groupId: string;
@@ -2877,7 +3194,7 @@ export interface components {
             /** Format: uuid */
             dishId: string | null;
             name: string;
-            /** @description Unit price charged. */
+            /** @description Unit list price, options included; discounts are separate (discounts). */
             price: number;
             quantity: number;
             comments: string | null;
@@ -2901,6 +3218,20 @@ export interface components {
             updatedAt: string | null;
             /** @description Options chosen on the line, in menu order; their prices are inside price (F7). */
             modifiers: components["schemas"]["OrderItemModifier"][];
+            /** @description Discounts on this line (a combo discount sits on the first line of the combo). */
+            discounts: components["schemas"]["OrderDiscount"][];
+            /**
+             * Format: uuid
+             * @description The promotion fixed when the line was sent (or its combo).
+             */
+            promotionId: string | null;
+            /** @description Its name when the line was sent. */
+            promotionName: string | null;
+            /**
+             * Format: uuid
+             * @description Shared by the lines of one combo.
+             */
+            comboId: string | null;
         };
         Order: {
             /** Format: uuid */
@@ -2922,13 +3253,19 @@ export interface components {
             status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
             /** @enum {string} */
             orderType: "dine_in" | "delivery";
+            /** @description Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it. */
             subtotal: number;
             tax: number;
             taxPercentage: number;
             tip: number;
             tipPercentage: number;
             total: number;
+            /** @description Sum of discounts (capped at grossSubtotal). */
             totalDiscounts: number;
+            /** @description Sum of price x quantity at list price. */
+            grossSubtotal: number;
+            /** @description Every discount of the order: line discounts in line order, then bill discounts. */
+            discounts: components["schemas"]["OrderDiscount"][];
             isPartialOrder: boolean;
             /** Format: uuid */
             parentOrderId: string | null;
@@ -3021,13 +3358,19 @@ export interface components {
             status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
             /** @enum {string} */
             orderType: "dine_in" | "delivery";
+            /** @description Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it. */
             subtotal: number;
             tax: number;
             taxPercentage: number;
             tip: number;
             tipPercentage: number;
             total: number;
+            /** @description Sum of discounts (capped at grossSubtotal). */
             totalDiscounts: number;
+            /** @description Sum of price x quantity at list price. */
+            grossSubtotal: number;
+            /** @description Every discount of the order: line discounts in line order, then bill discounts. */
+            discounts: components["schemas"]["OrderDiscount"][];
             isPartialOrder: boolean;
             /** Format: uuid */
             parentOrderId: string | null;
@@ -3045,14 +3388,6 @@ export interface components {
             payment: components["schemas"]["Payment"] | null;
             /** @description Legacy payment_transactions rows, only when payment is null. */
             legacyTransactions: components["schemas"]["LegacyPaymentTransaction"][];
-        };
-        StaffRef: {
-            /**
-             * Format: uuid
-             * @description Null when the profile was removed; the name stays.
-             */
-            id: string | null;
-            name: string;
         };
         OrderCancellation: {
             /**
@@ -3109,13 +3444,19 @@ export interface components {
             status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
             /** @enum {string} */
             orderType: "dine_in" | "delivery";
+            /** @description Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it. */
             subtotal: number;
             tax: number;
             taxPercentage: number;
             tip: number;
             tipPercentage: number;
             total: number;
+            /** @description Sum of discounts (capped at grossSubtotal). */
             totalDiscounts: number;
+            /** @description Sum of price x quantity at list price. */
+            grossSubtotal: number;
+            /** @description Every discount of the order: line discounts in line order, then bill discounts. */
+            discounts: components["schemas"]["OrderDiscount"][];
             isPartialOrder: boolean;
             /** Format: uuid */
             parentOrderId: string | null;
@@ -3154,7 +3495,7 @@ export interface components {
         DishPrice: {
             /** Format: uuid */
             dishId: string;
-            /** @description Current server price (promotions applied). */
+            /** @description Current list price. */
             price: number;
         };
         PriceChangedResponse: {
@@ -3184,11 +3525,32 @@ export interface components {
             /** Format: uuid */
             dishId: string;
             quantity: number;
-            /** @description Price the client showed: the dish price (promotions applied, server clock) plus the options. A different value answers 409 Price changed; with options the body also carries `lines` [{index, dishId, unitPrice}]. */
+            /** @description Price the client showed: the dish LIST price plus the options (promotions are separate discounts). A different value answers 409 Price changed; with options the body also carries `lines` [{index, dishId, unitPrice}]. */
             unitPrice?: number;
             comments?: string | null;
             /** @description Options of the line. Each once, offered by an active group of the dish, active; every active group between its min and max. 422 code modifier_invalid | modifier_inactive | modifier_duplicate | modifier_required | modifier_max. */
             modifiers?: components["schemas"]["OrderItemModifierInput"][];
+        };
+        ComboChoiceInput: {
+            /** Format: uuid */
+            groupId: string;
+            /**
+             * Format: uuid
+             * @description One of the dishes of the group.
+             */
+            dishId: string;
+            comments?: string | null;
+            /** @description Same rules as a dish line. */
+            modifiers?: components["schemas"]["OrderItemModifierInput"][];
+        };
+        ComboLineRequest: {
+            /**
+             * Format: uuid
+             * @description A combo promotion active now for the channel.
+             */
+            comboPromotionId: string;
+            /** @description Exactly one per group. */
+            choices: components["schemas"]["ComboChoiceInput"][];
         };
         CreateOrderRequest: {
             /** Format: uuid */
@@ -3204,7 +3566,10 @@ export interface components {
              * @enum {string}
              */
             orderType: "dine_in";
-            items: components["schemas"]["OrderItemInput"][];
+            /** @description Dish lines; items and/or combos must bring at least one line. */
+            items?: components["schemas"]["OrderItemInput"][];
+            /** @description Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
+            combos?: components["schemas"]["ComboLineRequest"][];
             /** @description Defaults to the tip_percentage setting. */
             tipPercentage?: number;
             /**
@@ -3217,8 +3582,98 @@ export interface components {
             /** @description Order note, trimmed; blank is null. */
             notes?: string | null;
         };
+        PreviewDishLine: {
+            /** Format: uuid */
+            dishId: string;
+            quantity: number;
+            modifiers?: components["schemas"]["OrderItemModifierInput"][];
+        };
+        PricingPreviewRequest: {
+            /** @enum {string} */
+            channel: "dine_in" | "delivery";
+            /**
+             * Format: uuid
+             * @description An open order whose lines (sent, with their fixed promotions) are priced with the draft.
+             */
+            orderId?: string;
+            /** @description Draft lines: dish lines and combo lines ({comboPromotionId, choices}). */
+            lines: (components["schemas"]["PreviewDishLine"] | components["schemas"]["ComboLineRequest"])[];
+        };
+        PreviewDiscount: {
+            /**
+             * @description manual_item and manual_bill are the order's stored manual discounts.
+             * @enum {string}
+             */
+            kind: "promotion_item" | "promotion_bill" | "combo" | "manual_item" | "manual_bill";
+            /**
+             * Format: uuid
+             * @description Null for a free manual discount.
+             */
+            promotionId: string | null;
+            label: string;
+            amount: number;
+        };
+        PreviewLine: {
+            /** @description false for a draft line. */
+            sent: boolean;
+            /**
+             * Format: uuid
+             * @description The order line; null for a draft.
+             */
+            orderItemId: string | null;
+            /** @description Index in `lines` of the draft (a combo line expands into one line per choice); null when sent. */
+            draftIndex: number | null;
+            /** Format: uuid */
+            dishId: string | null;
+            name: string;
+            quantity: number;
+            /** @description Unit list price, options included. */
+            unitPrice: number;
+            /**
+             * Format: uuid
+             * @description Fixed when sent; for a draft, the promotion it would be sent with now.
+             */
+            promotionId: string | null;
+            promotionName: string | null;
+            /** @description Shared by the lines of a combo; drafts get a temporary `draft-combo-N`. */
+            comboId: string | null;
+            /** Format: date-time */
+            addedAt: string | null;
+            discounts: components["schemas"]["PreviewDiscount"][];
+        };
+        PricingHintDto: {
+            /** @enum {string} */
+            kind: "missing_units" | "window_ending" | "bill_minimum";
+            /** Format: uuid */
+            promotionId: string;
+            /** @example Falta 1 unidad para otro 2x1. */
+            message: string;
+            /** @description missing_units: units; bill_minimum: pesos. */
+            missing?: number;
+            /** @description window_ending: minutes until the window ends (<= 10). */
+            minutesLeft?: number;
+        };
+        PricingPreview: {
+            /** @enum {string} */
+            channel: "dine_in" | "delivery";
+            /** Format: date-time */
+            now: string;
+            /** @description Sent lines first (oldest first), then the drafts in order. */
+            lines: components["schemas"]["PreviewLine"][];
+            billDiscount: components["schemas"]["PreviewDiscount"] | null;
+            /** @description The order's manual discounts on the bill (manual_bill). */
+            manualDiscounts: components["schemas"]["PreviewDiscount"][];
+            grossSubtotal: number;
+            /** @description Automatic line, combo and bill discounts plus the order's manual discounts (capped at grossSubtotal). */
+            totalDiscounts: number;
+            netSubtotal: number;
+            hints: components["schemas"]["PricingHintDto"][];
+        };
         AddOrderItemsRequest: {
-            items: components["schemas"]["OrderItemInput"][];
+            /** @description Dish lines; items and/or combos must bring at least one line. */
+            items?: components["schemas"]["OrderItemInput"][];
+            /** @description Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
+            combos?: components["schemas"]["ComboLineRequest"][];
             /** @default false */
             force: boolean;
             /** @description Sets guests; omitted keeps them. */
@@ -3271,6 +3726,36 @@ export interface components {
             /**
              * Format: uuid
              * @description POST /auth/authorize id for action void_item. Required: every line the server holds was sent to the kitchen.
+             */
+            authorizationId?: string;
+        };
+        AddOrderDiscountRequest: {
+            /**
+             * Format: uuid
+             * @description A live line of the order; omitted = a discount on the order.
+             */
+            orderItemId?: string;
+            /**
+             * Format: uuid
+             * @description A promotion with mode manual (no PIN) or manual_pin: product_discount needs orderItemId, bill_discount must not have it. Without it, discountType and discountValue make a free discount.
+             */
+            promotionId?: string;
+            /** @enum {string} */
+            discountType?: "percentage" | "fixed_amount";
+            /** @description Percentage 1-100 or whole pesos. */
+            discountValue?: number;
+            /** @description Trimmed. */
+            reason: string;
+            /**
+             * Format: uuid
+             * @description POST /auth/authorize (action apply_discount, target this order; a void_item one is 403 authorization_invalid); required unless the promotion mode is manual.
+             */
+            authorizationId?: string;
+        };
+        RemoveOrderDiscountRequest: {
+            /**
+             * Format: uuid
+             * @description Same rule as adding: required unless the promotion mode is manual.
              */
             authorizationId?: string;
         };
@@ -3545,7 +4030,7 @@ export interface components {
         PayOrderTenderInput: {
             /** Format: uuid */
             paymentMethodId: string;
-            /** @description Applied amount in whole pesos (capped for cash). */
+            /** @description Applied amount in whole pesos (capped for cash). 0 only as the single cash line, with cashReceived 0, of an order whose amount due and tip are 0 (a fully discounted order); a 0 line without cashReceived 0 is 422 `Una línea en 0 solo cierra una cuenta sin saldo: en efectivo y con efectivo recibido 0`, any other 0 line 422 22023. */
             amount: number;
             /** @description Cash handed over; required for cash, null for electronic. */
             cashReceived?: number | null;
@@ -5862,7 +6347,9 @@ export interface operations {
     DishesController_list: {
         parameters: {
             query?: {
-                /** @description Apply the best promotion active now; discounted dishes carry the promotion fields. */
+                /** @description With pricing=promotions; default dine_in. */
+                channel?: "dine_in" | "delivery";
+                /** @description Add the automatic product promotion a line of each dish would be sent with now (price stays the list price). */
                 pricing?: "promotions";
                 active?: "true" | "false";
                 subcategoryId?: string;
@@ -6132,7 +6619,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Newest first. */
+            /** @description Newest first, with targets, combo groups, 30-day stats, schedule now, sentence and badge. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6163,6 +6650,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The promotion with its targets and combo groups, saved in one transaction. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -6178,7 +6666,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input, unknown fields or unknown dish. */
+            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target; `message` lists `<field>: <code>`. Nothing is saved. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -6196,13 +6684,43 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Active and inside their date window now (server clock). */
+            /** @description Active and inside their dates now (restaurant timezone), oldest first. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["Promotion"][];
+                };
+            };
+            /** @description Invalid input, unknown fields or unknown dish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PromotionsController_today: {
+        parameters: {
+            query?: {
+                /** @description Default dine_in. */
+                channel?: "dine_in" | "delivery";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description For the terminals: the promotions applying now on the channel (with the end of the window), later today (with the start) and the others with why not; paused and ended ones are left out. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionsToday"];
                 };
             };
             /** @description Invalid input, unknown fields or unknown dish. */
@@ -6262,6 +6780,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Omitted fields keep their value; the merged promotion is validated per kind. targets and comboGroups replace the stored ones when sent. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6276,7 +6795,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input, unknown fields or unknown dish. */
+            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target; `message` lists `<field>: <code>`. Nothing is saved. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -6565,7 +7084,10 @@ export interface operations {
     };
     MenuController_tree: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Channel of the dish promotion fields; default dine_in. */
+                channel?: "dine_in" | "delivery";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6585,7 +7107,9 @@ export interface operations {
     };
     MenuController_draft: {
         parameters: {
-            query?: never;
+            query?: {
+                channel?: "dine_in" | "delivery";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7052,7 +7576,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Order and items in kitchen, bill computed by the database, stock consumed, table in kitchen. */
+            /** @description Order and items in kitchen at list price, each with the automatic promotion fixed now, the discounts and the bill, stock consumed, table in kitchen. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -7068,7 +7592,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse) or Table has an open order (TableHasOpenOrderResponse). */
+            /** @description Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse: a unitPrice different from the list price) or Table has an open order (TableHasOpenOrderResponse). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7295,6 +7819,51 @@ export interface operations {
             };
         };
     };
+    OrdersController_pricingPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PricingPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description As if sent now (server clock, restaurant timezone, channel): the order lines (with the promotions fixed when sent) and the draft lines, their discounts, the bill discount, totals and hints ("Falta 1 unidad para otro 2x1.", "Envía antes de las 19:00.", "Domicilio: faltan $X para el 10% de descuento."). Writes nothing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingPreview"];
+                };
+            };
+            /** @description Not admin, waiter, cashier or delivery operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description orderId not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     OrdersController_addItems: {
         parameters: {
             query?: never;
@@ -7502,7 +8071,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The order with the voided units removed and the bill recomputed; stock already consumed stays consumed. */
+            /** @description The order with the voided units removed, the automatic discounts and the bill recomputed; voiding a line of a combo voids the whole combo. Stock already consumed stays consumed. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7533,6 +8102,115 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_addDiscount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddOrderDiscountRequest"];
+            };
+        };
+        responses: {
+            /** @description S7: a manual discount (kind manual_item or manual_bill, source manual, reason, authorizedBy) computed by the server: on a line from its value minus the discounts already on it, on the order from the net subtotal, never above either; then the automatic discounts and the bill are recomputed. A promotion with mode manual needs no authorization (authorizedBy is the caller). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Not admin or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_closed` (paid or cancelled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `discount_invalid`, `discount_reason_invalid`, `order_item_not_found`, `promotion_not_found`, `promotion_not_manual`, `promotion_kind_unsupported`, `promotion_not_available`, `promotion_not_applicable`, `promotion_max_uses`, `promotion_min_subtotal`, `discount_item_required`, `discount_item_not_allowed` or `discount_nothing_left`; nothing is stored. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_removeDiscount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                discountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RemoveOrderDiscountRequest"];
+            };
+        };
+        responses: {
+            /** @description The manual discount removed (same authorization rule as adding it), the automatic discounts and the bill recomputed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Not admin or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_not_found` or `discount_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `order_closed` (paid or cancelled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `discount_not_manual` (automatic discounts follow the promotions) or `discount_invalid`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -8405,7 +9083,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023. */
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023. Moving only part of a combo (promociones S5) is 422 `combo_split_not_allowed` (body `code`) "Un menú se mueve completo: pasa todos sus productos juntos"; nothing moves. */
             422: {
                 headers: {
                     [name: string]: unknown;

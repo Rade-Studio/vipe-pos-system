@@ -34,6 +34,36 @@ const modifierRows = (modifiers: readonly PrintModifier[] | null | undefined) =>
     price: m.price ?? 0,
   }))
 
+/** S14: one discount as the invoice prints it (the API `OrderDiscount` shape, only what printing needs). */
+export interface PrintDiscount {
+  label: string
+  amount: number
+  /** Set on a line discount; a bill discount has none. */
+  orderItemId?: string | null
+}
+
+/** Discounts of one grouped line, summed by label so "2x1 + 2x1" prints once. */
+export function mergeDiscounts(...lists: Array<readonly PrintDiscount[] | null | undefined>): PrintDiscount[] {
+  const byLabel = new Map<string, PrintDiscount>()
+  for (const d of lists.flatMap((list) => list ?? [])) {
+    if (!(d?.amount > 0)) continue
+    const seen = byLabel.get(d.label)
+    if (seen) seen.amount += d.amount
+    else byLabel.set(d.label, { label: d.label, amount: d.amount })
+  }
+  return [...byLabel.values()]
+}
+
+/** Bill-level discounts of `invoice.discounts` (the order's list: entries without a line). */
+export function billDiscounts(discounts: readonly PrintDiscount[] | null | undefined): PrintDiscount[] {
+  return mergeDiscounts((discounts ?? []).filter((d) => !d.orderItemId))
+}
+
+/** Subtotal at list price: `grossSubtotal` when the payload has it, else net + discounts. */
+export function grossSubtotalOf(bill: { subtotal: number; totalDiscounts: number; grossSubtotal?: number }): number {
+  return bill.grossSubtotal ?? bill.subtotal + (bill.totalDiscounts || 0)
+}
+
 export interface PrintLine {
   text: string
   bold?: boolean
@@ -150,7 +180,11 @@ export function renderInvoice(params: {
       tipPercentage: number
       total: number
       totalDiscounts: number
+      /** S14: subtotal at list price; old payloads leave it out (net + discounts). */
+      grossSubtotal?: number
     }
+    /** S14: the order's discounts; the ones without `orderItemId` print after the items. */
+    discounts?: readonly PrintDiscount[]
     date?: string
     table?: string | number
     waiter?: string
@@ -181,9 +215,9 @@ export function renderInvoice(params: {
     name: string
     quantity: number
     price: number
-    originalPrice?: number
     comments?: string
-    promotionName?: string
+    /** S14: discounts of the line, each printed under it as `label  -amount`. */
+    discounts?: readonly PrintDiscount[] | null
     /** F7: the options; `price` already includes them. */
     modifiers?: readonly PrintModifier[] | null
   }>
@@ -258,18 +292,27 @@ export function renderInvoice(params: {
     if (item.comments) {
       lines.push({ text: `  (${item.comments})`, align: 'left' })
     }
+    for (const d of mergeDiscounts(item.discounts)) lines.push(discountLine(d))
   }
+  for (const d of billDiscounts(invoice.discounts)) lines.push(discountLine(d))
 
   lines.push({ text: '--------------------------------', align: 'center' })
 
-  // Totals
-  lines.push({ text: `SUBTOTAL: ${formatCurrency(bill.subtotal)}`, align: 'left' })
+  // Totals. S14: with discounts, SUBTOTAL is the list price, then DESCUENTOS and the net BASE.
+  // Payloads without grossSubtotal or any discounts list keep the previous totals (desktop golden fixtures).
+  const s14 =
+    bill.grossSubtotal != null || Array.isArray(invoice.discounts) || displayItems.some((item) => Array.isArray(item.discounts))
+  const totalDiscounts = s14 ? bill.totalDiscounts || 0 : 0
+  if (totalDiscounts > 0) {
+    lines.push({ text: `SUBTOTAL: ${formatCurrency(grossSubtotalOf(bill))}`, align: 'left' })
+    lines.push({ text: `DESCUENTOS: -${formatCurrency(totalDiscounts)}`, align: 'left' })
+    lines.push({ text: `BASE: ${formatCurrency(bill.subtotal)}`, align: 'left' })
+  } else {
+    lines.push({ text: `SUBTOTAL: ${formatCurrency(bill.subtotal)}`, align: 'left' })
+  }
   lines.push({ text: `IVA: ${formatCurrency(bill.tax)}`, align: 'left' })
-  if (bill.totalDiscounts > 0) {
-    lines.push({
-      text: `DESCUENTOS: -${formatCurrency(bill.totalDiscounts)}`,
-      align: 'left',
-    })
+  if (!s14 && bill.totalDiscounts > 0) {
+    lines.push({ text: `DESCUENTOS: -${formatCurrency(bill.totalDiscounts)}`, align: 'left' })
   }
 
   // The delivery fee is part of what pay_order charges, before the tip.
@@ -333,11 +376,17 @@ export function renderInvoice(params: {
   lines.push({ text: '--------------------------------', align: 'center' })
 
   // Footer
+  if (totalDiscounts > 0) lines.push({ text: `HOY AHORRASTE $${formatCurrency(totalDiscounts)}`, bold: true, align: 'center' })
   for (const text of ['¡GRACIAS POR SU COMPRA!', 'VUELVA PRONTO']) {
     lines.push({ text, align: 'center' })
   }
 
   return { lines }
+}
+
+/** `  label  -amount` in the option-row columns (22 + 10), within 58 mm and 80 mm. */
+function discountLine(d: PrintDiscount): InvoiceRenderLine {
+  return { text: `  ${d.label.slice(0, 22).padEnd(22)}${`-${formatCurrency(d.amount)}`.padStart(10)}`, align: 'left' }
 }
 
 function paymentMethodText(method: string): string {

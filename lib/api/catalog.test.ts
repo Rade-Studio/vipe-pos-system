@@ -156,6 +156,9 @@ describe("promotions", () => {
     const body = {
       name: "2x1",
       description: null,
+      kind: "product_discount" as const,
+      mode: "automatic" as const,
+      restDiscountPercent: null,
       discountType: "percentage" as const,
       discountValue: 20,
       startDate: "2026-11-01T00:00:00.000Z",
@@ -165,14 +168,14 @@ describe("promotions", () => {
 
     await fetchPromotions()
     await createPromotion(body)
-    await updatePromotion("p-1", { discountValue: 25 })
+    await updatePromotion("p-1", { kind: "product_discount", mode: "automatic", restDiscountPercent: null, active: true, discountValue: 25 })
     await deletePromotion("p-1")
 
     expect(api.GET).toHaveBeenCalledWith("/api/catalog/promotions")
     expect(api.POST).toHaveBeenCalledWith("/api/catalog/promotions", { body })
     expect(api.PATCH).toHaveBeenCalledWith("/api/catalog/promotions/{id}", {
       params: { path: { id: "p-1" } },
-      body: { discountValue: 25 },
+      body: { kind: "product_discount", mode: "automatic", restDiscountPercent: null, active: true, discountValue: 25 },
     })
     expect(api.DELETE).toHaveBeenCalledWith("/api/catalog/promotions/{id}", { params: { path: { id: "p-1" } } })
   })

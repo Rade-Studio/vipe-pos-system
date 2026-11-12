@@ -8,6 +8,8 @@ import { sentGroups } from "@/lib/order-steps/details"
 import { formatCurrency } from "@/utils/helpers"
 import { Button } from "@/components/ui/button"
 import { ModifierLines } from "@/components/modifiers/ModifierLines"
+import { DiscountRows, SavingsRow, type OrderPricing } from "@/components/promotions/OrderPromotions"
+import { isComboLine } from "@/lib/promotions/waiter"
 
 const FOCUS = "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
 
@@ -37,6 +39,12 @@ function SentChip({ time }: { time: string | null }) {
 
 const NOTE_MAX = 300
 
+/** S12: the dishes chosen in a combo line ("Ajiaco · Bandeja · Jugo de mora"). */
+function ComboChoices({ line, className }: { line: CartItem; className?: string }) {
+  if (!isComboLine(line)) return null
+  return <small className={cn("col-start-1 block text-[12.5px] text-muted-fg", className)}>{line.combo.choices.map((choice) => choice.name).join(" · ")}</small>
+}
+
 interface OrderReviewProps {
   title: string
   /** The open order's database number ("#128", T22). */
@@ -58,6 +66,8 @@ interface OrderReviewProps {
   /** The note differs from the stored one. */
   noteDirty?: boolean
   savingNote?: boolean
+  /** S11: the promotions' discounts, savings and nudges. */
+  pricing?: OrderPricing
 }
 
 /** "Ver pedido" of the step flow: what is new (editable) and what the kitchen already has. */
@@ -75,6 +85,7 @@ export function OrderReview({
   onSaveNote,
   noteDirty = false,
   savingNote = false,
+  pricing,
 }: OrderReviewProps) {
   const all = [...sentLines, ...newLines]
   return (
@@ -106,8 +117,11 @@ export function OrderReview({
                 <span className="min-w-0 text-[15.5px] font-semibold leading-snug [overflow-wrap:anywhere]">{line.name}</span>
                 <span className="text-right font-semibold tabular-nums">{formatCurrency(line.quantity * line.price)}</span>
                 <ModifierLines modifiers={line.modifiers} unitPrice={line.price} />
+                <ComboChoices line={line} />
                 {line.comments && <span className="col-start-1 text-[13px] text-muted-fg">“{line.comments}”</span>}
+                <DiscountRows rows={pricing?.newDiscounts(line.id) ?? []} />
                 <span className="col-span-full flex flex-wrap items-center gap-2">
+                  {!isComboLine(line) && (
                   <span role="group" aria-label={`Cantidad de ${line.name}`} className="inline-flex items-center gap-1">
                     <button
                       type="button"
@@ -128,6 +142,7 @@ export function OrderReview({
                       <Plus className="h-[18px] w-[18px]" aria-hidden />
                     </button>
                   </span>
+                  )}
                   {onEditOptions && (line.modifiers?.length ?? 0) > 0 && (
                     <Button variant="outline" aria-label={`Cambiar opciones de ${line.name}`} onClick={() => onEditOptions(line.id)} className="h-11">
                       <Pencil className="mr-1.5 h-4 w-4" aria-hidden />
@@ -166,6 +181,7 @@ export function OrderReview({
                     <span className="text-right font-semibold tabular-nums">{formatCurrency(line.quantity * line.price)}</span>
                     <ModifierLines modifiers={line.modifiers} />
                     {line.comments && <span className="col-start-1 text-[13px] text-muted-fg">“{line.comments}”</span>}
+                    <DiscountRows rows={pricing?.sentDiscounts(line.id) ?? []} />
                   </li>
                 ))}
               </ul>
@@ -204,9 +220,14 @@ export function OrderReview({
         </div>
       )}
 
-      <div className="flex items-baseline justify-between gap-2 border-t border-line pt-3">
-        <span className="text-fg-2">Total de la mesa</span>
-        <b className="text-xl tabular-nums">{formatCurrency(lineTotal(all))}</b>
+      {pricing?.notices}
+
+      <div className="grid gap-1.5 border-t border-line pt-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-fg-2">Total de la mesa</span>
+          <b className="text-xl tabular-nums">{formatCurrency(pricing?.total ?? lineTotal(all))}</b>
+        </div>
+        <SavingsRow savings={pricing?.savings ?? 0} />
       </div>
       <Button variant="outline" className="h-14 rounded-[18px] text-base" onClick={onContinue}>
         <Plus className="mr-1.5 h-5 w-5" aria-hidden />
@@ -221,10 +242,11 @@ interface OrderColumnProps {
   newLines: readonly CartItem[]
   sentLines: readonly SentLine[]
   onReview: () => void
+  pricing?: OrderPricing
 }
 
 /** The order so far, beside the steps from 1024 px. */
-export function OrderColumn({ title, newLines, sentLines, onReview }: OrderColumnProps) {
+export function OrderColumn({ title, newLines, sentLines, onReview, pricing }: OrderColumnProps) {
   const all = [...sentLines, ...newLines]
   const row = (line: CartItem, sent: boolean) => (
     <li key={line.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-2 py-1.5 text-sm">
@@ -232,9 +254,11 @@ export function OrderColumn({ title, newLines, sentLines, onReview }: OrderColum
       <span className={cn("min-w-0 [overflow-wrap:anywhere]", sent ? "text-fg-2" : "font-medium")}>
         {line.name}
         <ModifierLines modifiers={line.modifiers} className="mt-0.5 text-xs" />
+        <ComboChoices line={line} className="text-xs" />
         {line.comments && <small className="block text-xs text-muted-fg">“{line.comments}”</small>}
       </span>
       <span className="tabular-nums">{formatCurrency(line.quantity * line.price)}</span>
+      <DiscountRows rows={(sent ? pricing?.sentDiscounts(line.id) : pricing?.newDiscounts(line.id)) ?? []} />
     </li>
   )
   return (
@@ -263,11 +287,13 @@ export function OrderColumn({ title, newLines, sentLines, onReview }: OrderColum
           </div>
         ))}
       </div>
+      {pricing?.notices}
       <div className="grid gap-2 border-t border-line pt-3">
         <div className="flex items-baseline justify-between">
           <span className="text-fg-2">Total</span>
-          <b className="text-lg tabular-nums">{formatCurrency(lineTotal(all))}</b>
+          <b className="text-lg tabular-nums">{formatCurrency(pricing?.total ?? lineTotal(all))}</b>
         </div>
+        <SavingsRow savings={pricing?.savings ?? 0} />
         <Button variant="outline" className="h-12" onClick={onReview}>
           <List className="mr-1.5 h-[18px] w-[18px]" aria-hidden />
           Ver y editar pedido
