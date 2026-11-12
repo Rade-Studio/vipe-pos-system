@@ -537,6 +537,20 @@ class ComandaHeaderTests(unittest.TestCase):
         self.assertEqual(lines[1], "Estaci\u00f3n: Bar")
         self.assertEqual(lines[3:5], ["Cliente: Ana Perez", "Mesero: Luis"])
 
+    def test_takeaway_header_prints_the_label_in_place_of_the_table(self):
+        lines = _kitchen_lines({
+            "invoiceNumber": "job-3", "orderNumber": 132, "table": None, "waiter": "Ana",
+            "items": _KITCHEN_ITEMS,
+            "takeaway": {"customerName": "Laura", "label": "PARA LLEVAR \u00b7 Laura"},
+        })
+        self.assertEqual(lines[0], "COMANDA #132 \u2014 PARA LLEVAR \u00b7 Laura")
+        self.assertNotIn("Mesa", "\n".join(lines))
+
+    def test_takeaway_without_label_builds_it_from_the_name(self):
+        lines = _kitchen_lines({"invoiceNumber": "j", "waiter": "Ana", "items": _KITCHEN_ITEMS,
+                                "takeaway": {"customerName": "Laura"}})
+        self.assertEqual(lines[0], "COMANDA \u2014 PARA LLEVAR \u00b7 Laura")
+
     def test_without_stations_only_the_number_is_added(self):
         lines = _kitchen_lines({"invoiceNumber": "j", "orderNumber": 7, "table": 2, "waiter": "Ana", "items": _KITCHEN_ITEMS})
         self.assertEqual(lines[0], "COMANDA #7 \u2014 Mesa 2")

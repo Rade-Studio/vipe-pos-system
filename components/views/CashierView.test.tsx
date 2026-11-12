@@ -75,6 +75,7 @@ const takeawayApi = vi.hoisted(() => ({
   promotionsToday: vi.fn(),
   pricingPreview: vi.fn(),
   createOrder: vi.fn(),
+  addItems: vi.fn(),
 }))
 const getByStatus = vi.fn(async (_statuses: string | string[]): Promise<Row[]> => [dbRow()])
 const getById = vi.fn(async (id: string) => dbRow({ id }))
@@ -151,6 +152,7 @@ vi.mock("@/lib/api/client", () => {
       },
       POST: async (path: string, init: any) => {
         if (path === "/api/orders") return { data: await takeawayApi.createOrder(init.body) }
+        if (path === "/api/orders/{id}/items") return { data: await takeawayApi.addItems(init.params.path.id, init.body) }
         if (path === "/api/orders/pricing-preview") return { data: await takeawayApi.pricingPreview(init.body) }
         throw new Error(`unexpected POST ${path}`)
       },
@@ -1545,7 +1547,57 @@ describe("Para llevar (S8)", () => {
     takeawayApi.promotionsToday.mockRejectedValue(new Error("no promotions"))
     takeawayApi.pricingPreview.mockRejectedValue(new Error("no preview"))
     takeawayApi.createOrder.mockReset()
+    takeawayApi.addItems.mockReset()
     vi.mocked(sendCommand).mockClear()
+  })
+
+  const takeawayRow = (over: Record<string, unknown> = {}) =>
+    dbRow({ id: "o-take", table_id: null, order_type: "takeaway", customer_name: "Ana María", subtotal: 6_000, tax: 1_140, total: 7_140, ...over })
+
+  async function openTakeaway() {
+    getByStatus.mockResolvedValue([dbRow(), takeawayRow()])
+    renderCashier()
+    await queueRow("Mesa 1")
+    fireEvent.click(screen.getByRole("tab", { name: /^Para llevar/ }))
+    fireEvent.click(await queueRow("Para llevar · Ana María"))
+    await screen.findByText("Cobrar · Para llevar · Ana María")
+  }
+
+  it("reprints a takeaway order with the customer where the table goes (M5b)", async () => {
+    await openTakeaway()
+    fireEvent.click(screen.getByRole("button", { name: "Reimprimir" }))
+    const invoice = await screen.findByRole("dialog")
+    expect(invoice).toHaveTextContent("Para llevar · Ana María")
+    expect(invoice).not.toHaveTextContent("N/A")
+  })
+
+  it("Agregar productos reopens a sent takeaway order and sends only the new lines to it (M5b)", async () => {
+    takeawayApi.addItems.mockImplementation(async (id: string) =>
+      (await import("@/lib/api/orders")).orderDtoFromWire(takeawayRow({ id, status: "kitchen" })),
+    )
+    await openTakeaway()
+    fireEvent.click(screen.getByRole("button", { name: "Agregar productos" }))
+
+    expect(await screen.findByRole("heading", { name: "¿Qué categoría?" })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole("button", { name: /Postres/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /^Arroz con leche,/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /^Agregar 1 ·/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar a cocina (1)" }))
+    })
+
+    await waitFor(() => expect(takeawayApi.addItems).toHaveBeenCalledTimes(1))
+    expect(takeawayApi.addItems).toHaveBeenCalledWith("o-take", { items: [{ dishId: ARROZ, quantity: 1, unitPrice: 7000, comments: null }] })
+    expect(takeawayApi.createOrder).not.toHaveBeenCalled()
+    expect(sendCommand).toHaveBeenCalledWith({ orderId: "o-take", items: [expect.objectContaining({ name: "Arroz con leche" })] })
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "¿Qué categoría?" })).toBeNull())
+  })
+
+  it("a table order has no Agregar productos in the cashier detail (PRESERVE)", async () => {
+    renderCashier()
+    fireEvent.click(await queueRow("Mesa 1"))
+    expect(await screen.findByRole("button", { name: "Reimprimir" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Agregar productos" })).toBeNull()
   })
 
   it("lists takeaway orders under Para llevar, labelled with the customer, and charges them like a table", async () => {

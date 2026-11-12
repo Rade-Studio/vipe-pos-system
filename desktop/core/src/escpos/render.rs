@@ -34,9 +34,21 @@ pub fn render_kitchen_order(order: &Value, now: NaiveDateTime) -> Result<Vec<Pri
     let station = order.get("station").and_then(Value::as_object).and_then(|s| s.get("name")).filter(|v| py::truthy(v));
     let station_lines: Vec<PrintLine> = station.map(|name| left(format!("Estaci\u{f3}n: {}", pystr(name)))).into_iter().collect();
 
+    // S8: a takeaway order prints its label where the table goes.
+    let place = match order.get("takeaway").and_then(Value::as_object) {
+        Some(t) => match t.get("label").filter(|v| py::truthy(v)) {
+            Some(label) => pystr(label),
+            None => {
+                let name = t.get("customerName").filter(|v| py::truthy(v)).map(pystr).unwrap_or("N/A".into());
+                format!("PARA LLEVAR \u{b7} {name}")
+            }
+        },
+        None => format!("Mesa {table}"),
+    };
+
     let mut lines = match &delivery {
         None => [
-            vec![PrintLine { text: format!("{title} \u{2014} Mesa {table}"), bold: true, align: Align::Center }],
+            vec![PrintLine { text: format!("{title} \u{2014} {place}"), bold: true, align: Align::Center }],
             station_lines,
             vec![left(format!("Fecha:  {date_str}")), left(format!("Mesero: {waiter}")), center(RULE)],
         ]
@@ -375,5 +387,16 @@ mod tests {
         let t = texts(&render_kitchen_order(&order, now()).unwrap()).join("\n");
         assert!(t.contains("MOJITO"));
         assert!(!t.contains("24.000") && !t.contains("Happy hour") && !t.contains('$'));
+    }
+
+    #[test]
+    fn takeaway_comanda_prints_the_label_in_place_of_the_table() {
+        let order = json!({"table": null, "waiter": "Ana", "orderNumber": 132, "items": [{"name": "Sopa", "quantity": 1}],
+            "takeaway": {"customerName": "Laura", "label": "PARA LLEVAR \u{b7} Laura"}});
+        let t = texts(&render_kitchen_order(&order, now()).unwrap());
+        assert_eq!(t[0], "COMANDA #132 \u{2014} PARA LLEVAR \u{b7} Laura");
+        assert!(!t.join("\n").contains("Mesa"));
+        let no_label = json!({"waiter": "Ana", "items": [], "takeaway": {"customerName": "Laura"}});
+        assert_eq!(texts(&render_kitchen_order(&no_label, now()).unwrap())[0], "COMANDA \u{2014} PARA LLEVAR \u{b7} Laura");
     }
 }

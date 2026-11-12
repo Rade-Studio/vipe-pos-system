@@ -108,7 +108,7 @@ pub fn render_job(job: &PrintJob, encoding: Encoding, now: NaiveDateTime) -> Res
     }
 }
 
-/// `_command`: invoiceNumber, items and waiter are required (truthy); orderNumber and station pass through.
+/// `_command`: invoiceNumber, items and waiter are required (truthy); orderNumber, station and takeaway pass through.
 fn command_order(payload: &Value) -> Option<Value> {
     let p = payload.as_object()?;
     let field = |k: &str| p.get(k).filter(|v| py_truthy(v)).cloned();
@@ -119,8 +119,8 @@ fn command_order(payload: &Value) -> Option<Value> {
         "items": field("items")?,
         "delivery": p.get("delivery").cloned().unwrap_or(Value::Null),
     });
-    // Comanda header (orderNumber, station): passed through only when present.
-    for key in ["orderNumber", "station"] {
+    // Comanda header (orderNumber, station, takeaway): passed through only when present.
+    for key in ["orderNumber", "station", "takeaway"] {
         if let Some(value) = p.get(key).filter(|v| !v.is_null()) {
             order[key] = value.clone();
         }
@@ -149,5 +149,19 @@ fn older_than(created_at: Option<&str>, now: DateTime<Utc>, age: Duration) -> bo
     match parsed {
         Ok(created) => now - created > age,
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_takeaway_command_passes_the_takeaway_block() {
+        let takeaway = json!({"customerName": "Laura", "label": "PARA LLEVAR \u{b7} Laura"});
+        let order = command_order(&json!({"invoiceNumber": "j", "waiter": "Ana", "items": [{"name": "Sopa"}], "takeaway": takeaway})).unwrap();
+        assert_eq!(order["takeaway"], takeaway);
+        let old = command_order(&json!({"invoiceNumber": "j", "waiter": "Ana", "items": [{"name": "Sopa"}]})).unwrap();
+        assert!(old.get("takeaway").is_none());
     }
 }

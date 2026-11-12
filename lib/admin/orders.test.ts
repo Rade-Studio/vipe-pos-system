@@ -402,6 +402,12 @@ describe("T28 admin orders table", () => {
     expect(joined.place).toBe("Mesa 9")
   })
 
+  it("names a takeaway row 'Para llevar · <nombre>', never a table (S8)", () => {
+    const [row] = adminOrderRows([{ ...appOrder({ id: "t", orderType: "takeaway", customerName: "Laura" }), tableName: "N/A" } as Order], ctx)
+    expect(row).toMatchObject({ place: "Para llevar · Laura", placeDetail: null, isDelivery: false })
+    expect(row.haystack).toContain("laura")
+  })
+
   it("minutesOpen floors the elapsed minutes and never goes negative", () => {
     expect(minutesOpen(minutesAgo(18), NOW)).toBe(18)
     expect(minutesOpen(new Date(NOW - 59_000), NOW)).toBe(0)

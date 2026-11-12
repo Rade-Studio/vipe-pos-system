@@ -124,7 +124,9 @@ describe('takeaway orders (Testcontainers, vipe_api)', () => {
       ['with a short phone', { orderType: 'takeaway', customerName: 'Ana', customerPhone: '315' }, 'customerPhone', 'El teléfono debe tener entre 7 y 15 dígitos'],
       ['with a table', { orderType: 'takeaway', customerName: 'Ana', tableId: ids.table }, 'tableId', 'Un pedido para llevar no tiene mesa'],
       ['dine_in without a table', { orderType: 'dine_in' }, 'tableId', 'Elige la mesa del pedido'],
+      ['with a one-emoji name', { orderType: 'takeaway', customerName: '👍' }, 'customerName', 'El nombre del cliente debe tener entre 2 y 60 caracteres'],
       ['dine_in with a customer', { tableId: ids.table, customerName: 'Ana' }, 'customerName', 'Solo un pedido para llevar lleva el nombre del cliente'],
+      ['dine_in with a phone', { tableId: ids.table, customerPhone: '3001234567' }, 'customerPhone', undefined],
       ['delivery', { orderType: 'delivery', customerName: 'Ana' }, 'orderType', undefined],
     ])('answers 422 %s and stores nothing', async (_label, body, path, message) => {
       const before = await orderCount();
@@ -199,6 +201,15 @@ describe('takeaway orders (Testcontainers, vipe_api)', () => {
       expect(paid.status, JSON.stringify(paid.body)).toBe(200);
       expect(paid.body).toMatchObject({ status: 'paid' });
       expect((await db<{ status: string }>('SELECT status FROM orders WHERE id = $1', [order.body.id]))[0].status).toBe('paid');
+    });
+
+    it('adds items to a sent takeaway order on the takeaway channel, keeping its customer (M5b)', async () => {
+      const order = await waiter().post('/api/orders', { orderType: 'takeaway', customerName: 'Rita', items: [{ dishId: ids.limonada, quantity: 1 }] });
+      expect(order.status).toBe(201);
+      const added = await cash().post(`/api/orders/${order.body.id}/items`, { items: [{ dishId: ids.hamburguesa, quantity: 1 }] });
+      expect(added.status, JSON.stringify(added.body)).toBe(201);
+      expect(added.body).toMatchObject({ orderType: 'takeaway', customerName: 'Rita', tableId: null, status: 'kitchen', subtotal: 6000 + 18000 });
+      expect(added.body.items.find((item: { dishId: string }) => item.dishId === ids.hamburguesa)).toMatchObject({ promotionId: promoId });
     });
 
     it('the comanda of a takeaway order carries the customer instead of a table', async () => {

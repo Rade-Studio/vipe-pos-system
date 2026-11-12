@@ -24,6 +24,7 @@
  *     is a function of DATA, never of "when did this render happen".
  */
 import { getByStatus, toOrder, type OrderDto } from "@/lib/api/orders"
+import { takeawayLabel } from "@/lib/cashier/queue"
 import type { LateThresholds } from "@/lib/api/settings"
 import type { Order, OrderStatus } from "@/types"
 
@@ -205,7 +206,7 @@ export interface AdminOrderRow {
   /** "#128", or "#" + the id prefix when the order has no number. */
   label: string
   isDelivery: boolean
-  /** "Mesa 8" / the delivery customer / "Domicilio". */
+  /** "Mesa 8" / the delivery customer / "Domicilio" / "Para llevar · <nombre>". */
   place: string
   /** Zone of the table; null for a delivery or an unplaced table. */
   placeDetail: string | null
@@ -283,6 +284,8 @@ export function adminOrderRows(orders: readonly Order[], ctx: AdminRowContext): 
         address = [delivery.addressLine, delivery.neighborhood].filter(Boolean).join(", ") || null
         courierName = (delivery.courierId && ctx.courierName(delivery.courierId)) || null
       }
+    } else if (order.orderType === "takeaway") {
+      place = takeawayLabel(order)
     } else {
       const table = order.tableId ? ctx.tableOf(order.tableId) : undefined
       const tableNumber = table?.number ?? (typeof carried.tableName === "number" ? carried.tableName : null)

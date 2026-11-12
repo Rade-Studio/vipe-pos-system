@@ -152,6 +152,14 @@ class PrintJobHandlerTests(unittest.TestCase):
         self.assertIn(b"COMANDA \x97 DOMICILIO", comandas.ticket[0])
         self.assertIn(b"Cliente: Luis", comandas.ticket[0])
 
+    def test_takeaway_command_prints_the_takeaway_label(self):
+        comandas = FakePrinter()
+        payload = {**COMMAND_JOB["payload"], "table": None,
+                   "takeaway": {"customerName": "Laura", "label": "PARA LLEVAR \u00b7 Laura"}}
+        self.assertTrue(make_handler(comandas=comandas).handle({**COMMAND_JOB, "payload": payload}))
+        self.assertIn("COMANDA \u2014 PARA LLEVAR \u00b7 Laura".encode("cp1252"), comandas.ticket[0])
+        self.assertNotIn(b"Mesa", comandas.ticket[0])
+
     def test_invoice_prints_on_the_facturas_printer_with_the_renderer_bytes(self):
         facturas = FakePrinter()
         comandas = FakePrinter()

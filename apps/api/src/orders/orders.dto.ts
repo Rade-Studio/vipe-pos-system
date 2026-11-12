@@ -134,15 +134,19 @@ export const createOrderSchema = z
     const { customerName: rawName, ...rest } = value;
     if ((value.orderType ?? 'dine_in') === 'dine_in') {
       if (value.tableId === undefined) ctx.addIssue({ code: 'custom', path: ['tableId'], message: 'Elige la mesa del pedido' });
-      if (rawName !== undefined || (value.customerPhone ?? null) !== null) {
+      if (rawName !== undefined) {
         ctx.addIssue({ code: 'custom', path: ['customerName'], message: 'Solo un pedido para llevar lleva el nombre del cliente' });
+      }
+      if ((value.customerPhone ?? null) !== null) {
+        ctx.addIssue({ code: 'custom', path: ['customerPhone'], message: 'Solo un pedido para llevar lleva el teléfono del cliente' });
       }
       return { ...rest, orderType: 'dine_in' as const, customerName: null, customerPhone: null };
     }
     if (value.tableId !== undefined) ctx.addIssue({ code: 'custom', path: ['tableId'], message: 'Un pedido para llevar no tiene mesa' });
-    // orders_customer_name_check (0030): stored trimmed, 2..60 characters.
+    // orders_customer_name_check (0030): stored trimmed, 2..60 characters, counted as Postgres does (code points).
     const name = rawName?.trim() ?? '';
-    if (name.length < 2 || name.length > 60) ctx.addIssue({ code: 'custom', path: ['customerName'], message: CUSTOMER_NAME_MESSAGE });
+    const length = [...name].length;
+    if (length < 2 || length > 60) ctx.addIssue({ code: 'custom', path: ['customerName'], message: CUSTOMER_NAME_MESSAGE });
     return { ...rest, orderType: 'takeaway' as const, customerName: name, customerPhone: value.customerPhone ?? null };
   });
 

@@ -19,7 +19,17 @@ import { usePromotionsToday } from "@/hooks/use-promotions"
 import { usePricingPreview } from "@/hooks/use-pricing-preview"
 import { useToast } from "@/hooks/use-toast"
 import { invalidationsFor } from "@/hooks/inventory/invalidations"
-import { combosFromCart, create as createOrder, orderConflictOf, orderItemsFromCart, type OrderDto, type StockShortage } from "@/lib/api/orders"
+import {
+  addItemsToOrder,
+  combosFromCart,
+  create as createOrder,
+  orderConflictOf,
+  orderItemsFromCart,
+  type ApiOrderItem,
+  type OrderDto,
+  type StockShortage,
+} from "@/lib/api/orders"
+import { clockTime } from "@/lib/order-steps/details"
 import { ApiError } from "@/lib/api/errors"
 import { sendCommand } from "@/lib/api/print"
 import { usePrintingEnabled } from "@/lib/api/printing"
@@ -36,6 +46,7 @@ import {
   quickAdds,
   scheduleShort,
   sellsText,
+  sentPreviewDiscounts,
   stripState,
   subcategoryTag,
   windowWarning,
@@ -46,13 +57,16 @@ import {
 import { useConfigStore } from "@/store/use-config-store"
 import { log } from "@/lib/log"
 import { formatCurrency } from "@/utils/helpers"
+import type { Order, OrderItem } from "@/types"
 import type { TakeawayCustomer } from "./customer"
 
 interface TakeawayOrderFlowProps {
   customer: TakeawayCustomer
+  /** M5b: an open takeaway order the new lines are added to (as a table's order); absent = a new order. */
+  order?: Order
   /** Back without sending: the cart is dropped. */
   onClose: () => void
-  /** The order was created (and its comanda queued when the restaurant prints). */
+  /** The order was created or its new lines added (and the comanda queued when the restaurant prints). */
   onSent: (order: OrderDto) => void
 }
 
@@ -64,7 +78,7 @@ const NO_LINES: readonly never[] = []
  * and the pricing preview are those of "Para llevar". The order has no table;
  * it is created with the customer and paid at the cashier like a table order.
  */
-export function TakeawayOrderFlow({ customer, onClose, onSent }: TakeawayOrderFlowProps) {
+export function TakeawayOrderFlow({ customer, order, onClose, onSent }: TakeawayOrderFlowProps) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const printingEnabled = usePrintingEnabled()
@@ -76,13 +90,19 @@ export function TakeawayOrderFlow({ customer, onClose, onSent }: TakeawayOrderFl
   const [reviewOpen, setReviewOpen] = useState(false)
   const [comboPromotionId, setComboPromotionId] = useState<string | null>(null)
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
-  const [note, setNote] = useState("")
+  const [note, setNote] = useState(order?.notes ?? "")
   const [sending, setSending] = useState(false)
   const [shortages, setShortages] = useState<StockShortage[] | null>(null)
 
   const menuTree = useMenuTree()
   const { data: promotionsToday } = usePromotionsToday("takeaway")
-  const { result: pricingResult } = usePricingPreview({ channel: "takeaway", cart: cartItems })
+  const sentLines: readonly OrderItem[] = order?.items ?? NO_LINES
+  const { result: pricingResult } = usePricingPreview({
+    channel: "takeaway",
+    orderId: order?.id,
+    orderVersion: sentLines.map((line) => `${line.id}:${line.quantity}`).join(","),
+    cart: cartItems,
+  })
 
   const menuDishes = useMemo(
     () => new Map((menuTree.categories ?? []).flatMap((category) => category.dishes).map((dish) => [dish.id, dish])),
@@ -91,6 +111,7 @@ export function TakeawayOrderFlow({ customer, onClose, onSent }: TakeawayOrderFl
   const preview = pricingResult?.preview
   const previewLineIds = pricingResult?.lineIds ?? []
   const discountRows = draftDiscounts(preview, previewLineIds)
+  const sentPreviewRows = sentPreviewDiscounts(preview)
   // A combo the preview has not priced yet shows its own saving (Σ list − combo price).
   const localComboRows = (line: (typeof cartItems)[number]): DiscountRow[] =>
     isComboLine(line) && line.combo.listPrice > line.combo.comboPrice
@@ -101,8 +122,25 @@ export function TakeawayOrderFlow({ customer, onClose, onSent }: TakeawayOrderFl
     if (!line) return []
     return previewLineIds.includes(lineId) ? (discountRows.get(lineId) ?? []) : localComboRows(line)
   }
-  const localSavings = cartItems.reduce((total, line) => total + localComboRows(line).reduce((sum, row) => sum + row.amount, 0), 0)
-  const total = preview ? preview.netSubtotal : lineTotal(cartItems) - localSavings
+  // Sent lines keep the discounts fixed when they were sent ("fijado HH:MM"), as on a table.
+  const sentDiscounts = (lineId: string): DiscountRow[] => {
+    const line = sentLines.find((entry) => entry.id === lineId) as ApiOrderItem | undefined
+    if (!line) return []
+    const fixedAt = clockTime(line.addedAt)
+    if (line.discounts?.length) {
+      return line.discounts.map((discount) => ({
+        label: discount.label,
+        amount: discount.amount,
+        fixedAt: discount.kind === "promotion_item" || discount.kind === "combo" ? fixedAt : null,
+      }))
+    }
+    return (sentPreviewRows.get(lineId) ?? []).map((row) => ({ ...row, fixedAt }))
+  }
+  const sum = (rows: readonly DiscountRow[]) => rows.reduce((total, row) => total + row.amount, 0)
+  const localSavings =
+    sentLines.reduce((total, line) => total + sum(sentDiscounts(line.id)), 0) +
+    cartItems.reduce((total, line) => total + sum(localComboRows(line)), 0)
+  const total = preview ? preview.netSubtotal : lineTotal(sentLines) + lineTotal(cartItems) - localSavings
   const count = lineCount(cartItems)
   const missingUnits = preview?.hints.find((hint) => hint.kind === "missing_units")
   const sendWarning = windowWarning(promotionsToday, menuTree.categories, cartItems)
@@ -223,7 +261,7 @@ export function TakeawayOrderFlow({ customer, onClose, onSent }: TakeawayOrderFl
 
   const pricing: OrderPricing = {
     newDiscounts,
-    sentDiscounts: () => [],
+    sentDiscounts,
     total,
     savings: preview ? preview.totalDiscounts : localSavings,
     notices:
@@ -279,11 +317,18 @@ export function TakeawayOrderFlow({ customer, onClose, onSent }: TakeawayOrderFl
     try {
       const combosBody = combosFromCart(cartItems)
       const trimmedNote = note.trim()
-      const created = await createOrder({
+      const lines = orderItemsFromCart(cartItems)
+      const created = order
+        ? await addItemsToOrder(order.id, lines, {
+            ...(force ? { force: true } : {}),
+            ...(combosBody.length ? { combos: combosBody } : {}),
+            ...(trimmedNote !== (order.notes ?? "") ? { notes: trimmedNote || null } : {}),
+          })
+        : await createOrder({
         orderType: "takeaway",
         customerName: customer.name,
         ...(customer.phone ? { customerPhone: customer.phone } : {}),
-        items: orderItemsFromCart(cartItems),
+        items: lines,
         ...(combosBody.length ? { combos: combosBody } : {}),
         ...(trimmedNote ? { notes: trimmedNote } : {}),
         ...(force ? { force: true } : {}),
@@ -302,7 +347,7 @@ export function TakeawayOrderFlow({ customer, onClose, onSent }: TakeawayOrderFl
       if (printingEnabled) void sendCommand({ orderId: created.id, items: kitchenItems })
       clearCart(cartKey)
       toast({
-        title: "Pedido para llevar enviado",
+        title: order ? "Productos agregados" : "Pedido para llevar enviado",
         description: `${created.orderNumber ? `#${created.orderNumber} · ` : ""}${customer.name} ha sido enviado a cocina.`,
       })
       onSent(created)
@@ -391,7 +436,7 @@ export function TakeawayOrderFlow({ customer, onClose, onSent }: TakeawayOrderFl
           <OrderColumn
             title={title}
             newLines={cartItems}
-            sentLines={NO_LINES}
+            sentLines={sentLines}
             pricing={pricing}
             onReview={() => {
               setComboPromotionId(null)
@@ -406,7 +451,7 @@ export function TakeawayOrderFlow({ customer, onClose, onSent }: TakeawayOrderFl
               note={note}
               onNoteChange={setNote}
               newLines={cartItems}
-              sentLines={NO_LINES}
+              sentLines={sentLines}
               onChangeQuantity={changeQuantity}
               onRemove={removeLine}
               onEditOptions={editOptions}

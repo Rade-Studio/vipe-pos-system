@@ -33,6 +33,18 @@ describe("StaleOrdersBanner (S3)", () => {
     expect(banner).toHaveTextContent("Cóbralas en caja o cancélalas desde su tarjeta.")
   })
 
+  it("names an old takeaway order by its customer (S8)", () => {
+    render(
+      <StaleOrdersBanner
+        nowMs={nowMs}
+        orders={[order("t", { orderType: "takeaway", customerName: "Laura", tableName: "N/A", createdAt: hoursAgo(13) })]}
+      />,
+    )
+    const row = screen.getByRole("listitem")
+    expect(row).toHaveTextContent("Para llevar · Laura")
+    expect(row).not.toHaveTextContent("Mesa")
+  })
+
   it("uses the singular for one old order", () => {
     render(<StaleOrdersBanner nowMs={nowMs} orders={[order("a", { tableName: 9, createdAt: hoursAgo(13) })]} />)
     expect(screen.getByText("1 orden lleva abierta más de 12 horas")).toBeInTheDocument()

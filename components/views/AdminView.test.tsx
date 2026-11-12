@@ -427,6 +427,18 @@ describe("AdminView — realtime on the Órdenes tab (S3)", () => {
     expect(cached).toMatchObject({ tableName: 7, waiterName: "Ana" })
   })
 
+  it("names a realtime takeaway INSERT by its customer in the toast and the row (S8)", async () => {
+    await openOrdersWith([activeOrderDto("o-1")])
+    toastMock.mockClear()
+
+    await emit({ eventType: "INSERT", new: { ...insertedRow("o-2"), table_id: null, order_type: "takeaway", customer_name: "Laura" }, old: {} })
+
+    const card = await screen.findByTestId("admin-order-o-2")
+    expect(card).toHaveTextContent("Para llevar · Laura")
+    expect(card).not.toHaveTextContent("Mesa")
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ description: "Para llevar · Laura, 1 productos" }))
+  })
+
   it("shows the API's table number and waiter name when the shell stores lack them (S2)", async () => {
     await openOrdersWith([activeOrderDto("o-1")])
 
