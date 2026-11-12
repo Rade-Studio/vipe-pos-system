@@ -139,16 +139,21 @@ export const DISH_MESSAGES = {
   move: 'El plato está en una subcategoría de su categoría actual; elige una subcategoría de la nueva categoría o quítala',
 } as const;
 
+/** promotions_channels_check: dine_in (Salón), takeaway (Para llevar, 0033) and delivery (Domicilio), the orders.order_type values. */
+export const PROMOTION_CHANNEL_VALUES = ['dine_in', 'takeaway', 'delivery'] as const;
+/** The channels an order has (orders.order_type). */
+export const ORDER_CHANNELS = PROMOTION_CHANNEL_VALUES;
+
 export const dishListQuerySchema = z.strictObject({
   categoryId: z.guid().optional(),
   subcategoryId: z.guid().optional(),
   active: booleanQuery.optional(),
   pricing: z.enum(['promotions']).optional(),
   /** With pricing=promotions: the order channel the promotion fields are computed for. */
-  channel: z.enum(['dine_in', 'delivery']).optional(),
+  channel: z.enum(ORDER_CHANNELS).optional(),
 });
 
-export const menuTreeQuerySchema = z.strictObject({ channel: z.enum(['dine_in', 'delivery']).optional() });
+export const menuTreeQuerySchema = z.strictObject({ channel: z.enum(ORDER_CHANNELS).optional() });
 
 export const createDishSchema = z.strictObject({
   name: z.string().trim().min(1).max(100),
@@ -292,10 +297,6 @@ export type DiscountType = (typeof DISCOUNT_TYPES)[number];
 export const PROMOTION_KINDS = ['product_discount', 'buy_x_pay_y', 'combo', 'bill_discount'] as const;
 export type PromotionKindValue = (typeof PROMOTION_KINDS)[number];
 export const PROMOTION_MODES = ['automatic', 'manual', 'manual_pin'] as const;
-/** promotions_channels_check: dine_in (Salón) and delivery (Domicilio) are the order types today; takeaway is accepted for later. */
-export const PROMOTION_CHANNEL_VALUES = ['dine_in', 'takeaway', 'delivery'] as const;
-/** The channels an order has today (orders.order_type). */
-export const ORDER_CHANNELS = ['dine_in', 'delivery'] as const;
 export const SCHEDULE_REASONS = ['active', 'paused', 'not_started', 'ended', 'other_day', 'outside_hours', 'manual'] as const;
 export const TODAY_OTHER_REASONS = ['other_day', 'outside_hours', 'other_channel', 'manual', 'not_started'] as const;
 
@@ -437,6 +438,16 @@ export class PromotionTargetsDto {
 export class PromotionStats {
   @ApiProperty({ description: 'Distinct non-cancelled orders of the last 30 days with a discount of this promotion.' }) usesLast30Days!: number;
   @ApiProperty({ description: 'Sum of those discounts, whole pesos.' }) discountLast30Days!: number;
+}
+
+export class PromotionWeekStats {
+  @ApiProperty({ format: 'date-time', description: 'Monday at businessDayCutoffHour, restaurant timezone (the cash business-day rule).' }) weekStart!: string;
+  @ApiProperty({ format: 'date-time' }) now!: string;
+  @ApiProperty({ description: 'Sum of total_discounts of the paid orders of the week, whole pesos.' }) discountGranted!: number;
+  @ApiProperty({ description: 'Gross sales (subtotal + total_discounts) of those orders.' }) salesGross!: number;
+  @ApiProperty({ example: 5.4, description: 'discountGranted / salesGross x 100, one decimal; 0 without sales.' }) discountPercent!: number;
+  @ApiProperty({ description: 'Gross sales of the paid orders with at least one discount row.' }) salesWithPromotion!: number;
+  @ApiProperty({ description: 'Count of those orders.' }) billsWithPromotion!: number;
 }
 
 export class PromotionSchedule {

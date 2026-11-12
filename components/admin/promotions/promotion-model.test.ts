@@ -15,8 +15,10 @@ import {
   NOW,
   OCTUBRE,
   SUBCATEGORIES,
+  promotion,
 } from "./promotion-fixtures"
 import {
+  CHANNELS,
   apiFieldErrors,
   billPreview,
   checkDraft,
@@ -195,9 +197,27 @@ describe("body (S10, S1)", () => {
     }
   })
 
-  it("sends every day and both channels as empty lists", () => {
-    const draft = { ...emptyDraft(today), days: [1, 2, 3, 4, 5, 6, 7], channels: ["delivery", "dine_in"] as const }
+  it("sends every day and the three channels as empty lists", () => {
+    const draft = { ...emptyDraft(today), days: [1, 2, 3, 4, 5, 6, 7], channels: ["delivery", "takeaway", "dine_in"] as const }
     expect(draftBody({ ...draft, channels: [...draft.channels] })).toMatchObject({ daysOfWeek: [], channels: [] })
+  })
+
+  it("offers Salón, Para llevar and Domicilio, all chosen on a new promotion (S8)", () => {
+    expect(CHANNELS.map((c) => [c.value, c.label])).toEqual([
+      ["dine_in", "Salón"],
+      ["takeaway", "Para llevar"],
+      ["delivery", "Domicilio"],
+    ])
+    expect(emptyDraft(today).channels).toEqual(["dine_in", "takeaway", "delivery"])
+  })
+
+  it("edits a takeaway channel as a toggle and sends it in menu order (S8)", () => {
+    const draft = draftFromPromotion(promotion({ channels: ["takeaway"] }))
+    expect(draft.channels).toEqual(["takeaway"])
+    expect(draft.extraChannels).toEqual([])
+    expect(draftBody({ ...draft, channels: ["delivery", "takeaway"] })).toMatchObject({ channels: ["takeaway", "delivery"] })
+    expect(draftScheduleSentence({ ...draft, channels: ["takeaway"] })).toContain("en para llevar.")
+    expect(draftScheduleSentence({ ...draft, channels: ["dine_in", "takeaway", "delivery"] })).toContain("en todos los canales.")
   })
 })
 

@@ -38,6 +38,7 @@ import {
   matchesKindFilter,
   oldestFirst,
   ticketAge,
+  takeawayPlace,
   ticketStartedAt,
   type KindFilter,
 } from "@/lib/kitchen/ticket"
@@ -196,7 +197,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     tableNumber: tablesRef.current.find((t) => t.id === order.tableId)?.number ?? null,
   })
   const placeText = (order: Order) =>
-    orderPlaceText(placeOf(order), deliveriesRef.current.get(order.id)?.delivery)
+    order.orderType === "takeaway"
+      ? `el pedido para llevar de ${order.customerName ?? "un cliente"}`
+      : orderPlaceText(placeOf(order), deliveriesRef.current.get(order.id)?.delivery)
 
   // Configurar suscripción en tiempo real
   const setupRealtimeSubscription = () => {
@@ -603,8 +606,9 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     setNewOrderCount(0)
   }
 
-  // Ticket place: "Mesa N" for a table, the customer for a delivery.
+  // Ticket place: "Mesa N" for a table, the customer for a delivery, "PARA LLEVAR · <nombre>" for takeaway (S8).
   const ticketPlace = (order: Order) => {
+    if (order.orderType === "takeaway") return takeawayPlace(order)
     if (!isDeliveryOrder(order)) return `Mesa ${placeOf(order).tableNumber ?? "?"}`
     const name = deliveriesRef.current.get(order.id)?.delivery.customerName.trim()
     return name ? name : "Domicilio"
@@ -623,6 +627,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
   const kindPills: { value: KindFilter; label: string }[] = [
     { value: "all", label: "Todas" },
     { value: "dine_in", label: "Mesas" },
+    { value: "takeaway", label: "Para llevar" },
     { value: "delivery", label: "Domicilios" },
   ]
 

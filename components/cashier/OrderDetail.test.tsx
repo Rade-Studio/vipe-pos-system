@@ -130,4 +130,15 @@ describe("OrderDetail — discounts (S13)", () => {
     await screen.findByRole("listitem", { name: "Happy hour 2x1" })
     expect(screen.queryByRole("button", { name: "Quitar Happy hour 2x1" })).not.toBeInTheDocument()
   })
+
+  it("a failed read of the discounts shows an error with Reintentar, not the stale totals", async () => {
+    orders.getById.mockReset().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(mesa7())
+    renderDetail(toOrder(mesa7()))
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("No se pudieron cargar los descuentos de la cuenta.")
+    expect(screen.queryByRole("list", { name: "Totales de la cuenta" })).not.toBeInTheDocument()
+    fireEvent.click(within(alert).getByRole("button", { name: "Reintentar" }))
+    expect(await screen.findByText("Subtotal (precio de lista)")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
 })

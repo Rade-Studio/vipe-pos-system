@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { z } from 'zod';
 import { booleanQuery } from '../common/validation';
 import { ConsumeOrderStockResult } from '../inventory/inventory.dto';
+import { ComboLineRequest } from '../orders/orders.dto';
 import { PrintJobCreated } from '../print/print.dto';
 import { normalizePhone } from './phone';
 
@@ -21,6 +22,28 @@ const PHONE_MESSAGE = 'Phone must have 7 to 15 digits';
 const TEXT_MAX = 1000;
 const MAX_LINES = 500;
 const BY_RPC = 'validated by create_delivery_order';
+/** Same caps as the orders' combos (orders.dto.ts comboLineSchema, MAX_COMBOS). */
+const MAX_COMBOS = 20;
+const MAX_COMBO_CHOICES = 6;
+/**
+ * A combo (S7): the promotion and one dish per group, the shape of POST
+ * /orders' combos (orders.dto.ts comboLineSchema, not exported); each choice
+ * becomes its own line.
+ */
+const comboLineSchema = z.strictObject({
+  comboPromotionId: z.guid(),
+  choices: z
+    .array(
+      z.strictObject({
+        groupId: z.guid(),
+        dishId: z.guid(),
+        comments: z.string().max(500).nullable().optional(),
+        modifiers: z.array(z.strictObject({ optionId: z.guid() })).max(50).optional(),
+      }),
+    )
+    .min(1)
+    .max(MAX_COMBO_CHOICES),
+});
 
 /** A phone normalised with the web's rule, or a 422. */
 const toPhone = (value: string, ctx: z.RefinementCtx): string => {
@@ -84,6 +107,7 @@ export const createDeliveryOrderSchema = z
         }),
       )
       .max(MAX_LINES),
+    combos: z.array(comboLineSchema).max(MAX_COMBOS).optional(),
     deliveryFee: z.number().int(),
     paymentMode: z.enum(PAYMENT_MODES),
     cashChangeFor: z.number().int().nullable().optional(),
@@ -246,7 +270,19 @@ class CreateDeliveryItem {
 export class CreateDeliveryOrderRequest {
   @ApiProperty({ type: CreateDeliveryCustomer }) customer!: CreateDeliveryCustomer;
   @ApiProperty({ type: CreateDeliveryAddress }) address!: CreateDeliveryAddress;
-  @ApiProperty({ type: [CreateDeliveryItem], maxItems: MAX_LINES, description: `1..100 lines ${BY_RPC}.` }) items!: CreateDeliveryItem[];
+  @ApiProperty({
+    type: [CreateDeliveryItem],
+    maxItems: MAX_LINES,
+    description: `1..100 lines together with the combo choices ${BY_RPC}; may be empty when combos are sent.`,
+  })
+  items!: CreateDeliveryItem[];
+  @ApiPropertyOptional({
+    type: [ComboLineRequest],
+    maxItems: MAX_COMBOS,
+    description:
+      'Combos live now for the delivery channel. Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.',
+  })
+  combos?: ComboLineRequest[];
   @ApiProperty({ type: 'integer', description: `Whole COP pesos; >= 0 ${BY_RPC}.` }) deliveryFee!: number;
   @ApiProperty({ enum: PAYMENT_MODES }) paymentMode!: PaymentMode;
   @ApiPropertyOptional({

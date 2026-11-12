@@ -23,7 +23,8 @@ export interface PlaceDelivery {
 /** Reads `orders.order_type` from a raw row; anything unknown is dine-in. */
 export function orderTypeFromRow(row: unknown): OrderType {
   if (row === null || typeof row !== 'object') return 'dine_in'
-  return (row as { order_type?: unknown }).order_type === 'delivery' ? 'delivery' : 'dine_in'
+  const type = (row as { order_type?: unknown }).order_type
+  return type === 'delivery' || type === 'takeaway' ? type : 'dine_in'
 }
 
 export function isDeliveryOrder(order: { orderType?: OrderType }): boolean {

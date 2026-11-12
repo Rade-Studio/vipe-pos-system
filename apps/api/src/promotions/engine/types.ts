@@ -71,6 +71,8 @@ export interface EngineItem {
   subcategoryId: string | null;
   /** List price incl. options, whole pesos. */
   unitPrice: number;
+  /** The part of unitPrice that is the line's options; a combo component pays them on top of the combo price. */
+  optionsPrice?: number;
   quantity: number;
   /** Promotion fixed when the item was sent (S3). */
   promotionId: string | null;

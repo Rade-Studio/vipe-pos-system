@@ -11,6 +11,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const payments = vi.hoisted(() => ({ listPaymentMethods: vi.fn(), payOrder: vi.fn() }))
 vi.mock("@/lib/api/payments", async (importOriginal) => ({ ...(await importOriginal<object>()), ...payments }))
 vi.mock("@/hooks/use-register-summary", () => ({ useRegisterSummary: () => ({ data: undefined }) }))
+const tenders = vi.hoisted(() => ({ zeroTotalTenders: vi.fn() }))
+vi.mock("@/lib/payments/tenders", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/payments/tenders")>()
+  tenders.zeroTotalTenders.mockImplementation(actual.zeroTotalTenders)
+  return { ...actual, zeroTotalTenders: tenders.zeroTotalTenders }
+})
 vi.mock("@/utils/toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }))
 
 import { PaymentPanel, type PaymentOrderSource } from "./PaymentPanel"
@@ -48,12 +54,13 @@ function source(overrides: Partial<CashierBillSource> = {}): CashierBillSource {
 function renderPanel(order: PaymentOrderSource) {
   const onPaid = vi.fn()
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  const panel = (value: PaymentOrderSource) => (
     <QueryClientProvider client={client}>
-      <PaymentPanel orderId="o-1" order={order} layout="dialog" onCancel={() => {}} onPaid={onPaid} />
-    </QueryClientProvider>,
+      <PaymentPanel orderId="o-1" order={value} layout="dialog" onCancel={() => {}} onPaid={onPaid} />
+    </QueryClientProvider>
   )
-  return { onPaid }
+  const { rerender } = render(panel(order))
+  return { onPaid, rerender: (value: PaymentOrderSource) => rerender(panel(value)) }
 }
 
 const result = (amountDue: number) => ({
@@ -114,6 +121,16 @@ describe("PaymentPanel — discounts", () => {
   })
 })
 
+describe("PaymentPanel — zero-total close (S5)", () => {
+  it("is decided from the server bill: an order with an amount due never takes the zero path", async () => {
+    tenders.zeroTotalTenders.mockClear()
+    renderPanel(source())
+    await screen.findByTestId("payment-remaining")
+    expect(tenders.zeroTotalTenders).not.toHaveBeenCalled()
+    expect(screen.queryByText(/La cuenta quedó en \$0/)).not.toBeInTheDocument()
+  })
+})
+
 describe("PaymentPanel — invoice discounts (S14)", () => {
   const discount = (id: string, label: string, amount: number, orderItemId: string | null) => ({
     id,
@@ -162,5 +179,25 @@ describe("PaymentPanel — invoice discounts (S14)", () => {
     expect("grossSubtotal" in invoice.bill).toBe(false)
     expect(invoice.items.some((item: object) => "discounts" in item)).toBe(false)
     expect(invoice.bill).toEqual({ subtotal: 141000, tax: 11280, taxPercentage: 8, tip: 0, tipPercentage: 0, total: 152280, totalDiscounts: 0 })
+  })
+
+  it("re-seeds the amounts when the order's discounts change with the same total (S5)", async () => {
+    const before: PaymentOrderSource = { ...source(), discounts: [discount("od-1", "Happy hour 2x1", 38000, "i-1")], gross_subtotal: 141000 }
+    const after: PaymentOrderSource = { ...source(), discounts: [discount("od-9", "Cortesía", 38000, null)], gross_subtotal: 141000 }
+    payments.payOrder.mockResolvedValue(result(111240))
+    const { onPaid, rerender } = renderPanel(before)
+    fireEvent.click(await screen.findByRole("button", { name: "Efectivo" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+    rerender(after)
+    expect(await screen.findByText(/vuelve a registrar los pagos/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Efectivo" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Usar restante/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Agregar línea" }))
+    const register = await screen.findByRole("button", { name: /Registrar/ })
+    await waitFor(() => expect(register).toBeEnabled())
+    fireEvent.click(register)
+    await waitFor(() => expect(onPaid).toHaveBeenCalled())
+    expect(onPaid.mock.calls[0]![0].discounts).toEqual([{ label: "Cortesía", amount: 38000, orderItemId: null }])
   })
 })

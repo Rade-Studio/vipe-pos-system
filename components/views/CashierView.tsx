@@ -11,7 +11,7 @@ import { useShallow } from "zustand/react/shallow"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
-import { RefreshCw, WifiOff, AlertTriangle, BarChart3 } from "lucide-react"
+import { RefreshCw, WifiOff, AlertTriangle, BarChart3, Plus } from "lucide-react"
 import { CashRegisterStatus } from "@/components/cashier/CashRegisterStatus"
 import { PaymentPanel, type PaymentPanelTotals } from "@/components/cashier/PaymentPanel"
 import { CashierQueue, type QueueTab } from "@/components/cashier/CashierQueue"
@@ -64,8 +64,13 @@ import {
   matchesQueueSearch,
   partialEntries,
   tableEntries,
+  takeawayEntries,
+  takeawayLabel,
   type QueueEntry,
 } from "@/lib/cashier/queue"
+import { TakeawayStartDialog } from "@/components/takeaway/TakeawayStartDialog"
+import { TakeawayOrderFlow } from "@/components/takeaway/TakeawayOrderFlow"
+import type { TakeawayCustomer } from "@/components/takeaway/customer"
 import { useOnlineStatus } from "@/lib/cashier/use-online-status"
 import { cn } from "@/lib/utils"
 
@@ -109,6 +114,11 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const phone = usePhone()
   // F3: the cancellation / void being taken through the step sheet.
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
+  // S8: "Para llevar" asks the customer, then takes the order with the waiter's step flow.
+  const [takeawayDialogOpen, setTakeawayDialogOpen] = useState(false)
+  const [takeawayCustomer, setTakeawayCustomer] = useState<TakeawayCustomer | null>(null)
+  // M5b: the open takeaway order "Agregar productos" adds to; null = a new order.
+  const [takeawayOrder, setTakeawayOrder] = useState<Order | null>(null)
 
   // The whole screen renders from ONE loaded list (mount, "Actualizar" and the
   // realtime patch share this cache slot); every bucket the view shows is
@@ -136,7 +146,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
 
   // Active / kitchen / delivered / partial / by-table, all derived. A realtime
   // status change re-buckets the row here, with no refetch.
-  const { partial: partialOrders, byTable: ordersByTable } = useMemo(
+  const { partial: partialOrders, byTable: ordersByTable, takeaway: takeawayOrders } = useMemo(
     () => deriveCashierViews(orders),
     [orders],
   )
@@ -187,11 +197,15 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     () => partialEntries({ byTable: ordersByTable, partial: partialOrders, tableNumberById, zoneNameByTableId, waiterName }),
     [ordersByTable, partialOrders, tableNumberById, zoneNameByTableId, waiterName],
   )
-  const tabRows = queueTab === "partials" ? partialRows : tableRows
+  const takeawayRows = useMemo(
+    () => takeawayEntries({ byTable: ordersByTable, partial: partialOrders, takeaway: takeawayOrders, tableNumberById, waiterName }),
+    [ordersByTable, partialOrders, takeawayOrders, tableNumberById, waiterName],
+  )
+  const tabRows = queueTab === "partials" ? partialRows : queueTab === "takeaway" ? takeawayRows : tableRows
   const visibleRows = useMemo(() => tabRows.filter((row) => matchesQueueSearch(row, query)), [tabRows, query])
   const selectedEntry: QueueEntry | undefined = useMemo(
-    () => [...tableRows, ...partialRows].find((row) => row.key === selectedKey),
-    [tableRows, partialRows, selectedKey],
+    () => [...tableRows, ...partialRows, ...takeawayRows].find((row) => row.key === selectedKey),
+    [tableRows, partialRows, takeawayRows, selectedKey],
   )
 
   const selectEntry = (entry: QueueEntry) => {
@@ -483,10 +497,12 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     if (!order) return
 
     // D6 Rule A: handler-only read, no subscription needed at the point of use.
-    const table = useTableStore.getState().getTableById(order.tableId)
+    const takeaway = order.orderType === "takeaway"
+    const table = takeaway ? undefined : useTableStore.getState().getTableById(order.tableId)
     const waiter = profiles.find((p) => p.id === order.waiter)
 
-    if (!table || !waiter) return
+    // A takeaway order has no table: the invoice names its customer instead (S8).
+    if ((!takeaway && !table) || (!takeaway && !waiter)) return
 
     // Asegurarse de que los items y el bill estén correctos
     const items = order.items
@@ -508,8 +524,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       },
       items: items,
       bill: bill,
-      waiter: waiter.name,
-      table: table.number,
+      waiter: waiter?.name ?? "N/A",
+      table: table ? table.number : takeawayLabel(order),
       paymentMethod: (order as any).paymentMethod || "cash"
     }
 
@@ -774,7 +790,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
               <CashierQueue
                 tab={queueTab}
                 onTabChange={setQueueTab}
-                counts={{ tables: tableRows.length, deliveries: pendingDeliveries.length, partials: partialRows.length }}
+                counts={{ tables: tableRows.length, takeaway: takeawayRows.length, deliveries: pendingDeliveries.length, partials: partialRows.length }}
+                onNewTakeaway={() => setTakeawayDialogOpen(true)}
                 query={query}
                 onQueryChange={setQuery}
                 entries={visibleRows}
@@ -796,6 +813,23 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                   <BillChangedBanner notice={billNotice} onDismiss={() => setBillNotice(null)} />
                 </div>
               )}
+              {selectedEntry?.kind === "takeaway" && (
+                <div className="p-3 pb-0 sm:p-4 sm:pb-0">
+                  {/* M5b: a sent takeaway order takes more items, like a table's order. */}
+                  <Button
+                    variant="outline"
+                    className="min-h-11 w-full"
+                    onClick={() => {
+                      const open = selectedEntry.payOrder
+                      setTakeawayOrder(open)
+                      setTakeawayCustomer({ name: open.customerName ?? "", phone: open.customerPhone ?? null })
+                    }}
+                  >
+                    <Plus className="mr-1.5 h-4 w-4" aria-hidden />
+                    Agregar productos
+                  </Button>
+                </div>
+              )}
               {selectedEntry ? (
                 <OrderDetail
                   entry={selectedEntry}
@@ -812,6 +846,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                   }
                   undoBusy={isUndoingSplit}
                   onReprint={() => showInvoice(selectedEntry.payOrder.id)}
+
                   onVoidItem={
                     selectedEntry.payOrder.items.length > 0
                       ? () =>
@@ -908,7 +943,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         registerId={openRegisterId}
         openerName={openerName}
         openedAt={registerOpenedAt}
-        pendingCount={tableRows.length + partialRows.length + pendingDeliveries.length}
+        pendingCount={tableRows.length + takeawayRows.length + partialRows.length + pendingDeliveries.length}
         onShowMovements={() => {
           setShiftSheetOpen(false)
           setActiveTab("transactions")
@@ -916,6 +951,31 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       />
 
       <VoidFlow target={voidTarget} onClose={() => setVoidTarget(null)} onDone={handleVoided} />
+
+      <TakeawayStartDialog
+        open={takeawayDialogOpen}
+        onClose={() => setTakeawayDialogOpen(false)}
+        onStart={(customer) => {
+          setTakeawayDialogOpen(false)
+          setTakeawayCustomer(customer)
+        }}
+      />
+      {takeawayCustomer && (
+        <TakeawayOrderFlow
+          customer={takeawayCustomer}
+          order={takeawayOrder ?? undefined}
+          onClose={() => {
+            setTakeawayCustomer(null)
+            setTakeawayOrder(null)
+          }}
+          onSent={() => {
+            setTakeawayCustomer(null)
+            setTakeawayOrder(null)
+            setQueueTab("takeaway")
+            void refreshOrders()
+          }}
+        />
+      )}
 
       {/* Partial Payment Dialog */}
       {selectedTableId && (

@@ -4,14 +4,17 @@ import { z } from 'zod';
 import { StaffRef } from '../audit/audit.dto';
 import { OTHER_TEXT_ISSUE, requireOtherText, VOID_REASON_CODES, VOID_REASONS, voidReasonFields, type VoidReason } from '../audit/voids';
 import { dateQuery } from '../common/validation';
+import { normalizePhone } from '../delivery/phone';
 import { OrderItemModifier } from '../catalog/modifiers.dto';
 import { LegacyPaymentTransaction, Payment } from '../payments/payments.dto';
 
 export const ORDER_STATUSES = ['active', 'kitchen', 'delivered', 'cancelled', 'paid'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const ORDER_ITEM_STATUSES = ['kitchen', 'served'] as const;
-export const ORDER_TYPES = ['dine_in', 'delivery'] as const;
+export const ORDER_TYPES = ['dine_in', 'takeaway', 'delivery'] as const;
 export type OrderType = (typeof ORDER_TYPES)[number];
+/** The order types POST /orders creates; delivery goes through the delivery module (create_delivery_order). */
+export const CREATE_ORDER_TYPES = ['dine_in', 'takeaway'] as const;
 export const ORDER_INCLUDES = ['items', 'table', 'waiter'] as const;
 /** GET /orders answers at most this many rows (no pagination today). */
 export const ORDER_LIST_LIMIT = 500;
@@ -58,7 +61,9 @@ const comboLineSchema = z.strictObject({
     .max(6),
 });
 export type ComboLineInput = z.infer<typeof comboLineSchema>;
-const combosSchema = z.array(comboLineSchema).max(20);
+/** At most this many combo lines per request (create, add-items and the preview). */
+const MAX_COMBOS = 20;
+const combosSchema = z.array(comboLineSchema).max(MAX_COMBOS);
 
 /** items, or combos, or both; at most MAX_ITEMS lines once the combos are expanded. */
 const linesShape = {
@@ -68,7 +73,7 @@ const linesShape = {
 const hasLines = (value: { items?: unknown[]; combos?: { choices: unknown[] }[] }) =>
   (value.items?.length ?? 0) + (value.combos?.length ?? 0) > 0 &&
   (value.items?.length ?? 0) + (value.combos ?? []).reduce((sum, combo) => sum + combo.choices.length, 0) <= MAX_ITEMS;
-const LINES_ISSUE = { error: `Send items and/or combos (at most ${MAX_ITEMS} lines)` };
+const LINES_ISSUE = { error: `Agrega al menos un producto o un combo (máximo ${MAX_ITEMS} líneas)` };
 
 /** Same bounds as orders_guests_check (0014); null clears. */
 const guestsSchema = z
@@ -90,27 +95,84 @@ const notesSchema = z
  */
 const orderDetails = { guests: guestsSchema.optional(), notes: notesSchema.optional() };
 
-/** Delivery orders need their order_deliveries row: they go through create_delivery_order (T11). */
+export const CUSTOMER_NAME_MESSAGE = 'El nombre del cliente debe tener entre 2 y 60 caracteres';
+export const CUSTOMER_PHONE_MESSAGE = 'El teléfono debe tener entre 7 y 15 dígitos';
+/** orders_customer_phone_check (0033): normalised with the delivery rule; blank or null is none. */
+const customerPhoneSchema = z
+  .string({ error: CUSTOMER_PHONE_MESSAGE })
+  .max(100, { error: CUSTOMER_PHONE_MESSAGE })
+  .transform((value, ctx) => {
+    if (value.trim() === '') return null;
+    const phone = normalizePhone(value);
+    if (phone === null) {
+      ctx.addIssue({ code: 'custom', message: CUSTOMER_PHONE_MESSAGE });
+      return z.NEVER;
+    }
+    return phone;
+  })
+  .nullable();
+
+/**
+ * dine_in needs its table; takeaway (S8) has no table and needs the customer's
+ * name (the phone is optional). Delivery orders need their order_deliveries
+ * row: they go through create_delivery_order (T11).
+ */
 export const createOrderSchema = z
   .strictObject({
-    tableId: z.guid(),
+    tableId: z.guid().optional(),
     waiterId: z.guid().optional(),
-    orderType: z.literal('dine_in', { error: 'Only dine_in orders; delivery orders are created by the delivery module' }).optional(),
+    orderType: z.enum(CREATE_ORDER_TYPES, { error: 'Only dine_in or takeaway orders; delivery orders are created by the delivery module' }).optional(),
+    customerName: z.string({ error: CUSTOMER_NAME_MESSAGE }).optional(),
+    customerPhone: customerPhoneSchema.optional(),
     ...linesShape,
     tipPercentage: z.number().min(0).max(100).optional(),
     force: z.boolean().optional(),
     ...orderDetails,
   })
-  .refine(hasLines, LINES_ISSUE);
+  .refine(hasLines, LINES_ISSUE)
+  .transform((value, ctx) => {
+    const { customerName: rawName, ...rest } = value;
+    if ((value.orderType ?? 'dine_in') === 'dine_in') {
+      if (value.tableId === undefined) ctx.addIssue({ code: 'custom', path: ['tableId'], message: 'Elige la mesa del pedido' });
+      if (rawName !== undefined) {
+        ctx.addIssue({ code: 'custom', path: ['customerName'], message: 'Solo un pedido para llevar lleva el nombre del cliente' });
+      }
+      if ((value.customerPhone ?? null) !== null) {
+        ctx.addIssue({ code: 'custom', path: ['customerPhone'], message: 'Solo un pedido para llevar lleva el teléfono del cliente' });
+      }
+      return { ...rest, orderType: 'dine_in' as const, customerName: null, customerPhone: null };
+    }
+    if (value.tableId !== undefined) ctx.addIssue({ code: 'custom', path: ['tableId'], message: 'Un pedido para llevar no tiene mesa' });
+    // orders_customer_name_check (0033): stored trimmed, 2..60 characters, counted as Postgres does (code points).
+    const name = rawName?.trim() ?? '';
+    const length = [...name].length;
+    if (length < 2 || length > 60) ctx.addIssue({ code: 'custom', path: ['customerName'], message: CUSTOMER_NAME_MESSAGE });
+    return { ...rest, orderType: 'takeaway' as const, customerName: name, customerPhone: value.customerPhone ?? null };
+  });
 
 export const addOrderItemsSchema = z.strictObject({ ...linesShape, force: z.boolean().optional(), ...orderDetails }).refine(hasLines, LINES_ISSUE);
 
-/** POST /orders/pricing-preview (S8): draft dish lines and combo lines, as if sent now. */
+/** POST /orders/pricing-preview (S8): draft dish lines and combo lines, as if sent now; strict, like the send. */
 const previewDishLineSchema = orderItemInputSchema.omit({ unitPrice: true, comments: true });
+/** Units of a line of `orderId` the preview takes out (S1). */
+const previewVoidSchema = z.strictObject({ orderItemId: z.guid(), quantity: z.number().int().min(1).max(999) });
+export const PREVIEW_VOID_MESSAGES = {
+  void_order_required: 'Para ver una anulación envía el pedido (orderId)',
+  void_item_unknown: 'La línea a anular no es una línea vigente de este pedido',
+  void_quantity_invalid: 'No se pueden anular más unidades de las que tiene la línea',
+} as const;
 export const pricingPreviewSchema = z.strictObject({
   channel: z.enum(ORDER_TYPES),
   orderId: z.guid().optional(),
-  lines: z.array(z.union([previewDishLineSchema, comboLineSchema])).max(MAX_ITEMS),
+  lines: z
+    .array(z.union([previewDishLineSchema, comboLineSchema]))
+    .max(MAX_ITEMS)
+    .refine((lines) => lines.filter((line) => 'comboPromotionId' in line).length <= MAX_COMBOS, { error: `Máximo ${MAX_COMBOS} combos por consulta` }),
+  voids: z
+    .array(previewVoidSchema)
+    .max(MAX_ITEMS)
+    .refine((voids) => new Set(voids.map((v) => v.orderItemId)).size === voids.length, { error: 'Cada línea una sola vez' })
+    .optional(),
 });
 
 /** PATCH /orders/:id: guests and/or notes of an open order; null (or a blank note) clears. */
@@ -272,7 +334,10 @@ export class Order {
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) tableId!: string | null;
   @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Waiter profile id.' }) waiterId!: string | null;
   @ApiProperty({ enum: ORDER_STATUSES }) status!: OrderStatus;
-  @ApiProperty({ enum: ORDER_TYPES }) orderType!: OrderType;
+  @ApiProperty({ enum: ORDER_TYPES, description: 'takeaway (para llevar): no table, customerName set.' }) orderType!: OrderType;
+  @ApiProperty({ type: String, nullable: true, maxLength: 60, description: 'takeaway only: who picks the order up; null otherwise.' })
+  customerName!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'takeaway only, optional: 7..15 digits; null otherwise.' }) customerPhone!: string | null;
   @ApiProperty({ description: 'Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it.' }) subtotal!: number;
   @ApiProperty() tax!: number;
   @ApiProperty() taxPercentage!: number;
@@ -400,21 +465,26 @@ export class ComboChoiceInput {
 
 export class ComboLineRequest {
   @ApiProperty({ format: 'uuid', description: 'A combo promotion active now for the channel.' }) comboPromotionId!: string;
-  @ApiProperty({ type: [ComboChoiceInput], minItems: 1, maxItems: 6, description: 'Exactly one per group.' }) choices!: ComboChoiceInput[];
+  @ApiProperty({ type: [ComboChoiceInput], minItems: 1, maxItems: 6, description: 'Exactly one per group. The options of a choice are charged on top of the combo price.' })
+  choices!: ComboChoiceInput[];
 }
 
 const COMBOS_DESCRIPTION =
-  'Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.';
+  'Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top of the combo price. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.';
 
 export class CreateOrderRequest {
-  @ApiProperty({ format: 'uuid' }) tableId!: string;
+  @ApiPropertyOptional({ format: 'uuid', description: 'Required for dine_in; refused for takeaway.' }) tableId?: string;
   @ApiPropertyOptional({ format: 'uuid', description: "Defaults to the table's waiter, else the caller." })
   waiterId?: string;
-  @ApiPropertyOptional({ enum: ['dine_in'], default: 'dine_in', description: 'Delivery orders are created by the delivery module.' })
-  orderType?: 'dine_in';
+  @ApiPropertyOptional({ enum: CREATE_ORDER_TYPES, default: 'dine_in', description: 'Delivery orders are created by the delivery module.' })
+  orderType?: 'dine_in' | 'takeaway';
+  @ApiPropertyOptional({ minLength: 2, maxLength: 60, description: `takeaway only and required there, trimmed (${CUSTOMER_NAME_MESSAGE}).` })
+  customerName?: string;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 100, description: 'takeaway only, optional: normalised like the delivery phones (7..15 digits); blank is null.' })
+  customerPhone?: string | null;
   @ApiPropertyOptional({ type: [OrderItemInput], maxItems: MAX_ITEMS, description: 'Dish lines; items and/or combos must bring at least one line.' })
   items?: OrderItemInput[];
-  @ApiPropertyOptional({ type: [ComboLineRequest], maxItems: 20, description: COMBOS_DESCRIPTION }) combos?: ComboLineRequest[];
+  @ApiPropertyOptional({ type: [ComboLineRequest], maxItems: MAX_COMBOS, description: COMBOS_DESCRIPTION }) combos?: ComboLineRequest[];
   @ApiPropertyOptional({ minimum: 0, maximum: 100, description: 'Defaults to the tip_percentage setting.' })
   tipPercentage?: number;
   @ApiPropertyOptional({ default: false, description: 'Send even when check_dishes_stock reports shortages.' })
@@ -428,7 +498,7 @@ export class CreateOrderRequest {
 export class AddOrderItemsRequest {
   @ApiPropertyOptional({ type: [OrderItemInput], maxItems: MAX_ITEMS, description: 'Dish lines; items and/or combos must bring at least one line.' })
   items?: OrderItemInput[];
-  @ApiPropertyOptional({ type: [ComboLineRequest], maxItems: 20, description: COMBOS_DESCRIPTION }) combos?: ComboLineRequest[];
+  @ApiPropertyOptional({ type: [ComboLineRequest], maxItems: MAX_COMBOS, description: COMBOS_DESCRIPTION }) combos?: ComboLineRequest[];
   @ApiPropertyOptional({ default: false }) force?: boolean;
   @ApiPropertyOptional({ type: Number, nullable: true, minimum: 1, maximum: 99, description: 'Sets guests; omitted keeps them.' })
   guests?: number | null;
@@ -492,17 +562,29 @@ export class PreviewDishLine {
   @ApiPropertyOptional({ type: [OrderItemModifierInput], maxItems: 50 }) modifiers?: OrderItemModifierInput[];
 }
 
+export class PreviewVoidInput {
+  @ApiProperty({ format: 'uuid', description: 'A live line of orderId.' }) orderItemId!: string;
+  @ApiProperty({ minimum: 1, maximum: 999, description: 'Units to take out; at most what the line has.' }) quantity!: number;
+}
+
 export class PricingPreviewRequest {
-  @ApiProperty({ enum: ORDER_TYPES }) channel!: OrderType;
+  @ApiProperty({ enum: ORDER_TYPES, description: 'Ignored when orderId is given: the order\'s own channel is used.' }) channel!: OrderType;
   @ApiPropertyOptional({ format: 'uuid', description: 'An open order whose lines (sent, with their fixed promotions) are priced with the draft.' })
   orderId?: string;
   @ApiProperty({
-    description: 'Draft lines: dish lines and combo lines ({comboPromotionId, choices}).',
+    description: `Draft lines: dish lines and combo lines ({comboPromotionId, choices}), at most ${MAX_COMBOS} combo lines (each 1-6 choices); unknown fields are 422.`,
     type: 'array',
     maxItems: MAX_ITEMS,
     items: { oneOf: [{ $ref: '#/components/schemas/PreviewDishLine' }, { $ref: '#/components/schemas/ComboLineRequest' }] },
   })
   lines!: (PreviewDishLine | ComboLineRequest)[];
+  @ApiPropertyOptional({
+    type: [PreviewVoidInput],
+    maxItems: MAX_ITEMS,
+    description:
+      'Needs orderId (else 422 code void_order_required). The answer is the order as if these units were voided now with POST /orders/:id/items/void: a combo component voids its whole combo, the automatic discounts are recomputed and the manual line discounts rescaled to the units left. Each line once; a line that is not a live line of the order is 422 code void_item_unknown, more units than it has 422 code void_quantity_invalid. Nothing is written.',
+  })
+  voids?: PreviewVoidInput[];
 }
 
 export class PreviewDiscount {
@@ -540,13 +622,29 @@ export class PricingHintDto {
 }
 
 export class PricingPreview {
-  @ApiProperty({ enum: ORDER_TYPES }) channel!: OrderType;
+  @ApiProperty({ enum: ORDER_TYPES, description: 'The order\'s channel with orderId, else the body channel.' }) channel!: OrderType;
   @ApiProperty({ format: 'date-time' }) now!: string;
   @ApiProperty({ type: [PreviewLine], description: 'Sent lines first (oldest first), then the drafts in order.' }) lines!: PreviewLine[];
   @ApiProperty({ type: PreviewDiscount, nullable: true }) billDiscount!: PreviewDiscount | null;
   @ApiProperty({ type: [PreviewDiscount], description: 'The order\'s manual discounts on the bill (manual_bill).' }) manualDiscounts!: PreviewDiscount[];
   @ApiProperty() grossSubtotal!: number;
   @ApiProperty({ description: 'Automatic line, combo and bill discounts plus the order\'s manual discounts (capped at grossSubtotal).' }) totalDiscounts!: number;
-  @ApiProperty() netSubtotal!: number;
+  @ApiProperty({ description: 'grossSubtotal - totalDiscounts: the base tax and tip are computed on (Order.subtotal).' }) netSubtotal!: number;
+  @ApiProperty({ type: Number, nullable: true, description: 'With orderId: round(netSubtotal x the order\'s taxPercentage / 100), as the bill; null without an order.' })
+  tax!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'With orderId: the suggested tip on netSubtotal with the order\'s tipPercentage; null without an order.' })
+  tip!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'With orderId: netSubtotal + tax + tip, exactly Order.total after the same change (private.recompute_order_bill; no delivery fee); null without an order.',
+  })
+  total!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'With orderId: the delivery fee of a delivery order (0 for dine_in), outside total as in Order; pay_order charges netSubtotal + tax + deliveryFee plus the tip given. Null without an order, or for a delivery the caller cannot read (a waiter).',
+  })
+  deliveryFee!: number | null;
   @ApiProperty({ type: [PricingHintDto] }) hints!: PricingHintDto[];
 }

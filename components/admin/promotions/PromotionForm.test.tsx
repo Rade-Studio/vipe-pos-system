@@ -139,7 +139,9 @@ describe("creating each kind (S10, S1)", () => {
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "17:00" } })
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "19:00" } })
     fireEvent.click(screen.getByRole("button", { name: "Domicilio" }))
+    fireEvent.click(screen.getByRole("button", { name: "Para llevar" }))
     expect(screen.getByRole("button", { name: "Domicilio" })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: "Para llevar" })).toHaveAttribute("aria-pressed", "false")
 
     expect(summary().getByText("Lleva 2 cócteles y paga 1; sale gratis el más económico.")).toBeInTheDocument()
     expect(summary().getByText("De lunes a viernes de 17:00 a 19:00, en salón. Se aplica sola al pedir.")).toBeInTheDocument()
@@ -207,6 +209,7 @@ describe("creating each kind (S10, S1)", () => {
     fireEvent.change(screen.getByLabelText("Cuenta mínima"), { target: { value: "80000" } })
     fireEvent.change(screen.getByLabelText("Tope"), { target: { value: "15000" } })
     fireEvent.click(screen.getByRole("button", { name: "Salón" }))
+    fireEvent.click(screen.getByRole("button", { name: "Para llevar" }))
     fireEvent.change(screen.getByLabelText("Máximo por cuenta"), { target: { value: "1" } })
     fireEvent.change(screen.getByLabelText("Cómo se aplica"), { target: { value: "manual_pin" } })
 

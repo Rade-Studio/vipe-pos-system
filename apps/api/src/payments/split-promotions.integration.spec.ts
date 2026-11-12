@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Clock } from '../common/clock';
+import { OrderDiscountsService } from '../promotions/order-discounts.service';
 import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
 import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabase } from '../testing/test-database';
 
@@ -161,6 +162,74 @@ describe('split and undo split with promotions (Testcontainers, vipe_api)', () =
     } finally {
       await admin().patch(`/api/catalog/promotions/${bills}`, { active: false });
     }
+  });
+
+  it('answers both bills after the recompute, in the documented shape', async () => {
+    const order = await send({ items: [line(ids.mojito, 2, 24000), line(ids.margarita, 1, 26000)] });
+    const split = await admin().post(`/api/orders/${order.body.id}/split`, { items: [{ orderItemId: itemOf(order.body, ids.mojito).id, quantity: 1 }] });
+    expect(split.status, JSON.stringify(split.body)).toBe(200);
+    expect(Object.keys(split.body).sort()).toEqual(['child', 'childOrderId', 'parent']);
+    const stored = async (orderId: string) =>
+      (await db<{ orderId: string; subtotal: number; tax: number; tip: number; total: number }>(
+        `SELECT id AS "orderId", subtotal::int, tax::int, tip::int, total::int FROM orders WHERE id = $1`,
+        [orderId],
+      ))[0];
+    expect(split.body.parent).toEqual(await stored(order.body.id));
+    expect(split.body.child).toEqual(await stored(split.body.childOrderId));
+    // Parent: Margarita + Mojito keep the 2x1; child: the lone Mojito.
+    expect(split.body.parent).toMatchObject({ subtotal: 26000 });
+    expect(split.body.child).toMatchObject({ orderId: split.body.childOrderId, subtotal: 24000 });
+  });
+
+  it('rolls the split back when a recompute fails (one transaction)', async () => {
+    const order = await send({ items: [line(ids.mojito, 2, 24000), line(ids.margarita, 1, 26000)] });
+    const snapshot = async () => ({
+      orders: await db('SELECT count(*)::int AS n FROM orders'),
+      items: await db('SELECT id, order_id, quantity FROM order_items WHERE order_id = $1 ORDER BY id', [order.body.id]),
+      discounts: await discountsOf(order.body.id),
+      bill: await bill(order.body.id),
+    });
+    const before = await snapshot();
+    const discounts = app.get(OrderDiscountsService);
+    const recompute = discounts.recompute.bind(discounts);
+    let calls = 0;
+    const spy = vi.spyOn(discounts, 'recompute').mockImplementation(async (orderId, now) => {
+      calls += 1;
+      // The parent is recomputed, then the child fails.
+      if (calls === 2) throw new Error('forced recompute failure');
+      return recompute(orderId, now);
+    });
+    try {
+      const res = await admin().post(`/api/orders/${order.body.id}/split`, { items: [{ orderItemId: itemOf(order.body, ids.mojito).id, quantity: 1 }] });
+      expect(res.status).toBe(500);
+      expect(calls).toBe(2);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('pays a fully discounted order through POST /payments with one 0 cash tender', async () => {
+    const order = await send({ items: [line(ids.bandeja, 1, 17000)] });
+    expect(order.status).toBe(201);
+    const registerId = crypto.randomUUID();
+    await db(`INSERT INTO cash_registers (id, opening_timestamp, initial_cash, status, restaurant_id) VALUES ($1, now(), 0, 'open', $2)`, [registerId, A]);
+    // A courtesy for the whole bill (as POST /orders/:id/discounts stores it); the bill base is now 0.
+    await db(
+      `INSERT INTO order_discounts (order_id, kind, source, label, amount, reason, requires_authorization, restaurant_id)
+       VALUES ($1, 'manual_bill', 'manual', 'Cortesía', 17000, 'Cortesía de la casa', false, $2)`,
+      [order.body.id, A],
+    );
+    const res = await admin().post('/api/payments', {
+      orderId: order.body.id,
+      cashRegisterId: registerId,
+      tipAmount: 0,
+      tenders: [{ paymentMethodId: (await db<{ id: string }>(`SELECT id FROM payment_methods WHERE restaurant_id = $1 AND code = 'cash'`, [A]))[0].id, amount: 0, cashReceived: 0 }],
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ status: 'paid', alreadyPaid: false, amountDue: 0, tipAmount: 0, totalCharged: 0, changeGiven: 0, tenders: [{ lineNo: 1, methodCode: 'cash', amount: 0, cashReceived: 0 }] });
+    expect(await db('SELECT status FROM orders WHERE id = $1', [order.body.id])).toEqual([{ status: 'paid' }]);
   });
 
   it('separating a combo is 422 combo_split_not_allowed and changes nothing', async () => {

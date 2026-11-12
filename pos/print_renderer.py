@@ -126,9 +126,16 @@ def render_kitchen_order(order: dict) -> KitchenOrderRender:
         [{"text": f"Estación: {station_name}", "bold": False, "align": "left"}] if station_name else []
     )
 
+    takeaway = order.get("takeaway")
+    if isinstance(takeaway, dict):
+        # S8: a takeaway order prints its label where the table goes.
+        place = takeaway.get("label") or f"PARA LLEVAR · {takeaway.get('customerName') or 'N/A'}"
+    else:
+        place = f"Mesa {table}"
+
     if delivery is None:
         lines: list[PrintLine] = [
-            {"text": f"{title} — Mesa {table}", "bold": True, "align": "center"},
+            {"text": f"{title} — {place}", "bold": True, "align": "center"},
             *station_lines,
             {"text": f"Fecha:  {date_str}", "bold": False, "align": "left"},
             {"text": f"Mesero: {waiter}", "bold": False, "align": "left"},

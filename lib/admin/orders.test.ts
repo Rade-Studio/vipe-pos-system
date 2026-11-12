@@ -402,6 +402,12 @@ describe("T28 admin orders table", () => {
     expect(joined.place).toBe("Mesa 9")
   })
 
+  it("names a takeaway row 'Para llevar · <nombre>', never a table (S8)", () => {
+    const [row] = adminOrderRows([{ ...appOrder({ id: "t", orderType: "takeaway", customerName: "Laura" }), tableName: "N/A" } as Order], ctx)
+    expect(row).toMatchObject({ place: "Para llevar · Laura", placeDetail: null, isDelivery: false })
+    expect(row.haystack).toContain("laura")
+  })
+
   it("minutesOpen floors the elapsed minutes and never goes negative", () => {
     expect(minutesOpen(minutesAgo(18), NOW)).toBe(18)
     expect(minutesOpen(new Date(NOW - 59_000), NOW)).toBe(0)
@@ -445,6 +451,14 @@ describe("T28 admin orders table", () => {
     expect(ids(filterOrderRows(rows, { ...none, type: "table" }))).toEqual(["a", "c", "d"])
     expect(ids(filterOrderRows(rows, { query: "andres", status: "kitchen", type: "table" }))).toEqual(["a", "c"])
     expect(statusCounts(rows)).toEqual({ all: 4, active: 1, kitchen: 2, delivered: 1 })
+  })
+
+  it("filters takeaway rows under 'Para llevar' and keeps them out of 'Mesas' (S8)", () => {
+    const withTakeaway = [...rows, ...adminOrderRows([appOrder({ id: "t", orderType: "takeaway", customerName: "Laura" })], ctx)]
+    expect(ids(filterOrderRows(withTakeaway, { ...none, type: "takeaway" }))).toEqual(["t"])
+    expect(ids(filterOrderRows(withTakeaway, { ...none, type: "table" }))).toEqual(["a", "c", "d"])
+    expect(ids(filterOrderRows(withTakeaway, { ...none, type: "delivery" }))).toEqual(["b"])
+    expect(ids(filterOrderRows(withTakeaway, none))).toEqual(["a", "b", "c", "d", "t"])
   })
 
   it("sorts by Tiempo (oldest first by default), Orden and Total, and toggles the direction", () => {

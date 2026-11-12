@@ -271,6 +271,16 @@ describe("createDeliveryOrder", () => {
     })
   })
 
+  it("sends combos only when there are any, and accepts a combo-only delivery (S7)", async () => {
+    api.POST.mockResolvedValue({ data: createdResult })
+    const combos = [{ comboPromotionId: "p-ejec", choices: [{ groupId: "g-1", dishId: "d-sopa" }] }]
+    await createDeliveryOrder({ ...cashInput, items: [], combos })
+    expect(api.POST.mock.calls[0]![1].body.items).toEqual([])
+    expect(api.POST.mock.calls[0]![1].body.combos).toEqual(combos)
+    await createDeliveryOrder({ ...cashInput, combos: [] })
+    expect(api.POST.mock.calls[1]![1].body).not.toHaveProperty("combos")
+  })
+
   it("rejects empty items, a negative fee and cashChangeFor on prepaid without a request", async () => {
     await expect(kindOf(createDeliveryOrder({ ...cashInput, items: [] }))).resolves.toBe("invalid-input")
     await expect(kindOf(createDeliveryOrder({ ...cashInput, deliveryFee: -1 }))).resolves.toBe("invalid-input")

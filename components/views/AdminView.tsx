@@ -13,6 +13,7 @@ import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
 import { realtimeService } from "@/lib/api/realtime"
 import { isDeliveryOrder, orderTypeFromRow } from "@/lib/delivery/kitchen"
+import { takeawayLabel } from "@/lib/cashier/queue"
 import { mergeOrdersList, wireRowToPartialOrder, withoutVoidedWireLines, type OrderChange } from "@/lib/realtime/order-merge"
 import { AdminShell } from "@/components/admin/shell/AdminShell"
 import { OverviewPage } from "@/components/admin/admin-pages/OverviewPage"
@@ -180,9 +181,12 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
             setNewOrdersCount((prev) => prev + 1)
 
             // Solo mostrar toast para nuevas órdenes (información realmente necesaria)
-            const place = isDeliveryOrder({ orderType: orderTypeFromRow(payload.new) })
+            const orderType = orderTypeFromRow(payload.new)
+            const place = isDeliveryOrder({ orderType })
               ? "Domicilio"
-              : `Mesa ${payload.new.table_id}`
+              : orderType === "takeaway"
+                ? takeawayLabel({ customerName: payload.new.customer_name ?? undefined })
+                : `Mesa ${payload.new.table_id}`
             toast({
               title: "Nueva orden recibida",
               description: `${place}, ${payload.new.order_items?.length || 0} productos`,

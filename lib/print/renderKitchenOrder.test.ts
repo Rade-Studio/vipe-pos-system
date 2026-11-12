@@ -398,6 +398,22 @@ describe('renderKitchenOrder - delivery', () => {
   })
 })
 
+describe('renderKitchenOrder - takeaway (S8)', () => {
+  it('prints PARA LLEVAR · <nombre> where the table goes, with the number and the waiter', () => {
+    const texts = renderKitchenOrder({ orderNumber: 140, table: null, waiter: 'Luis', items: KITCHEN_ITEMS, takeaway: { customerName: 'Ana María' } }).lines.map(
+      (l) => l.text,
+    )
+    expect(texts[0]).toBe('COMANDA #140 — PARA LLEVAR · Ana María')
+    expect(texts[2]).toBe('Mesero: Luis')
+    expect(texts.join('\n')).not.toMatch(/Mesa|DOMICILIO/)
+  })
+
+  it('takes the label the API stored in the payload when present', () => {
+    const lines = renderKitchenOrder({ table: null, waiter: 'Luis', items: KITCHEN_ITEMS, takeaway: { customerName: 'Ana', label: 'PARA LLEVAR · Ana' } }).lines
+    expect(lines[0]).toEqual({ text: 'COMANDA — PARA LLEVAR · Ana', bold: true, align: 'center' })
+  })
+})
+
 describe('renderInvoice - delivery', () => {
   it('prints customer, phone and address instead of MESA / MESERO', () => {
     const texts = invoiceTexts(DELIVERY, { tip: 0, total: 14900 })

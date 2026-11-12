@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/utils/helpers"
+import { toast } from "@/utils/toast"
 import { authorizeSupervisor, pinFailureOf } from "@/lib/api/auth"
 import type { PromotionDto } from "@/lib/api/catalog"
 import { CONFIG_QUERY_KEY, fetchConfig } from "@/lib/api/config"
@@ -132,8 +133,15 @@ function SheetBody({
 
   const reasonProblem = add ? reasonError(reason) : null
   const valueProblem = choice?.type === "free" ? freeValueError(freeType, Number(freeValue)) : null
-  const formReady =
-    !add || (choice !== null && selectedItem !== null && !(productOnly && selectedItem === BILL) && !reasonProblem && !valueProblem)
+  // Every incomplete form says what is missing, so "Aplicar" never does nothing.
+  const choiceProblem = !add
+    ? null
+    : choice === null
+      ? "Elige qué se aplica."
+      : selectedItem === null || (productOnly && selectedItem === BILL)
+        ? "Elige un producto o Toda la cuenta."
+        : null
+  const formReady = !add || (!choiceProblem && !reasonProblem && !valueProblem)
 
   const orderId = add ? (line?.orderId ?? target.billOrderId) : target.discount.orderId
 
@@ -164,7 +172,12 @@ function SheetBody({
       setStep(refusal.reauthorize && pinNeeded ? "who" : "form")
       return
     }
-    await onApplied()
+    toast.success(target.mode === "add" ? "Descuento aplicado" : "Descuento quitado")
+    try {
+      await onApplied()
+    } catch {
+      toast.error("El descuento se guardó, pero la cuenta no se actualizó. Toca Reintentar.")
+    }
     onClose()
   }
 
@@ -389,6 +402,7 @@ function SheetBody({
             />
             {touched && reasonProblem && <p className="text-sm text-status-danger-fg">{reasonProblem}</p>}
           </div>
+          {touched && choiceProblem && <p className="text-sm text-status-danger-fg">{choiceProblem}</p>}
           {refusal}
         </div>
         {footer(

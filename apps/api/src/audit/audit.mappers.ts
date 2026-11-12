@@ -23,7 +23,7 @@ export const toAuditEvent = (row: Json): AuditEvent => {
     eventType: row.event_type as AuditEventType,
     orderId: String(row.order_id),
     orderNumber: details.order_number === undefined || details.order_number === null ? null : num(details.order_number),
-    orderType: row.order_type === 'delivery' ? 'delivery' : 'dine_in',
+    orderType: row.order_type === 'delivery' || row.order_type === 'takeaway' ? row.order_type : 'dine_in',
     paymentId: text(row.payment_id),
     actor: staffRef(row.actor_profile_id, row.actor_name),
     authorizedBy: authorizer(row.authorized_by_profile_id, row.authorized_by_name),

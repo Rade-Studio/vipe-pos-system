@@ -13,6 +13,26 @@ import { ArrowLeft, ArrowRight, Check, Loader2, Minus, Plus, Trash2 } from 'luci
 import { StepPicker, type StepPickerItem } from '@/components/order-steps/StepPicker'
 import { ModifierLines } from '@/components/modifiers/ModifierLines'
 import { useMenuTree } from '@/hooks/use-menu-tree'
+import { usePromotionsToday } from '@/hooks/use-promotions'
+import { usePricingPreview } from '@/hooks/use-pricing-preview'
+import { DiscountRows, PromotionNudge, SavingsRow } from '@/components/promotions/OrderPromotions'
+import { ComboBuilder } from '@/components/promotions/ComboBuilder'
+import {
+  categoryTag,
+  comboSavingText,
+  comboTiles,
+  dishTag,
+  draftDiscounts,
+  ENDING_MINUTES,
+  scheduleShort,
+  sellsText,
+  subcategoryTag,
+  type CartCombo,
+  type DiscountRow,
+} from '@/lib/promotions/waiter'
+import type { PricingHintDto, PricingPreviewDto } from '@/lib/api/promotions'
+
+type PreviewDiscountDto = NonNullable<PricingPreviewDto['billDiscount']>
 import {
   findCustomerByPhone,
   createDeliveryOrder,
@@ -28,6 +48,7 @@ import {
   draftTotals,
   draftLineKey,
   toCreateInput,
+  previewDraftLines,
   type OrderDraft,
   type OrderDraftAction,
 } from '@/lib/delivery/order-draft'
@@ -143,8 +164,68 @@ export function DeliveryOrderForm({
     headingRefs.current[step]?.focus()
   }, [step])
 
-  const issues = useMemo(() => validateDraft(draft, taxPct), [draft, taxPct])
-  const totals = useMemo(() => draftTotals(draft, taxPct), [draft, taxPct])
+  // S7: today's delivery promotions tag the tiles, and the draft is priced
+  // like the waiter's cart (debounced, last good answer kept). Neither blocks
+  // the order: without them the form shows list prices and creates as before.
+  const { data: promotionsToday } = usePromotionsToday('delivery', { enabled: productsOpened })
+  const previewLines = useMemo(() => previewDraftLines(draft.cartLines), [draft.cartLines])
+  const { result: pricingResult } = usePricingPreview({ channel: 'delivery', draft: previewLines })
+  const preview = pricingResult?.preview
+  const pricing = useMemo(() => (preview ? { netSubtotal: preview.netSubtotal } : null), [preview])
+  const lineDiscounts = useMemo(() => draftDiscounts(preview, pricingResult?.lineIds ?? []), [preview, pricingResult?.lineIds])
+  // A combo the preview has not priced yet shows its own saving (Σ list − combo price), as the waiter does.
+  const discountsOf = (lineId: string): DiscountRow[] => {
+    if (pricingResult?.lineIds.includes(lineId)) return lineDiscounts.get(lineId) ?? []
+    const line = draft.cartLines.find((l) => l.id === lineId)
+    return line?.combo && line.combo.listPrice > line.combo.comboPrice
+      ? [{ label: line.name, amount: (line.combo.listPrice - line.combo.comboPrice) * line.quantity }]
+      : []
+  }
+  const billMinimum = preview?.hints.find((hint) => hint.kind === 'bill_minimum') ?? null
+  const pickerTags = useMemo(
+    () => ({
+      category: (category: Parameters<typeof categoryTag>[1]) => categoryTag(promotionsToday, category),
+      subcategory: (category: Parameters<typeof categoryTag>[1], subcategoryId: string | null) =>
+        subcategoryTag(promotionsToday, category, subcategoryId),
+      dish: (dish: Parameters<typeof dishTag>[1]) => dishTag(promotionsToday, dish),
+    }),
+    [promotionsToday],
+  )
+
+  // S7: the combos of today's delivery promotions as extra tiles; a live one opens the builder.
+  const [comboPromotionId, setComboPromotionId] = useState<string | null>(null)
+  const combos = useMemo(() => comboTiles(promotionsToday), [promotionsToday])
+  const menuDishes = useMemo(
+    () => new Map((menuTree.categories ?? []).flatMap((category) => category.dishes).map((dish) => [dish.id, dish])),
+    [menuTree.categories],
+  )
+  const comboTileList = combos.map((tile) => ({
+    id: `combo-${tile.promotion.id}`,
+    name: tile.promotion.name,
+    meta: tile.enabled ? tile.promotion.comboGroups.map((group) => group.name).join(' + ') : scheduleShort(tile.promotion),
+    tag: tile.enabled
+      ? {
+          promotionId: tile.promotion.id,
+          text: tile.endsAt ? `Combo · hasta ${tile.endsAt}` : 'Combo',
+          tone: tile.minutesLeft != null && tile.minutesLeft <= ENDING_MINUTES ? ('ending' as const) : ('on' as const),
+        }
+      : tile.startsAt
+        ? { promotionId: tile.promotion.id, text: `Combo desde ${tile.startsAt}`, tone: 'later' as const }
+        : null,
+    disabled: !tile.enabled,
+    onSelect: () => (tile.enabled ? setComboPromotionId(tile.promotion.id) : toast.info(sellsText(tile.promotion))),
+  }))
+  const buildingCombo = comboPromotionId ? (combos.find((tile) => tile.enabled && tile.promotion.id === comboPromotionId) ?? null) : null
+  const addCombo = (combo: CartCombo) => {
+    if (!buildingCombo) return
+    dispatch({ type: 'addCombo', name: buildingCombo.promotion.name, combo })
+    const saving = comboSavingText(combo.listPrice, combo.comboPrice).saving
+    toast.success(`${buildingCombo.promotion.name} agregado${saving ? ` · ${saving}` : ''}`)
+    setComboPromotionId(null)
+  }
+
+  const issues = useMemo(() => validateDraft(draft, taxPct, pricing), [draft, taxPct, pricing])
+  const totals = useMemo(() => draftTotals(draft, taxPct, pricing), [draft, taxPct, pricing])
   const issuesByField = useMemo(() => {
     const map = new Map<string, string>()
     for (const i of issues) map.set(i.field, i.message)
@@ -483,6 +564,20 @@ export function DeliveryOrderForm({
                 isError={menuTree.isError}
                 onRetry={menuTree.refetch}
                 onAdd={onAddFromSteps}
+                tags={pickerTags}
+                extraTiles={comboTileList}
+                overlay={
+                  buildingCombo ? (
+                    <ComboBuilder
+                      key={buildingCombo.promotion.id}
+                      promotion={buildingCombo.promotion}
+                      dishes={menuDishes}
+                      endsAt={buildingCombo.endsAt}
+                      onAdd={addCombo}
+                    />
+                  ) : undefined
+                }
+                onCloseOverlay={() => setComboPromotionId(null)}
                 onExit={() => goTo('address')}
                 exitLabel="Dirección"
                 summary={
@@ -644,7 +739,8 @@ export function DeliveryOrderForm({
               <ConfirmRow label="Pago" value={paymentText} />
               {draft.notes && <ConfirmRow label="Notas" value={draft.notes} />}
             </dl>
-            <CartPanel draft={draft} dispatch={dispatch} itemError={issuesByField.get('items') ?? null} />
+            <CartPanel draft={draft} dispatch={dispatch} discountsOf={discountsOf} itemError={issuesByField.get('items') ?? null} />
+            <PromotionTotals billDiscount={preview?.billDiscount ?? null} savings={preview?.totalDiscounts ?? 0} hint={billMinimum} />
             {issues.length > 0 && (
               <div className="grid gap-2 rounded-card border border-status-warning-line bg-status-warning-bg p-3 text-status-warning-fg">
                 <p className="text-sm font-medium">Falta completar:</p>
@@ -685,15 +781,19 @@ export function DeliveryOrderForm({
                   <span className="font-semibold tabular-nums text-muted-fg">{line.quantity}×</span>
                   <span className="min-w-0 [overflow-wrap:anywhere]">{line.name}</span>
                   <span className={MONEY}>{formatMoney(line.unitPrice * line.quantity)}</span>
+                  <ComboChoices line={line} />
+                  <DiscountRows rows={discountsOf(line.id)} />
                 </li>
               ))}
             </ul>
           )}
           <div className="mt-auto grid gap-1.5 border-t border-line pt-3 text-sm text-fg-2">
             <Row label="Subtotal" value={formatMoney(totals.subtotal)} />
+            {preview?.billDiscount && <BillDiscountRow discount={preview.billDiscount} />}
             <Row label={`Impuestos (${taxPct}%)`} value={formatMoney(totals.tax)} />
             <Row label="Domicilio" value={formatMoney(totals.fee)} />
             <Row label="Total" value={formatMoney(totals.total)} bold />
+            <PromotionTotals billDiscount={null} savings={preview?.totalDiscounts ?? 0} hint={billMinimum} />
           </div>
         </aside>
       </div>
@@ -883,10 +983,13 @@ function NewAddressFields({
 function CartPanel({
   draft,
   dispatch,
+  discountsOf,
   itemError,
 }: {
   draft: OrderDraft
   dispatch: (action: OrderDraftAction) => void
+  /** S7: the line's promotion discounts from the pricing preview. */
+  discountsOf: (lineId: string) => DiscountRow[]
   itemError: string | null
 }) {
   if (draft.cartLines.length === 0) {
@@ -937,19 +1040,66 @@ function CartPanel({
             <span className={MONEY}>{formatMoney(line.unitPrice * line.quantity)}</span>
           </div>
           <ModifierLines modifiers={line.modifiers} unitPrice={line.modifiers?.length ? line.unitPrice : undefined} />
-          <Input
-            placeholder="Comentario"
-            value={line.comments ?? ''}
-            onChange={(e) =>
-              dispatch({
-                type: 'setItemComments',
-                lineId: line.id,
-                comments: e.target.value.length === 0 ? null : e.target.value,
-              })
-            }
-          />
+          <ComboChoices line={line} />
+          <div className="flex flex-col gap-1">
+            <DiscountRows rows={discountsOf(line.id)} />
+          </div>
+          {/* A combo's choices carry no comment. */}
+          {!line.combo && (
+            <Input
+              placeholder="Comentario"
+              value={line.comments ?? ''}
+              onChange={(e) =>
+                dispatch({
+                  type: 'setItemComments',
+                  lineId: line.id,
+                  comments: e.target.value.length === 0 ? null : e.target.value,
+                })
+              }
+            />
+          )}
         </div>
       ))}
+    </div>
+  )
+}
+
+/** S7: the dishes chosen in a combo line ("Ajiaco · Bandeja · Jugo de mora"). */
+function ComboChoices({ line }: { line: OrderDraft['cartLines'][number] }) {
+  if (!line.combo) return null
+  return (
+    <p className="col-span-full text-xs text-muted-fg [overflow-wrap:anywhere]">
+      {line.combo.choices.map((choice) => choice.name).join(' · ')}
+    </p>
+  )
+}
+
+/** "10% en domicilios desde $80.000  −$8.000" (S7). */
+function BillDiscountRow({ discount }: { discount: PreviewDiscountDto }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-status-ok-fg">
+      <span className="min-w-0 [overflow-wrap:anywhere]">{discount.label}</span>
+      <span className={MONEY}>−{formatMoney(discount.amount)}</span>
+    </div>
+  )
+}
+
+/** S7: the bill discount, "Ahorro con promociones" and the minimum hint of the preview. */
+function PromotionTotals({
+  billDiscount,
+  savings,
+  hint,
+}: {
+  billDiscount: PreviewDiscountDto | null
+  savings: number
+  hint: PricingHintDto | null
+}) {
+  if (!billDiscount && savings <= 0 && !hint) return null
+  return (
+    <div className="grid gap-1.5 text-sm">
+      {billDiscount && <BillDiscountRow discount={billDiscount} />}
+      <SavingsRow savings={savings} />
+      {hint && <PromotionNudge message={hint.message} adds={[]} onQuickAdd={() => {}} />}
     </div>
   )
 }

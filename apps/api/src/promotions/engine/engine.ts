@@ -168,7 +168,8 @@ export function computeOrderDiscounts<C extends string>(
     const promotionId = sorted.find((c) => c.promotionId !== null)?.promotionId;
     const promotion = promotionId ? promotionsById.get(promotionId) : undefined;
     if (!promotion || promotion.kind !== 'combo') continue;
-    const sum = sorted.reduce((total, c) => total + c.unitPrice * c.quantity, 0);
+    // Σ list prices without options − comboPrice: the options are charged on top of the combo.
+    const sum = sorted.reduce((total, c) => total + (c.unitPrice - (c.optionsPrice ?? 0)) * c.quantity, 0);
     const amount = sum - promotion.comboPrice;
     if (amount > 0) {
       comboDiscounts.push({ comboId, orderItemId: sorted[0].id, promotionId: promotion.id, label: promotion.name, amount });

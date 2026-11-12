@@ -324,6 +324,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/promotions/stats/week": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PromotionsController_weekStatsNow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/catalog/promotions/{id}": {
         parameters: {
             query?: never;
@@ -2966,13 +2982,35 @@ export interface components {
              */
             localTime: string;
             /** @enum {string} */
-            channel: "dine_in" | "delivery";
+            channel: "dine_in" | "takeaway" | "delivery";
             /** @description Automatic promotions applying now on the channel. */
             active: components["schemas"]["TodayActivePromotion"][];
             /** @description Automatic promotions of the channel with a window later today. */
             laterToday: components["schemas"]["TodayLaterPromotion"][];
             /** @description The rest that is neither paused nor ended. */
             others: components["schemas"]["TodayOtherPromotion"][];
+        };
+        PromotionWeekStats: {
+            /**
+             * Format: date-time
+             * @description Monday at businessDayCutoffHour, restaurant timezone (the cash business-day rule).
+             */
+            weekStart: string;
+            /** Format: date-time */
+            now: string;
+            /** @description Sum of total_discounts of the paid orders of the week, whole pesos. */
+            discountGranted: number;
+            /** @description Gross sales (subtotal + total_discounts) of those orders. */
+            salesGross: number;
+            /**
+             * @description discountGranted / salesGross x 100, one decimal; 0 without sales.
+             * @example 5.4
+             */
+            discountPercent: number;
+            /** @description Gross sales of the paid orders with at least one discount row. */
+            salesWithPromotion: number;
+            /** @description Count of those orders. */
+            billsWithPromotion: number;
         };
         ComboGroupInput: {
             /**
@@ -3457,8 +3495,15 @@ export interface components {
             waiterId: string | null;
             /** @enum {string} */
             status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
-            /** @enum {string} */
-            orderType: "dine_in" | "delivery";
+            /**
+             * @description takeaway (para llevar): no table, customerName set.
+             * @enum {string}
+             */
+            orderType: "dine_in" | "takeaway" | "delivery";
+            /** @description takeaway only: who picks the order up; null otherwise. */
+            customerName: string | null;
+            /** @description takeaway only, optional: 7..15 digits; null otherwise. */
+            customerPhone: string | null;
             /** @description Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it. */
             subtotal: number;
             tax: number;
@@ -3562,8 +3607,15 @@ export interface components {
             waiterId: string | null;
             /** @enum {string} */
             status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
-            /** @enum {string} */
-            orderType: "dine_in" | "delivery";
+            /**
+             * @description takeaway (para llevar): no table, customerName set.
+             * @enum {string}
+             */
+            orderType: "dine_in" | "takeaway" | "delivery";
+            /** @description takeaway only: who picks the order up; null otherwise. */
+            customerName: string | null;
+            /** @description takeaway only, optional: 7..15 digits; null otherwise. */
+            customerPhone: string | null;
             /** @description Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it. */
             subtotal: number;
             tax: number;
@@ -3648,8 +3700,15 @@ export interface components {
             waiterId: string | null;
             /** @enum {string} */
             status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
-            /** @enum {string} */
-            orderType: "dine_in" | "delivery";
+            /**
+             * @description takeaway (para llevar): no table, customerName set.
+             * @enum {string}
+             */
+            orderType: "dine_in" | "takeaway" | "delivery";
+            /** @description takeaway only: who picks the order up; null otherwise. */
+            customerName: string | null;
+            /** @description takeaway only, optional: 7..15 digits; null otherwise. */
+            customerPhone: string | null;
             /** @description Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it. */
             subtotal: number;
             tax: number;
@@ -3755,12 +3814,15 @@ export interface components {
              * @description A combo promotion active now for the channel.
              */
             comboPromotionId: string;
-            /** @description Exactly one per group. */
+            /** @description Exactly one per group. The options of a choice are charged on top of the combo price. */
             choices: components["schemas"]["ComboChoiceInput"][];
         };
         CreateOrderRequest: {
-            /** Format: uuid */
-            tableId: string;
+            /**
+             * Format: uuid
+             * @description Required for dine_in; refused for takeaway.
+             */
+            tableId?: string;
             /**
              * Format: uuid
              * @description Defaults to the table's waiter, else the caller.
@@ -3771,10 +3833,14 @@ export interface components {
              * @default dine_in
              * @enum {string}
              */
-            orderType: "dine_in";
+            orderType: "dine_in" | "takeaway";
+            /** @description takeaway only and required there, trimmed (El nombre del cliente debe tener entre 2 y 60 caracteres). */
+            customerName?: string;
+            /** @description takeaway only, optional: normalised like the delivery phones (7..15 digits); blank is null. */
+            customerPhone?: string | null;
             /** @description Dish lines; items and/or combos must bring at least one line. */
             items?: components["schemas"]["OrderItemInput"][];
-            /** @description Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
+            /** @description Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top of the combo price. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
             combos?: components["schemas"]["ComboLineRequest"][];
             /** @description Defaults to the tip_percentage setting. */
             tipPercentage?: number;
@@ -3794,16 +3860,30 @@ export interface components {
             quantity: number;
             modifiers?: components["schemas"]["OrderItemModifierInput"][];
         };
+        PreviewVoidInput: {
+            /**
+             * Format: uuid
+             * @description A live line of orderId.
+             */
+            orderItemId: string;
+            /** @description Units to take out; at most what the line has. */
+            quantity: number;
+        };
         PricingPreviewRequest: {
-            /** @enum {string} */
-            channel: "dine_in" | "delivery";
+            /**
+             * @description Ignored when orderId is given: the order's own channel is used.
+             * @enum {string}
+             */
+            channel: "dine_in" | "takeaway" | "delivery";
             /**
              * Format: uuid
              * @description An open order whose lines (sent, with their fixed promotions) are priced with the draft.
              */
             orderId?: string;
-            /** @description Draft lines: dish lines and combo lines ({comboPromotionId, choices}). */
+            /** @description Draft lines: dish lines and combo lines ({comboPromotionId, choices}), at most 20 combo lines (each 1-6 choices); unknown fields are 422. */
             lines: (components["schemas"]["PreviewDishLine"] | components["schemas"]["ComboLineRequest"])[];
+            /** @description Needs orderId (else 422 code void_order_required). The answer is the order as if these units were voided now with POST /orders/:id/items/void: a combo component voids its whole combo, the automatic discounts are recomputed and the manual line discounts rescaled to the units left. Each line once; a line that is not a live line of the order is 422 code void_item_unknown, more units than it has 422 code void_quantity_invalid. Nothing is written. */
+            voids?: components["schemas"]["PreviewVoidInput"][];
         };
         PreviewDiscount: {
             /**
@@ -3860,8 +3940,11 @@ export interface components {
             minutesLeft?: number;
         };
         PricingPreview: {
-            /** @enum {string} */
-            channel: "dine_in" | "delivery";
+            /**
+             * @description The order's channel with orderId, else the body channel.
+             * @enum {string}
+             */
+            channel: "dine_in" | "takeaway" | "delivery";
             /** Format: date-time */
             now: string;
             /** @description Sent lines first (oldest first), then the drafts in order. */
@@ -3872,13 +3955,22 @@ export interface components {
             grossSubtotal: number;
             /** @description Automatic line, combo and bill discounts plus the order's manual discounts (capped at grossSubtotal). */
             totalDiscounts: number;
+            /** @description grossSubtotal - totalDiscounts: the base tax and tip are computed on (Order.subtotal). */
             netSubtotal: number;
+            /** @description With orderId: round(netSubtotal x the order's taxPercentage / 100), as the bill; null without an order. */
+            tax: number | null;
+            /** @description With orderId: the suggested tip on netSubtotal with the order's tipPercentage; null without an order. */
+            tip: number | null;
+            /** @description With orderId: netSubtotal + tax + tip, exactly Order.total after the same change (private.recompute_order_bill; no delivery fee); null without an order. */
+            total: number | null;
+            /** @description With orderId: the delivery fee of a delivery order (0 for dine_in), outside total as in Order; pay_order charges netSubtotal + tax + deliveryFee plus the tip given. Null without an order, or for a delivery the caller cannot read (a waiter). */
+            deliveryFee: number | null;
             hints: components["schemas"]["PricingHintDto"][];
         };
         AddOrderItemsRequest: {
             /** @description Dish lines; items and/or combos must bring at least one line. */
             items?: components["schemas"]["OrderItemInput"][];
-            /** @description Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
+            /** @description Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top of the combo price. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
             combos?: components["schemas"]["ComboLineRequest"][];
             /** @default false */
             force: boolean;
@@ -3974,10 +4066,10 @@ export interface components {
             orderId: string;
             orderNumber: number | null;
             /**
-             * @description delivery: a Domicilio (cancelled from Domicilios, F3b).
+             * @description delivery: a Domicilio (cancelled from Domicilios, F3b); takeaway: a Para llevar order (S8).
              * @enum {string}
              */
-            orderType: "dine_in" | "delivery";
+            orderType: "dine_in" | "delivery" | "takeaway";
             /**
              * Format: uuid
              * @description Only for payment_voided.
@@ -4238,7 +4330,7 @@ export interface components {
             paymentMethodId: string;
             /** @description Applied amount in whole pesos (capped for cash). 0 only as the single cash line, with cashReceived 0, of an order whose amount due and tip are 0 (a fully discounted order); a 0 line without cashReceived 0 is 422 `Una línea en 0 solo cierra una cuenta sin saldo: en efectivo y con efectivo recibido 0`, any other 0 line 422 22023. */
             amount: number;
-            /** @description Cash handed over; required for cash, null for electronic. */
+            /** @description Cash handed over; required for cash, null for electronic. On a line whose method kind is cash, less than amount is 422 `tenders.N: El efectivo recibido no puede ser menor que el valor de la línea`; on an electronic line pay_order refuses any value (422 P0001). */
             cashReceived?: number | null;
             /** @description Card last digits, approval code or transfer reference, captured by hand. Non-cash lines only (422 `Una línea en efectivo no lleva referencia`); tabs and line breaks become spaces, then trimmed to 1..60 chars. Not echoed in the result; read it from the payment tenders. */
             reference?: string | null;
@@ -4341,18 +4433,28 @@ export interface components {
         OrderBillSummary: {
             /** Format: uuid */
             orderId: string;
+            /** @description Net base after the discounts recomputed on this side (Order.subtotal). */
             subtotal: number;
+            /** @description Tax on subtotal. */
             tax: number;
+            /** @description Suggested tip on subtotal (tipPercentage). */
             tip: number;
+            /** @description subtotal + tax + tip. */
             total: number;
         };
         SplitOrderResult: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The new partial child order (parentOrderId = :id).
+             */
             childOrderId: string;
+            /** @description The bill of :id after the recompute. */
             parent: components["schemas"]["OrderBillSummary"];
+            /** @description The bill of the child after the recompute. */
             child: components["schemas"]["OrderBillSummary"];
         };
         UndoSplitResult: {
+            /** @description The bill of the parent after the lines came back and the recompute. */
             parent: components["schemas"]["OrderBillSummary"];
         };
         Denomination: {
@@ -5737,7 +5839,7 @@ export interface components {
              * @description Ignored: the API prints the sender's profile name.
              */
             waiter?: string;
-            /** @description Null or absent for delivery orders; the order's table wins. */
+            /** @description Null or absent for delivery orders; the order's table wins; dropped for a takeaway order (the payload carries takeaway instead). */
             table?: number | null;
             /** @description DeliveryPrintInfo (types/index.ts). */
             delivery?: {
@@ -5762,7 +5864,7 @@ export interface components {
             id: string;
             /** @enum {string} */
             kind: "invoice" | "command";
-            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
+            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, takeaway? {customerName, label "PARA LLEVAR · <nombre>"} (instead of table), station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
             payload: {
                 [key: string]: unknown;
             };
@@ -5906,8 +6008,10 @@ export interface components {
         CreateDeliveryOrderRequest: {
             customer: components["schemas"]["CreateDeliveryCustomer"];
             address: components["schemas"]["CreateDeliveryAddress"];
-            /** @description 1..100 lines validated by create_delivery_order. */
+            /** @description 1..100 lines together with the combo choices validated by create_delivery_order; may be empty when combos are sent. */
             items: components["schemas"]["CreateDeliveryItem"][];
+            /** @description Combos live now for the delivery channel. Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
+            combos?: components["schemas"]["ComboLineRequest"][];
             /** @description Whole COP pesos; >= 0 validated by create_delivery_order. */
             deliveryFee: number;
             /** @enum {string} */
@@ -6987,7 +7091,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description With pricing=promotions; default dine_in. */
-                channel?: "dine_in" | "delivery";
+                channel?: "dine_in" | "takeaway" | "delivery";
                 /** @description Add the automatic product promotion a line of each dish would be sent with now (price stays the list price). */
                 pricing?: "promotions";
                 active?: "true" | "false";
@@ -7345,7 +7449,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Default dine_in. */
-                channel?: "dine_in" | "delivery";
+                channel?: "dine_in" | "takeaway" | "delivery";
             };
             header?: never;
             path?: never;
@@ -7361,6 +7465,40 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PromotionsToday"];
                 };
+            };
+            /** @description Invalid input, unknown fields or unknown dish. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PromotionsController_weekStatsNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paid orders from Monday at the business-day cut-off (restaurant timezone) through now: discount granted, its share of gross sales, and the sales and bills with a promotion. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionWeekStats"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Invalid input, unknown fields or unknown dish. */
             422: {
@@ -7725,7 +7863,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Channel of the dish promotion fields; default dine_in. */
-                channel?: "dine_in" | "delivery";
+                channel?: "dine_in" | "takeaway" | "delivery";
             };
             header?: never;
             path?: never;
@@ -7747,7 +7885,7 @@ export interface operations {
     MenuController_draft: {
         parameters: {
             query?: {
-                channel?: "dine_in" | "delivery";
+                channel?: "dine_in" | "takeaway" | "delivery";
             };
             header?: never;
             path?: never;
@@ -8471,7 +8609,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description As if sent now (server clock, restaurant timezone, channel): the order lines (with the promotions fixed when sent) and the draft lines, their discounts, the bill discount, totals and hints ("Falta 1 unidad para otro 2x1.", "Envía antes de las 19:00.", "Domicilio: faltan $X para el 10% de descuento."). Writes nothing. */
+            /** @description As if sent now (server clock, restaurant timezone, channel; with orderId the order's channel): the order lines (with the promotions fixed when sent, minus `voids`) and the draft lines, their discounts, the bill discount, totals (tax, tip and total with orderId) and hints ("Falta 1 unidad para otro 2x1.", "Envía antes de las 19:00.", "Domicilio: faltan $X para el 10% de descuento."). Writes nothing. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8494,7 +8632,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            /** @description Invalid input or unknown fields (more than 20 combo lines: "lines: Máximo 20 combos por consulta"), a draft combo with the engine code, or an invalid void with body `code` void_order_required | void_item_unknown | void_quantity_invalid. */
             422: {
                 headers: {
                     [name: string]: unknown;

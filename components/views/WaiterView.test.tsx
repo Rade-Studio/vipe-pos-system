@@ -201,6 +201,7 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
 import { WaiterView, releaseRefusal } from "./WaiterView"
 import { ApiError } from "@/lib/api/errors"
 import { menuCategory, menuDish } from "@/lib/order-steps/fixtures"
+import { formatCurrency } from "@/utils/helpers"
 import { modifierGroup } from "@/lib/modifiers/fixtures"
 import { active, happyHour, menuEjecutivo, other, today as todayDto } from "@/lib/promotions/fixtures"
 
@@ -223,7 +224,7 @@ const tableRow = (id: string, number: number, status = "available", waiterId: st
   updatedAt: "2026-10-07T00:00:00.000Z",
 })
 
-function orderDto(id: string, tableId: string | null, orderType: "dine_in" | "delivery" = "dine_in") {
+function orderDto(id: string, tableId: string | null, orderType: "dine_in" | "takeaway" | "delivery" = "dine_in") {
   return {
     id,
     tableId,
@@ -1048,6 +1049,94 @@ describe("WaiterView — step order flow (T10)", () => {
     // Back on the map.
     expect(screen.queryByRole("heading", { name: "¿Qué categoría?" })).not.toBeInTheDocument()
     expect(screen.getByText("Mesa 1")).toBeInTheDocument()
+  })
+
+  it("Para llevar asks the name, takes the order with the steps on channel takeaway and sends it without a table (S8)", async () => {
+    env.orderCreate.mockImplementation(async (body: object) => ({ ...orderDto("o-take", null), orderType: "takeaway", customerName: "Ana", ...body }))
+    renderView()
+    await flush()
+    await tap("Para llevar")
+    const dialog = screen.getByRole("dialog", { name: "Pedido para llevar" })
+    fireEvent.change(within(dialog).getByLabelText("Nombre del cliente"), { target: { value: " A " } })
+    await act(async () => within(dialog).getByRole("button", { name: "Tomar pedido" }).click())
+    expect(within(dialog).getByText("El nombre debe tener entre 2 y 60 caracteres")).toBeInTheDocument()
+    expect(within(dialog).getByLabelText("Nombre del cliente")).toHaveAttribute("aria-invalid", "true")
+
+    fireEvent.change(within(dialog).getByLabelText("Nombre del cliente"), { target: { value: "  Ana  " } })
+    fireEvent.change(within(dialog).getByLabelText(/Teléfono/), { target: { value: "315 000 1122" } })
+    await act(async () => within(dialog).getByRole("button", { name: "Tomar pedido" }).click())
+    await flush()
+
+    expect(screen.queryByRole("dialog", { name: "Pedido para llevar" })).toBeNull()
+    expect(screen.getByRole("heading", { name: "¿Qué categoría?" })).toBeInTheDocument()
+    expect(screen.getAllByText("Para llevar · Ana").length).toBeGreaterThan(0)
+    expect(env.promotionsToday).toHaveBeenCalledWith({ channel: "takeaway" })
+
+    await tap(/Postres/)
+    await tap(/^Arroz con leche,/)
+    await tap(/^Agregar 1 ·/)
+    await waitFor(() => expect(env.pricingPreview).toHaveBeenCalledWith(expect.objectContaining({ channel: "takeaway" })))
+
+    await tap("Enviar a cocina (1)")
+    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+    expect(env.orderCreate).toHaveBeenCalledWith({
+      orderType: "takeaway",
+      customerName: "Ana",
+      customerPhone: "3150001122",
+      items: [{ dishId: ARROZ, quantity: 1, unitPrice: 7000, comments: null }],
+    })
+    expect(env.sendCommand).toHaveBeenCalledWith({ orderId: "o-take", items: [expect.objectContaining({ name: "Arroz con leche" })] })
+    expect(env.sendCommand.mock.calls[0][0]).not.toHaveProperty("table")
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Pedido para llevar enviado" }))
+    // Back on the map; no table was touched.
+    expect(screen.queryByRole("heading", { name: "¿Qué categoría?" })).not.toBeInTheDocument()
+    expect(screen.getByText("Mesa 1")).toBeInTheDocument()
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+  })
+
+  it("lists the open takeaway orders and adds items to one with POST /orders/:id/items; a table is unaffected (S8)", async () => {
+    env.orderGetByStatus.mockResolvedValue([
+      { ...orderDto("o-take", null, "takeaway"), customerName: "Ana", status: "kitchen", total: 7000 },
+      orderDto("o-1", "t-1"),
+    ])
+    renderView()
+    await flush()
+    const list = screen.getByRole("region", { name: "Pedidos para llevar" })
+    const entry = within(list).getByRole("button", { name: /Para llevar · Ana/ })
+    expect(entry).toHaveTextContent("En cocina")
+    expect(entry.textContent).toContain(formatCurrency(7000))
+    expect(within(list).getAllByRole("button")).toHaveLength(1)
+    expect(screen.getByText("Mesa 1")).toBeInTheDocument()
+
+    // A realtime UPDATE without order_type keeps the order a takeaway (still listed).
+    await act(async () => {
+      for (const cb of env.orderCallbacks) cb({ eventType: "UPDATE", new: { id: "o-take", status: "delivered" }, old: { id: "o-take" } })
+    })
+    await flush()
+    expect(within(list).getByRole("button", { name: /Para llevar · Ana/ })).toHaveTextContent("Entregado")
+
+    await act(async () => entry.click())
+    await flush()
+    expect(screen.getByRole("heading", { name: "¿Qué categoría?" })).toBeInTheDocument()
+    await tap(/Postres/)
+    await tap(/^Arroz con leche,/)
+    await tap(/^Agregar 1 ·/)
+    await tap(/^Enviar a cocina \(1\)/)
+    expect(env.orderCreate).not.toHaveBeenCalled()
+    expect(env.addItems).toHaveBeenCalledWith("o-take", {
+      items: [{ dishId: ARROZ, quantity: 1, unitPrice: 7000, comments: null }],
+    })
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+  })
+
+  it("Para llevar: Cancelar opens no flow and creates nothing (S8)", async () => {
+    renderView()
+    await flush()
+    await tap("Para llevar")
+    await tap("Cancelar")
+    expect(screen.queryByRole("dialog", { name: "Pedido para llevar" })).toBeNull()
+    expect(screen.queryByRole("heading", { name: "¿Qué categoría?" })).toBeNull()
+    expect(env.orderCreate).not.toHaveBeenCalled()
   })
 
   it("sends the list price as unitPrice for a dish with an active promotion (S8)", async () => {

@@ -15,7 +15,7 @@ import { CartSidebar } from "@/components/pos/CartSidebar"
 import { StepPicker, type StepPickerItem } from "@/components/order-steps/StepPicker"
 import { OrderColumn, OrderReview, lineCount, lineTotal } from "@/components/order-steps/OrderReview"
 import { ToastAction } from "@/components/ui/toast"
-import { AlertTriangle, ArrowLeft, ChevronRight, Send, ShoppingCart } from "lucide-react"
+import { AlertTriangle, ArrowLeft, ChevronRight, Send, ShoppingBag, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { ReserveSheet } from "@/components/tables/ReserveSheet"
@@ -77,6 +77,9 @@ import { createLocalChangeRegistry } from "@/lib/kitchen/realtime"
 import { mergeOrdersList } from "@/lib/realtime/order-merge"
 import { mergeOrdersForWaiter, wireRowToPartialOrder, withoutVoidedWireLines, type OrderChange } from "@/lib/realtime/order-merge"
 import { WaiterVoidActions } from "@/components/waiter/WaiterVoidActions"
+import { TakeawayStartDialog } from "@/components/takeaway/TakeawayStartDialog"
+import { TakeawayOrderFlow } from "@/components/takeaway/TakeawayOrderFlow"
+import type { TakeawayCustomer } from "@/components/takeaway/customer"
 import { useTerminal } from "@/components/terminal/terminal-context"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
@@ -84,6 +87,7 @@ import { useWaiters } from "@/hooks/use-waiters"
 import { useZones } from "@/hooks/use-zones"
 import { MENU_TREE_KEY, useMenuTree } from "@/hooks/use-menu-tree"
 import { formatCurrency } from "@/utils/helpers"
+import { takeawayLabel } from "@/lib/cashier/queue"
 import { useConfigStore } from "@/store/use-config-store"
 import { invalidationsFor } from "@/hooks/inventory/invalidations"
 import {
@@ -119,6 +123,13 @@ const RELEASE_REFUSAL: Record<string, string> = {
 /** The manual release refusal, with the table status in Spanish (S1). */
 export function releaseRefusal(status: string): string {
   return `No se puede liberar una mesa ${RELEASE_REFUSAL[status] ?? "en este estado"}.`
+}
+
+/** S8: the status shown on a takeaway order in the waiter's list. */
+const TAKEAWAY_STATUS: Partial<Record<Order["status"], string>> = {
+  active: "Abierto",
+  kitchen: "En cocina",
+  delivered: "Entregado",
 }
 
 const CUSTOM_SIDEBAR_WIDTH = "22rem" // Ajustado para optimizar espacio
@@ -359,6 +370,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           ? orderDtoFromWire(withoutVoidedWireLines(payload.new))
           : null
       const patch = payload.new ? wireRowToPartialOrder(payload.new) : null
+      // S8: a partial UPDATE without order_type keeps the cached type (a takeaway stays takeaway).
+      if (patch && (payload.new as any)?.order_type === undefined) delete (patch as Partial<Order>).orderType
       const conv: OrderChange = {
         eventType: payload.eventType,
         new: inserted ? toOrder(inserted) : patch && updatedLines ? { ...patch, items: toOrder(updatedLines).items } : patch,
@@ -1039,6 +1052,19 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     withIdentity(activeTable, () => void latestHandlers.current.handleSendToKitchen())
   }, [activeTable, withIdentity])
 
+  // S8: "Para llevar" asks the customer's name, then takes the order with the same step flow (no table).
+  const [takeawayDialogOpen, setTakeawayDialogOpen] = useState(false)
+  const [takeawayCustomer, setTakeawayCustomer] = useState<TakeawayCustomer | null>(null)
+  // S8 (M5c): the open takeaway orders, listed next to the button; opening one adds items to it.
+  const [openTakeawayId, setOpenTakeawayId] = useState<string | null>(null)
+  const takeawayOrders = useMemo(() => ordersData.filter((o) => o.orderType === "takeaway"), [ordersData])
+  const startTakeaway = useCallback(() => {
+    if (!terminal) return setTakeawayDialogOpen(true)
+    void terminal.ensureIdentity({ label: "Para llevar" }).then((ok) => {
+      if (ok) setTakeawayDialogOpen(true)
+    })
+  }, [terminal])
+
   // Verificar acceso a mesa
   const checkTableAccess = useCallback((tableId: string) => {
     // En este enfoque, todas las mesas son accesibles por el perfil de mesero principal
@@ -1565,14 +1591,45 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     )
   }
 
+  const openTakeaway = openTakeawayId ? takeawayOrders.find((o) => o.id === openTakeawayId) : undefined
+  const takeawayFlow = openTakeaway ? (
+    <TakeawayOrderFlow
+      customer={{ name: openTakeaway.customerName ?? "", phone: openTakeaway.customerPhone ?? null }}
+      order={openTakeaway}
+      onClose={() => setOpenTakeawayId(null)}
+      onSent={() => setOpenTakeawayId(null)}
+    />
+  ) : takeawayCustomer ? (
+    <TakeawayOrderFlow customer={takeawayCustomer} onClose={() => setTakeawayCustomer(null)} onSent={() => setTakeawayCustomer(null)} />
+  ) : null
+
   return (
     <div className="flex h-screen overflow-hidden">
-      {orderFlow ?? (
+      {takeawayFlow ?? orderFlow ?? (
         <>
       {/* Contenido principal */}
       <div className="flex-1 overflow-auto bg-muted/20 p-0">
         <div className="p-1 md:p-2">
           <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
+
+          <div className="mb-1 flex justify-end px-1">
+            <Button variant="outline" className="min-h-11 gap-2" onClick={startTakeaway}>
+              <ShoppingBag className="h-[18px] w-[18px]" aria-hidden />
+              Para llevar
+            </Button>
+          </div>
+
+          {takeawayOrders.length > 0 && (
+            <section aria-label="Pedidos para llevar" className="mb-1 flex flex-wrap gap-1 px-1">
+              {takeawayOrders.map((o) => (
+                <Button key={o.id} variant="outline" className="min-h-11 gap-2" onClick={() => setOpenTakeawayId(o.id)}>
+                  <span>{takeawayLabel(o)}</span>
+                  <span className="text-muted-foreground">{TAKEAWAY_STATUS[o.status] ?? o.status}</span>
+                  <span className="tabular-nums">{formatCurrency(o.bill?.total ?? 0)}</span>
+                </Button>
+              ))}
+            </section>
+          )}
 
           <div className="mb-1">
             <TablesSection
@@ -1682,6 +1739,15 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
         </>
       )}
+
+      <TakeawayStartDialog
+        open={takeawayDialogOpen}
+        onClose={() => setTakeawayDialogOpen(false)}
+        onStart={(customer) => {
+          setTakeawayDialogOpen(false)
+          setTakeawayCustomer(customer)
+        }}
+      />
 
       {/* T22: guests of a new order, asked on its first "Agregar productos" */}
       <Dialog open={guestsPrompt !== null} onOpenChange={(open) => !open && setGuestsPrompt(null)}>

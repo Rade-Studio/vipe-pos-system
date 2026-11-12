@@ -137,9 +137,11 @@ fn short_id(v: &Value) -> String {
     short(v).chars().take(4).collect()
 }
 
-fn place(table: &Value, delivery: &Value) -> String {
+fn place(table: &Value, delivery: &Value, takeaway: &Value) -> String {
     if delivery.is_object() {
         "Domicilio".into()
+    } else if let Some(name) = takeaway["customerName"].as_str() {
+        format!("Para llevar \u{b7} {name}")
     } else if table.is_null() {
         "Mostrador".into()
     } else {
@@ -153,7 +155,7 @@ pub fn job_summary(job: &PrintJob) -> (String, String) {
     if job.kind == "invoice" {
         let inv = &p["invoice"];
         let total = money(&inv["bill"]["total"]).map(|m| format!("$ {m}")).unwrap_or_default();
-        return (format!("Factura {} · {}", short(&p["invoiceNumber"]), place(&inv["table"], &inv["delivery"])), total);
+        return (format!("Factura {} · {}", short(&p["invoiceNumber"]), place(&inv["table"], &inv["delivery"], &inv["takeaway"])), total);
     }
     let items = p["items"].as_array().map(Vec::as_slice).unwrap_or(&[]);
     let detail = items
@@ -162,7 +164,7 @@ pub fn job_summary(job: &PrintJob) -> (String, String) {
         .collect::<Vec<_>>()
         .join(", ");
     let number = short_id(&p["invoiceNumber"]);
-    (format!("Comanda #{number} · {}", place(&p["table"], &p["delivery"])), detail)
+    (format!("Comanda #{number} · {}", place(&p["table"], &p["delivery"], &p["takeaway"])), detail)
 }
 
 /// The template with `https://<api>` replaced by the origin of the VIPE web URL.
@@ -178,4 +180,16 @@ pub fn updater_endpoint(web_url: &str) -> Option<String> {
 /// Out of service: nothing waiting and no print in the last 10 minutes.
 pub fn idle_for_update(active_jobs: i64, last_print_ms: Option<i64>, now_ms: i64) -> bool {
     active_jobs == 0 && last_print_ms.is_none_or(|t| now_ms - t >= QUIET_MS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_takeaway_comanda_is_summarised_with_the_customer() {
+        let job = PrintJob { id: "j".into(), kind: "command".into(), station: None, created_at: None,
+            payload: json!({"invoiceNumber": "abcd9", "table": null, "takeaway": {"customerName": "Laura", "label": "PARA LLEVAR \u{b7} Laura"}, "items": []}) };
+        assert_eq!(job_summary(&job).0, "Comanda #abcd \u{b7} Para llevar \u{b7} Laura");
+    }
 }

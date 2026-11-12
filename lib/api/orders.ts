@@ -42,7 +42,8 @@ export type CancelledOrderDto = Schemas["CancelledOrder"]
 
 /** The contract marks the defaulted fields as required; the API does not. */
 export type CreateOrderBody = Omit<Schemas["CreateOrderRequest"], "orderType" | "force"> & {
-  orderType?: "dine_in"
+  /** dine_in needs tableId; takeaway (S8) needs customerName and has no table. */
+  orderType?: "dine_in" | "takeaway"
   force?: boolean
 }
 
@@ -114,6 +115,8 @@ export function toOrder(dto: OrderDto): Order {
     notes: dto.notes ?? undefined,
     tableId: dto.tableId ?? "",
     orderType: dto.orderType,
+    ...(dto.customerName ? { customerName: dto.customerName } : {}),
+    ...(dto.customerPhone ? { customerPhone: dto.customerPhone } : {}),
     items: dto.items.map(toOrderItem),
     status: dto.status,
     bill: {
@@ -138,6 +141,7 @@ const str = (value: unknown): string | null => (typeof value === "string" ? valu
 const num = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : Number(value) || 0)
 
 const STATION_SOURCES = ["dish", "category", "fallback"] as const
+const ORDER_TYPES = ["dine_in", "takeaway", "delivery"] as const
 
 function itemDtoFromWire(row: WireRow): OrderItemDto {
   return {
@@ -181,7 +185,9 @@ export function orderDtoFromWire(row: unknown): OrderDto | null {
     tableId: str(wire.table_id),
     waiterId: str(wire.waiter_id),
     status: wire.status as OrderStatus,
-    orderType: wire.order_type === "delivery" ? "delivery" : "dine_in",
+    orderType: ORDER_TYPES.find((type) => type === wire.order_type) ?? "dine_in",
+    customerName: str(wire.customer_name),
+    customerPhone: str(wire.customer_phone),
     subtotal: num(wire.subtotal),
     tax: num(wire.tax),
     taxPercentage: num(wire.tax_percentage),
@@ -333,6 +339,40 @@ export async function cancelOrder(orderId: string, body: CancelOrderBody): Promi
 export async function voidOrderItems(orderId: string, body: VoidOrderItemsBody): Promise<OrderDto> {
   const { data } = await api.POST("/api/orders/{id}/items/void", { ...byId(orderId), body })
   return required(data)
+}
+
+/**
+ * S1: what the order's discounts and total would be if these quantities were
+ * voided now (`POST /orders/pricing-preview` with `voids` and no draft
+ * lines). Nothing is written. The server prices with the order's own channel.
+ */
+export interface VoidPreviewRequest {
+  orderId: string
+  voids: { orderItemId: string; quantity: number }[]
+  channel?: "dine_in" | "takeaway" | "delivery"
+}
+
+export interface VoidPreview {
+  grossSubtotal: number
+  totalDiscounts: number
+  netSubtotal: number
+  /** The order total after the void, when the server sends it. */
+  total?: number
+  /** Each remaining sent line with the promotion it keeps. */
+  lines: { orderItemId: string | null; promotionName: string | null }[]
+}
+
+export async function getVoidPreview({ orderId, voids, channel = "dine_in" }: VoidPreviewRequest): Promise<VoidPreview> {
+  const body = { channel, orderId, lines: [], voids }
+  const { data } = await api.POST("/api/orders/pricing-preview", { body: body as Schemas["PricingPreviewRequest"] })
+  const preview = required(data) as Schemas["PricingPreview"] & { total?: number }
+  return {
+    grossSubtotal: preview.grossSubtotal,
+    totalDiscounts: preview.totalDiscounts,
+    netSubtotal: preview.netSubtotal,
+    ...(typeof preview.total === "number" ? { total: preview.total } : {}),
+    lines: (preview.lines ?? []).map(({ orderItemId, promotionName }) => ({ orderItemId, promotionName })),
+  }
 }
 
 /** Admin: orders cancelled on `date` (YYYY-MM-DD, restaurant day) with the bill at that moment and who cancelled. */

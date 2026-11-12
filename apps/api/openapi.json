@@ -554,6 +554,7 @@
             "schema": {
               "enum": [
                 "dine_in",
+                "takeaway",
                 "delivery"
               ],
               "type": "string"
@@ -1008,6 +1009,7 @@
             "schema": {
               "enum": [
                 "dine_in",
+                "takeaway",
                 "delivery"
               ],
               "type": "string"
@@ -1024,6 +1026,38 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown dish."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/promotions/stats/week": {
+      "get": {
+        "operationId": "PromotionsController_weekStatsNow",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Paid orders from Monday at the business-day cut-off (restaurant timezone) through now: discount granted, its share of gross sales, and the sales and bills with a promotion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromotionWeekStats"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
           },
           "422": {
             "description": "Invalid input, unknown fields or unknown dish."
@@ -1465,6 +1499,7 @@
             "schema": {
               "enum": [
                 "dine_in",
+                "takeaway",
                 "delivery"
               ],
               "type": "string"
@@ -1504,6 +1539,7 @@
             "schema": {
               "enum": [
                 "dine_in",
+                "takeaway",
                 "delivery"
               ],
               "type": "string"
@@ -2341,7 +2377,7 @@
         },
         "responses": {
           "200": {
-            "description": "As if sent now (server clock, restaurant timezone, channel): the order lines (with the promotions fixed when sent) and the draft lines, their discounts, the bill discount, totals and hints (\"Falta 1 unidad para otro 2x1.\", \"Envía antes de las 19:00.\", \"Domicilio: faltan $X para el 10% de descuento.\"). Writes nothing.",
+            "description": "As if sent now (server clock, restaurant timezone, channel; with orderId the order's channel): the order lines (with the promotions fixed when sent, minus `voids`) and the draft lines, their discounts, the bill discount, totals (tax, tip and total with orderId) and hints (\"Falta 1 unidad para otro 2x1.\", \"Envía antes de las 19:00.\", \"Domicilio: faltan $X para el 10% de descuento.\"). Writes nothing.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2357,7 +2393,7 @@
             "description": "orderId not found."
           },
           "422": {
-            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+            "description": "Invalid input or unknown fields (more than 20 combo lines: \"lines: Máximo 20 combos por consulta\"), a draft combo with the engine code, or an invalid void with body `code` void_order_required | void_item_unknown | void_quantity_invalid."
           }
         },
         "security": [
@@ -10268,6 +10304,7 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
             ]
           },
@@ -10300,6 +10337,50 @@
           "active",
           "laterToday",
           "others"
+        ]
+      },
+      "PromotionWeekStats": {
+        "type": "object",
+        "properties": {
+          "weekStart": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Monday at businessDayCutoffHour, restaurant timezone (the cash business-day rule)."
+          },
+          "now": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "discountGranted": {
+            "type": "number",
+            "description": "Sum of total_discounts of the paid orders of the week, whole pesos."
+          },
+          "salesGross": {
+            "type": "number",
+            "description": "Gross sales (subtotal + total_discounts) of those orders."
+          },
+          "discountPercent": {
+            "type": "number",
+            "example": 5.4,
+            "description": "discountGranted / salesGross x 100, one decimal; 0 without sales."
+          },
+          "salesWithPromotion": {
+            "type": "number",
+            "description": "Gross sales of the paid orders with at least one discount row."
+          },
+          "billsWithPromotion": {
+            "type": "number",
+            "description": "Count of those orders."
+          }
+        },
+        "required": [
+          "weekStart",
+          "now",
+          "discountGranted",
+          "salesGross",
+          "discountPercent",
+          "salesWithPromotion",
+          "billsWithPromotion"
         ]
       },
       "ComboGroupInput": {
@@ -11650,8 +11731,21 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
-            ]
+            ],
+            "description": "takeaway (para llevar): no table, customerName set."
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "takeaway only: who picks the order up; null otherwise."
+          },
+          "customerPhone": {
+            "type": "string",
+            "nullable": true,
+            "description": "takeaway only, optional: 7..15 digits; null otherwise."
           },
           "subtotal": {
             "type": "number",
@@ -11732,6 +11826,8 @@
           "waiterId",
           "status",
           "orderType",
+          "customerName",
+          "customerPhone",
           "subtotal",
           "tax",
           "taxPercentage",
@@ -11981,8 +12077,21 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
-            ]
+            ],
+            "description": "takeaway (para llevar): no table, customerName set."
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "takeaway only: who picks the order up; null otherwise."
+          },
+          "customerPhone": {
+            "type": "string",
+            "nullable": true,
+            "description": "takeaway only, optional: 7..15 digits; null otherwise."
           },
           "subtotal": {
             "type": "number",
@@ -12080,6 +12189,8 @@
           "waiterId",
           "status",
           "orderType",
+          "customerName",
+          "customerPhone",
           "subtotal",
           "tax",
           "taxPercentage",
@@ -12263,8 +12374,21 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
-            ]
+            ],
+            "description": "takeaway (para llevar): no table, customerName set."
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "takeaway only: who picks the order up; null otherwise."
+          },
+          "customerPhone": {
+            "type": "string",
+            "nullable": true,
+            "description": "takeaway only, optional: 7..15 digits; null otherwise."
           },
           "subtotal": {
             "type": "number",
@@ -12358,6 +12482,8 @@
           "waiterId",
           "status",
           "orderType",
+          "customerName",
+          "customerPhone",
           "subtotal",
           "tax",
           "taxPercentage",
@@ -12600,7 +12726,7 @@
           "choices": {
             "minItems": 1,
             "maxItems": 6,
-            "description": "Exactly one per group.",
+            "description": "Exactly one per group. The options of a choice are charged on top of the combo price.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ComboChoiceInput"
@@ -12617,7 +12743,8 @@
         "properties": {
           "tableId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Required for dine_in; refused for takeaway."
           },
           "waiterId": {
             "type": "string",
@@ -12627,10 +12754,23 @@
           "orderType": {
             "type": "string",
             "enum": [
-              "dine_in"
+              "dine_in",
+              "takeaway"
             ],
             "default": "dine_in",
             "description": "Delivery orders are created by the delivery module."
+          },
+          "customerName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60,
+            "description": "takeaway only and required there, trimmed (El nombre del cliente debe tener entre 2 y 60 caracteres)."
+          },
+          "customerPhone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 100,
+            "description": "takeaway only, optional: normalised like the delivery phones (7..15 digits); blank is null."
           },
           "items": {
             "maxItems": 100,
@@ -12642,7 +12782,7 @@
           },
           "combos": {
             "maxItems": 20,
-            "description": "Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.",
+            "description": "Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top of the combo price. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ComboLineRequest"
@@ -12672,10 +12812,7 @@
             "maxLength": 300,
             "description": "Order note, trimmed; blank is null."
           }
-        },
-        "required": [
-          "tableId"
-        ]
+        }
       },
       "PreviewDishLine": {
         "type": "object",
@@ -12702,6 +12839,26 @@
           "quantity"
         ]
       },
+      "PreviewVoidInput": {
+        "type": "object",
+        "properties": {
+          "orderItemId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A live line of orderId."
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 999,
+            "description": "Units to take out; at most what the line has."
+          }
+        },
+        "required": [
+          "orderItemId",
+          "quantity"
+        ]
+      },
       "PricingPreviewRequest": {
         "type": "object",
         "properties": {
@@ -12709,8 +12866,10 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
-            ]
+            ],
+            "description": "Ignored when orderId is given: the order's own channel is used."
           },
           "orderId": {
             "type": "string",
@@ -12719,7 +12878,7 @@
           },
           "lines": {
             "type": "array",
-            "description": "Draft lines: dish lines and combo lines ({comboPromotionId, choices}).",
+            "description": "Draft lines: dish lines and combo lines ({comboPromotionId, choices}), at most 20 combo lines (each 1-6 choices); unknown fields are 422.",
             "maxItems": 100,
             "items": {
               "oneOf": [
@@ -12730,6 +12889,14 @@
                   "$ref": "#/components/schemas/ComboLineRequest"
                 }
               ]
+            }
+          },
+          "voids": {
+            "maxItems": 100,
+            "description": "Needs orderId (else 422 code void_order_required). The answer is the order as if these units were voided now with POST /orders/:id/items/void: a combo component voids its whole combo, the automatic discounts are recomputed and the manual line discounts rescaled to the units left. Each line once; a line that is not a live line of the order is 422 code void_item_unknown, more units than it has 422 code void_quantity_invalid. Nothing is written.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviewVoidInput"
             }
           }
         },
@@ -12888,8 +13055,10 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
-            ]
+            ],
+            "description": "The order's channel with orderId, else the body channel."
           },
           "now": {
             "type": "string",
@@ -12926,7 +13095,28 @@
             "description": "Automatic line, combo and bill discounts plus the order's manual discounts (capped at grossSubtotal)."
           },
           "netSubtotal": {
-            "type": "number"
+            "type": "number",
+            "description": "grossSubtotal - totalDiscounts: the base tax and tip are computed on (Order.subtotal)."
+          },
+          "tax": {
+            "type": "number",
+            "nullable": true,
+            "description": "With orderId: round(netSubtotal x the order's taxPercentage / 100), as the bill; null without an order."
+          },
+          "tip": {
+            "type": "number",
+            "nullable": true,
+            "description": "With orderId: the suggested tip on netSubtotal with the order's tipPercentage; null without an order."
+          },
+          "total": {
+            "type": "number",
+            "nullable": true,
+            "description": "With orderId: netSubtotal + tax + tip, exactly Order.total after the same change (private.recompute_order_bill; no delivery fee); null without an order."
+          },
+          "deliveryFee": {
+            "type": "number",
+            "nullable": true,
+            "description": "With orderId: the delivery fee of a delivery order (0 for dine_in), outside total as in Order; pay_order charges netSubtotal + tax + deliveryFee plus the tip given. Null without an order, or for a delivery the caller cannot read (a waiter)."
           },
           "hints": {
             "type": "array",
@@ -12944,6 +13134,10 @@
           "grossSubtotal",
           "totalDiscounts",
           "netSubtotal",
+          "tax",
+          "tip",
+          "total",
+          "deliveryFee",
           "hints"
         ]
       },
@@ -12960,7 +13154,7 @@
           },
           "combos": {
             "maxItems": 20,
-            "description": "Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.",
+            "description": "Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top of the combo price. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ComboLineRequest"
@@ -13201,9 +13395,10 @@
             "type": "string",
             "enum": [
               "dine_in",
-              "delivery"
+              "delivery",
+              "takeaway"
             ],
-            "description": "delivery: a Domicilio (cancelled from Domicilios, F3b)."
+            "description": "delivery: a Domicilio (cancelled from Domicilios, F3b); takeaway: a Para llevar order (S8)."
           },
           "paymentId": {
             "type": "string",
@@ -14018,7 +14213,7 @@
             "type": "number",
             "nullable": true,
             "minimum": 0,
-            "description": "Cash handed over; required for cash, null for electronic."
+            "description": "Cash handed over; required for cash, null for electronic. On a line whose method kind is cash, less than amount is 422 `tenders.N: El efectivo recibido no puede ser menor que el valor de la línea`; on an electronic line pay_order refuses any value (422 P0001)."
           },
           "reference": {
             "type": "string",
@@ -14364,16 +14559,20 @@
             "format": "uuid"
           },
           "subtotal": {
-            "type": "number"
+            "type": "number",
+            "description": "Net base after the discounts recomputed on this side (Order.subtotal)."
           },
           "tax": {
-            "type": "number"
+            "type": "number",
+            "description": "Tax on subtotal."
           },
           "tip": {
-            "type": "number"
+            "type": "number",
+            "description": "Suggested tip on subtotal (tipPercentage)."
           },
           "total": {
-            "type": "number"
+            "type": "number",
+            "description": "subtotal + tax + tip."
           }
         },
         "required": [
@@ -14389,13 +14588,24 @@
         "properties": {
           "childOrderId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "The new partial child order (parentOrderId = :id)."
           },
           "parent": {
-            "$ref": "#/components/schemas/OrderBillSummary"
+            "description": "The bill of :id after the recompute.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderBillSummary"
+              }
+            ]
           },
           "child": {
-            "$ref": "#/components/schemas/OrderBillSummary"
+            "description": "The bill of the child after the recompute.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderBillSummary"
+              }
+            ]
           }
         },
         "required": [
@@ -14408,7 +14618,12 @@
         "type": "object",
         "properties": {
           "parent": {
-            "$ref": "#/components/schemas/OrderBillSummary"
+            "description": "The bill of the parent after the lines came back and the recompute.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderBillSummary"
+              }
+            ]
           }
         },
         "required": [
@@ -18881,7 +19096,7 @@
           "table": {
             "type": "number",
             "nullable": true,
-            "description": "Null or absent for delivery orders; the order's table wins."
+            "description": "Null or absent for delivery orders; the order's table wins; dropped for a takeaway order (the payload carries takeaway instead)."
           },
           "delivery": {
             "type": "object",
@@ -18945,7 +19160,7 @@
           "payload": {
             "type": "object",
             "additionalProperties": true,
-            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
+            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, takeaway? {customerName, label \"PARA LLEVAR · <nombre>\"} (instead of table), station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
           },
           "createdAt": {
             "type": "string",
@@ -19385,10 +19600,18 @@
           },
           "items": {
             "maxItems": 500,
-            "description": "1..100 lines validated by create_delivery_order.",
+            "description": "1..100 lines together with the combo choices validated by create_delivery_order; may be empty when combos are sent.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CreateDeliveryItem"
+            }
+          },
+          "combos": {
+            "maxItems": 20,
+            "description": "Combos live now for the delivery channel. Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComboLineRequest"
             }
           },
           "deliveryFee": {

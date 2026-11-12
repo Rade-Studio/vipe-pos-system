@@ -156,6 +156,35 @@ describe("deriveCashierViews (S1: one list → every view the screen renders)", 
   })
 })
 
+describe("takeaway (S8): its own bucket, never a table", () => {
+  const takeaway = (over: Partial<Order> = {}) => order({ id: "o-take", orderType: "takeaway", tableId: "", customerName: "Ana", ...over })
+
+  it("lists open takeaway orders apart from the tables and the partials", () => {
+    const views = deriveCashierViews([order({ id: "o-dine" }), takeaway(), takeaway({ id: "o-take-part", isPartialOrder: true })])
+    expect(views.takeaway.map((o) => o.id)).toEqual(["o-take"])
+    expect(Object.values(views.byTable).flat().map((o) => o.id)).toEqual(["o-dine"])
+    expect(views.partial.map((o) => o.id)).toEqual(["o-take-part"])
+  })
+
+  it("drops a paid takeaway order from the bucket", () => {
+    expect(deriveCashierViews([takeaway({ status: "paid" as never })]).takeaway).toEqual([])
+  })
+
+  it("a realtime INSERT and UPDATE keep the takeaway type and the customer", () => {
+    const inserted = applyCashierOrderEvent([], {
+      eventType: "INSERT",
+      new: row({ id: "o-take", table_id: null, order_type: "takeaway", customer_name: "Ana", order_items: items } as never),
+    })
+    expect(inserted[0]).toMatchObject({ orderType: "takeaway", customerName: "Ana", tableId: "" })
+    const updated = applyCashierOrderEvent(inserted, {
+      eventType: "UPDATE",
+      new: { id: "o-take", status: "kitchen", table_id: null, order_type: "takeaway", customer_name: "Ana" } as never,
+    })
+    expect(updated[0]).toMatchObject({ orderType: "takeaway", customerName: "Ana", status: "kitchen" })
+    expect(deriveCashierViews(updated).takeaway.map((o) => o.id)).toEqual(["o-take"])
+  })
+})
+
 describe("status-move semantics (a realtime UPDATE moves the order between views)", () => {
   const list = [order({ id: "o-1" })]
 

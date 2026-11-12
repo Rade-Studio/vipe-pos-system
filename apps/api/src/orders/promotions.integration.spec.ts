@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { Clock } from '../common/clock';
 import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
 import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabase } from '../testing/test-database';
@@ -16,7 +16,9 @@ const ids = {
   bandeja: 'd3000000-0000-0000-0000-000000000004',
   jugo: 'd3000000-0000-0000-0000-000000000005',
   crema: 'd3000000-0000-0000-0000-000000000006',
-  tables: Array.from({ length: 20 }, (_, i) => `f3000000-0000-0000-0000-0000000000${String(i + 10)}`),
+  adicion: 'e3000000-0000-0000-0000-000000000001',
+  huevo: 'e3000000-0000-0000-0000-000000000002',
+  tables: Array.from({ length: 40 }, (_, i) => `f3000000-0000-0000-0000-0000000000${String(i + 10)}`),
 } as const;
 const PINS: Record<string, string> = { [fixtures.adminA.profileId]: '9157', [fixtures.bcryptUser.profileId]: '582046' };
 
@@ -53,8 +55,8 @@ describe('promotions in orders (Testcontainers, vipe_api)', () => {
       'SELECT kind, label, amount::int::text AS amount, order_item_id, combo_id FROM order_discounts WHERE order_id = $1 ORDER BY kind, amount',
       [orderId],
     );
-  const authorize = async (supervisor: string, orderId: string, caller = waiter()) => {
-    const res = await caller.post('/api/auth/authorize', { pin: PINS[supervisor], action: 'void_item', profileId: supervisor, targetType: 'order', targetId: orderId });
+  const authorize = async (supervisor: string, orderId: string, caller = waiter(), action = 'void_item') => {
+    const res = await caller.post('/api/auth/authorize', { pin: PINS[supervisor], action, profileId: supervisor, targetType: 'order', targetId: orderId });
     expect(res.status).toBe(201);
     return res.body.authorizationId as string;
   };
@@ -157,8 +159,15 @@ describe('promotions in orders (Testcontainers, vipe_api)', () => {
         schedule: { activeNow: true, reason: 'active', endsAt: '19:00', nextStartToday: null },
         sentence: 'Lleva 2 cócteles y paga 1; sale gratis el más económico.',
         badge: '2x1',
-        stats: { usesLast30Days: 0, discountLast30Days: 0 },
       });
+      // Whatever the other tests sent: the stats are the stored 2x1 discounts of live orders and lines.
+      const [stats] = await db<{ uses: number; amount: number }>(
+        `SELECT count(DISTINCT od.order_id)::int AS uses, coalesce(sum(od.amount), 0)::int AS amount
+           FROM order_discounts od JOIN orders o ON o.id = od.order_id LEFT JOIN order_items oi ON oi.id = od.order_item_id
+          WHERE od.promotion_id = $1 AND o.status <> 'cancelled' AND (od.order_item_id IS NULL OR oi.status IS DISTINCT FROM 'cancelled')`,
+        [promo.hh],
+      );
+      expect(hh.stats).toEqual({ usesLast30Days: stats.uses, discountLast30Days: stats.amount });
       // startDate YYYY-MM-DD is local midnight (Bogotá = 05:00Z).
       expect(hh.startDate).toBe('2026-01-01T05:00:00.000Z');
       const menu = res.body.find((p: { id: string }) => p.id === promo.menu);
@@ -205,6 +214,9 @@ describe('promotions in orders (Testcontainers, vipe_api)', () => {
 
     it('validates a PATCH merged and keeps the row when rejected; the legacy form still works', async () => {
       const legacy = await createPromotion({ name: 'Legacy', discountType: 'fixed_amount', discountValue: 1500, endDate: '2026-12-31T23:59:59.000Z' });
+      onTestFinished(async () => {
+        await admin().patch(`/api/catalog/promotions/${legacy.id}`, { active: false });
+      });
       expect(legacy).toMatchObject({ kind: 'product_discount', mode: 'automatic', badge: '-$1.500', endDate: '2026-12-31T23:59:59.000Z' });
       const bad = await admin().patch(`/api/catalog/promotions/${legacy.id}`, { kind: 'buy_x_pay_y' });
       expect([bad.status, bad.body.code]).toEqual([422, 'buy_quantity_invalid']);
@@ -219,6 +231,11 @@ describe('promotions in orders (Testcontainers, vipe_api)', () => {
   describe('GET /catalog/promotions/today', () => {
     it('groups by now, later today and the others for a channel', async () => {
       const monday = await createPromotion({ name: 'Lunes', discountType: 'percentage', discountValue: 5, daysOfWeek: [1] });
+      const paused = await createPromotion({ name: 'Pausada', discountType: 'percentage', discountValue: 5 });
+      onTestFinished(async () => {
+        await admin().patch(`/api/catalog/promotions/${monday.id}`, { active: false });
+      });
+      expect((await admin().patch(`/api/catalog/promotions/${paused.id}`, { active: false })).status).toBe(200);
       at('16:00');
       const before = await waiter().get('/api/catalog/promotions/today');
       expect(before.status).toBe(200);
@@ -228,7 +245,9 @@ describe('promotions in orders (Testcontainers, vipe_api)', () => {
       ]);
       at('18:00');
       const now = await waiter().get('/api/catalog/promotions/today?channel=dine_in');
-      const active = now.body.active.map((x: { promotion: { id: string }; endsAt: string | null; minutesLeft: number | null; badge: string }) => [x.promotion.id, x.endsAt, x.minutesLeft, x.badge]);
+      // Only the promotions seeded in beforeAll: another test's promotion never changes this list.
+      const seeded = new Set(Object.values(promo));
+      const active = now.body.active.filter((x: { promotion: { id: string } }) => seeded.has(x.promotion.id)).map((x: { promotion: { id: string }; endsAt: string | null; minutesLeft: number | null; badge: string }) => [x.promotion.id, x.endsAt, x.minutesLeft, x.badge]);
       expect(active).toEqual([
         [promo.hh, '19:00', 60, '2x1'],
         [promo.menu, null, null, 'Combo'],
@@ -237,11 +256,10 @@ describe('promotions in orders (Testcontainers, vipe_api)', () => {
       expect(others.get(promo.dom)).toBe('other_channel');
       expect(others.get(monday.id)).toBe('other_day');
       // Paused promotions are not offered.
-      expect(JSON.stringify(now.body)).not.toContain('"Legacy"');
+      expect(JSON.stringify(now.body)).not.toContain(paused.id);
       const delivery = await waiter().get('/api/catalog/promotions/today?channel=delivery');
       expect(delivery.body.active.map((x: { promotion: { id: string } }) => x.promotion.id)).toContain(promo.dom);
       expect((await waiter().get('/api/catalog/promotions/today?channel=moon')).status).toBe(422);
-      await admin().patch(`/api/catalog/promotions/${monday.id}`, { active: false });
     });
   });
 
@@ -279,6 +297,13 @@ describe('promotions in orders (Testcontainers, vipe_api)', () => {
       ]);
       expect(res.body.discounts).toHaveLength(1);
       expect(itemOf(res.body, ids.margarita).discounts).toEqual([]);
+      // The mapper's grossSubtotal (subtotal + total_discounts) equals the lines at list price, and totalDiscounts the order_discounts rows.
+      const [stored] = await db<{ gross: number; discounts: number }>(
+        `SELECT (SELECT sum(price * quantity)::int FROM order_items WHERE order_id = $1) AS gross,
+                (SELECT sum(amount)::int FROM order_discounts WHERE order_id = $1) AS discounts`,
+        [res.body.id],
+      );
+      expect({ grossSubtotal: res.body.grossSubtotal, totalDiscounts: res.body.totalDiscounts }).toEqual({ grossSubtotal: stored.gross, totalDiscounts: stored.discounts });
     });
 
     it('fixes the promotion at send: later items get none and pausing changes nothing sent', async () => {
@@ -373,6 +398,79 @@ describe('promotions in orders (Testcontainers, vipe_api)', () => {
         { status: 'cancelled' },
       ]);
     });
+
+    it('charges the options of a component on top of the combo price', async () => {
+      const withEgg = withGroups(combo());
+      const choices = withEgg.choices.map((choice) => (choice.dishId === ids.bandeja ? { ...choice, modifiers: [{ optionId: ids.huevo }] } : choice));
+      const res = await send({ combos: [{ ...withEgg, choices }] });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      expect(itemOf(res.body, ids.bandeja)).toMatchObject({ price: 20000, modifiers: [expect.objectContaining({ name: 'Huevo', price: 3000 })] });
+      // Combo discount = 9.000 + 17.000 + 7.000 (list prices without options) − 24.000; the egg is paid on top.
+      expect(res.body).toMatchObject({ grossSubtotal: 36000, totalDiscounts: 9000, subtotal: 27000 });
+      expect(res.body.discounts).toEqual([expect.objectContaining({ kind: 'combo', amount: 9000 })]);
+      // A recompute (another line added later) keeps the same rule.
+      const more = await waiter().post(`/api/orders/${res.body.id}/items`, { items: [line(ids.jugo, 1, 7000)] });
+      expect(more.body).toMatchObject({ grossSubtotal: 43000, totalDiscounts: 9000, subtotal: 34000 });
+    });
+
+    it('adds a combo to an open order with POST /orders/:id/items', async () => {
+      const first = await send({ items: [line(ids.margarita, 1, 26000)] });
+      expect(first.status).toBe(201);
+      const res = await waiter().post(`/api/orders/${first.body.id}/items`, { combos: [withGroups(combo(ids.crema))] });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      expect(res.body.items.map((item: { name: string; promotionId: string | null }) => [item.name, item.promotionId])).toEqual([
+        ['Margarita', promo.hh],
+        ['Crema', promo.menu],
+        ['Bandeja', promo.menu],
+        ['Jugo', promo.menu],
+      ]);
+      const comboIds = new Set(res.body.items.filter((item: { comboId: string | null }) => item.comboId).map((item: { comboId: string }) => item.comboId));
+      expect(comboIds.size).toBe(1);
+      expect(res.body).toMatchObject({ status: 'kitchen', grossSubtotal: 59000, totalDiscounts: 9000, subtotal: 50000 });
+      expect(res.body.discounts).toEqual([expect.objectContaining({ kind: 'combo', amount: 9000, comboId: [...comboIds][0] })]);
+    });
+
+    it('answers 422 with a Spanish message when an order brings no lines', async () => {
+      const empty = await send({});
+      expect(empty.status).toBe(422);
+      expect([empty.body.message].flat()).toEqual(['Agrega al menos un producto o un combo (máximo 100 líneas)']);
+      const order = await send({ items: [line(ids.jugo, 1, 7000)] });
+      const add = await waiter().post(`/api/orders/${order.body.id}/items`, { items: [], combos: [] });
+      expect(add.status).toBe(422);
+      expect([add.body.message].flat()).toEqual(['Agrega al menos un producto o un combo (máximo 100 líneas)']);
+    });
+
+    it('previews a combo line: one draft line per choice and the combo discount on the first', async () => {
+      const res = await waiter().post('/api/orders/pricing-preview', { channel: 'dine_in', lines: [line(ids.mojito, 1), withGroups(combo())] });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(
+        res.body.lines.map((l: { name: string; draftIndex: number; comboId: string | null; unitPrice: number; discounts: { kind: string; amount: number }[] }) => [
+          l.name,
+          l.draftIndex,
+          l.comboId,
+          l.unitPrice,
+          l.discounts.map((d) => [d.kind, d.amount]),
+        ]),
+      ).toEqual([
+        ['Mojito', 0, null, 24000, []],
+        ['Sopa', 1, 'draft-combo-0', 9000, [['combo', 9000]]],
+        ['Bandeja', 1, 'draft-combo-0', 17000, []],
+        ['Jugo', 1, 'draft-combo-0', 7000, []],
+      ]);
+      expect(res.body).toMatchObject({ grossSubtotal: 57000, totalDiscounts: 9000, netSubtotal: 48000 });
+    });
+
+    it('caps the preview at 20 combo lines and 6 choices per combo', async () => {
+      const tooMany = await waiter().post('/api/orders/pricing-preview', { channel: 'dine_in', lines: Array.from({ length: 21 }, () => withGroups(combo())) });
+      expect(tooMany.status).toBe(422);
+      expect([tooMany.body.message].flat()).toEqual(['lines: Máximo 20 combos por consulta']);
+      const twenty = await waiter().post('/api/orders/pricing-preview', { channel: 'dine_in', lines: Array.from({ length: 20 }, () => withGroups(combo())) });
+      expect(twenty.status, JSON.stringify(twenty.body)).toBe(200);
+      expect(twenty.body.lines).toHaveLength(60);
+      const sevenChoices = withGroups(combo());
+      const wide = { ...sevenChoices, choices: [...sevenChoices.choices, ...sevenChoices.choices, sevenChoices.choices[0]] };
+      expect((await waiter().post('/api/orders/pricing-preview', { channel: 'dine_in', lines: [wide] })).status).toBe(422);
+    });
   });
 
   describe('delivery bill discount', () => {
@@ -448,6 +546,171 @@ describe('promotions in orders (Testcontainers, vipe_api)', () => {
       const combo = await waiter().post('/api/orders/pricing-preview', { channel: 'delivery', lines: [{ comboPromotionId: promo.menu, choices: [] }] });
       expect(combo.status).toBe(422);
     });
+
+    it("uses the order's own channel when orderId is given (the body channel is ignored)", async () => {
+      const delivery = await admin().post('/api/delivery/orders', {
+        customer: { phone: '3007654321', name: 'Beto' },
+        address: { addressLine: 'Calle 2', neighborhood: null, reference: null, label: null, save: false },
+        items: [{ dishId: ids.margarita, quantity: 4 }],
+        deliveryFee: 5000,
+        paymentMode: 'cash_on_delivery',
+        cashChangeFor: null,
+        notes: null,
+      });
+      expect(delivery.status, JSON.stringify(delivery.body)).toBe(201);
+      const res = await admin().post('/api/orders/pricing-preview', { channel: 'dine_in', orderId: delivery.body.orderId, lines: [line(ids.mojito, 1)] });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      // Delivery: the 2x1 (dine_in only) is not offered on the Mojito, the 10% delivery bill discount applies.
+      expect(res.body).toMatchObject({ channel: 'delivery', grossSubtotal: 128000, billDiscount: { kind: 'promotion_bill', promotionId: promo.dom, amount: 12800 } });
+      expect(res.body.lines.find((l: { sent: boolean }) => !l.sent)).toMatchObject({ name: 'Mojito', promotionId: null, discounts: [] });
+      // total is Order.total (no fee); the fee comes apart, as pay_order adds it.
+      expect(res.body).toMatchObject({ netSubtotal: 115200, deliveryFee: 5000 });
+      expect(res.body.total).toBe(res.body.netSubtotal + res.body.tax + res.body.tip);
+      const stored = await admin().post('/api/orders/pricing-preview', { channel: 'dine_in', orderId: delivery.body.orderId, lines: [] });
+      const order = await admin().get(`/api/orders/${delivery.body.orderId}`);
+      expect([stored.body.netSubtotal, stored.body.tax, stored.body.tip, stored.body.total]).toEqual([order.body.subtotal, order.body.tax, order.body.tip, order.body.total]);
+      // A waiter cannot read order_deliveries (RLS): the fee is unknown, not 0.
+      const asWaiter = await waiter().post('/api/orders/pricing-preview', { channel: 'dine_in', orderId: delivery.body.orderId, lines: [] });
+      expect(asWaiter.body).toMatchObject({ channel: 'delivery', deliveryFee: null, total: stored.body.total });
+      const plain = await waiter().post('/api/orders/pricing-preview', { channel: 'dine_in', lines: [line(ids.mojito, 1)] });
+      expect(plain.body.lines[0]).toMatchObject({ promotionId: promo.hh });
+      expect(plain.body).toMatchObject({ tax: null, tip: null, total: null, deliveryFee: null });
+    });
+
+    it('rejects unknown fields on draft lines and on combo choices with 422', async () => {
+      const preview = (lines: object[]) => waiter().post('/api/orders/pricing-preview', { channel: 'dine_in', lines });
+      expect((await preview([{ ...line(ids.mojito, 1), unitPrice: 1 }])).status).toBe(422);
+      expect((await preview([{ ...line(ids.mojito, 1), comments: 'sin hielo' }])).status).toBe(422);
+      expect((await preview([{ ...line(ids.mojito, 1), extra: true }])).status).toBe(422);
+      expect((await preview([{ comboPromotionId: promo.menu, choices: [{ groupId: ids.sopa, dishId: ids.sopa }], extra: true }])).status).toBe(422);
+      expect((await preview([line(ids.mojito, 1)])).status).toBe(200);
+    });
+  });
+
+  describe('POST /orders/pricing-preview with voids (S1)', () => {
+    const preview = (orderId: string | undefined, voids: { orderItemId: string; quantity: number }[], lines: object[] = []) =>
+      waiter().post('/api/orders/pricing-preview', { channel: 'dine_in', ...(orderId ? { orderId } : {}), lines, voids });
+    type Bill = { grossSubtotal: number; totalDiscounts: number; subtotal: number; tax: number; tip: number; total: number };
+    type PreviewBody = { grossSubtotal: number; totalDiscounts: number; netSubtotal: number; tax: number; tip: number; total: number };
+    const previewBill = (body: PreviewBody): Bill => ({
+      grossSubtotal: body.grossSubtotal,
+      totalDiscounts: body.totalDiscounts,
+      subtotal: body.netSubtotal,
+      tax: body.tax,
+      tip: body.tip,
+      total: body.total,
+    });
+    const orderBill = (body: Bill): Bill => ({
+      grossSubtotal: body.grossSubtotal,
+      totalDiscounts: body.totalDiscounts,
+      subtotal: body.subtotal,
+      tax: body.tax,
+      tip: body.tip,
+      total: body.total,
+    });
+    const previewLines = (body: { lines: { orderItemId: string; quantity: number; discounts: { kind: string; amount: number }[] }[] }) =>
+      body.lines.map((l) => [l.orderItemId, l.quantity, l.discounts.map((d) => [d.kind, d.amount])]);
+    const orderLines = (body: { items: { id: string; quantity: number; discounts: { kind: string; amount: number }[] }[] }) =>
+      body.items.map((item) => [item.id, item.quantity, item.discounts.map((d) => [d.kind, d.amount])]);
+    let menu: object;
+
+    beforeAll(async () => {
+      const groups = (await admin().get('/api/catalog/promotions')).body.find((p: { id: string }) => p.id === promo.menu).comboGroups.map((g: { id: string }) => g.id);
+      menu = { comboPromotionId: promo.menu, choices: [ids.sopa, ids.bandeja, ids.jugo].map((dishId, i) => ({ groupId: groups[i], dishId })) };
+    });
+    const snapshot = async (orderId: string) => ({
+      items: await db('SELECT id, quantity, status FROM order_items WHERE order_id = $1 ORDER BY id', [orderId]),
+      discounts: await db('SELECT id, kind, amount::int AS amount, line_quantity FROM order_discounts WHERE order_id = $1 ORDER BY id', [orderId]),
+      bill: await db('SELECT subtotal::int, total_discounts::int, tax::int, tip::int, total::int FROM orders WHERE id = $1', [orderId]),
+    });
+
+    it('2 Mojitos + Margarita, void 1 Mojito: the preview equals the order after the real void, and writes nothing', async () => {
+      const order = await send({ items: [line(ids.mojito, 2, 24000), line(ids.margarita, 1, 26000)] });
+      expect(order.status).toBe(201);
+      const mojito = itemOf(order.body, ids.mojito).id;
+      const before = await snapshot(order.body.id);
+      const res = await preview(order.body.id, [{ orderItemId: mojito, quantity: 1 }]);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body).toMatchObject({ grossSubtotal: 50000, totalDiscounts: 24000, netSubtotal: 26000 });
+      expect(res.body.total).toBe(res.body.netSubtotal + res.body.tax + res.body.tip);
+      expect(res.body.deliveryFee).toBe(0);
+      expect(await snapshot(order.body.id)).toEqual(before);
+
+      const voided = await voidItems(order.body.id, [{ itemId: mojito, quantity: 1 }]);
+      expect(voided.status, JSON.stringify(voided.body)).toBe(200);
+      expect(previewBill(res.body)).toEqual(orderBill(voided.body));
+      expect(previewLines(res.body)).toEqual(orderLines(voided.body));
+    });
+
+    it('voiding a combo component previews the whole combo voided, like the void endpoint', async () => {
+      const order = await send({ items: [line(ids.margarita, 1, 26000)], combos: [menu] });
+      expect(order.status, JSON.stringify(order.body)).toBe(201);
+      const res = await preview(order.body.id, [{ orderItemId: itemOf(order.body, ids.jugo).id, quantity: 1 }]);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body.lines.map((l: { name: string }) => l.name)).toEqual(['Margarita']);
+      expect(res.body).toMatchObject({ grossSubtotal: 26000, totalDiscounts: 0, netSubtotal: 26000 });
+      const voided = await voidItems(order.body.id, [{ itemId: itemOf(order.body, ids.jugo).id, quantity: 1 }]);
+      expect(previewBill(res.body)).toEqual(orderBill(voided.body));
+      expect(previewLines(res.body)).toEqual(orderLines(voided.body));
+    });
+
+    it('rescales a manual line discount to the units left, as the recompute does', async () => {
+      const order = await send({ items: [line(ids.bandeja, 2, 17000), line(ids.jugo, 1, 7000)] });
+      const bandeja = itemOf(order.body, ids.bandeja).id;
+      const authorizationId = await authorize(fixtures.bcryptUser.profileId, order.body.id, admin(), 'apply_discount');
+      const discount = await admin().post(`/api/orders/${order.body.id}/discounts`, {
+        orderItemId: bandeja,
+        discountType: 'fixed_amount',
+        discountValue: 10000,
+        reason: 'Demora en cocina',
+        authorizationId,
+      });
+      expect(discount.status, JSON.stringify(discount.body)).toBe(201);
+      const res = await preview(order.body.id, [{ orderItemId: bandeja, quantity: 1 }]);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body.lines.find((l: { orderItemId: string }) => l.orderItemId === bandeja)).toMatchObject({
+        quantity: 1,
+        discounts: [expect.objectContaining({ kind: 'manual_item', amount: 5000 })],
+      });
+      expect(res.body).toMatchObject({ grossSubtotal: 24000, totalDiscounts: 5000, netSubtotal: 19000 });
+      const voided = await voidItems(order.body.id, [{ itemId: bandeja, quantity: 1 }]);
+      expect(previewBill(res.body)).toEqual(orderBill(voided.body));
+      expect(previewLines(res.body)).toEqual(orderLines(voided.body));
+    });
+
+    it('prices drafts together with the voids', async () => {
+      const order = await send({ items: [line(ids.mojito, 2, 24000)] });
+      const res = await preview(order.body.id, [{ orderItemId: itemOf(order.body, ids.mojito).id, quantity: 1 }], [line(ids.margarita, 1)]);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      // One Mojito left plus a draft Margarita: the 2x1 pairs them again.
+      expect(res.body).toMatchObject({ grossSubtotal: 50000, totalDiscounts: 24000, netSubtotal: 26000 });
+    });
+
+    it('answers 422 with a machine code for an invalid void and writes nothing', async () => {
+      const order = await send({ items: [line(ids.mojito, 2, 24000)] });
+      const other = await send({ items: [line(ids.jugo, 1, 7000)] });
+      const mojito = itemOf(order.body, ids.mojito).id;
+      const before = await snapshot(order.body.id);
+      const cases: [string | undefined, { orderItemId: string; quantity: number }[], string][] = [
+        [undefined, [{ orderItemId: mojito, quantity: 1 }], 'void_order_required'],
+        [order.body.id, [{ orderItemId: itemOf(other.body, ids.jugo).id, quantity: 1 }], 'void_item_unknown'],
+        [order.body.id, [{ orderItemId: 'd3000000-0000-0000-0000-0000000000ff', quantity: 1 }], 'void_item_unknown'],
+        [order.body.id, [{ orderItemId: mojito, quantity: 3 }], 'void_quantity_invalid'],
+      ];
+      for (const [orderId, voids, code] of cases) {
+        const res = await preview(orderId, voids);
+        expect([res.status, res.body.code], code).toEqual([422, code]);
+      }
+      expect((await preview(order.body.id, [{ orderItemId: mojito, quantity: 0 }])).status).toBe(422);
+      expect((await preview(order.body.id, [{ orderItemId: mojito, quantity: 1 }, { orderItemId: mojito, quantity: 1 }])).status).toBe(422);
+      expect((await preview(order.body.id, [{ orderItemId: mojito, quantity: 1, extra: 1 } as never])).status).toBe(422);
+      // A fully voided line can no longer be voided.
+      expect((await voidItems(order.body.id, [{ itemId: mojito, quantity: 2 }])).status).toBe(200);
+      const gone = await preview(order.body.id, [{ orderItemId: mojito, quantity: 1 }]);
+      expect([gone.status, gone.body.code]).toEqual([422, 'void_item_unknown']);
+      expect((await snapshot(order.body.id)).discounts).toEqual([]);
+      expect(before.items).toHaveLength(1);
+    });
   });
 });
 
@@ -464,4 +727,8 @@ async function seed(superuserUrl: string) {
   for (const [index, id] of ids.tables.entries()) {
     await q(`INSERT INTO tables (id, number, status, restaurant_id) VALUES ($1, $2, 'available', $3)`, [id, 300 + index, A]);
   }
+  // An optional priced option of the Bandeja (S3: options of a combo component are charged on top).
+  await q(`INSERT INTO modifier_groups (id, name, required, min_select, max_select, sort_order, is_active, restaurant_id) VALUES ($1, 'Adición', false, 0, 1, 0, true, $2)`, [ids.adicion, A]);
+  await q(`INSERT INTO modifier_options (id, group_id, name, price, sort_order, is_active, restaurant_id) VALUES ($1, $2, 'Huevo', 3000, 0, true, $3)`, [ids.huevo, ids.adicion, A]);
+  await q(`INSERT INTO dish_modifier_groups (dish_id, group_id, sort_order, restaurant_id) VALUES ($1, $2, 0, $3)`, [ids.bandeja, ids.adicion, A]);
 }

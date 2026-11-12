@@ -22,9 +22,11 @@
  */
 
 import { lineKey, type LineModifier } from '@/lib/modifiers/rules'
+import type { CartCombo, PreviewDraft } from '@/lib/promotions/waiter'
 import { normalizePhone } from './phone'
 import type {
   CreateDeliveryAddressInput,
+  CreateDeliveryComboInput,
   CreateDeliveryCustomerInput,
   CreateDeliveryItemInput,
   CreateDeliveryOrderInput,
@@ -62,7 +64,14 @@ export interface CartLine {
   comments: string | null
   /** F7: the chosen options; `unitPrice` already includes them. Absent on a plain line. */
   modifiers?: LineModifier[]
+  /**
+   * S7: a combo from the builder; `unitPrice` is its list price (Σ choices),
+   * `dishId` is empty and each unit is sent as one entry of `combos`.
+   */
+  combo?: CartCombo
 }
+
+const isCombo = (line: CartLine): line is CartLine & { combo: CartCombo } => line.combo != null
 
 /** The address half of the draft. */
 export type AddressChoice =
@@ -119,6 +128,8 @@ export type OrderDraftAction =
         modifiers?: LineModifier[]
       }
     }
+  /** S7: a combo is always its own line (quantity 1), never merged. */
+  | { type: 'addCombo'; name: string; combo: CartCombo }
   /** Deshacer of an add: takes `quantity` back from the same dish + comments line. */
   // quantityAfterAdd: the line's quantity right after that add; a stale undo
   // (the line was removed, edited or added to since) does nothing.
@@ -202,7 +213,7 @@ export const draftLineKey = (line: Pick<CartLine, 'dishId' | 'comments' | 'modif
  */
 function mergeCartLine(lines: CartLine[], incoming: Omit<CartLine, 'id'>): CartLine[] {
   const key = draftLineKey(incoming)
-  const idx = lines.findIndex((l) => draftLineKey(l) === key)
+  const idx = lines.findIndex((l) => !isCombo(l) && draftLineKey(l) === key)
   if (idx !== -1) {
     const next = lines.slice()
     next[idx] = { ...next[idx]!, quantity: next[idx]!.quantity + incoming.quantity }
@@ -272,9 +283,18 @@ export function orderDraftReducer(state: OrderDraft, action: OrderDraftAction): 
         }),
       }
 
+    case 'addCombo':
+      return {
+        ...state,
+        cartLines: [
+          ...state.cartLines,
+          { id: newLineId(), dishId: '', name: action.name, unitPrice: action.combo.listPrice, quantity: 1, comments: null, combo: action.combo },
+        ],
+      }
+
     case 'undoAdd': {
       const key = lineKey(action.dishId, action.optionIds ?? [], action.comments)
-      const idx = state.cartLines.findIndex((l) => draftLineKey(l) === key)
+      const idx = state.cartLines.findIndex((l) => !isCombo(l) && draftLineKey(l) === key)
       if (idx === -1) return state
       const line = state.cartLines[idx]!
       if (line.quantity !== action.quantityAfterAdd) return state
@@ -380,7 +400,7 @@ export interface DraftValidationIssue {
  *     courier can carry back; below this, the courier would have to
  *     hand back negative change)
  */
-export function validateDraft(draft: OrderDraft, taxPct = 8): DraftValidationIssue[] {
+export function validateDraft(draft: OrderDraft, taxPct = 8, pricing?: DraftPricing | null): DraftValidationIssue[] {
   const issues: DraftValidationIssue[] = []
 
   // phone
@@ -423,7 +443,7 @@ export function validateDraft(draft: OrderDraft, taxPct = 8): DraftValidationIss
 
   // cashChangeFor >= total when set
   if (draft.cashChangeFor !== null) {
-    const totals = draftTotals(draft, taxPct)
+    const totals = draftTotals(draft, taxPct, pricing)
     if (draft.cashChangeFor < totals.total) {
       issues.push({
         field: 'cashChangeFor',
@@ -463,22 +483,31 @@ function normalizeDraftPhone(draft: OrderDraft): string | null {
 // -----------------------------------------------------------
 
 export interface DraftTotals {
+  /** List prices, before promotions. */
   subtotal: number
+  /** Promotion discounts of the pricing preview; 0 without one. */
+  discounts: number
   tax: number
   fee: number
   total: number
 }
 
 /**
- * Display estimate. subtotal = Σ(unitPrice * quantity). tax =
- * round(subtotal * taxPct / 100) — no cents. fee is added as-is
+ * Display estimate. subtotal = Σ(unitPrice * quantity). With the
+ * pricing preview (S7) the promotions come off first: discounts =
+ * subtotal − netSubtotal. tax = round(net * taxPct / 100) — no cents. fee is added as-is
  * (no tax, no tip on the fee, matching `pay_order` amount_due).
  *
  * The server is still authoritative on `create_delivery_order`
  * (it resolves prices from the menu, not the form); the dialog
  * shows this number only as "preview / operator expectation".
  */
-export function draftTotals(draft: OrderDraft, taxPct: number): DraftTotals {
+/** S7: the server's pricing of the draft (`POST /orders/pricing-preview`, channel delivery). */
+export interface DraftPricing {
+  netSubtotal: number
+}
+
+export function draftTotals(draft: OrderDraft, taxPct: number, pricing?: DraftPricing | null): DraftTotals {
   if (!Number.isFinite(taxPct) || taxPct < 0) {
     throw new RangeError(`draftTotals: taxPct must be a non-negative finite number; received: ${taxPct}`)
   }
@@ -486,9 +515,44 @@ export function draftTotals(draft: OrderDraft, taxPct: number): DraftTotals {
     (sum, line) => sum + line.unitPrice * line.quantity,
     0,
   )
-  const tax = Math.round(subtotal * (taxPct / 100))
+  // With a preview the tax is on the net, as the server stores it. Without
+  // one a combo still takes off its own saving (Σ list − combo price).
+  const comboSavings = draft.cartLines.reduce(
+    (sum, line) => sum + (isCombo(line) ? Math.max(0, line.combo.listPrice - line.combo.comboPrice) * line.quantity : 0),
+    0,
+  )
+  const net = pricing ? Math.min(pricing.netSubtotal, subtotal) : subtotal - comboSavings
+  const tax = Math.round(net * (taxPct / 100))
   const fee = draft.fee
-  return { subtotal, tax, fee, total: subtotal + tax + fee }
+  return { subtotal, discounts: subtotal - net, tax, fee, total: net + tax + fee }
+}
+
+/** One `combos` entry per unit of a combo line. */
+const comboInputs = (line: CartLine & { combo: CartCombo }): CreateDeliveryComboInput[] =>
+  Array.from({ length: line.quantity }, () => ({
+    comboPromotionId: line.combo.promotionId,
+    choices: line.combo.choices.map(({ groupId, dishId }) => ({ groupId, dishId })),
+  }))
+
+/** S7: the cart lines as pricing-preview lines, in cart order; a combo is one combo line per unit (as the waiter's). */
+export function previewDraftLines(lines: readonly CartLine[]): PreviewDraft {
+  const draft: PreviewDraft = { lines: [], lineIds: [] }
+  for (const line of lines) {
+    if (isCombo(line)) {
+      for (const combo of comboInputs(line)) {
+        draft.lines.push(combo)
+        draft.lineIds.push(line.id)
+      }
+      continue
+    }
+    draft.lines.push({
+      dishId: line.dishId,
+      quantity: line.quantity,
+      ...(line.modifiers?.length ? { modifiers: line.modifiers.map(({ optionId }) => ({ optionId })) } : {}),
+    })
+    draft.lineIds.push(line.id)
+  }
+  return draft
 }
 
 // -----------------------------------------------------------
@@ -529,7 +593,7 @@ export function toCreateInput(draft: OrderDraft): CreateDeliveryOrderInput {
     address = { addressLine: '' }
   }
 
-  const items: CreateDeliveryItemInput[] = draft.cartLines.map((line) => {
+  const items: CreateDeliveryItemInput[] = draft.cartLines.filter((line) => !isCombo(line)).map((line) => {
     const out: CreateDeliveryItemInput = {
       dishId: line.dishId,
       quantity: line.quantity,
@@ -541,6 +605,8 @@ export function toCreateInput(draft: OrderDraft): CreateDeliveryOrderInput {
     return out
   })
 
+  const combos = draft.cartLines.flatMap((line) => (isCombo(line) ? comboInputs(line) : []))
+
   const notes =
     draft.notes !== null && draft.notes.trim().length > 0 ? draft.notes.trim() : null
 
@@ -548,6 +614,8 @@ export function toCreateInput(draft: OrderDraft): CreateDeliveryOrderInput {
     customer,
     address,
     items,
+    // S7: only with combos, so a body without them stays as it was.
+    ...(combos.length ? { combos } : {}),
     deliveryFee: draft.fee,
     paymentMode: draft.paymentMode,
     cashChangeFor: draft.cashChangeFor,
