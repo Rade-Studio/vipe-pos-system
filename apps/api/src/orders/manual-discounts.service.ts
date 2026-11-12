@@ -79,7 +79,7 @@ export class ManualDiscountsService {
   }
 
   /** Removes a manual discount with the authorization rule stored when it was added, then recomputes. */
-  async remove(orderId: string, discountId: string, authorizationId: string | undefined, callerProfileId: string): Promise<Order> {
+  async remove(orderId: string, discountId: string, authorizationId: string | undefined, _callerProfileId: string): Promise<Order> {
     await this.openOrder(orderId);
     const [row] = await this.rows<{ source: string; requires_authorization: boolean }>(sql`
       SELECT source, requires_authorization FROM public.order_discounts WHERE id = ${discountId} AND order_id = ${orderId}`);
