@@ -246,6 +246,13 @@
       "when": 1793918081411,
       "tag": "0036_public_carta",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793921681411,
+      "tag": "0037_carta_table_orders",
+      "breakpoints": true
     }
   ]
 }

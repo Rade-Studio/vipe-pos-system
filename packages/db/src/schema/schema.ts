@@ -2731,3 +2731,120 @@ export const tableQrTokens = pgTable("table_qr_tokens", {
 	pgPolicy("table_qr_tokens_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
 	check("table_qr_tokens_token_check", sql`token ~ '^[A-Za-z0-9_-]{24}$'::text`),
 ]);
+
+/** A guest's order from the table QR (0036), pending until staff confirm or reject it. vipe_api only reads; private.guest_submit_proposal and the staff functions write. */
+export const cartaTableProposals = pgTable("carta_table_proposals", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	tableId: uuid("table_id").notNull(),
+	orderId: uuid("order_id").notNull(),
+	guestKey: text("guest_key").notNull(),
+	items: jsonb().notNull(),
+	note: text(),
+	status: text().default('pending').notNull(),
+	rejectReason: text("reject_reason"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	decidedAt: timestamp("decided_at", { withTimezone: true, mode: 'string' }),
+	decidedBy: uuid("decided_by"),
+	orderItemIds: uuid("order_item_ids").array(),
+}, (table) => [
+	index("idx_carta_table_proposals_pending").using("btree", table.tableId.asc().nullsLast().op("uuid_ops"), table.orderId.asc().nullsLast().op("uuid_ops")).where(sql`(status = 'pending'::text)`),
+	index("idx_carta_table_proposals_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
+	index("idx_carta_table_proposals_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "carta_table_proposals_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.tableId],
+			foreignColumns: [tables.restaurantId, tables.id],
+			name: "carta_table_proposals_table_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.orderId],
+			foreignColumns: [orders.restaurantId, orders.id],
+			name: "carta_table_proposals_order_id_fkey"
+		}).onDelete("cascade"),
+	// ON DELETE SET NULL (decided_by) in SQL: drizzle cannot express the column list.
+	foreignKey({
+			columns: [table.restaurantId, table.decidedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "carta_table_proposals_decided_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("carta_table_proposals_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	check("carta_table_proposals_guest_key_check", sql`guest_key ~ '^[A-Za-z0-9_-]{16,64}$'::text`),
+	check("carta_table_proposals_items_check", sql`(jsonb_typeof(items) = 'array'::text) AND ((jsonb_array_length(items) >= 1) AND (jsonb_array_length(items) <= 20))`),
+	check("carta_table_proposals_note_check", sql`(note IS NULL) OR (length(note) <= 200)`),
+	check("carta_table_proposals_status_check", sql`status = ANY (ARRAY['pending'::text, 'confirmed'::text, 'rejected'::text])`),
+	check("carta_table_proposals_decided_check", sql`(status = 'pending'::text) = (decided_at IS NULL)`),
+	check("carta_table_proposals_reject_reason_check", sql`(reject_reason IS NULL) OR ((status = 'rejected'::text) AND (length(reject_reason) <= 140))`),
+	check("carta_table_proposals_order_item_ids_check", sql`(order_item_ids IS NULL) OR ((status = 'confirmed'::text) AND ((cardinality(order_item_ids) >= 1) AND (cardinality(order_item_ids) <= 60)))`),
+]);
+
+/** A guest asks for the bill or calls the waiter (0036) for the table's open order; one unresolved row per order and kind. vipe_api only reads. */
+export const cartaTableRequests = pgTable("carta_table_requests", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	tableId: uuid("table_id").notNull(),
+	orderId: uuid("order_id").notNull(),
+	kind: text().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: 'string' }),
+	resolvedBy: uuid("resolved_by"),
+}, (table) => [
+	index("idx_carta_table_requests_table_id").using("btree", table.tableId.asc().nullsLast().op("uuid_ops")),
+	uniqueIndex("carta_table_requests_open_key").using("btree", table.orderId.asc().nullsLast().op("uuid_ops"), table.kind.asc().nullsLast().op("text_ops")).where(sql`(resolved_at IS NULL)`),
+	index("idx_carta_table_requests_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "carta_table_requests_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.tableId],
+			foreignColumns: [tables.restaurantId, tables.id],
+			name: "carta_table_requests_table_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.restaurantId, table.orderId],
+			foreignColumns: [orders.restaurantId, orders.id],
+			name: "carta_table_requests_order_id_fkey"
+		}).onDelete("cascade"),
+	// ON DELETE SET NULL (resolved_by) in SQL.
+	foreignKey({
+			columns: [table.restaurantId, table.resolvedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "carta_table_requests_resolved_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("carta_table_requests_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: TENANT }),
+	check("carta_table_requests_kind_check", sql`kind = ANY (ARRAY['bill'::text, 'waiter'::text])`),
+	check("carta_table_requests_resolved_check", sql`(resolved_by IS NULL) OR (resolved_at IS NOT NULL)`),
+]);
+
+/** Stars and optional private comment a guest leaves (0036). Admin reads; only private.guest_feedback writes. */
+export const cartaFeedback = pgTable("carta_feedback", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	tableId: uuid("table_id"),
+	rating: smallint().notNull(),
+	comment: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_carta_feedback_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("idx_carta_feedback_table_id").using("btree", table.tableId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")).where(sql`(table_id IS NOT NULL)`),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "carta_feedback_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	// ON DELETE SET NULL (table_id) in SQL.
+	foreignKey({
+			columns: [table.restaurantId, table.tableId],
+			foreignColumns: [tables.restaurantId, tables.id],
+			name: "carta_feedback_table_id_fkey"
+		}).onDelete("set null"),
+	pgPolicy("carta_feedback_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: ADMIN_TENANT }),
+	check("carta_feedback_rating_check", sql`(rating >= 1) AND (rating <= 5)`),
+	check("carta_feedback_comment_check", sql`(comment IS NULL) OR (length(comment) <= 500)`),
+]);
