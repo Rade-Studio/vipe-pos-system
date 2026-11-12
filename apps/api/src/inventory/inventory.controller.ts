@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import {
   ApiBody,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiExtraModels,
@@ -22,6 +23,9 @@ import {
   adjustStockSchema,
   ApplyCountResult,
   batchListQuerySchema,
+  BulkProduceInput,
+  BulkProduceResult,
+  bulkProduceSchema,
   CheckStockRequest,
   checkStockSchema,
   ConsumeOrderRequest,
@@ -65,6 +69,11 @@ import {
   ProducePreparationResult,
   producePreparationSchema,
   ProductionBatch,
+  ProductionTemplate,
+  ProductionTemplateInput,
+  createProductionTemplateSchema,
+  updateProductionTemplateSchema,
+  UpdateProductionTemplateRequest,
   PurchaseOrder,
   purchaseOrderListQuerySchema,
   PurchaseOrderStatusRequest,
@@ -93,6 +102,7 @@ import {
   updateSupplierSchema,
 } from './inventory.dto';
 import { ItemsService } from './items.service';
+import { ProductionTemplatesService } from './production-templates.service';
 import { PurchasesService } from './purchases.service';
 import { SalesService } from './sales.service';
 import { StockService } from './stock.service';
@@ -463,6 +473,53 @@ export class CountsController {
 
 @ApiTags('inventory')
 @ApiCookieAuth()
+@ApiUnprocessableEntityResponse({ description: 'Invalid input, unknown fields or an unknown preparation in lines.' })
+@Controller('inventory/production-templates')
+export class ProductionTemplatesController {
+  constructor(private readonly templates: ProductionTemplatesService) {}
+
+  @Get()
+  @Roles(ADMIN)
+  @ApiOkResponse({ type: [ProductionTemplate], description: 'By name.' })
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  list(): Promise<ProductionTemplate[]> {
+    return this.templates.list();
+  }
+
+  @Post()
+  @Roles(ADMIN)
+  @ApiBody({ type: ProductionTemplateInput })
+  @ApiCreatedResponse({ type: ProductionTemplate })
+  @ApiConflictResponse({ description: 'A template with that name already exists.' })
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  create(@Body() body: unknown): Promise<ProductionTemplate> {
+    return this.templates.create(parseInput(createProductionTemplateSchema, body));
+  }
+
+  @Patch(':id')
+  @Roles(ADMIN)
+  @ApiBody({ type: UpdateProductionTemplateRequest })
+  @ApiOkResponse({ type: ProductionTemplate })
+  @ApiNotFoundResponse()
+  @ApiConflictResponse({ description: 'A template with that name already exists.' })
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  update(@Param('id') templateId: string, @Body() body: unknown): Promise<ProductionTemplate> {
+    return this.templates.update(id(templateId), parseInput(updateProductionTemplateSchema, body));
+  }
+
+  @Delete(':id')
+  @Roles(ADMIN)
+  @HttpCode(204)
+  @ApiNoContentResponse()
+  @ApiNotFoundResponse()
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  remove(@Param('id') templateId: string): Promise<void> {
+    return this.templates.remove(id(templateId));
+  }
+}
+
+@ApiTags('inventory')
+@ApiCookieAuth()
 @ApiExtraModels(Formula)
 @ApiUnprocessableEntityResponse({ description: `Invalid input or unknown fields. ${RPC_ERRORS}` })
 @Controller('inventory/formulas')
@@ -498,7 +555,9 @@ export class InventoryController {
   @Get('batches')
   @ApiQuery({ name: 'itemId', required: false })
   @ApiQuery({ name: 'limit', required: false, description: 'Default 100, at most 500.' })
-  @ApiOkResponse({ type: [ProductionBatch], description: `Newest first. ${READS}` })
+  @ApiQuery({ name: 'from', required: false, description: 'YYYY-MM-DD, inclusive, on producedOn.' })
+  @ApiQuery({ name: 'to', required: false, description: 'YYYY-MM-DD, inclusive, on producedOn; from..to spans at most 366 days.' })
+  @ApiOkResponse({ type: [ProductionBatch], description: `Newest producedOn first, then newest registered. ${READS}` })
   batches(@Query() query: unknown): Promise<ProductionBatch[]> {
     return this.stock.listBatches(parseInput(batchListQuerySchema, query));
   }
@@ -511,6 +570,20 @@ export class InventoryController {
   @ApiForbiddenResponse({ description: 'Not admin.' })
   produce(@Body() body: unknown): Promise<ProducePreparationResult> {
     return this.stock.produce(parseInput(producePreparationSchema, body));
+  }
+
+  @Post('production/bulk')
+  @Roles(ADMIN)
+  @HttpCode(200)
+  @ApiBody({ type: BulkProduceInput })
+  @ApiOkResponse({
+    type: BulkProduceResult,
+    description:
+      'produce_preparations: every line in one transaction, all or nothing. A shortage of the combined demand answers 422 P0001 with `details` = [{item_id, name, ingredients:[{ingredient_id, name, unit, required, available, missing}]}].',
+  })
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  produceMany(@Body() body: unknown): Promise<BulkProduceResult> {
+    return this.stock.produceMany(parseInput(bulkProduceSchema, body));
   }
 
   @Get('overview')

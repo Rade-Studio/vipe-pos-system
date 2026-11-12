@@ -27,14 +27,17 @@ vi.mock("@/lib/api/client", () => ({ api }))
 import {
   adjustStock,
   createItem,
+  createProductionTemplate,
   createPurchaseOrder,
   createSupplier,
   openCount,
   producePreparation,
+  producePreparations,
   receivePurchaseOrder,
   saveFormula,
   setCountedQuantity,
   transferStock,
+  updateProductionTemplate,
   updatePurchaseOrder,
 } from "./index"
 import type { InventoryItem, PurchaseOrder } from "./types"
@@ -100,6 +103,20 @@ describe("bodies the API accepts", () => {
   it("receive lines with the payment status", async () => {
     await receivePurchaseOrder("po", [{ lineId: LINE, quantity: 3, unitCost: 21000, lotCode: "Q-1", expiresOn: "2026-11-30" }, { lineId: LINE, quantity: 1 }], "paid")
     accepts("receivePurchaseOrderSchema", sent("POST"))
+  })
+
+  it("daily production and templates", async () => {
+    await producePreparation({ itemId: ITEM, quantity: 1, producedOn: "2026-11-10", producedBy: LOT })
+    accepts("producePreparationSchema", sent("POST"))
+    await producePreparations({
+      lines: [{ itemId: ITEM, quantity: 2 }, { itemId: ITEM2, quantity: 0.5, lotCode: null }],
+      locationId: LOC, producedOn: "2026-11-10", producedBy: LOT, notes: null,
+    })
+    accepts("bulkProduceSchema", sent("POST"))
+    await createProductionTemplate({ name: "Lunes", lines: [{ itemId: ITEM, quantity: 2 }] })
+    accepts("createProductionTemplateSchema", sent("POST"))
+    await updateProductionTemplate("t", { lines: [{ itemId: ITEM2, quantity: 1 }] })
+    accepts("updateProductionTemplateSchema", sent("PATCH"))
   })
 
   it("adjust, transfer and produce", async () => {

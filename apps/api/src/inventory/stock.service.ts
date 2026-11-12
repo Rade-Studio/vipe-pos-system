@@ -6,6 +6,8 @@ import {
   type AdjustStockResult,
   type adjustStockSchema,
   type batchListQuerySchema,
+  type BulkProduceResult,
+  type bulkProduceSchema,
   DEFAULT_MOVEMENTS_PAGE_SIZE,
   type Lot,
   type movementListQuerySchema,
@@ -17,7 +19,7 @@ import {
   type transferStockSchema,
 } from './inventory.dto';
 import { rows, rpc } from './inventory-sql';
-import { toAdjustResult, toBatch, toLot, toMovement, toProduceResult, toTransferResult } from './inventory.mappers';
+import { toAdjustResult, toBatch, toBulkProduceResult, toLot, toMovement, toProduceResult, toTransferResult } from './inventory.mappers';
 
 type Json = Record<string, unknown>;
 
@@ -27,7 +29,8 @@ const isDate = (value: string) => !value.includes('T');
 
 /**
  * Stock reads (lots, movement ledger, production batches) and the RPCs that
- * move stock: inventory_adjust, inventory_transfer, produce_preparation. RPC
+ * move stock: inventory_adjust, inventory_transfer, produce_preparation_on,
+ * produce_preparations. RPC
  * arguments are the ones lib/supabase/inventory sent, optionals as NULL.
  */
 @Injectable()
@@ -113,18 +116,29 @@ export class StockService {
     );
   }
 
-  /** Newest first, at most `limit` (default 100), optionally for one preparation. */
+  /**
+   * Newest business date first (then registration time), at most `limit`
+   * (default 100), optionally for one preparation and an inclusive
+   * produced_on range.
+   */
   async listBatches(query: z.infer<typeof batchListQuerySchema>): Promise<ProductionBatch[]> {
-    const filter = query.itemId ? sql`WHERE b.ingredient_id = ${query.itemId}` : sql``;
+    const where: SQL[] = [];
+    if (query.itemId) where.push(sql`b.ingredient_id = ${query.itemId}`);
+    if (query.from) where.push(sql`b.produced_on >= ${query.from}::date`);
+    if (query.to) where.push(sql`b.produced_on <= ${query.to}::date`);
+    const filter = where.length ? sql`WHERE ${sql.join(where, sql` AND `)}` : sql``;
     const result = await rows<{ batch: Json }>(this.uow, sql`
       SELECT to_jsonb(b) || jsonb_build_object('item_name', i.name, 'unit', i.unit, 'location_name', loc.name,
-                                               'lot_code', lot.lot_code) AS batch
+                                               'lot_code', lot.lot_code, 'produced_by_name', pb.full_name,
+                                               'created_by_name', cb.full_name) AS batch
         FROM public.production_batches b
         LEFT JOIN public.ingredients i ON i.id = b.ingredient_id
         LEFT JOIN public.inventory_locations loc ON loc.id = b.location_id
         LEFT JOIN public.inventory_lots lot ON lot.id = b.lot_id
+        LEFT JOIN public.profiles pb ON pb.id = b.produced_by
+        LEFT JOIN public.profiles cb ON cb.id = b.created_by
         ${filter}
-       ORDER BY b.created_at DESC, b.id
+       ORDER BY b.produced_on DESC, b.created_at DESC, b.id
        LIMIT ${query.limit ?? 100}`);
     return result.map((row) => toBatch(row.batch));
   }
@@ -133,11 +147,27 @@ export class StockService {
   async produce(input: z.infer<typeof producePreparationSchema>): Promise<ProducePreparationResult> {
     return toProduceResult(
       await rpc(this.uow, sql`
-        SELECT public.produce_preparation(
+        SELECT public.produce_preparation_on(
           p_ingredient_id => ${input.itemId}::uuid,
           p_quantity => ${input.quantity}::numeric,
           p_location_id => ${input.locationId ?? null}::uuid,
           p_lot_code => ${input.lotCode ?? null}::text,
+          p_notes => ${input.notes ?? null}::text,
+          p_produced_on => ${input.producedOn ?? null}::date,
+          p_produced_by => ${input.producedBy ?? null}::uuid) AS result`),
+    );
+  }
+
+  /** All lines or none; a shortage rejects with P0001 whose `details` lists every short line. */
+  async produceMany(input: z.infer<typeof bulkProduceSchema>): Promise<BulkProduceResult> {
+    const lines = input.lines.map((line) => ({ item_id: line.itemId, quantity: line.quantity, lot_code: line.lotCode ?? null }));
+    return toBulkProduceResult(
+      await rpc(this.uow, sql`
+        SELECT public.produce_preparations(
+          p_lines => ${JSON.stringify(lines)}::jsonb,
+          p_location_id => ${input.locationId ?? null}::uuid,
+          p_produced_on => ${input.producedOn ?? null}::date,
+          p_produced_by => ${input.producedBy ?? null}::uuid,
           p_notes => ${input.notes ?? null}::text) AS result`),
     );
   }

@@ -176,6 +176,13 @@
       "when": 1793878481411,
       "tag": "0024_repair_table_status",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793882081411,
+      "tag": "0025_production_daily",
+      "breakpoints": true
     }
   ]
 }

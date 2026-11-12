@@ -4,6 +4,7 @@ import type {
   AdjustMovementType,
   AdjustStockResult,
   ApplyCountResult,
+  BulkProduceResult,
   ConsumeOrderStockResult,
   CountLine,
   CountStatus,
@@ -21,11 +22,13 @@ import type {
   PaymentStatus,
   ProducePreparationResult,
   ProductionBatch,
+  ProductionTemplate,
   PurchaseOrder,
   PurchaseOrderLine,
   PurchaseOrderStatus,
   ReceivePurchaseResult,
   SaveFormulaResult,
+  StaffRef,
   Supplier,
   TransferStockResult,
 } from './inventory.dto';
@@ -191,7 +194,14 @@ export const toReceiveResult = (row: Json): ReceivePurchaseResult => ({
   totalCost: req(row, 'total_cost'),
 });
 
-/** `to_jsonb(production_batches) || {item_name, unit, location_name, lot_code}`. */
+/** `{id, name}` of a joined profile, null when the profile is gone. */
+const staff = (id: unknown, name: unknown): StaffRef | null =>
+  id === null || id === undefined ? null : { id: String(id), name: text(name) ?? '' };
+
+/**
+ * `to_jsonb(production_batches) || {item_name, unit, location_name, lot_code,
+ * produced_by_name, created_by_name}`.
+ */
 export const toBatch = (row: Json): ProductionBatch => ({
   id: String(row.id),
   itemId: String(row.ingredient_id),
@@ -206,6 +216,9 @@ export const toBatch = (row: Json): ProductionBatch => ({
   totalCost: req(row, 'total_cost'),
   expiresOn: text(row.expires_on),
   notes: text(row.notes),
+  producedOn: String(row.produced_on),
+  producedBy: staff(row.produced_by, row.produced_by_name),
+  createdBy: staff(row.created_by, row.created_by_name),
   createdAt: time(row.created_at)!,
 });
 
@@ -225,6 +238,21 @@ export const toProduceResult = (row: Json): ProducePreparationResult => ({
     quantity: req(c, 'quantity'),
     totalCost: req(c, 'total_cost'),
   })),
+});
+
+/** produce_preparations: `{batches: [produce result], total_cost}`. */
+export const toBulkProduceResult = (row: Json): BulkProduceResult => ({
+  batches: list(row.batches).map(toProduceResult),
+  totalCost: req(row, 'total_cost'),
+});
+
+/** `to_jsonb(production_templates)`; lines are stored as `[{item_id, quantity}]`. */
+export const toTemplate = (row: Json): ProductionTemplate => ({
+  id: String(row.id),
+  name: String(row.name),
+  lines: list(row.lines).map((line) => ({ itemId: String(line.item_id), quantity: req(line, 'quantity') })),
+  createdAt: time(row.created_at)!,
+  updatedAt: time(row.updated_at)!,
 });
 
 /** `to_jsonb(inventory_counts) || {location_name}`. */

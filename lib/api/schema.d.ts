@@ -1492,6 +1492,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/inventory/production/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["InventoryController_produceMany"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inventory/overview": {
         parameters: {
             query?: never;
@@ -1554,6 +1570,38 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/production-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ProductionTemplatesController_list"];
+        put?: never;
+        post: operations["ProductionTemplatesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inventory/production-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["ProductionTemplatesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["ProductionTemplatesController_update"];
         trace?: never;
     };
     "/api/print/invoices": {
@@ -4281,6 +4329,15 @@ export interface components {
             /** Format: date */
             expiresOn: string | null;
             notes: string | null;
+            /**
+             * Format: date
+             * @description Business date of the production.
+             */
+            producedOn: string;
+            /** @description Responsible staff member; null once the profile is deleted. */
+            producedBy: components["schemas"]["StaffRef"] | null;
+            /** @description Who registered it. */
+            createdBy: components["schemas"]["StaffRef"] | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -4296,6 +4353,16 @@ export interface components {
             /** @description Omitted = PB-YYYYMMDD-HH24MISS. */
             lotCode?: string | null;
             notes?: string | null;
+            /**
+             * Format: date
+             * @description Business date (YYYY-MM-DD): today (default, restaurant timezone) or up to 7 days back. Drives expiresOn and the lot code.
+             */
+            producedOn?: string | null;
+            /**
+             * Format: uuid
+             * @description Active staff profile; omitted = the caller.
+             */
+            producedBy?: string | null;
         };
         ConsumedInput: {
             /** Format: uuid */
@@ -4320,6 +4387,42 @@ export interface components {
             /** Format: date */
             expiresOn: string | null;
             consumed: components["schemas"]["ConsumedInput"][];
+        };
+        BulkProduceLineInput: {
+            /**
+             * Format: uuid
+             * @description Unique within the request.
+             */
+            itemId: string;
+            /** @description Greater than 0. */
+            quantity: number;
+            /** @description Omitted = PB-<producedOn YYYYMMDD>-HH24MISS. */
+            lotCode?: string | null;
+        };
+        BulkProduceInput: {
+            /** @description 1..100 lines. */
+            lines: components["schemas"]["BulkProduceLineInput"][];
+            /**
+             * Format: uuid
+             * @description Omitted = the default location.
+             */
+            locationId?: string | null;
+            /**
+             * Format: date
+             * @description Today (default) or up to 7 days back.
+             */
+            producedOn?: string | null;
+            /**
+             * Format: uuid
+             * @description Active staff profile; omitted = the caller.
+             */
+            producedBy?: string | null;
+            notes?: string | null;
+        };
+        BulkProduceResult: {
+            /** @description One per line, in request order. */
+            batches: components["schemas"]["ProducePreparationResult"][];
+            totalCost: number;
         };
         OverviewKpis: {
             totalValue: number;
@@ -4408,6 +4511,31 @@ export interface components {
         };
         DishAvailabilityRequest: {
             dishIds: string[];
+        };
+        ProductionTemplateLine: {
+            /** Format: uuid */
+            itemId: string;
+            quantity: number;
+        };
+        ProductionTemplate: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            lines: components["schemas"]["ProductionTemplateLine"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ProductionTemplateInput: {
+            /** @description Trimmed, 1..80, unique per restaurant ignoring case (409). */
+            name: string;
+            /** @description 1..100 active preparations of the restaurant (422 otherwise), unique itemId. */
+            lines: components["schemas"]["ProductionTemplateLine"][];
+        };
+        UpdateProductionTemplateRequest: {
+            name?: string;
+            lines?: components["schemas"]["ProductionTemplateLine"][];
         };
         InvoicePrintRequest: {
             /** @description PrintableInvoice (types/index.ts); invoiceNumber is required. */
@@ -9979,6 +10107,10 @@ export interface operations {
     InventoryController_batches: {
         parameters: {
             query?: {
+                /** @description YYYY-MM-DD, inclusive, on producedOn; from..to spans at most 366 days. */
+                to?: unknown;
+                /** @description YYYY-MM-DD, inclusive, on producedOn. */
+                from?: unknown;
                 /** @description Default 100, at most 500. */
                 limit?: unknown;
                 itemId?: unknown;
@@ -9989,7 +10121,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Newest first. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
+            /** @description Newest producedOn first, then newest registered. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read []. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10027,6 +10159,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProducePreparationResult"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_produceMany: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkProduceInput"];
+            };
+        };
+        responses: {
+            /** @description produce_preparations: every line in one transaction, all or nothing. A shortage of the combined demand answers 422 P0001 with `details` = [{item_id, name, ingredients:[{ingredient_id, name, unit, required, available, missing}]}]. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkProduceResult"];
                 };
             };
             /** @description Not admin. */
@@ -10183,6 +10353,175 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductionTemplatesController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description By name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionTemplate"][];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or an unknown preparation in lines. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductionTemplatesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductionTemplateInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionTemplate"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A template with that name already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or an unknown preparation in lines. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductionTemplatesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or an unknown preparation in lines. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductionTemplatesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProductionTemplateRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionTemplate"];
+                };
+            };
+            /** @description Not admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A template with that name already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields or an unknown preparation in lines. */
             422: {
                 headers: {
                     [name: string]: unknown;
