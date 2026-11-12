@@ -21,6 +21,9 @@ export const inventoryKeys = {
   transfers: () => ['inventory', 'transfers'] as const,
   counts: () => ['inventory', 'counts'] as const,
   count: (id: string) => ['inventory', 'counts', id] as const,
+  /** The caller's assigned counts (blind); not under counts() so admin writes do not refetch every terminal. */
+  myCounts: () => ['inventory', 'my-counts'] as const,
+  myCount: (id: string) => ['inventory', 'my-counts', id] as const,
   batches: () => ['inventory', 'batches'] as const,
   locations: () => ['inventory', 'locations'] as const,
   categories: () => ['inventory', 'categories'] as const,
