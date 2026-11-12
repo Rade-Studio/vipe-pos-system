@@ -5,5 +5,6 @@ import { RegistersService } from './registers.service';
 @Module({
   controllers: [RegistersController],
   providers: [RegistersService],
+  exports: [RegistersService],
 })
 export class RegistersModule {}

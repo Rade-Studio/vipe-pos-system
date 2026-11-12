@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CashModule } from './cash/cash.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { CommonModule } from './common/common.module';
@@ -41,6 +42,7 @@ import { ZonesModule } from './zones/zones.module';
     ZonesModule,
     PaymentsModule,
     RegistersModule,
+    CashModule,
     InventoryModule,
     PrintModule,
     DeliveryModule,

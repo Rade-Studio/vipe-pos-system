@@ -4069,6 +4069,48 @@
         ]
       }
     },
+    "/api/cash/days/{date}": {
+      "get": {
+        "operationId": "CashController_day",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Business day YYYY-MM-DD: registers opened that day in the restaurant timezone, moved back by businessDayCutoffHour.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Day summary (tablero): registers, totals, tips by waiter, voids and the same weekday last week.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashDay"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Invalid date."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "cash"
+        ]
+      }
+    },
     "/api/inventory/items": {
       "get": {
         "operationId": "InventoryItemsController_list",
@@ -13012,6 +13054,423 @@
           "amount",
           "type",
           "reason"
+        ]
+      },
+      "CashMethodTotal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "payment_methods.id."
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          },
+          "total": {
+            "type": "number",
+            "description": "Sum of the tenders (tips included), whole pesos."
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of tenders."
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "kind",
+          "total",
+          "count"
+        ]
+      },
+      "CashDayRegister": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed"
+            ]
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "openedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "closedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "validatedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "validatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "initialCash": {
+            "type": "number",
+            "description": "Fondo de caja."
+          },
+          "salesNet": {
+            "type": "number",
+            "description": "Ventas netas: amount due of the live payments, tips excluded."
+          },
+          "tickets": {
+            "type": "number",
+            "description": "Live payments (tiquetes)."
+          },
+          "tips": {
+            "type": "number"
+          },
+          "methods": {
+            "description": "Every payment method of the catalog, in its order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashMethodTotal"
+            }
+          },
+          "deposits": {
+            "type": "number"
+          },
+          "withdrawals": {
+            "type": "number"
+          },
+          "tipsPayout": {
+            "type": "number"
+          },
+          "expected": {
+            "type": "number",
+            "description": "Expected cash after the tips payout (expected_cash_after_tips)."
+          },
+          "countedCash": {
+            "type": "number",
+            "nullable": true
+          },
+          "cashDifference": {
+            "type": "number",
+            "nullable": true
+          },
+          "closeNote": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "openedAt",
+          "closedAt",
+          "openedBy",
+          "closedBy",
+          "validatedBy",
+          "validatedAt",
+          "initialCash",
+          "salesNet",
+          "tickets",
+          "tips",
+          "methods",
+          "deposits",
+          "withdrawals",
+          "tipsPayout",
+          "expected",
+          "countedCash",
+          "cashDifference",
+          "closeNote"
+        ]
+      },
+      "CashDeliveries": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Amount due of the delivery payments."
+          }
+        },
+        "required": [
+          "count",
+          "amount"
+        ]
+      },
+      "CashDayTotals": {
+        "type": "object",
+        "properties": {
+          "salesNet": {
+            "type": "number"
+          },
+          "tickets": {
+            "type": "number"
+          },
+          "avgTicket": {
+            "type": "number",
+            "description": "round(salesNet / tickets); 0 without tickets."
+          },
+          "tables": {
+            "type": "number",
+            "description": "Distinct tables of the paid dine-in orders."
+          },
+          "deliveries": {
+            "$ref": "#/components/schemas/CashDeliveries"
+          },
+          "tips": {
+            "type": "number"
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashMethodTotal"
+            }
+          },
+          "deposits": {
+            "type": "number"
+          },
+          "withdrawals": {
+            "type": "number"
+          },
+          "expected": {
+            "type": "number",
+            "description": "Sum of the registers expected cash after tips."
+          },
+          "counted": {
+            "type": "number",
+            "description": "Sum of the stored counts (registers without a count add 0)."
+          },
+          "difference": {
+            "type": "number",
+            "description": "Sum of cash_difference."
+          }
+        },
+        "required": [
+          "salesNet",
+          "tickets",
+          "avgTicket",
+          "tables",
+          "deliveries",
+          "tips",
+          "methods",
+          "deposits",
+          "withdrawals",
+          "expected",
+          "counted",
+          "difference"
+        ]
+      },
+      "CashWaiterTips": {
+        "type": "object",
+        "properties": {
+          "waiterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The order's waiter; null for orders without one."
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "waiterId",
+          "name",
+          "amount"
+        ]
+      },
+      "CashVoidItem": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "payment_void",
+              "order_cancellation",
+              "item_void"
+            ]
+          },
+          "orderNumber": {
+            "type": "number",
+            "nullable": true,
+            "description": "orders.order_number."
+          },
+          "table": {
+            "type": "string",
+            "nullable": true,
+            "description": "Table number as text, \"Domicilio\" for a delivery order, null without table."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Payment amount due, order total or voided line amount."
+          },
+          "reason": {
+            "type": "string",
+            "description": "reason_code of the audited event."
+          },
+          "reasonText": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedBy": {
+            "type": "string",
+            "description": "Who voided or cancelled (name snapshot)."
+          },
+          "authorizedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Supervisor who authorized (name snapshot)."
+          }
+        },
+        "required": [
+          "at",
+          "kind",
+          "orderNumber",
+          "table",
+          "amount",
+          "reason",
+          "reasonText",
+          "requestedBy",
+          "authorizedBy"
+        ]
+      },
+      "CashDayVoids": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "items": {
+            "description": "Oldest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashVoidItem"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "amount",
+          "items"
+        ]
+      },
+      "CashPreviousDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-11-03",
+            "description": "Same weekday of the week before."
+          },
+          "salesNet": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "salesNet"
+        ]
+      },
+      "CashDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-11-10",
+            "description": "Business day (S5)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "empty"
+            ],
+            "description": "open when a register of the day is open, empty without registers."
+          },
+          "registers": {
+            "description": "Oldest opening first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashDayRegister"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CashDayTotals"
+          },
+          "tipsByWaiter": {
+            "description": "Tips of the live payments by the order waiter, highest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashWaiterTips"
+            }
+          },
+          "voids": {
+            "$ref": "#/components/schemas/CashDayVoids"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/CashPreviousDay"
+          }
+        },
+        "required": [
+          "date",
+          "status",
+          "registers",
+          "totals",
+          "tipsByWaiter",
+          "voids",
+          "previous"
         ]
       },
       "InventoryItem": {
