@@ -988,7 +988,8 @@ BEGIN
   -- Table 11 just seated, table 12 reserved for later.
   UPDATE public.tables SET status = 'occupied', waiter_id = pg_temp.demo_profile('waiter', 3)
    WHERE restaurant_id = v_rid AND number = 11;
-  UPDATE public.tables SET status = 'reserved' WHERE restaurant_id = v_rid AND number = 12;
+  UPDATE public.tables SET status = 'reserved', reservation_name = 'Familia Gómez', reserved_at = now()
+   WHERE restaurant_id = v_rid AND number = 12;
 
   -- Deliveries in progress, one per stage.
   v_order := pg_temp.demo_delivery('received', now() - interval '3 minutes', v_register);
