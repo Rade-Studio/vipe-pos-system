@@ -1,8 +1,8 @@
-import { Controller, Get, Param } from '@nestjs/common';
-import { ApiCookieAuth, ApiForbiddenResponse, ApiOkResponse, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiCookieAuth, ApiForbiddenResponse, ApiOkResponse, ApiParam, ApiQuery, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 import { Roles } from '../auth/roles.decorator';
 import { parseInput } from '../common/validation';
-import { CashDay, CashLedger, dayParamSchema } from './cash.dto';
+import { CashDay, CashLedger, CashReport, dayParamSchema, MAX_REPORT_DAYS, REPORT_GROUPS, reportQuerySchema } from './cash.dto';
 import { CashService } from './cash.service';
 
 const DATE_DESCRIPTION = 'Business day YYYY-MM-DD: registers opened that day in the restaurant timezone, moved back by businessDayCutoffHour.';
@@ -29,5 +29,18 @@ export class CashController {
   @ApiUnprocessableEntityResponse({ description: 'Invalid date.' })
   ledger(@Param('date') date: string): Promise<CashLedger> {
     return this.cash.ledger(parseInput(dayParamSchema, date));
+  }
+
+  @Get('report')
+  @ApiQuery({ name: 'from', required: true, description: 'First business day, YYYY-MM-DD.' })
+  @ApiQuery({ name: 'to', required: true, description: 'Last business day, YYYY-MM-DD (included).' })
+  @ApiQuery({ name: 'group', required: true, enum: REPORT_GROUPS })
+  @ApiOkResponse({ type: CashReport, description: 'Period summary grouped by day, ISO week or month, with the previous period.' })
+  @ApiUnprocessableEntityResponse({
+    description: `Invalid query, or code range_inverted (from after to) or range_too_long (more than ${MAX_REPORT_DAYS} days).`,
+  })
+  report(@Query() query: unknown): Promise<CashReport> {
+    const { from, to, group } = parseInput(reportQuerySchema, query);
+    return this.cash.report(from, to, group);
   }
 }
