@@ -1,6 +1,6 @@
 # Promociones: mejoras posteriores a la entrega
 
-Follow-up of `odd/tasks/promociones.md` (delivered to dev in PR #176, 7180922). Closes the non-blocking review advisories and the known gaps listed at delivery. Branch `feat/promociones-mejoras` from dev (c07bac1), worktree `../vipe-pos-system-worktrees/promociones`. Product-dependent items ("Para llevar" channel, weekly promotion stats) wait for the user's decision and are not specified here yet.
+Follow-up of `odd/tasks/promociones.md` (delivered to dev in PR #176, 7180922). Closes the non-blocking review advisories and the known gaps listed at delivery. Branch `feat/promociones-mejoras` from dev (c07bac1), worktree `../vipe-pos-system-worktrees/promociones`. Includes the user's decisions L3–L5: a "Para llevar" order type, weekly promotion stats, and delivery parity.
 
 ## Specs
 
@@ -10,16 +10,28 @@ Follow-up of `odd/tasks/promociones.md` (delivered to dev in PR #176, 7180922). 
 - S4 (payments advisories, approved review of 5291806): the short-cash refine applies only to cash lines (a line is cash by its payment method kind, not by the presence of cashReceived), tested; split + recompute run in one transaction and a failing recompute rolls the split back (tested with a forced failure); the split response shape is documented and tested; the zero-tender happy path through the API is tested.
 - S5 (cashier advisories, approved review of 888faaf): DiscountSheet never submits silently (every path shows success or an error), its uncovered branches are tested; the invoice discount layout matches `renderKitchenOrder`/ESC/POS (same totals rows in the same order) and is tested; a failed order-discounts read shows an error with "Reintentar" instead of stale data; the payment panel re-seeds its amounts when the order's discounts change (tested); the zero-total close is decided from the server bill, never from a client draft (tested).
 - S6 (records): append the delivery entry to `odd/tasks/promociones.md` (PR #176 merged as 7180922, migration 0028, staging deploy run 43265205758 success).
+- S7 (delivery parity, L4): the new-delivery form (components/delivery/**, lib/delivery/**) uses the same pricing preview as the waiter with channel delivery: promotion tags on dishes, per-line discounts, combos, the bill discount ("10% en domicilios desde $80.000") and its hint ("Domicilio: faltan $X para el 10% de descuento."); the shown total and the "cambio que lleva el domiciliario" validation use the server net total (delivery fee included) when the preview is available.
+- S8 ("Para llevar", L3, L5): a new order type `takeaway` created from the cashier and from the waiter ("Para llevar" button), with the customer's name (required, 2–60 characters) and optional phone, no table and no courier; it is paid when ordered or when delivered, like a dine-in order. Kitchen and bar tickets show "PARA LLEVAR · <nombre>". Promotions get the channel "Para llevar" (`takeaway`) in the admin editor, the waiter/cashier strip and tags, and the pricing preview. Migration after caja's 0029_z_reports (next free number at that time).
+- S9 (weekly stats, L5): an API report gives, for the current week (Monday 00:00 to now, restaurant timezone, business-day cutoff as the cash day uses), the discount granted, its % of sales (paid orders' gross), the sales of paid orders that had at least one promotion discount, and their bill count; the admin header shows "Descuento otorgado · esta semana" with the %, and "Venta con promoción · esta semana" with the number of bills, as in design 02.
+- S10 (invoice layout, rest of S5): the on-screen invoice chooses its totals layout with the same rule as ESC/POS (new layout only when the payload carries grossSubtotal or discounts), tested.
 
 ## Tasks
 
 | ID | Specs | Route | Commit |
 | --- | --- | --- | --- |
 | M1 API: void-aware preview, orders and payments advisories | S1 (API), S3, S4 | worker | — |
-| M2 Web: void sheet preview, delivery invoice, cashier advisories | S1 (web), S2, S5 | worker | — |
-| M3 Records | S6 | inline | — |
+| M2 Web: void sheet preview, delivery invoice, cashier advisories | S1 (web), S2, S5 | worker | M2 commit (L6) |
+| M3 Records | S6 | inline | 55d4604 |
+| M4 Delivery form parity | S7 | worker | — |
+| M5 "Para llevar" order type | S8 | worker (after design check) | — |
+| M6 Weekly promotion stats | S9 | worker | — |
+| M7 Invoice layout rule | S10 | worker | — |
 
 ## Log
 
 - L1 (user): "y porque no haces esas mejoras pendientes?"
 - L2 (decision): the clear items start now; the "Para llevar" channel (needs a new order type) and weekly promotion stats (needs a reporting definition) wait for the user's answer. Tax on the discounted value stays with the user's accountant.
+- L3 (user): "Crear el tipo para llevar, me imagino que aplicaste todo lo de promociones para domicilios tambien"
+- L4 (evidence): delivery orders get promotions server-side (tagged at creation, recomputed, delivery bill discount) but the new-delivery form shows list totals without tags, discounts or combos, and validates the courier change against list totals; the delivery invoice gap is S2.
+- L5 (user): weekly stats "Sí: semana con % y venta"; "Para llevar": "Caja y mesero, con nombre".
+- L6 (evidence, M2): void sheet preview (`voids` in pricing-preview, debounced), delivery invoice discounts, DiscountSheet toasts and messages, order-discounts read error with Reintentar, re-seed on discount change, zero-total from the server bill; 72 files 778 passed 1 skipped; typecheck and lint clean. The invoice layout item moves to S10 (printing files outside M2's surfaces). The preview has no order total yet; the note shows the base until M1 adds `total`.
