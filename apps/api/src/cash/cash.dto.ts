@@ -144,9 +144,9 @@ export class CashDay {
 }
 
 export class CashTaxes {
-  @ApiProperty({ enum: TAX_TYPES, description: 'Configured taxType at the emit.' }) type!: TaxType;
-  @ApiProperty({ example: 'Impuesto nacional al consumo' }) name!: string;
-  @ApiProperty({ example: 'INC (8 %)', description: 'Printed label: type and taxPercentage.' }) label!: string;
+  @ApiPropertyOptional({ enum: TAX_TYPES, description: 'Configured taxType at the emit; absent on legacy Zs.' }) type?: TaxType;
+  @ApiPropertyOptional({ example: 'Impuesto nacional al consumo' }) name?: string;
+  @ApiPropertyOptional({ example: 'INC (8 %)', description: 'Printed label: type and taxPercentage.' }) label?: string;
   @ApiProperty({ example: 8, description: 'Configured taxPercentage at the emit.' }) rate!: number;
   @ApiProperty({ description: 'Base gravable: round(salesNet / (1 + rate / 100)); prices include the tax, tips never do.' }) base!: number;
   @ApiProperty({ description: 'salesNet - base.' }) tax!: number;

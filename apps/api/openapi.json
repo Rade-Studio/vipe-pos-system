@@ -15560,7 +15560,7 @@
               "INC",
               "IVA"
             ],
-            "description": "Configured taxType at the emit."
+            "description": "Configured taxType at the emit; absent on legacy Zs."
           },
           "name": {
             "type": "string",
@@ -15586,9 +15586,6 @@
           }
         },
         "required": [
-          "type",
-          "name",
-          "label",
           "rate",
           "base",
           "tax"

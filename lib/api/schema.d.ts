@@ -4719,17 +4719,17 @@ export interface components {
         };
         CashTaxes: {
             /**
-             * @description Configured taxType at the emit.
+             * @description Configured taxType at the emit; absent on legacy Zs.
              * @enum {string}
              */
-            type: "INC" | "IVA";
+            type?: "INC" | "IVA";
             /** @example Impuesto nacional al consumo */
-            name: string;
+            name?: string;
             /**
              * @description Printed label: type and taxPercentage.
              * @example INC (8 %)
              */
-            label: string;
+            label?: string;
             /**
              * @description Configured taxPercentage at the emit.
              * @example 8

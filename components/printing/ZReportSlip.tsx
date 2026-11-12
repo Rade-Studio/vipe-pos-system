@@ -81,7 +81,7 @@ export function zReportLines({ business, z, printedAt, paperMm = 80 }: ZReportSl
       : []),
     row("VENTAS NETAS", pesos(totals.salesNet), true),
     row("Base gravable", pesos(taxes.base)),
-    row(taxes.label, pesos(taxes.tax)),
+    row(taxes.label ?? `Impuesto (${taxes.rate} %)`, pesos(taxes.tax)),
     ...(snapshot.voids.count > 0
       ? [
           row(`Anulaciones (${snapshot.voids.count})`, pesos(snapshot.voids.amount)),
@@ -101,7 +101,7 @@ export function zReportLines({ business, z, printedAt, paperMm = 80 }: ZReportSl
     ...methods.map((method) => row(`${method.name} (${method.count})`, pesos(method.total))),
     ruleLine(width),
     ...wrapText("Propinas (no son ingreso del restaurante)", width).map((text) => ({ text, bold: true })),
-    ...wrapText(`No suman a ventas ni a ${taxes.type}.`, width).map((text) => ({ text })),
+    ...wrapText(taxes.type ? `No suman a ventas ni a ${taxes.type}.` : "No suman a ventas ni al impuesto.", width).map((text) => ({ text })),
     ...(totals.tips === 0
       ? [{ text: "Sin propinas." }]
       : [

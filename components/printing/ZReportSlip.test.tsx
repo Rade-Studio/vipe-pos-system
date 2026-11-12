@@ -137,6 +137,14 @@ describe("ZReportSlip", () => {
     expect(text.some((line) => /^INC/.test(line))).toBe(false)
   })
 
+  it("reprints a legacy Z whose taxes has only rate, base and tax", () => {
+    const legacy = { ...Z, snapshot: { ...Z.snapshot, taxes: { rate: 8, base: 5760278, tax: 460822 } } }
+    const text = zReportLines({ business, z: legacy, printedAt }).map((line) => line.text)
+    expect(text.some((line) => /^Impuesto \(8 %\)\s+\$ 460\.822$/.test(line))).toBe(true)
+    expect(text.join("\n")).toContain("ni al impuesto.")
+    expect(text.join("\n")).not.toContain("undefined")
+  })
+
   it("prints the tips in their own block, by method and by waiter, after sales and the tax", () => {
     const text = zReportLines({ business, z: Z, printedAt }).map((line) => line.text)
     const block = text.findIndex((line) => line === "Propinas (no son ingreso del restaurante)")
