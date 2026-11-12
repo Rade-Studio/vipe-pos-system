@@ -113,16 +113,18 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
   const registerIds = (body: { registers: { id: string }[] }) => body.registers.map((reg) => reg.id);
 
   describe('access', () => {
-    it('answers 401 without a session and 403 for cashier and waiter', async () => {
-      const url = '/api/cash/days/2026-11-10';
-      expect((await request(app.getHttpServer()).get(url)).status).toBe(401);
-      expect((await cashierA().get(url)).status).toBe(403);
-      expect((await waiterA().get(url)).status).toBe(403);
+    it('answers 401 without a session and 403 for cashier and waiter on every /cash route', async () => {
+      for (const url of ['/api/cash/days/2026-11-10', '/api/cash/days/2026-11-10/ledger']) {
+        expect((await request(app.getHttpServer()).get(url)).status).toBe(401);
+        expect((await cashierA().get(url)).status).toBe(403);
+        expect((await waiterA().get(url)).status).toBe(403);
+      }
     });
 
     it('validates the date', async () => {
       for (const date of ['2026-02-30', '10-11-2026', 'today']) {
         expect((await adminA().get(`/api/cash/days/${date}`)).status).toBe(422);
+        expect((await adminA().get(`/api/cash/days/${date}/ledger`)).status).toBe(422);
       }
     });
   });
@@ -223,6 +225,65 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
     });
   });
 
+  describe('GET /cash/days/:date/ledger', () => {
+    type Entry = { registerId: string | null; kind: string; at: string; cashDelta: number; cashBalance: number | null } & Record<string, unknown>;
+
+    it('lists the events in order with a running cash balance per register that ends at the expected cash before tips', async () => {
+      const res = await adminA().get('/api/cash/days/2026-11-10/ledger');
+      expect(res.status).toBe(200);
+      expect(res.body.date).toBe('2026-11-10');
+      const entries: Entry[] = res.body.entries;
+      expect(entries.map((e) => [e.registerId, e.kind, e.at, e.cashDelta, e.cashBalance])).toEqual([
+        [c.reg1, 'opening', '2026-11-10T12:58:00.000Z', 200000, 200000],
+        [c.reg1, 'cash_movement', '2026-11-10T14:00:00.000Z', 50000, 250000],
+        [c.reg1, 'cash_movement', '2026-11-10T15:00:00.000Z', -45000, 205000],
+        [c.reg1, 'payment', '2026-11-10T17:00:00.000Z', 55000, 260000],
+        [c.reg1, 'payment', '2026-11-10T18:00:00.000Z', 0, 260000],
+        [c.reg1, 'payment', '2026-11-10T19:00:00.000Z', 20000, 280000],
+        [c.reg1, 'payment_void', '2026-11-10T19:30:00.000Z', -20000, 260000],
+        [c.reg1, 'close', '2026-11-10T20:12:00.000Z', 0, 260000],
+        [c.reg2, 'opening', '2026-11-10T20:15:00.000Z', 100000, 100000],
+        [c.reg2, 'payment', '2026-11-10T21:00:00.000Z', 0, 100000],
+        [c.reg2, 'payment', '2026-11-10T22:00:00.000Z', 25000, 125000],
+        [c.reg2, 'order_cancellation', '2026-11-10T23:00:00.000Z', 0, 125000],
+        [c.reg2, 'close', '2026-11-11T04:04:00.000Z', 0, 125000],
+        [c.reg3, 'opening', '2026-11-11T06:30:00.000Z', 0, 0],
+        [c.reg3, 'close', '2026-11-11T08:00:00.000Z', 0, 0],
+        [c.reg2, 'validation', '2026-11-11T13:00:00.000Z', 0, 125000],
+      ]);
+    });
+
+    it('describes each entry with order number, table, people, tenders, reasons and the count', async () => {
+      const entries: Entry[] = (await adminA().get('/api/cash/days/2026-11-10/ledger')).body.entries;
+      const [opening, deposit, withdrawal, p1, , p3, voided, close] = entries;
+      expect(opening).toMatchObject({ amount: 200000, openedBy: CASHIER_A });
+      expect(deposit).toMatchObject({ type: 'deposit', amount: 50000, reason: 'change_fund', description: '', createdBy: CASHIER_A });
+      expect(withdrawal).toMatchObject({ type: 'withdrawal', amount: 45000, reason: 'supplier', description: 'Hielo', createdBy: CASHIER_A });
+      expect(p1).toMatchObject({
+        orderNumber: numbers[c.o1], table: '7', waiter: { id: fixtures.waiterA.profileId, name: 'Waiter A' }, cashier: CASHIER_A,
+        amount: 50000, tip: 5000, change: 5000,
+        tenders: [{ method: 'Efectivo', code: 'cash', kind: 'cash', amount: 55000 }],
+      });
+      expect(p1.voided).toBe(false);
+      expect(p3).toMatchObject({
+        orderNumber: numbers[c.o3], table: 'Domicilio', waiter: null, amount: 20000, voided: true,
+        tenders: [{ method: 'Efectivo', code: 'cash', kind: 'cash', amount: 20000 }],
+      });
+      expect(voided).toMatchObject({
+        orderNumber: numbers[c.o3], amount: 20000, reason: 'duplicate_charge', requestedBy: 'Cashier A', authorizedBy: 'Admin A',
+      });
+      expect(close).toMatchObject({ expected: 252000, counted: 250000, difference: -2000, note: 'Faltante de prueba', closedBy: CASHIER_A });
+      expect(entries.at(-1)).toMatchObject({ kind: 'validation', validatedBy: ADMIN_A });
+      expect(entries.find((e) => e.kind === 'order_cancellation')).toMatchObject({
+        orderNumber: numbers[c.o6], table: '9', amount: 15000, reason: 'other', reasonText: 'Cliente se fue', requestedBy: 'Cajera Tarde',
+      });
+    });
+
+    it("isolates the ledger to the caller's restaurant", async () => {
+      const entries: Entry[] = (await adminB().get('/api/cash/days/2026-11-10/ledger')).body.entries;
+      expect(entries.map((e) => [e.registerId, e.kind])).toEqual([[c.regB, 'opening'], [c.regB, 'payment'], [c.regB, 'close']]);
+    });
+  });
 });
 
 async function seedCash(superuserUrl: string) {
