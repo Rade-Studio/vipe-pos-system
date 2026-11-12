@@ -4,12 +4,19 @@
 # T16, L31): staff for every role, menu, tables, inventory and preparations,
 # 30 days of history and live orders.
 #
-#   DEMO_PASSWORD=... demo-db.sh [--reset] [--target local|coolify] [--app-uuid <uuid>] [--db-uuid <uuid>]
+#   DEMO_PASSWORD=... demo-db.sh [--reset [--keep-password]] [--target local|coolify] [--app-uuid <uuid>] [--db-uuid <uuid>]
 #
 # DEMO_PASSWORD (12+ characters) is the password of every demo account
 # (<role>@demo.vipe.pos, listed in docs/despliegue.md). It is hashed with
 # argon2id by the API's `argon2` dependency, reading it on stdin, and only the
 # hash reaches psql, also on stdin.
+#
+# --keep-password (only with --reset) needs no DEMO_PASSWORD: inside the
+# loading transaction, before the reset deletes the demo, psql reads the
+# argon2id hash of the current demo admin (username admin of the restaurant
+# marked demo_seed) into a psql variable (\gset), and every new account gets
+# it, so the accounts keep their password. The hash never leaves the
+# database session: no echo, file or command line. No such hash: exit 2.
 #
 # Refuses a target that already has restaurants. --reset first deletes the
 # restaurants the demo seed created (seed/demo/reset.sql) and seeds again, in
@@ -28,7 +35,8 @@
 # versions may report any failure as 1):
 #   0  demo loaded
 #   1  any other failure (nothing is written: one transaction)
-#   2  invalid usage, DEMO_PASSWORD or uuid
+#   2  invalid usage, DEMO_PASSWORD or uuid, or --keep-password without a
+#      demo admin password to keep or together with DEMO_PASSWORD
 #   3  the target already has restaurants (without --reset), or has
 #      restaurants the demo seed did not create
 set -euo pipefail
@@ -43,10 +51,12 @@ usage() {
 }
 
 reset=false
+keep_password=false
 target=local
 while (($#)); do
   case "$1" in
     --reset) reset=true; shift ;;
+    --keep-password) keep_password=true; shift ;;
     --target) [[ $# -ge 2 ]] || usage; target="$2"; shift 2 ;;
     --app-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_APP_UUID="$2"; VIPE_COOLIFY_APP_UUID_GIVEN=1; shift 2 ;;
     --db-uuid) [[ $# -ge 2 ]] || usage; VIPE_COOLIFY_DB_UUID="$2"; VIPE_COOLIFY_DB_UUID_GIVEN=1; shift 2 ;;
@@ -55,11 +65,19 @@ while (($#)); do
   esac
 done
 
-if [[ -z "${DEMO_PASSWORD:-}" ]]; then
-  target_die "DEMO_PASSWORD is empty: set the password of the demo accounts (12+ characters)" 2
+if [[ "$keep_password" == true && "$reset" != true ]]; then
+  target_die "--keep-password only goes with --reset" 2
 fi
-if [[ ${#DEMO_PASSWORD} -lt 12 ]]; then
-  target_die "DEMO_PASSWORD must have at least 12 characters" 2
+if [[ "$keep_password" == true && -n "${DEMO_PASSWORD:-}" ]]; then
+  target_die "DEMO_PASSWORD and --keep-password do not go together: unset DEMO_PASSWORD to keep the current password, or drop --keep-password to set it" 2
+fi
+if [[ "$keep_password" != true ]]; then
+  if [[ -z "${DEMO_PASSWORD:-}" ]]; then
+    target_die "DEMO_PASSWORD is empty: set the password of the demo accounts (12+ characters)" 2
+  fi
+  if [[ ${#DEMO_PASSWORD} -lt 12 ]]; then
+    target_die "DEMO_PASSWORD must have at least 12 characters" 2
+  fi
 fi
 
 TARGET_DB="${VIPE_DEMO_DB:-vipe_demo}"
@@ -79,18 +97,36 @@ if [[ "$restaurants" != "$demo_restaurants" ]]; then
   target_die "the target has $((restaurants - demo_restaurants)) restaurant(s) not created by the demo seed; nothing was changed" 3
 fi
 
-hash="$(printf '%s' "$DEMO_PASSWORD" | target_hash)" || exit 1
+# The current demo admin's hash: counted here, read and used inside the transaction below.
+keep_hash_sql="SELECT u.password_hash AS demo_hash FROM public.users u
+  JOIN public.profiles p ON p.user_id = u.id
+  JOIN public.business_config cfg ON cfg.restaurant_id = p.restaurant_id AND cfg.\"key\" = 'demo_seed' AND cfg.value = 'true'
+ WHERE p.username = 'admin' AND u.password_hash LIKE '\$argon2id\$%'"
+if [[ "$keep_password" == true ]]; then
+  kept="$(target_query -At -c "SELECT count(*) FROM ($keep_hash_sql) h")" || exit 1
+  if [[ "$kept" != 1 ]]; then
+    target_die "--keep-password: the target has no demo admin password to keep; nothing was changed (set DEMO_PASSWORD instead)" 2
+  fi
+else
+  hash="$(printf '%s' "$DEMO_PASSWORD" | target_hash)" || exit 1
+fi
 
 echo "loading the demo restaurant ($target)..." >&2
 {
-  printf '\\set demo_hash %s\n' "$(target_psql_quote "$hash")"
-  printf '\\set admin_hash %s\n' "$(target_psql_quote "$hash")"
+  if [[ "$keep_password" != true ]]; then
+    printf '\\set demo_hash %s\n' "$(target_psql_quote "$hash")"
+    printf '\\set admin_hash %s\n' "$(target_psql_quote "$hash")"
+  fi
   printf '\\set restaurant_name %s\n' "'Casa Guadua'"
   printf '\\set admin_email %s\n' "'admin@demo.vipe.pos'"
   printf '\\set admin_name %s\n' "'Mariana Restrepo Gil'"
   printf '\\set admin_username %s\n' "'admin'"
   echo 'BEGIN;'
   echo "$TARGET_OWNER_SQL"
+  if [[ "$keep_password" == true ]]; then
+    printf '%s \\gset\n' "$keep_hash_sql"
+    echo '\set admin_hash :demo_hash'
+  fi
   if [[ "$reset" == true ]]; then
     cat "$seed_dir/reset.sql"
   fi
@@ -112,4 +148,8 @@ SELECT 'orders (paid / open / cancelled)', count(*) FILTER (WHERE status = 'paid
 SELECT 'payments / registers / deliveries', (SELECT count(*) FROM public.payments) || ' / '
        || (SELECT count(*) FROM public.cash_registers) || ' / ' || (SELECT count(*) FROM public.order_deliveries);
 SQL
-echo "demo accounts: admin@demo.vipe.pos and the staff under @demo.vipe.pos, password DEMO_PASSWORD" >&2
+if [[ "$keep_password" == true ]]; then
+  echo "demo accounts: admin@demo.vipe.pos and the staff under @demo.vipe.pos, password unchanged" >&2
+else
+  echo "demo accounts: admin@demo.vipe.pos and the staff under @demo.vipe.pos, password DEMO_PASSWORD" >&2
+fi

@@ -494,6 +494,14 @@ bash /root/vipe-seed/demo/demo-db.sh --target coolify \
 unset DEMO_PASSWORD
 ```
 
+Para recargar sin escribir la contraseña, `--reset --keep-password` conserva la de las cuentas
+actuales (no pide `DEMO_PASSWORD`):
+
+```bash
+bash /root/vipe-seed/demo/demo-db.sh --target coolify \
+  --app-uuid <uuid de la aplicación de staging> --db-uuid <uuid de la base de staging> --reset --keep-password
+```
+
 - Sin `--reset`, el script se niega con código `3` si la base ya tiene algún restaurante, y no
   cambia nada.
 - `--reset` borra solo los restaurantes que creó la semilla de demostración (marcados con
@@ -502,6 +510,10 @@ unset DEMO_PASSWORD
   borrar.
 - `DEMO_PASSWORD` vacía o de menos de 12 caracteres, o `--target coolify` sin alguno de los dos
   UUID: código `2`. La contraseña se pasa a `node` por la entrada estándar y a `psql` solo llega el hash.
+- `--keep-password` solo va con `--reset`: dentro de la misma transacción, antes de borrar, lee el
+  hash argon2id del administrador de la demo y lo usa para todas las cuentas nuevas; el hash no
+  sale de la sesión de base de datos. Sin demo cuyo hash conservar, o con `DEMO_PASSWORD` definida
+  a la vez (no se ignora en silencio), código `2` sin cambiar nada.
 - `--reset` falla con código `1`, antes de borrar, si una tabla de `public` con columna
   `restaurant_id` no está en la lista de `reset.sql`; la tabla nueva se agrega a esa lista.
 - Con `pnpm` 11 (la versión de las imágenes), `pnpm db:demo` devuelve los mismos códigos que el script

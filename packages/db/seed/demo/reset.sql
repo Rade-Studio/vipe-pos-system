@@ -23,14 +23,20 @@ CREATE TEMP TABLE demo_reset_users ON COMMIT DROP AS
 DO $reset$
 DECLARE
   -- Deleted in this order by restaurant_id; profiles go after the users.
+  -- desktop_job_acks has no restaurant_id: it cascades from print_jobs and
+  -- desktop_devices.
   c_tables constant text[] := ARRAY[
     'order_cancellations', 'order_item_voids', 'payment_voids', 'audit_log',
     'supervisor_authorizations', 'staff_pins',
     'menu_publications', 'payment_tenders', 'payments', 'payment_transactions', 'cash_transactions', 'order_deliveries',
-    'order_discounts', 'order_items', 'orders', 'cash_registers', 'print_jobs', 'printer_tokens',
+    'order_discounts', 'order_item_modifiers', 'order_items', 'orders', 'z_reports', 'cash_registers',
+    'print_jobs', 'printer_tokens', 'desktop_drawer_events', 'desktop_printer_stations', 'desktop_printers',
+    'desktop_pairing_codes', 'desktop_devices',
     'customer_addresses', 'customers', 'couriers', 'promotion_dishes', 'promotion_categories',
     'promotion_subcategories', 'promotion_combo_options', 'promotion_combo_groups', 'promotions',
+    'dish_modifier_groups', 'modifier_options', 'modifier_groups',
     'recipe_ingredients', 'recipes', 'inventory_count_lines', 'inventory_counts', 'production_batches',
+    'production_templates', 'inventory_transit_lots', 'inventory_transfer_lines', 'inventory_transfers',
     'inventory_movements', 'inventory_lots', 'purchase_order_lines', 'purchase_orders',
     'ingredient_transactions', 'ingredients', 'ingredient_categories', 'suppliers', 'inventory_locations',
     'dishes', 'subcategories', 'categories', 'stations', 'tables', 'zones', 'payment_methods', 'business_config'];

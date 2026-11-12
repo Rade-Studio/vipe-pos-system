@@ -192,6 +192,12 @@ for bad in "" VBPB 'x;id' '../x'; do
   expect_exit 2 "bootstrap: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$bad" --db-uuid "$adb" "La Mesa" admin@mesa.example
   expect_exit 2 "demo: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target coolify --app-uuid "$bad" --db-uuid "$adb"
 done
+# --keep-password without a demo to keep it from: exit 2 before any write.
+expect_exit 2 "demo: --keep-password without --reset" \
+  env -u DEMO_PASSWORD bash "$seed_dir/demo/demo-db.sh" --keep-password --target coolify --app-uuid "$a" --db-uuid "$adb"
+expect_exit 2 "demo: --reset --keep-password with no demo" \
+  env -u DEMO_PASSWORD bash "$seed_dir/demo/demo-db.sh" --reset --keep-password --target coolify --app-uuid "$a" --db-uuid "$adb"
+expect_stderr "demo: the refusal says there is no password to keep" "no demo admin password to keep"
 expect_eq "bootstrap: rejected input wrote nothing" "0/0/0" "$(fingerprint_a)"
 
 expect_exit 0 "bootstrap: create La Mesa (uuids from VIPE_COOLIFY_APP_UUID and VIPE_COOLIFY_DB_UUID)" \
@@ -312,9 +318,58 @@ SELECT pg_temp.rows_outside_demo();")"
 before="$(fingerprint_b)"
 expect_exit 3 "demo: re-run without --reset" demo --target coolify --app-uuid "$b" --db-uuid "$bdb"
 expect_eq "demo: the refused re-run changed nothing" "$before" "$(fingerprint_b)"
+# A paired desktop app with a printer, a station, a pairing code and a drawer
+# opening: tenant rows the demo does not seed, which the reset must delete too.
+q "WITH r AS (SELECT id FROM public.restaurants),
+      d AS (INSERT INTO public.desktop_devices (restaurant_id, name, app_version, token_hash)
+            SELECT id, 'Caja 1', '1.0.0', 'test-token-$run_id' FROM r RETURNING id, restaurant_id),
+      p AS (INSERT INTO public.desktop_printers (device_id, id, restaurant_id, name, connection, paper_mm)
+            SELECT id, 'p1', restaurant_id, 'Barra', 'usb', 80 FROM d RETURNING device_id, id, restaurant_id),
+      s AS (INSERT INTO public.stations (restaurant_id, name) SELECT id, 'Estación de prueba' FROM r RETURNING id),
+      ps AS (INSERT INTO public.desktop_printer_stations (device_id, printer_id, restaurant_id, station_id)
+             SELECT p.device_id, p.id, p.restaurant_id, s.id FROM p, s RETURNING 1),
+      pc AS (INSERT INTO public.desktop_pairing_codes (restaurant_id, code_hash, device_id)
+             SELECT restaurant_id, 'test-code-$run_id', id FROM d RETURNING 1)
+ INSERT INTO public.desktop_drawer_events (restaurant_id, device_id, printer_id, opened_at, reason)
+ SELECT restaurant_id, id, 'p1', now(), 'manual' FROM d" >/dev/null
+old_demo="$(q "SELECT id FROM public.restaurants")"
 expect_exit 0 "demo: --reset (1st)" demo --reset --target coolify --app-uuid "$b" --db-uuid "$bdb"
+# Every tenant table, counted by restaurant_id: the old demo left no row.
+expect_eq "demo: the reset left no row of the previous demo in any tenant table" "0" "$(q "
+CREATE FUNCTION pg_temp.rows_of(p_restaurant uuid) RETURNS bigint LANGUAGE plpgsql AS \$\$
+DECLARE
+  v_table text;
+  v_rows bigint;
+  v_total bigint := 0;
+BEGIN
+  FOR v_table IN
+    SELECT c.relname FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attname = 'restaurant_id' AND NOT a.attisdropped
+     WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p')
+  LOOP
+    EXECUTE format('SELECT count(*) FROM public.%I WHERE restaurant_id = \$1', v_table) INTO v_rows USING p_restaurant;
+    v_total := v_total + v_rows;
+  END LOOP;
+  RETURN v_total + (SELECT count(*) FROM public.restaurants WHERE id = p_restaurant);
+END
+\$\$;
+SELECT pg_temp.rows_of('$old_demo');")"
+expect_eq "demo: the reset deleted the desktop rows" "0" \
+  "$(q "SELECT (SELECT count(*) FROM public.desktop_devices) + (SELECT count(*) FROM public.desktop_pairing_codes)")"
 expect_exit 0 "demo: --reset (2nd)" demo --reset --target coolify --app-uuid "$b" --db-uuid "$bdb"
 expect_eq "demo: still exactly one restaurant after two resets" "1" "$(q "SELECT count(*) FROM public.restaurants")"
+# A DEMO_PASSWORD next to --keep-password is refused, never silently ignored.
+before="$(fingerprint_b)"
+expect_exit 2 "demo: --keep-password with DEMO_PASSWORD set" demo --reset --keep-password --target coolify --app-uuid "$b" --db-uuid "$bdb"
+expect_stderr "demo: the refusal says the two do not go together" "DEMO_PASSWORD and --keep-password"
+expect_eq "demo: the conflicting run changed nothing" "$before" "$(fingerprint_b)"
+hash_before="$(q "SELECT md5(string_agg(DISTINCT password_hash, ',')) FROM public.users")"
+expect_exit 0 "demo: --reset --keep-password without DEMO_PASSWORD" \
+  env -u DEMO_PASSWORD bash "$seed_dir/demo/demo-db.sh" --reset --keep-password --target coolify --app-uuid "$b" --db-uuid "$bdb"
+expect_eq "demo: every account keeps the first DEMO_PASSWORD hash" "$hash_before/1" \
+  "$(q "SELECT md5(string_agg(DISTINCT password_hash, ',')) || '/' || count(DISTINCT password_hash) FROM public.users")"
+expect_eq "demo: the hash was not printed" "absent" \
+  "$(grep -qF '$argon2id$' "$scratch/out" "$scratch/err" && echo printed || echo absent)"
 
 # A tenant table reset.sql does not cover fails the reset before any delete.
 # A trigger proves that no DELETE runs before the guard fires.
