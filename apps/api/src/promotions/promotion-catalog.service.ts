@@ -4,7 +4,7 @@ import { Clock } from '../common/clock';
 import { UnitOfWork } from '../db/unit-of-work';
 import { type EnginePromotion, type LocalClock, toLocalClock } from './engine';
 
-/** promotions_channels_check (0028): dine_in (Salón), takeaway (Para llevar, 0030) and delivery (Domicilio), the orders.order_type values. */
+/** promotions_channels_check (0028): dine_in (Salón), takeaway (Para llevar, 0033) and delivery (Domicilio), the orders.order_type values. */
 export const PROMOTION_CHANNELS = ['dine_in', 'takeaway', 'delivery'] as const;
 export type PromotionChannel = (typeof PROMOTION_CHANNELS)[number];
 export const CHANNEL_LABELS: Record<PromotionChannel, string> = { dine_in: 'Salón', takeaway: 'Para llevar', delivery: 'Domicilio' };

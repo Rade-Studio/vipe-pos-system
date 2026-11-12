@@ -139,7 +139,7 @@ export const DISH_MESSAGES = {
   move: 'El plato está en una subcategoría de su categoría actual; elige una subcategoría de la nueva categoría o quítala',
 } as const;
 
-/** promotions_channels_check: dine_in (Salón), takeaway (Para llevar, 0030) and delivery (Domicilio), the orders.order_type values. */
+/** promotions_channels_check: dine_in (Salón), takeaway (Para llevar, 0033) and delivery (Domicilio), the orders.order_type values. */
 export const PROMOTION_CHANNEL_VALUES = ['dine_in', 'takeaway', 'delivery'] as const;
 /** The channels an order has (orders.order_type). */
 export const ORDER_CHANNELS = PROMOTION_CHANNEL_VALUES;

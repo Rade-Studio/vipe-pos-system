@@ -97,7 +97,7 @@ const orderDetails = { guests: guestsSchema.optional(), notes: notesSchema.optio
 
 export const CUSTOMER_NAME_MESSAGE = 'El nombre del cliente debe tener entre 2 y 60 caracteres';
 export const CUSTOMER_PHONE_MESSAGE = 'El teléfono debe tener entre 7 y 15 dígitos';
-/** orders_customer_phone_check (0030): normalised with the delivery rule; blank or null is none. */
+/** orders_customer_phone_check (0033): normalised with the delivery rule; blank or null is none. */
 const customerPhoneSchema = z
   .string({ error: CUSTOMER_PHONE_MESSAGE })
   .max(100, { error: CUSTOMER_PHONE_MESSAGE })
@@ -143,7 +143,7 @@ export const createOrderSchema = z
       return { ...rest, orderType: 'dine_in' as const, customerName: null, customerPhone: null };
     }
     if (value.tableId !== undefined) ctx.addIssue({ code: 'custom', path: ['tableId'], message: 'Un pedido para llevar no tiene mesa' });
-    // orders_customer_name_check (0030): stored trimmed, 2..60 characters, counted as Postgres does (code points).
+    // orders_customer_name_check (0033): stored trimmed, 2..60 characters, counted as Postgres does (code points).
     const name = rawName?.trim() ?? '';
     const length = [...name].length;
     if (length < 2 || length > 60) ctx.addIssue({ code: 'custom', path: ['customerName'], message: CUSTOMER_NAME_MESSAGE });

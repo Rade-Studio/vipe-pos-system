@@ -1,4 +1,4 @@
--- "Para llevar" orders (odd/tasks/promociones-mejoras.md M5, S8, migration 0030).
+-- "Para llevar" orders (odd/tasks/promociones-mejoras.md M5, S8, migration 0033).
 --
 -- order_type takeaway with the customer's name (required, trimmed, 2..60)
 -- and an optional phone (7..15 digits), no table; customer fields refused on

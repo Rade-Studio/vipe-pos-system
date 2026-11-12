@@ -31,7 +31,7 @@ ALTER TABLE public.orders
       CASE WHEN order_type = 'takeaway' THEN customer_name IS NOT NULL
            ELSE customer_name IS NULL AND customer_phone IS NULL END);
 --> statement-breakpoint
-COMMENT ON COLUMN public.orders.order_type IS '''dine_in'' (default; the original model), ''takeaway'' (para llevar, 0030: no table, customer_name required) or ''delivery'' (order_deliveries). Only dine_in may have a table_id (CHECK).';
+COMMENT ON COLUMN public.orders.order_type IS '''dine_in'' (default; the original model), ''takeaway'' (para llevar, 0033: no table, customer_name required) or ''delivery'' (order_deliveries). Only dine_in may have a table_id (CHECK).';
 --> statement-breakpoint
 COMMENT ON COLUMN public.orders.customer_name IS 'Takeaway only (required there): who picks the order up, trimmed, 2..60 characters.';
 --> statement-breakpoint
@@ -265,7 +265,7 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
-  -- 7. Child (0030: it keeps the parent's order_type and takeaway customer).
+  -- 7. Child (0033: it keeps the parent's order_type and takeaway customer).
   INSERT INTO public.orders (
     restaurant_id, table_id, waiter_id, status,
     subtotal, tax, tax_percentage, tip, tip_percentage, total,

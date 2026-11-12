@@ -337,7 +337,7 @@ SELECT is(
                      WHERE conrelid = to_regclass('public.orders')
                       AND conname = 'orders_order_type_check' $$),
   $$CHECK ((order_type = ANY (ARRAY['dine_in'::text, 'takeaway'::text, 'delivery'::text])))$$::text,
-  'orders order_type is enum (dine_in, takeaway since 0030, delivery)');
+  'orders order_type is enum (dine_in, takeaway since 0033, delivery)');
 
 -- The CHECK is a separate constraint; pin its name so a later rename shows up.
 SELECT is(
