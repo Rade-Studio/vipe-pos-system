@@ -1204,6 +1204,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cash/days/{date}/z": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CashController_emitZ"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cash/z": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CashController_zList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cash/z/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CashController_z"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inventory/items": {
         parameters: {
             query?: never;
@@ -4527,6 +4575,14 @@ export interface components {
             date: string;
             salesNet: number;
         };
+        CashZRef: {
+            /** @example 215 */
+            number: number;
+            /** Format: date-time */
+            emittedAt: string;
+            /** @description The admin who emitted it; null when the profile was deleted. */
+            emittedBy: components["schemas"]["ProfileRef"] | null;
+        };
         CashDay: {
             /**
              * @description Business day (S5).
@@ -4545,6 +4601,8 @@ export interface components {
             tipsByWaiter: components["schemas"]["CashWaiterTips"][];
             voids: components["schemas"]["CashDayVoids"];
             previous: components["schemas"]["CashPreviousDay"];
+            /** @description The informe Z of the day; null until it is emitted. */
+            z: components["schemas"]["CashZRef"] | null;
         };
         CashLedgerTender: {
             /** @description Method name. */
@@ -4650,6 +4708,89 @@ export interface components {
             /** @description By name. */
             byCashier: components["schemas"]["CashCashierDifference"][];
             tipsByWaiter: components["schemas"]["CashWaiterTips"][];
+        };
+        CashTaxes: {
+            /**
+             * @description Configured taxPercentage at the emit.
+             * @example 8
+             */
+            rate: number;
+            /** @description Base gravable: round(salesNet / (1 + rate / 100)); prices include the tax, tips never do. */
+            base: number;
+            /** @description salesNet - base. */
+            tax: number;
+        };
+        CashOrderRange: {
+            /** @description Lowest order_number of the paid orders; null without sales. */
+            first: number | null;
+            /** @description Highest order_number of the paid orders. */
+            last: number | null;
+        };
+        CashMethodTips: {
+            code: string;
+            name: string;
+            /** @enum {string} */
+            kind: "cash" | "electronic";
+            /** @description Tips of the live payments; a payment with several tenders splits its tip by tender amount. */
+            amount: number;
+        };
+        CashZSnapshot: {
+            /**
+             * @description Business day (S5).
+             * @example 2026-11-10
+             */
+            date: string;
+            /**
+             * @description open when a register of the day is open, empty without registers.
+             * @enum {string}
+             */
+            status: "open" | "closed" | "empty";
+            /** @description Oldest opening first. */
+            registers: components["schemas"]["CashDayRegister"][];
+            totals: components["schemas"]["CashDayTotals"];
+            /** @description Tips of the live payments by the order waiter, highest first. */
+            tipsByWaiter: components["schemas"]["CashWaiterTips"][];
+            voids: components["schemas"]["CashDayVoids"];
+            previous: components["schemas"]["CashPreviousDay"];
+            taxes: components["schemas"]["CashTaxes"];
+            orders: components["schemas"]["CashOrderRange"];
+            /** @description Sum of total_discounts of the paid orders. */
+            discounts: number;
+            /** @description Catalog order, methods with tips only. */
+            tipsByMethod: components["schemas"]["CashMethodTips"][];
+        };
+        CashZReport: {
+            /** @example 215 */
+            number: number;
+            /** Format: date-time */
+            emittedAt: string;
+            /** @description The admin who emitted it; null when the profile was deleted. */
+            emittedBy: components["schemas"]["ProfileRef"] | null;
+            /** @example 2026-11-10 */
+            businessDay: string;
+            snapshot: components["schemas"]["CashZSnapshot"];
+        };
+        CashZListItem: {
+            /** @example 215 */
+            number: number;
+            /** Format: date-time */
+            emittedAt: string;
+            /** @description The admin who emitted it; null when the profile was deleted. */
+            emittedBy: components["schemas"]["ProfileRef"] | null;
+            /** @example 2026-11-10 */
+            businessDay: string;
+            /** @description snapshot.totals.salesNet. */
+            salesNet: number;
+            /** @description snapshot.totals.difference (sobrante +, faltante -). */
+            difference: number;
+        };
+        CashZList: {
+            from: string;
+            to: string;
+            /** @description Zs whose business day is in the range, by number. */
+            items: components["schemas"]["CashZListItem"][];
+            /** @description Numbers between the first and the last listed Z that no Z of the restaurant carries. */
+            gaps: number[];
         };
         InventoryItem: {
             /** Format: uuid */
@@ -9980,6 +10121,133 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid query, or code range_inverted (from after to) or range_too_long (more than 366 days). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CashController_emitZ: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Business day YYYY-MM-DD: registers opened that day in the restaurant timezone, moved back by businessDayCutoffHour. */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Emitir informe Z: numbers the closed day (consecutive per restaurant) and stores its snapshot; a second emit returns the stored Z. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashZReport"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description code day_open (a register of the day is open) or day_empty (no registers that day). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid date. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CashController_zList: {
+        parameters: {
+            query: {
+                /** @description Last business day, YYYY-MM-DD (included). */
+                to: unknown;
+                /** @description First business day, YYYY-MM-DD. */
+                from: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Informes Z of the range by number, with the gaps in the numbering. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashZList"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid query, or code range_inverted or range_too_long (more than 366 days). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CashController_z: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Z number of the restaurant. */
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One informe Z with its full snapshot (reimprimir). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashZReport"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Z with that number in the restaurant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a Z number. */
             422: {
                 headers: {
                     [name: string]: unknown;

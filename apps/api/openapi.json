@@ -4463,6 +4463,143 @@
         ]
       }
     },
+    "/api/cash/days/{date}/z": {
+      "post": {
+        "operationId": "CashController_emitZ",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Business day YYYY-MM-DD: registers opened that day in the restaurant timezone, moved back by businessDayCutoffHour.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Emitir informe Z: numbers the closed day (consecutive per restaurant) and stores its snapshot; a second emit returns the stored Z.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashZReport"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "code day_open (a register of the day is open) or day_empty (no registers that day)."
+          },
+          "422": {
+            "description": "Invalid date."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "cash"
+        ]
+      }
+    },
+    "/api/cash/z": {
+      "get": {
+        "operationId": "CashController_zList",
+        "parameters": [
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "Last business day, YYYY-MM-DD (included).",
+            "schema": {}
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "First business day, YYYY-MM-DD.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Informes Z of the range by number, with the gaps in the numbering.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashZList"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Invalid query, or code range_inverted or range_too_long (more than 366 days)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "cash"
+        ]
+      }
+    },
+    "/api/cash/z/{number}": {
+      "get": {
+        "operationId": "CashController_z",
+        "parameters": [
+          {
+            "name": "number",
+            "required": true,
+            "in": "path",
+            "description": "Z number of the restaurant.",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One informe Z with its full snapshot (reimprimir).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashZReport"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": "No Z with that number in the restaurant."
+          },
+          "422": {
+            "description": "Not a Z number."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "cash"
+        ]
+      }
+    },
     "/api/inventory/items": {
       "get": {
         "operationId": "InventoryItemsController_list",
@@ -14939,6 +15076,34 @@
           "salesNet"
         ]
       },
+      "CashZRef": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "number",
+            "example": 215
+          },
+          "emittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "emittedBy": {
+            "nullable": true,
+            "description": "The admin who emitted it; null when the profile was deleted.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          }
+        },
+        "required": [
+          "number",
+          "emittedAt",
+          "emittedBy"
+        ]
+      },
       "CashDay": {
         "type": "object",
         "properties": {
@@ -14978,6 +15143,16 @@
           },
           "previous": {
             "$ref": "#/components/schemas/CashPreviousDay"
+          },
+          "z": {
+            "nullable": true,
+            "description": "The informe Z of the day; null until it is emitted.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashZRef"
+              }
+            ]
           }
         },
         "required": [
@@ -14987,7 +15162,8 @@
           "totals",
           "tipsByWaiter",
           "voids",
-          "previous"
+          "previous",
+          "z"
         ]
       },
       "CashLedgerTender": {
@@ -15356,6 +15532,259 @@
           "previous",
           "byCashier",
           "tipsByWaiter"
+        ]
+      },
+      "CashTaxes": {
+        "type": "object",
+        "properties": {
+          "rate": {
+            "type": "number",
+            "example": 8,
+            "description": "Configured taxPercentage at the emit."
+          },
+          "base": {
+            "type": "number",
+            "description": "Base gravable: round(salesNet / (1 + rate / 100)); prices include the tax, tips never do."
+          },
+          "tax": {
+            "type": "number",
+            "description": "salesNet - base."
+          }
+        },
+        "required": [
+          "rate",
+          "base",
+          "tax"
+        ]
+      },
+      "CashOrderRange": {
+        "type": "object",
+        "properties": {
+          "first": {
+            "type": "number",
+            "nullable": true,
+            "description": "Lowest order_number of the paid orders; null without sales."
+          },
+          "last": {
+            "type": "number",
+            "nullable": true,
+            "description": "Highest order_number of the paid orders."
+          }
+        },
+        "required": [
+          "first",
+          "last"
+        ]
+      },
+      "CashMethodTips": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "electronic"
+            ]
+          },
+          "amount": {
+            "type": "number",
+            "description": "Tips of the live payments; a payment with several tenders splits its tip by tender amount."
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "kind",
+          "amount"
+        ]
+      },
+      "CashZSnapshot": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-11-10",
+            "description": "Business day (S5)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "empty"
+            ],
+            "description": "open when a register of the day is open, empty without registers."
+          },
+          "registers": {
+            "description": "Oldest opening first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashDayRegister"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CashDayTotals"
+          },
+          "tipsByWaiter": {
+            "description": "Tips of the live payments by the order waiter, highest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashWaiterTips"
+            }
+          },
+          "voids": {
+            "$ref": "#/components/schemas/CashDayVoids"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/CashPreviousDay"
+          },
+          "taxes": {
+            "$ref": "#/components/schemas/CashTaxes"
+          },
+          "orders": {
+            "$ref": "#/components/schemas/CashOrderRange"
+          },
+          "discounts": {
+            "type": "number",
+            "description": "Sum of total_discounts of the paid orders."
+          },
+          "tipsByMethod": {
+            "description": "Catalog order, methods with tips only.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashMethodTips"
+            }
+          }
+        },
+        "required": [
+          "date",
+          "status",
+          "registers",
+          "totals",
+          "tipsByWaiter",
+          "voids",
+          "previous",
+          "taxes",
+          "orders",
+          "discounts",
+          "tipsByMethod"
+        ]
+      },
+      "CashZReport": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "number",
+            "example": 215
+          },
+          "emittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "emittedBy": {
+            "nullable": true,
+            "description": "The admin who emitted it; null when the profile was deleted.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "businessDay": {
+            "type": "string",
+            "example": "2026-11-10"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/CashZSnapshot"
+          }
+        },
+        "required": [
+          "number",
+          "emittedAt",
+          "emittedBy",
+          "businessDay",
+          "snapshot"
+        ]
+      },
+      "CashZListItem": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "number",
+            "example": 215
+          },
+          "emittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "emittedBy": {
+            "nullable": true,
+            "description": "The admin who emitted it; null when the profile was deleted.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
+          "businessDay": {
+            "type": "string",
+            "example": "2026-11-10"
+          },
+          "salesNet": {
+            "type": "number",
+            "description": "snapshot.totals.salesNet."
+          },
+          "difference": {
+            "type": "number",
+            "description": "snapshot.totals.difference (sobrante +, faltante -)."
+          }
+        },
+        "required": [
+          "number",
+          "emittedAt",
+          "emittedBy",
+          "businessDay",
+          "salesNet",
+          "difference"
+        ]
+      },
+      "CashZList": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "items": {
+            "description": "Zs whose business day is in the range, by number.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashZListItem"
+            }
+          },
+          "gaps": {
+            "description": "Numbers between the first and the last listed Z that no Z of the restaurant carries.",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "items",
+          "gaps"
         ]
       },
       "InventoryItem": {

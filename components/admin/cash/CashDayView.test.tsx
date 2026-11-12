@@ -72,6 +72,7 @@ const register = (over: Partial<CashDay["registers"][number]>): CashDay["registe
 })
 
 const DAY: CashDay = {
+  z: null,
   date: "2026-11-10",
   status: "closed",
   registers: [

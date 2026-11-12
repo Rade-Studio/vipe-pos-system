@@ -1,4 +1,4 @@
-import { Injectable, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import { toIso } from '../common/validation';
 import { UnitOfWork } from '../db/unit-of-work';
@@ -15,11 +15,16 @@ import {
   type CashLedger,
   type CashLedgerEntry,
   type CashLedgerTender,
+  type CashMethodTips,
   type CashMethodTotal,
   type CashPeriodBucket,
   type CashReport,
   type CashVoidItem,
   type CashWaiterTips,
+  type CashZList,
+  type CashZRef,
+  type CashZReport,
+  type CashZSnapshot,
   MAX_REPORT_DAYS,
   type ReportGroup,
   type VoidKind,
@@ -61,6 +66,12 @@ function bucketEnd(start: string, group: ReportGroup): string {
   return group === 'week' ? addDays(start, 6) : start;
 }
 
+/** Prices include the tax: base = round(sales / (1 + rate / 100)), tax = sales - base, whole pesos. */
+export function taxBreakdown(sales: number, rate: number): { base: number; tax: number } {
+  const base = Math.round((sales * 100) / (100 + rate));
+  return { base, tax: sales - base };
+}
+
 /** The day-level aggregates of a range of business days, before bucketing. */
 interface DayFigures {
   sales: Map<string, { salesNet: number; tickets: number; tips: number }>;
@@ -95,6 +106,11 @@ export class CashService {
   ) {}
 
   async day(date: string): Promise<CashDay> {
+    return { ...(await this.summary(date)), z: await this.zOfDay(date) };
+  }
+
+  /** GET /cash/days/:date without the Z: the part a Z snapshot freezes. */
+  private async summary(date: string): Promise<Omit<CashDay, 'z'>> {
     const cutoff = await this.cutoff();
     const scope = this.scope(date, date, cutoff);
     const regs = await this.rows(sql`
@@ -324,6 +340,134 @@ export class CashService {
     };
   }
 
+  /**
+   * S8: "Emitir informe Z". Under a transaction advisory lock per restaurant
+   * (concurrent emits wait for each other): a day that already has a Z
+   * returns it unchanged; a day without registers is 409 day_empty, one with
+   * an open register 409 day_open. Otherwise the day summary is frozen with
+   * its taxes (configured rate, from salesNet, tax included), the
+   * order range, discounts and tips by method, and numbered max + 1.
+   */
+  async emitZ(date: string): Promise<CashZReport> {
+    await this.rows(sql`SELECT pg_advisory_xact_lock(hashtextextended('z_reports:' || private.current_restaurant_id()::text, 0))`);
+    const [existing] = await this.rows<{ number: number }>(sql`SELECT number FROM public.z_reports WHERE business_day = ${date}::date`);
+    if (existing) {
+      return this.z(Number(existing.number));
+    }
+    const day = await this.summary(date);
+    if (day.status === 'empty') {
+      throw new ConflictException({ message: CASH_MESSAGES.dayEmpty, code: 'day_empty' });
+    }
+    if (day.status === 'open') {
+      throw new ConflictException({ message: CASH_MESSAGES.dayOpen, code: 'day_open' });
+    }
+    const config = await this.config.get();
+    const scope = this.scope(date, date, config.businessDayCutoffHour);
+    const [orders] = await this.rows(sql`
+      WITH ${scope}
+      SELECT min(o.order_number) AS first, max(o.order_number) AS last, coalesce(sum(o.total_discounts), 0) AS discounts
+        FROM pays p JOIN public.orders o ON o.id = p.order_id`);
+    const snapshot: CashZSnapshot = {
+      ...day,
+      taxes: {
+        rate: config.taxPercentage,
+        ...taxBreakdown(day.totals.salesNet, config.taxPercentage),
+      },
+      orders: { first: numOrNull(orders.first), last: numOrNull(orders.last) },
+      discounts: Math.round(num(orders.discounts)),
+      tipsByMethod: await this.tipsByMethod(scope),
+    };
+    const [{ number }] = await this.rows<{ number: number }>(sql`
+      INSERT INTO public.z_reports (number, business_day, snapshot)
+      SELECT coalesce(max(number), 0) + 1, ${date}::date, ${JSON.stringify(snapshot)}::jsonb FROM public.z_reports
+      RETURNING number`);
+    return this.z(Number(number));
+  }
+
+  /** GET /cash/z/:number: the stored Z; 404 when the restaurant has no such number. */
+  async z(number: number): Promise<CashZReport> {
+    const [row] = await this.rows(sql`
+      SELECT z.number, to_char(z.business_day, 'YYYY-MM-DD') AS business_day, z.snapshot, z.emitted_at, z.emitted_by, p.full_name AS emitted_by_name
+        FROM public.z_reports z LEFT JOIN public.profiles p ON p.id = z.emitted_by
+       WHERE z.number = ${number}`);
+    if (!row) {
+      throw new NotFoundException('Z report not found');
+    }
+    return { ...zRef(row), businessDay: String(row.business_day), snapshot: row.snapshot as CashZSnapshot };
+  }
+
+  /** GET /cash/z?from&to: the Zs of the business days by number, and the missing numbers between the first and the last. */
+  async zList(from: string, to: string): Promise<CashZList> {
+    if (from > to) {
+      throw new UnprocessableEntityException({ message: CASH_MESSAGES.rangeInverted, code: 'range_inverted' });
+    }
+    if (daysBetween(from, to) + 1 > MAX_REPORT_DAYS) {
+      throw new UnprocessableEntityException({ message: CASH_MESSAGES.rangeTooLong, code: 'range_too_long' });
+    }
+    const rows = await this.rows(sql`
+      SELECT z.number, to_char(z.business_day, 'YYYY-MM-DD') AS business_day, z.emitted_at, z.emitted_by, p.full_name AS emitted_by_name,
+             z.snapshot->'totals'->>'salesNet' AS sales_net, z.snapshot->'totals'->>'difference' AS difference
+        FROM public.z_reports z LEFT JOIN public.profiles p ON p.id = z.emitted_by
+       WHERE z.business_day BETWEEN ${from}::date AND ${to}::date
+       ORDER BY z.number`);
+    const items = rows.map((row) => ({
+      ...zRef(row),
+      businessDay: String(row.business_day),
+      salesNet: num(row.sales_net),
+      difference: num(row.difference),
+    }));
+    let gaps: number[] = [];
+    if (items.length > 0) {
+      const missing = await this.rows<{ n: number }>(sql`
+        SELECT n FROM generate_series(${items[0].number}::int, ${items[items.length - 1].number}::int) AS n
+         WHERE NOT EXISTS (SELECT 1 FROM public.z_reports z WHERE z.number = n)
+         ORDER BY n`);
+      gaps = missing.map((row) => Number(row.n));
+    }
+    return { from, to, items, gaps };
+  }
+
+  private async zOfDay(date: string): Promise<CashZRef | null> {
+    const [row] = await this.rows(sql`
+      SELECT z.number, z.emitted_at, z.emitted_by, p.full_name AS emitted_by_name
+        FROM public.z_reports z LEFT JOIN public.profiles p ON p.id = z.emitted_by
+       WHERE z.business_day = ${date}::date`);
+    return row ? zRef(row) : null;
+  }
+
+  /**
+   * Tips of the scope's live payments by tender method, in catalog order,
+   * methods with tips only. A payment with several tenders splits its tip by
+   * tender amount (the last tender takes the rounding).
+   */
+  private async tipsByMethod(scope: SQL): Promise<CashMethodTips[]> {
+    const rows = await this.rows(sql`
+      WITH ${scope}
+      SELECT p.id, p.tip_amount, t.payment_method_id, t.amount
+        FROM pays p JOIN public.payment_tenders t ON t.payment_id = p.id
+       WHERE p.tip_amount > 0
+       ORDER BY p.id, t.line_no`);
+    const byPayment = new Map<string, { tip: number; tenders: { method: string; amount: number }[] }>();
+    for (const row of rows) {
+      const entry = byPayment.get(String(row.id)) ?? { tip: num(row.tip_amount), tenders: [] };
+      entry.tenders.push({ method: String(row.payment_method_id), amount: num(row.amount) });
+      byPayment.set(String(row.id), entry);
+    }
+    const byMethod = new Map<string, number>();
+    for (const { tip, tenders } of byPayment.values()) {
+      const total = tenders.reduce((sum, tender) => sum + tender.amount, 0);
+      let left = tip;
+      tenders.forEach((tender, index) => {
+        const share = index === tenders.length - 1 ? left : total > 0 ? Math.floor((tip * tender.amount) / total) : 0;
+        left -= share;
+        byMethod.set(tender.method, (byMethod.get(tender.method) ?? 0) + share);
+      });
+    }
+    return (await this.catalog())
+      .filter((method) => (byMethod.get(method.id) ?? 0) > 0)
+      .map((method) => ({ code: method.code, name: method.name, kind: method.kind, amount: byMethod.get(method.id)! }));
+  }
+
   private async cutoff(): Promise<number> {
     return (await this.config.get()).businessDayCutoffHour;
   }
@@ -443,6 +587,12 @@ export class CashService {
   }
 }
 
+const zRef = (row: Row): CashZRef => ({
+  number: Number(row.number),
+  emittedAt: time(row.emitted_at)!,
+  emittedBy: profileRef(row.emitted_by, row.emitted_by_name),
+});
+
 /** Table label of the joined order `o` and table `t`. */
 const tableLabel = sql`CASE WHEN o.order_type = 'delivery' THEN 'Domicilio' ELSE t.number::text END`;
 /** Cash tenders of the joined payment `p` (each amount is already net of the change). */
@@ -455,7 +605,6 @@ const tenderList = sql`coalesce((
 
 const toTenders = (value: unknown): CashLedgerTender[] =>
   ((value as Json[] | null) ?? []).map((t) => ({ method: String(t.method), code: String(t.code), kind: t.kind as PaymentMethodKind, amount: num(t.amount) }));
-
 
 const sumOf = <K extends 'salesNet' | 'tickets' | 'tips' | 'deposits' | 'withdrawals' | 'expected'>(rows: CashDayRegister[], key: K) =>
   rows.reduce((sum, row) => sum + row[key], 0);
