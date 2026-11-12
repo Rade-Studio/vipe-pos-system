@@ -1156,6 +1156,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cash/days/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CashController_day"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inventory/items": {
         parameters: {
             query?: never;
@@ -4365,6 +4381,138 @@ export interface components {
             reason: "change_fund" | "supplier" | "petty_cash" | "tips_payout" | "safe_deposit" | "other";
             /** @description Required (not blank) when reason is other (422 description_required). */
             description?: string | null;
+        };
+        CashMethodTotal: {
+            /**
+             * Format: uuid
+             * @description payment_methods.id.
+             */
+            id: string;
+            code: string;
+            name: string;
+            /** @enum {string} */
+            kind: "cash" | "electronic";
+            /** @description Sum of the tenders (tips included), whole pesos. */
+            total: number;
+            /** @description Number of tenders. */
+            count: number;
+        };
+        CashDayRegister: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "open" | "closed";
+            /** Format: date-time */
+            openedAt: string;
+            /** Format: date-time */
+            closedAt: string | null;
+            openedBy: components["schemas"]["ProfileRef"] | null;
+            closedBy: components["schemas"]["ProfileRef"] | null;
+            validatedBy: components["schemas"]["ProfileRef"] | null;
+            /** Format: date-time */
+            validatedAt: string | null;
+            /** @description Fondo de caja. */
+            initialCash: number;
+            /** @description Ventas netas: amount due of the live payments, tips excluded. */
+            salesNet: number;
+            /** @description Live payments (tiquetes). */
+            tickets: number;
+            tips: number;
+            /** @description Every payment method of the catalog, in its order. */
+            methods: components["schemas"]["CashMethodTotal"][];
+            deposits: number;
+            withdrawals: number;
+            tipsPayout: number;
+            /** @description Expected cash after the tips payout (expected_cash_after_tips). */
+            expected: number;
+            countedCash: number | null;
+            cashDifference: number | null;
+            closeNote: string | null;
+        };
+        CashDeliveries: {
+            count: number;
+            /** @description Amount due of the delivery payments. */
+            amount: number;
+        };
+        CashDayTotals: {
+            salesNet: number;
+            tickets: number;
+            /** @description round(salesNet / tickets); 0 without tickets. */
+            avgTicket: number;
+            /** @description Distinct tables of the paid dine-in orders. */
+            tables: number;
+            deliveries: components["schemas"]["CashDeliveries"];
+            tips: number;
+            methods: components["schemas"]["CashMethodTotal"][];
+            deposits: number;
+            withdrawals: number;
+            /** @description Sum of the registers expected cash after tips. */
+            expected: number;
+            /** @description Sum of the stored counts (registers without a count add 0). */
+            counted: number;
+            /** @description Sum of cash_difference. */
+            difference: number;
+        };
+        CashWaiterTips: {
+            /**
+             * Format: uuid
+             * @description The order's waiter; null for orders without one.
+             */
+            waiterId: string | null;
+            name: string | null;
+            amount: number;
+        };
+        CashVoidItem: {
+            /** Format: date-time */
+            at: string;
+            /** @enum {string} */
+            kind: "payment_void" | "order_cancellation" | "item_void";
+            /** @description orders.order_number. */
+            orderNumber: number | null;
+            /** @description Table number as text, "Domicilio" for a delivery order, null without table. */
+            table: string | null;
+            /** @description Payment amount due, order total or voided line amount. */
+            amount: number;
+            /** @description reason_code of the audited event. */
+            reason: string;
+            reasonText: string | null;
+            /** @description Who voided or cancelled (name snapshot). */
+            requestedBy: string;
+            /** @description Supervisor who authorized (name snapshot). */
+            authorizedBy: string | null;
+        };
+        CashDayVoids: {
+            count: number;
+            amount: number;
+            /** @description Oldest first. */
+            items: components["schemas"]["CashVoidItem"][];
+        };
+        CashPreviousDay: {
+            /**
+             * @description Same weekday of the week before.
+             * @example 2026-11-03
+             */
+            date: string;
+            salesNet: number;
+        };
+        CashDay: {
+            /**
+             * @description Business day (S5).
+             * @example 2026-11-10
+             */
+            date: string;
+            /**
+             * @description open when a register of the day is open, empty without registers.
+             * @enum {string}
+             */
+            status: "open" | "closed" | "empty";
+            /** @description Oldest opening first. */
+            registers: components["schemas"]["CashDayRegister"][];
+            totals: components["schemas"]["CashDayTotals"];
+            /** @description Tips of the live payments by the order waiter, highest first. */
+            tipsByWaiter: components["schemas"]["CashWaiterTips"][];
+            voids: components["schemas"]["CashDayVoids"];
+            previous: components["schemas"]["CashPreviousDay"];
         };
         InventoryItem: {
             /** Format: uuid */
@@ -9581,6 +9729,43 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid body (reason missing or unknown), or code description_required (reason other without a description). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CashController_day: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Business day YYYY-MM-DD: registers opened that day in the restaurant timezone, moved back by businessDayCutoffHour. */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Day summary (tablero): registers, totals, tips by waiter, voids and the same weekday last week. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashDay"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid date. */
             422: {
                 headers: {
                     [name: string]: unknown;
