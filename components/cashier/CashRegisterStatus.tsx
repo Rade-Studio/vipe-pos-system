@@ -7,7 +7,7 @@ import { CloseRegisterDialog } from "@/components/cashier/CloseRegisterDialog"
 import { AddCashDialog } from "@/components/cashier/AddCashDialog"
 import { WithdrawCashDialog } from "@/components/cashier/WithdrawCashDialog"
 import { formatCurrency } from "@/utils/helpers"
-import { Lock, PlusCircle, MinusCircle } from "lucide-react"
+import { Lock, PlusCircle, MinusCircle, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { clockTime } from "@/lib/cashier/queue"
 import { Chip, Money, focusRing } from "@/components/cashier/cashier-ui"
@@ -16,6 +16,10 @@ import { queryClient } from "@/lib/queryClient"
 import { registerSummaryQueryKey } from "@/lib/payments/register-summary"
 import { registerPaymentsQueryKey } from "@/hooks/use-register-payments"
 import type { CashRegisterWithOpener } from "@/lib/api/registers"
+import { useConfigStore } from "@/store/use-config-store"
+import { XReportSlip } from "@/components/printing/XReportSlip"
+import { printSlip } from "@/components/printing/slip-format"
+import { toast } from "@/utils/toast"
 
 export function CashRegisterStatus() {
   const [openDialog, setOpenDialog] = useState(false)
@@ -24,6 +28,7 @@ export function CashRegisterStatus() {
   const [withdrawCashDialog, setWithdrawCashDialog] = useState(false)
 
   const { isRegisterOpen, currentRegister } = useCashRegisterStore()
+  const { businessName, businessNIT, businessAddress } = useConfigStore()
   const isOpen = isRegisterOpen()
   // The drawer-cash value comes from the server's `register_summary`
   // (its `expected_cash` is initial + cash-tender + deposits - withdrawals).
@@ -55,6 +60,22 @@ export function CashRegisterStatus() {
     ? `Caja abierta por ${openerName}${openedAt ? ` · ${openedAt}` : ""}`
     : `Caja abierta${openedAt ? ` · desde ${openedAt}` : ""}`
 
+  // caja-cierres S4: "Informe X", a partial summary that resets nothing.
+  const printXReport = () => {
+    if (!currentRegister || !summary) return
+    const printed = printSlip(
+      <XReportSlip
+        business={{ name: businessName, nit: businessNIT, address: businessAddress }}
+        cashierName={openerName}
+        openedAt={new Date(currentRegister.openingTimestamp)}
+        printedAt={new Date()}
+        summary={summary}
+      />,
+      { title: "Informe X" },
+    )
+    if (!printed) toast.error("El navegador bloqueó la ventana de impresión")
+  }
+
   const action = cn(
     "inline-flex h-11 min-w-[44px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-line bg-surface px-3 text-sm font-semibold text-fg hover:bg-surface-2",
     focusRing,
@@ -81,6 +102,10 @@ export function CashRegisterStatus() {
               <button type="button" className={action} onClick={() => setWithdrawCashDialog(true)} aria-label="Retirar efectivo">
                 <MinusCircle aria-hidden="true" className="h-4 w-4 text-status-danger-fg" />
                 <span className="hidden min-[1600px]:inline">Retirar efectivo</span>
+              </button>
+              <button type="button" className={action} onClick={printXReport} disabled={!summary}>
+                <FileText aria-hidden="true" className="h-4 w-4" />
+                Informe X
               </button>
               <button type="button" className={action} onClick={() => setCloseDialog(true)}>
                 <Lock aria-hidden="true" className="h-4 w-4" />
