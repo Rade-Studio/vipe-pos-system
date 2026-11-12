@@ -27,8 +27,10 @@ import {
   consumeOrderStock,
   createItem,
   createPreparation,
+  createProductionTemplate,
   createPurchaseOrder,
   deleteCategory,
+  deleteProductionTemplate,
   deletePurchaseOrder,
   getInventoryOverview,
   listBatches,
@@ -37,10 +39,12 @@ import {
   listLocations,
   listLots,
   listMovements,
+  listProductionTemplates,
   listPurchaseOrders,
   listSuppliers,
   openCount,
   producePreparation,
+  producePreparations,
   receivePurchaseOrder,
   saveFormula,
   setCountedQuantity,
@@ -48,6 +52,7 @@ import {
   setPurchaseOrderStatus,
   transferStock,
   updateItem,
+  updateProductionTemplate,
   updatePurchaseOrder,
 } from "./index"
 
@@ -198,6 +203,39 @@ describe("production, counts, formulas, overview", () => {
     api.GET.mockResolvedValue({ data: [] })
     await listBatches({ itemId: "p-1", limit: 10 })
     expect(api.GET).toHaveBeenLastCalledWith("/api/inventory/batches", { params: { query: { itemId: "p-1", limit: 10 } } })
+  })
+
+  it("produces a daily report in bulk with a business date and a responsible person", async () => {
+    await producePreparation({ itemId: "p-1", quantity: 1, producedOn: "2026-11-10", producedBy: "u-1" })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/inventory/production", {
+      body: { itemId: "p-1", quantity: 1, producedOn: "2026-11-10", producedBy: "u-1" },
+    })
+    await producePreparations({ lines: [{ itemId: "p-1", quantity: 2 }, { itemId: "p-2", quantity: 1, lotCode: "L" }], producedOn: "2026-11-10" })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/inventory/production/bulk", {
+      body: { lines: [{ itemId: "p-1", quantity: 2 }, { itemId: "p-2", quantity: 1, lotCode: "L" }], producedOn: "2026-11-10" },
+    })
+  })
+
+  it("lists batches by produced_on range", async () => {
+    api.GET.mockResolvedValue({ data: [] })
+    await listBatches({ from: "2026-11-01", to: "2026-11-07" })
+    expect(api.GET).toHaveBeenLastCalledWith("/api/inventory/batches", { params: { query: { from: "2026-11-01", to: "2026-11-07" } } })
+  })
+
+  it("lists, creates, updates and deletes production templates", async () => {
+    api.GET.mockResolvedValue({ data: [] })
+    expect(await listProductionTemplates()).toEqual([])
+    expect(api.GET).toHaveBeenLastCalledWith("/api/inventory/production-templates")
+    const lines = [{ itemId: "p-1", quantity: 2 }]
+    await createProductionTemplate({ name: "Lunes", lines })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/inventory/production-templates", { body: { name: "Lunes", lines } })
+    await updateProductionTemplate("t-1", { name: "Martes" })
+    expect(api.PATCH).toHaveBeenLastCalledWith("/api/inventory/production-templates/{id}", {
+      params: { path: { id: "t-1" } },
+      body: { name: "Martes" },
+    })
+    await deleteProductionTemplate("t-1")
+    expect(api.DELETE).toHaveBeenLastCalledWith("/api/inventory/production-templates/{id}", { params: { path: { id: "t-1" } } })
   })
 
   it("opens, counts a line by count id, applies and cancels", async () => {

@@ -9,10 +9,12 @@ import {
   InventoryItemsController,
   InventoryLocationsController,
   MovementsController,
+  ProductionTemplatesController,
   PurchaseOrdersController,
   SuppliersController,
 } from './inventory.controller';
 import { ItemsService } from './items.service';
+import { ProductionTemplatesService } from './production-templates.service';
 import { PurchasesService } from './purchases.service';
 import { SalesService } from './sales.service';
 import { StockService } from './stock.service';
@@ -28,8 +30,9 @@ import { StockService } from './stock.service';
     CountsController,
     FormulasController,
     InventoryController,
+    ProductionTemplatesController,
   ],
-  providers: [ItemsService, StockService, PurchasesService, CountsService, FormulasService, SalesService],
+  providers: [ItemsService, StockService, PurchasesService, CountsService, FormulasService, SalesService, ProductionTemplatesService],
   exports: [SalesService],
 })
 export class InventoryModule {}

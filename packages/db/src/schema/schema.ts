@@ -932,7 +932,15 @@ export const productionBatches = pgTable("production_batches", {
 	notes: text(),
 	createdBy: uuid("created_by"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	producedOn: date("produced_on").default(sql`CURRENT_DATE`).notNull(),
+	producedBy: uuid("produced_by"),
 }, (table) => [
+	index("idx_production_batches_restaurant_id_produced_on").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.producedOn.desc().nullsFirst().op("date_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+	foreignKey({
+			columns: [table.producedBy],
+			foreignColumns: [profiles.id],
+			name: "production_batches_produced_by_fkey"
+		}).onDelete("set null"),
 	index("idx_production_batches_restaurant_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
 	foreignKey({
 			columns: [table.createdBy],
@@ -961,6 +969,34 @@ export const productionBatches = pgTable("production_batches", {
 		}).onUpdate("cascade").onDelete("cascade"),
 	pgPolicy("production_batches_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = ANY (ARRAY['admin'::text, 'kitchen'::text])) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
 	check("production_batches_quantity_check", sql`quantity > (0)::numeric`),
+]);
+
+export const productionTemplates = pgTable("production_templates", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.default_restaurant_id()`).notNull(),
+	name: text().notNull(),
+	lines: jsonb().default([]).notNull(),
+	createdBy: uuid("created_by"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("production_templates_restaurant_id_name_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), sql`regexp_replace(lower(btrim(name)), '\\s+'::text, ' '::text, 'g'::text)`),
+	foreignKey({
+			columns: [table.createdBy],
+			foreignColumns: [profiles.id],
+			name: "production_templates_created_by_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "production_templates_restaurant_id_fkey"
+		}).onUpdate("cascade").onDelete("cascade"),
+	pgPolicy("production_templates_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = 'admin'::text) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
+	pgPolicy("production_templates_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	pgPolicy("production_templates_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	pgPolicy("production_templates_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"] }),
+	check("production_templates_name_check", sql`(length(btrim(name)) >= 1) AND (length(btrim(name)) <= 80)`),
+	check("production_templates_lines_check", sql`jsonb_typeof(lines) = 'array'::text`),
 ]);
 
 export const profiles = pgTable("profiles", {

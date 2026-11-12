@@ -5580,6 +5580,20 @@
         "operationId": "InventoryController_batches",
         "parameters": [
           {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "YYYY-MM-DD, inclusive, on producedOn; from..to spans at most 366 days.",
+            "schema": {}
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "YYYY-MM-DD, inclusive, on producedOn.",
+            "schema": {}
+          },
+          {
             "name": "limit",
             "required": false,
             "in": "query",
@@ -5595,7 +5609,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Newest first. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
+            "description": "Newest producedOn first, then newest registered. Any authenticated role; RLS limits some tables to admin (and kitchen), which then read [].",
             "content": {
               "application/json": {
                 "schema": {
@@ -5642,6 +5656,48 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProducePreparationResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/production/bulk": {
+      "post": {
+        "operationId": "InventoryController_produceMany",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkProduceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "produce_preparations: every line in one transaction, all or nothing. A shortage of the combined demand answers 422 P0001 with `details` = [{item_id, name, ingredients:[{ingredient_id, name, unit, required, available, missing}]}].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkProduceResult"
                 }
               }
             }
@@ -5817,6 +5873,176 @@
           },
           "422": {
             "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/production-templates": {
+      "get": {
+        "operationId": "ProductionTemplatesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "By name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductionTemplate"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or an unknown preparation in lines."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "post": {
+        "operationId": "ProductionTemplatesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductionTemplateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionTemplate"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "409": {
+            "description": "A template with that name already exists."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or an unknown preparation in lines."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/production-templates/{id}": {
+      "patch": {
+        "operationId": "ProductionTemplatesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProductionTemplateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionTemplate"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "A template with that name already exists."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or an unknown preparation in lines."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      },
+      "delete": {
+        "operationId": "ProductionTemplatesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or an unknown preparation in lines."
           }
         },
         "security": [
@@ -14258,6 +14484,31 @@
             "type": "string",
             "nullable": true
           },
+          "producedOn": {
+            "type": "string",
+            "format": "date",
+            "description": "Business date of the production."
+          },
+          "producedBy": {
+            "nullable": true,
+            "description": "Responsible staff member; null once the profile is deleted.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StaffRef"
+              }
+            ]
+          },
+          "createdBy": {
+            "nullable": true,
+            "description": "Who registered it.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StaffRef"
+              }
+            ]
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -14277,6 +14528,9 @@
           "totalCost",
           "expiresOn",
           "notes",
+          "producedOn",
+          "producedBy",
+          "createdBy",
           "createdAt"
         ]
       },
@@ -14304,6 +14558,18 @@
           "notes": {
             "type": "string",
             "nullable": true
+          },
+          "producedOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Business date (YYYY-MM-DD): today (default, restaurant timezone) or up to 7 days back. Drives expiresOn and the lot code."
+          },
+          "producedBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Active staff profile; omitted = the caller."
           }
         },
         "required": [
@@ -14389,6 +14655,85 @@
           "totalCost",
           "expiresOn",
           "consumed"
+        ]
+      },
+      "BulkProduceLineInput": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique within the request."
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Greater than 0."
+          },
+          "lotCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "Omitted = PB-<producedOn YYYYMMDD>-HH24MISS."
+          }
+        },
+        "required": [
+          "itemId",
+          "quantity"
+        ]
+      },
+      "BulkProduceInput": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "description": "1..100 lines.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkProduceLineInput"
+            }
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Omitted = the default location."
+          },
+          "producedOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Today (default) or up to 7 days back."
+          },
+          "producedBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Active staff profile; omitted = the caller."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "lines"
+        ]
+      },
+      "BulkProduceResult": {
+        "type": "object",
+        "properties": {
+          "batches": {
+            "description": "One per line, in request order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProducePreparationResult"
+            }
+          },
+          "totalCost": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "batches",
+          "totalCost"
         ]
       },
       "OverviewKpis": {
@@ -14727,6 +15072,89 @@
         "required": [
           "dishIds"
         ]
+      },
+      "ProductionTemplateLine": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "quantity"
+        ]
+      },
+      "ProductionTemplate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionTemplateLine"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "lines",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ProductionTemplateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Trimmed, 1..80, unique per restaurant ignoring case (409)."
+          },
+          "lines": {
+            "description": "1..100 active preparations of the restaurant (422 otherwise), unique itemId.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionTemplateLine"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "lines"
+        ]
+      },
+      "UpdateProductionTemplateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionTemplateLine"
+            }
+          }
+        }
       },
       "InvoicePrintRequest": {
         "type": "object",

@@ -228,9 +228,55 @@ export interface ProducePreparationInput {
   locationId?: string | null
   lotCode?: string | null
   notes?: string | null
+  /** Business date YYYY-MM-DD: today (default) or up to 7 days back. */
+  producedOn?: string | null
+  /** Staff profile responsible; omitted = the caller. */
+  producedBy?: string | null
 }
 
 export type ProducePreparationResult = Schemas["ProducePreparationResult"]
+
+export interface BulkProduceLine {
+  itemId: string
+  quantity: number
+  lotCode?: string | null
+}
+
+/** A daily production report: every line or none (422 P0001 with the short lines). */
+export interface BulkProduceInput {
+  /** 1..100 lines, one per preparation. */
+  lines: BulkProduceLine[]
+  locationId?: string | null
+  producedOn?: string | null
+  producedBy?: string | null
+  notes?: string | null
+}
+
+export type BulkProduceResult = Schemas["BulkProduceResult"]
+
+/** One preparation that cannot be produced, with its short inputs at the combined demand of every line. */
+export interface BulkProduceShortage {
+  item_id: string
+  name: string
+  ingredients: { ingredient_id: string; name: string; unit: string; required: number; available: number; missing: number }[]
+}
+
+export interface BatchListOptions {
+  itemId?: string
+  limit?: number
+  /** Inclusive bounds on producedOn, YYYY-MM-DD (at most 366 days apart). */
+  from?: string
+  to?: string
+}
+
+export type ProductionTemplateLine = Schemas["ProductionTemplateLine"]
+
+export type ProductionTemplate = Schemas["ProductionTemplate"]
+
+export interface ProductionTemplateInput {
+  name: string
+  lines: ProductionTemplateLine[]
+}
 
 export type ConsumeOrderStockResult = Schemas["ConsumeOrderStockResult"]
 

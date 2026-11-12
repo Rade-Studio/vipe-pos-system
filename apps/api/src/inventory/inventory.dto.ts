@@ -519,10 +519,34 @@ export class ReceivePurchaseResult {
 
 // ---- Production ------------------------------------------------------------------
 
-export const batchListQuerySchema = z.strictObject({
-  itemId: z.guid().optional(),
-  limit: intQuery.pipe(z.number().int().min(1).max(500)).optional(),
-});
+/** A from/to range on production_batches.produced_on spans at most this many days. */
+export const MAX_BATCH_RANGE_DAYS = 366;
+/** produce_preparations accepts at most 100 lines; a template holds as many. */
+const MAX_PRODUCTION_LINES = 100;
+const DAY_MS = 86_400_000;
+
+export const batchListQuerySchema = z
+  .strictObject({
+    itemId: z.guid().optional(),
+    limit: intQuery.pipe(z.number().int().min(1).max(500)).optional(),
+    /** Inclusive bounds on produced_on (YYYY-MM-DD). */
+    from: date.optional(),
+    to: date.optional(),
+  })
+  .superRefine((query, ctx) => {
+    if (!query.from || !query.to) return;
+    const days = (Date.parse(query.to) - Date.parse(query.from)) / DAY_MS;
+    if (days < 0) ctx.addIssue({ code: 'custom', path: ['to'], message: 'to must not be before from' });
+    else if (days >= MAX_BATCH_RANGE_DAYS) {
+      ctx.addIssue({ code: 'custom', path: ['to'], message: `The range spans at most ${MAX_BATCH_RANGE_DAYS} days` });
+    }
+  });
+
+/** Business date and responsible person; the RPC checks today..7 days back and an active staff profile. */
+const productionContext = {
+  producedOn: date.nullable().optional(),
+  producedBy: z.guid().nullable().optional(),
+};
 
 export const producePreparationSchema = z.strictObject({
   itemId: z.guid(),
@@ -530,7 +554,42 @@ export const producePreparationSchema = z.strictObject({
   locationId: z.guid().nullable().optional(),
   lotCode: nullableText(100),
   notes: nullableText(2000),
+  ...productionContext,
 });
+
+const uniqueItems = (lines: { itemId: string }[]) => new Set(lines.map((line) => line.itemId)).size === lines.length;
+
+export const bulkProduceSchema = z.strictObject({
+  lines: z
+    .array(z.strictObject({ itemId: z.guid(), quantity: positive, lotCode: nullableText(100) }))
+    .min(1)
+    .max(MAX_PRODUCTION_LINES)
+    .refine(uniqueItems, 'Each itemId may appear once'),
+  locationId: z.guid().nullable().optional(),
+  notes: nullableText(2000),
+  ...productionContext,
+});
+
+const templateLines = z
+  .array(z.strictObject({ itemId: z.guid(), quantity: positive }))
+  .min(1)
+  .max(MAX_PRODUCTION_LINES)
+  .refine(uniqueItems, 'Each itemId may appear once');
+
+export const createProductionTemplateSchema = z.strictObject({
+  name: z.string().trim().min(1).max(80),
+  lines: templateLines,
+});
+
+export const updateProductionTemplateSchema = z.strictObject({
+  name: z.string().trim().min(1).max(80).optional(),
+  lines: templateLines.optional(),
+});
+
+export class StaffRef {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() name!: string;
+}
 
 export class ProductionBatch {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -546,6 +605,10 @@ export class ProductionBatch {
   @ApiProperty() totalCost!: number;
   @ApiProperty({ type: String, format: 'date', nullable: true }) expiresOn!: string | null;
   @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  @ApiProperty({ format: 'date', description: 'Business date of the production.' }) producedOn!: string;
+  @ApiProperty({ type: StaffRef, nullable: true, description: 'Responsible staff member; null once the profile is deleted.' })
+  producedBy!: StaffRef | null;
+  @ApiProperty({ type: StaffRef, nullable: true, description: 'Who registered it.' }) createdBy!: StaffRef | null;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
 }
 
@@ -556,6 +619,13 @@ export class ProducePreparationInput {
   locationId?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true, description: 'Omitted = PB-YYYYMMDD-HH24MISS.' }) lotCode?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) notes?: string | null;
+  @ApiPropertyOptional({
+    type: String, format: 'date', nullable: true,
+    description: 'Business date (YYYY-MM-DD): today (default, restaurant timezone) or up to 7 days back. Drives expiresOn and the lot code.',
+  })
+  producedOn?: string | null;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Active staff profile; omitted = the caller.' })
+  producedBy?: string | null;
 }
 
 export class ConsumedInput {
@@ -576,6 +646,54 @@ export class ProducePreparationResult {
   @ApiProperty() totalCost!: number;
   @ApiProperty({ type: String, format: 'date', nullable: true }) expiresOn!: string | null;
   @ApiProperty({ type: [ConsumedInput] }) consumed!: ConsumedInput[];
+}
+
+export class BulkProduceLineInput {
+  @ApiProperty({ format: 'uuid', description: 'Unique within the request.' }) itemId!: string;
+  @ApiProperty({ description: 'Greater than 0.' }) quantity!: number;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Omitted = PB-<producedOn YYYYMMDD>-HH24MISS.' })
+  lotCode?: string | null;
+}
+
+export class BulkProduceInput {
+  @ApiProperty({ type: [BulkProduceLineInput], description: '1..100 lines.' }) lines!: BulkProduceLineInput[];
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Omitted = the default location.' })
+  locationId?: string | null;
+  @ApiPropertyOptional({ type: String, format: 'date', nullable: true, description: 'Today (default) or up to 7 days back.' })
+  producedOn?: string | null;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Active staff profile; omitted = the caller.' })
+  producedBy?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) notes?: string | null;
+}
+
+export class BulkProduceResult {
+  @ApiProperty({ type: [ProducePreparationResult], description: 'One per line, in request order.' })
+  batches!: ProducePreparationResult[];
+  @ApiProperty() totalCost!: number;
+}
+
+export class ProductionTemplateLine {
+  @ApiProperty({ format: 'uuid' }) itemId!: string;
+  @ApiProperty() quantity!: number;
+}
+
+export class ProductionTemplate {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: [ProductionTemplateLine] }) lines!: ProductionTemplateLine[];
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
+export class ProductionTemplateInput {
+  @ApiProperty({ description: 'Trimmed, 1..80, unique per restaurant ignoring case (409).' }) name!: string;
+  @ApiProperty({ type: [ProductionTemplateLine], description: '1..100 active preparations of the restaurant (422 otherwise), unique itemId.' })
+  lines!: ProductionTemplateLine[];
+}
+
+export class UpdateProductionTemplateRequest {
+  @ApiPropertyOptional() name?: string;
+  @ApiPropertyOptional({ type: [ProductionTemplateLine] }) lines?: ProductionTemplateLine[];
 }
 
 // ---- Counts ----------------------------------------------------------------------

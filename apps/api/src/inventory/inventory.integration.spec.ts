@@ -33,9 +33,10 @@ const PO_LINE_KEYS = ['id', 'itemId', 'itemName', 'pendingQuantity', 'quantity',
 const COUNT_KEYS = ['appliedAt', 'createdAt', 'id', 'locationId', 'locationName', 'notes', 'number', 'status'];
 const COUNT_LINE_KEYS = ['countedQuantity', 'expectedQuantity', 'id', 'itemId', 'itemName', 'notes', 'sku', 'unit'];
 const BATCH_KEYS = [
-  'createdAt', 'expiresOn', 'id', 'itemId', 'itemName', 'locationId', 'locationName', 'lotCode', 'lotId', 'notes', 'quantity',
-  'totalCost', 'unit', 'unitCost',
+  'createdAt', 'createdBy', 'expiresOn', 'id', 'itemId', 'itemName', 'locationId', 'locationName', 'lotCode', 'lotId', 'notes',
+  'producedBy', 'producedOn', 'quantity', 'totalCost', 'unit', 'unitCost',
 ];
+const TEMPLATE_KEYS = ['createdAt', 'id', 'lines', 'name', 'updatedAt'];
 const FORMULA_KEYS = ['lines', 'notes', 'recipeId', 'targetId', 'targetType', 'unitCost', 'yieldQuantity'];
 const SUPPLIER_KEYS = ['contactName', 'email', 'id', 'isActive', 'leadTimeDays', 'name', 'notes', 'phone', 'taxId'];
 
@@ -786,6 +787,237 @@ describe('inventory endpoints (Testcontainers, vipe_api)', () => {
       expect(overview.body.kpis.itemsCount).toBe(1);
       expect((await waiterA().get('/api/inventory/movements')).body).toEqual({ rows: [], total: 0 });
       expect((await waiterA().get('/api/inventory/purchase-orders')).body).toEqual([]);
+    });
+  });
+
+  describe('daily production', () => {
+    /** The restaurant's local date `offset` days from today, YYYY-MM-DD. */
+    const day = async (offset: number) => {
+      const [row] = await db<{ d: string }>(
+        `SELECT ((now() AT TIME ZONE r.timezone)::date + $2::int)::text AS d FROM restaurants r WHERE r.id = $1`,
+        [fixtures.restaurantA, offset],
+      );
+      return row.d;
+    };
+    const stockOf = async (itemId: string) => {
+      const [row] = await db<{ q: string }>(
+        'SELECT coalesce(sum(quantity), 0)::text AS q FROM inventory_lots WHERE ingredient_id = $1 AND location_id = $2',
+        [itemId, defaultLocation],
+      );
+      return Number(row.q);
+    };
+    const batchCount = async () => Number((await db<{ n: string }>('SELECT count(*)::text AS n FROM production_batches'))[0].n);
+
+    beforeAll(async () => {
+      const tomate = await adminA().post('/api/inventory/items', { name: 'Tomate', unit: 'kg', openingStock: { quantity: 10, unitCost: 100 } });
+      const cebolla = await adminA().post('/api/inventory/items', { name: 'Cebolla', unit: 'kg', openingStock: { quantity: 4, unitCost: 50 } });
+      const sofrito = await adminA().post('/api/inventory/items/preparations', { name: 'Sofrito', unit: 'kg' });
+      const guiso = await adminA().post('/api/inventory/items/preparations', { name: 'Guiso', unit: 'kg' });
+      ids.tomate = tomate.body.id;
+      ids.cebolla = cebolla.body.id;
+      ids.sofrito = sofrito.body.id;
+      ids.guiso = guiso.body.id;
+      await adminA().patch(`/api/inventory/items/${ids.sofrito}`, { shelfLifeDays: 3 });
+      await adminA().patch(`/api/inventory/items/${ids.guiso}`, { shelfLifeDays: 2 });
+      await adminA().put('/api/inventory/formulas', {
+        targetType: 'prep', targetId: ids.sofrito, yieldQuantity: 1,
+        lines: [{ ingredientId: ids.tomate, quantity: 2 }, { ingredientId: ids.cebolla, quantity: 1 }],
+      });
+      await adminA().put('/api/inventory/formulas', {
+        targetType: 'prep', targetId: ids.guiso, yieldQuantity: 1, lines: [{ ingredientId: ids.tomate, quantity: 1 }],
+      });
+    });
+
+    it('registers every line in one call: N batches and lots, ingredients consumed, today and the caller by default', async () => {
+      const before = await batchCount();
+      const res = await adminA().post('/api/inventory/production/bulk', {
+        lines: [{ itemId: ids.sofrito, quantity: 1 }, { itemId: ids.guiso, quantity: 2, lotCode: 'G-1' }],
+        notes: 'reporte',
+      });
+      expect(res.status).toBe(200);
+      expect(keys(res.body)).toEqual(['batches', 'totalCost']);
+      expect(res.body.batches).toHaveLength(2);
+      expect(keys(res.body.batches[0])).toEqual([
+        'batchId', 'consumed', 'expiresOn', 'itemId', 'locationId', 'lotCode', 'lotId', 'quantity', 'totalCost', 'unitCost',
+      ]);
+      const [sofrito, guiso] = res.body.batches;
+      expect(sofrito).toMatchObject({ itemId: ids.sofrito, quantity: 1, totalCost: 250, locationId: defaultLocation, expiresOn: await day(3) });
+      expect(guiso).toMatchObject({ itemId: ids.guiso, quantity: 2, totalCost: 200, lotCode: 'G-1', expiresOn: await day(2) });
+      expect(res.body.totalCost).toBe(450);
+      expect(await batchCount()).toBe(before + 2);
+      expect(await stockOf(ids.tomate)).toBe(6);
+      expect(await stockOf(ids.cebolla)).toBe(3);
+      expect(await stockOf(ids.sofrito)).toBe(1);
+      expect(await stockOf(ids.guiso)).toBe(2);
+      const stored = await db<{ produced_on: string; produced_by: string; created_by: string }>(
+        'SELECT produced_on::text, produced_by, created_by FROM production_batches WHERE id = ANY($1::uuid[])',
+        [[sofrito.batchId, guiso.batchId]],
+      );
+      expect(stored).toEqual([
+        { produced_on: await day(0), produced_by: fixtures.adminA.profileId, created_by: fixtures.adminA.profileId },
+        { produced_on: await day(0), produced_by: fixtures.adminA.profileId, created_by: fixtures.adminA.profileId },
+      ]);
+    });
+
+    it('rolls every line back on a shortage and lists each short line with the shared ingredient netted', async () => {
+      const before = await batchCount();
+      // Alone, each line fits in the 6 kg of tomate; together they need 4 + 3 = 7.
+      const res = await adminA().post('/api/inventory/production/bulk', {
+        lines: [{ itemId: ids.sofrito, quantity: 2 }, { itemId: ids.guiso, quantity: 3 }],
+      });
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe('P0001');
+      expect(res.body.message).toMatch(/^produce_preparations: insufficient stock: /);
+      const details = JSON.parse(res.body.details);
+      const tomate = { ingredient_id: ids.tomate, name: 'Tomate', unit: 'kg', required: 7, available: 6, missing: 1 };
+      expect(details).toEqual([
+        { item_id: ids.guiso, name: 'Guiso', ingredients: [tomate] },
+        { item_id: ids.sofrito, name: 'Sofrito', ingredients: [tomate] },
+      ]);
+      expect(await batchCount()).toBe(before);
+      expect(await stockOf(ids.tomate)).toBe(6);
+      expect(await stockOf(ids.cebolla)).toBe(3);
+    });
+
+    it('validates the bulk body', async () => {
+      const dup = await adminA().post('/api/inventory/production/bulk', {
+        lines: [{ itemId: ids.guiso, quantity: 1 }, { itemId: ids.guiso, quantity: 1 }],
+      });
+      expect(dup.status).toBe(422);
+      expect((await adminA().post('/api/inventory/production/bulk', { lines: [] })).status).toBe(422);
+      expect((await adminA().post('/api/inventory/production/bulk', { lines: [{ itemId: ids.guiso, quantity: 0 }] })).status).toBe(422);
+      expect(
+        (await adminA().post('/api/inventory/production/bulk', { lines: [{ itemId: ids.guiso, quantity: 1 }], producedOn: '2026-02-30' })).status,
+      ).toBe(422);
+      expect((await waiterA().post('/api/inventory/production/bulk', { lines: [{ itemId: ids.guiso, quantity: 1 }] })).status).toBe(403);
+    });
+
+    it('a batch of yesterday stores that day, its expiry, the lot time and code, and the responsible person', async () => {
+      const yesterday = await day(-1);
+      const res = await adminA().post('/api/inventory/production', {
+        itemId: ids.guiso, quantity: 1, producedOn: yesterday, producedBy: fixtures.waiterA.profileId,
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.expiresOn).toBe(await day(1));
+      expect(res.body.lotCode).toMatch(new RegExp(`^PB-${yesterday.replaceAll('-', '')}-\\d{6}$`));
+      const [stored] = await db<{ produced_on: string; produced_by: string; created_by: string; local_received: string }>(
+        `SELECT b.produced_on::text, b.produced_by, b.created_by,
+                (l.received_at AT TIME ZONE r.timezone)::text AS local_received
+           FROM production_batches b JOIN inventory_lots l ON l.id = b.lot_id JOIN restaurants r ON r.id = b.restaurant_id
+          WHERE b.id = $1`,
+        [res.body.batchId],
+      );
+      expect(stored).toEqual({
+        produced_on: yesterday, produced_by: fixtures.waiterA.profileId, created_by: fixtures.adminA.profileId,
+        local_received: `${yesterday} 00:00:00`,
+      });
+      ids.yesterdayBatch = res.body.batchId;
+    });
+
+    it('refuses a future date, a date over 7 days back and a foreign or unknown responsible person', async () => {
+      const before = await batchCount();
+      const cases: [object, RegExp][] = [
+        [{ producedOn: await day(1) }, /produced_on cannot be in the future/],
+        [{ producedOn: await day(-8) }, /produced_on cannot be more than 7 days ago/],
+        [{ producedBy: fixtures.adminB.profileId }, /is not an active staff member/],
+        [{ producedBy: '20000000-0000-0000-0000-0000000000ff' }, /is not an active staff member/],
+      ];
+      for (const [extra, message] of cases) {
+        const single = await adminA().post('/api/inventory/production', { itemId: ids.guiso, quantity: 1, ...extra });
+        expect(single.status, JSON.stringify(extra)).toBe(422);
+        expect(single.body).toMatchObject({ code: '22023', message: expect.stringMatching(message) });
+        const bulk = await adminA().post('/api/inventory/production/bulk', { lines: [{ itemId: ids.guiso, quantity: 1 }], ...extra });
+        expect(bulk.status, JSON.stringify(extra)).toBe(422);
+        expect(bulk.body).toMatchObject({ code: '22023', message: expect.stringMatching(message) });
+      }
+      expect((await adminA().post('/api/inventory/production', { itemId: ids.guiso, quantity: 1, producedOn: await day(-7) })).status).toBe(200);
+      expect(await batchCount()).toBe(before + 1);
+    });
+
+    it('filters batches by produced_on from/to and returns who produced and registered them', async () => {
+      const yesterday = await day(-1);
+      const res = await adminA().get(`/api/inventory/batches?from=${yesterday}&to=${yesterday}`);
+      expect(res.status).toBe(200);
+      expect(res.body.map((b: { id: string }) => b.id)).toEqual([ids.yesterdayBatch]);
+      expect(keys(res.body[0])).toEqual(BATCH_KEYS);
+      expect(res.body[0]).toMatchObject({
+        producedOn: yesterday,
+        producedBy: { id: fixtures.waiterA.profileId, name: 'Waiter A' },
+        createdBy: { id: fixtures.adminA.profileId, name: 'Admin A' },
+      });
+      const from = await day(0);
+      const today = await adminA().get(`/api/inventory/batches?from=${from}&itemId=${ids.guiso}`);
+      expect(today.body.length).toBeGreaterThan(0);
+      expect(today.body.every((b: { producedOn: string; itemId: string }) => b.producedOn >= from && b.itemId === ids.guiso)).toBe(true);
+      expect((await adminA().get('/api/inventory/batches?from=2025-01-01&to=2026-06-01')).status).toBe(422);
+      expect((await adminA().get('/api/inventory/batches?from=2026-02-02&to=2026-02-01')).status).toBe(422);
+      expect((await adminB().get(`/api/inventory/batches?from=${yesterday}`)).body).toEqual([]);
+    });
+
+    it('creates, lists, renames and deletes production templates', async () => {
+      const created = await adminA().post('/api/inventory/production-templates', {
+        name: ' Lunes ', lines: [{ itemId: ids.sofrito, quantity: 2 }, { itemId: ids.guiso, quantity: 1.5 }],
+      });
+      expect(created.status).toBe(201);
+      expect(keys(created.body)).toEqual(TEMPLATE_KEYS);
+      expect(created.body).toMatchObject({
+        name: 'Lunes', lines: [{ itemId: ids.sofrito, quantity: 2 }, { itemId: ids.guiso, quantity: 1.5 }],
+      });
+      const list = await adminA().get('/api/inventory/production-templates');
+      expect(list.status).toBe(200);
+      expect(list.body.map((t: { id: string }) => t.id)).toEqual([created.body.id]);
+
+      const patched = await adminA().patch(`/api/inventory/production-templates/${created.body.id}`, {
+        name: 'Lunes A', lines: [{ itemId: ids.guiso, quantity: 3 }],
+      });
+      expect(patched.status).toBe(200);
+      expect(patched.body).toMatchObject({ id: created.body.id, name: 'Lunes A', lines: [{ itemId: ids.guiso, quantity: 3 }] });
+
+      const other = await adminA().post('/api/inventory/production-templates', { name: 'Martes', lines: [{ itemId: ids.guiso, quantity: 1 }] });
+      expect(other.status).toBe(201);
+      expect((await adminA().post('/api/inventory/production-templates', { name: 'lunes a', lines: [{ itemId: ids.guiso, quantity: 1 }] })).status).toBe(409);
+      expect((await adminA().patch(`/api/inventory/production-templates/${other.body.id}`, { name: 'Lunes A' })).status).toBe(409);
+
+      expect((await adminA().delete(`/api/inventory/production-templates/${other.body.id}`)).status).toBe(204);
+      expect((await adminA().delete(`/api/inventory/production-templates/${other.body.id}`)).status).toBe(404);
+      expect((await adminA().get('/api/inventory/production-templates')).body).toHaveLength(1);
+      ids.template = created.body.id;
+    });
+
+    it('validates template lines against the active preparations of the restaurant', async () => {
+      const cases = [
+        [{ itemId: ids.tomate, quantity: 1 }],
+        [{ itemId: s.itemB, quantity: 1 }],
+        [{ itemId: '77000000-0000-0000-0000-0000000000ff', quantity: 1 }],
+      ];
+      for (const lines of cases) {
+        const res = await adminA().post('/api/inventory/production-templates', { name: 'Mala', lines });
+        expect(res.status, JSON.stringify(lines)).toBe(422);
+        expect(res.body.message).toMatch(/Unknown preparation/);
+      }
+      expect((await adminA().patch(`/api/inventory/production-templates/${ids.template}`, { lines: cases[0] })).status).toBe(422);
+      expect((await adminA().post('/api/inventory/production-templates', { name: 'x', lines: [] })).status).toBe(422);
+      expect((await adminA().post('/api/inventory/production-templates', { name: ' ', lines: [{ itemId: ids.guiso, quantity: 1 }] })).status).toBe(422);
+      expect((await adminA().post('/api/inventory/production-templates', { name: 'y', lines: [{ itemId: ids.guiso, quantity: 0 }] })).status).toBe(422);
+      expect(
+        (await adminA().post('/api/inventory/production-templates', {
+          name: 'z', lines: [{ itemId: ids.guiso, quantity: 1 }, { itemId: ids.guiso, quantity: 2 }],
+        })).status,
+      ).toBe(422);
+    });
+
+    it('keeps templates admin only and isolated per restaurant', async () => {
+      const t = ids.template;
+      expect((await waiterA().get('/api/inventory/production-templates')).status).toBe(403);
+      expect((await waiterA().post('/api/inventory/production-templates', { name: 'W', lines: [{ itemId: ids.guiso, quantity: 1 }] })).status).toBe(403);
+      expect((await waiterA().patch(`/api/inventory/production-templates/${t}`, { name: 'W' })).status).toBe(403);
+      expect((await waiterA().delete(`/api/inventory/production-templates/${t}`)).status).toBe(403);
+      expect((await adminB().get('/api/inventory/production-templates')).body).toEqual([]);
+      expect((await adminB().patch(`/api/inventory/production-templates/${t}`, { name: 'B' })).status).toBe(404);
+      expect((await adminB().delete(`/api/inventory/production-templates/${t}`)).status).toBe(404);
+      // A restaurant can reuse another restaurant's name; B lines must be B preparations.
+      expect((await adminB().post('/api/inventory/production-templates', { name: 'Lunes A', lines: [{ itemId: ids.guiso, quantity: 1 }] })).status).toBe(422);
+      expect((await adminA().get('/api/inventory/production-templates')).body).toHaveLength(1);
     });
   });
 });

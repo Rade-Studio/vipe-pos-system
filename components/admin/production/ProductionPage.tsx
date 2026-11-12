@@ -1,347 +1,125 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { CookingPot, FlaskConical } from "lucide-react"
-import { DataTable, type DataTableColumn } from "@/components/admin/common/DataTable"
+import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
+import { FlaskConical } from "lucide-react"
 import { EmptyState } from "@/components/admin/common/EmptyState"
 import { PageHeader } from "@/components/admin/common/PageHeader"
-import { Panel } from "@/components/admin/common/Panel"
-import { formatMoney, QuantityInput } from "@/components/admin/inventory-shared"
-import { ExpiryBadge, itemStockStatus, NativeSelect, StockStatusBadge } from "@/components/admin/stock/stock-ui"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  useFormulas,
-  useInventoryItems,
-  useInventoryLocations,
-  useProducePreparation,
-  useProductionBatches,
-} from "@/hooks/inventory"
-import { useToast } from "@/hooks/use-toast"
-import { formulaCost, maxProducible, type FormulaItem } from "@/lib/inventory/formula"
-import { formatQuantity } from "@/lib/inventory/units"
-import type { InventoryShortage } from "@/lib/inventory/errors"
-import type { Formula, InventoryItem, ProductionBatch } from "@/lib/api/inventory/types"
+import { useFormulas, useInventoryItems } from "@/hooks/inventory"
 import { cn } from "@/lib/utils"
-import { productionPlan, toFormulaItem } from "./production-plan"
+import { DailySheet } from "./DailySheet"
+import { LotsTab } from "./LotsTab"
+import { PrepTable } from "./PrepTable"
+import { toFormulaItem } from "./production-plan"
 
 interface ProductionPageProps {
   description: string
   onNavigate?: (sectionId: string) => void
 }
 
-const formatDate = (iso: string) => new Date(iso).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" })
+const TABS = ["preps", "day", "lots"] as const
+type Tab = (typeof TABS)[number]
 
+/**
+ * Producción (odd/tasks/produccion-diaria.md, S1): preparations, the daily
+ * production sheet and the lots, as three tabs. A tab stays mounted once
+ * visited so typed quantities survive switching.
+ */
 export function ProductionPage({ description, onNavigate }: ProductionPageProps) {
   const itemsQuery = useInventoryItems()
   const formulasQuery = useFormulas()
-  const batchesQuery = useProductionBatches()
-  const [selected, setSelected] = useState<InventoryItem | null>(null)
+  const [tab, setTab] = useState<Tab>("preps")
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set(["preps"]))
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ preps: null, day: null, lots: null })
+  const baseId = useId()
 
   const items = useMemo(() => itemsQuery.data ?? [], [itemsQuery.data])
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, toFormulaItem(item)])), [items])
   const byPrep = formulasQuery.data?.byPrep ?? {}
-  const preps = items.filter((item) => item.kind === "prep" && item.isActive)
-
-  const batchColumns: DataTableColumn<ProductionBatch>[] = [
-    { id: "date", header: "Fecha", cell: (b) => <span className="tabular-nums">{formatDate(b.createdAt)}</span> },
-    { id: "item", header: "Preparación", cell: (b) => b.itemName ?? "—" },
-    { id: "qty", header: "Cantidad", cell: (b) => formatQuantity(b.quantity, b.unit ?? "") },
-    { id: "lot", header: "Lote", cell: (b) => <span className="font-mono text-xs">{b.lotCode ?? "—"}</span> },
-    { id: "expiry", header: "Vence", cell: (b) => <ExpiryBadge expiresOn={b.expiresOn} /> },
-    { id: "unitCost", header: "Costo unitario", className: "text-right", cell: (b) => formatMoney(b.unitCost) },
-    { id: "total", header: "Total", className: "text-right", cell: (b) => formatMoney(b.totalCost) },
-  ]
-
+  const preps = useMemo(() => items.filter((item) => item.kind === "prep" && item.isActive), [items])
+  const allPreps = useMemo(() => items.filter((item) => item.kind === "prep"), [items])
   const loading = itemsQuery.isLoading || formulasQuery.isLoading
 
-  return (
-    <div className="space-y-6">
-      <PageHeader title="Producción" description={description} />
-
-      <Panel title="Preparaciones" description="Produce lotes con stock propio a partir de su fórmula.">
-        {loading ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-36" />
-            ))}
-          </div>
-        ) : preps.length === 0 ? (
-          <EmptyState
-            icon={FlaskConical}
-            title="Sin preparaciones"
-            description="Crea una preparación (salsa, pico de gallo…) desde Fórmulas para producirla por lotes."
-            action={
-              onNavigate && (
-                <Button variant="outline" size="sm" onClick={() => onNavigate("formulas")}>
-                  Ir a Fórmulas
-                </Button>
-              )
-            }
-          />
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {preps.map((prep) => (
-              <PrepCard
-                key={prep.id}
-                prep={prep}
-                formula={byPrep[prep.id]}
-                itemsById={itemsById}
-                onProduce={() => setSelected(prep)}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </ul>
-        )}
-      </Panel>
-
-      <Panel title="Lotes recientes">
-        <DataTable
-          rows={batchesQuery.data ?? []}
-          columns={batchColumns}
-          getRowId={(b) => b.id}
-          isLoading={batchesQuery.isLoading}
-          searchText={(b) => `${b.itemName ?? ""} ${b.lotCode ?? ""}`}
-          searchPlaceholder="Buscar lote o preparación…"
-          empty={<EmptyState icon={CookingPot} title="Aún no hay lotes producidos" />}
-        />
-      </Panel>
-
-      <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-          {selected && byPrep[selected.id] && (
-            <ProduceForm
-              key={selected.id}
-              prep={selected}
-              formula={byPrep[selected.id]}
-              itemsById={itemsById}
-              onDone={() => setSelected(null)}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
-    </div>
-  )
-}
-
-interface PrepCardProps {
-  prep: InventoryItem
-  formula: Formula | undefined
-  itemsById: Map<string, FormulaItem>
-  onProduce: () => void
-  onNavigate?: (sectionId: string) => void
-}
-
-function PrepCard({ prep, formula, itemsById, onProduce, onNavigate }: PrepCardProps) {
-  const hasFormula = Boolean(formula && formula.lines.length > 0)
-  const producible = formula ? maxProducible(formula, itemsById) : 0
-  const unitCost = formula ? formulaCost(formula.lines, itemsById, formula.yieldQuantity).perUnit : 0
-
-  return (
-    <li className="flex flex-col gap-3 rounded-lg border p-4" aria-label={prep.name}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate font-medium">{prep.name}</p>
-          <p className="font-mono text-xs text-muted-foreground">{prep.sku}</p>
-        </div>
-        <StockStatusBadge status={itemStockStatus(prep)} />
-      </div>
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-        <dt className="text-muted-foreground">Stock</dt>
-        <dd className="text-right tabular-nums">{formatQuantity(prep.stock, prep.unit)}</dd>
-        {hasFormula && (
-          <>
-            <dt className="text-muted-foreground">Se puede producir</dt>
-            <dd className="text-right tabular-nums">{formatQuantity(Math.floor(producible * 1000) / 1000, prep.unit)}</dd>
-            <dt className="text-muted-foreground">Costo por {prep.unit}</dt>
-            <dd className="text-right tabular-nums">{formatMoney(unitCost)}</dd>
-          </>
-        )}
-      </dl>
-      <div className="mt-auto">
-        {hasFormula ? (
-          <Button size="sm" className="w-full" onClick={onProduce}>
-            Producir
-          </Button>
-        ) : (
-          <div className="flex items-center justify-between gap-2">
-            <Badge variant="outline">Sin fórmula</Badge>
-            {onNavigate && (
-              <Button size="sm" variant="outline" onClick={() => onNavigate("formulas")}>
-                Crear fórmula
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
-    </li>
-  )
-}
-
-interface ProduceFormProps {
-  prep: InventoryItem
-  formula: Formula
-  itemsById: Map<string, FormulaItem>
-  onDone: () => void
-}
-
-function ProduceForm({ prep, formula, itemsById, onDone }: ProduceFormProps) {
-  const { toast } = useToast()
-  const locationsQuery = useInventoryLocations()
-  const produce = useProducePreparation()
-  const locations = (locationsQuery.data ?? []).filter((location) => location.isActive)
-  const defaultLocation = locations.find((location) => location.isDefault) ?? locations[0]
-
-  const [quantity, setQuantity] = useState<number>(formula.yieldQuantity)
-  const [locationId, setLocationId] = useState<string>("")
-  const [lotCode, setLotCode] = useState("")
-  const [notes, setNotes] = useState("")
-  const [serverError, setServerError] = useState<{ message: string; shortages?: InventoryShortage[] } | null>(null)
-
-  const effectiveLocationId = locationId || defaultLocation?.id || ""
-  const plan = useMemo(() => productionPlan(formula, quantity, itemsById), [formula, quantity, itemsById])
-  const multipliers = [1, 2, 3]
-
-  const submit = async () => {
-    setServerError(null)
-    try {
-      const result = await produce.mutateAsync({
-        itemId: prep.id,
-        quantity,
-        locationId: effectiveLocationId || null,
-        ...(lotCode.trim() ? { lotCode: lotCode.trim() } : {}),
-        ...(notes.trim() ? { notes: notes.trim() } : {}),
-      })
-      toast({
-        title: "Lote producido",
-        description: `Lote ${result.lotCode}${result.expiresOn ? ` · vence ${result.expiresOn}` : ""}`,
-      })
-      onDone()
-    } catch (error) {
-      const e = error as { message?: string; shortages?: InventoryShortage[] }
-      setServerError({ message: e.message ?? "No se pudo producir.", shortages: e.shortages })
-    }
+  const select = (next: Tab, focus = false) => {
+    setTab(next)
+    setVisited((current) => (current.has(next) ? current : new Set([...current, next])))
+    if (focus) tabRefs.current[next]?.focus()
   }
 
+  const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const i = TABS.indexOf(tab)
+    const j =
+      event.key === "ArrowRight" ? i + 1 : event.key === "ArrowLeft" ? i - 1 : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : null
+    if (j === null) return
+    event.preventDefault()
+    select(TABS[(j + TABS.length) % TABS.length], true)
+  }
+
+  const labels: Record<Tab, string> = {
+    preps: `Preparaciones (${preps.length})`,
+    day: "Registrar producción del día",
+    lots: "Lotes",
+  }
+  const tabId = (t: Tab) => `${baseId}-tab-${t}`
+  const panelId = (t: Tab) => `${baseId}-panel-${t}`
+
   return (
-    <div className="space-y-5">
-      <SheetHeader>
-        <SheetTitle>Producir {prep.name}</SheetTitle>
-        <SheetDescription>
-          Rendimiento de la fórmula: {formatQuantity(formula.yieldQuantity, prep.unit)} por lote.
-        </SheetDescription>
-      </SheetHeader>
+    <div className="space-y-4">
+      <PageHeader title="Producción" description={description} />
 
-      <div className="space-y-2">
-        <Label htmlFor="produce-quantity">Cantidad a producir</Label>
-        <QuantityInput
-          id="produce-quantity"
-          label="Cantidad a producir"
-          unit={prep.unit}
-          value={quantity}
-          onChange={setQuantity}
-          showPresets
-        />
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Lotes">
-          {multipliers.map((m) => (
-            <Button
-              key={m}
-              type="button"
-              size="sm"
-              variant={quantity === formula.yieldQuantity * m ? "secondary" : "outline"}
-              onClick={() => setQuantity(formula.yieldQuantity * m)}
-            >
-              ×{m} {m === 1 ? "lote" : "lotes"}
-            </Button>
-          ))}
-        </div>
+      <div role="tablist" aria-label="Secciones de producción" className="flex gap-1 overflow-x-auto border-b">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            ref={(el) => {
+              tabRefs.current[t] = el
+            }}
+            type="button"
+            role="tab"
+            id={tabId(t)}
+            aria-selected={tab === t}
+            aria-controls={panelId(t)}
+            tabIndex={tab === t ? 0 : -1}
+            onClick={() => select(t)}
+            onKeyDown={onTabKey}
+            className={cn(
+              "-mb-px inline-flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 border-transparent px-3.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              tab === t && "border-primary text-foreground",
+            )}
+          >
+            {labels[t]}
+          </button>
+        ))}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full text-sm" aria-label="Requerimiento de insumos">
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium">Insumo</th>
-              <th className="px-3 py-2 text-right font-medium">Necesario</th>
-              <th className="px-3 py-2 text-right font-medium">Disponible</th>
-              <th className="px-3 py-2 text-right font-medium">Falta</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plan.rows.map((row) => (
-              <tr
-                key={row.itemId}
-                data-missing={row.missing > 0 || undefined}
-                className={cn("border-t", row.missing > 0 && "bg-destructive/5 text-destructive")}
-              >
-                <td className="px-3 py-2">{row.name}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatQuantity(row.needed, row.unit)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatQuantity(row.available, row.unit)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {row.missing > 0 ? formatQuantity(row.missing, row.unit) : "—"}
-                </td>
-              </tr>
+      {TABS.map((t) => (
+        <section key={t} role="tabpanel" id={panelId(t)} aria-labelledby={tabId(t)} hidden={tab !== t} tabIndex={-1}>
+          {visited.has(t) &&
+            (loading && t !== "lots" ? (
+              <Skeleton className="h-64" />
+            ) : t !== "lots" && preps.length === 0 ? (
+              <EmptyState
+                icon={FlaskConical}
+                title="Sin preparaciones"
+                description="Crea una preparación (salsa, pico de gallo…) desde Fórmulas para producirla por lotes."
+                action={
+                  onNavigate && (
+                    <Button variant="outline" className="min-h-11" onClick={() => onNavigate("formulas")}>
+                      Ir a Fórmulas
+                    </Button>
+                  )
+                }
+              />
+            ) : t === "preps" ? (
+              <PrepTable preps={preps} byPrep={byPrep} itemsById={itemsById} onNavigate={onNavigate} onDailySheet={() => select("day", true)} />
+            ) : t === "day" ? (
+              <DailySheet preps={preps} byPrep={byPrep} itemsById={itemsById} />
+            ) : (
+              <LotsTab preps={allPreps} />
             ))}
-          </tbody>
-        </table>
-      </div>
-
-      <dl className="grid grid-cols-2 gap-2 text-sm">
-        <dt className="text-muted-foreground">Costo estimado</dt>
-        <dd className="text-right font-medium tabular-nums">{formatMoney(plan.totalCost)}</dd>
-        <dt className="text-muted-foreground">Costo por {prep.unit}</dt>
-        <dd className="text-right tabular-nums">{formatMoney(plan.unitCost)}</dd>
-      </dl>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="produce-location">Bodega</Label>
-          <NativeSelect id="produce-location" value={effectiveLocationId} onChange={(e) => setLocationId(e.target.value)}>
-            {locations.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="produce-lot">Código de lote (opcional)</Label>
-          <Input id="produce-lot" value={lotCode} onChange={(e) => setLotCode(e.target.value)} placeholder="Automático" />
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="produce-notes">Notas (opcional)</Label>
-        <Textarea id="produce-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </div>
-
-      {plan.hasMissing && (
-        <p className="text-sm text-destructive">No hay stock suficiente de los insumos marcados para esta cantidad.</p>
-      )}
-      {serverError && (
-        <div role="alert" className="space-y-1 rounded-md border border-destructive/40 p-3 text-sm text-destructive">
-          <p>{serverError.message}</p>
-          {serverError.shortages && (
-            <ul className="list-disc pl-5">
-              {serverError.shortages.map((s) => (
-                <li key={s.itemId}>
-                  {s.name ?? s.itemId}: faltan {formatQuantity(s.missing, s.unit ?? "")}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      <SheetFooter>
-        <Button onClick={submit} disabled={plan.hasMissing || !(quantity > 0) || produce.isPending}>
-          {produce.isPending ? "Produciendo…" : "Producir"}
-        </Button>
-      </SheetFooter>
+        </section>
+      ))}
     </div>
   )
 }
