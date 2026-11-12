@@ -24,6 +24,7 @@ import type { PrintableKitchenOrder } from "@/types"
 import * as tablesApi from "@/lib/api/tables"
 import {
   addItemsToOrder,
+  combosFromCart,
   create as createOrder,
   getByStatus,
   orderConflictOf,
@@ -31,6 +32,7 @@ import {
   orderItemsFromCart,
   toOrder,
   updateDetails,
+  type ApiOrderItem,
   type DishPrice,
   type LinePrice,
   type OrderDetails,
@@ -38,7 +40,31 @@ import {
 } from "@/lib/api/orders"
 import { ApiError, conflictMessage } from "@/lib/api/errors"
 import { elapsedLabel, openOrdersByTable } from "@/lib/floor/live"
-import { guestsText } from "@/lib/order-steps/details"
+import { clockTime, guestsText } from "@/lib/order-steps/details"
+import {
+  categoryTag,
+  comboSavingText,
+  comboTiles,
+  dishTag,
+  draftDiscounts,
+  isComboLine,
+  quickAdds,
+  scheduleShort,
+  sellsText,
+  sentPreviewDiscounts,
+  stripState,
+  subcategoryTag,
+  windowWarning,
+  type CartCombo,
+  type DiscountRow,
+  type QuickAdd,
+} from "@/lib/promotions/waiter"
+import { usePromotionsToday } from "@/hooks/use-promotions"
+import { usePricingPreview } from "@/hooks/use-pricing-preview"
+import { PromotionStrip } from "@/components/promotions/PromotionStrip"
+import { PromotionsSheet } from "@/components/promotions/PromotionsSheet"
+import { ComboBuilder } from "@/components/promotions/ComboBuilder"
+import { PromotionNudge, WindowEndingWarning, type OrderPricing } from "@/components/promotions/OrderPromotions"
 import { realtimeService } from "@/lib/api/realtime"
 import { type CommandRequest, sendCommand } from "@/lib/api/print"
 import { usePrintingEnabled } from "@/lib/api/printing"
@@ -150,6 +176,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const [orderReviewOpen, setOrderReviewOpen] = useState(false)
   // F7: the cart line whose options are being changed ("Cambiar opciones").
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
+  // S12: the combo being built.
+  const [comboPromotionId, setComboPromotionId] = useState<string | null>(null)
   // T22: the details of the order being taken on each table. `asked` once the
   // guests question was answered (guests null: "Sin indicar"); `notes` is the
   // "Nota del pedido" draft (undefined: untouched, the stored note shows).
@@ -739,10 +767,14 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     (tableId: string, prices: readonly DishPrice[], lines: readonly LinePrice[] = []) => {
       const priceByDish = new Map(prices.map((entry) => [entry.dishId, entry.price]))
       const priceByIndex = new Map(lines.map((entry) => [entry.index, entry.unitPrice]))
+      let dishIndex = 0
       useCartStore.setState((state) => ({
         cartItems: {
           ...state.cartItems,
-          [tableId]: (state.cartItems[tableId] ?? []).map((item, index) => {
+          [tableId]: (state.cartItems[tableId] ?? []).map((item) => {
+            // `lines` index the dish lines sent in `items`; a combo line is not one (S12).
+            if (isComboLine(item)) return item
+            const index = dishIndex++
             const dishPrice = priceByDish.get(dishIdFromCartItemId(item.id) ?? "")
             const price =
               priceByIndex.get(index) ?? (dishPrice === undefined ? undefined : dishPrice + modifiersExtra(item.modifiers))
@@ -786,6 +818,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       }
 
       const items = orderItemsFromCart(cartItems)
+      // S12: combos go as combo lines; the server inserts one item per choice.
+      const combos = combosFromCart(cartItems)
+      const withCombos = combos.length ? { combos } : {}
       const existingOrder = checkExistingOrder(activeTable)
       // T22: the new order carries the guests and note captured for it; an
       // open order carries a note changed and not saved yet.
@@ -807,20 +842,20 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       let added = null as OrderDto | null
       try {
         if (existingOrder) {
-          added = await addItemsToOrder(existingOrder.id, items, { force, ...openDetails })
+          added = await addItemsToOrder(existingOrder.id, items, { force, ...withCombos, ...openDetails })
         } else {
           try {
             created = await createOrder(
               force
-                ? { tableId: activeTable, orderType: "dine_in", items, ...newDetails, force: true }
-                : { tableId: activeTable, orderType: "dine_in", items, ...newDetails },
+                ? { tableId: activeTable, orderType: "dine_in", items, ...withCombos, ...newDetails, force: true }
+                : { tableId: activeTable, orderType: "dine_in", items, ...withCombos, ...newDetails },
             )
           } catch (error) {
             // Another terminal opened an order on this table first: the cart
             // goes to that order instead of failing.
             const conflict = orderConflictOf(error)
             if (conflict?.kind !== "openOrder") throw error
-            added = await addItemsToOrder(conflict.orderId, items, { force, ...newDetails })
+            added = await addItemsToOrder(conflict.orderId, items, { force, ...withCombos, ...newDetails })
           }
         }
       } catch (error) {
@@ -836,7 +871,13 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       // The database number (T15/T17). The API prints it and the sender's name on the comanda.
       const orderNumber = created?.orderNumber ?? added?.orderNumber ?? existingOrder?.orderNumber
       const orderId = created?.id ?? added?.id ?? existingOrder?.id
-      const kitchenOrder: CommandRequest | null = orderId ? { orderId, table: table.number, items: cartItems } : null
+      // A combo prints as its dishes ("Sopa", "Bandeja", "Jugo"); no prices or discounts go to the kitchen (S11).
+      const kitchenItems = cartItems.flatMap<unknown>((item) =>
+        isComboLine(item)
+          ? item.combo.choices.map((choice) => ({ id: choice.dishId, dishId: choice.dishId, name: choice.name, quantity: item.quantity }))
+          : [item],
+      )
+      const kitchenOrder: CommandRequest | null = orderId ? { orderId, table: table.number, items: kitchenItems } : null
 
       // The created order reaches the list through its realtime INSERT; an
       // order that received items is upserted (it may not be listed yet).
@@ -1117,16 +1158,13 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     const added = {
       id: dish.id,
       name: dish.name,
-      // F7: dish price (after promotion) + options, the server's rule (L4).
+      // F7: list price + options, the server's rule (L4); discounts are the server's (S2).
       price: item.unitPrice ?? dish.price + extra,
       quantity,
       categoryId: dish.categoryId ?? "",
       image: dish.imageUrl ?? "",
       comments,
       ...(modifiers?.length ? { modifiers } : {}),
-      originalPrice: dish.originalPrice != null ? dish.originalPrice + extra : undefined,
-      discountAmount: dish.discountAmount,
-      discountPercentage: dish.discountPercentage ?? undefined,
       promotionId: dish.promotionId,
       promotionName: dish.promotionName,
     }
@@ -1190,7 +1228,6 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       quantity,
       comments: note || undefined,
       modifiers,
-      originalPrice: editingDish?.originalPrice != null ? editingDish.originalPrice + modifiersExtra(modifiers) : undefined,
     })
     setEditingLineId(null)
   }
@@ -1233,12 +1270,127 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const sentLines = activeOrder?.items ?? []
   const newCount = lineCount(cartItems)
   const tableCount = lineCount(sentLines) + newCount
-  const tableTotal = lineTotal(sentLines) + cartTotal
+
+  // S11/S12: the promotions of the salón today (refreshed every minute) and
+  // the order priced as if sent now. Neither blocks the order: without them
+  // the screen shows list prices and sends as before.
+  const { data: promotionsToday } = usePromotionsToday("dine_in", { enabled: orderFlowOpen })
+  const { result: pricingResult } = usePricingPreview({
+    channel: "dine_in",
+    orderId: activeOrder?.id,
+    orderVersion: sentLines.map((line) => `${line.id}:${line.quantity}`).join(","),
+    cart: cartItems,
+    enabled: orderFlowOpen,
+  })
+  const menuDishes = useMemo(
+    () => new Map((menuTree.categories ?? []).flatMap((category) => category.dishes).map((dish) => [dish.id, dish])),
+    [menuTree.categories],
+  )
+  const preview = pricingResult?.preview
+  const previewLineIds = pricingResult?.lineIds ?? []
+  const newDiscountRows = draftDiscounts(preview, previewLineIds)
+  const sentPreviewRows = sentPreviewDiscounts(preview)
+  // A combo the preview has not priced yet shows its own saving (Σ list − combo price).
+  const localComboRows = (line: (typeof cartItems)[number]): DiscountRow[] =>
+    isComboLine(line) && line.combo.listPrice > line.combo.comboPrice
+      ? [{ label: line.name, amount: (line.combo.listPrice - line.combo.comboPrice) * line.quantity }]
+      : []
+  const newDiscounts = (lineId: string): DiscountRow[] => {
+    const line = cartItems.find((entry) => entry.id === lineId)
+    if (!line) return []
+    return previewLineIds.includes(lineId) ? (newDiscountRows.get(lineId) ?? []) : localComboRows(line)
+  }
+  // Sent lines keep the discounts fixed when they were sent ("fijado HH:MM").
+  const sentDiscounts = (lineId: string): DiscountRow[] => {
+    const line = sentLines.find((entry) => entry.id === lineId) as ApiOrderItem | undefined
+    if (!line) return []
+    const fixedAt = clockTime(line.addedAt)
+    if (line.discounts?.length) {
+      return line.discounts.map((discount) => ({
+        label: discount.label,
+        amount: discount.amount,
+        fixedAt: discount.kind === "promotion_item" || discount.kind === "combo" ? fixedAt : null,
+      }))
+    }
+    return (sentPreviewRows.get(lineId) ?? []).map((row) => ({ ...row, fixedAt }))
+  }
+  const sum = (rows: readonly DiscountRow[]) => rows.reduce((total, row) => total + row.amount, 0)
+  const localSavings =
+    sentLines.reduce((total, line) => total + sum(sentDiscounts(line.id)), 0) +
+    cartItems.reduce((total, line) => total + sum(localComboRows(line)), 0)
+  const grossTotal = lineTotal(sentLines) + cartTotal
+  const savings = preview ? preview.totalDiscounts : localSavings
+  const tableTotal = preview ? preview.netSubtotal : grossTotal - localSavings
+  const missingUnits = preview?.hints.find((hint) => hint.kind === "missing_units")
+  const nudgeAdds = missingUnits ? quickAdds(missingUnits, promotionsToday, menuTree.categories, cartItems) : []
+  const sendWarning = windowWarning(promotionsToday, menuTree.categories, cartItems)
+  const handleQuickAdd = ({ dish, category }: QuickAdd) => {
+    handleAddFromSteps({ dish, category, quantity: 1 })
+    toast({ title: `+1 ${dish.name}` })
+  }
+  const orderPricing: OrderPricing = {
+    newDiscounts,
+    sentDiscounts,
+    total: tableTotal,
+    savings,
+    notices:
+      missingUnits || sendWarning ? (
+        <div className="grid gap-2">
+          {missingUnits && <PromotionNudge message={missingUnits.message} adds={nudgeAdds} onQuickAdd={handleQuickAdd} />}
+          {sendWarning && <WindowEndingWarning warning={sendWarning} />}
+        </div>
+      ) : undefined,
+  }
+  const pickerTags = {
+    category: (category: Parameters<typeof categoryTag>[1]) => categoryTag(promotionsToday, category),
+    subcategory: (category: Parameters<typeof categoryTag>[1], subcategoryId: string | null) =>
+      subcategoryTag(promotionsToday, category, subcategoryId),
+    dish: (dish: Parameters<typeof dishTag>[1]) => dishTag(promotionsToday, dish),
+  }
+  const combos = comboTiles(promotionsToday)
+  const comboTileList = combos.map((tile) => ({
+    id: `combo-${tile.promotion.id}`,
+    name: tile.promotion.name,
+    meta: tile.enabled ? tile.promotion.comboGroups.map((group) => group.name).join(" + ") : scheduleShort(tile.promotion),
+    tag: tile.enabled
+      ? {
+          promotionId: tile.promotion.id,
+          text: tile.endsAt ? `Combo · hasta ${tile.endsAt}` : "Combo",
+          tone: tile.minutesLeft != null && tile.minutesLeft <= 10 ? ("ending" as const) : ("on" as const),
+        }
+      : tile.startsAt
+        ? { promotionId: tile.promotion.id, text: `Combo desde ${tile.startsAt}`, tone: "later" as const }
+        : null,
+    disabled: !tile.enabled,
+    onSelect: () => {
+      if (tile.enabled) {
+        setOrderReviewOpen(false)
+        setComboPromotionId(tile.promotion.id)
+      } else toast({ title: sellsText(tile.promotion) })
+    },
+  }))
+  const buildingCombo = comboPromotionId ? (combos.find((tile) => tile.enabled && tile.promotion.id === comboPromotionId) ?? null) : null
+  const addComboToCart = (combo: CartCombo) => {
+    if (!activeTable || !buildingCombo) return
+    useCartStore.getState().addCombo(activeTable, {
+      name: buildingCombo.promotion.name,
+      // The list price, like every line (S2); the saving is the combo's discount.
+      price: combo.listPrice,
+      quantity: 1,
+      categoryId: "",
+      image: "",
+      combo,
+    })
+    const saving = comboSavingText(combo.listPrice, combo.comboPrice).saving
+    toast({ title: `${buildingCombo.promotion.name} agregado${saving ? ` · ${saving}` : ""}` })
+    setComboPromotionId(null)
+  }
   const orderTitle = `Pedido · Mesa ${activeTableNumber ?? ""}`
   const flowDetails = [activeZoneName, activeWaiterName].filter(Boolean).join(" · ")
   const closeOrderFlow = () => {
     setOrderFlowOpen(false)
     setOrderReviewOpen(false)
+    setComboPromotionId(null)
   }
   const orderFlow =
     orderFlowOpen && activeTableRow ? (
@@ -1250,6 +1402,9 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           onAdd={handleAddFromSteps}
           onExit={closeOrderFlow}
           exitLabel="Mapa"
+          banner={promotionsToday ? <PromotionStrip state={stripState(promotionsToday)} /> : undefined}
+          tags={pickerTags}
+          extraTiles={comboTileList}
           header={
             <>
               <Button
@@ -1273,12 +1428,16 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                 </p>
                 {flowDetails && <p className="mt-0.5 truncate text-[12.5px] text-muted-fg">{flowDetails}</p>}
               </div>
+              {promotionsToday && <PromotionsSheet today={promotionsToday} />}
             </>
           }
           summary={
             <button
               type="button"
-              onClick={() => setOrderReviewOpen((open) => !open)}
+              onClick={() => {
+                setComboPromotionId(null)
+                setOrderReviewOpen((open) => !open)
+              }}
               aria-label={`Mesa ${activeTableNumber}, ${tableCount} productos, ${formatCurrency(tableTotal)}. ${orderReviewOpen ? "Volver a los pasos" : "Ver pedido"}`}
               className="flex min-h-[52px] w-full min-w-0 items-center gap-2.5 rounded-2xl border border-line bg-surface-2 px-3 py-1.5 text-left focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus md:min-h-[60px]"
             >
@@ -1302,7 +1461,16 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
             </Button>
           }
           aside={
-            <OrderColumn title={orderTitle} newLines={cartItems} sentLines={sentLines} onReview={() => setOrderReviewOpen(true)} />
+            <OrderColumn
+              title={orderTitle}
+              newLines={cartItems}
+              sentLines={sentLines}
+              pricing={orderPricing}
+              onReview={() => {
+                setComboPromotionId(null)
+                setOrderReviewOpen(true)
+              }}
+            />
           }
           overlay={
             orderReviewOpen ? (
@@ -1320,10 +1488,22 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
                 onRemove={handleRemoveLine}
                 onEditOptions={editOptions}
                 onContinue={() => setOrderReviewOpen(false)}
+                pricing={orderPricing}
+              />
+            ) : buildingCombo ? (
+              <ComboBuilder
+                key={buildingCombo.promotion.id}
+                promotion={buildingCombo.promotion}
+                dishes={menuDishes}
+                endsAt={buildingCombo.endsAt}
+                onAdd={addComboToCart}
               />
             ) : undefined
           }
-          onCloseOverlay={() => setOrderReviewOpen(false)}
+          onCloseOverlay={() => {
+            setOrderReviewOpen(false)
+            setComboPromotionId(null)
+          }}
         />
         <ModifierSheet
           dish={editingLine && editingDish ? editingDish : null}

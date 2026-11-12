@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 
@@ -43,6 +43,8 @@ const env = vi.hoisted(() => ({
   consumeOrderStock: vi.fn(),
   toastFn: vi.fn(),
   checkStockForDishes: vi.fn(),
+  promotionsToday: vi.fn(),
+  pricingPreview: vi.fn(),
   /** true while the dish can be sold, false once the send has reduced stock. */
   stockSoldOut: false,
   tableCallbacks: [] as ((payload: unknown) => void)[],
@@ -69,6 +71,11 @@ const env = vi.hoisted(() => ({
     this.consumeOrderStock.mockReset()
     this.toastFn.mockReset()
     this.checkStockForDishes.mockReset()
+    this.promotionsToday.mockReset()
+    this.pricingPreview.mockReset()
+    // S11: without promotions data the order screen works at list prices.
+    this.promotionsToday.mockRejectedValue(new Error("no promotions"))
+    this.pricingPreview.mockRejectedValue(new Error("no preview"))
     this.stockSoldOut = false
     this.tableCallbacks = []
     this.orderCallbacks = []
@@ -127,6 +134,10 @@ vi.mock("@/lib/api/client", () => {
         return { data: await env.addItems(id, body) }
       case "PATCH /api/orders/{id}":
         return { data: await env.updateDetails(id, body) }
+      case "GET /api/catalog/promotions/today":
+        return { data: await env.promotionsToday(init.params.query) }
+      case "POST /api/orders/pricing-preview":
+        return { data: await env.pricingPreview(body) }
       default:
         throw new Error(`unexpected ${method} ${path}`)
     }
@@ -191,6 +202,7 @@ import { WaiterView, releaseRefusal } from "./WaiterView"
 import { ApiError } from "@/lib/api/errors"
 import { menuCategory, menuDish } from "@/lib/order-steps/fixtures"
 import { modifierGroup } from "@/lib/modifiers/fixtures"
+import { active, happyHour, menuEjecutivo, other, today as todayDto } from "@/lib/promotions/fixtures"
 
 // jsdom has no layout: WaiterView scrolls the menu into view after a table is
 // picked, which jsdom does not implement.
@@ -1038,6 +1050,46 @@ describe("WaiterView — step order flow (T10)", () => {
     expect(screen.getByText("Mesa 1")).toBeInTheDocument()
   })
 
+  it("sends the list price as unitPrice for a dish with an active promotion (S8)", async () => {
+    env.menuTree.mockResolvedValue({
+      categories: [
+        menuCategory({
+          id: "cat-2",
+          name: "Postres",
+          dishes: [
+            menuDish({
+              id: ARROZ,
+              name: "Arroz con leche",
+              price: 7000,
+              promotionId: "p-1",
+              promotionName: "Martes dulce",
+              promotionBadge: "20%",
+              promotionEndsAt: null,
+              promoPrice: 5600,
+            }),
+          ],
+        }),
+      ],
+    })
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await openOrderFlow()
+    await tap(/Postres/)
+    await tap(/^Arroz con leche,/)
+    await tap(/^Agregar 1 ·/)
+    await tap("Enviar a cocina (1)")
+
+    expect(env.orderCreate).toHaveBeenCalledWith({
+      tableId: "t-1",
+      orderType: "dine_in",
+      items: [{ dishId: ARROZ, quantity: 1, unitPrice: 7000, comments: null }],
+    })
+  })
+
   it("adds to the table's open order through the existing add-items path", async () => {
     env.orderCreate.mockRejectedValueOnce(
       new ApiError(409, "Conflict", "Table has an open order", { message: "Table has an open order", orderId: "o-9" }),
@@ -1864,5 +1916,312 @@ describe("WaiterView — manual release refusal (S1)", () => {
     ["kitchen", "No se puede liberar una mesa en cocina."],
   ] as const)("names a %s table in Spanish", (status, message) => {
     expect(releaseRefusal(status)).toBe(message)
+  })
+})
+
+describe("WaiterView — promotions while taking the order (S11, S12)", () => {
+  const MOJITO = "a1a1a1a1-0000-4000-8000-000000000001"
+  const MARGARITA = "a1a1a1a1-0000-4000-8000-000000000002"
+  const CLUB = "a1a1a1a1-0000-4000-8000-000000000003"
+  const AJIACO = "a1a1a1a1-0000-4000-8000-000000000004"
+  const BANDEJA_E = "a1a1a1a1-0000-4000-8000-000000000005"
+  const MORA = "a1a1a1a1-0000-4000-8000-000000000006"
+  const menu = {
+    categories: [
+      menuCategory({
+        id: "cat-bebidas",
+        name: "Bebidas",
+        subcategories: [
+          { id: "sub-cocteles", name: "Cócteles" },
+          { id: "sub-cervezas", name: "Cervezas" },
+        ],
+        dishes: [
+          menuDish({ id: MOJITO, name: "Mojito", price: 24000, subcategoryId: "sub-cocteles" }),
+          menuDish({ id: MARGARITA, name: "Margarita", price: 26000, subcategoryId: "sub-cocteles" }),
+          menuDish({ id: CLUB, name: "Club Colombia", price: 9000, subcategoryId: "sub-cervezas" }),
+        ],
+      }),
+      menuCategory({
+        id: "cat-casa",
+        name: "De la casa",
+        dishes: [
+          menuDish({ id: AJIACO, name: "Ajiaco", price: 9000 }),
+          menuDish({ id: BANDEJA_E, name: "Bandeja ejecutiva", price: 17000 }),
+          menuDish({ id: MORA, name: "Jugo de mora", price: 7000 }),
+        ],
+      }),
+    ],
+  }
+  const hh = { ...happyHour, targets: { dishIds: [], categoryIds: [], subcategoryIds: ["sub-cocteles"] } }
+  const combo = {
+    ...menuEjecutivo,
+    comboGroups: [
+      { id: "g-sopa", name: "Sopa", dishIds: [AJIACO] },
+      { id: "g-principio", name: "Principio", dishIds: [BANDEJA_E] },
+      { id: "g-bebida", name: "Bebida", dishIds: [MORA] },
+    ],
+  }
+
+  beforeEach(() => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
+    env.menuTree.mockResolvedValue(menu)
+  })
+
+  const openFlow = async () => {
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await openOrderFlow()
+  }
+  const aside = () => screen.getByRole("complementary", { name: "Pedido" })
+  const addMojito = async () => {
+    await tap(/^Bebidas/)
+    await tap(/^Cócteles/)
+    await tap(/^Mojito,/)
+    await tap(/^Agregar 1 ·/)
+  }
+
+  it("shows the active strip and the 2x1 tags on the category, subcategory and dish tiles", async () => {
+    env.promotionsToday.mockResolvedValue(todayDto({ active: [active(hh, "19:00", 50)] }))
+    await openFlow()
+
+    expect(env.promotionsToday).toHaveBeenCalledWith({ channel: "dine_in" })
+    const strip = screen.getByRole("status", { name: "" })
+    expect(strip).toHaveTextContent("Happy hour 2x1 en cócteles")
+    expect(strip).toHaveTextContent("quedan 50 min")
+    expect(screen.getByRole("button", { name: /^Bebidas/ })).toHaveTextContent("2x1 · hasta 19:00")
+    expect(screen.getByRole("button", { name: /^De la casa/ })).not.toHaveTextContent("2x1")
+    await tap(/^Bebidas/)
+    expect(screen.getByRole("button", { name: /^Cócteles/ })).toHaveTextContent("2x1 · hasta 19:00")
+    expect(screen.getByRole("button", { name: /^Cervezas/ })).not.toHaveTextContent("2x1")
+    await tap(/^Cócteles/)
+    expect(screen.getByRole("button", { name: /^Mojito, .*24\.000, 2x1 · hasta 19:00$/ })).toBeInTheDocument()
+  })
+
+  it("the strip says Sin promociones en este momento without one, and Promociones opens the sheet", async () => {
+    env.promotionsToday.mockResolvedValue(todayDto({ others: [other(hh, "outside_hours")] }))
+    await openFlow()
+    expect(screen.getByText("Sin promociones en este momento")).toBeInTheDocument()
+    await tap("Promociones: 0 activas ahora")
+    const sheet = screen.getByRole("dialog", { name: "Promociones de hoy" })
+    expect(within(sheet).getByRole("region", { name: "No aplican ahora en el salón" })).toHaveTextContent("Happy hour 2x1 en cócteles")
+  })
+
+  it("refreshes today every minute, so the strip turns yellow without a reload", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      env.promotionsToday.mockResolvedValue(todayDto({ active: [active(hh, "19:00", 11)] }))
+      await openFlow()
+      expect(screen.getByText("Happy hour 2x1 en cócteles").closest("[role=status]")).toHaveAttribute("data-state", "active")
+      env.promotionsToday.mockResolvedValue(todayDto({ active: [active(hh, "19:00", 10)] }))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000)
+      })
+      await flush()
+      const strip = screen.getByText("Happy hour 2x1 en cócteles").closest("[role=status]")
+      expect(strip).toHaveAttribute("data-state", "ending")
+      expect(strip).toHaveTextContent("Termina a las 19:00. Envía el pedido antes para que se aplique.")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("prices the order from the preview: line discounts, savings, total and the nudge's quick add", async () => {
+    env.promotionsToday.mockResolvedValue(todayDto({ active: [active(hh, "19:00", 50)] }))
+    env.pricingPreview.mockImplementation(async (body: { lines: { dishId: string; quantity: number }[] }) => {
+      const units = body.lines.reduce((sum, line) => sum + line.quantity, 0)
+      const free = Math.floor(units / 2) * 24000
+      return {
+        channel: "dine_in",
+        now: "2026-11-12T23:10:00.000Z",
+        lines: body.lines.map((line, index) => ({
+          sent: false,
+          orderItemId: null,
+          draftIndex: index,
+          dishId: line.dishId,
+          name: "Mojito",
+          quantity: line.quantity,
+          unitPrice: 24000,
+          promotionId: "p-hh",
+          promotionName: "Happy hour 2x1",
+          comboId: null,
+          addedAt: null,
+          discounts: free ? [{ kind: "promotion_item", promotionId: "p-hh", label: "Happy hour 2x1", amount: free }] : [],
+        })),
+        billDiscount: null,
+        manualDiscounts: [],
+        grossSubtotal: units * 24000,
+        totalDiscounts: free,
+        netSubtotal: units * 24000 - free,
+        hints: units % 2 ? [{ kind: "missing_units", promotionId: "p-hh", message: "Falta 1 unidad para otro 2x1.", missing: 1 }] : [],
+      }
+    })
+    await openFlow()
+    await addMojito()
+
+    await waitFor(() => expect(within(aside()).getByText("Falta 1 unidad para otro 2x1.")).toBeInTheDocument())
+    expect(env.pricingPreview).toHaveBeenLastCalledWith({ channel: "dine_in", lines: [{ dishId: MOJITO, quantity: 1 }] })
+    expect(within(aside()).queryByText("Ahorro con promociones")).not.toBeInTheDocument()
+
+    await act(async () => {
+      within(aside()).getByRole("button", { name: "+ Mojito" }).click()
+    })
+    expect(useCartStore.getState().cartItems["t-1"].map((item) => [item.name, item.quantity])).toEqual([["Mojito", 2]])
+    expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "+1 Mojito" }))
+
+    await waitFor(() => expect(within(aside()).getByText("Ahorro con promociones")).toBeInTheDocument())
+    expect(aside()).toHaveTextContent(/Happy hour 2x1\s*−\$\s?24\.000/)
+    expect(aside()).toHaveTextContent(/Total\s*\$\s?24\.000/)
+    expect(within(aside()).queryByText("Falta 1 unidad para otro 2x1.")).not.toBeInTheDocument()
+  })
+
+  it("keeps the last good preview when it fails, and still sends at list price", async () => {
+    env.pricingPreview.mockResolvedValueOnce({
+      channel: "dine_in",
+      now: "2026-11-12T23:10:00.000Z",
+      lines: [],
+      billDiscount: null,
+      manualDiscounts: [],
+      grossSubtotal: 24000,
+      totalDiscounts: 1000,
+      netSubtotal: 23000,
+      hints: [],
+    })
+    await openFlow()
+    await addMojito()
+    await waitFor(() => expect(within(aside()).getByText("Ahorro con promociones")).toBeInTheDocument())
+
+    await addMojito()
+    await waitFor(() => expect(env.pricingPreview).toHaveBeenCalledTimes(2))
+    await flush()
+    expect(within(aside()).getByText("Ahorro con promociones")).toBeInTheDocument()
+
+    await tap("Enviar a cocina (2)")
+    expect(env.orderCreate).toHaveBeenCalledWith({
+      tableId: "t-1",
+      orderType: "dine_in",
+      items: [{ dishId: MOJITO, quantity: 2, unitPrice: 24000, comments: null }],
+    })
+  })
+
+  it("warns to send before the window ends while eligible lines are unsent", async () => {
+    env.promotionsToday.mockResolvedValue(todayDto({ active: [active(hh, "19:00", 8)] }))
+    await openFlow()
+    expect(within(aside()).queryByText("Envía antes de las 19:00.")).not.toBeInTheDocument()
+    await addMojito()
+    expect(within(aside()).getByText("Envía antes de las 19:00.").closest("[role=status]")).toHaveTextContent("Quedan 8 min")
+  })
+
+  it("a sent line shows its discount fixed at its send time", async () => {
+    const sentAt = new Date(2026, 10, 12, 18, 12, 0)
+    env.orderGetByStatus.mockResolvedValue([
+      {
+        ...orderDto("o-1", "t-1"),
+        items: [
+          {
+            id: "i-1",
+            orderId: "o-1",
+            dishId: MARGARITA,
+            name: "Margarita",
+            price: 26000,
+            quantity: 1,
+            status: "kitchen",
+            comments: null,
+            addedAt: sentAt.toISOString(),
+          },
+          {
+            id: "i-2",
+            orderId: "o-1",
+            dishId: MOJITO,
+            name: "Mojito",
+            price: 24000,
+            quantity: 1,
+            status: "kitchen",
+            comments: null,
+            addedAt: sentAt.toISOString(),
+            discounts: [
+              { id: "od-1", kind: "promotion_item", source: "automatic", label: "Happy hour 2x1", amount: 24000, promotionId: "p-hh", orderItemId: "i-2", comboId: null, reason: null, authorizedBy: null },
+            ],
+          },
+        ],
+      },
+    ])
+    await openFlow()
+    expect(aside()).toHaveTextContent(/Happy hour 2x1 · fijado 18:12\s*−\$\s?24\.000/)
+    expect(within(aside()).getByText("Ahorro con promociones")).toBeInTheDocument()
+    expect(aside()).toHaveTextContent(/Total\s*\$\s?26\.000/)
+  })
+
+  it("outside its schedule the combo tile is disabled and says when it is sold", async () => {
+    env.promotionsToday.mockResolvedValue(todayDto({ others: [other(combo, "outside_hours")] }))
+    await openFlow()
+    const tile = screen.getByRole("button", { name: /^Menú ejecutivo/ })
+    expect(tile).toHaveAttribute("aria-disabled", "true")
+    expect(tile).toHaveTextContent("Lun–Vie · 12:00–15:00")
+    await tap(/^Menú ejecutivo/)
+    expect(env.toastFn).toHaveBeenCalledWith({ title: "El Menú ejecutivo se vende de lunes a viernes de 12:00 a 15:00" })
+    expect(screen.queryByText(/Elige 1 de cada grupo/)).not.toBeInTheDocument()
+  })
+
+  it("builds a live combo, sends it in combos and prints its dishes without prices", async () => {
+    env.promotionsToday.mockResolvedValue(todayDto({ active: [active(combo, "15:00", 150)] }))
+    await openFlow()
+    const tile = screen.getByRole("button", { name: /^Menú ejecutivo/ })
+    expect(tile).not.toHaveAttribute("aria-disabled")
+    expect(tile).toHaveTextContent("Combo · hasta 15:00")
+    await tap(/^Menú ejecutivo/)
+    expect(screen.getByRole("heading", { name: "Menú ejecutivo" })).toHaveFocus()
+    await tap(/^Ajiaco/)
+    await tap(/^Bandeja ejecutiva/)
+    await tap(/^Jugo de mora/)
+    expect(screen.getByText(/Por separado/).parentElement).toHaveTextContent(/Por separado \$\s?33\.000 · ahorra \$\s?9\.000/)
+    await tap(/^Agregar menú ·/)
+
+    expect(env.toastFn).toHaveBeenCalledWith({ title: expect.stringMatching(/^Menú ejecutivo agregado · ahorra \$\s?9\.000$/) })
+    const [line] = useCartStore.getState().cartItems["t-1"]
+    expect(line).toMatchObject({ name: "Menú ejecutivo", price: 33000, quantity: 1 })
+    expect(aside()).toHaveTextContent("Ajiaco · Bandeja ejecutiva · Jugo de mora")
+    expect(aside()).toHaveTextContent(/Menú ejecutivo\s*−\$\s?9\.000/)
+    expect(aside()).toHaveTextContent(/Total\s*\$\s?24\.000/)
+
+    await tap("Enviar a cocina (1)")
+    expect(env.orderCreate).toHaveBeenCalledWith({
+      tableId: "t-1",
+      orderType: "dine_in",
+      items: [],
+      combos: [
+        {
+          comboPromotionId: "p-ejec",
+          choices: [
+            { groupId: "g-sopa", dishId: AJIACO },
+            { groupId: "g-principio", dishId: BANDEJA_E },
+            { groupId: "g-bebida", dishId: MORA },
+          ],
+        },
+      ],
+    })
+    const printed = env.sendCommand.mock.calls[0][0].items
+    expect(printed).toEqual([
+      { id: AJIACO, dishId: AJIACO, name: "Ajiaco", quantity: 1 },
+      { id: BANDEJA_E, dishId: BANDEJA_E, name: "Bandeja ejecutiva", quantity: 1 },
+      { id: MORA, dishId: MORA, name: "Jugo de mora", quantity: 1 },
+    ])
+  })
+
+  it("a combo can be removed before sending", async () => {
+    env.promotionsToday.mockResolvedValue(todayDto({ active: [active(combo, "15:00", 150)] }))
+    await openFlow()
+    await tap(/^Menú ejecutivo/)
+    await tap(/^Ajiaco/)
+    await tap(/^Bandeja ejecutiva/)
+    await tap(/^Jugo de mora/)
+    await tap(/^Agregar menú ·/)
+    await tap("Ver y editar pedido")
+    expect(screen.queryByRole("group", { name: "Cantidad de Menú ejecutivo" })).not.toBeInTheDocument()
+    await tap("Quitar Menú ejecutivo")
+    expect(useCartStore.getState().cartItems["t-1"]).toEqual([])
   })
 })

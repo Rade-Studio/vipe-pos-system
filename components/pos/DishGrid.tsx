@@ -173,23 +173,23 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
                       )}
 
                       {/* Mostrar badge de promoción si existe */}
-                      {dish.discountAmount && dish.discountAmount > 0 && !isOutOfStock && (
+                      {dish.promotionBadge && !isOutOfStock && (
                           <Badge className="absolute top-1 right-1 bg-red-500 hover:bg-red-600">
                             <Tag className="h-3 w-3 mr-1"/>
-                            {dish.discountPercentage ? `-${dish.discountPercentage}%` : formatCurrency(dish.discountAmount)}
+                            {dish.promotionBadge}
                           </Badge>
                       )}
                     </div>
                     <div>
                       <h3 className="font-medium">{dish.name}</h3>
 
-                      {/* Mostrar precio con descuento si existe */}
-                      {dish.originalPrice ? (
+                      {/* Precio de lista tachado y precio con promoción (product_discount) */}
+                      {dish.promoPrice != null && dish.promoPrice < dish.price ? (
                           <div>
                       <span className="text-sm line-through text-muted-foreground">
-                        {formatCurrency(dish.originalPrice)}
+                        {formatCurrency(dish.price)}
                       </span>
-                            <p className="text-red-600 font-medium">{formatCurrency(dish.price)}</p>
+                            <p className="text-red-600 font-medium">{formatCurrency(dish.promoPrice)}</p>
                           </div>
                       ) : (
                           <p className="text-muted-foreground">{formatCurrency(dish.price)}</p>
@@ -227,12 +227,12 @@ export function DishGrid({ dishes, onAddToCart }: DishGridProps) {
             <div className="flex items-center justify-between">
               <span>Precio:</span>
               <span className="font-bold">
-                {selectedDish && selectedDish.originalPrice ? (
+                {selectedDish && selectedDish.promoPrice != null && selectedDish.promoPrice < selectedDish.price ? (
                   <>
                     <span className="text-sm line-through text-muted-foreground mr-2">
-                      {formatCurrency(selectedDish.originalPrice)}
+                      {formatCurrency(selectedDish.price)}
                     </span>
-                    <span className="text-red-600">{formatCurrency(selectedDish.price)}</span>
+                    <span className="text-red-600">{formatCurrency(selectedDish.promoPrice)}</span>
                   </>
                 ) : (
                   selectedDish && formatCurrency(selectedDish.price)

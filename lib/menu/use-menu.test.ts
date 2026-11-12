@@ -33,24 +33,24 @@ describe("fetchMenuDishes", () => {
     expect(catalog.fetchDishes).toHaveBeenCalledWith({ categoryId: "c-1", active: true, pricing: "promotions" })
   })
 
-  it("returns the server's promoted price and promotion fields untouched", async () => {
+  it("returns the server's list price and promotion fields untouched", async () => {
     catalog.fetchDishes.mockResolvedValue([
       {
         id: "d-1",
         name: "Bandeja",
         description: null,
-        price: 18000,
+        price: 20000,
         categoryId: "c-1",
         imageUrl: "https://img/d-1.png",
         active: true,
         allowComments: true,
         createdAt: null,
         updatedAt: null,
-        originalPrice: 20000,
-        discountAmount: 2000,
-        discountPercentage: 10,
         promotionId: "p-1",
         promotionName: "Martes",
+        promotionBadge: "10%",
+        promotionEndsAt: "19:00",
+        promoPrice: 18000,
       },
       {
         id: "d-2",
@@ -70,14 +70,14 @@ describe("fetchMenuDishes", () => {
 
     expect(promoted).toMatchObject({
       id: "d-1",
-      price: 18000,
+      price: 20000,
       categoryId: "c-1",
       image: "https://img/d-1.png",
-      originalPrice: 20000,
-      discountAmount: 2000,
-      discountPercentage: 10,
       promotionId: "p-1",
       promotionName: "Martes",
+      promotionBadge: "10%",
+      promotionEndsAt: "19:00",
+      promoPrice: 18000,
     })
     expect(plain).toMatchObject({ id: "d-2", price: 9000, image: "/placeholder.svg?height=80&width=80" })
     expect(plain.promotionName ?? null).toBeNull()

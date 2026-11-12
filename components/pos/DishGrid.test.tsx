@@ -35,10 +35,6 @@ const dish = (id: string, name: string, extra: Partial<Dish> = {}): Dish =>
     price: 12000,
     categoryId: "cat-1",
     image: "/dish.png",
-    discountPercentage: null,
-    discountAmount: null,
-    originalPrice: 12000,
-    promotionName: "",
     ...extra,
   }) as Dish
 
@@ -212,20 +208,23 @@ describe("DishGrid — existing behavior (preserve)", () => {
     expect(onAddToCart).toHaveBeenCalledWith(dishes[0], "Sin cebolla")
   })
 
-  it("renders the promotion price and badge of a discounted dish", async () => {
+  it("renders the list price struck through, the promotion price, badge and name", async () => {
     useConfigStore.setState({ inventoryControlEnabled: false })
     const discounted = dish("d-4", "Promo", {
-      originalPrice: 20000,
-      price: 18000,
-      discountAmount: 2000,
-      discountPercentage: 10,
+      price: 20000,
+      promotionId: "p-1",
       promotionName: "Lunch",
+      promotionBadge: "10%",
+      promotionEndsAt: "15:00",
+      promoPrice: 18000,
     })
     renderGrid(<DishGrid dishes={[discounted]} onAddToCart={() => {}} />)
     await flush()
 
-    expect(screen.getByText("-10%")).toBeInTheDocument()
+    expect(screen.getByText("10%")).toBeInTheDocument()
     expect(screen.getByText("Lunch")).toBeInTheDocument()
+    expect(screen.getByText(/20\.000/)).toHaveClass("line-through")
+    expect(screen.getByText(/18\.000/)).toBeInTheDocument()
   })
 
   it("shows the empty-category message when there are no dishes", async () => {

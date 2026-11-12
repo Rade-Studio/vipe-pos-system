@@ -2,10 +2,13 @@ import { create } from "zustand"
 import { v4 as uuidv4 } from "uuid"
 import { cartLineKey } from "@/lib/modifiers/cart"
 import type { CartItem, OrderBill } from "@/types"
+import type { ComboCartItem } from "@/lib/promotions/waiter"
 
 interface CartState {
   cartItems: Record<string, CartItem[]>
   addToCart: (tableId: string, item: CartItem) => void
+  /** S12: a combo is always its own line (`combo-<uuid>`), never merged with another; returns its id. */
+  addCombo: (tableId: string, item: Omit<ComboCartItem, "id">) => string
   updateQuantity: (tableId: string, itemId: string, quantity: number) => void
   updateItemComments: (tableId: string, itemId: string, comments: string) => void
   /** Edit a line ("Cambiar opciones"): it keeps its place, or joins an equal line. */
@@ -49,6 +52,14 @@ export const useCartStore = create<CartState>((set, get) => ({
         }
       }
     }),
+
+  addCombo: (tableId, item) => {
+    const id = `combo-${uuidv4()}`
+    set((state) => ({
+      cartItems: { ...state.cartItems, [tableId]: [...(state.cartItems[tableId] || []), { ...item, id }] },
+    }))
+    return id
+  },
 
   updateQuantity: (tableId, itemId, quantity) =>
     set((state) => {
