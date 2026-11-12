@@ -980,7 +980,7 @@ export const productionTemplates = pgTable("production_templates", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	uniqueIndex("production_templates_restaurant_id_name_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), sql`lower(btrim(name))`),
+	uniqueIndex("production_templates_restaurant_id_name_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), sql`regexp_replace(lower(btrim(name)), '\\s+'::text, ' '::text, 'g'::text)`),
 	foreignKey({
 			columns: [table.createdBy],
 			foreignColumns: [profiles.id],

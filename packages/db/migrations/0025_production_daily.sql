@@ -323,11 +323,13 @@ BEGIN
    FOR UPDATE;
 
   -- Combined demand of every line per input at the location; each short input
-  -- is listed under every line that uses it, with the combined figures.
+  -- is listed under every line that uses it, with the combined figures. Each
+  -- line's requirement is rounded exactly as produce_batch consumes it, so a
+  -- report that passes here cannot fail inside produce_batch.
   WITH lines AS (
     SELECT (l->>'item_id')::uuid AS item_id, (l->>'quantity')::numeric AS quantity FROM jsonb_array_elements(p_lines) l
   ), demand AS (
-    SELECT ln.item_id, ri.ingredient_id, ri.quantity * ln.quantity / r.yield_quantity AS required
+    SELECT ln.item_id, ri.ingredient_id, (ri.quantity * ln.quantity / r.yield_quantity)::numeric(14,3) AS required
       FROM lines ln
       JOIN public.recipes r ON r.ingredient_id = ln.item_id
       JOIN public.recipe_ingredients ri ON ri.recipe_id = r.id
@@ -379,7 +381,7 @@ REVOKE ALL ON FUNCTION public.produce_preparations(jsonb, uuid, date, uuid, text
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION public.produce_preparations(jsonb, uuid, date, uuid, text) TO vipe_api;
 --> statement-breakpoint
-COMMENT ON FUNCTION public.produce_preparations(jsonb, uuid, date, uuid, text) IS 'Daily production report, admin or kitchen: produces every line of p_lines [{item_id, quantity, lot_code?}] (1..100, unique item_id) at one location (NULL = default) on one business date by one responsible person (production_context rules) in ONE transaction, all or nothing. The combined demand of all lines is checked per input at the location before writing: a shortage raises P0001 produce_preparations: insufficient stock with DETAIL = jsonb [{item_id, name, ingredients:[{ingredient_id, name, unit, required, available, missing}]}] (required = combined demand of every line, each short input listed under every line that uses it). Returns {batches:[produce_preparation result per line, in order], total_cost}.';
+COMMENT ON FUNCTION public.produce_preparations(jsonb, uuid, date, uuid, text) IS 'Daily production report, admin or kitchen: produces every line of p_lines [{item_id, quantity, lot_code?}] (1..100, unique item_id) at one location (NULL = default) on one business date by one responsible person (production_context rules) in ONE transaction, all or nothing. The combined demand of all lines is checked per input at the location before writing: a shortage raises P0001 produce_preparations: insufficient stock with DETAIL = jsonb [{item_id, name, ingredients:[{ingredient_id, name, unit, required, available, missing}]}] (required = combined demand of every line, each line rounded to numeric(14,3) as produce_batch consumes it, each short input listed under every line that uses it). Returns {batches:[produce_preparation result per line, in order], total_cost}.';
 --> statement-breakpoint
 CREATE TABLE public.production_templates (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -396,9 +398,9 @@ CREATE TABLE public.production_templates (
     CONSTRAINT production_templates_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE SET NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX production_templates_restaurant_id_name_key ON public.production_templates USING btree (restaurant_id, lower(btrim(name)));
+CREATE UNIQUE INDEX production_templates_restaurant_id_name_key ON public.production_templates USING btree (restaurant_id, regexp_replace(lower(btrim(name)), '\s+', ' ', 'g'));
 --> statement-breakpoint
-COMMENT ON TABLE public.production_templates IS 'Named sets of production quantities [{item_id, quantity > 0}] that fill the daily production sheet (S4). Names are unique per restaurant ignoring case. Admin only (read and write); lines are validated by the API against the active preparations.';
+COMMENT ON TABLE public.production_templates IS 'Named sets of production quantities [{item_id, quantity > 0}] that fill the daily production sheet (S4). Names are unique per restaurant ignoring case, surrounding spaces and inner whitespace runs. Admin only (read and write); lines are validated by the API against the active preparations.';
 --> statement-breakpoint
 ALTER TABLE public.production_templates ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint

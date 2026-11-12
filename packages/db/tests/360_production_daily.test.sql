@@ -9,7 +9,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(31);
+SELECT plan(34);
 
 -- ============================================
 -- 1. production_batches columns and backfill
@@ -75,6 +75,15 @@ INSERT INTO public.production_templates (restaurant_id, name, lines)
 VALUES ('a0eebc99-0000-0000-0000-000000000000', 'Lunes', '[]');
 SELECT throws_ok($$ INSERT INTO public.production_templates (restaurant_id, name) VALUES ('a0eebc99-0000-0000-0000-000000000000', ' lunes ') $$,
   '23505', NULL, 'names are unique per restaurant ignoring case and spaces');
+SELECT is((SELECT pg_get_indexdef('public.production_templates_restaurant_id_name_key'::regclass)),
+  'CREATE UNIQUE INDEX production_templates_restaurant_id_name_key ON public.production_templates USING btree (restaurant_id, regexp_replace(lower(btrim(name)), ''\s+''::text, '' ''::text, ''g''::text))',
+  'the name key collapses case, surrounding spaces and inner whitespace');
+INSERT INTO public.production_templates (restaurant_id, name, lines)
+VALUES ('a0eebc99-0000-0000-0000-000000000000', 'Lunes A', '[]');
+SELECT throws_ok($$ INSERT INTO public.production_templates (restaurant_id, name) VALUES ('a0eebc99-0000-0000-0000-000000000000', E'lunes  \ta') $$,
+  '23505', NULL, 'names differing only in inner whitespace and case collide');
+SELECT lives_ok($$ INSERT INTO public.production_templates (restaurant_id, name) VALUES ('a0eebc99-0000-0000-0000-000000000000', 'Lunes AB') $$,
+  'a genuinely different name is accepted');
 SELECT throws_ok($$ INSERT INTO public.production_templates (restaurant_id, name) VALUES ('a0eebc99-0000-0000-0000-000000000000', '  ') $$,
   '23514', NULL, 'a blank name is refused');
 SELECT throws_ok($$ INSERT INTO public.production_templates (restaurant_id, name) VALUES ('a0eebc99-0000-0000-0000-000000000000', repeat('a', 81)) $$,
@@ -88,7 +97,7 @@ INSERT INTO public.production_templates (restaurant_id, name) VALUES ('36000000-
 SELECT set_config('app.user_id', (SELECT user_id::text FROM public.profiles
                                    WHERE role = 'admin' AND restaurant_id = 'a0eebc99-0000-0000-0000-000000000000' AND user_id IS NOT NULL LIMIT 1), true);
 SET LOCAL ROLE vipe_api;
-SELECT is((SELECT array_agg(restaurant_id::text) FROM public.production_templates), ARRAY['a0eebc99-0000-0000-0000-000000000000'],
+SELECT is((SELECT array_agg(DISTINCT restaurant_id::text) FROM public.production_templates), ARRAY['a0eebc99-0000-0000-0000-000000000000'],
   'an admin reads only the templates of its restaurant');
 SELECT throws_ok($$ INSERT INTO public.production_templates (restaurant_id, name) VALUES ('36000000-0000-4000-8000-000000000001', 'X') $$,
   '42501', NULL, 'an admin cannot write another restaurant''s template');
