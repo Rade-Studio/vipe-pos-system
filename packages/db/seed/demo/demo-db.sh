@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Loads the demo restaurant (seed/demo/demo.sql) for the staging demo, which
 # is reachable only from the Tailscale network (odd/tasks/migracion-backend-nestjs.md,
-# T16, L31): staff for every role, menu, tables, inventory and preparations,
-# 30 days of history and live orders.
+# T16, L31; odd/tasks/demo-bar.md): "Bruma — Bar de coctelería", with staff
+# for every role, menu, tables, inventory and preparations, 30 days of
+# history and live orders.
 #
 #   DEMO_PASSWORD=... demo-db.sh [--reset [--keep-password]] [--target local|coolify] [--app-uuid <uuid>] [--db-uuid <uuid>]
 #
@@ -117,9 +118,9 @@ echo "loading the demo restaurant ($target)..." >&2
     printf '\\set demo_hash %s\n' "$(target_psql_quote "$hash")"
     printf '\\set admin_hash %s\n' "$(target_psql_quote "$hash")"
   fi
-  printf '\\set restaurant_name %s\n' "'Casa Guadua'"
+  printf '\\set restaurant_name %s\n' "'Bruma — Bar de coctelería'"
   printf '\\set admin_email %s\n' "'admin@demo.vipe.pos'"
-  printf '\\set admin_name %s\n' "'Mariana Restrepo Gil'"
+  printf '\\set admin_name %s\n' "'Camila Andrade Rojas'"
   printf '\\set admin_username %s\n' "'admin'"
   echo 'BEGIN;'
   echo "$TARGET_OWNER_SQL"

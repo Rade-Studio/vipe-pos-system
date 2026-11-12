@@ -454,29 +454,47 @@ archivo.
 ### 3.6 Datos de demostración
 
 Staging es el entorno de demostración del POS, accesible solo desde la red de Tailscale, y no
-recibe datos reales: arranca con un restaurante ficticio, "Casa Guadua" (Medellín, COP), cargado por `packages/db/seed/demo/demo-db.sh`.
-Nombres, teléfonos, direcciones y NIT son inventados. Contiene:
+recibe datos reales: arranca con un bar ficticio, "Bruma — Bar de coctelería" (Chapinero, Bogotá,
+COP), cargado por `packages/db/seed/demo/demo-db.sh`. Nombres, teléfonos, direcciones, NIT,
+proveedores y clientes son inventados; las marcas reales solo aparecen como productos que se venden.
+Contiene:
 
-- Personal de todos los roles, con correo `@demo.vipe.pos`: `admin@`, `mesero.andres@`,
-  `mesera.valentina@`, `mesero.julian@`, `cocina@`, `cocina.oscar@`, `caja@`, `caja.camilo@` y
-  `domicilios@`. Todos usan la contraseña de `DEMO_PASSWORD`.
-- 8 categorías y 38 platos con precios en pesos, cuatro promociones (dos vigentes, una próxima y
-  una vencida), 12 mesas, 3 domiciliarios, inventario con fórmulas, proveedores, una orden de
-  compra en camino y cinco insumos bajo el mínimo.
-- Tres preparaciones (hogao, ají de la casa y arroz con coco) con su fórmula y la producción de
-  hoy, que usan algunos platos.
-- 30 días de historia: una caja por día abierta y cerrada, picos de almuerzo y cena, más
-  movimiento el fin de semana, pagos repartidos entre Efectivo, Bancolombia, Nequi y
-  Transferencia (algunos divididos), propina sugerida en la mayoría de las mesas y domicilios
-  pagados contra entrega o por adelantado.
-- Actividad en este momento: mesas en cocina, servidas, ocupadas y reservada, comandas con
-  platos pendientes, cuatro domicilios en curso (recibido, en preparación, listo y en camino) y la
-  caja de hoy abierta.
+- Personal de todos los roles, con correo `@demo.vipe.pos`: `admin@`, `bartender.santiago@`,
+  `mesera.laura@`, `mesero.andres@`, `bartender.mariana@`, `cocina@`, `cocina.diana@`, `caja@`,
+  `caja.julian@` y `domicilios@`. Todos usan la contraseña de `DEMO_PASSWORD`.
+- Carta de bar: 9 categorías y 66 productos (cocteles de autor y clásicos, cervezas nacionales,
+  artesanales e importadas, cubetas, micheladas, shots, botellas y medias, picadas y bebidas sin
+  alcohol), con subcategorías en Cervezas, Botellas y medias y Sin alcohol, y modificadores con
+  precio o insumo (base de michelada, ron del coctel, mezcladores de la botella, cerveza de la
+  cubeta, salsa de las alitas). Impuesto INC del 8 % y propina sugerida del 10 %.
+- Plano de bar en cuatro zonas: Barra (8 butacas en fila), Salón (6 periqueras y 2 salas lounge),
+  Terraza (4 mesas, zona de fumadores) y Segundo piso (4 mesas para grupos y cumpleaños).
+- Promociones: happy hour 2x1 en cócteles (lunes a viernes de 5 a 7 p. m.), 2x1 en cervezas
+  nacionales (martes y miércoles), combo "Cubeta + picada", 10 % en domicilios desde $90.000,
+  descuentos por producto (micheladas los jueves, gin tonic los miércoles, Oktoberfest ya
+  terminado), una próxima (Novenas) y el shot de cumpleaños con PIN. Las automáticas aparecen
+  aplicadas en la historia.
+- Inventario en dos bodegas (Barra, la principal, y Bodega): licores por mililitro comprados por
+  botella, cervezas por unidad, fruta, hielo, mezcladores e insumos de cocina; cinco proveedores
+  con órdenes de compra recibidas, una parcial y dos en camino; traslados de Bodega a Barra (uno
+  con faltante y uno en tránsito); un conteo semanal de la barra aplicado y uno de la bodega en
+  curso; algunos insumos bajo el mínimo.
+- Cinco preparaciones de barra (zumo de limón del día, jarabe simple, jarabe de maracuyá, sour
+  mix y premezcla de michelada) con su fórmula, plantillas de producción y la producción de cada
+  día; cada coctel, cerveza, cubeta y plato tiene su fórmula.
+- 30 días de historia: una caja por día de 4 p. m. al cierre (2:30 a. m. viernes y sábado), picos
+  de jueves a sábado, cuentas de varias rondas en las mesas, pedidos para llevar, domicilios
+  pagados contra entrega o por adelantado, movimientos de caja con motivo, arqueo con diferencias
+  explicadas, turnos validados por el administrador e informes Z.
+- Actividad en este momento: rondas en la barra, una cubeta en curso, una botella en una sala,
+  una mesa reservada para un cumpleaños, pedidos para llevar, tres domicilios en curso y la caja de
+  hoy abierta.
 
 Los datos pasan por las mismas funciones que usa la API (`create_staff_user`, `pay_order`,
-`create_delivery_order`, `set_delivery_status`, `close_register`, `produce_preparation`, entre otras), ejecutadas como el
-rol que lo haría en la aplicación; después se ajustan las fechas a la historia. Cargarlo toma unos
-20 segundos. Las fechas son relativas al momento de la carga: con los días, la actividad "en vivo"
+`create_delivery_order`, `set_delivery_status`, `close_register`, `receive_purchase_order`, los
+traslados y conteos de inventario y `produce_preparations`, entre otras), ejecutadas como el rol
+que lo haría en la aplicación; después se ajustan las fechas a la historia. Cargarlo toma cerca de
+un minuto. Las fechas son relativas al momento de la carga: con los días, la actividad "en vivo"
 envejece y la historia se corre; volver a cargar con `--reset` la actualiza.
 
 En staging, desde el host, con los scripts copiados como en 3.5:
@@ -654,7 +672,7 @@ La estación solo necesita salida HTTPS (443) hacia la VPS.
 - [ ] Las cuentas de desarrollo (`*@vipe.local`, `packages/db/seed/dev.sql`) y el token
       `vpt_dev-printer-token-2026` no existen en producción: la semilla de desarrollo solo
       la carga `pnpm db:dev`.
-- [ ] Producción no tiene cuentas `@demo.vipe.pos` ni el restaurante "Casa Guadua": la
+- [ ] Producción no tiene cuentas `@demo.vipe.pos` ni el bar "Bruma — Bar de coctelería": la
       semilla de demostración (3.6) es solo para staging.
 - [ ] Respaldos fuera de la VPS, cifrados, con una restauración probada.
 
