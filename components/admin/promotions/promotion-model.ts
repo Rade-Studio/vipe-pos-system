@@ -39,9 +39,10 @@ const isoDay = (date: Date) => ((date.getDay() + 6) % 7) + 1
 
 // ---- List (S9) ----------------------------------------------------------------
 
-/** v1 channels (Log L9): an order is in the salón or a domicilio; takeaway waits for its order type. */
+/** The order types (orders.order_type): salón, para llevar (S8 of promociones-mejoras) and domicilio. */
 export const CHANNELS = [
   { value: "dine_in", label: "Salón" },
+  { value: "takeaway", label: "Para llevar" },
   { value: "delivery", label: "Domicilio" },
 ] as const
 export type DraftChannel = (typeof CHANNELS)[number]["value"]
@@ -228,7 +229,7 @@ export interface PromotionDraft {
   startDate: string
   endDate: string
   channels: DraftChannel[]
-  /** Stored channels the v1 editor does not offer (takeaway), kept on save. */
+  /** Stored channels the editor does not offer (none today), kept on save. */
   extraChannels: PromotionDto["channels"]
   /** "" = Sin límite. */
   maxUses: string
@@ -317,7 +318,7 @@ const usesTargets = (kind: PromotionKind) => kind === "product_discount" || kind
 
 /**
  * The POST/PATCH body. Fields of the other kinds go as null (the server stores
- * them so); every day and both channels go as empty lists ("todos"). On an
+ * them so); every day and every channel go as empty lists ("todos"). On an
  * edit the dates are sent only when changed: a YYYY-MM-DD resets the stored
  * time to the start (or end) of that day.
  */
@@ -325,7 +326,7 @@ export function draftBody(draft: PromotionDraft, original?: Promotion | null): C
   const kind = draft.kind
   const discount = kind === "product_discount" || kind === "bill_discount"
   const allDays = ALL_DAYS.every((d) => draft.days.includes(d))
-  const bothChannels = CHANNELS.every((c) => draft.channels.includes(c.value)) && draft.extraChannels.length === 0
+  const allChannels = CHANNELS.every((c) => draft.channels.includes(c.value)) && draft.extraChannels.length === 0
   const body: CreatePromotionBody = {
     name: draft.name.trim(),
     kind,
@@ -343,7 +344,7 @@ export function draftBody(draft: PromotionDraft, original?: Promotion | null): C
     targets: usesTargets(kind) ? draft.targets : noTargets(),
     daysOfWeek: allDays ? [] : [...draft.days].sort((a, b) => a - b),
     timeWindows: filledWindows(draft).map((w) => ({ from: w.from, to: w.to })),
-    channels: bothChannels ? [] : [...CHANNELS.map((c) => c.value).filter((c) => draft.channels.includes(c)), ...draft.extraChannels],
+    channels: allChannels ? [] : [...CHANNELS.map((c) => c.value).filter((c) => draft.channels.includes(c)), ...draft.extraChannels],
     maxUsesPerOrder: parseNumber(draft.maxUses),
   }
   const stored = original ? draftFromPromotion(original) : null

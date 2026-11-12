@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest"
 import type { CartItem, Order } from "@/types"
-import { entryHeader, entryMeta, groupItems, matchesQueueSearch, partialEntries, tableEntries } from "./queue"
+import { entryHeader, entryMeta, groupItems, matchesQueueSearch, partialEntries, tableEntries, takeawayEntries } from "./queue"
 
 const order = (over: Partial<Order> = {}): Order => ({
   id: "o-1",
@@ -101,5 +101,32 @@ describe("groupItems (F7 T4: options are part of a bill line)", () => {
       [2, undefined],
       [1, "sin sal"],
     ])
+  })
+})
+
+describe("takeaway rows (S8)", () => {
+  const takeaway = order({ id: "o-t", orderNumber: 150, guests: undefined, tableId: "", orderType: "takeaway", customerName: "Ana María" })
+
+  it("labels the row Para llevar · <nombre>, with no zone, and charges the order itself", () => {
+    const [entry] = takeawayEntries({ ...sources({}), takeaway: [takeaway] })
+    expect(entry).toMatchObject({ key: "takeaway:o-t", kind: "takeaway", label: "Para llevar · Ana María", zoneName: undefined, orderNumbers: [150] })
+    expect(entry!.payOrder).toBe(takeaway)
+    expect(entry!.total).toBe(1000)
+    expect(entryMeta(entry!)).toBe("#150 · Carlos Pérez · desde 13:46")
+  })
+
+  it("is found by the customer's name", () => {
+    const [entry] = takeawayEntries({ ...sources({}), takeaway: [takeaway] })
+    expect(matchesQueueSearch(entry!, "ana maria")).toBe(true)
+    expect(matchesQueueSearch(entry!, "llevar")).toBe(true)
+  })
+
+  it("a partial child of a takeaway order keeps the customer in its label", () => {
+    const [entry] = partialEntries(sources({}, [{ ...takeaway, isPartialOrder: true }]))
+    expect(entry!.label).toBe("Para llevar · Ana María · Parcial")
+  })
+
+  it("no takeaway list means no rows", () => {
+    expect(takeawayEntries(sources({}))).toEqual([])
   })
 })

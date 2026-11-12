@@ -49,6 +49,8 @@ function dto(overrides: Partial<OrderDto> = {}): OrderDto {
     waiterId: "w-1",
     status: "kitchen",
     orderType: "dine_in",
+    customerName: null,
+    customerPhone: null,
     subtotal: 20000,
     tax: 1600,
     taxPercentage: 8,
@@ -142,6 +144,14 @@ describe("toOrder", () => {
     expect(order.parentOrderId).toBe("o-0")
   })
 
+  it("keeps a takeaway order's type and customer (S8); a dine_in order has none", () => {
+    const order = toOrder(dto({ orderType: "takeaway", tableId: null, customerName: "Ana", customerPhone: "3150001122" }))
+    expect(order).toMatchObject({ orderType: "takeaway", tableId: "", customerName: "Ana", customerPhone: "3150001122" })
+    const dineIn = toOrder(dto())
+    expect(dineIn.customerName).toBeUndefined()
+    expect(dineIn.customerPhone).toBeUndefined()
+  })
+
   it("turns null guests and notes into undefined", () => {
     const order = toOrder(dto({ guests: null, notes: null }))
     expect(order.guests).toBeUndefined()
@@ -190,6 +200,13 @@ describe("orderDtoFromWire", () => {
     }
     expect(orderDtoFromWire(wire)).toEqual(dto())
     expect(orderDtoFromWire({ id: "o-1" })).toBeNull()
+  })
+
+  it("keeps takeaway and the customer of a realtime row (S8)", () => {
+    const wire = orderDtoFromWire({ id: "o-1", status: "kitchen", order_type: "takeaway", customer_name: "Ana", customer_phone: null })
+    expect(wire).toMatchObject({ orderType: "takeaway", customerName: "Ana", customerPhone: null })
+    expect(orderDtoFromWire({ id: "o-1", status: "kitchen", order_type: "delivery" })).toMatchObject({ orderType: "delivery", customerName: null })
+    expect(orderDtoFromWire({ id: "o-1", status: "kitchen" })).toMatchObject({ orderType: "dine_in" })
   })
 
   it("reads missing guests and notes as null and a missing order_number as 0", () => {
@@ -247,6 +264,15 @@ describe("requests", () => {
     await create({ tableId: "t-1", orderType: "dine_in", items, force: true })
     expect(api.POST).toHaveBeenLastCalledWith("/api/orders", {
       body: { tableId: "t-1", orderType: "dine_in", items, force: true },
+    })
+  })
+
+  it("creates a takeaway order with the customer and no table (S8)", async () => {
+    api.POST.mockResolvedValueOnce({ data: dto({ orderType: "takeaway", tableId: null, customerName: "Ana" }) })
+    const items = [{ dishId: "d-1", quantity: 1 }]
+    await create({ orderType: "takeaway", customerName: "Ana", customerPhone: "3150001122", items })
+    expect(api.POST).toHaveBeenCalledWith("/api/orders", {
+      body: { orderType: "takeaway", customerName: "Ana", customerPhone: "3150001122", items },
     })
   })
 

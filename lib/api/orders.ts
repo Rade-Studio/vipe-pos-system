@@ -42,7 +42,8 @@ export type CancelledOrderDto = Schemas["CancelledOrder"]
 
 /** The contract marks the defaulted fields as required; the API does not. */
 export type CreateOrderBody = Omit<Schemas["CreateOrderRequest"], "orderType" | "force"> & {
-  orderType?: "dine_in"
+  /** dine_in needs tableId; takeaway (S8) needs customerName and has no table. */
+  orderType?: "dine_in" | "takeaway"
   force?: boolean
 }
 
@@ -114,6 +115,8 @@ export function toOrder(dto: OrderDto): Order {
     notes: dto.notes ?? undefined,
     tableId: dto.tableId ?? "",
     orderType: dto.orderType,
+    ...(dto.customerName ? { customerName: dto.customerName } : {}),
+    ...(dto.customerPhone ? { customerPhone: dto.customerPhone } : {}),
     items: dto.items.map(toOrderItem),
     status: dto.status,
     bill: {
@@ -138,6 +141,7 @@ const str = (value: unknown): string | null => (typeof value === "string" ? valu
 const num = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : Number(value) || 0)
 
 const STATION_SOURCES = ["dish", "category", "fallback"] as const
+const ORDER_TYPES = ["dine_in", "takeaway", "delivery"] as const
 
 function itemDtoFromWire(row: WireRow): OrderItemDto {
   return {
@@ -181,7 +185,9 @@ export function orderDtoFromWire(row: unknown): OrderDto | null {
     tableId: str(wire.table_id),
     waiterId: str(wire.waiter_id),
     status: wire.status as OrderStatus,
-    orderType: wire.order_type === "delivery" ? "delivery" : "dine_in",
+    orderType: ORDER_TYPES.find((type) => type === wire.order_type) ?? "dine_in",
+    customerName: str(wire.customer_name),
+    customerPhone: str(wire.customer_phone),
     subtotal: num(wire.subtotal),
     tax: num(wire.tax),
     taxPercentage: num(wire.tax_percentage),
@@ -343,7 +349,7 @@ export async function voidOrderItems(orderId: string, body: VoidOrderItemsBody):
 export interface VoidPreviewRequest {
   orderId: string
   voids: { orderItemId: string; quantity: number }[]
-  channel?: "dine_in" | "delivery"
+  channel?: "dine_in" | "takeaway" | "delivery"
 }
 
 export interface VoidPreview {

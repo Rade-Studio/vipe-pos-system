@@ -64,8 +64,12 @@ import {
   matchesQueueSearch,
   partialEntries,
   tableEntries,
+  takeawayEntries,
   type QueueEntry,
 } from "@/lib/cashier/queue"
+import { TakeawayStartDialog } from "@/components/takeaway/TakeawayStartDialog"
+import { TakeawayOrderFlow } from "@/components/takeaway/TakeawayOrderFlow"
+import type { TakeawayCustomer } from "@/components/takeaway/customer"
 import { useOnlineStatus } from "@/lib/cashier/use-online-status"
 import { cn } from "@/lib/utils"
 
@@ -109,6 +113,9 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const phone = usePhone()
   // F3: the cancellation / void being taken through the step sheet.
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
+  // S8: "Para llevar" asks the customer, then takes the order with the waiter's step flow.
+  const [takeawayDialogOpen, setTakeawayDialogOpen] = useState(false)
+  const [takeawayCustomer, setTakeawayCustomer] = useState<TakeawayCustomer | null>(null)
 
   // The whole screen renders from ONE loaded list (mount, "Actualizar" and the
   // realtime patch share this cache slot); every bucket the view shows is
@@ -136,7 +143,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
 
   // Active / kitchen / delivered / partial / by-table, all derived. A realtime
   // status change re-buckets the row here, with no refetch.
-  const { partial: partialOrders, byTable: ordersByTable } = useMemo(
+  const { partial: partialOrders, byTable: ordersByTable, takeaway: takeawayOrders } = useMemo(
     () => deriveCashierViews(orders),
     [orders],
   )
@@ -187,11 +194,15 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     () => partialEntries({ byTable: ordersByTable, partial: partialOrders, tableNumberById, zoneNameByTableId, waiterName }),
     [ordersByTable, partialOrders, tableNumberById, zoneNameByTableId, waiterName],
   )
-  const tabRows = queueTab === "partials" ? partialRows : tableRows
+  const takeawayRows = useMemo(
+    () => takeawayEntries({ byTable: ordersByTable, partial: partialOrders, takeaway: takeawayOrders, tableNumberById, waiterName }),
+    [ordersByTable, partialOrders, takeawayOrders, tableNumberById, waiterName],
+  )
+  const tabRows = queueTab === "partials" ? partialRows : queueTab === "takeaway" ? takeawayRows : tableRows
   const visibleRows = useMemo(() => tabRows.filter((row) => matchesQueueSearch(row, query)), [tabRows, query])
   const selectedEntry: QueueEntry | undefined = useMemo(
-    () => [...tableRows, ...partialRows].find((row) => row.key === selectedKey),
-    [tableRows, partialRows, selectedKey],
+    () => [...tableRows, ...partialRows, ...takeawayRows].find((row) => row.key === selectedKey),
+    [tableRows, partialRows, takeawayRows, selectedKey],
   )
 
   const selectEntry = (entry: QueueEntry) => {
@@ -774,7 +785,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
               <CashierQueue
                 tab={queueTab}
                 onTabChange={setQueueTab}
-                counts={{ tables: tableRows.length, deliveries: pendingDeliveries.length, partials: partialRows.length }}
+                counts={{ tables: tableRows.length, takeaway: takeawayRows.length, deliveries: pendingDeliveries.length, partials: partialRows.length }}
+                onNewTakeaway={() => setTakeawayDialogOpen(true)}
                 query={query}
                 onQueryChange={setQuery}
                 entries={visibleRows}
@@ -908,7 +920,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         registerId={openRegisterId}
         openerName={openerName}
         openedAt={registerOpenedAt}
-        pendingCount={tableRows.length + partialRows.length + pendingDeliveries.length}
+        pendingCount={tableRows.length + takeawayRows.length + partialRows.length + pendingDeliveries.length}
         onShowMovements={() => {
           setShiftSheetOpen(false)
           setActiveTab("transactions")
@@ -916,6 +928,26 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       />
 
       <VoidFlow target={voidTarget} onClose={() => setVoidTarget(null)} onDone={handleVoided} />
+
+      <TakeawayStartDialog
+        open={takeawayDialogOpen}
+        onClose={() => setTakeawayDialogOpen(false)}
+        onStart={(customer) => {
+          setTakeawayDialogOpen(false)
+          setTakeawayCustomer(customer)
+        }}
+      />
+      {takeawayCustomer && (
+        <TakeawayOrderFlow
+          customer={takeawayCustomer}
+          onClose={() => setTakeawayCustomer(null)}
+          onSent={() => {
+            setTakeawayCustomer(null)
+            setQueueTab("takeaway")
+            void refreshOrders()
+          }}
+        />
+      )}
 
       {/* Partial Payment Dialog */}
       {selectedTableId && (

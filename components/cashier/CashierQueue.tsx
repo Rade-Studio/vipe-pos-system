@@ -1,14 +1,14 @@
 "use client"
 
 import type React from "react"
-import { Search } from "lucide-react"
+import { Search, ShoppingBag } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/utils/helpers"
 import { cn } from "@/lib/utils"
 import { entryMeta, type QueueEntry } from "@/lib/cashier/queue"
 import { Chip, Eyebrow, Money, focusRing, toneClasses } from "./cashier-ui"
 
-export type QueueTab = "tables" | "deliveries" | "partials" | "paid"
+export type QueueTab = "tables" | "takeaway" | "deliveries" | "partials" | "paid"
 
 interface CashierQueueProps {
   tab: QueueTab
@@ -27,10 +27,13 @@ interface CashierQueueProps {
   deliveries: React.ReactNode
   /** The Pagadas tab body (T24). */
   paid: React.ReactNode
+  /** S8: "Para llevar" starts a takeaway order; absent = no button. */
+  onNewTakeaway?: () => void
 }
 
 const TABS: Array<{ id: QueueTab; label: string }> = [
   { id: "tables", label: "Mesas" },
+  { id: "takeaway", label: "Para llevar" },
   { id: "deliveries", label: "Domicilios" },
   { id: "partials", label: "Parciales" },
   { id: "paid", label: "Pagadas" },
@@ -50,16 +53,32 @@ export function CashierQueue({
   loading,
   deliveries,
   paid,
+  onNewTakeaway,
 }: CashierQueueProps) {
   return (
     <div className="flex min-h-0 flex-col gap-3 p-3 sm:p-4">
-      <div>
-        <Eyebrow>Por cobrar</Eyebrow>
-        <h2 className="text-lg font-bold text-fg">Órdenes para facturar</h2>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <Eyebrow>Por cobrar</Eyebrow>
+          <h2 className="text-lg font-bold text-fg">Órdenes para facturar</h2>
+        </div>
+        {onNewTakeaway && (
+          <button
+            type="button"
+            onClick={onNewTakeaway}
+            className={cn(
+              "inline-flex min-h-[44px] flex-none items-center gap-1.5 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-fg hover:bg-surface-2",
+              focusRing,
+            )}
+          >
+            <ShoppingBag aria-hidden="true" className="h-4 w-4" />
+            Nuevo para llevar
+          </button>
+        )}
       </div>
 
       <div
-        className="grid grid-cols-2 gap-1 rounded-md bg-surface-2 p-1 md:grid-cols-4 min-[1180px]:grid-cols-2"
+        className="grid grid-cols-3 gap-1 rounded-md bg-surface-2 p-1 md:grid-cols-5 min-[1180px]:grid-cols-3"
         role="tablist"
         aria-label="Tipo de orden"
       >
@@ -91,7 +110,7 @@ export function CashierQueue({
         ))}
       </div>
 
-      {(tab === "tables" || tab === "partials") && (
+      {(tab === "tables" || tab === "takeaway" || tab === "partials") && (
         <label className="flex h-11 items-center gap-2 rounded-md border border-line bg-surface px-3 focus-within:ring-2 focus-within:ring-focus">
           <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-fg" />
           <span className="sr-only">Buscar orden</span>
@@ -99,7 +118,7 @@ export function CashierQueue({
             type="search"
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Mesa, mesero o # de orden"
+            placeholder={tab === "takeaway" ? "Cliente, mesero o # de orden" : "Mesa, mesero o # de orden"}
             className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-muted-fg"
           />
         </label>
@@ -153,7 +172,7 @@ export function CashierQueue({
                       toneClasses(entry.status.tone),
                     )}
                   >
-                    {entry.tableNumber ?? "?"}
+                    {entry.kind === "takeaway" ? <ShoppingBag className="h-5 w-5" /> : (entry.tableNumber ?? "?")}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-fg">{entry.label}</span>{" "}

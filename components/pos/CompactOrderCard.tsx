@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import type { Order, OrderItem, Profile, Table } from "@/types"
 import { formatCurrency } from "@/utils/helpers"
 import { Clock, MapPin } from "lucide-react"
+import { takeawayPlace } from "@/lib/kitchen/ticket"
 
 interface CompactOrderCardProps {
   order: Order
@@ -85,7 +86,11 @@ export function CompactOrderCard({ order, waiter, table }: CompactOrderCardProps
           <div className="flex items-center">
             <MapPin className="h-4 w-4 text-red-500 mr-1" />
             <span className="font-bold text-lg">
-              {order.orderType === "delivery" ? "DOMICILIO" : `Mesa ${table?.number || "?"}`}
+              {order.orderType === "delivery"
+                ? "DOMICILIO"
+                : order.orderType === "takeaway"
+                  ? takeawayPlace(order)
+                  : `Mesa ${table?.number || "?"}`}
             </span>
           </div>
           <Badge

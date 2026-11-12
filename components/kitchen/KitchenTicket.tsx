@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { AlertCircle, ArrowRight, Bike, Check, UtensilsCrossed } from "lucide-react"
+import { AlertCircle, ArrowRight, Bike, Check, ShoppingBag, UtensilsCrossed } from "lucide-react"
 import type { Order, OrderItemModifier } from "@/types"
 import { cn } from "@/lib/utils"
 import { isServedItem, pendingItems } from "@/lib/kitchen/order"
@@ -103,6 +103,7 @@ export function KitchenTicket({
 }: KitchenTicketProps) {
   const [busy, setBusy] = useState(false)
   const delivery = order.orderType === "delivery"
+  const takeaway = order.orderType === "takeaway"
   const startedAt = ticketStartedAt(order)
   const elapsed = now - startedAt
   const age = ticketAge(elapsed, thresholds)
@@ -127,7 +128,7 @@ export function KitchenTicket({
 
   return (
     <article
-      aria-label={`${delivery ? "Domicilio" : "Mesa"} ${place.replace(/^Mesa /, "")}, ${age.minutes} minutos, ${age.label}`}
+      aria-label={`${takeaway ? place : `${delivery ? "Domicilio" : "Mesa"} ${place.replace(/^Mesa /, "")}`}, ${age.minutes} minutos, ${age.label}`}
       data-tone={age.tone}
       className={cn(
         "flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-card-lg border-[1.5px] bg-surface text-fg dark:backdrop-blur-xl",
@@ -143,6 +144,11 @@ export function KitchenTicket({
               <span className={cn(chip, "border-status-served-line bg-status-served-bg text-status-served-fg")}>
                 <Bike className="h-3.5 w-3.5" aria-hidden="true" />
                 Domicilio
+              </span>
+            ) : takeaway ? (
+              <span className={cn(chip, "border-status-kitchen-line bg-status-kitchen-bg text-status-kitchen-fg")}>
+                <ShoppingBag className="h-3.5 w-3.5" aria-hidden="true" />
+                Para llevar
               </span>
             ) : (
               <span className={cn(chip, "border-status-occupied-line bg-status-occupied-bg text-status-occupied-fg")}>

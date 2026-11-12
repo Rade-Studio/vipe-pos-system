@@ -11,6 +11,7 @@ import {
   formatElapsed,
   matchesKindFilter,
   oldestFirst,
+  takeawayPlace,
   ticketAge,
   ticketStartedAt,
 } from "@/lib/kitchen/ticket"
@@ -164,12 +165,32 @@ describe("kind filter", () => {
   const orders = [order("m1"), order("m2"), order("d1", { orderType: "delivery" })]
 
   it("counts every order, the tables and the deliveries", () => {
-    expect(countByKind(orders)).toEqual({ all: 3, dine_in: 2, delivery: 1 })
+    expect(countByKind(orders)).toEqual({ all: 3, dine_in: 2, takeaway: 0, delivery: 1 })
   })
 
   it("matches all, only tables or only deliveries", () => {
     expect(orders.filter((o) => matchesKindFilter(o, "all")).map((o) => o.id)).toEqual(["m1", "m2", "d1"])
     expect(orders.filter((o) => matchesKindFilter(o, "dine_in")).map((o) => o.id)).toEqual(["m1", "m2"])
     expect(orders.filter((o) => matchesKindFilter(o, "delivery")).map((o) => o.id)).toEqual(["d1"])
+  })
+})
+
+describe("takeaway (S8)", () => {
+  const takeaway = { ...order("p1", { orderType: "takeaway" }), tableId: "", customerName: "Ana" }
+  const orders = [order("m1"), order("d1", { orderType: "delivery" }), takeaway]
+
+  it("counts takeaway on its own, never as a table", () => {
+    expect(countByKind(orders)).toEqual({ all: 3, dine_in: 1, takeaway: 1, delivery: 1 })
+  })
+
+  it("filters takeaway apart from the tables and the deliveries", () => {
+    expect(orders.filter((o) => matchesKindFilter(o, "takeaway")).map((o) => o.id)).toEqual(["p1"])
+    expect(orders.filter((o) => matchesKindFilter(o, "dine_in")).map((o) => o.id)).toEqual(["m1"])
+    expect(orders.filter((o) => matchesKindFilter(o, "delivery")).map((o) => o.id)).toEqual(["d1"])
+  })
+
+  it("names the ticket PARA LLEVAR · <nombre>", () => {
+    expect(takeawayPlace(takeaway)).toBe("PARA LLEVAR · Ana")
+    expect(takeawayPlace({ ...takeaway, customerName: undefined })).toBe("PARA LLEVAR")
   })
 })

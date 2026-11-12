@@ -61,6 +61,9 @@ export interface CashierOrderRow {
   id: string
   table_id?: string | null
   order_type?: string | null
+  /** Takeaway only (S8). */
+  customer_name?: string | null
+  customer_phone?: string | null
   status: string
   subtotal?: number | null
   tax?: number | null
@@ -117,8 +120,10 @@ export interface CashierViews {
   delivered: Order[]
   /** Partial ("pago parcial") children, listed above the by-table cards. */
   partial: Order[]
-  /** Dine-in orders grouped by table; delivery orders are excluded (S14). */
+  /** Dine-in orders grouped by table; delivery and takeaway orders are excluded (S14, S8). */
   byTable: Record<string, Order[]>
+  /** Takeaway ("para llevar", S8) orders that are not partial children; charged one by one. */
+  takeaway: Order[]
 }
 
 /**
@@ -136,18 +141,20 @@ export function deriveCashierViews(orders: readonly Order[]): CashierViews {
   const kitchen: Order[] = []
   const delivered: Order[] = []
   const partial: Order[] = []
+  const takeaway: Order[] = []
   const visible: Order[] = []
 
   for (const order of all) {
     if (!isCashierStatus(order.status)) continue
     visible.push(order)
     if (order.isPartialOrder) partial.push(order)
+    else if (order.orderType === "takeaway") takeaway.push(order)
     if (order.status === "active") active.push(order)
     else if (order.status === "kitchen") kitchen.push(order)
     else delivered.push(order)
   }
 
-  return { all, active, kitchen, delivered, partial, byTable: groupDineInOrdersByTable(visible) }
+  return { all, active, kitchen, delivered, partial, byTable: groupDineInOrdersByTable(visible), takeaway }
 }
 
 /* --------------------------------------------------------- realtime patch */
@@ -185,6 +192,10 @@ function cashierPatchFromRow(row: unknown): Partial<Order> | null {
   // which on the cashier screen would drop the card out of the by-table view.
   // Only carry the fields the broadcast actually sent (D7 consequence 2).
   if (!("table_id" in source)) delete patch.tableId
+  // S8: the shared partial mapper reads only dine_in / delivery; the full mapper keeps takeaway and its customer.
+  if ("order_type" in source) patch.orderType = mapped.orderType
+  if ("customer_name" in source) patch.customerName = mapped.customerName
+  if ("customer_phone" in source) patch.customerPhone = mapped.customerPhone
   // A row whose lines were all voided (F3) empties them; otherwise an empty list is not trusted.
   const voidedAll = Array.isArray(source.order_items) && source.order_items.length > 0 && mapped.items.length === 0
   if (Array.isArray(source.order_items) && (mapped.items.length > 0 || voidedAll)) patch.items = mapped.items

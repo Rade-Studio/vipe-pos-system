@@ -88,3 +88,27 @@ describe("kitchen ticket modifiers (F7 T4, S6)", () => {
     expect(screen.queryByRole("list", { name: "Opciones" })).toBeNull()
   })
 })
+
+describe("takeaway ticket (S8)", () => {
+  it("shows the Para llevar chip and the customer heading, with the waiter", () => {
+    render(
+      <KitchenTicket
+        order={{ ...order([line("a")]), orderType: "takeaway", tableId: "", customerName: "Ana" }}
+        place="PARA LLEVAR · Ana"
+        waiterName="Luis"
+        address={null}
+        note={null}
+        now={Date.now()}
+        thresholds={kitchenThresholds()}
+        onServeItem={() => {}}
+        onServeAll={() => {}}
+      />,
+    )
+    const ticket = screen.getByRole("article")
+    expect(ticket).toHaveAccessibleName(/^PARA LLEVAR · Ana, /)
+    expect(within(ticket).getByText("Para llevar")).toBeInTheDocument()
+    expect(within(ticket).queryByText("Mesa")).toBeNull()
+    expect(within(ticket).getByRole("heading", { name: "PARA LLEVAR · Ana" })).toBeInTheDocument()
+    expect(within(ticket).getByText("Luis")).toBeInTheDocument()
+  })
+})

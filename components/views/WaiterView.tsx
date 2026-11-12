@@ -15,7 +15,7 @@ import { CartSidebar } from "@/components/pos/CartSidebar"
 import { StepPicker, type StepPickerItem } from "@/components/order-steps/StepPicker"
 import { OrderColumn, OrderReview, lineCount, lineTotal } from "@/components/order-steps/OrderReview"
 import { ToastAction } from "@/components/ui/toast"
-import { AlertTriangle, ArrowLeft, ChevronRight, Send, ShoppingCart } from "lucide-react"
+import { AlertTriangle, ArrowLeft, ChevronRight, Send, ShoppingBag, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { ReserveSheet } from "@/components/tables/ReserveSheet"
@@ -77,6 +77,9 @@ import { createLocalChangeRegistry } from "@/lib/kitchen/realtime"
 import { mergeOrdersList } from "@/lib/realtime/order-merge"
 import { mergeOrdersForWaiter, wireRowToPartialOrder, withoutVoidedWireLines, type OrderChange } from "@/lib/realtime/order-merge"
 import { WaiterVoidActions } from "@/components/waiter/WaiterVoidActions"
+import { TakeawayStartDialog } from "@/components/takeaway/TakeawayStartDialog"
+import { TakeawayOrderFlow } from "@/components/takeaway/TakeawayOrderFlow"
+import type { TakeawayCustomer } from "@/components/takeaway/customer"
 import { useTerminal } from "@/components/terminal/terminal-context"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
@@ -1039,6 +1042,16 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     withIdentity(activeTable, () => void latestHandlers.current.handleSendToKitchen())
   }, [activeTable, withIdentity])
 
+  // S8: "Para llevar" asks the customer's name, then takes the order with the same step flow (no table).
+  const [takeawayDialogOpen, setTakeawayDialogOpen] = useState(false)
+  const [takeawayCustomer, setTakeawayCustomer] = useState<TakeawayCustomer | null>(null)
+  const startTakeaway = useCallback(() => {
+    if (!terminal) return setTakeawayDialogOpen(true)
+    void terminal.ensureIdentity({ label: "Para llevar" }).then((ok) => {
+      if (ok) setTakeawayDialogOpen(true)
+    })
+  }, [terminal])
+
   // Verificar acceso a mesa
   const checkTableAccess = useCallback((tableId: string) => {
     // En este enfoque, todas las mesas son accesibles por el perfil de mesero principal
@@ -1565,14 +1578,25 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     )
   }
 
+  const takeawayFlow = takeawayCustomer ? (
+    <TakeawayOrderFlow customer={takeawayCustomer} onClose={() => setTakeawayCustomer(null)} onSent={() => setTakeawayCustomer(null)} />
+  ) : null
+
   return (
     <div className="flex h-screen overflow-hidden">
-      {orderFlow ?? (
+      {takeawayFlow ?? orderFlow ?? (
         <>
       {/* Contenido principal */}
       <div className="flex-1 overflow-auto bg-muted/20 p-0">
         <div className="p-1 md:p-2">
           <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
+
+          <div className="mb-1 flex justify-end px-1">
+            <Button variant="outline" className="min-h-11 gap-2" onClick={startTakeaway}>
+              <ShoppingBag className="h-[18px] w-[18px]" aria-hidden />
+              Para llevar
+            </Button>
+          </div>
 
           <div className="mb-1">
             <TablesSection
@@ -1682,6 +1706,15 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
 
         </>
       )}
+
+      <TakeawayStartDialog
+        open={takeawayDialogOpen}
+        onClose={() => setTakeawayDialogOpen(false)}
+        onStart={(customer) => {
+          setTakeawayDialogOpen(false)
+          setTakeawayCustomer(customer)
+        }}
+      />
 
       {/* T22: guests of a new order, asked on its first "Agregar productos" */}
       <Dialog open={guestsPrompt !== null} onOpenChange={(open) => !open && setGuestsPrompt(null)}>

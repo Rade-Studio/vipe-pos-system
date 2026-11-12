@@ -108,16 +108,23 @@ export function oldestFirst(orders: readonly Order[]): Order[] {
   return [...orders].sort((a, b) => ticketStartedAt(a) - ticketStartedAt(b))
 }
 
-export type KindFilter = "all" | "dine_in" | "delivery"
+export type KindFilter = "all" | "dine_in" | "takeaway" | "delivery"
 
-const isDelivery = (order: Order) => order.orderType === "delivery"
+/** An order without a known type is a table order, as the readers that do not map it. */
+const kindOf = (order: Order): Exclude<KindFilter, "all"> => order.orderType ?? "dine_in"
 
 export function matchesKindFilter(order: Order, filter: KindFilter): boolean {
-  if (filter === "all") return true
-  return filter === "delivery" ? isDelivery(order) : !isDelivery(order)
+  return filter === "all" || kindOf(order) === filter
 }
 
+/** Takeaway (S8) has its own count: it is never a table. */
 export function countByKind(orders: readonly Order[]): Record<KindFilter, number> {
-  const delivery = orders.filter(isDelivery).length
-  return { all: orders.length, dine_in: orders.length - delivery, delivery }
+  const count = (kind: Exclude<KindFilter, "all">) => orders.filter((order) => kindOf(order) === kind).length
+  return { all: orders.length, dine_in: count("dine_in"), takeaway: count("takeaway"), delivery: count("delivery") }
+}
+
+/** S8: the heading of a takeaway ticket, as the printed comanda: "PARA LLEVAR · Ana". */
+export function takeawayPlace(order: Pick<Order, "customerName">): string {
+  const name = order.customerName?.trim()
+  return name ? `PARA LLEVAR · ${name}` : "PARA LLEVAR"
 }
