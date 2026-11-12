@@ -229,18 +229,41 @@ export interface CloseRegisterResult {
   /** Server clock of the close (the original one on a replay). */
   closingTimestamp: Date
   summary: RegisterSummary
+  /** The stored count (caja-cierres S1); null on registers closed before migration 0026. */
+  countedCash?: number | null
+  cashDifference?: number | null
+  closeNote?: string | null
+  denominations?: Schemas["Denomination"][] | null
+  closedBy?: Schemas["ProfileRef"] | null
 }
 
-/** `close_register`: a replay answers `already_closed` with the stored values. */
+/**
+ * Close options (caja-cierres S1): `countedCash` is required by the API while
+ * the register is open (422 counted_cash_required); `denominations` must add
+ * up to it (422 count_mismatch) and `note` is required when it differs from
+ * the expected cash after tips (422 note_required).
+ */
+export type CloseRegisterOptions = {
+  leaveOpenOrders?: boolean
+  countedCash?: number
+  denominations?: Schemas["Denomination"][]
+  note?: string | null
+}
+
+/** `close_register`: a replay answers `already_closed` with the stored values and count. */
 export function closeRegisterRpc(
   cashRegisterId: string,
-  options: { leaveOpenOrders?: boolean } = {},
+  options: CloseRegisterOptions = {},
 ): Promise<CloseRegisterResult> {
   return call(async () => {
-    // The body goes only with the confirmation: without open orders the close needs none.
-    const request = options.leaveOpenOrders
-      ? { ...byId(cashRegisterId), body: { leaveOpenOrders: true } }
-      : byId(cashRegisterId)
+    // leaveOpenOrders goes only with the confirmation; a blank note is left out.
+    const body: Schemas["CloseRegisterRequest"] = {}
+    if (options.leaveOpenOrders) body.leaveOpenOrders = true
+    if (options.countedCash !== undefined) body.countedCash = options.countedCash
+    if (options.denominations) body.denominations = options.denominations
+    const note = options.note?.trim()
+    if (note) body.note = note
+    const request = Object.keys(body).length > 0 ? { ...byId(cashRegisterId), body } : byId(cashRegisterId)
     const { data } = await api.POST("/api/registers/{id}/close", request)
     const result = required(data)
     return { ...result, closingTimestamp: new Date(result.closingTimestamp) }

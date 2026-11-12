@@ -21,6 +21,19 @@ type CashRegisterDto = Schemas["CashRegister"]
 export type RegisterOpener = Schemas["ProfileRef"]
 /** A register with its opener (T18); still a `CashRegister` for existing callers. */
 export type CashRegisterWithOpener = CashRegister & { openedBy: RegisterOpener | null }
+/** Why a cash movement happened (caja-cierres S2). */
+export type CashMovementReason = Schemas["CreateCashTransactionRequest"]["reason"]
+/** A cash movement with its reason and author; both null for movements before migration 0026. */
+export type CashMovement = CashTransaction & { reason: CashMovementReason | null; createdBy: RegisterOpener | null }
+/** The six reasons with their Spanish labels, in display order; `other` requires a description. */
+export const CASH_MOVEMENT_REASONS: readonly { value: CashMovementReason; label: string }[] = [
+  { value: "change_fund", label: "Sencillo / base" },
+  { value: "supplier", label: "Pago a proveedor" },
+  { value: "petty_cash", label: "Caja menor" },
+  { value: "tips_payout", label: "Propinas pagadas" },
+  { value: "safe_deposit", label: "Caja fuerte / consignación" },
+  { value: "other", label: "Otro" },
+]
 /** One paid order of a register, newest payment first. */
 export type RegisterPaidOrder = Omit<Schemas["RegisterPaidOrder"], "paidAt"> & { paidAt: Date }
 
@@ -59,7 +72,7 @@ function toPaymentTransaction(dto: Schemas["LegacyPaymentTransaction"]): Payment
   }
 }
 
-function toCashTransaction(dto: Schemas["CashTransaction"]): CashTransaction {
+function toCashTransaction(dto: Schemas["CashTransaction"]): CashMovement {
   return {
     id: dto.id,
     amount: dto.amount,
@@ -67,6 +80,8 @@ function toCashTransaction(dto: Schemas["CashTransaction"]): CashTransaction {
     description: dto.description,
     timestamp: new Date(dto.timestamp),
     cash_register_id: dto.cashRegisterId,
+    reason: dto.reason ?? null,
+    createdBy: dto.createdBy ?? null,
   }
 }
 
@@ -152,23 +167,27 @@ export function getRegisterPaidOrders(registerId: string, options: { limit?: num
 
 // ---- Cash movements -------------------------------------------------------------------
 
-/** Deposit or withdrawal with the server clock; 409 `Register is closed`. */
+/**
+ * Deposit or withdrawal with the server clock and the caller as author; 409
+ * `Register is closed`, 422 when `other` has no description.
+ */
 export function addCashTransaction(
   registerId: string,
   amount: number,
   type: "deposit" | "withdrawal",
+  reason: CashMovementReason,
   description: string,
-): Promise<CashTransaction> {
+): Promise<CashMovement> {
   return call(async () => {
     const { data } = await api.POST("/api/registers/{id}/cash-transactions", {
       ...byId(registerId),
-      body: { amount, type, description },
+      body: { amount, type, reason, description },
     })
     return toCashTransaction(required(data))
   })
 }
 
-export function getCashTransactionsByRegisterId(registerId: string): Promise<CashTransaction[]> {
+export function getCashTransactionsByRegisterId(registerId: string): Promise<CashMovement[]> {
   return call(async () => {
     const { data } = await api.GET("/api/registers/{id}/cash-transactions", byId(registerId))
     return required(data).map(toCashTransaction)
@@ -176,7 +195,7 @@ export function getCashTransactionsByRegisterId(registerId: string): Promise<Cas
 }
 
 /** Cash movements of several registers (one request each), newest first. */
-export async function getCashTransactionsByRegisters(registerIds: string[]): Promise<CashTransaction[]> {
+export async function getCashTransactionsByRegisters(registerIds: string[]): Promise<CashMovement[]> {
   const lists = await Promise.all(registerIds.map(getCashTransactionsByRegisterId))
   return newestFirst(lists.flat())
 }

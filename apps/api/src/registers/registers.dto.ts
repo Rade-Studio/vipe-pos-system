@@ -6,6 +6,11 @@ import { LegacyPaymentTransaction, PAYMENT_METHOD_KINDS, type PaymentMethodKind 
 export const REGISTER_INCLUDES = ['transactions', 'cashTransactions'] as const;
 export const CASH_TRANSACTION_TYPES = ['deposit', 'withdrawal'] as const;
 export type CashTransactionType = (typeof CASH_TRANSACTION_TYPES)[number];
+/** Why the cash moved (migration 0026); `other` requires a description. */
+export const CASH_TRANSACTION_REASONS = ['change_fund', 'supplier', 'petty_cash', 'tips_payout', 'safe_deposit', 'other'] as const;
+export type CashTransactionReason = (typeof CASH_TRANSACTION_REASONS)[number];
+/** Colombian bills and coins, in pesos, accepted in the close count. */
+export const DENOMINATION_VALUES = [100000, 50000, 20000, 10000, 5000, 2000, 1000, 500, 200, 100, 50] as const;
 /** register_summary accepts at most 100 ids. */
 const MAX_SUMMARY_IDS = 100;
 /** GET /registers/:id/paid-orders returns at most this many rows (default 100). */
@@ -13,6 +18,8 @@ export const PAID_ORDERS_MAX = 200;
 export const PAID_ORDERS_DEFAULT = 100;
 /** numeric(10,2) columns. */
 const money = z.number().max(99_999_999.99);
+/** Whole pesos in a numeric(10,2) column. */
+const wholePesos = z.number().int().min(0).max(99_999_999);
 
 export const registerIncludeQuerySchema = z.strictObject({ include: csvOf(REGISTER_INCLUDES).optional() });
 export const registerListQuerySchema = registerIncludeQuerySchema.extend({ date: dateQuery.optional() });
@@ -27,11 +34,31 @@ export const paidOrdersQuerySchema = z.strictObject({
  * `openedBy` field is an unknown field, 422).
  */
 export const openRegisterSchema = z.strictObject({ initialCash: money.min(0) });
-/** Optional close body: `leaveOpenOrders: true` confirms that open orders pass to the next register. */
-export const closeRegisterSchema = z.strictObject({ leaveOpenOrders: z.boolean().optional() });
+/**
+ * Close body: `leaveOpenOrders: true` confirms that open orders pass to the
+ * next register. `countedCash` is required while the register is open (the
+ * service answers 422 counted_cash_required), `denominations` must add up to
+ * it and `note` is required when the count differs from the expected cash.
+ */
+export const closeRegisterSchema = z.strictObject({
+  leaveOpenOrders: z.boolean().optional(),
+  countedCash: wholePesos.optional(),
+  denominations: z
+    .array(
+      z.strictObject({
+        value: z.union(DENOMINATION_VALUES.map((value) => z.literal(value))),
+        quantity: z.number().int().min(0).max(100_000),
+      }),
+    )
+    .max(DENOMINATION_VALUES.length * 2)
+    .optional(),
+  note: z.string().trim().min(3).max(300).nullable().optional(),
+});
+export type CloseRegisterInput = z.infer<typeof closeRegisterSchema>;
 export const createCashTransactionSchema = z.strictObject({
   amount: money.positive(),
   type: z.enum(CASH_TRANSACTION_TYPES),
+  reason: z.enum(CASH_TRANSACTION_REASONS),
   description: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -42,13 +69,35 @@ export class CashTransaction {
   @ApiProperty({ enum: CASH_TRANSACTION_TYPES }) type!: CashTransactionType;
   @ApiProperty({ description: 'Empty string when none was given.' }) description!: string;
   @ApiProperty({ format: 'date-time', description: 'Server clock.' }) timestamp!: string;
+  @ApiProperty({ enum: CASH_TRANSACTION_REASONS, nullable: true, description: 'null for movements recorded before migration 0026.' })
+  reason!: CashTransactionReason | null;
+  @ApiProperty({
+    type: () => ProfileRef,
+    nullable: true,
+    description: 'Who recorded it (the caller); null for movements before migration 0026 or a deleted profile.',
+  })
+  createdBy!: ProfileRef | null;
 }
 
 export class ProfileRef {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ description: 'profiles.full_name.' }) name!: string;
 }
-export class CashRegister {
+
+export class Denomination {
+  @ApiProperty({ enum: DENOMINATION_VALUES, description: 'Bill or coin value in pesos.' }) value!: number;
+  @ApiProperty({ minimum: 0 }) quantity!: number;
+}
+
+/** The count stored at the close (migration 0026); every field is null for registers closed before it, or still open. */
+export class RegisterCount {
+  @ApiProperty({ type: Number, nullable: true, description: 'Cash counted by the cashier (whole pesos).' }) countedCash!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'countedCash - finalCash (expected after tips).' }) cashDifference!: number | null;
+  @ApiProperty({ type: String, nullable: true }) closeNote!: string | null;
+  @ApiProperty({ type: [Denomination], nullable: true }) denominations!: Denomination[] | null;
+  @ApiProperty({ type: ProfileRef, nullable: true, description: 'Who closed it (the caller).' }) closedBy!: ProfileRef | null;
+}
+export class CashRegister extends RegisterCount {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'date-time', description: 'Server clock.' }) openingTimestamp!: string;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) closingTimestamp!: string | null;
@@ -76,12 +125,34 @@ export class OpenRegisterRequest {
 export class CloseRegisterRequest {
   @ApiPropertyOptional({ description: 'Close even though the restaurant has open orders; they stay open for the next register.' })
   leaveOpenOrders?: boolean;
+  @ApiPropertyOptional({
+    minimum: 0,
+    description: 'Cash counted (whole pesos); required while the register is open (422 counted_cash_required). Ignored on an already closed register.',
+  })
+  countedCash?: number;
+  @ApiPropertyOptional({ type: [Denomination], description: 'Count by bill and coin; the sum must equal countedCash (422 count_mismatch).' })
+  denominations?: Denomination[];
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    minLength: 3,
+    maxLength: 300,
+    description: 'Trimmed; required when countedCash differs from the expected cash after tips (422 note_required).',
+  })
+  note?: string | null;
 }
 
 export class CreateCashTransactionRequest {
   @ApiProperty({ minimum: 0.01 }) amount!: number;
   @ApiProperty({ enum: CASH_TRANSACTION_TYPES }) type!: CashTransactionType;
-  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 }) description?: string | null;
+  @ApiProperty({ enum: CASH_TRANSACTION_REASONS }) reason!: CashTransactionReason;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 500,
+    description: 'Required (not blank) when reason is other (422 description_required).',
+  })
+  description?: string | null;
 }
 
 export class RegisterMethodSummary {
@@ -122,7 +193,7 @@ export class RegisterSummary {
   @ApiProperty({ type: RegisterLegacySummary }) legacy!: RegisterLegacySummary;
 }
 
-export class CloseRegisterResult {
+export class CloseRegisterResult extends RegisterCount {
   @ApiProperty({ enum: ['closed', 'already_closed'] }) status!: 'closed' | 'already_closed';
   @ApiProperty({ format: 'uuid' }) cashRegisterId!: string;
   @ApiProperty({ description: 'expected_cash_after_tips at the close, from the database.' }) finalCash!: number;

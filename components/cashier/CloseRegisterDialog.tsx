@@ -10,6 +10,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { formatCurrency } from "@/utils/helpers"
 import { toast } from "@/utils/toast"
@@ -65,6 +68,11 @@ interface CloseRegisterDialogProps {
  * the "Dejar N órdenes abiertas" confirmation and sends `leaveOpenOrders`
  * (the API answers 409 open_orders otherwise, shown here on a race).
  *
+ * Count (caja-cierres S1, minimal until the T2 wizard): the cashier types
+ * the "Efectivo contado" (whole pesos, required); when it differs from the
+ * preview's `expectedCashAfterTips` a note of 3+ characters is required, as
+ * the API demands (422 note_required).
+ *
  * The confirm button is gated by `createSingleFlight` so a double-click
  * cannot fire two `close_register` calls back-to-back (the RPC would
  * idempotently no-op the second, but the brief spinner flicker is still
@@ -86,6 +94,8 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [conflict, setConflict] = useState<string | null>(null)
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
+  const [countedInput, setCountedInput] = useState("")
+  const [note, setNote] = useState("")
 
   const loadOpenOrders = useCallback(async () => {
     try {
@@ -100,17 +110,29 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
   useEffect(() => {
     if (!open) return
     setConflict(null)
+    setCountedInput("")
+    setNote("")
     void loadOpenOrders()
   }, [open, loadOpenOrders])
 
   const openCount = openOrders?.length ?? 0
+  const counted = countedInput.trim() === "" ? null : Number(countedInput)
+  const countValid = counted !== null && Number.isInteger(counted) && counted >= 0
+  const difference = countValid && preview ? counted - preview.expectedCashAfterTips : 0
+  const noteValid = difference === 0 || note.trim().length >= 3
 
   const handleClose = async () => {
     const flight = closeFlight.run(async () => {
       setRunning(true)
       setConflict(null)
       try {
-        const result = await closeRegister(openCount > 0 ? { leaveOpenOrders: true } : undefined)
+        if (!countValid) return
+        const trimmedNote = note.trim()
+        const result = await closeRegister({
+          ...(openCount > 0 ? { leaveOpenOrders: true } : {}),
+          countedCash: counted,
+          ...(difference !== 0 && trimmedNote ? { note: trimmedNote } : {}),
+        })
         if (!result) {
           toast.error("No se pudo cerrar la caja")
           return
@@ -197,6 +219,39 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
             </div>
           )}
 
+          <div className="space-y-2">
+            <Label htmlFor="countedCash">Efectivo contado</Label>
+            <Input
+              id="countedCash"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={1}
+              value={countedInput}
+              onChange={(event) => setCountedInput(event.target.value)}
+              className="h-11"
+            />
+            {countValid && preview && difference !== 0 && (
+              <p className="text-sm font-medium">
+                {difference > 0 ? "Sobrante" : "Faltante"}: {formatCurrency(Math.abs(difference))}
+              </p>
+            )}
+            {countValid && preview && difference === 0 && <p className="text-sm font-medium">Cuadra</p>}
+          </div>
+
+          {countValid && difference !== 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="closeNote">Nota del cierre</Label>
+              <Textarea
+                id="closeNote"
+                value={note}
+                maxLength={300}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="Explica la diferencia (mínimo 3 caracteres)"
+              />
+            </div>
+          )}
+
           {preview ? (
             <CloseSummaryView summary={preview} heading="Vista Previa del Cierre" compact />
           ) : loadingPreview ? (
@@ -214,7 +269,9 @@ export function CloseRegisterDialog({ open, onOpenChange, onSuccess }: CloseRegi
           </Button>
           <Button
             onClick={handleClose}
-            disabled={running || !preview || openOrders === null || (openCount > 0 && !leaveOpen)}
+            disabled={
+              running || !preview || openOrders === null || (openCount > 0 && !leaveOpen) || !countValid || !noteValid
+            }
           >
             {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Cerrar Caja

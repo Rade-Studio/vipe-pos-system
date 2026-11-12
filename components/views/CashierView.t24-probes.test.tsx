@@ -37,7 +37,8 @@ vi.mock("@/lib/api/client", () => ({
   },
   onSessionRefreshed: () => () => {},
 }))
-vi.mock("@/lib/api/registers", () => ({
+vi.mock("@/lib/api/registers", async (orig) => ({
+  ...(await orig<any>()),
   getCurrentRegister: async () => ({ id: "reg-1", status: "open", openingTimestamp: new Date("2026-10-07T08:00:00.000Z"),
     initialCash: 50_000, finalCash: null, closingTimestamp: null, transactions: [], cashTransactions: [], openedBy: { id: "c-1", name: "Laura" } }),
   getRegisterPaidOrders: async () => [],

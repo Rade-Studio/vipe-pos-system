@@ -4,9 +4,12 @@ import { numOrNull, req, toLegacyTransaction } from '../payments/payments.mapper
 import type {
   CashRegister,
   CashTransaction,
+  CashTransactionReason,
   CashTransactionType,
   CloseRegisterResult,
+  Denomination,
   ProfileRef,
+  RegisterCount,
   RegisterPaidOrder,
   RegisterSummary,
 } from './registers.dto';
@@ -17,6 +20,7 @@ type Json = Record<string, unknown>;
 export interface RegisterRow {
   register: Json;
   opened_by_name: string | null;
+  closed_by_name: string | null;
   transactions: Json[] | null;
   cash_transactions: Json[] | null;
 }
@@ -33,6 +37,19 @@ export const toCashTransaction = (row: Json): CashTransaction => ({
   type: row.type as CashTransactionType,
   description: text(row.description) ?? '',
   timestamp: time(row.timestamp)!,
+  reason: (text(row.reason) as CashTransactionReason | null) ?? null,
+  createdBy: profileRef(row.created_by, row.created_by_name),
+});
+
+/** The count columns of a cash_registers row (jsonb), with the closer's name. */
+export const toRegisterCount = (r: Json, closedByName: unknown): RegisterCount => ({
+  countedCash: numOrNull(r.counted_cash),
+  cashDifference: numOrNull(r.cash_difference),
+  closeNote: text(r.close_note),
+  denominations: Array.isArray(r.denominations)
+    ? (r.denominations as Json[]).map((d) => ({ value: req(d, 'value'), quantity: req(d, 'quantity') }) satisfies Denomination)
+    : null,
+  closedBy: profileRef(r.closed_by, closedByName),
 });
 
 export function toRegister(row: RegisterRow): CashRegister {
@@ -47,6 +64,7 @@ export function toRegister(row: RegisterRow): CashRegister {
     createdAt: time(r.created_at),
     updatedAt: time(r.updated_at),
     openedBy: profileRef(r.opened_by, row.opened_by_name),
+    ...toRegisterCount(r, row.closed_by_name),
   };
   if (row.transactions) {
     register.transactions = row.transactions.map(toLegacyTransaction);
@@ -94,13 +112,14 @@ export function toRegisterSummary(row: Json): RegisterSummary {
   };
 }
 
-/** close_register result; closingTimestamp comes from the RPC on a replay, else from the closed row. */
-export const toCloseResult = (row: Json, closingTimestamp: string): CloseRegisterResult => ({
+/** close_register result with the closingTimestamp and the count read back from the closed row. */
+export const toCloseResult = (row: Json, closingTimestamp: string, count: RegisterCount): CloseRegisterResult => ({
   status: row.status as CloseRegisterResult['status'],
   cashRegisterId: String(row.cash_register_id),
   finalCash: req(row, 'final_cash'),
   closingTimestamp,
   summary: toRegisterSummary(row.summary as Json),
+  ...count,
 });
 /** One row of RegistersService.paidOrders (a jsonb object built in SQL). */
 export const toPaidOrder = (row: Json): RegisterPaidOrder => ({

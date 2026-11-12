@@ -6,9 +6,10 @@ import type {
   CashTransaction,
 } from "@/types/cash-register"
 import * as cashRegisterService from "@/lib/api/registers"
+import type { CashMovementReason } from "@/lib/api/registers"
 import { log } from "@/lib/log"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
-import { closeRegisterRpc, openOrdersConflictOf } from "@/lib/api/payments"
+import { closeRegisterRpc, openOrdersConflictOf, type CloseRegisterOptions } from "@/lib/api/payments"
 
 type CashRegisterState = {
   currentRegister: CashRegister | null
@@ -29,14 +30,15 @@ type CashRegisterState = {
    * (the value the server stored in `cash_registers.final_cash`).
    */
   /** Rethrows the API's 409 open_orders so the dialog can show it; other errors answer null. */
-  closeRegister: (options?: { leaveOpenOrders?: boolean }) => Promise<RegisterSummary | null>
+  closeRegister: (options?: CloseRegisterOptions) => Promise<RegisterSummary | null>
 
-  // Acciones para transacciones de efectivo
-  addCashToRegister: (amount: number) => Promise<boolean>
+  // Acciones para transacciones de efectivo (caja-cierres S2: siempre con motivo)
+  addCashToRegister: (amount: number, reason: CashMovementReason, description?: string) => Promise<boolean>
   addCashTransaction: (
     registerId: string,
     amount: number,
     type: "deposit" | "withdrawal",
+    reason: CashMovementReason,
     description: string,
   ) => Promise<CashTransaction | null>
 
@@ -228,7 +230,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
       // block on the cashier/admin screens.
 
       // Función para agregar efectivo a la caja
-      addCashToRegister: async (amount: number) => {
+      addCashToRegister: async (amount, reason, description = "") => {
         const { currentRegister } = get()
 
         if (!currentRegister || currentRegister.status === "closed") {
@@ -240,7 +242,8 @@ export const useCashRegisterStore = create<CashRegisterState>()(
             currentRegister.id,
             amount,
             "deposit",
-            "Ingreso adicional de efectivo a caja",
+            reason,
+            description,
           )
 
           // Actualizar el registro actual
@@ -262,9 +265,9 @@ export const useCashRegisterStore = create<CashRegisterState>()(
       },
 
       // Nueva función para agregar transacciones de efectivo (ingresos o retiros)
-      addCashTransaction: async (registerId, amount, type, description) => {
+      addCashTransaction: async (registerId, amount, type, reason, description) => {
         try {
-          const cashTransaction = await cashRegisterService.addCashTransaction(registerId, amount, type, description)
+          const cashTransaction = await cashRegisterService.addCashTransaction(registerId, amount, type, reason, description)
 
           // Obtener el registro actual
           const currentRegister = get().currentRegister

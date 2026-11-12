@@ -3837,7 +3837,7 @@
         },
         "responses": {
           "200": {
-            "description": "close_register result; a replay answers already_closed.",
+            "description": "close_register result with the stored count; a replay answers already_closed and keeps the count of the first close.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3856,7 +3856,7 @@
             "description": "code open_orders (with count): the restaurant has open orders (active, kitchen, delivered) and the body lacks leaveOpenOrders: true; the register stays open."
           },
           "422": {
-            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+            "description": "Invalid body, or code counted_cash_required (open register without countedCash), count_mismatch (denominations do not add up to countedCash) or note_required (countedCash differs from the expected cash after tips and no note)."
           }
         },
         "security": [
@@ -4009,7 +4009,7 @@
             "description": "Register is closed."
           },
           "422": {
-            "description": "Invalid input or unknown fields; RPC errors keep their SQLSTATE in `code`."
+            "description": "Invalid body (reason missing or unknown), or code description_required (reason other without a description)."
           }
         },
         "security": [
@@ -12306,6 +12306,36 @@
           "parent"
         ]
       },
+      "Denomination": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "number",
+            "enum": [
+              100000,
+              50000,
+              20000,
+              10000,
+              5000,
+              2000,
+              1000,
+              500,
+              200,
+              100,
+              50
+            ],
+            "description": "Bill or coin value in pesos."
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "value",
+          "quantity"
+        ]
+      },
       "ProfileRef": {
         "type": "object",
         "properties": {
@@ -12352,6 +12382,29 @@
             "type": "string",
             "format": "date-time",
             "description": "Server clock."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "change_fund",
+              "supplier",
+              "petty_cash",
+              "tips_payout",
+              "safe_deposit",
+              "other"
+            ],
+            "nullable": true,
+            "description": "null for movements recorded before migration 0026."
+          },
+          "createdBy": {
+            "nullable": true,
+            "description": "Who recorded it (the caller); null for movements before migration 0026 or a deleted profile.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
           }
         },
         "required": [
@@ -12360,12 +12413,45 @@
           "amount",
           "type",
           "description",
-          "timestamp"
+          "timestamp",
+          "reason",
+          "createdBy"
         ]
       },
       "CashRegister": {
         "type": "object",
         "properties": {
+          "countedCash": {
+            "type": "number",
+            "nullable": true,
+            "description": "Cash counted by the cashier (whole pesos)."
+          },
+          "cashDifference": {
+            "type": "number",
+            "nullable": true,
+            "description": "countedCash - finalCash (expected after tips)."
+          },
+          "closeNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "denominations": {
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Denomination"
+            }
+          },
+          "closedBy": {
+            "nullable": true,
+            "description": "Who closed it (the caller).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -12430,6 +12516,11 @@
           }
         },
         "required": [
+          "countedCash",
+          "cashDifference",
+          "closeNote",
+          "denominations",
+          "closedBy",
           "id",
           "openingTimestamp",
           "closingTimestamp",
@@ -12600,12 +12691,62 @@
           "leaveOpenOrders": {
             "type": "boolean",
             "description": "Close even though the restaurant has open orders; they stay open for the next register."
+          },
+          "countedCash": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Cash counted (whole pesos); required while the register is open (422 counted_cash_required). Ignored on an already closed register."
+          },
+          "denominations": {
+            "description": "Count by bill and coin; the sum must equal countedCash (422 count_mismatch).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Denomination"
+            }
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 3,
+            "maxLength": 300,
+            "description": "Trimmed; required when countedCash differs from the expected cash after tips (422 note_required)."
           }
         }
       },
       "CloseRegisterResult": {
         "type": "object",
         "properties": {
+          "countedCash": {
+            "type": "number",
+            "nullable": true,
+            "description": "Cash counted by the cashier (whole pesos)."
+          },
+          "cashDifference": {
+            "type": "number",
+            "nullable": true,
+            "description": "countedCash - finalCash (expected after tips)."
+          },
+          "closeNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "denominations": {
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Denomination"
+            }
+          },
+          "closedBy": {
+            "nullable": true,
+            "description": "Who closed it (the caller).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProfileRef"
+              }
+            ]
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -12631,6 +12772,11 @@
           }
         },
         "required": [
+          "countedCash",
+          "cashDifference",
+          "closeNote",
+          "denominations",
+          "closedBy",
           "status",
           "cashRegisterId",
           "finalCash",
@@ -12766,15 +12912,28 @@
               "withdrawal"
             ]
           },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "change_fund",
+              "supplier",
+              "petty_cash",
+              "tips_payout",
+              "safe_deposit",
+              "other"
+            ]
+          },
           "description": {
             "type": "string",
             "nullable": true,
-            "maxLength": 500
+            "maxLength": 500,
+            "description": "Required (not blank) when reason is other (422 description_required)."
           }
         },
         "required": [
           "amount",
-          "type"
+          "type",
+          "reason"
         ]
       },
       "InventoryItem": {

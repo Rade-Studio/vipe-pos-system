@@ -250,6 +250,19 @@ describe("closeRegisterRpc with open orders (S1)", () => {
     expect(api.POST).toHaveBeenCalledWith("/api/registers/{id}/close", { params: { path: { id: "r-1" } } })
   })
 
+  it("sends the count (caja-cierres S1): countedCash, denominations and a trimmed note; a blank note is left out", async () => {
+    api.POST.mockResolvedValue({ data: closed })
+    const denominations = [{ value: 50000 as const, quantity: 1 }]
+    await closeRegisterRpc("r-1", { leaveOpenOrders: true, countedCash: 50000, denominations, note: "  Faltante  " })
+    expect(api.POST).toHaveBeenCalledWith("/api/registers/{id}/close", {
+      params: { path: { id: "r-1" } },
+      body: { leaveOpenOrders: true, countedCash: 50000, denominations, note: "Faltante" },
+    })
+    api.POST.mockClear()
+    await closeRegisterRpc("r-1", { countedCash: 0, note: "   " })
+    expect(api.POST).toHaveBeenCalledWith("/api/registers/{id}/close", { params: { path: { id: "r-1" } }, body: { countedCash: 0 } })
+  })
+
   it("reads the 409 open_orders conflict (message and count)", async () => {
     const message = "Hay 1 orden abierta. Cóbrala o cancélala, o confirma que pasa a la siguiente caja."
     api.POST.mockRejectedValue(new ApiError(409, "Conflict", message, { code: "open_orders", count: 1, message }))

@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn() }))
 vi.mock("@/lib/api/client", () => ({ api }))
 
 import {
+  CASH_MOVEMENT_REASONS,
   addCashTransaction,
   getAllRegisters,
   getCashTransactionsByRegisterId,
@@ -61,6 +62,8 @@ const cashDto = (id: string, timestamp: string, cashRegisterId = "r-1") => ({
   type: "deposit",
   description: "",
   timestamp,
+  reason: null,
+  createdBy: null,
 })
 
 beforeEach(() => {
@@ -130,6 +133,8 @@ describe("current register", () => {
         description: "",
         timestamp: new Date("2026-11-04T15:00:00.000Z"),
         cash_register_id: "r-1",
+        reason: null,
+        createdBy: null,
       },
     ])
   })
@@ -160,18 +165,37 @@ describe("register lists", () => {
 })
 
 describe("cash movements", () => {
-  it("addCashTransaction POSTs {amount, type, description} with no timestamp", async () => {
-    api.POST.mockResolvedValue({ data: cashDto("c-1", "2026-11-04T15:00:00.000Z") })
-    await addCashTransaction("r-1", 5000, "deposit", "Base")
+  it("addCashTransaction POSTs {amount, type, reason, description} with no timestamp and maps reason and author", async () => {
+    const author = { id: "p-1", name: "Cajera" }
+    api.POST.mockResolvedValue({ data: { ...cashDto("c-1", "2026-11-04T15:00:00.000Z"), reason: "change_fund", createdBy: author } })
+    const row = await addCashTransaction("r-1", 5000, "deposit", "change_fund", "Base")
     expect(api.POST).toHaveBeenCalledWith("/api/registers/{id}/cash-transactions", {
       params: { path: { id: "r-1" } },
-      body: { amount: 5000, type: "deposit", description: "Base" },
+      body: { amount: 5000, type: "deposit", reason: "change_fund", description: "Base" },
     })
+    expect(row).toMatchObject({ reason: "change_fund", createdBy: author })
+  })
+
+  it("reads older movements with null reason and author", async () => {
+    api.GET.mockResolvedValue({ data: [cashDto("c-1", "2026-11-04T15:00:00.000Z")] })
+    const [row] = await getCashTransactionsByRegisterId("r-1")
+    expect(row).toMatchObject({ reason: null, createdBy: null })
+  })
+
+  it("labels the six reasons in Spanish, in order", () => {
+    expect(CASH_MOVEMENT_REASONS).toEqual([
+      { value: "change_fund", label: "Sencillo / base" },
+      { value: "supplier", label: "Pago a proveedor" },
+      { value: "petty_cash", label: "Caja menor" },
+      { value: "tips_payout", label: "Propinas pagadas" },
+      { value: "safe_deposit", label: "Caja fuerte / consignación" },
+      { value: "other", label: "Otro" },
+    ])
   })
 
   it("surfaces 409 Register is closed as rejected", async () => {
     api.POST.mockRejectedValue(new ApiError(409, "Conflict", "Register is closed", { statusCode: 409 }))
-    await expect(addCashTransaction("r-1", 1, "withdrawal", "")).rejects.toMatchObject({
+    await expect(addCashTransaction("r-1", 1, "withdrawal", "supplier", "")).rejects.toMatchObject({
       kind: "rejected",
       message: "Register is closed",
     })

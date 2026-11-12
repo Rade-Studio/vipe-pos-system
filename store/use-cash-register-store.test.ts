@@ -207,6 +207,12 @@ describe("closeRegister with open orders (S1, S2)", () => {
     expect(payments.closeRegisterRpc).toHaveBeenCalledWith("r-1", { leaveOpenOrders: true })
   })
 
+  it("passes the count to the API (caja-cierres S1)", async () => {
+    payments.closeRegisterRpc.mockResolvedValue(closed)
+    await useCashRegisterStore.getState().closeRegister({ countedCash: 1000, note: "Sobrante" })
+    expect(payments.closeRegisterRpc).toHaveBeenCalledWith("r-1", { countedCash: 1000, note: "Sobrante" })
+  })
+
   it("rethrows the 409 open_orders conflict and keeps the register open", async () => {
     const message = "Hay 2 órdenes abiertas. Cóbralas o cancélalas, o confirma que pasan a la siguiente caja."
     const conflict = new PaymentServiceError({
@@ -222,5 +228,27 @@ describe("closeRegister with open orders (S1, S2)", () => {
   it("still answers null on other errors", async () => {
     payments.closeRegisterRpc.mockRejectedValue(new Error("boom"))
     await expect(useCashRegisterStore.getState().closeRegister()).resolves.toBeNull()
+  })
+})
+
+describe("cash movements with a reason (caja-cierres S2)", () => {
+  const movement = { id: "c-1", amount: 5000, type: "deposit", description: "", timestamp: new Date(), cash_register_id: "r-1" }
+
+  beforeEach(() => {
+    service.addCashTransaction.mockReset()
+    useCashRegisterStore.setState({ currentRegister: register, registers: [register] })
+  })
+
+  it("addCashToRegister sends a deposit with the reason and description", async () => {
+    service.addCashTransaction.mockResolvedValue(movement)
+    await expect(useCashRegisterStore.getState().addCashToRegister(5000, "change_fund", "")).resolves.toBe(true)
+    expect(service.addCashTransaction).toHaveBeenCalledWith("r-1", 5000, "deposit", "change_fund", "")
+    expect(useCashRegisterStore.getState().currentRegister?.cashTransactions).toEqual([movement])
+  })
+
+  it("addCashTransaction passes the reason", async () => {
+    service.addCashTransaction.mockResolvedValue({ ...movement, type: "withdrawal" })
+    await useCashRegisterStore.getState().addCashTransaction("r-1", 5000, "withdrawal", "other", "Hielo")
+    expect(service.addCashTransaction).toHaveBeenCalledWith("r-1", 5000, "withdrawal", "other", "Hielo")
   })
 })

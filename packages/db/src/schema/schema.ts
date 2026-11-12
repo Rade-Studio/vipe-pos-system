@@ -38,7 +38,13 @@ export const cashRegisters = pgTable("cash_registers", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
 	openedBy: uuid("opened_by").default(sql`private.current_profile_id()`),
+	countedCash: numeric("counted_cash", { precision: 10, scale:  2 }),
+	cashDifference: numeric("cash_difference", { precision: 10, scale:  2 }),
+	closeNote: text("close_note"),
+	denominations: jsonb(),
+	closedBy: uuid("closed_by"),
 }, (table) => [
+	index("idx_cash_registers_closed_by").using("btree", table.closedBy.asc().nullsLast().op("uuid_ops")),
 	index("idx_cash_registers_opened_by").using("btree", table.openedBy.asc().nullsLast().op("uuid_ops")),
 	index("idx_cash_registers_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("one_open_register_per_restaurant").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")).where(sql`((status)::text = 'open'::text)`),
@@ -46,6 +52,11 @@ export const cashRegisters = pgTable("cash_registers", {
 			columns: [table.restaurantId, table.openedBy],
 			foreignColumns: [profiles.restaurantId, profiles.id],
 			name: "cash_registers_opened_by_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.closedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "cash_registers_closed_by_fkey"
 		}).onDelete("set null"),
 	foreignKey({
 			columns: [table.restaurantId],
@@ -56,6 +67,11 @@ export const cashRegisters = pgTable("cash_registers", {
 	pgPolicy("cash_registers_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
 	pgPolicy("cash_registers_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("cash_registers_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
+	check("cash_registers_counted_cash_check", sql`(counted_cash >= (0)::numeric) AND (counted_cash = trunc(counted_cash))`),
+	check("cash_registers_count_pair_check", sql`(counted_cash IS NULL) = (cash_difference IS NULL)`),
+	check("cash_registers_close_note_check", sql`(char_length(close_note) >= 3) AND (char_length(close_note) <= 300)`),
+	check("cash_registers_count_note_check", sql`(cash_difference = (0)::numeric) OR (close_note IS NOT NULL)`),
+	check("cash_registers_denominations_check", sql`jsonb_typeof(denominations) = 'array'::text`),
 ]);
 
 export const cashTransactions = pgTable("cash_transactions", {
@@ -68,10 +84,18 @@ export const cashTransactions = pgTable("cash_transactions", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	reason: varchar({ length: 20 }),
+	createdBy: uuid("created_by").default(sql`private.current_profile_id()`),
 }, (table) => [
 	index("idx_cash_transactions_cash_register_id").using("btree", table.cashRegisterId.asc().nullsLast().op("uuid_ops")),
 	index("idx_cash_transactions_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
+	index("idx_cash_transactions_created_by").using("btree", table.createdBy.asc().nullsLast().op("uuid_ops")),
 	index("idx_cash_transactions_timestamp").using("btree", table.timestamp.asc().nullsLast().op("timestamptz_ops")),
+	foreignKey({
+			columns: [table.restaurantId, table.createdBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "cash_transactions_created_by_fkey"
+		}).onDelete("set null"),
 	foreignKey({
 			columns: [table.cashRegisterId],
 			foreignColumns: [cashRegisters.id],
@@ -87,6 +111,8 @@ export const cashTransactions = pgTable("cash_transactions", {
 	pgPolicy("cash_transactions_select_policy", { as: "permissive", for: "select", to: ["vipe_api"] }),
 	pgPolicy("cash_transactions_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("cash_transactions_type_check", sql`(type)::text = ANY (ARRAY[('deposit'::character varying)::text, ('withdrawal'::character varying)::text])`),
+	check("cash_transactions_reason_check", sql`(reason)::text = ANY (ARRAY['change_fund'::text, 'supplier'::text, 'petty_cash'::text, 'tips_payout'::text, 'safe_deposit'::text, 'other'::text])`),
+	check("cash_transactions_other_description_check", sql`((reason)::text IS DISTINCT FROM 'other'::text) OR (btrim(COALESCE(description, ''::text)) <> ''::text)`),
 ]);
 
 export const categories = pgTable("categories", {

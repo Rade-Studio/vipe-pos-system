@@ -123,13 +123,15 @@ vi.mock("@/lib/api/client", () => {
   }
 })
 const getRegisterPaidOrders = vi.fn(async (_registerId: string): Promise<unknown[]> => [])
-vi.mock("@/lib/api/registers", () => ({
+vi.mock("@/lib/api/registers", async (orig) => ({
+  ...(await orig<any>()),
   getCurrentRegister: () => getCurrentRegister(),
   getRegisterPaidOrders: (registerId: string) => getRegisterPaidOrders(registerId),
 }))
 const zones = vi.hoisted(() => ({ list: [] as Array<{ id: string; name: string }> }))
 vi.mock("@/hooks/use-zones", () => ({ useZones: () => ({ data: zones.list }) }))
-vi.mock("@/lib/api/payments", () => ({
+vi.mock("@/lib/api/payments", async (orig) => ({
+  ...(await orig<any>()),
   listPaymentMethods: () => listPaymentMethods(),
   getRegisterSummary: () => getRegisterSummary(),
   listRegisterPayments: () => listRegisterPayments(),
