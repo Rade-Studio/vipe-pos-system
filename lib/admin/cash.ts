@@ -274,3 +274,11 @@ export function ledgerCsv(entries: readonly CashLedgerEntry[], turnoLabel: (regi
 export const cashDayQueryKey = (date: string) => ["cash", "day", date] as const
 export const cashLedgerQueryKey = (date: string) => ["cash", "ledger", date] as const
 export const cashReportQueryKey = (range: PeriodRange) => ["cash", "report", range.from, range.to, range.group] as const
+
+/** Informe Z number as printed: six digits, `000215`. */
+export function zNumberLabel(number: number): string {
+  return String(number).padStart(6, "0")
+}
+
+export const zReportsQueryKey = (range: { from: string; to: string }) => ["cash", "z", "list", range.from, range.to] as const
+export const zQueryKey = (number: number) => ["cash", "z", number] as const

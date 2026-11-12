@@ -106,8 +106,6 @@ vi.mock("@/components/admin/promotions/PromotionList", () => ({
 }))
 vi.mock("@/components/admin/staff/WaiterList", () => ({ WaiterList: () => null }))
 vi.mock("@/components/admin/CompletedOrdersTable", () => ({ CompletedOrdersTable: () => null }))
-vi.mock("@/components/admin/CashRegisterSummary", () => ({ CashRegisterSummary: () => null }))
-vi.mock("@/components/admin/TransactionsByRegisterId", () => ({ TransactionsByRegisterId: () => null }))
 vi.mock("@/components/cashier/RegisterHistoryTable", () => ({ RegisterHistoryTable: () => null }))
 vi.mock("@/components/cashier/CashRegisterStatus", () => ({ CashRegisterStatus: () => null }))
 // Recharts cannot measure a layout in jsdom; the dashboard charts are

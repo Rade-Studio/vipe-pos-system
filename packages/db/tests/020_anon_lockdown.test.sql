@@ -265,6 +265,8 @@ SELECT is(
       AND NOT (c.relname = 'profiles' AND p.priv <> 'SELECT')
       -- order_item_modifiers: SELECT only, written by SECURITY DEFINER functions (340_modifiers).
       AND NOT (c.relname = 'order_item_modifiers' AND p.priv <> 'SELECT')
+      -- z_reports: append-only, SELECT and INSERT only (380_z_reports).
+      AND NOT (c.relname = 'z_reports' AND p.priv IN ('UPDATE', 'DELETE'))
       AND NOT has_table_privilege('vipe_api', c.oid, p.priv)
   ),
   0::bigint,

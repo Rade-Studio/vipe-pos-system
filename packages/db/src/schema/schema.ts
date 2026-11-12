@@ -26,6 +26,7 @@ export const businessConfig = pgTable("business_config", {
 	check("business_config_waiter_access_mode", sql`((key)::text <> 'waiter_access_mode'::text) OR (value = ANY (ARRAY['own_accounts'::text, 'shared_terminal'::text]))`),
 	check("business_config_allow_self_authorization", sql`((key)::text <> 'allow_self_authorization'::text) OR (value = ANY (ARRAY['true'::text, 'false'::text]))`),
 	check("business_config_business_day_cutoff_hour", sql`((key)::text <> 'business_day_cutoff_hour'::text) OR (value = ANY (ARRAY['0'::text, '1'::text, '2'::text, '3'::text, '4'::text, '5'::text, '6'::text]))`),
+	check("business_config_tax_type", sql`((key)::text <> 'tax_type'::text) OR (value = ANY (ARRAY['INC'::text, 'IVA'::text]))`),
 ]);
 
 export const cashRegisters = pgTable("cash_registers", {
@@ -82,6 +83,34 @@ export const cashRegisters = pgTable("cash_registers", {
 	check("cash_registers_count_note_check", sql`(cash_difference = (0)::numeric) OR (close_note IS NOT NULL)`),
 	check("cash_registers_denominations_check", sql`jsonb_typeof(denominations) = 'array'::text`),
 	check("cash_registers_validated_closed_check", sql`(validated_at IS NULL) OR ((status)::text = 'closed'::text)`),
+]);
+
+export const zReports = pgTable("z_reports", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
+	number: integer().notNull(),
+	businessDay: date("business_day", { mode: 'string' }).notNull(),
+	snapshot: jsonb().notNull(),
+	emittedBy: uuid("emitted_by").default(sql`private.current_profile_id()`),
+	emittedAt: timestamp("emitted_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_z_reports_emitted_by").using("btree", table.emittedBy.asc().nullsLast().op("uuid_ops")),
+	unique("z_reports_restaurant_id_number_key").on(table.restaurantId, table.number),
+	unique("z_reports_restaurant_id_business_day_key").on(table.restaurantId, table.businessDay),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "z_reports_restaurant_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.restaurantId, table.emittedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "z_reports_emitted_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("z_reports_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
+	pgPolicy("z_reports_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
+	check("z_reports_number_check", sql`number >= 1`),
+	check("z_reports_snapshot_check", sql`jsonb_typeof(snapshot) = 'object'::text`),
 ]);
 
 export const cashTransactions = pgTable("cash_transactions", {

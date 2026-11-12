@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { z } from 'zod';
 import { dateQuery } from '../common/validation';
 import { PAYMENT_METHOD_KINDS, type PaymentMethodKind } from '../payments/payments.dto';
@@ -21,9 +21,19 @@ export const reportQuerySchema = z.strictObject({
   group: z.enum(REPORT_GROUPS),
 });
 
+/** GET /cash/z?from&to: business days of the Zs, at most MAX_REPORT_DAYS. */
+export const zListQuerySchema = z.strictObject({ from: dateQuery, to: dateQuery });
+/** GET /cash/z/:number: a positive whole number. */
+export const zNumberParamSchema = z
+  .string()
+  .regex(/^[1-9]\d{0,8}$/, 'Expected a Z number')
+  .transform(Number);
+
 export const CASH_MESSAGES = {
   rangeTooLong: `El período no puede superar ${MAX_REPORT_DAYS} días.`,
   rangeInverted: 'La fecha inicial debe ser anterior o igual a la final.',
+  dayOpen: 'Hay un turno abierto en este día: ciérralo antes de emitir el informe Z.',
+  dayEmpty: 'No hay turnos de caja en este día: no hay nada que cerrar.',
 } as const;
 
 const TABLE_DESCRIPTION = 'Table number as text, "Domicilio" for a delivery order, null without table.';
@@ -111,6 +121,14 @@ export class CashPreviousDay {
   @ApiProperty() salesNet!: number;
 }
 
+/** The Z emitted for a business day (S8). */
+export class CashZRef {
+  @ApiProperty({ example: 215 }) number!: number;
+  @ApiProperty({ format: 'date-time' }) emittedAt!: string;
+  @ApiProperty({ type: ProfileRef, nullable: true, description: 'The admin who emitted it; null when the profile was deleted.' })
+  emittedBy!: ProfileRef | null;
+}
+
 export class CashDay {
   @ApiProperty({ example: '2026-11-10', description: 'Business day (S5).' }) date!: string;
   @ApiProperty({ enum: DAY_STATUSES, description: 'open when a register of the day is open, empty without registers.' })
@@ -121,6 +139,52 @@ export class CashDay {
   tipsByWaiter!: CashWaiterTips[];
   @ApiProperty({ type: CashDayVoids }) voids!: CashDayVoids;
   @ApiProperty({ type: CashPreviousDay }) previous!: CashPreviousDay;
+  @ApiProperty({ type: CashZRef, nullable: true, description: 'The informe Z of the day; null until it is emitted.' }) z!: CashZRef | null;
+}
+
+export class CashTaxes {
+  @ApiProperty({ example: 8, description: 'Configured taxPercentage at the emit.' }) rate!: number;
+  @ApiProperty({ description: 'Base gravable: round(salesNet / (1 + rate / 100)); prices include the tax, tips never do.' }) base!: number;
+  @ApiProperty({ description: 'salesNet - base.' }) tax!: number;
+}
+
+export class CashOrderRange {
+  @ApiProperty({ type: Number, nullable: true, description: 'Lowest order_number of the paid orders; null without sales.' }) first!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Highest order_number of the paid orders.' }) last!: number | null;
+}
+
+export class CashMethodTips {
+  @ApiProperty() code!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ enum: PAYMENT_METHOD_KINDS }) kind!: PaymentMethodKind;
+  @ApiProperty({ description: 'Tips of the live payments; a payment with several tenders splits its tip by tender amount.' }) amount!: number;
+}
+
+/** The day summary frozen at the emit, plus the fiscal details of the Z. */
+export class CashZSnapshot extends OmitType(CashDay, ['z'] as const) {
+  @ApiProperty({ type: CashTaxes }) taxes!: CashTaxes;
+  @ApiProperty({ type: CashOrderRange }) orders!: CashOrderRange;
+  @ApiProperty({ description: 'Sum of total_discounts of the paid orders.' }) discounts!: number;
+  @ApiProperty({ type: [CashMethodTips], description: 'Catalog order, methods with tips only.' }) tipsByMethod!: CashMethodTips[];
+}
+
+export class CashZReport extends CashZRef {
+  @ApiProperty({ example: '2026-11-10' }) businessDay!: string;
+  @ApiProperty({ type: CashZSnapshot }) snapshot!: CashZSnapshot;
+}
+
+export class CashZListItem extends CashZRef {
+  @ApiProperty({ example: '2026-11-10' }) businessDay!: string;
+  @ApiProperty({ description: 'snapshot.totals.salesNet.' }) salesNet!: number;
+  @ApiProperty({ description: 'snapshot.totals.difference (sobrante +, faltante -).' }) difference!: number;
+}
+
+export class CashZList {
+  @ApiProperty() from!: string;
+  @ApiProperty() to!: string;
+  @ApiProperty({ type: [CashZListItem], description: 'Zs whose business day is in the range, by number.' }) items!: CashZListItem[];
+  @ApiProperty({ type: [Number], description: 'Numbers between the first and the last listed Z that no Z of the restaurant carries.' })
+  gaps!: number[];
 }
 
 export class CashLedgerTender {
