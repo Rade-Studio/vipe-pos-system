@@ -25,7 +25,7 @@
  * keeps tableless delivery rows OUT of the by-table cards — `DeliveryPaymentsPanel`
  * stays the place where the cashier charges deliveries.
  */
-import { orderDtoFromWire, toOrder, type OrderDto } from "@/lib/api/orders"
+import { orderDtoFromWire, toOrder, type OrderDiscountDto, type OrderDto } from "@/lib/api/orders"
 import { groupDineInOrdersByTable } from "@/lib/delivery/kitchen"
 import { mergeOrdersList, wireRowToPartialOrder, withoutVoidedWireLines } from "@/lib/realtime/order-merge"
 import type { Order, OrderItemModifier } from "@/types"
@@ -84,13 +84,22 @@ function num(value: unknown): number {
 /** The cashier reads its orders with the waiter's name (T24): `GET /orders?include=waiter`. */
 export const CASHIER_ORDER_INCLUDES = ["waiter"] as const
 
-/** A cashier order: the domain `Order` plus the waiter's name when the API sent it. */
-export type CashierOrder = Order & { waiterName?: string }
+/**
+ * A cashier order: the domain `Order` plus the waiter's name when the API sent
+ * it and, with promotions (S13), the order's discount records and list-price
+ * subtotal, which the order detail shows without reading the order again.
+ */
+export type CashierOrder = Order & { waiterName?: string; discounts?: OrderDiscountDto[]; grossSubtotal?: number }
 
-/** `toOrder` keeping `waiterName` (include=waiter); without it the result is exactly `toOrder`. */
+/** `toOrder` keeping `waiterName` (include=waiter) and the discounts; without them the result is exactly `toOrder`. */
 export function toCashierOrder(dto: OrderDto): CashierOrder {
-  const order = toOrder(dto)
-  return dto.waiterName ? { ...order, waiterName: dto.waiterName } : order
+  const order: CashierOrder = toOrder(dto)
+  if (dto.waiterName) order.waiterName = dto.waiterName
+  if (dto.discounts?.length) {
+    order.discounts = dto.discounts
+    order.grossSubtotal = dto.grossSubtotal
+  }
+  return order
 }
 
 function orderFromRow(row: unknown): Order | null {
@@ -238,9 +247,12 @@ export interface CashierBillSource {
   }>
   tax_percentage: number
   tip_percentage: number
+  /** The net base (list price minus discounts, S2): what pay_order charges with the tax. */
   subtotal: number
   tax: number
   tip: number
+  /** S13: the order's discounts, already out of `subtotal`. */
+  total_discounts?: number
   table_id: string | null
   waiter_id: string | null
 }
@@ -263,6 +275,7 @@ export function billSourceFromOrder(order: Order): CashierBillSource {
     subtotal: num(bill?.subtotal),
     tax: num(bill?.tax),
     tip: num(bill?.tip),
+    total_discounts: num(bill?.totalDiscounts),
     // A delivery has no table to print (S14); keep `null`, never "Mesa ?".
     table_id: isDelivery ? null : order.tableId || null,
     waiter_id: order.waiter || null,

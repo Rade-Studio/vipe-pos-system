@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Check, Minus, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Chip, Money, focusRing } from "@/components/cashier/cashier-ui"
+import { VoidDiscountNote } from "@/components/cashier/VoidDiscountNote"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/utils/helpers"
 import { authorizeSupervisor, pinFailureOf } from "@/lib/api/auth"
@@ -482,6 +483,7 @@ function FlowBody({
                   </div>
                 </>
               )}
+              <VoidDiscountNote totalDiscounts={target.totalDiscounts ?? 0} />
             </>
           )}
 

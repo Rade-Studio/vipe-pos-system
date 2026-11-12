@@ -1,12 +1,16 @@
 "use client"
 
-import { Ban, Printer, Receipt, SplitSquareVertical, Trash2, Undo2 } from "lucide-react"
+import { useMemo, useState } from "react"
+import { Ban, Gift, Printer, Receipt, SplitSquareVertical, Trash2, Undo2, X } from "lucide-react"
 import { usePrintingEnabled } from "@/lib/api/printing"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/utils/helpers"
 import type { CartItem } from "@/types"
 import { billLineKey, entryHeader, type QueueEntry, type QueueTotals } from "@/lib/cashier/queue"
 import { ModifierLines } from "@/components/modifiers/ModifierLines"
+import { cashierBill, type CashierDiscountLine } from "@/lib/cashier/discounts"
+import { useManualPromotions, useOrderDiscounts } from "@/hooks/use-order-discounts"
+import { DiscountSheet, type DiscountSheetTarget } from "./DiscountSheet"
 import { Chip, Eyebrow, Money } from "./cashier-ui"
 
 interface OrderDetailProps {
@@ -25,7 +29,41 @@ interface OrderDetailProps {
   onCancelOrder?: () => void
 }
 
-/** Centre pane: what the customer ordered and what the bill adds up to. */
+function DiscountRows({ discounts, onRemove }: { discounts: CashierDiscountLine[]; onRemove: (discount: CashierDiscountLine) => void }) {
+  if (discounts.length === 0) return null
+  return (
+    <ul className="mt-1 space-y-0.5">
+      {discounts.map((discount) => (
+        <li
+          key={discount.id}
+          aria-label={discount.label}
+          className="flex items-center justify-between gap-2 border-l-2 border-status-ok-line pl-3 text-[13px] text-status-ok-fg"
+        >
+          <span className="min-w-0 break-words">
+            {discount.label}
+            {discount.note && <small className="ml-1.5 text-xs text-muted-fg">{discount.note}</small>}
+          </span>
+          <span className="flex flex-none items-center gap-1">
+            <Money>−{formatCurrency(discount.amount)}</Money>
+            {discount.manual && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 text-muted-fg"
+                aria-label={`Quitar ${discount.label}`}
+                onClick={() => onRemove(discount)}
+              >
+                <X aria-hidden="true" className="h-4 w-4" />
+              </Button>
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Centre pane: what the customer ordered and what the bill adds up to (S13: at list price, with its discounts). */
 export function OrderDetail({
   entry,
   items,
@@ -41,6 +79,60 @@ export function OrderDetail({
   const header = entryHeader(entry)
   // S2 (F6): without thermal printers the same action shows the invoice on screen.
   const printingEnabled = usePrintingEnabled()
+  const { orders: dtos, refresh } = useOrderDiscounts(entry.orders)
+  const promotions = useManualPromotions()
+  const noPinPromotionIds = useMemo(
+    () => new Set((promotions.data ?? []).filter((promotion) => promotion.mode === "manual").map((promotion) => promotion.id)),
+    [promotions.data],
+  )
+  const bill = dtos ? cashierBill(dtos, { noPinPromotionIds }) : null
+  // Without discounts the lines stay grouped as before (same dish and options, one row).
+  const discounted = bill !== null && bill.totalDiscounts > 0
+  const [removing, setRemoving] = useState<DiscountSheetTarget | null>(null)
+  const [adding, setAdding] = useState(false)
+  // Built on render, so promotions that arrive after opening still show.
+  const sheet: DiscountSheetTarget | null =
+    adding && bill
+      ? {
+          mode: "add",
+          label: entry.label,
+          billOrderId: entry.payOrder.id,
+          promotions: promotions.data ?? [],
+          lines: bill.lines.map((line) => ({
+            itemId: line.itemId,
+            orderId: line.orderId,
+            name: line.name,
+            unitPrice: line.unitPrice,
+            quantity: line.quantity,
+          })),
+        }
+      : removing
+  const closeSheet = () => {
+    setAdding(false)
+    setRemoving(null)
+  }
+  const openRemove = (discount: CashierDiscountLine) =>
+    setRemoving({
+      mode: "remove",
+      label: entry.label,
+      discount,
+      requiresPin: discount.promotionId === null || !noPinPromotionIds.has(discount.promotionId),
+    })
+  const totalRows: { label: string; amount: number; discount?: boolean; strong?: boolean }[] = discounted
+    ? [
+        { label: "Subtotal (precio de lista)", amount: bill.grossSubtotal },
+        ...bill.discountRows.map((row) => ({ ...row, discount: true })),
+        { label: "Base", amount: bill.subtotal },
+        { label: bill.taxPercentage !== null ? `Impuestos ${bill.taxPercentage} %` : "Impuestos", amount: bill.tax },
+        ...(bill.tip > 0 ? [{ label: "Propina", amount: bill.tip }] : []),
+        { label: "Total de la cuenta", amount: bill.total, strong: true },
+      ]
+    : [
+        { label: "Consumo", amount: totals.subtotal },
+        { label: totals.taxPercentage !== null ? `Impuestos ${totals.taxPercentage} %` : "Impuestos", amount: totals.tax },
+        ...(totals.tip > 0 ? [{ label: "Propina", amount: totals.tip }] : []),
+        { label: "Total de la cuenta", amount: totals.total, strong: true },
+      ]
   return (
     <div className="flex min-h-0 flex-col gap-4 p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -75,6 +167,12 @@ export function OrderDetail({
             {printingEnabled ? <Printer aria-hidden="true" className="h-4 w-4" /> : <Receipt aria-hidden="true" className="h-4 w-4" />}
             {printingEnabled ? "Reimprimir" : "Ver factura"}
           </Button>
+          {bill && bill.lines.length > 0 && (
+            <Button variant="outline" className="h-11" onClick={() => setAdding(true)}>
+              <Gift aria-hidden="true" className="h-4 w-4" />
+              Agregar cortesía o descuento
+            </Button>
+          )}
           {onVoidItem && (
             <Button variant="outline" className="h-11" onClick={onVoidItem}>
               <Undo2 aria-hidden="true" className="h-4 w-4" />
@@ -105,48 +203,74 @@ export function OrderDetail({
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
-            <tr key={billLineKey(item)} className="border-b border-line align-top last:border-0">
-              <td className="py-2 pr-2">
-                <span className="block break-words font-semibold text-fg">{item.name}</span>
-                <ModifierLines modifiers={item.modifiers} className="my-0.5" />
-                {item.comments && <span className="block break-words text-xs italic text-muted-fg">{item.comments}</span>}
-                <span className="block text-xs text-muted-fg min-[1180px]:hidden">
-                  <Money>{formatCurrency(item.price)}</Money> c/u
-                </span>
-              </td>
-              <td className="py-2 text-right tabular-nums">{item.quantity}</td>
-              <td className="hidden py-2 text-right min-[1180px]:table-cell">
-                <Money>{formatCurrency(item.price)}</Money>
-              </td>
-              <td className="py-2 pl-2 text-right font-semibold">
-                <Money>{formatCurrency(item.price * item.quantity)}</Money>
-              </td>
-            </tr>
-          ))}
+          {discounted
+            ? bill.lines.map((line) => (
+                <tr key={line.key} className="border-b border-line align-top last:border-0">
+                  <td className="py-2 pr-2">
+                    <span className="block break-words font-semibold text-fg">{line.name}</span>
+                    <ModifierLines modifiers={line.modifiers} className="my-0.5" />
+                    {line.comments && <span className="block break-words text-xs italic text-muted-fg">{line.comments}</span>}
+                    <span className="block text-xs text-muted-fg min-[1180px]:hidden">
+                      <Money>{formatCurrency(line.unitPrice)}</Money> c/u
+                    </span>
+                    <DiscountRows discounts={line.discounts} onRemove={openRemove} />
+                  </td>
+                  <td className="py-2 text-right tabular-nums">{line.quantity}</td>
+                  <td className="hidden py-2 text-right min-[1180px]:table-cell">
+                    <Money>{formatCurrency(line.unitPrice)}</Money>
+                  </td>
+                  <td className="py-2 pl-2 text-right font-semibold">
+                    <Money>{formatCurrency(line.total)}</Money>
+                  </td>
+                </tr>
+              ))
+            : items.map((item) => (
+                <tr key={billLineKey(item)} className="border-b border-line align-top last:border-0">
+                  <td className="py-2 pr-2">
+                    <span className="block break-words font-semibold text-fg">{item.name}</span>
+                    <ModifierLines modifiers={item.modifiers} className="my-0.5" />
+                    {item.comments && <span className="block break-words text-xs italic text-muted-fg">{item.comments}</span>}
+                    <span className="block text-xs text-muted-fg min-[1180px]:hidden">
+                      <Money>{formatCurrency(item.price)}</Money> c/u
+                    </span>
+                  </td>
+                  <td className="py-2 text-right tabular-nums">{item.quantity}</td>
+                  <td className="hidden py-2 text-right min-[1180px]:table-cell">
+                    <Money>{formatCurrency(item.price)}</Money>
+                  </td>
+                  <td className="py-2 pl-2 text-right font-semibold">
+                    <Money>{formatCurrency(item.price * item.quantity)}</Money>
+                  </td>
+                </tr>
+              ))}
         </tbody>
       </table>
 
-      <dl className="ml-auto w-full max-w-sm space-y-1 text-sm">
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted-fg">Consumo</dt>
-          <dd><Money>{formatCurrency(totals.subtotal)}</Money></dd>
+      {discounted && bill.billDiscounts.length > 0 && (
+        <div className="ml-auto w-full max-w-sm">
+          <DiscountRows discounts={bill.billDiscounts} onRemove={openRemove} />
         </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted-fg">{totals.taxPercentage !== null ? `Impuestos ${totals.taxPercentage} %` : "Impuestos"}</dt>
-          <dd><Money>{formatCurrency(totals.tax)}</Money></dd>
-        </div>
-        {totals.tip > 0 && (
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted-fg">Propina</dt>
-            <dd><Money>{formatCurrency(totals.tip)}</Money></dd>
-          </div>
-        )}
-        <div className="flex justify-between gap-3 border-t border-line pt-2 text-base font-bold text-fg">
-          <dt>Total de la cuenta</dt>
-          <dd><Money>{formatCurrency(totals.total)}</Money></dd>
-        </div>
-      </dl>
+      )}
+
+      <ul aria-label="Totales de la cuenta" className="ml-auto w-full max-w-sm space-y-1 text-sm">
+        {totalRows.map((row) => (
+          <li
+            key={row.label}
+            className={
+              row.strong
+                ? "flex justify-between gap-3 border-t border-line pt-2 text-base font-bold text-fg"
+                : row.discount
+                  ? "flex justify-between gap-3 text-status-ok-fg"
+                  : "flex justify-between gap-3"
+            }
+          >
+            <span className={row.strong || row.discount ? undefined : "text-muted-fg"}>{row.label}</span>
+            <Money>{row.discount ? "−" : ""}{formatCurrency(row.amount)}</Money>
+          </li>
+        ))}
+      </ul>
+
+      <DiscountSheet target={sheet} onClose={closeSheet} onApplied={refresh} />
     </div>
   )
 }
