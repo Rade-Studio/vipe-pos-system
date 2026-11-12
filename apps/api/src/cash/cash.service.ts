@@ -72,12 +72,6 @@ export function taxLabel(type: TaxType, rate: number): string {
   return `${type} (${String(rate).replace('.', ',')} %)`;
 }
 
-/** Prices include the tax: base = round(sales / (1 + rate / 100)), tax = sales - base, whole pesos. */
-export function taxBreakdown(sales: number, rate: number): { base: number; tax: number } {
-  const base = Math.round((sales * 100) / (100 + rate));
-  return { base, tax: sales - base };
-}
-
 /** The day-level aggregates of a range of business days, before bucketing. */
 interface DayFigures {
   sales: Map<string, { salesNet: number; tickets: number; tips: number }>;
@@ -351,7 +345,8 @@ export class CashService {
    * (concurrent emits wait for each other): a day that already has a Z
    * returns it unchanged; a day without registers is 409 day_empty, one with
    * an open register 409 day_open. Otherwise the day summary is frozen with
-   * its taxes (configured type and rate, from salesNet, tax included), the
+   * its taxes (configured type and rate; base and tax are the paid orders'
+   * subtotal and tax as pay_order stored them, so delivery fees stay out), the
    * order range, discounts and tips by method, and numbered max + 1.
    */
   async emitZ(date: string): Promise<CashZReport> {
@@ -371,7 +366,8 @@ export class CashService {
     const scope = this.scope(date, date, config.businessDayCutoffHour);
     const [orders] = await this.rows(sql`
       WITH ${scope}
-      SELECT min(o.order_number) AS first, max(o.order_number) AS last, coalesce(sum(o.total_discounts), 0) AS discounts
+      SELECT min(o.order_number) AS first, max(o.order_number) AS last, coalesce(sum(o.total_discounts), 0) AS discounts,
+             coalesce(sum(o.subtotal), 0) AS base, coalesce(sum(o.tax), 0) AS tax
         FROM pays p JOIN public.orders o ON o.id = p.order_id`);
     const snapshot: CashZSnapshot = {
       ...day,
@@ -380,7 +376,8 @@ export class CashService {
         name: TAX_TYPE_NAMES[config.taxType],
         label: taxLabel(config.taxType, config.taxPercentage),
         rate: config.taxPercentage,
-        ...taxBreakdown(day.totals.salesNet, config.taxPercentage),
+        base: Math.round(num(orders.base)),
+        tax: Math.round(num(orders.tax)),
       },
       orders: { first: numOrNull(orders.first), last: numOrNull(orders.last) },
       discounts: Math.round(num(orders.discounts)),
