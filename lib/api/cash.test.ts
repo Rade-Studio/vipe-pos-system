@@ -7,7 +7,7 @@ import { ApiError } from "./errors"
 const api = vi.hoisted(() => ({ GET: vi.fn() }))
 vi.mock("@/lib/api/client", () => ({ api }))
 
-import { fetchCashDay, fetchCashLedger } from "./cash"
+import { fetchCashDay, fetchCashLedger, fetchCashReport, REPORT_MAX_DAYS } from "./cash"
 
 beforeEach(() => {
   api.GET.mockReset()
@@ -26,6 +26,16 @@ describe("cash", () => {
     api.GET.mockResolvedValueOnce({ data: ledger })
     await expect(fetchCashLedger("2026-11-10")).resolves.toEqual(ledger)
     expect(api.GET).toHaveBeenCalledWith("/api/cash/days/{date}/ledger", { params: { path: { date: "2026-11-10" } } })
+  })
+
+  it("reads the period report with from, to and group", async () => {
+    const report = { from: "2026-11-01", to: "2026-11-30", group: "week", buckets: [] }
+    api.GET.mockResolvedValueOnce({ data: report })
+    await expect(fetchCashReport({ from: "2026-11-01", to: "2026-11-30", group: "week" })).resolves.toEqual(report)
+    expect(api.GET).toHaveBeenCalledWith("/api/cash/report", {
+      params: { query: { from: "2026-11-01", to: "2026-11-30", group: "week" } },
+    })
+    expect(REPORT_MAX_DAYS).toBe(366)
   })
 
   it("passes API errors through and rejects an empty response", async () => {

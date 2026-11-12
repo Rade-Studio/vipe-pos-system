@@ -1124,6 +1124,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cash/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CashController_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inventory/items": {
         parameters: {
             query?: never;
@@ -4102,6 +4118,53 @@ export interface components {
             date: string;
             /** @description Chronological; opening first and validation last on ties. */
             entries: components["schemas"]["CashLedgerEntry"][];
+        };
+        CashVoidTotals: {
+            count: number;
+            amount: number;
+        };
+        CashPeriodBucket: {
+            /**
+             * @description First business day of the bucket, clipped to the range.
+             * @example 2026-11-02
+             */
+            start: string;
+            /**
+             * @description Last business day of the bucket, clipped to the range.
+             * @example 2026-11-08
+             */
+            end: string;
+            salesNet: number;
+            tickets: number;
+            avgTicket: number;
+            tips: number;
+            methods: components["schemas"]["CashMethodTotal"][];
+            /** @description Sum of cash_difference of the registers. */
+            difference: number;
+            voids: components["schemas"]["CashVoidTotals"];
+        };
+        CashCashierDifference: {
+            /** Format: uuid */
+            profileId: string;
+            name: string;
+            /** @description Registers opened by the profile. */
+            shifts: number;
+            /** @description Sum of cash_difference (sobrante +, faltante -). */
+            difference: number;
+        };
+        CashReport: {
+            from: string;
+            to: string;
+            /** @enum {string} */
+            group: "day" | "week" | "month";
+            /** @description Every bucket of the range, empty ones included; weeks start on Monday. */
+            buckets: components["schemas"]["CashPeriodBucket"][];
+            totals: components["schemas"]["CashPeriodBucket"];
+            /** @description The period of the same length right before `from`. */
+            previous: components["schemas"]["CashPeriodBucket"];
+            /** @description By name. */
+            byCashier: components["schemas"]["CashCashierDifference"][];
+            tipsByWaiter: components["schemas"]["CashWaiterTips"][];
         };
         InventoryItem: {
             /** Format: uuid */
@@ -9199,6 +9262,46 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid date. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CashController_report: {
+        parameters: {
+            query: {
+                group: "day" | "week" | "month";
+                /** @description Last business day, YYYY-MM-DD (included). */
+                to: unknown;
+                /** @description First business day, YYYY-MM-DD. */
+                from: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Period summary grouped by day, ISO week or month, with the previous period. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashReport"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid query, or code range_inverted (from after to) or range_too_long (more than 366 days). */
             422: {
                 headers: {
                     [name: string]: unknown;

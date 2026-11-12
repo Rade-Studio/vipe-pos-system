@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import { toIso } from '../common/validation';
 import { UnitOfWork } from '../db/unit-of-work';
@@ -8,14 +8,20 @@ import { profileRef } from '../registers/registers.mappers';
 import { RegistersService } from '../registers/registers.service';
 import { ConfigService } from '../settings/config.service';
 import {
+  CASH_MESSAGES,
+  type CashCashierDifference,
   type CashDay,
   type CashDayRegister,
   type CashLedger,
   type CashLedgerEntry,
   type CashLedgerTender,
   type CashMethodTotal,
+  type CashPeriodBucket,
+  type CashReport,
   type CashVoidItem,
   type CashWaiterTips,
+  MAX_REPORT_DAYS,
+  type ReportGroup,
   type VoidKind,
 } from './cash.dto';
 
@@ -34,6 +40,35 @@ export function addDays(date: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
+/** First day of the bucket holding `date`: itself, the Monday of its ISO week or the first of its month. */
+export function bucketStart(date: string, group: ReportGroup): string {
+  if (group === 'month') {
+    return `${date.slice(0, 7)}-01`;
+  }
+  if (group === 'week') {
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    return addDays(date, -((weekday + 6) % 7));
+  }
+  return date;
+}
+function bucketEnd(start: string, group: ReportGroup): string {
+  if (group === 'month') {
+    const d = new Date(`${start}T00:00:00Z`);
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+  }
+  return group === 'week' ? addDays(start, 6) : start;
+}
+
+/** The day-level aggregates of a range of business days, before bucketing. */
+interface DayFigures {
+  sales: Map<string, { salesNet: number; tickets: number; tips: number }>;
+  methods: Map<string, Map<string, { total: number; count: number }>>;
+  difference: Map<string, number>;
+  voids: Map<string, { count: number; amount: number }>;
+}
+
 interface Catalog {
   id: string;
   code: string;
@@ -42,7 +77,8 @@ interface Catalog {
 }
 
 /**
- * The admin's cash figures (S5, S6): the business day and its ledger. A register belongs to the business day
+ * The admin's cash figures (S5, S6): the business day, its ledger and the
+ * period report. A register belongs to the business day
  * date((opening_timestamp AT TIME ZONE restaurants.timezone) - cut-off hours)
  * (businessDayCutoffHour, default 4); its payments, movements and payment
  * voids follow it. Cancellations and line voids, which have no register,
@@ -127,7 +163,7 @@ export class CashService {
         difference: registers.reduce((sum, reg) => sum + (reg.cashDifference ?? 0), 0),
       },
       tipsByWaiter: await this.tipsByWaiter(scope),
-      voids: { count: voids.length, amount: voids.reduce((sum, item) => sum + item.amount, 0), items: voids },
+      voids: { count: voids.length, amount: voids.reduce((sum, item) => sum + item.amount, 0), items: voids.map(({ day: _day, ...item }) => item) },
       previous: { date: previous, salesNet: num(prev.sales) },
     };
   }
@@ -247,6 +283,47 @@ export class CashService {
     return { date, entries };
   }
 
+  async report(from: string, to: string, group: ReportGroup): Promise<CashReport> {
+    if (from > to) {
+      throw new UnprocessableEntityException({ message: CASH_MESSAGES.rangeInverted, code: 'range_inverted' });
+    }
+    const length = daysBetween(from, to) + 1;
+    if (length > MAX_REPORT_DAYS) {
+      throw new UnprocessableEntityException({ message: CASH_MESSAGES.rangeTooLong, code: 'range_too_long' });
+    }
+    const cutoff = await this.cutoff();
+    const catalog = await this.catalog();
+    const scope = this.scope(from, to, cutoff);
+    const figures = await this.figures(scope);
+    const buckets: CashPeriodBucket[] = [];
+    for (let start = bucketStart(from, group); start <= to; start = addDays(bucketEnd(start, group), 1)) {
+      const first = start < from ? from : start;
+      const end = bucketEnd(start, group);
+      buckets.push(bucketOf(catalog, figures, first, end > to ? to : end));
+    }
+    const prevFrom = addDays(from, -length);
+    const prevTo = addDays(from, -1);
+    const previous = bucketOf(catalog, await this.figures(this.scope(prevFrom, prevTo, cutoff)), prevFrom, prevTo);
+    const cashiers = await this.rows(sql`
+      WITH ${scope}
+      SELECT r.opened_by AS profile_id, p.full_name AS name, count(*) AS shifts, coalesce(sum(r.cash_difference), 0) AS difference
+        FROM regs r JOIN public.profiles p ON p.id = r.opened_by
+       GROUP BY r.opened_by, p.full_name
+       ORDER BY p.full_name, r.opened_by`);
+    return {
+      from,
+      to,
+      group,
+      buckets,
+      totals: bucketOf(catalog, figures, from, to),
+      previous,
+      byCashier: cashiers.map(
+        (row): CashCashierDifference => ({ profileId: String(row.profile_id), name: String(row.name), shifts: num(row.shifts), difference: num(row.difference) }),
+      ),
+      tipsByWaiter: await this.tipsByWaiter(scope),
+    };
+  }
+
   private async cutoff(): Promise<number> {
     return (await this.config.get()).businessDayCutoffHour;
   }
@@ -271,12 +348,44 @@ export class CashService {
         SELECT p.*, r.day FROM public.payments p JOIN regs r ON r.id = p.cash_register_id WHERE p.voided_at IS NULL)`;
   }
 
+  private async figures(scope: SQL): Promise<DayFigures> {
+    const sales = await this.rows(sql`
+      WITH ${scope}
+      SELECT day, sum(amount_due) AS sales, count(*) AS tickets, sum(tip_amount) AS tips FROM pays GROUP BY day`);
+    const methods = await this.rows(sql`
+      WITH ${scope}
+      SELECT p.day, t.payment_method_id, sum(t.amount) AS total, count(*) AS count
+        FROM pays p JOIN public.payment_tenders t ON t.payment_id = p.id
+       GROUP BY p.day, t.payment_method_id`);
+    const differences = await this.rows(sql`
+      WITH ${scope}
+      SELECT day, coalesce(sum(cash_difference), 0) AS difference FROM regs GROUP BY day`);
+    const figures: DayFigures = { sales: new Map(), methods: new Map(), difference: new Map(), voids: new Map() };
+    for (const row of sales) {
+      figures.sales.set(String(row.day), { salesNet: num(row.sales), tickets: num(row.tickets), tips: num(row.tips) });
+    }
+    for (const row of methods) {
+      const day = String(row.day);
+      const byMethod = figures.methods.get(day) ?? new Map();
+      byMethod.set(String(row.payment_method_id), { total: num(row.total), count: num(row.count) });
+      figures.methods.set(day, byMethod);
+    }
+    for (const row of differences) {
+      figures.difference.set(String(row.day), num(row.difference));
+    }
+    for (const item of await this.voids(scope)) {
+      const current = figures.voids.get(item.day) ?? { count: 0, amount: 0 };
+      figures.voids.set(item.day, { count: current.count + 1, amount: current.amount + item.amount });
+    }
+    return figures;
+  }
+
   /**
-   * Payment voids of the scope's registers  plus the
+   * Payment voids of the scope's registers (their register's day) plus the
    * order cancellations and line voids inside its bounds (their own business
    * day), oldest first.
    */
-  private async voids(scope: SQL): Promise<CashVoidItem[]> {
+  private async voids(scope: SQL): Promise<(CashVoidItem & { day: string })[]> {
     const eventDay = (column: SQL) => sql`to_char(((${column} AT TIME ZONE b.tz) - b.cut)::date, 'YYYY-MM-DD')`;
     const rows = await this.rows(sql`
       WITH ${scope}
@@ -297,6 +406,7 @@ export class CashService {
       LEFT JOIN public.tables t ON t.id = o.table_id
       ORDER BY e.at, e.id`);
     return rows.map((row) => ({
+      day: String(row.day),
       at: time(row.at)!,
       kind: row.kind as VoidKind,
       orderNumber: numOrNull(row.order_number),
@@ -359,4 +469,38 @@ function mergeMethods(catalog: Catalog[], lists: CashMethodTotal[][]): CashMetho
     const rows = lists.flat().filter((row) => row.id === method.id);
     return { ...method, total: rows.reduce((sum, row) => sum + row.total, 0), count: rows.reduce((sum, row) => sum + row.count, 0) };
   });
+}
+
+function bucketOf(catalog: Catalog[], figures: DayFigures, start: string, end: string): CashPeriodBucket {
+  let salesNet = 0;
+  let tickets = 0;
+  let tips = 0;
+  let difference = 0;
+  const voids = { count: 0, amount: 0 };
+  const methods = new Map<string, { total: number; count: number }>();
+  for (let day = start; day <= end; day = addDays(day, 1)) {
+    const sales = figures.sales.get(day);
+    salesNet += sales?.salesNet ?? 0;
+    tickets += sales?.tickets ?? 0;
+    tips += sales?.tips ?? 0;
+    difference += figures.difference.get(day) ?? 0;
+    const dayVoids = figures.voids.get(day);
+    voids.count += dayVoids?.count ?? 0;
+    voids.amount += dayVoids?.amount ?? 0;
+    for (const [id, value] of figures.methods.get(day) ?? []) {
+      const current = methods.get(id) ?? { total: 0, count: 0 };
+      methods.set(id, { total: current.total + value.total, count: current.count + value.count });
+    }
+  }
+  return {
+    start,
+    end,
+    salesNet,
+    tickets,
+    avgTicket: avg(salesNet, tickets),
+    tips,
+    methods: catalog.map((method) => ({ ...method, ...(methods.get(method.id) ?? { total: 0, count: 0 }) })),
+    difference,
+    voids,
+  };
 }

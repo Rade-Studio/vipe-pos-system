@@ -1,8 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { z } from 'zod';
 import { dateQuery } from '../common/validation';
 import { PAYMENT_METHOD_KINDS, type PaymentMethodKind } from '../payments/payments.dto';
 import { CASH_TRANSACTION_TYPES, type CashTransactionReason, type CashTransactionType, ProfileRef } from '../registers/registers.dto';
 
+/** GET /cash/report spans at most this many business days (from and to included). */
+export const MAX_REPORT_DAYS = 366;
+export const REPORT_GROUPS = ['day', 'week', 'month'] as const;
+export type ReportGroup = (typeof REPORT_GROUPS)[number];
 export const DAY_STATUSES = ['open', 'closed', 'empty'] as const;
 export const VOID_KINDS = ['payment_void', 'order_cancellation', 'item_void'] as const;
 export type VoidKind = (typeof VOID_KINDS)[number];
@@ -10,6 +15,16 @@ export const LEDGER_KINDS = ['opening', 'payment', 'cash_movement', 'payment_voi
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
 export const dayParamSchema = dateQuery;
+export const reportQuerySchema = z.strictObject({
+  from: dateQuery,
+  to: dateQuery,
+  group: z.enum(REPORT_GROUPS),
+});
+
+export const CASH_MESSAGES = {
+  rangeTooLong: `El período no puede superar ${MAX_REPORT_DAYS} días.`,
+  rangeInverted: 'La fecha inicial debe ser anterior o igual a la final.',
+} as const;
 
 const TABLE_DESCRIPTION = 'Table number as text, "Domicilio" for a delivery order, null without table.';
 
@@ -162,4 +177,40 @@ export class CashLedgerEntry {
 export class CashLedger {
   @ApiProperty({ example: '2026-11-10' }) date!: string;
   @ApiProperty({ type: [CashLedgerEntry], description: 'Chronological; opening first and validation last on ties.' }) entries!: CashLedgerEntry[];
+}
+
+export class CashVoidTotals {
+  @ApiProperty() count!: number;
+  @ApiProperty() amount!: number;
+}
+
+export class CashPeriodBucket {
+  @ApiProperty({ example: '2026-11-02', description: 'First business day of the bucket, clipped to the range.' }) start!: string;
+  @ApiProperty({ example: '2026-11-08', description: 'Last business day of the bucket, clipped to the range.' }) end!: string;
+  @ApiProperty() salesNet!: number;
+  @ApiProperty() tickets!: number;
+  @ApiProperty() avgTicket!: number;
+  @ApiProperty() tips!: number;
+  @ApiProperty({ type: [CashMethodTotal] }) methods!: CashMethodTotal[];
+  @ApiProperty({ description: 'Sum of cash_difference of the registers.' }) difference!: number;
+  @ApiProperty({ type: CashVoidTotals }) voids!: CashVoidTotals;
+}
+
+export class CashCashierDifference {
+  @ApiProperty({ format: 'uuid' }) profileId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ description: 'Registers opened by the profile.' }) shifts!: number;
+  @ApiProperty({ description: 'Sum of cash_difference (sobrante +, faltante -).' }) difference!: number;
+}
+
+export class CashReport {
+  @ApiProperty() from!: string;
+  @ApiProperty() to!: string;
+  @ApiProperty({ enum: REPORT_GROUPS }) group!: ReportGroup;
+  @ApiProperty({ type: [CashPeriodBucket], description: 'Every bucket of the range, empty ones included; weeks start on Monday.' })
+  buckets!: CashPeriodBucket[];
+  @ApiProperty({ type: CashPeriodBucket }) totals!: CashPeriodBucket;
+  @ApiProperty({ type: CashPeriodBucket, description: 'The period of the same length right before `from`.' }) previous!: CashPeriodBucket;
+  @ApiProperty({ type: [CashCashierDifference], description: 'By name.' }) byCashier!: CashCashierDifference[];
+  @ApiProperty({ type: [CashWaiterTips] }) tipsByWaiter!: CashWaiterTips[];
 }

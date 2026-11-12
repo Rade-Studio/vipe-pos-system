@@ -5,7 +5,7 @@ import { cookiePair, createTestApp, setCookies } from '../testing/test-app';
 import { PASSWORD, fixtures, startTestDatabase, superuserQuery, type TestDatabase } from '../testing/test-database';
 
 /**
- * T3 (S5, S6): the admin's business day summary.
+ * T3 (S5, S6, S7): the admin's business day, day ledger and period report.
  * Restaurant A (America/Bogota, cut-off 4) has business day Tuesday
  * 2026-11-10 with three registers: reg1 (Cashier A, a deposit, a withdrawal,
  * cash and transfer payments with tips, a voided cash payment), reg2 (Cajera
@@ -57,6 +57,8 @@ const c = {
   auditCancel: '97000000-0000-0000-0000-000000000e02',
 } as const;
 
+const RANGE_TOO_LONG = 'El período no puede superar 366 días.';
+const RANGE_INVERTED = 'La fecha inicial debe ser anterior o igual a la final.';
 const DAY_KEYS = ['date', 'previous', 'registers', 'status', 'tipsByWaiter', 'totals', 'voids'];
 const DAY_REGISTER_KEYS = [
   'cashDifference', 'closeNote', 'closedAt', 'closedBy', 'countedCash', 'deposits', 'expected', 'id', 'initialCash', 'methods',
@@ -66,6 +68,7 @@ const TOTALS_KEYS = [
   'avgTicket', 'counted', 'deliveries', 'deposits', 'difference', 'expected', 'methods', 'salesNet', 'tables', 'tickets', 'tips',
   'withdrawals',
 ];
+const BUCKET_KEYS = ['avgTicket', 'difference', 'end', 'methods', 'salesNet', 'start', 'tickets', 'tips', 'voids'];
 const ADMIN_A = { id: fixtures.adminA.profileId, name: 'Admin A' };
 const CASHIER_A = { id: c.cashierProfile, name: 'Cashier A' };
 const CASHIER_2 = { id: c.cashier2Profile, name: 'Cajera Tarde' };
@@ -114,7 +117,7 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
 
   describe('access', () => {
     it('answers 401 without a session and 403 for cashier and waiter on every /cash route', async () => {
-      for (const url of ['/api/cash/days/2026-11-10', '/api/cash/days/2026-11-10/ledger']) {
+      for (const url of ['/api/cash/days/2026-11-10', '/api/cash/days/2026-11-10/ledger', '/api/cash/report?from=2026-11-01&to=2026-11-30&group=day']) {
         expect((await request(app.getHttpServer()).get(url)).status).toBe(401);
         expect((await cashierA().get(url)).status).toBe(403);
         expect((await waiterA().get(url)).status).toBe(403);
@@ -282,6 +285,80 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
     it("isolates the ledger to the caller's restaurant", async () => {
       const entries: Entry[] = (await adminB().get('/api/cash/days/2026-11-10/ledger')).body.entries;
       expect(entries.map((e) => [e.registerId, e.kind])).toEqual([[c.regB, 'opening'], [c.regB, 'payment'], [c.regB, 'close']]);
+    });
+  });
+
+  describe('GET /cash/report', () => {
+    it('groups by day, with the previous period of the same length', async () => {
+      const res = await adminA().get('/api/cash/report?from=2026-11-01&to=2026-11-30&group=day');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ from: '2026-11-01', to: '2026-11-30', group: 'day' });
+      expect(res.body.buckets).toHaveLength(30);
+      for (const bucket of [...res.body.buckets, res.body.totals, res.body.previous]) {
+        expect(Object.keys(bucket).sort()).toEqual(BUCKET_KEYS);
+      }
+      const day10 = res.body.buckets.find((b: { start: string }) => b.start === '2026-11-10');
+      expect(day10).toMatchObject({
+        start: '2026-11-10', end: '2026-11-10', salesNet: 145000, tickets: 4, avgTicket: 36250, tips: 12000, difference: -2000,
+        voids: { count: 2, amount: 35000 },
+      });
+      expect(byCode(day10.methods)).toEqual({ cash: [80000, 2], transfer: [33000, 1], nequi: [44000, 1], bancolombia: [0, 0] });
+      expect(res.body.buckets.find((b: { start: string }) => b.start === '2026-11-03')).toMatchObject({ salesNet: 10000, tickets: 1 });
+      expect(res.body.buckets.find((b: { start: string }) => b.start === '2026-11-11')).toMatchObject({ salesNet: 0, tickets: 0, avgTicket: 0 });
+      expect(res.body.totals).toMatchObject({ start: '2026-11-01', end: '2026-11-30', salesNet: 155000, tickets: 5, avgTicket: 31000 });
+      expect(res.body.previous).toMatchObject({ start: '2026-10-02', end: '2026-10-31', salesNet: 7000, tickets: 1 });
+    });
+
+    it('groups by ISO week (Monday) and by month, clipped to the range', async () => {
+      const weeks = (await adminA().get('/api/cash/report?from=2026-11-01&to=2026-11-30&group=week')).body.buckets;
+      expect(weeks.map((b: { start: string; end: string; salesNet: number }) => [b.start, b.end, b.salesNet])).toEqual([
+        ['2026-11-01', '2026-11-01', 0],
+        ['2026-11-02', '2026-11-08', 10000],
+        ['2026-11-09', '2026-11-15', 145000],
+        ['2026-11-16', '2026-11-22', 0],
+        ['2026-11-23', '2026-11-29', 0],
+        ['2026-11-30', '2026-11-30', 0],
+      ]);
+      const months = (await adminA().get('/api/cash/report?from=2026-10-01&to=2026-11-30&group=month')).body;
+      expect(months.buckets.map((b: { start: string; end: string; salesNet: number }) => [b.start, b.end, b.salesNet])).toEqual([
+        ['2026-10-01', '2026-10-31', 7000],
+        ['2026-11-01', '2026-11-30', 155000],
+      ]);
+      expect(months.previous).toMatchObject({ start: '2026-08-01', end: '2026-09-30', salesNet: 0 });
+    });
+
+    it('reports the difference per cashier and the tips per waiter', async () => {
+      const { body } = await adminA().get('/api/cash/report?from=2026-11-01&to=2026-11-30&group=month');
+      expect(body.byCashier).toEqual([
+        { profileId: fixtures.adminA.profileId, name: 'Admin A', shifts: 1, difference: 0 },
+        { profileId: c.cashier2Profile, name: 'Cajera Tarde', shifts: 1, difference: 0 },
+        { profileId: c.cashierProfile, name: 'Cashier A', shifts: 3, difference: -2000 },
+      ]);
+      expect(body.tipsByWaiter).toEqual([
+        { waiterId: fixtures.waiterA.profileId, name: 'Waiter A', amount: 8000 },
+        { waiterId: c.waiter2Profile, name: 'Mesero Dos', amount: 4000 },
+      ]);
+    });
+
+    it('validates the query: dates, group, order and at most 366 days', async () => {
+      for (const query of ['from=2026-11-01&to=2026-11-30', 'from=2026-11-01&to=2026-11-30&group=year', 'from=x&to=2026-11-30&group=day', 'to=2026-11-30&group=day']) {
+        expect((await adminA().get(`/api/cash/report?${query}`)).status).toBe(422);
+      }
+      const long = await adminA().get('/api/cash/report?from=2025-11-01&to=2026-11-02&group=month');
+      expect(long.status).toBe(422);
+      expect(long.body).toMatchObject({ code: 'range_too_long', message: RANGE_TOO_LONG });
+      const inverted = await adminA().get('/api/cash/report?from=2026-11-30&to=2026-11-01&group=day');
+      expect(inverted.status).toBe(422);
+      expect(inverted.body).toMatchObject({ code: 'range_inverted', message: RANGE_INVERTED });
+      expect((await adminA().get('/api/cash/report?from=2025-11-02&to=2026-11-02&group=month')).status).toBe(200);
+    });
+
+    it("isolates the report to the caller's restaurant", async () => {
+      const { body } = await adminB().get('/api/cash/report?from=2026-11-01&to=2026-11-30&group=month');
+      expect(body.totals).toMatchObject({ salesNet: 3000, tickets: 1 });
+      expect(body.previous).toMatchObject({ salesNet: 0 });
+      expect(body.byCashier).toEqual([]);
+      expect(body.tipsByWaiter).toEqual([]);
     });
   });
 });

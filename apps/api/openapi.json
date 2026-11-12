@@ -4153,6 +4153,66 @@
         ]
       }
     },
+    "/api/cash/report": {
+      "get": {
+        "operationId": "CashController_report",
+        "parameters": [
+          {
+            "name": "group",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "Last business day, YYYY-MM-DD (included).",
+            "schema": {}
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "First business day, YYYY-MM-DD.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Period summary grouped by day, ISO week or month, with the previous period.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashReport"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Invalid query, or code range_inverted (from after to) or range_too_long (more than 366 days)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "cash"
+        ]
+      }
+    },
     "/api/inventory/items": {
       "get": {
         "operationId": "InventoryItemsController_list",
@@ -13729,6 +13789,158 @@
         "required": [
           "date",
           "entries"
+        ]
+      },
+      "CashVoidTotals": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "amount"
+        ]
+      },
+      "CashPeriodBucket": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "example": "2026-11-02",
+            "description": "First business day of the bucket, clipped to the range."
+          },
+          "end": {
+            "type": "string",
+            "example": "2026-11-08",
+            "description": "Last business day of the bucket, clipped to the range."
+          },
+          "salesNet": {
+            "type": "number"
+          },
+          "tickets": {
+            "type": "number"
+          },
+          "avgTicket": {
+            "type": "number"
+          },
+          "tips": {
+            "type": "number"
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashMethodTotal"
+            }
+          },
+          "difference": {
+            "type": "number",
+            "description": "Sum of cash_difference of the registers."
+          },
+          "voids": {
+            "$ref": "#/components/schemas/CashVoidTotals"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "salesNet",
+          "tickets",
+          "avgTicket",
+          "tips",
+          "methods",
+          "difference",
+          "voids"
+        ]
+      },
+      "CashCashierDifference": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shifts": {
+            "type": "number",
+            "description": "Registers opened by the profile."
+          },
+          "difference": {
+            "type": "number",
+            "description": "Sum of cash_difference (sobrante +, faltante -)."
+          }
+        },
+        "required": [
+          "profileId",
+          "name",
+          "shifts",
+          "difference"
+        ]
+      },
+      "CashReport": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "buckets": {
+            "description": "Every bucket of the range, empty ones included; weeks start on Monday.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashPeriodBucket"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CashPeriodBucket"
+          },
+          "previous": {
+            "description": "The period of the same length right before `from`.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashPeriodBucket"
+              }
+            ]
+          },
+          "byCashier": {
+            "description": "By name.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashCashierDifference"
+            }
+          },
+          "tipsByWaiter": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashWaiterTips"
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "group",
+          "buckets",
+          "totals",
+          "previous",
+          "byCashier",
+          "tipsByWaiter"
         ]
       },
       "InventoryItem": {
