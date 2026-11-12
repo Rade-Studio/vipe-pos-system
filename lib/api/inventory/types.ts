@@ -184,13 +184,24 @@ export interface ReceiveLineInput {
   expiresOn?: string
 }
 
+/** Legacy: open while draft, counting or review. Prefer CountStage. */
 export type CountStatus = "open" | "applied" | "cancelled"
+
+/** Borrador, En conteo, En revisión, Aplicado, Anulado. */
+export type CountStage = "draft" | "counting" | "review" | "applied" | "cancelled"
 
 export type CountLine = Schemas["CountLine"]
 
 export type InventoryCount = Schemas["InventoryCount"]
 
 export type InventoryCountDetail = Schemas["InventoryCountDetail"]
+
+/** A count as its assigned counter sees it: never the expected stock, cost or difference. */
+export type MyCount = Schemas["MyCount"]
+
+export type MyCountLine = Schemas["MyCountLine"]
+
+export type MyCountDetail = Schemas["MyCountDetail"]
 
 export type ProductionBatch = Schemas["ProductionBatch"]
 
@@ -251,6 +262,10 @@ export interface OpenCountInput {
   /** null = every active item. */
   itemIds?: string[] | null
   notes?: string | null
+  /** Who counts (any active staff profile); with approverId the count starts as a draft. */
+  counterId?: string | null
+  /** The approving admin, not the counter. */
+  approverId?: string | null
 }
 
 export type OpenCountResult = Schemas["OpenCountResult"]
