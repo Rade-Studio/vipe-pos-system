@@ -17030,6 +17030,34 @@
             "format": "uuid",
             "nullable": true
           },
+          "createdByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Full name of the author profile."
+          },
+          "documentKind": {
+            "type": "string",
+            "enum": [
+              "order",
+              "purchase_order",
+              "inventory_count",
+              "production_batch",
+              "inventory_transfer"
+            ],
+            "nullable": true,
+            "description": "Source document; null without one."
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Id of the source document (the order for a sale)."
+          },
+          "documentLabel": {
+            "type": "string",
+            "nullable": true,
+            "description": "Orden #1042, OC-0005, Conteo #12, Lote <lot code>, TR-0007."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -17053,7 +17081,33 @@
           "referenceType",
           "referenceId",
           "createdBy",
+          "createdByName",
+          "documentKind",
+          "documentId",
+          "documentLabel",
           "createdAt"
+        ]
+      },
+      "MovementTotals": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number",
+            "description": "Movements in the filtered range."
+          },
+          "inValue": {
+            "type": "number",
+            "description": "Value of the entries (positive quantities) in the range."
+          },
+          "outValue": {
+            "type": "number",
+            "description": "Value of the exits (negative quantities) in the range, as a positive number."
+          }
+        },
+        "required": [
+          "count",
+          "inValue",
+          "outValue"
         ]
       },
       "MovementPage": {
@@ -17069,11 +17123,20 @@
           "total": {
             "type": "number",
             "description": "Exact count for the filters."
+          },
+          "totals": {
+            "description": "Totals for every page of the filters.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MovementTotals"
+              }
+            ]
           }
         },
         "required": [
           "rows",
-          "total"
+          "total",
+          "totals"
         ]
       },
       "AdjustStockInput": {
