@@ -1108,6 +1108,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cash/days/{date}/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CashController_ledger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inventory/items": {
         parameters: {
             query?: never;
@@ -4028,6 +4044,64 @@ export interface components {
             tipsByWaiter: components["schemas"]["CashWaiterTips"][];
             voids: components["schemas"]["CashDayVoids"];
             previous: components["schemas"]["CashPreviousDay"];
+        };
+        CashLedgerTender: {
+            /** @description Method name. */
+            method: string;
+            code: string;
+            /** @enum {string} */
+            kind: "cash" | "electronic";
+            amount: number;
+        };
+        CashLedgerEntry: {
+            /**
+             * Format: uuid
+             * @description Group key; null for a cancellation outside every register.
+             */
+            registerId: string | null;
+            /** Format: date-time */
+            at: string;
+            /** @enum {string} */
+            kind: "opening" | "payment" | "cash_movement" | "payment_void" | "order_cancellation" | "close" | "validation";
+            cashDelta: number;
+            /** @description Running cash of the register after this entry. */
+            cashBalance: number | null;
+            /** @description Fondo (opening), amount due (payment, payment_void), movement amount or order total. */
+            amount?: number;
+            openedBy?: components["schemas"]["ProfileRef"] | null;
+            orderNumber?: number | null;
+            /** @description Table number as text, "Domicilio" for a delivery order, null without table. */
+            table?: string | null;
+            waiter?: components["schemas"]["ProfileRef"] | null;
+            /** @description Who took the payment. */
+            cashier?: components["schemas"]["ProfileRef"] | null;
+            tenders?: components["schemas"]["CashLedgerTender"][];
+            tip?: number;
+            /** @description Payment entries only: the payment was voided later (its payment_void entry takes the cash back). */
+            voided?: boolean;
+            change?: number;
+            /** @enum {string} */
+            type?: "deposit" | "withdrawal";
+            /** @description Movement reason (cash_movement) or reason_code (voids). */
+            reason?: string | null;
+            description?: string;
+            createdBy?: components["schemas"]["ProfileRef"] | null;
+            reasonText?: string | null;
+            requestedBy?: string;
+            authorizedBy?: string | null;
+            /** @description Expected cash after tips (final_cash). */
+            expected?: number;
+            counted?: number | null;
+            difference?: number | null;
+            note?: string | null;
+            closedBy?: components["schemas"]["ProfileRef"] | null;
+            validatedBy?: components["schemas"]["ProfileRef"] | null;
+        };
+        CashLedger: {
+            /** @example 2026-11-10 */
+            date: string;
+            /** @description Chronological; opening first and validation last on ties. */
+            entries: components["schemas"]["CashLedgerEntry"][];
         };
         InventoryItem: {
             /** Format: uuid */
@@ -9078,6 +9152,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CashDay"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid date. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CashController_ledger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Business day YYYY-MM-DD: registers opened that day in the restaurant timezone, moved back by businessDayCutoffHour. */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Day ledger (libro) with a running cash balance per register. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashLedger"];
                 };
             };
             /** @description Not an admin. */

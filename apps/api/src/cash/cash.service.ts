@@ -3,13 +3,16 @@ import { sql, type SQL } from '@vipe/db';
 import { toIso } from '../common/validation';
 import { UnitOfWork } from '../db/unit-of-work';
 import type { PaymentMethodKind } from '../payments/payments.dto';
-import type { RegisterSummary } from '../registers/registers.dto';
+import type { CashTransactionReason, CashTransactionType, RegisterSummary } from '../registers/registers.dto';
 import { profileRef } from '../registers/registers.mappers';
 import { RegistersService } from '../registers/registers.service';
 import { ConfigService } from '../settings/config.service';
 import {
   type CashDay,
   type CashDayRegister,
+  type CashLedger,
+  type CashLedgerEntry,
+  type CashLedgerTender,
   type CashMethodTotal,
   type CashVoidItem,
   type CashWaiterTips,
@@ -39,7 +42,7 @@ interface Catalog {
 }
 
 /**
- * The admin's cash figures (S5, S6): the business day. A register belongs to the business day
+ * The admin's cash figures (S5, S6): the business day and its ledger. A register belongs to the business day
  * date((opening_timestamp AT TIME ZONE restaurants.timezone) - cut-off hours)
  * (businessDayCutoffHour, default 4); its payments, movements and payment
  * voids follow it. Cancellations and line voids, which have no register,
@@ -127,6 +130,121 @@ export class CashService {
       voids: { count: voids.length, amount: voids.reduce((sum, item) => sum + item.amount, 0), items: voids },
       previous: { date: previous, salesNet: num(prev.sales) },
     };
+  }
+
+  async ledger(date: string): Promise<CashLedger> {
+    const scope = this.scope(date, date, await this.cutoff());
+    const events: (CashLedgerEntry & { rank: number; seq: string })[] = [];
+    const push = (entry: CashLedgerEntry, rank: number, seq: string) => events.push({ ...entry, rank, seq });
+    const regs = await this.rows(sql`
+      WITH ${scope}
+      SELECT r.id, r.opening_timestamp, r.closing_timestamp, r.initial_cash, r.final_cash, r.counted_cash, r.cash_difference,
+             r.close_note, r.validated_at, r.opened_by, op.full_name AS opened_by_name, r.closed_by, cb.full_name AS closed_by_name,
+             r.validated_by, vb.full_name AS validated_by_name
+        FROM regs r
+        LEFT JOIN public.profiles op ON op.id = r.opened_by
+        LEFT JOIN public.profiles cb ON cb.id = r.closed_by
+        LEFT JOIN public.profiles vb ON vb.id = r.validated_by`);
+    for (const r of regs) {
+      const registerId = String(r.id);
+      const initial = num(r.initial_cash);
+      push({ registerId, at: time(r.opening_timestamp)!, kind: 'opening', cashDelta: initial, cashBalance: null, amount: initial,
+        openedBy: profileRef(r.opened_by, r.opened_by_name) }, 0, registerId);
+      if (r.closing_timestamp) {
+        push({ registerId, at: time(r.closing_timestamp)!, kind: 'close', cashDelta: 0, cashBalance: null, expected: num(r.final_cash),
+          counted: numOrNull(r.counted_cash), difference: numOrNull(r.cash_difference), note: text(r.close_note),
+          closedBy: profileRef(r.closed_by, r.closed_by_name) }, 2, registerId);
+      }
+      if (r.validated_at) {
+        push({ registerId, at: time(r.validated_at)!, kind: 'validation', cashDelta: 0, cashBalance: null,
+          validatedBy: profileRef(r.validated_by, r.validated_by_name) }, 3, registerId);
+      }
+    }
+    const payments = await this.rows(sql`
+      WITH ${scope}
+      SELECT p.id, p.cash_register_id, p.created_at, p.amount_due, p.tip_amount, p.change_given, o.order_number, ${tableLabel} AS table_label,
+             o.waiter_id, w.full_name AS waiter_name, p.cashier_profile_id, c.full_name AS cashier_name,
+             ${cashTenders} AS cash, ${tenderList} AS tenders
+        FROM public.payments p
+        JOIN regs r ON r.id = p.cash_register_id
+        JOIN public.orders o ON o.id = p.order_id
+        LEFT JOIN public.tables t ON t.id = o.table_id
+        LEFT JOIN public.profiles w ON w.id = o.waiter_id
+        LEFT JOIN public.profiles c ON c.id = p.cashier_profile_id`);
+    for (const p of payments) {
+      push({ registerId: String(p.cash_register_id), at: time(p.created_at)!, kind: 'payment', cashDelta: num(p.cash), cashBalance: null,
+        orderNumber: numOrNull(p.order_number), table: text(p.table_label), waiter: profileRef(p.waiter_id, p.waiter_name),
+        cashier: profileRef(p.cashier_profile_id, p.cashier_name), amount: num(p.amount_due), tip: num(p.tip_amount),
+        change: num(p.change_given), tenders: toTenders(p.tenders), voided: false }, 1, String(p.id));
+    }
+    const movements = await this.rows(sql`
+      WITH ${scope}
+      SELECT ct.id, ct.cash_register_id, ct.timestamp, ct.amount, ct.type, ct.reason, ct.description, ct.created_by, cp.full_name AS created_by_name
+        FROM public.cash_transactions ct
+        JOIN regs r ON r.id = ct.cash_register_id
+        LEFT JOIN public.profiles cp ON cp.id = ct.created_by`);
+    for (const m of movements) {
+      const amount = num(m.amount);
+      push({ registerId: String(m.cash_register_id), at: time(m.timestamp)!, kind: 'cash_movement',
+        cashDelta: m.type === 'withdrawal' ? -amount : amount, cashBalance: null, type: m.type as CashTransactionType, amount,
+        reason: text(m.reason) as CashTransactionReason | null, description: text(m.description) ?? '',
+        createdBy: profileRef(m.created_by, m.created_by_name) }, 1, String(m.id));
+    }
+    // A voided payment is invisible through RLS (0018): its payment entry and its void come from the payment_voids snapshot.
+    const voided = await this.rows(sql`
+      WITH ${scope}
+      SELECT v.id, v.cash_register_id, v.paid_at, v.voided_at, v.amount_due, v.tip_amount, v.change_given, v.reason_code, v.reason_text,
+             v.voided_by_name, v.authorized_by_name, o.order_number, ${tableLabel} AS table_label, o.waiter_id, w.full_name AS waiter_name,
+             (SELECT coalesce(sum((x->>'amount')::bigint), 0) FROM jsonb_array_elements(v.tenders) AS e(x) WHERE x->>'method_kind' = 'cash') AS cash,
+             (SELECT coalesce(jsonb_agg(jsonb_build_object('method', coalesce(m.name, x->>'method_code'), 'code', x->>'method_code',
+                                                           'kind', x->>'method_kind', 'amount', (x->>'amount')::bigint)
+                                        ORDER BY (x->>'line_no')::int), '[]'::jsonb)
+                FROM jsonb_array_elements(v.tenders) AS e(x)
+                LEFT JOIN public.payment_methods m ON m.id::text = x->>'payment_method_id') AS tenders
+        FROM public.payment_voids v
+        JOIN regs r ON r.id = v.cash_register_id
+        JOIN public.orders o ON o.id = v.order_id
+        LEFT JOIN public.tables t ON t.id = o.table_id
+        LEFT JOIN public.profiles w ON w.id = o.waiter_id`);
+    for (const v of voided) {
+      const registerId = String(v.cash_register_id);
+      const order = { orderNumber: numOrNull(v.order_number), table: text(v.table_label) };
+      push({ registerId, at: time(v.paid_at)!, kind: 'payment', cashDelta: num(v.cash), cashBalance: null, ...order,
+        waiter: profileRef(v.waiter_id, v.waiter_name), cashier: null, amount: num(v.amount_due), tip: num(v.tip_amount),
+        change: num(v.change_given), tenders: toTenders(v.tenders), voided: true }, 1, String(v.id));
+      push({ registerId, at: time(v.voided_at)!, kind: 'payment_void', cashDelta: -num(v.cash), cashBalance: null, ...order,
+        amount: num(v.amount_due), reason: String(v.reason_code), reasonText: text(v.reason_text), requestedBy: String(v.voided_by_name),
+        authorizedBy: text(v.authorized_by_name) }, 1, String(v.id));
+    }
+    // A cancellation has no register: it goes to the day's register open at that time (the latest opened before it).
+    const cancellations = await this.rows(sql`
+      WITH ${scope}
+      SELECT oc.id, oc.cancelled_at, oc.total, oc.reason_code, oc.reason_text, oc.cancelled_by_name, oc.authorized_by_name,
+             o.order_number, ${tableLabel} AS table_label,
+             (SELECT r.id FROM regs r
+               WHERE r.opening_timestamp <= oc.cancelled_at AND (r.closing_timestamp IS NULL OR oc.cancelled_at <= r.closing_timestamp)
+               ORDER BY r.opening_timestamp DESC LIMIT 1) AS register_id
+        FROM public.order_cancellations oc
+        JOIN public.orders o ON o.id = oc.order_id
+        LEFT JOIN public.tables t ON t.id = o.table_id
+       CROSS JOIN bounds b
+       WHERE oc.cancelled_at >= b.lo AND oc.cancelled_at < b.hi`);
+    for (const c of cancellations) {
+      push({ registerId: text(c.register_id), at: time(c.cancelled_at)!, kind: 'order_cancellation', cashDelta: 0, cashBalance: null,
+        orderNumber: numOrNull(c.order_number), table: text(c.table_label), amount: num(c.total), reason: String(c.reason_code),
+        reasonText: text(c.reason_text), requestedBy: String(c.cancelled_by_name), authorizedBy: text(c.authorized_by_name) }, 1, String(c.id));
+    }
+    events.sort((a, b) => a.at.localeCompare(b.at) || a.rank - b.rank || a.seq.localeCompare(b.seq));
+    const balances = new Map<string, number>();
+    const entries = events.map(({ rank: _rank, seq: _seq, ...entry }) => {
+      if (entry.registerId === null) {
+        return entry;
+      }
+      const balance = (balances.get(entry.registerId) ?? 0) + entry.cashDelta;
+      balances.set(entry.registerId, balance);
+      return { ...entry, cashBalance: balance };
+    });
+    return { date, entries };
   }
 
   private async cutoff(): Promise<number> {
@@ -217,6 +335,18 @@ export class CashService {
 
 /** Table label of the joined order `o` and table `t`. */
 const tableLabel = sql`CASE WHEN o.order_type = 'delivery' THEN 'Domicilio' ELSE t.number::text END`;
+/** Cash tenders of the joined payment `p` (each amount is already net of the change). */
+const cashTenders = sql`(SELECT coalesce(sum(ct.amount), 0) FROM public.payment_tenders ct WHERE ct.payment_id = p.id AND ct.method_kind = 'cash')`;
+const tenderList = sql`coalesce((
+  SELECT jsonb_agg(jsonb_build_object('method', coalesce(m.name, pt.method_code), 'code', pt.method_code, 'kind', pt.method_kind, 'amount', pt.amount)
+                   ORDER BY pt.line_no)
+    FROM public.payment_tenders pt LEFT JOIN public.payment_methods m ON m.id = pt.payment_method_id
+   WHERE pt.payment_id = p.id), '[]'::jsonb)`;
+
+const toTenders = (value: unknown): CashLedgerTender[] =>
+  ((value as Json[] | null) ?? []).map((t) => ({ method: String(t.method), code: String(t.code), kind: t.kind as PaymentMethodKind, amount: num(t.amount) }));
+
+
 const sumOf = <K extends 'salesNet' | 'tickets' | 'tips' | 'deposits' | 'withdrawals' | 'expected'>(rows: CashDayRegister[], key: K) =>
   rows.reduce((sum, row) => sum + row[key], 0);
 
