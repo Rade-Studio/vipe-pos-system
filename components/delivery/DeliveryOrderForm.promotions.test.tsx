@@ -110,6 +110,10 @@ function preview(overrides: Partial<PricingPreviewDto> = {}): PricingPreviewDto 
     grossSubtotal: 60000,
     totalDiscounts: 6000,
     netSubtotal: 54000,
+    tax: null,
+    tip: null,
+    total: null,
+    deliveryFee: null,
     hints: [
       { kind: "bill_minimum", promotionId: "p-dom", message: "Domicilio: faltan $26.000 para el 10% de descuento.", missing: 26000 },
     ],
@@ -199,6 +203,10 @@ describe("DeliveryOrderForm — promotions (S7)", () => {
         billDiscount: { kind: "promotion_bill", promotionId: "p-dom", label: "10% en domicilios desde $80.000", amount: 5400 },
         totalDiscounts: 11400,
         netSubtotal: 48600,
+        tax: null,
+        tip: null,
+        total: null,
+        deliveryFee: null,
         hints: [],
       }),
     )
