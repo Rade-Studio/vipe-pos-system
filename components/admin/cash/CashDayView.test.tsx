@@ -108,6 +108,7 @@ const DAY: CashDay = {
     avgTicket: 40136,
     tables: 48,
     deliveries: { count: 9, amount: 412000 },
+    takeaway: { count: 6, amount: 180000 },
     tips: 528400,
     methods: methods([2400200, 1298700, 1050400, 499000, 756800, 0]),
     deposits: 50000,
@@ -240,6 +241,13 @@ describe("CashDayView", () => {
     expect(within(kpis).getByText("$ 40.136")).toBeInTheDocument()
     expect(within(kpis).getByText("48")).toBeInTheDocument()
     expect(within(kpis).getByText(/9 domicilios/)).toBeInTheDocument()
+  })
+
+  it("counts the para llevar orders next to the deliveries, never inside Mesas atendidas", async () => {
+    renderPage()
+    const kpis = await screen.findByRole("region", { name: "Indicadores del día" })
+    expect(within(kpis).getByText("48")).toBeInTheDocument()
+    expect(within(kpis).getByText("+ 9 domicilios ($ 412.000) · 6 para llevar ($ 180.000)")).toBeInTheDocument()
   })
 
   it("shows each turno with cajero, cuadre as Faltante / Sobrante and who validated", async () => {

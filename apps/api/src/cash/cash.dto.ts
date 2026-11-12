@@ -37,7 +37,7 @@ export const CASH_MESSAGES = {
   dayEmpty: 'No hay turnos de caja en este día: no hay nada que cerrar.',
 } as const;
 
-const TABLE_DESCRIPTION = 'Table number as text, "Domicilio" for a delivery order, null without table.';
+const TABLE_DESCRIPTION = 'Table number as text, "Domicilio" for a delivery order, "Para llevar · <customer>" for a takeaway order, null without table.';
 
 export class CashMethodTotal {
   @ApiProperty({ format: 'uuid', description: 'payment_methods.id.' }) id!: string;
@@ -77,12 +77,19 @@ export class CashDeliveries {
   @ApiProperty({ description: 'Amount due of the delivery payments.' }) amount!: number;
 }
 
+export class CashTakeaway {
+  @ApiProperty() count!: number;
+  @ApiProperty({ description: 'Amount due of the takeaway payments.' }) amount!: number;
+}
+
 export class CashDayTotals {
   @ApiProperty() salesNet!: number;
   @ApiProperty() tickets!: number;
   @ApiProperty({ description: 'round(salesNet / tickets); 0 without tickets.' }) avgTicket!: number;
   @ApiProperty({ description: 'Distinct tables of the paid dine-in orders.' }) tables!: number;
   @ApiProperty({ type: CashDeliveries }) deliveries!: CashDeliveries;
+  @ApiPropertyOptional({ type: CashTakeaway, description: 'Paid takeaway (para llevar) orders; never counted in tables. Always on a day; absent from Z snapshots stored before it.' })
+  takeaway?: CashTakeaway;
   @ApiProperty() tips!: number;
   @ApiProperty({ type: [CashMethodTotal] }) methods!: CashMethodTotal[];
   @ApiProperty() deposits!: number;

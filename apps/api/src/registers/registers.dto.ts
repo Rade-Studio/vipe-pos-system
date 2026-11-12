@@ -216,7 +216,9 @@ export class PaidOrderTender {
 export class RegisterPaidOrder {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
   @ApiProperty({ type: Number, nullable: true, description: 'Per-restaurant order number.' }) orderNumber!: number | null;
-  @ApiProperty({ enum: ['dine_in', 'delivery'] }) orderType!: 'dine_in' | 'delivery';
+  @ApiProperty({ enum: ['dine_in', 'takeaway', 'delivery'] }) orderType!: 'dine_in' | 'takeaway' | 'delivery';
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Who picks up a takeaway order; null for the other types.' })
+  customerName?: string | null;
   @ApiProperty({ type: Number, nullable: true }) tableNumber!: number | null;
   @ApiProperty({ type: String, nullable: true }) zoneName!: string | null;
   @ApiProperty({ type: ProfileRef, nullable: true, description: "The order's waiter." }) waiter!: ProfileRef | null;

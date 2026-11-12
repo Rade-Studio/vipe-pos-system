@@ -15176,8 +15176,14 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
             ]
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Who picks up a takeaway order; null for the other types."
           },
           "tableNumber": {
             "type": "number",
@@ -15459,6 +15465,22 @@
           "amount"
         ]
       },
+      "CashTakeaway": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Amount due of the takeaway payments."
+          }
+        },
+        "required": [
+          "count",
+          "amount"
+        ]
+      },
       "CashDayTotals": {
         "type": "object",
         "properties": {
@@ -15478,6 +15500,14 @@
           },
           "deliveries": {
             "$ref": "#/components/schemas/CashDeliveries"
+          },
+          "takeaway": {
+            "description": "Paid takeaway (para llevar) orders; never counted in tables. Always on a day; absent from Z snapshots stored before it.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashTakeaway"
+              }
+            ]
           },
           "tips": {
             "type": "number"
@@ -15568,7 +15598,7 @@
           "table": {
             "type": "string",
             "nullable": true,
-            "description": "Table number as text, \"Domicilio\" for a delivery order, null without table."
+            "description": "Table number as text, \"Domicilio\" for a delivery order, \"Para llevar · <customer>\" for a takeaway order, null without table."
           },
           "amount": {
             "type": "number",
@@ -15815,7 +15845,7 @@
           "table": {
             "type": "string",
             "nullable": true,
-            "description": "Table number as text, \"Domicilio\" for a delivery order, null without table."
+            "description": "Table number as text, \"Domicilio\" for a delivery order, \"Para llevar · <customer>\" for a takeaway order, null without table."
           },
           "waiter": {
             "nullable": true,

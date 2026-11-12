@@ -63,6 +63,7 @@ const DAY: CashDay = {
     avgTicket: 0,
     tables: 0,
     deliveries: { count: 0, amount: 0 },
+    takeaway: { count: 0, amount: 0 },
     tips: 0,
     methods: methods([0, 0, 0]),
     deposits: 0,

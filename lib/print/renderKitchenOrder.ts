@@ -216,6 +216,9 @@ export function renderInvoice(params: {
     change?: number
     /** Delivery block: prints customer / address / fee instead of MESA / MESERO. */
     delivery?: DeliveryPrintInfo
+    /** A takeaway order (promociones S8) prints `PARA LLEVAR · <customerName>` instead of the MESA line. */
+    orderType?: 'dine_in' | 'takeaway' | 'delivery'
+    customerName?: string | null
     /** Configured tax type (caja-cierres S9): prints `INC (8 %):`; without it the legacy `IVA:` line. */
     taxType?: 'INC' | 'IVA'
   }
@@ -276,7 +279,11 @@ export function renderInvoice(params: {
       lines.push({ text: `CAMBIO PARA: ${formatCurrency(delivery.cashChangeFor!)}`, align: 'left' })
     }
   } else {
-    lines.push({ text: `MESA: ${tableDisplay}`, align: 'left' })
+    const customer = invoice.customerName?.trim()
+    lines.push({
+      text: invoice.orderType === 'takeaway' ? (customer ? `PARA LLEVAR · ${customer}` : 'PARA LLEVAR') : `MESA: ${tableDisplay}`,
+      align: 'left',
+    })
     if (invoice.waiter) lines.push({ text: `MESERO: ${invoice.waiter}`, align: 'left' })
   }
   lines.push({ text: '--------------------------------', align: 'center' })

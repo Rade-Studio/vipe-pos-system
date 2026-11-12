@@ -233,7 +233,7 @@ export class RegistersService {
     const rows = await this.rows<{ row: Json }>(sql`
       SELECT jsonb_build_object(
                'order_id', o.id, 'order_number', o.order_number, 'order_type', o.order_type,
-               'table_number', t.number, 'zone_name', z.name, 'waiter_id', w.id, 'waiter_name', w.full_name,
+               'customer_name', o.customer_name, 'table_number', t.number, 'zone_name', z.name, 'waiter_id', w.id, 'waiter_name', w.full_name,
                'payment_id', p.id, 'amount_due', p.amount_due, 'tip_amount', p.tip_amount,
                'total_charged', p.total_charged, 'paid_at', p.created_at,
                'tenders', coalesce((

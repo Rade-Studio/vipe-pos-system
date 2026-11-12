@@ -70,6 +70,13 @@ describe("InvoicePrintView", () => {
     expect(screen.queryByText("Mesa:")).not.toBeInTheDocument()
   })
 
+  it("sends a takeaway invoice to the thermal ticket as PARA LLEVAR · <nombre>, without MESA: (S8)", () => {
+    const { container } = render(<InvoicePrintView invoice={{ ...invoice, table: "Para llevar · Ana" }} open onOpenChange={() => {}} />)
+    const ticket = container.ownerDocument.querySelector(".ticket")!
+    expect(ticket.textContent).toContain("PARA LLEVAR · Ana")
+    expect(ticket.textContent).not.toContain("MESA:")
+  })
+
   it("keeps the Mesa: label on a table invoice", () => {
     render(<InvoicePrintView invoice={invoice} open onOpenChange={() => {}} />)
     expect(screen.getByText("Mesa:")).toBeInTheDocument()
