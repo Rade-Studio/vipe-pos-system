@@ -181,6 +181,20 @@ describe("FloorPlan — zones", () => {
     act(() => screen.getByRole("button", { name: "Ajustar" }).click())
     expect(wrap.style.width).toBe("100%")
   })
+
+  // Tables on the last row overflow the floor a little; an own scroll container
+  // with overscroll-contain caught the wheel there and the page never scrolled.
+  it("leaves the page scroll to the page until the floor is zoomed", () => {
+    renderPlan([placed("t-1", 1)])
+    const scroller = screen.getByTestId("floor-scroller")
+    expect(scroller).toHaveClass("overflow-x-clip")
+    expect(scroller).not.toHaveClass("overflow-auto")
+    expect(scroller).not.toHaveClass("overscroll-contain")
+    act(() => screen.getByRole("button", { name: "Acercar" }).click())
+    expect(scroller).toHaveClass("overflow-auto", "overscroll-contain")
+    act(() => screen.getByRole("button", { name: "Ajustar" }).click())
+    expect(scroller).toHaveClass("overflow-x-clip")
+  })
 })
 
 describe("FloorPlan — live details (T22)", () => {

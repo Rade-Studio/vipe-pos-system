@@ -158,9 +158,13 @@ export function FloorPlan({
         <div className="relative min-w-0">
         <div
           ref={scrollerRef}
+          data-testid="floor-scroller"
           onScroll={zoomed ? measure : undefined}
           className={cn(
-            "min-w-0 overflow-auto overscroll-contain rounded-card-lg bg-[radial-gradient(120%_80%_at_50%_0%,var(--accent-tint),transparent_60%)]",
+            "min-w-0 rounded-card-lg bg-[radial-gradient(120%_80%_at_50%_0%,var(--accent-tint),transparent_60%)]",
+            // Unzoomed, the page scrolls: tables on the last row overflow the floor a
+            // little, and an own scroller with overscroll-contain caught the wheel.
+            zoomed ? "overflow-auto overscroll-contain" : "overflow-x-clip",
             compact ? "px-2 pb-6 pt-2" : "px-3 pb-12 pt-4 sm:px-6",
           )}
         >
