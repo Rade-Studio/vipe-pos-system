@@ -27,6 +27,7 @@ import { ItemsPage } from "@/components/admin/stock/ItemsPage"
 import { MovementsPage } from "@/components/admin/stock/MovementsPage"
 import { LocationsPage } from "@/components/admin/stock/LocationsPage"
 import { PurchasesPage } from "@/components/admin/purchasing/PurchasesPage"
+import { TransfersPage } from "@/components/admin/transfers/TransfersPage"
 import { ProductionPage } from "@/components/admin/production/ProductionPage"
 import { CountsPage } from "@/components/admin/counts/CountsPage"
 import { InventoryOverviewPage } from "@/components/admin/inventory-overview/InventoryOverviewPage"
@@ -337,6 +338,8 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         return <MovementsPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/locations":
         return <LocationsPage description={meta.description} onNavigate={navigateTo} />
+      case "inventory/transfers":
+        return <TransfersPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/purchases":
         return <PurchasesPage description={meta.description} onNavigate={navigateTo} />
       case "inventory/production":

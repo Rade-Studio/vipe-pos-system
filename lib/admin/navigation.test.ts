@@ -30,6 +30,7 @@ describe("admin navigation registry", () => {
       "Resumen",
       "Artículos",
       "Movimientos",
+      "Transferencias",
       "Compras",
       "Producción",
       "Conteos",

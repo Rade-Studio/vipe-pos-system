@@ -18,6 +18,7 @@ export const inventoryKeys = {
   purchases: (filters?: object) =>
     filters ? (['inventory', 'purchases', 'list', filters] as const) : (['inventory', 'purchases'] as const),
   purchase: (id: string) => ['inventory', 'purchases', 'detail', id] as const,
+  transfers: () => ['inventory', 'transfers'] as const,
   counts: () => ['inventory', 'counts'] as const,
   count: (id: string) => ['inventory', 'counts', id] as const,
   batches: () => ['inventory', 'batches'] as const,

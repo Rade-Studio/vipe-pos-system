@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  ArrowRightLeft,
   Ban,
   BadgePercent,
   BookOpen,
@@ -41,6 +42,7 @@ export const SECTION_ICONS: Record<AdminSectionId, LucideIcon> = {
   "inventory/overview": Boxes,
   "inventory/items": Package,
   "inventory/movements": ArrowLeftRight,
+  "inventory/transfers": ArrowRightLeft,
   "inventory/purchases": ShoppingCart,
   "inventory/production": Factory,
   "inventory/counts": ClipboardCheck,
