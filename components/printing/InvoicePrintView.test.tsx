@@ -99,3 +99,51 @@ describe("InvoicePrintView", () => {
     expect(screen.queryByRole("list", { name: "Opciones" })).toBeNull()
   })
 })
+
+describe("InvoicePrintView discounts (S14)", () => {
+  const discounted = {
+    ...invoice,
+    items: [
+      { id: "m-1", name: "Mojito", price: 24000, quantity: 1, discounts: [{ label: "Happy hour 2x1", amount: 12000 }] },
+      { id: "m-1", name: "Mojito", price: 24000, quantity: 1, discounts: [{ label: "Happy hour 2x1", amount: 12000 }] },
+      { id: "t-1", name: "Tres leches", price: 14000, quantity: 1 },
+    ],
+    discounts: [
+      { label: "Happy hour 2x1", amount: 24000, orderItemId: "m-1" },
+      { label: "Cortesía cumpleaños", amount: 14000, orderItemId: null },
+    ],
+    bill: { subtotal: 24000, grossSubtotal: 62000, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 24000, totalDiscounts: 38000 },
+  } as unknown as PrintableInvoice
+
+  const row = (label: string) => screen.getByText(label).parentElement!
+
+  it("prints each discount under its item, the bill discount after the items, Subtotal, Descuentos, Base and Hoy ahorraste", () => {
+    render(<InvoicePrintView invoice={discounted} open onOpenChange={() => {}} />)
+
+    const mojito = screen.getByText("Mojito").closest(".grid")!
+    expect(within(mojito as HTMLElement).getByText("Happy hour 2x1").parentElement!.textContent).toBe(
+      `Happy hour 2x1-${formatCurrency(24000)}`,
+    )
+    expect(row("Cortesía cumpleaños").textContent).toBe(`Cortesía cumpleaños-${formatCurrency(14000)}`)
+    expect(row("Subtotal:").textContent).toContain(formatCurrency(62000))
+    expect(row("Descuentos:").textContent).toContain(`-${formatCurrency(38000)}`)
+    expect(row("Base:").textContent).toContain(formatCurrency(24000))
+    expect(screen.getByText(/^Hoy ahorraste/).textContent).toBe(`Hoy ahorraste ${formatCurrency(38000)}`)
+  })
+
+  it("sends the grouped line with its summed discounts", () => {
+    render(<InvoicePrintView invoice={discounted} open onOpenChange={() => {}} />)
+    fireEvent.click(screen.getAllByRole("button", { name: /Imprimir/ })[0])
+    expect(env.sendFactura.mock.calls[0][2][0]).toEqual(
+      expect.objectContaining({ name: "Mojito", quantity: 2, discounts: [{ label: "Happy hour 2x1", amount: 24000 }] }),
+    )
+  })
+
+  it("shows no discount rows and no Hoy ahorraste without discounts", () => {
+    render(<InvoicePrintView invoice={invoice} open onOpenChange={() => {}} />)
+    expect(row("Subtotal:").textContent).toContain(formatCurrency(56000))
+    expect(screen.queryByText("Descuentos:")).toBeNull()
+    expect(screen.queryByText("Base:")).toBeNull()
+    expect(screen.queryByText(/Hoy ahorraste/)).toBeNull()
+  })
+})

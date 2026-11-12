@@ -144,10 +144,9 @@ export type CartItem = {
   comments?: string
   /** F7: the chosen options; `price` is the unit price with them (dish price + options, L4). */
   modifiers?: OrderItemModifier[]
-  // Nuevos campos para descuentos
+  /** Legacy unit price before a promotion; new lines carry the list price in `price` and leave it unset. */
   originalPrice?: number
-  discountAmount?: number
-  discountPercentage?: number
+  /** The automatic promotion the line would be sent with now (the server fixes it on insert). */
   promotionId?: string
   promotionName?: string
 }
@@ -166,10 +165,15 @@ export type Dish = {
   categoryId: string
   image: string
   available?: boolean
-  discountPercentage: number | null
-  discountAmount: number | null
-  originalPrice: number
-  promotionName: string
+  /** `price` is the list price; the promotion fields come with `pricing: "promotions"`. */
+  promotionId?: string
+  promotionName?: string
+  /** 2x1, 3x2, 20%, -$3.000. */
+  promotionBadge?: string
+  /** End of the current window, "19:00"; null = all day. */
+  promotionEndsAt?: string | null
+  /** product_discount only: the unit price after the discount. */
+  promoPrice?: number
 }
 
 // Summary types for analytics
@@ -225,6 +229,9 @@ export type CashRegister = {
  */
 export type InvoiceTender = import("@/lib/payments/invoice-tenders").InvoiceTender
 
+/** S14: one printed discount; owned by `lib/print/renderKitchenOrder.ts`. */
+export type PrintDiscount = import("@/lib/print/renderKitchenOrder").PrintDiscount
+
 /**
  * Optional home-delivery block carried by kitchen commands and invoices.
  * Additive: payloads without it print exactly as dine-in tickets. Built
@@ -252,7 +259,8 @@ export interface PrintableInvoice {
     phone: string
     nit: string
   }
-  items: CartItem[]
+  /** S14: a line's discounts print under it; absent on a line without them. */
+  items: Array<CartItem & { discounts?: PrintDiscount[] }>
   bill: {
     subtotal: number
     tax: number
@@ -261,7 +269,11 @@ export interface PrintableInvoice {
     tipPercentage: number
     total: number
     totalDiscounts: number // Nuevo campo
+    /** S14: subtotal at list price; set only when the order has discounts. */
+    grossSubtotal?: number
   }
+  /** S14: the order's bill discounts (no `orderItemId`), printed after the items; absent without discounts. */
+  discounts?: PrintDiscount[]
   waiter: string
   table: string | number
   paymentMethod: PaymentMethod | "multiple"

@@ -34,22 +34,24 @@ import {
   CreateDishRequest,
   createDishSchema,
   CreatePromotionRequest,
-  createPromotionSchema,
   Dish,
   dishListQuerySchema,
   DishOrderRequest,
   dishOrderSchema,
   MENU_MESSAGES,
   MenuPublicationStatus,
+  menuTreeQuerySchema,
   Promotion,
+  PROMOTION_ERRORS_DESCRIPTION,
   promotionDishesSchema,
+  PromotionsToday,
+  promotionsTodayQuerySchema,
   SetPromotionDishesRequest,
   UpdateCategoryRequest,
   updateCategorySchema,
   UpdateDishRequest,
   updateDishSchema,
   UpdatePromotionRequest,
-  updatePromotionSchema,
 } from './catalog.dto';
 import { CategoriesService } from './categories.service';
 import { DishesService } from './dishes.service';
@@ -199,8 +201,9 @@ export class DishesController {
     name: 'pricing',
     required: false,
     enum: ['promotions'],
-    description: 'Apply the best promotion active now; discounted dishes carry the promotion fields.',
+    description: 'Add the automatic product promotion a line of each dish would be sent with now (price stays the list price).',
   })
+  @ApiQuery({ name: 'channel', required: false, enum: ['dine_in', 'delivery'], description: 'With pricing=promotions; default dine_in.' })
   @ApiOkResponse({ type: [Dish] })
   list(@Query() query: unknown): Promise<Dish[]> {
     return this.dishes.list(parseInput(dishListQuerySchema, query));
@@ -274,33 +277,45 @@ export class PromotionsController {
   constructor(private readonly promotions: PromotionsService) {}
 
   @Get()
-  @ApiOkResponse({ type: [Promotion], description: 'Newest first.' })
+  @ApiOkResponse({ type: [Promotion], description: 'Newest first, with targets, combo groups, 30-day stats, schedule now, sentence and badge.' })
   list(): Promise<Promotion[]> {
     return this.promotions.list();
   }
 
   @Get('active')
-  @ApiOkResponse({ type: [Promotion], description: 'Active and inside their date window now (server clock).' })
+  @ApiOkResponse({ type: [Promotion], description: 'Active and inside their dates now (restaurant timezone), oldest first.' })
   active(): Promise<Promotion[]> {
     return this.promotions.active();
+  }
+
+  @Get('today')
+  @ApiQuery({ name: 'channel', required: false, enum: ['dine_in', 'delivery'], description: 'Default dine_in.' })
+  @ApiOkResponse({
+    type: PromotionsToday,
+    description: 'For the terminals: the promotions applying now on the channel (with the end of the window), later today (with the start) and the others with why not; paused and ended ones are left out.',
+  })
+  today(@Query() query: unknown): Promise<PromotionsToday> {
+    return this.promotions.today(parseInput(promotionsTodayQuerySchema, query).channel);
   }
 
   @Post()
   @Roles(ADMIN)
   @ApiBody({ type: CreatePromotionRequest })
-  @ApiCreatedResponse({ type: Promotion })
+  @ApiCreatedResponse({ type: Promotion, description: 'The promotion with its targets and combo groups, saved in one transaction.' })
+  @ApiUnprocessableEntityResponse({ description: PROMOTION_ERRORS_DESCRIPTION })
   @ApiForbiddenResponse({ description: 'Not an admin.' })
   create(@Body() body: unknown): Promise<Promotion> {
-    return this.promotions.create(parseInput(createPromotionSchema, body));
+    return this.promotions.create(body);
   }
 
   @Patch(':id')
   @Roles(ADMIN)
   @ApiBody({ type: UpdatePromotionRequest })
-  @ApiOkResponse({ type: Promotion })
+  @ApiOkResponse({ type: Promotion, description: 'Omitted fields keep their value; the merged promotion is validated per kind. targets and comboGroups replace the stored ones when sent.' })
+  @ApiUnprocessableEntityResponse({ description: PROMOTION_ERRORS_DESCRIPTION })
   @ApiNotFoundResponse()
   update(@Param('id') id: string, @Body() body: unknown): Promise<Promotion> {
-    return this.promotions.update(parseInput(idParamSchema, id), parseInput(updatePromotionSchema, body));
+    return this.promotions.update(parseInput(idParamSchema, id), body);
   }
 
   @Delete(':id')
@@ -341,16 +356,18 @@ export class MenuController {
     description:
       'The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and modifier groups are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.',
   })
-  tree(): Promise<MenuTree> {
-    return this.menu.tree();
+  @ApiQuery({ name: 'channel', required: false, enum: ['dine_in', 'delivery'], description: 'Channel of the dish promotion fields; default dine_in.' })
+  tree(@Query() query: unknown): Promise<MenuTree> {
+    return this.menu.tree(parseInput(menuTreeQuerySchema, query).channel);
   }
 
   @Get('draft')
   @Roles(ADMIN)
   @ApiOkResponse({ type: MenuTree, description: 'The tree from the live structure: what the next publication serves (admin menu editor preview).' })
   @ApiForbiddenResponse({ description: 'Not an admin.' })
-  draft(): Promise<MenuTree> {
-    return this.menu.draft();
+  @ApiQuery({ name: 'channel', required: false, enum: ['dine_in', 'delivery'] })
+  draft(@Query() query: unknown): Promise<MenuTree> {
+    return this.menu.draft(parseInput(menuTreeQuerySchema, query).channel);
   }
 
   @Get('publication')

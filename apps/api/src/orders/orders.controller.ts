@@ -16,7 +16,10 @@ import {
 import type { AuthenticatedRequest } from '../auth/auth-context';
 import { Roles } from '../auth/roles.decorator';
 import { idParamSchema, parseInput } from '../common/validation';
+import { ManualDiscountsService } from './manual-discounts.service';
 import {
+  AddOrderDiscountRequest,
+  addOrderDiscountSchema,
   AddOrderItemsRequest,
   addOrderItemsSchema,
   CancelledOrder,
@@ -31,7 +34,15 @@ import {
   ORDER_LIST_LIMIT,
   ORDER_STATUSES,
   orderListQuerySchema,
+  parseDiscountBody,
   PriceChangedResponse,
+  PricingPreview,
+  PricingPreviewRequest,
+  pricingPreviewSchema,
+  PreviewDishLine,
+  ComboLineRequest,
+  RemoveOrderDiscountRequest,
+  removeOrderDiscountSchema,
   ServeOrderItemsRequest,
   serveOrderItemsSchema,
   StockShortageResponse,
@@ -60,7 +71,10 @@ const includeFilter = (include: readonly string[] = []): OrderListFilter => ({
 @ApiUnprocessableEntityResponse({ description: 'Invalid input, unknown fields, unknown dish, table, waiter or item.' })
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(
+    private readonly orders: OrdersService,
+    private readonly manualDiscounts: ManualDiscountsService,
+  ) {}
 
   @Get()
   @ApiQuery({ name: 'status', required: false, description: `Comma-separated: ${ORDER_STATUSES.join(', ')}.` })
@@ -110,16 +124,35 @@ export class OrdersController {
   @Post()
   @Roles(...ORDER_TAKERS)
   @ApiBody({ type: CreateOrderRequest })
-  @ApiCreatedResponse({ type: Order, description: 'Order and items in kitchen, bill computed by the database, stock consumed, table in kitchen.' })
+  @ApiCreatedResponse({
+    type: Order,
+    description: 'Order and items in kitchen at list price, each with the automatic promotion fixed now, the discounts and the bill, stock consumed, table in kitchen.',
+  })
   @ApiConflictResponse({
     description:
-      'Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse) or Table has an open order (TableHasOpenOrderResponse).',
+      'Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse: a unitPrice different from the list price) or Table has an open order (TableHasOpenOrderResponse).',
     schema: { oneOf: [StockShortageResponse, PriceChangedResponse, TableHasOpenOrderResponse].map((type) => ({ $ref: `#/components/schemas/${type.name}` })) },
   })
   @ApiExtraModels(StockShortageResponse, PriceChangedResponse, TableHasOpenOrderResponse)
   @ApiForbiddenResponse({ description: 'Not admin, waiter or cashier.' })
   create(@Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Order> {
     return this.orders.create(parseInput(createOrderSchema, body), req.profile!.id);
+  }
+
+  @Post('pricing-preview')
+  @Roles(...ORDER_TAKERS, 'delivery_operator')
+  @HttpCode(200)
+  @ApiBody({ type: PricingPreviewRequest })
+  @ApiExtraModels(PreviewDishLine, ComboLineRequest)
+  @ApiOkResponse({
+    type: PricingPreview,
+    description:
+      'As if sent now (server clock, restaurant timezone, channel): the order lines (with the promotions fixed when sent) and the draft lines, their discounts, the bill discount, totals and hints ("Falta 1 unidad para otro 2x1.", "Envía antes de las 19:00.", "Domicilio: faltan $X para el 10% de descuento."). Writes nothing.',
+  })
+  @ApiNotFoundResponse({ description: 'orderId not found.' })
+  @ApiForbiddenResponse({ description: 'Not admin, waiter, cashier or delivery operator.' })
+  pricingPreview(@Body() body: unknown): Promise<PricingPreview> {
+    return this.orders.pricingPreview(parseInput(pricingPreviewSchema, body));
   }
 
   @Post(':id/items')
@@ -184,12 +217,48 @@ export class OrdersController {
   @Roles(...ORDER_TAKERS)
   @HttpCode(200)
   @ApiBody({ type: VoidOrderItemsRequest })
-  @ApiOkResponse({ type: Order, description: 'The order with the voided units removed and the bill recomputed; stock already consumed stays consumed.' })
+  @ApiOkResponse({
+    type: Order,
+    description:
+      'The order with the voided units removed, the automatic discounts and the bill recomputed; voiding a line of a combo voids the whole combo. Stock already consumed stays consumed.',
+  })
   @ApiForbiddenResponse({ description: `Not admin, waiter or cashier, or ${VOID_REFUSALS}` })
   @ApiConflictResponse({ description: '`order_closed` (paid or cancelled).' })
   @ApiNotFoundResponse({ description: '`order_not_found`.' })
   voidItems(@Param('id') id: string, @Body() body: unknown): Promise<Order> {
     return this.orders.voidItems(parseInput(idParamSchema, id), parseInput(voidOrderItemsSchema, body));
+  }
+
+  @Post(':id/discounts')
+  @Roles('admin', 'cashier')
+  @ApiBody({ type: AddOrderDiscountRequest })
+  @ApiCreatedResponse({
+    type: Order,
+    description:
+      'S7: a manual discount (kind manual_item or manual_bill, source manual, reason, authorizedBy) computed by the server: on a line from its value minus the discounts already on it, on the order from the net subtotal, never above either; then the automatic discounts and the bill are recomputed. A promotion with mode manual needs no authorization (authorizedBy is the caller).',
+  })
+  @ApiForbiddenResponse({ description: `Not admin or cashier, or ${VOID_REFUSALS}` })
+  @ApiConflictResponse({ description: '`order_closed` (paid or cancelled).' })
+  @ApiNotFoundResponse({ description: '`order_not_found`.' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      '`discount_invalid`, `discount_reason_invalid`, `order_item_not_found`, `promotion_not_found`, `promotion_not_manual`, `promotion_kind_unsupported`, `promotion_not_available`, `promotion_not_applicable`, `promotion_max_uses`, `promotion_min_subtotal`, `discount_item_required`, `discount_item_not_allowed` or `discount_nothing_left`; nothing is stored.',
+  })
+  addDiscount(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Order> {
+    return this.manualDiscounts.add(parseInput(idParamSchema, id), parseDiscountBody(addOrderDiscountSchema, body), req.profile!.id);
+  }
+
+  @Delete(':id/discounts/:discountId')
+  @Roles('admin', 'cashier')
+  @ApiBody({ type: RemoveOrderDiscountRequest, required: false })
+  @ApiOkResponse({ type: Order, description: 'The manual discount removed (same authorization rule as adding it), the automatic discounts and the bill recomputed.' })
+  @ApiForbiddenResponse({ description: `Not admin or cashier, or ${VOID_REFUSALS}` })
+  @ApiConflictResponse({ description: '`order_closed` (paid or cancelled).' })
+  @ApiNotFoundResponse({ description: '`order_not_found` or `discount_not_found`.' })
+  @ApiUnprocessableEntityResponse({ description: '`discount_not_manual` (automatic discounts follow the promotions) or `discount_invalid`.' })
+  removeDiscount(@Param('id') id: string, @Param('discountId') discountId: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Order> {
+    const { authorizationId } = parseDiscountBody(removeOrderDiscountSchema, body);
+    return this.manualDiscounts.remove(parseInput(idParamSchema, id), parseInput(idParamSchema, discountId), authorizationId, req.profile!.id);
   }
 
   @Delete(':id')

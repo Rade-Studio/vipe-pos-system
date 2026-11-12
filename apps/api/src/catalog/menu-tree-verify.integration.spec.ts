@@ -240,7 +240,7 @@ describe('T8 verifier probes', () => {
       expect(available).toBe(avail[d.id]);
     }
     expect(treeDishes.find((d: { id: string }) => d.id === v.d2).available).toBe(false);
-    expect(treeDishes.find((d: { id: string }) => d.id === v.d1)).toMatchObject({ price: 9000, originalPrice: 10000 });
+    expect(treeDishes.find((d: { id: string }) => d.id === v.d1)).toMatchObject({ price: 10000, promoPrice: 9000 });
     // ordering of dishes by name within a category
     expect(byId[v.c1].dishes.map((d: { name: string }) => d.name)).toEqual(['Ajiaco', 'Churrasco']);
     // S8 advisory probe: an active uncategorised dish appears in the legacy list but not in the tree

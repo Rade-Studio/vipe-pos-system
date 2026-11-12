@@ -37,7 +37,13 @@ interface TargetBase {
 }
 
 export type VoidTarget =
-  | (TargetBase & { action: "item"; lines: VoidLine[]; lineId?: string })
+  | (TargetBase & {
+      action: "item"
+      lines: VoidLine[]
+      lineId?: string
+      /** S13: the order's current discounts; > 0 shows that promotions are recomputed (L23). */
+      totalDiscounts?: number
+    })
   | (TargetBase & {
       action: "order"
       lines: VoidLine[]

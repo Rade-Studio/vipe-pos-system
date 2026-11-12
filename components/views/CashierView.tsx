@@ -38,6 +38,7 @@ import {
   applyCashierOrderEvent,
   billSourceFromOrder,
   cashierOrdersQueryKey,
+  type CashierOrder,
   deriveCashierViews,
   toCashierOrder,
 } from "@/lib/cashier/orders"
@@ -819,6 +820,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                             orderId: selectedEntry.payOrder.id,
                             label: voidLabel(selectedEntry),
                             lines: voidLines(selectedEntry.payOrder),
+                            totalDiscounts: selectedEntry.payOrder.bill.totalDiscounts,
                           })
                       : undefined
                   }
@@ -848,7 +850,11 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                   key={selectedEntry.payOrder.id}
                   layout="inline"
                   orderId={selectedEntry.payOrder.id}
-                  order={billSourceFromOrder(selectedEntry.payOrder)}
+                  order={{
+                    ...billSourceFromOrder(selectedEntry.payOrder),
+                    discounts: (selectedEntry.payOrder as CashierOrder).discounts,
+                    gross_subtotal: (selectedEntry.payOrder as CashierOrder).grossSubtotal,
+                  }}
                   eyebrow={`Cobrar · ${selectedEntry.label}`}
                   onCancel={clearSelection}
                   onPaid={handlePaid}

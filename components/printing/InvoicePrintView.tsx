@@ -8,11 +8,18 @@ import { format } from "date-fns"
 import { toast } from "@/utils/toast"
 import { sendFactura } from "@/lib/api/print"
 import { usePrintingEnabled } from "@/lib/api/printing"
-import { Printer, Check, X, ArrowLeft, Receipt, Tag } from "lucide-react"
-import { renderInvoice } from "@/lib/print/renderKitchenOrder"
-import type { PrintableInvoice } from "@/types"
+import { Printer, Check, X, ArrowLeft, Receipt } from "lucide-react"
+import { billDiscounts, grossSubtotalOf, mergeDiscounts, renderInvoice, type PrintDiscount } from "@/lib/print/renderKitchenOrder"
+import type { CartItem, PrintableInvoice } from "@/types"
 import { log } from "@/lib/log"
 import { ModifierLines } from "@/components/modifiers/ModifierLines"
+
+/** S14: an order line carries its discounts (`toOrderItem`); a bill discount sits in `invoice.discounts`. */
+type InvoiceLine = CartItem & { discounts?: PrintDiscount[] }
+type DiscountedInvoice = PrintableInvoice & {
+  discounts?: PrintDiscount[]
+  bill: PrintableInvoice["bill"] & { grossSubtotal?: number }
+}
 
 interface InvoicePrintViewProps {
   invoice: PrintableInvoice
@@ -75,7 +82,7 @@ export function InvoicePrintView({
     return null
   }
 
-  const { invoiceNumber, date, businessInfo, items, bill, waiter, table, paymentMethod, tenders, change, delivery } = invoice
+  const { invoiceNumber, date, businessInfo, items, bill, waiter, table, paymentMethod, tenders, change, delivery } = invoice as DiscountedInvoice
 
   log.info("Renderizando factura con datos:", {
     waiter,
@@ -111,20 +118,24 @@ export function InvoicePrintView({
   const displayTable = table || "N/A"
 
   // Agrupar items por nombre, opciones (F7) y comentario
-  const groupedItems: Record<string, (typeof invoice.items)[0]> = {}
-  invoice.items.forEach((item) => {
+  // Agrupar items por nombre, opciones (F7) y comentario; sus descuentos se suman por promoción (S14)
+  const groupedItems: Record<string, InvoiceLine> = {}
+  ;(invoice.items as InvoiceLine[]).forEach((item) => {
     const options = (item.modifiers ?? []).map((modifier) => modifier.optionId).sort().join(",")
     const key = `${item.name}-${options}-${item.comments || ""}`
-    if (!groupedItems[key]) {
-      groupedItems[key] = { ...item }
+    const seen = groupedItems[key]
+    if (!seen) {
+      groupedItems[key] = { ...item, ...(item.discounts?.length ? { discounts: mergeDiscounts(item.discounts) } : {}) }
     } else {
-      groupedItems[key].quantity += item.quantity
+      seen.quantity += item.quantity
+      if (item.discounts?.length) seen.discounts = mergeDiscounts(seen.discounts, item.discounts)
     }
   })
   const displayItems = Object.values(groupedItems)
 
-  // Verificar si hay descuentos
-  const hasDiscounts = displayItems.some((item) => item.originalPrice && item.originalPrice > item.price)
+  // S14: cada descuento es su propia línea con el nombre de la promoción
+  const orderDiscounts = billDiscounts((invoice as DiscountedInvoice).discounts)
+  const totalDiscounts = bill?.totalDiscounts || 0
 
   return (
     <Dialog
@@ -216,32 +227,16 @@ export function InvoicePrintView({
                         <div key={index} className="p-2 grid grid-cols-12 text-sm dark:text-gray-300">
                           <div className="col-span-2">{item.quantity}</div>
                           <div className="col-span-7">
-                            <div className="flex items-start">
-                              <span>{item.name}</span>
-                              {item.originalPrice && item.originalPrice > item.price && (
-                                <Tag className="h-3 w-3 ml-1 text-red-500 flex-shrink-0" />
-                              )}
-                            </div>
+                            <span>{item.name}</span>
                             <ModifierLines modifiers={item.modifiers} className="text-xs text-gray-600 dark:text-gray-300" />
                             {item.comments && (
                               <div className="text-xs text-gray-500 dark:text-gray-400">({item.comments})</div>
                             )}
-                            {item.originalPrice && item.originalPrice > item.price && item.promotionName && (
-                              <div className="text-xs text-red-500 dark:text-red-400 italic">{item.promotionName}</div>
-                            )}
                           </div>
-                          <div className="col-span-3 text-right">
-                            {item.originalPrice && item.originalPrice > item.price ? (
-                              <>
-                                <div className="line-through text-xs text-gray-500">
-                                  {formatCurrency(item.originalPrice * item.quantity)}
-                                </div>
-                                <div>{formatCurrency(item.price * item.quantity)}</div>
-                              </>
-                            ) : (
-                              formatCurrency(item.price * item.quantity)
-                            )}
-                          </div>
+                          <div className="col-span-3 text-right">{formatCurrency(item.price * item.quantity)}</div>
+                          {(item.discounts ?? []).map((discount) => (
+                            <DiscountRow key={discount.label} discount={discount} />
+                          ))}
                         </div>
                       ))
                     ) : (
@@ -249,6 +244,11 @@ export function InvoicePrintView({
                         No hay items en esta orden
                       </div>
                     )}
+                    {orderDiscounts.map((discount) => (
+                      <div key={discount.label} className="p-2 grid grid-cols-12 text-sm">
+                        <DiscountRow discount={discount} />
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -256,18 +256,24 @@ export function InvoicePrintView({
                 <div className="space-y-1 mb-4 dark:text-gray-300">
                   <div className="flex justify-between text-sm">
                     <span>Subtotal:</span>
-                    <span>{formatCurrency(bill?.subtotal || 0)}</span>
+                    <span>{formatCurrency(totalDiscounts > 0 ? grossSubtotalOf(bill) : bill?.subtotal || 0)}</span>
                   </div>
+                  {totalDiscounts > 0 && (
+                    <>
+                      <div className="flex justify-between text-sm text-red-600 dark:text-red-400">
+                        <span>Descuentos:</span>
+                        <span>-{formatCurrency(totalDiscounts)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>Base:</span>
+                        <span>{formatCurrency(bill?.subtotal || 0)}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between text-sm">
                     <span>IVA ({bill?.taxPercentage || 0}%):</span>
                     <span>{formatCurrency(bill?.tax || 0)}</span>
                   </div>
-                  {bill?.totalDiscounts > 0 && (
-                    <div className="flex justify-between text-sm text-red-600 dark:text-red-400">
-                      <span>Descuentos:</span>
-                      <span>-{formatCurrency(bill?.totalDiscounts || 0)}</span>
-                    </div>
-                  )}
                   {delivery && (
                     <div className="flex justify-between text-sm">
                       <span>Domicilio:</span>
@@ -355,6 +361,11 @@ export function InvoicePrintView({
 
                 {/* Pie de página */}
                 <div className="text-center text-sm text-gray-600 dark:text-gray-400 border-t dark:border-gray-700 pt-4">
+                  {totalDiscounts > 0 && (
+                    <p className="font-semibold text-green-700 dark:text-green-400 mb-2">
+                      {`Hoy ahorraste ${formatCurrency(totalDiscounts)}`}
+                    </p>
+                  )}
                   <p>RÉGIMEN SIMPLIFICADO</p>
                   <p>RESOLUCIÓN DIAN No. 18764000001</p>
                   <p>DEL 01/01/2023 AL 31/12/2023</p>
@@ -483,6 +494,7 @@ export function InvoicePrintView({
                   businessInfo: businessInfo || { name: 'RESTAURANTE', nit: 'N/A', address: 'N/A', phone: 'N/A' },
                   bill: bill || { subtotal: 0, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 0, totalDiscounts: 0 },
                   date: (date || new Date()).toISOString(),
+                  discounts: (invoice as DiscountedInvoice).discounts,
                   table: displayTable,
                   waiter: displayWaiter,
                   paymentMethod: paymentMethod || 'cash',
@@ -506,5 +518,15 @@ export function InvoicePrintView({
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** `Happy hour 2x1   -24.000`: under its item (or after the items for a bill discount). */
+function DiscountRow({ discount }: { discount: PrintDiscount }) {
+  return (
+    <div className="col-span-12 flex justify-between pl-[16.67%] text-xs text-red-600 dark:text-red-400">
+      <span className="truncate">{discount.label}</span>
+      <span className="shrink-0">-{formatCurrency(discount.amount)}</span>
+    </div>
   )
 }

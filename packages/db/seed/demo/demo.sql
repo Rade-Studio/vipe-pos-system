@@ -63,20 +63,26 @@ LANGUAGE sql STABLE AS $$
   SELECT ((p_day + p_time)::timestamp AT TIME ZONE 'America/Bogota')
 $$;
 
--- Catalog price at p_at with the best active promotion applied, the rule of
--- apps/api/src/catalog/promotion-pricing.ts (percentage rounds, fixed caps).
-CREATE FUNCTION pg_temp.demo_price(p_dish uuid, p_at timestamptz) RETURNS numeric
+-- The automatic product promotion a dish qualifies for at p_at and its
+-- discount per unit: the one that saves the most (percentage rounds, fixed
+-- caps at the price), ties to the oldest. Lines keep the list price; the
+-- discount is an order_discounts row (0025, odd/tasks/promociones.md S2).
+CREATE FUNCTION pg_temp.demo_promotion(p_dish uuid, p_at timestamptz)
+RETURNS TABLE (promotion_id uuid, label text, discount numeric, snapshot jsonb)
 LANGUAGE sql STABLE AS $$
-  SELECT d.price - coalesce(max(CASE WHEN p.id IS NULL THEN 0
-                                     WHEN p.discount_type = 'percentage'
-                                     THEN round(d.price * p.discount_value / 100)
-                                     ELSE least(d.price, p.discount_value) END), 0)
+  SELECT p.id, p.name::text, x.discount,
+         jsonb_build_object('id', p.id, 'name', p.name, 'kind', p.kind,
+                            'discountType', p.discount_type, 'discountValue', p.discount_value)
     FROM public.dishes d
-    LEFT JOIN public.promotion_dishes pd ON pd.dish_id = d.id
-    LEFT JOIN public.promotions p ON p.id = pd.promotion_id AND p.active
-                                 AND p.start_date <= p_at AND p.end_date >= p_at
-   WHERE d.id = p_dish
-   GROUP BY d.price
+    JOIN public.promotion_dishes pd ON pd.dish_id = d.id
+    JOIN public.promotions p ON p.id = pd.promotion_id AND p.active
+                            AND p.kind = 'product_discount' AND p.mode = 'automatic'
+                            AND p.start_date <= p_at AND (p.end_date IS NULL OR p.end_date >= p_at)
+   CROSS JOIN LATERAL (SELECT CASE WHEN p.discount_type = 'percentage' THEN round(d.price * p.discount_value / 100)
+                                   ELSE least(d.price, p.discount_value) END AS discount) x
+   WHERE d.id = p_dish AND x.discount > 0
+   ORDER BY x.discount DESC, p.created_at, p.id
+   LIMIT 1
 $$;
 
 -- Weighted random dish of one menu group (exponential race on the weights).
@@ -134,17 +140,29 @@ END;
 $$;
 
 -- Adds demo_cart to an order as OrdersService.create / addItems do: catalog
--- name and price (promotions at p_at), items in kitchen, then the bill from
--- recompute_caller_order_bill and the stock from consume_order_stock.
+-- name and list price, the promotion of each line at p_at with its
+-- snapshot and one order_discounts row per discounted line, items in
+-- kitchen, then the bill from recompute_caller_order_bill and the stock from
+-- consume_order_stock.
 CREATE FUNCTION pg_temp.demo_add_cart(p_order uuid, p_at timestamptz) RETURNS void
 LANGUAGE plpgsql AS $$
 BEGIN
-  INSERT INTO public.order_items (order_id, dish_id, name, price, quantity, comments, status, added_at, restaurant_id)
-  SELECT p_order, d.id, d.name, pg_temp.demo_price(d.id, p_at), c.quantity, CASE WHEN d.allow_comments THEN c.comments END,
-         'kitchen', now() + (row_number() OVER ()) * interval '1 microsecond', d.restaurant_id
-    FROM (SELECT dish_id, sum(quantity)::integer AS quantity, max(comments) AS comments
-            FROM demo_cart GROUP BY dish_id) c
-    JOIN public.dishes d ON d.id = c.dish_id;
+  WITH lines AS (
+    INSERT INTO public.order_items (order_id, dish_id, name, price, quantity, comments, status, added_at, restaurant_id,
+                                    promotion_id, promotion_snapshot)
+    SELECT p_order, d.id, d.name, d.price, c.quantity, CASE WHEN d.allow_comments THEN c.comments END,
+           'kitchen', now() + (row_number() OVER ()) * interval '1 microsecond', d.restaurant_id,
+           pr.promotion_id, pr.snapshot
+      FROM (SELECT dish_id, sum(quantity)::integer AS quantity, max(comments) AS comments
+              FROM demo_cart GROUP BY dish_id) c
+      JOIN public.dishes d ON d.id = c.dish_id
+      LEFT JOIN LATERAL pg_temp.demo_promotion(d.id, p_at) pr ON true
+    RETURNING id, order_id, restaurant_id, dish_id, quantity
+  )
+  INSERT INTO public.order_discounts (restaurant_id, order_id, order_item_id, promotion_id, kind, source, label, amount)
+  SELECT l.restaurant_id, l.order_id, l.id, pr.promotion_id, 'promotion_item', 'automatic', pr.label, pr.discount * l.quantity
+    FROM lines l
+   CROSS JOIN LATERAL pg_temp.demo_promotion(l.dish_id, p_at) pr;
   PERFORM private.recompute_caller_order_bill(p_order);
   PERFORM public.consume_order_stock(p_order);
 END;
@@ -502,8 +520,10 @@ BEGIN
     JOIN public.subcategories msc ON msc.restaurant_id = v_rid AND msc.name = mm.sub
    WHERE md.restaurant_id = v_rid AND md.name = mm.dish AND md.category_id = msc.category_id;
 
-  -- Promotions (the schema has no modifiers or combos): two running, one
-  -- coming, one finished.
+  -- Promotions: four per-product discounts (two running, one coming, one
+  -- finished) and one of each newer kind (0025): a 2x1 happy hour, a combo,
+  -- a delivery bill discount and a manual courtesy with PIN. The history
+  -- below applies only the automatic per-product ones.
   INSERT INTO public.promotions (name, description, discount_type, discount_value, start_date, end_date, active, restaurant_id)
   VALUES ('Hora feliz de cócteles', '20 % en cócteles y micheladas', 'percentage', 20,
           now() - interval '40 days', now() + interval '60 days', true, v_rid)
@@ -532,6 +552,42 @@ BEGIN
   RETURNING id INTO v_promo;
   INSERT INTO public.promotion_dishes (promotion_id, dish_id, restaurant_id)
   SELECT v_promo, m.dish_id, v_rid FROM demo_menu m WHERE m.grp = 'postre';
+
+  INSERT INTO public.promotions (name, description, kind, buy_quantity, pay_quantity, rest_discount_percent,
+                                 start_date, end_date, days_of_week, time_windows, channels, active, restaurant_id)
+  VALUES ('Happy hour 2x1 en cócteles', 'Lleva 2 cócteles y paga 1; sale gratis el más económico', 'buy_x_pay_y', 2, 1, 100,
+          now() - interval '20 days', NULL, '{1,2,3,4,5}', '[{"from": "17:00", "to": "19:00"}]', '{dine_in}', true, v_rid)
+  RETURNING id INTO v_promo;
+  INSERT INTO public.promotion_categories (promotion_id, category_id, restaurant_id)
+  SELECT v_promo, mc.id, v_rid FROM public.categories mc WHERE mc.restaurant_id = v_rid AND mc.name = 'Cervezas y cócteles';
+
+  INSERT INTO public.promotions (name, description, kind, combo_price, start_date, end_date, days_of_week, time_windows,
+                                 active, restaurant_id)
+  VALUES ('Menú ejecutivo', 'Sopa, plato y bebida por $24.000', 'combo', 24000,
+          now() - interval '20 days', NULL, '{1,2,3,4,5}', '[{"from": "12:00", "to": "15:00"}]', true, v_rid)
+  RETURNING id INTO v_promo;
+  INSERT INTO public.promotion_combo_groups (promotion_id, name, position, restaurant_id) VALUES
+    (v_promo, 'Sopa', 0, v_rid), (v_promo, 'Plato', 1, v_rid), (v_promo, 'Bebida', 2, v_rid);
+  INSERT INTO public.promotion_combo_options (group_id, dish_id, restaurant_id)
+  SELECT g.id, d.id, v_rid
+    FROM (VALUES ('Sopa', 'Crema de ahuyama'), ('Plato', 'Ejecutivo de res'), ('Plato', 'Ejecutivo de pollo'),
+                 ('Plato', 'Ejecutivo de cerdo'), ('Plato', 'Ejecutivo vegetariano'),
+                 ('Bebida', 'Jugo natural en agua'), ('Bebida', 'Gaseosa 400 ml')) AS o(grp, dish)
+    JOIN public.promotion_combo_groups g ON g.promotion_id = v_promo AND g.name = o.grp
+    JOIN public.dishes d ON d.restaurant_id = v_rid AND d.name = o.dish;
+
+  INSERT INTO public.promotions (name, description, kind, discount_type, discount_value, min_subtotal, max_discount,
+                                 start_date, end_date, channels, active, restaurant_id)
+  VALUES ('10% en domicilios desde $80.000', 'Tope de $15.000 por pedido', 'bill_discount', 'percentage', 10, 80000, 15000,
+          now() - interval '20 days', NULL, '{delivery}', true, v_rid);
+
+  INSERT INTO public.promotions (name, description, kind, mode, discount_type, discount_value, max_uses_per_order,
+                                 start_date, end_date, active, restaurant_id)
+  VALUES ('Cortesía de cumpleaños', 'Un postre por cuenta, con PIN de administrador', 'product_discount', 'manual_pin',
+          'percentage', 100, 1, now() - interval '20 days', NULL, true, v_rid)
+  RETURNING id INTO v_promo;
+  INSERT INTO public.promotion_categories (promotion_id, category_id, restaurant_id)
+  SELECT v_promo, mc.id, v_rid FROM public.categories mc WHERE mc.restaurant_id = v_rid AND mc.name = 'Postres';
 
   -- 12 tables on three zones of the floor plan (x, y = centre, normalized).
   -- Bar stools 11 and 12 draw no chairs.

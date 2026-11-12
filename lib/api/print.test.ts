@@ -65,6 +65,21 @@ describe("sendFactura", () => {
     expect(toast).not.toHaveBeenCalled()
   })
 
+  it("S14: sends the invoice's discounts and list-price subtotal in the print job", async () => {
+    const invoice = {
+      invoiceNumber: "F-2",
+      items: [{ id: "i-1", name: "Mojito", price: 24000, quantity: 2, discounts: [{ label: "Happy hour 2x1", amount: 24000, orderItemId: "i-1" }] }],
+      bill: { subtotal: 39000, grossSubtotal: 48000, totalDiscounts: 9000 },
+      discounts: [{ label: "Cortesía", amount: 5000, orderItemId: null }],
+    } as unknown as PrintableInvoice
+    await sendFactura("F-2", invoice, invoice.items)
+
+    const body = api.POST.mock.calls[0]![1].body
+    expect(body.invoice.discounts).toEqual([{ label: "Cortesía", amount: 5000, orderItemId: null }])
+    expect(body.invoice.bill.grossSubtotal).toBe(48000)
+    expect(body.displayItems[0].discounts).toEqual([{ label: "Happy hour 2x1", amount: 24000, orderItemId: "i-1" }])
+  })
+
   it("shows the former failure toast when the request fails", async () => {
     api.POST.mockRejectedValue(new TypeError("Failed to fetch"))
     await expect(sendFactura("F-1", { invoiceNumber: "F-1" } as never, [])).resolves.toBeUndefined()

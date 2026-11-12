@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { UnprocessableEntityException } from '@nestjs/common';
 import { z } from 'zod';
 import { StaffRef } from '../audit/audit.dto';
 import { OTHER_TEXT_ISSUE, requireOtherText, VOID_REASON_CODES, VOID_REASONS, voidReasonFields, type VoidReason } from '../audit/voids';
@@ -40,7 +41,34 @@ const orderItemInputSchema = z.strictObject({
   /** F7: the chosen options; the rules are checked by the database (422 with a modifier_* code). */
   modifiers: z.array(z.strictObject({ optionId: z.guid() })).max(50).optional(),
 });
-const orderItemsSchema = z.array(orderItemInputSchema).min(1).max(MAX_ITEMS);
+
+/** A combo (S5): the promotion and one dish per group; each choice becomes its own order line. */
+const comboLineSchema = z.strictObject({
+  comboPromotionId: z.guid(),
+  choices: z
+    .array(
+      z.strictObject({
+        groupId: z.guid(),
+        dishId: z.guid(),
+        comments: z.string().max(500).nullable().optional(),
+        modifiers: z.array(z.strictObject({ optionId: z.guid() })).max(50).optional(),
+      }),
+    )
+    .min(1)
+    .max(6),
+});
+export type ComboLineInput = z.infer<typeof comboLineSchema>;
+const combosSchema = z.array(comboLineSchema).max(20);
+
+/** items, or combos, or both; at most MAX_ITEMS lines once the combos are expanded. */
+const linesShape = {
+  items: z.array(orderItemInputSchema).max(MAX_ITEMS).optional(),
+  combos: combosSchema.optional(),
+};
+const hasLines = (value: { items?: unknown[]; combos?: { choices: unknown[] }[] }) =>
+  (value.items?.length ?? 0) + (value.combos?.length ?? 0) > 0 &&
+  (value.items?.length ?? 0) + (value.combos ?? []).reduce((sum, combo) => sum + combo.choices.length, 0) <= MAX_ITEMS;
+const LINES_ISSUE = { error: `Send items and/or combos (at most ${MAX_ITEMS} lines)` };
 
 /** Same bounds as orders_guests_check (0014); null clears. */
 const guestsSchema = z
@@ -63,17 +91,27 @@ const notesSchema = z
 const orderDetails = { guests: guestsSchema.optional(), notes: notesSchema.optional() };
 
 /** Delivery orders need their order_deliveries row: they go through create_delivery_order (T11). */
-export const createOrderSchema = z.strictObject({
-  tableId: z.guid(),
-  waiterId: z.guid().optional(),
-  orderType: z.literal('dine_in', { error: 'Only dine_in orders; delivery orders are created by the delivery module' }).optional(),
-  items: orderItemsSchema,
-  tipPercentage: z.number().min(0).max(100).optional(),
-  force: z.boolean().optional(),
-  ...orderDetails,
-});
+export const createOrderSchema = z
+  .strictObject({
+    tableId: z.guid(),
+    waiterId: z.guid().optional(),
+    orderType: z.literal('dine_in', { error: 'Only dine_in orders; delivery orders are created by the delivery module' }).optional(),
+    ...linesShape,
+    tipPercentage: z.number().min(0).max(100).optional(),
+    force: z.boolean().optional(),
+    ...orderDetails,
+  })
+  .refine(hasLines, LINES_ISSUE);
 
-export const addOrderItemsSchema = z.strictObject({ items: orderItemsSchema, force: z.boolean().optional(), ...orderDetails });
+export const addOrderItemsSchema = z.strictObject({ ...linesShape, force: z.boolean().optional(), ...orderDetails }).refine(hasLines, LINES_ISSUE);
+
+/** POST /orders/pricing-preview (S8): draft dish lines and combo lines, as if sent now. */
+const previewDishLineSchema = orderItemInputSchema.omit({ unitPrice: true, comments: true });
+export const pricingPreviewSchema = z.strictObject({
+  channel: z.enum(ORDER_TYPES),
+  orderId: z.guid().optional(),
+  lines: z.array(z.union([previewDishLineSchema, comboLineSchema])).max(MAX_ITEMS),
+});
 
 /** PATCH /orders/:id: guests and/or notes of an open order; null (or a blank note) clears. */
 export const updateOrderDetailsSchema = z
@@ -108,12 +146,96 @@ export const voidOrderItemsSchema = z
   })
   .refine(requireOtherText, OTHER_TEXT_ISSUE);
 
+export const ORDER_DISCOUNT_KINDS = ['promotion_item', 'promotion_bill', 'combo', 'manual_item', 'manual_bill'] as const;
+
+/** The label of a free manual discount (no promotion). */
+export const FREE_DISCOUNT_LABEL = 'Descuento manual';
+export const MANUAL_DISCOUNT_MESSAGES = {
+  reason: 'Escribe el motivo (entre 3 y 200 caracteres)',
+  invalid: 'Elige una promoción manual o un descuento libre (porcentaje de 1 a 100 o valor fijo en pesos)',
+} as const;
+
+/**
+ * POST /orders/:id/discounts (S7): a manual or manual_pin promotion, or a free
+ * discount, on a line (orderItemId) or on the order. authorizationId is the
+ * apply_discount authorization of POST /auth/authorize for this order.
+ */
+export const addOrderDiscountSchema = z
+  .strictObject({
+    orderItemId: z.guid().optional(),
+    promotionId: z.guid().optional(),
+    discountType: z.enum(['percentage', 'fixed_amount']).optional(),
+    discountValue: z.number().int().positive().max(100_000_000).optional(),
+    reason: z
+      .string()
+      .transform((value) => value.trim())
+      .pipe(z.string().min(3).max(200)),
+    authorizationId: z.guid().optional(),
+  })
+  .refine(
+    (input) =>
+      input.promotionId !== undefined
+        ? input.discountType === undefined && input.discountValue === undefined
+        : input.discountType !== undefined && input.discountValue !== undefined && (input.discountType !== 'percentage' || input.discountValue <= 100),
+    { error: MANUAL_DISCOUNT_MESSAGES.invalid },
+  );
+export type AddOrderDiscountInput = z.infer<typeof addOrderDiscountSchema>;
+
+export const removeOrderDiscountSchema = z.strictObject({ authorizationId: z.guid().optional() });
+
+/** The body of a manual discount with machine codes: `discount_reason_invalid` for the reason, else `discount_invalid`. */
+export function parseDiscountBody<T extends z.ZodType>(schema: T, body: unknown): z.infer<T> {
+  const parsed = schema.safeParse(body ?? {});
+  if (parsed.success) {
+    return parsed.data;
+  }
+  const reason = parsed.error.issues.some((issue) => issue.path[0] === 'reason');
+  throw new UnprocessableEntityException({
+    message: reason ? MANUAL_DISCOUNT_MESSAGES.reason : MANUAL_DISCOUNT_MESSAGES.invalid,
+    code: reason ? 'discount_reason_invalid' : 'discount_invalid',
+  });
+}
+
+export class AddOrderDiscountRequest {
+  @ApiPropertyOptional({ format: 'uuid', description: 'A live line of the order; omitted = a discount on the order.' }) orderItemId?: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'A promotion with mode manual (no PIN) or manual_pin: product_discount needs orderItemId, bill_discount must not have it. Without it, discountType and discountValue make a free discount.',
+  })
+  promotionId?: string;
+  @ApiPropertyOptional({ enum: ['percentage', 'fixed_amount'] }) discountType?: 'percentage' | 'fixed_amount';
+  @ApiPropertyOptional({ description: 'Percentage 1-100 or whole pesos.' }) discountValue?: number;
+  @ApiProperty({ minLength: 3, maxLength: 200, description: 'Trimmed.' }) reason!: string;
+  @ApiPropertyOptional({ format: 'uuid', description: 'POST /auth/authorize (action apply_discount, target this order; a void_item one is 403 authorization_invalid); required unless the promotion mode is manual.' })
+  authorizationId?: string;
+}
+
+export class RemoveOrderDiscountRequest {
+  @ApiPropertyOptional({ format: 'uuid', description: 'Same rule as adding: required unless the promotion mode is manual.' }) authorizationId?: string;
+}
+
+/** One order_discounts row (S2, S8). */
+export class OrderDiscount {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ORDER_DISCOUNT_KINDS }) kind!: (typeof ORDER_DISCOUNT_KINDS)[number];
+  @ApiProperty({ enum: ['automatic', 'manual'] }) source!: 'automatic' | 'manual';
+  @ApiProperty({ example: 'Happy hour 2x1', description: 'The promotion name when it was applied.' }) label!: string;
+  @ApiProperty({ description: 'Whole pesos, > 0.' }) amount!: number;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Null for a free manual discount or a deleted promotion.' })
+  promotionId!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Null for a bill discount; a combo discount sits on its first line.' })
+  orderItemId!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) comboId!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Manual discounts only.' }) reason!: string | null;
+  @ApiProperty({ type: StaffRef, nullable: true, description: 'Manual discounts only.' }) authorizedBy!: StaffRef | null;
+}
+
 export class OrderItem {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) orderId!: string | null;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) dishId!: string | null;
   @ApiProperty() name!: string;
-  @ApiProperty({ description: 'Unit price charged.' }) price!: number;
+  @ApiProperty({ description: 'Unit list price, options included; discounts are separate (discounts).' }) price!: number;
   @ApiProperty() quantity!: number;
   @ApiProperty({ type: String, nullable: true }) comments!: string | null;
   @ApiProperty({ enum: ORDER_ITEM_STATUSES }) status!: string;
@@ -131,6 +253,12 @@ export class OrderItem {
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) updatedAt!: string | null;
   @ApiProperty({ type: [OrderItemModifier], description: 'Options chosen on the line, in menu order; their prices are inside price (F7).' })
   modifiers!: OrderItemModifier[];
+  @ApiProperty({ type: [OrderDiscount], description: 'Discounts on this line (a combo discount sits on the first line of the combo).' })
+  discounts!: OrderDiscount[];
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'The promotion fixed when the line was sent (or its combo).' })
+  promotionId!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Its name when the line was sent.' }) promotionName!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Shared by the lines of one combo.' }) comboId!: string | null;
 }
 
 export class Order {
@@ -145,13 +273,16 @@ export class Order {
   @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Waiter profile id.' }) waiterId!: string | null;
   @ApiProperty({ enum: ORDER_STATUSES }) status!: OrderStatus;
   @ApiProperty({ enum: ORDER_TYPES }) orderType!: OrderType;
-  @ApiProperty() subtotal!: number;
+  @ApiProperty({ description: 'Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it.' }) subtotal!: number;
   @ApiProperty() tax!: number;
   @ApiProperty() taxPercentage!: number;
   @ApiProperty() tip!: number;
   @ApiProperty() tipPercentage!: number;
   @ApiProperty() total!: number;
-  @ApiProperty() totalDiscounts!: number;
+  @ApiProperty({ description: 'Sum of discounts (capped at grossSubtotal).' }) totalDiscounts!: number;
+  @ApiProperty({ description: 'Sum of price x quantity at list price.' }) grossSubtotal!: number;
+  @ApiProperty({ type: [OrderDiscount], description: 'Every discount of the order: line discounts in line order, then bill discounts.' })
+  discounts!: OrderDiscount[];
   @ApiProperty() isPartialOrder!: boolean;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) parentOrderId!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) createdAt!: string | null;
@@ -247,7 +378,7 @@ export class OrderItemInput {
   @ApiPropertyOptional({
     minimum: 0,
     description:
-      'Price the client showed: the dish price (promotions applied, server clock) plus the options. A different value answers 409 Price changed; with options the body also carries `lines` [{index, dishId, unitPrice}].',
+      'Price the client showed: the dish LIST price plus the options (promotions are separate discounts). A different value answers 409 Price changed; with options the body also carries `lines` [{index, dishId, unitPrice}].',
   })
   unitPrice?: number;
   @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 }) comments?: string | null;
@@ -260,13 +391,30 @@ export class OrderItemInput {
   modifiers?: OrderItemModifierInput[];
 }
 
+export class ComboChoiceInput {
+  @ApiProperty({ format: 'uuid' }) groupId!: string;
+  @ApiProperty({ format: 'uuid', description: 'One of the dishes of the group.' }) dishId!: string;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 }) comments?: string | null;
+  @ApiPropertyOptional({ type: [OrderItemModifierInput], maxItems: 50, description: 'Same rules as a dish line.' }) modifiers?: OrderItemModifierInput[];
+}
+
+export class ComboLineRequest {
+  @ApiProperty({ format: 'uuid', description: 'A combo promotion active now for the channel.' }) comboPromotionId!: string;
+  @ApiProperty({ type: [ComboChoiceInput], minItems: 1, maxItems: 6, description: 'Exactly one per group.' }) choices!: ComboChoiceInput[];
+}
+
+const COMBOS_DESCRIPTION =
+  'Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.';
+
 export class CreateOrderRequest {
   @ApiProperty({ format: 'uuid' }) tableId!: string;
   @ApiPropertyOptional({ format: 'uuid', description: "Defaults to the table's waiter, else the caller." })
   waiterId?: string;
   @ApiPropertyOptional({ enum: ['dine_in'], default: 'dine_in', description: 'Delivery orders are created by the delivery module.' })
   orderType?: 'dine_in';
-  @ApiProperty({ type: [OrderItemInput], minItems: 1, maxItems: MAX_ITEMS }) items!: OrderItemInput[];
+  @ApiPropertyOptional({ type: [OrderItemInput], maxItems: MAX_ITEMS, description: 'Dish lines; items and/or combos must bring at least one line.' })
+  items?: OrderItemInput[];
+  @ApiPropertyOptional({ type: [ComboLineRequest], maxItems: 20, description: COMBOS_DESCRIPTION }) combos?: ComboLineRequest[];
   @ApiPropertyOptional({ minimum: 0, maximum: 100, description: 'Defaults to the tip_percentage setting.' })
   tipPercentage?: number;
   @ApiPropertyOptional({ default: false, description: 'Send even when check_dishes_stock reports shortages.' })
@@ -278,7 +426,9 @@ export class CreateOrderRequest {
 }
 
 export class AddOrderItemsRequest {
-  @ApiProperty({ type: [OrderItemInput], minItems: 1, maxItems: MAX_ITEMS }) items!: OrderItemInput[];
+  @ApiPropertyOptional({ type: [OrderItemInput], maxItems: MAX_ITEMS, description: 'Dish lines; items and/or combos must bring at least one line.' })
+  items?: OrderItemInput[];
+  @ApiPropertyOptional({ type: [ComboLineRequest], maxItems: 20, description: COMBOS_DESCRIPTION }) combos?: ComboLineRequest[];
   @ApiPropertyOptional({ default: false }) force?: boolean;
   @ApiPropertyOptional({ type: Number, nullable: true, minimum: 1, maximum: 99, description: 'Sets guests; omitted keeps them.' })
   guests?: number | null;
@@ -312,7 +462,7 @@ export class StockShortage {
 
 export class DishPrice {
   @ApiProperty({ format: 'uuid' }) dishId!: string;
-  @ApiProperty({ description: 'Current server price (promotions applied).' }) price!: number;
+  @ApiProperty({ description: 'Current list price.' }) price!: number;
 }
 
 export class PriceChangedResponse {
@@ -334,4 +484,69 @@ export class StockShortageResponse {
   @ApiProperty({ example: 'Conflict' }) error!: string;
   @ApiProperty({ example: 'Insufficient stock' }) message!: string;
   @ApiProperty({ type: [StockShortage] }) shortages!: StockShortage[];
+}
+
+export class PreviewDishLine {
+  @ApiProperty({ format: 'uuid' }) dishId!: string;
+  @ApiProperty({ minimum: 1, maximum: 999 }) quantity!: number;
+  @ApiPropertyOptional({ type: [OrderItemModifierInput], maxItems: 50 }) modifiers?: OrderItemModifierInput[];
+}
+
+export class PricingPreviewRequest {
+  @ApiProperty({ enum: ORDER_TYPES }) channel!: OrderType;
+  @ApiPropertyOptional({ format: 'uuid', description: 'An open order whose lines (sent, with their fixed promotions) are priced with the draft.' })
+  orderId?: string;
+  @ApiProperty({
+    description: 'Draft lines: dish lines and combo lines ({comboPromotionId, choices}).',
+    type: 'array',
+    maxItems: MAX_ITEMS,
+    items: { oneOf: [{ $ref: '#/components/schemas/PreviewDishLine' }, { $ref: '#/components/schemas/ComboLineRequest' }] },
+  })
+  lines!: (PreviewDishLine | ComboLineRequest)[];
+}
+
+export class PreviewDiscount {
+  @ApiProperty({ enum: ORDER_DISCOUNT_KINDS, description: 'manual_item and manual_bill are the order\'s stored manual discounts.' })
+  kind!: (typeof ORDER_DISCOUNT_KINDS)[number];
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Null for a free manual discount.' }) promotionId!: string | null;
+  @ApiProperty() label!: string;
+  @ApiProperty() amount!: number;
+}
+
+export class PreviewLine {
+  @ApiProperty({ description: 'false for a draft line.' }) sent!: boolean;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'The order line; null for a draft.' }) orderItemId!: string | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Index in `lines` of the draft (a combo line expands into one line per choice); null when sent.' })
+  draftIndex!: number | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) dishId!: string | null;
+  @ApiProperty() name!: string;
+  @ApiProperty() quantity!: number;
+  @ApiProperty({ description: 'Unit list price, options included.' }) unitPrice!: number;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Fixed when sent; for a draft, the promotion it would be sent with now.' })
+  promotionId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) promotionName!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Shared by the lines of a combo; drafts get a temporary `draft-combo-N`.' })
+  comboId!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) addedAt!: string | null;
+  @ApiProperty({ type: [PreviewDiscount] }) discounts!: PreviewDiscount[];
+}
+
+export class PricingHintDto {
+  @ApiProperty({ enum: ['missing_units', 'window_ending', 'bill_minimum'] }) kind!: 'missing_units' | 'window_ending' | 'bill_minimum';
+  @ApiProperty({ format: 'uuid' }) promotionId!: string;
+  @ApiProperty({ example: 'Falta 1 unidad para otro 2x1.' }) message!: string;
+  @ApiPropertyOptional({ description: 'missing_units: units; bill_minimum: pesos.' }) missing?: number;
+  @ApiPropertyOptional({ description: 'window_ending: minutes until the window ends (<= 10).' }) minutesLeft?: number;
+}
+
+export class PricingPreview {
+  @ApiProperty({ enum: ORDER_TYPES }) channel!: OrderType;
+  @ApiProperty({ format: 'date-time' }) now!: string;
+  @ApiProperty({ type: [PreviewLine], description: 'Sent lines first (oldest first), then the drafts in order.' }) lines!: PreviewLine[];
+  @ApiProperty({ type: PreviewDiscount, nullable: true }) billDiscount!: PreviewDiscount | null;
+  @ApiProperty({ type: [PreviewDiscount], description: 'The order\'s manual discounts on the bill (manual_bill).' }) manualDiscounts!: PreviewDiscount[];
+  @ApiProperty() grossSubtotal!: number;
+  @ApiProperty({ description: 'Automatic line, combo and bill discounts plus the order\'s manual discounts (capped at grossSubtotal).' }) totalDiscounts!: number;
+  @ApiProperty() netSubtotal!: number;
+  @ApiProperty({ type: [PricingHintDto] }) hints!: PricingHintDto[];
 }

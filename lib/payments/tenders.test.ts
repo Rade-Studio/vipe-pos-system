@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computePaymentState, applySurplusAsTip, buildPayOrderTenders } from './tenders'
+import { computePaymentState, applySurplusAsTip, buildPayOrderTenders, zeroTotalTenders } from './tenders'
 import type { PaymentMethodOption } from './types'
 
 const CASH: PaymentMethodOption = {
@@ -386,5 +386,16 @@ describe('buildPayOrderTenders with references (T24)', () => {
       { payment_method_id: CASH.id, amount: 17000, cash_received: 17000 },
     ])
     expect(Object.keys(buildPayOrderTenders(state)[1]!)).toEqual(['payment_method_id', 'amount', 'cash_received'])
+  })
+})
+
+// S13: a fully discounted order is closed with one cash tender of 0.
+describe('zeroTotalTenders', () => {
+  it('sends one cash tender of 0 with cash received 0 (no change)', () => {
+    expect(zeroTotalTenders([NEQUI, CASH])).toEqual([{ payment_method_id: 'cash-id', amount: 0, cash_received: 0 }])
+  })
+
+  it('without an active cash method there is nothing to send', () => {
+    expect(zeroTotalTenders([NEQUI, { ...CASH, isActive: false }])).toEqual([])
   })
 })

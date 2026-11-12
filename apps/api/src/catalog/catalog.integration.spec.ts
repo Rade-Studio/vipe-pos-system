@@ -180,28 +180,21 @@ describe('catalog endpoints (Testcontainers, vipe_api)', () => {
       expect(res.body.map((row: { id: string }) => row.id)).toEqual([c.otherDish]);
     });
 
-    it('applies the best active promotion with pricing=promotions and leaves other dishes untouched', async () => {
+    it('keeps the list price with pricing=promotions and names the best active promotion', async () => {
       const res = await waiterA().get('/api/catalog/dishes?pricing=promotions');
       expect(res.status).toBe(200);
       const [arepa, bandeja, jugo] = res.body;
       // Lunch 20% of 10000 = 2000 loses to Combo fixed 3000.
       expect(arepa).toMatchObject({
-        price: 7000,
-        originalPrice: 10000,
-        discountAmount: 3000,
-        discountPercentage: null,
+        price: 10000,
+        promoPrice: 7000,
         promotionId: c.combo,
         promotionName: 'Combo',
+        promotionBadge: '-$3.000',
+        promotionEndsAt: null,
       });
       // Expired and disabled 90% promotions are ignored; Lunch 20% applies.
-      expect(bandeja).toMatchObject({
-        price: 16000,
-        originalPrice: 20000,
-        discountAmount: 4000,
-        discountPercentage: 20,
-        promotionId: c.lunch,
-        promotionName: 'Almuerzo',
-      });
+      expect(bandeja).toMatchObject({ price: 20000, promoPrice: 16000, promotionId: c.lunch, promotionName: 'Almuerzo', promotionBadge: '20%' });
       expect(Object.keys(jugo).sort()).toEqual(DISH_KEYS);
       expect(jugo.price).toBe(5000);
     });
@@ -256,15 +249,19 @@ describe('catalog endpoints (Testcontainers, vipe_api)', () => {
       const res = await waiterA().get('/api/catalog/promotions');
       expect(res.status).toBe(200);
       expect(res.body.map((row: { id: string }) => row.id)).toEqual([c.disabled, c.expired, c.combo, c.lunch]);
-      expect(res.body[3]).toEqual({
+      expect(res.body[3]).toMatchObject({
         id: c.lunch,
         name: 'Almuerzo',
         description: null,
+        kind: 'product_discount',
+        mode: 'automatic',
         discountType: 'percentage',
         discountValue: 20,
         startDate: expect.stringMatching(/Z$/),
         endDate: expect.stringMatching(/Z$/),
         active: true,
+        targets: { dishIds: expect.any(Array), categoryIds: [], subcategoryIds: [] },
+        badge: '20%',
         createdAt: expect.stringMatching(/Z$/),
         updatedAt: expect.stringMatching(/Z$/),
       });

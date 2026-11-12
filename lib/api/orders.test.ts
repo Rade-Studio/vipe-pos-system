@@ -21,6 +21,7 @@ vi.mock("@/lib/api/client", () => ({ api }))
 import {
   addItemsToOrder,
   cancelOrder,
+  combosFromCart,
   create,
   deleteOrder,
   getCancelledOrders,
@@ -54,6 +55,8 @@ function dto(overrides: Partial<OrderDto> = {}): OrderDto {
     tipPercentage: 10,
     total: 23600,
     totalDiscounts: 500,
+    grossSubtotal: 20500,
+    discounts: [],
     isPartialOrder: false,
     parentOrderId: null,
     createdAt: "2026-11-04T12:00:00.000Z",
@@ -74,6 +77,10 @@ function dto(overrides: Partial<OrderDto> = {}): OrderDto {
         createdAt: "2026-11-04T12:00:00.000Z",
         updatedAt: null,
         modifiers: [],
+        discounts: [],
+        promotionId: null,
+        promotionName: null,
+        comboId: null,
       },
     ],
     ...overrides,
@@ -412,5 +419,85 @@ describe("modifiers (F7)", () => {
     const prices = [{ dishId: D, price: 23000 }]
     const error = new ApiError(409, "Conflict", "Price changed", { statusCode: 409, prices, lines })
     expect(orderConflictOf(error)).toEqual({ kind: "priceChanged", prices, lines })
+  })
+})
+
+describe("promotions on the order (S8, S11, S12)", () => {
+  const D = "11111111-1111-4111-8111-111111111111"
+  const combo = {
+    id: "combo-1",
+    name: "Menú ejecutivo",
+    price: 33000,
+    quantity: 2,
+    categoryId: "",
+    image: "",
+    combo: {
+      promotionId: "p-ejec",
+      comboPrice: 24000,
+      listPrice: 33000,
+      choices: [
+        { groupId: "g-sopa", dishId: "d-ajiaco", name: "Ajiaco", price: 9000 },
+        { groupId: "g-principio", dishId: "d-bandeja", name: "Bandeja", price: 24000 },
+      ],
+    },
+  }
+  const plain = { id: `${D}-a`, name: "Mojito", price: 24000, quantity: 1, categoryId: "", image: "" }
+
+  it("sends a combo line per unit in combos and leaves it out of items", () => {
+    expect(orderItemsFromCart([plain, combo])).toEqual([{ dishId: D, quantity: 1, unitPrice: 24000, comments: null }])
+    const line = { comboPromotionId: "p-ejec", choices: [{ groupId: "g-sopa", dishId: "d-ajiaco" }, { groupId: "g-principio", dishId: "d-bandeja" }] }
+    expect(combosFromCart([plain, combo])).toEqual([line, line])
+    expect(combosFromCart([plain])).toEqual([])
+  })
+
+  it("add-items carries combos only when there are some", async () => {
+    api.POST.mockResolvedValue({ data: dto() })
+    const combos = combosFromCart([combo])
+    await addItemsToOrder("o-1", [], { combos })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/orders/{id}/items", { params: { path: { id: "o-1" } }, body: { items: [], combos } })
+    await addItemsToOrder("o-1", [], { combos: [] })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/orders/{id}/items", { params: { path: { id: "o-1" } }, body: { items: [] } })
+  })
+
+  it("maps a line's discounts and combo, and leaves both out of a line without them", () => {
+    const discount = {
+      id: "od-1",
+      kind: "promotion_item" as const,
+      source: "automatic" as const,
+      label: "Happy hour 2x1",
+      amount: 24000,
+      promotionId: "p-hh",
+      orderItemId: "i-1",
+      comboId: null,
+      reason: null,
+      authorizedBy: null,
+    }
+    const order = toOrder(dto({ items: [{ ...dto().items[0]!, discounts: [discount], comboId: "c-1" }] }))
+    expect(order.items[0]).toMatchObject({
+      discounts: [{ id: "od-1", kind: "promotion_item", label: "Happy hour 2x1", amount: 24000, promotionId: "p-hh", authorizedBy: null }],
+      comboId: "c-1",
+    })
+    const bare = toOrder(dto()).items[0]!
+    expect("discounts" in bare).toBe(false)
+    expect("comboId" in bare).toBe(false)
+  })
+
+  it("keeps a manual line discount's id and who authorized it", () => {
+    const manual = {
+      id: "od-2",
+      kind: "manual_item" as const,
+      source: "manual" as const,
+      label: "Cortesía",
+      amount: 5000,
+      promotionId: null,
+      orderItemId: "i-1",
+      comboId: null,
+      reason: "Cliente frecuente",
+      authorizedBy: { id: "s-1", name: "Carlos Pérez" },
+    }
+    const order = toOrder(dto({ items: [{ ...dto().items[0]!, discounts: [manual] }] }))
+    expect((order.items[0] as { discounts?: unknown }).discounts).toEqual([
+      { id: "od-2", kind: "manual_item", label: "Cortesía", amount: 5000, promotionId: null, authorizedBy: { id: "s-1", name: "Carlos Pérez" } },
+    ])
   })
 })

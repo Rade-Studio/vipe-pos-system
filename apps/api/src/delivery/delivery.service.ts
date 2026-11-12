@@ -9,6 +9,7 @@ import { UnitOfWork } from '../db/unit-of-work';
 import { definedColumns, insertColumns, one, rows, rpc, setList } from '../inventory/inventory-sql';
 import { SalesService } from '../inventory/sales.service';
 import { PrintService } from '../print/print.service';
+import { OrderDiscountsService } from '../promotions/order-discounts.service';
 import type { cancelOrderSchema } from '../orders/orders.dto';
 import type {
   ClosedTodaySummary,
@@ -102,6 +103,7 @@ export class DeliveryService {
     private readonly print: PrintService,
     private readonly clock: Clock,
     private readonly voids: VoidsService,
+    private readonly discounts: OrderDiscountsService,
   ) {}
 
   /** `phone` is already normalised; RLS limits it to the caller's restaurant. */
@@ -175,7 +177,8 @@ export class DeliveryService {
 
   /**
    * One transaction: create_delivery_order (arguments mapped exactly as
-   * delivery-service.ts did), consume_order_stock (a shortage is reported in
+   * delivery-service.ts did), the promotions of the lines and the automatic
+   * discounts (OrderDiscountsService), consume_order_stock (a shortage is reported in
    * `consumption`, the order stands, as with the web's fire-and-forget call),
    * and the kitchen command job, which reaches the printers after the commit.
    * Any failure, the print enqueue included, rolls everything back.
@@ -203,6 +206,11 @@ export class DeliveryService {
       throw modifierError(error) ?? error;
     });
     const orderId = String(created.order_id);
+    // S3: create_delivery_order stores list prices; the lines get the promotion they qualify for now on
+    // the delivery channel, then the automatic discounts (bill discount included) and the bill.
+    const itemIds = (await rows<{ id: string }>(this.uow, sql`SELECT id FROM public.order_items WHERE order_id = ${orderId}`)).map((r) => r.id);
+    await this.discounts.tagUntagged(orderId, itemIds);
+    await this.discounts.recompute(orderId);
     const delivery = await this.readDelivery(orderId);
 
     const consumption = await this.sales.consume(orderId);

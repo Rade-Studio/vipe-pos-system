@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useReducer, useRef, useState, type ReactNode } from "react"
-import { ArrowLeft, Check, ChevronRight, Layers, Minus, Plus } from "lucide-react"
+import { ArrowLeft, Check, ChevronRight, Layers, Minus, Plus, UtensilsCrossed } from "lucide-react"
 
 import type { MenuTreeCategoryDto, MenuTreeDishDto } from "@/lib/api/catalog"
 import { categoryMeta, dishCount, dishesOf, NO_SUBCATEGORY, skipsSubcategories, subcategoryChoices } from "@/lib/order-steps/menu"
@@ -27,6 +27,8 @@ import { CategoryIcon } from "./CategoryIcon"
 import { categoryTone } from "./tones"
 import { ModifierSheet, type ModifierSheetResult } from "@/components/modifiers/ModifierSheet"
 import type { LineModifier } from "@/lib/modifiers/rules"
+import type { PromoTag } from "@/lib/promotions/waiter"
+import { PromoTagPill } from "@/components/promotions/PromoTagPill"
 
 export interface StepPickerItem {
   dish: MenuTreeDishDto
@@ -37,6 +39,25 @@ export interface StepPickerItem {
   /** F7: the chosen options and the unit price with them; only for a dish with modifier groups. */
   modifiers?: LineModifier[]
   unitPrice?: number
+}
+
+/** S11: the promotion tag of a tile, if any ("2x1 · hasta 19:00"). */
+export interface StepPickerTags {
+  category?: (category: MenuTreeCategoryDto) => PromoTag | null
+  /** `null` is the "Sin subcategoría" choice. */
+  subcategory?: (category: MenuTreeCategoryDto, subcategoryId: string | null) => PromoTag | null
+  dish?: (dish: MenuTreeDishDto) => PromoTag | null
+}
+
+/** S12: a tile after the categories that is not a category (a combo: "Almuerzo ejecutivo"). */
+export interface StepPickerExtraTile {
+  id: string
+  name: string
+  meta: string
+  tag?: PromoTag | null
+  /** Shown dashed; a tap calls `onSelect` too (it explains why, e.g. with a toast). */
+  disabled?: boolean
+  onSelect: () => void
 }
 
 export interface StepPickerProps {
@@ -67,6 +88,10 @@ export interface StepPickerProps {
    */
   embedded?: boolean
   className?: string
+  /** Above the step crumbs (the promotion strip, S11). */
+  banner?: ReactNode
+  tags?: StepPickerTags
+  extraTiles?: readonly StepPickerExtraTile[]
 }
 
 const TILE =
@@ -99,6 +124,14 @@ function TileIcon({ category, large }: { category: MenuTreeCategoryDto; large?: 
       <CategoryIcon name={category.icon} className="h-[26px] w-[26px]" />
     </span>
   )
+}
+
+function TileTag({ tag }: { tag: PromoTag | null | undefined }) {
+  return tag ? (
+    <span className="flex w-full">
+      <PromoTagPill tag={tag} />
+    </span>
+  ) : null
 }
 
 function StageHeading({ title, hint, headingRef }: { title: string; hint?: string; headingRef: React.Ref<HTMLHeadingElement> }) {
@@ -134,6 +167,9 @@ export function StepPicker({
   onCloseOverlay,
   embedded = false,
   className,
+  banner,
+  tags,
+  extraTiles = [],
 }: StepPickerProps) {
   const GRID = embedded ? EMBEDDED_GRID : FULL_GRID
   const showHeader = !embedded || header != null
@@ -259,9 +295,42 @@ export function StepPicker({
                     {entry.name}
                   </span>
                   <span className="text-sm leading-tight text-fg-2">{categoryMeta(entry)}</span>
+                  <TileTag tag={tags?.category?.(entry)} />
                 </button>
               )
             })}
+            {extraTiles.map((extra) => (
+              <button
+                key={extra.id}
+                type="button"
+                aria-disabled={extra.disabled || undefined}
+                className={cn(
+                  TILE,
+                  extra.disabled
+                    ? "cursor-not-allowed border-dashed border-line-strong bg-surface-2 shadow-none motion-safe:active:translate-y-0 motion-safe:active:scale-100"
+                    : "border-status-warning-line bg-status-warning-bg",
+                )}
+                onClick={extra.onSelect}
+              >
+                <Bar className={extra.disabled ? "bg-line-strong" : "bg-status-warning-fg"} />
+                <span
+                  aria-hidden
+                  className="grid h-12 w-12 flex-none place-items-center rounded-[14px] bg-card text-status-warning-fg shadow-[inset_0_0_0_1px_var(--line-strong)] min-[1440px]:h-14 min-[1440px]:w-14"
+                >
+                  <UtensilsCrossed className="h-[26px] w-[26px]" />
+                </span>
+                <span
+                  className={cn(
+                    "mt-auto min-w-0 max-w-full text-lg font-semibold leading-snug [overflow-wrap:anywhere] lg:text-[19px] min-[1440px]:text-xl",
+                    extra.disabled && "text-fg-2",
+                  )}
+                >
+                  {extra.name}
+                </span>
+                <span className="text-sm leading-tight text-fg-2">{extra.meta}</span>
+                <TileTag tag={extra.tag} />
+              </button>
+            ))}
           </div>
         </>
       )
@@ -287,6 +356,7 @@ export function StepPicker({
                   {choice.name}
                 </span>
                 <span className="text-sm leading-tight text-fg-2">{dishCount(choice.count)}</span>
+                <TileTag tag={tags?.subcategory?.(category, choice.id)} />
               </button>
             ))}
           </div>
@@ -316,12 +386,13 @@ export function StepPicker({
             <div className={GRID}>
               {dishes.map((entry) => {
                 const out = !entry.available
+                const tag = out ? null : tags?.dish?.(entry)
                 return (
                   <button
                     key={entry.id}
                     type="button"
                     aria-disabled={out || undefined}
-                    aria-label={`${entry.name}, ${formatCurrency(entry.price)}${out ? ", agotado" : ""}`}
+                    aria-label={`${entry.name}, ${formatCurrency(entry.price)}${out ? ", agotado" : ""}${tag ? `, ${tag.text}` : ""}`}
                     className={cn(
                       TILE,
                       out
@@ -345,11 +416,16 @@ export function StepPicker({
                     </span>
                     <span className="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-1.5">
                       <span className="flex flex-col">
-                        {entry.originalPrice != null && entry.originalPrice > entry.price && (
-                          <span className="text-xs tabular-nums text-muted-fg line-through">{formatCurrency(entry.originalPrice)}</span>
+                        {entry.promoPrice != null && entry.promoPrice < entry.price ? (
+                          <>
+                            <span className="text-xs tabular-nums text-muted-fg line-through">{formatCurrency(entry.price)}</span>
+                            <span className="text-lg font-semibold tabular-nums">{formatCurrency(entry.promoPrice)}</span>
+                          </>
+                        ) : (
+                          <span className="text-lg font-semibold tabular-nums">{formatCurrency(entry.price)}</span>
                         )}
-                        <span className="text-lg font-semibold tabular-nums">{formatCurrency(entry.price)}</span>
                       </span>
+                      {tag && <PromoTagPill tag={tag} />}
                       {!out && entry.modifierGroups.length > 0 && (
                         <span className="inline-flex h-7 flex-none items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-card px-2.5 text-[13px] font-medium text-fg-2">
                           <Layers className="h-3.5 w-3.5" aria-hidden />
@@ -456,6 +532,8 @@ export function StepPicker({
         <header className="col-span-full flex min-w-0 items-center gap-2.5 border-b border-line px-3 py-2 md:px-5 md:py-2.5">{header}</header>
       )}
 
+      <div className="min-w-0">
+      {banner && <div className="px-2 pt-2 md:px-5 md:pt-2.5">{banner}</div>}
       <nav aria-label="Pasos para agregar" className="min-w-0 border-b border-line p-2 md:px-5 md:py-2.5">
         <ol className="grid grid-cols-4 gap-1 md:gap-2">
           {([1, 2, 3, 4] as Step[]).map((n) => {
@@ -503,6 +581,7 @@ export function StepPicker({
           })}
         </ol>
       </nav>
+      </div>
 
       <main ref={mainRef} className="min-h-0 min-w-0 overflow-y-auto overscroll-contain">
         <div
