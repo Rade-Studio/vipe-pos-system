@@ -332,12 +332,11 @@ describe('menu tree endpoints (Testcontainers, vipe_api)', () => {
         expect(mains.dishes[0]).toMatchObject({
           id: m.ajiaco,
           name: 'Ajiaco',
-          price: 18000,
-          originalPrice: 20000,
-          discountAmount: 2000,
-          discountPercentage: 10,
+          price: 20000,
+          promoPrice: 18000,
           promotionId: m.promo,
           promotionName: 'Mediodía',
+          promotionBadge: '10%',
           subcategoryId: m.soups,
           available: true,
         });

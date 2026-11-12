@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SalesService } from '../inventory/sales.service';
+import { PromotionsModule } from '../promotions/promotions.module';
 import {
   CategoriesController,
   DishesController,
@@ -19,6 +20,7 @@ import { SubcategoriesService } from './subcategories.service';
 // UnitOfWork; providing it here rather than importing InventoryModule keeps the
 // module init order, and with it the OpenAPI path order, unchanged.
 @Module({
+  imports: [PromotionsModule],
   controllers: [
     CategoriesController,
     DishesController,
@@ -29,6 +31,6 @@ import { SubcategoriesService } from './subcategories.service';
     ModifierOptionsController,
   ],
   providers: [CategoriesService, SubcategoriesService, DishesService, PromotionsService, MenuService, SalesService, ModifiersService],
-  exports: [DishesService],
+  exports: [DishesService, PromotionsService],
 })
 export class CatalogModule {}
