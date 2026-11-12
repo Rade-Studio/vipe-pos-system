@@ -30,7 +30,7 @@ Redesign of the admin Inventory screens following the approved design `design/in
 
 ## Tasks
 
-- [ ] T1. S1: Compras redesign (web only, existing API). Route: worker. Commit: -
+- [x] T1. S1: Compras redesign (web only, existing API). Route: worker. RED: purchasing 10/20 failed (6 new + 4 editor tests behind the Borradores chip). GREEN: 20/20; components/admin+lib+hooks+views 906 passed. Proveedores tab and receive dialog unchanged (API lacks per-supplier month/payable totals). Commit: 7606d9b, PR #187.
 - [ ] T2. S3: transfer documents with lines, statuses and the in-transit place (migration, API, availability and counts exclude in-transit stock). Route: worker. Commit: -
 - [ ] T3. S2, S3: Transferencias screen, list and new-transfer page (web). Route: worker (after T2). Commit: -
 - [ ] T4. S4: Movimientos API additions (range totals, document labels, author names) and redesign. Route: worker. Commit: -
