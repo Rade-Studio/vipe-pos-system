@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/admin/common/EmptyState"
 import { PageHeader } from "@/components/admin/common/PageHeader"
 import { Panel } from "@/components/admin/common/Panel"
 import { formatMoney, QuantityInput } from "@/components/admin/inventory-shared"
-import { NativeSelect, signedClass } from "@/components/admin/stock/stock-ui"
+import { signedClass } from "@/components/admin/stock/stock-ui"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,26 +18,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  useApplyCount,
-  useCancelCount,
-  useInventoryCategories,
-  useInventoryCount,
-  useInventoryCounts,
-  useInventoryItems,
-  useInventoryLocations,
-  useOpenCount,
-  useSetCountedQuantity,
-} from "@/hooks/inventory"
+import { useApplyCount, useCancelCount, useInventoryCount, useInventoryCounts, useInventoryItems, useSetCountedQuantity } from "@/hooks/inventory"
 import { useToast } from "@/hooks/use-toast"
 import {
   buildCountRows,
@@ -48,22 +34,22 @@ import {
   type CountSheetRow,
 } from "@/lib/inventory/count-sheet"
 import { formatQuantity } from "@/lib/inventory/units"
-import type { CountStatus, InventoryCount } from "@/lib/api/inventory/types"
+import type { InventoryCount } from "@/lib/api/inventory/types"
 import { cn } from "@/lib/utils"
+import { CountReview } from "./CountReview"
+import { CountStageBadge, CountSteps, errorMessage, isAssigned } from "./count-ui"
+import { PrepareCount } from "./PrepareCount"
 
 interface CountsPageProps {
   description: string
   onNavigate?: (sectionId: string) => void
 }
 
-const STATUS_LABEL: Record<CountStatus, string> = { open: "Abierto", applied: "Aplicado", cancelled: "Cancelado" }
-const STATUS_VARIANT = { open: "warning", applied: "default", cancelled: "outline" } as const
 
 const FILTER_LABEL: Record<CountRowFilter, string> = { pending: "Pendientes", diff: "Con diferencia", all: "Todos" }
 
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString("es-CO", { dateStyle: "medium" })
 
-const errorMessage = (error: unknown) => (error as { message?: string })?.message ?? "Ocurrió un error."
 
 /** Item cost by id, used to value count differences. */
 function useCostById() {
@@ -74,20 +60,49 @@ function useCostById() {
 export function CountsPage({ description, onNavigate }: CountsPageProps) {
   const counts = useInventoryCounts()
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
+  const [preparing, setPreparing] = useState(false)
 
-  if (selectedId) return <CountSheet countId={selectedId} onBack={() => setSelectedId(null)} />
+  if (selectedId) return <CountDetail countId={selectedId} onBack={() => setSelectedId(null)} onNavigate={onNavigate} />
+  if (preparing)
+    return (
+      <PrepareCount
+        onBack={() => setPreparing(false)}
+        onOpened={(countId) => {
+          setPreparing(false)
+          setSelectedId(countId)
+        }}
+      />
+    )
 
   const columns: DataTableColumn<InventoryCount>[] = [
     { id: "number", header: "N.º", cell: (c) => <span className="tabular-nums">#{c.number}</span> },
     { id: "location", header: "Bodega", cell: (c) => c.locationName ?? "—" },
     {
-      id: "status",
-      header: "Estado",
-      cell: (c) => <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>,
+      id: "people",
+      header: "Cuenta · revisa",
+      cell: (c) =>
+        isAssigned(c) ? (
+          <span className="text-sm">
+            {c.counterName}
+            <span className="block text-xs text-muted-foreground">Revisa {c.approverName ?? "—"}</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
     },
+    { id: "status", header: "Estado", cell: (c) => <CountStageBadge count={c} /> },
     { id: "progress", header: "Líneas contadas", cell: (c) => <CountStats countId={c.id} show="progress" /> },
-    { id: "delta", header: "Diferencia valorizada", className: "text-right", cell: (c) => <CountStats countId={c.id} show="delta" /> },
+    {
+      id: "delta",
+      header: "Diferencia valorizada",
+      className: "text-right",
+      cell: (c) =>
+        c.differenceValue === undefined ? (
+          <CountStats countId={c.id} show="delta" />
+        ) : (
+          <span className={cn("tabular-nums", signedClass(c.differenceValue))}>{formatMoney(c.differenceValue)}</span>
+        ),
+    },
     { id: "date", header: "Fecha", cell: (c) => formatDate(c.appliedAt ?? c.createdAt) },
   ]
 
@@ -97,11 +112,13 @@ export function CountsPage({ description, onNavigate }: CountsPageProps) {
         title="Conteos físicos"
         description={description}
         actions={
-          <Button onClick={() => setCreating(true)}>
+          <Button onClick={() => setPreparing(true)}>
             <Plus className="mr-1 h-4 w-4" /> Nuevo conteo
           </Button>
         }
       />
+
+      <CountSteps />
 
       <div className="flex flex-col gap-2 rounded-lg border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-muted-foreground">
@@ -121,7 +138,7 @@ export function CountsPage({ description, onNavigate }: CountsPageProps) {
           getRowId={(c) => c.id}
           isLoading={counts.isLoading}
           onRowClick={(c) => setSelectedId(c.id)}
-          searchText={(c) => `${c.number} ${c.locationName ?? ""} ${c.notes ?? ""}`}
+          searchText={(c) => `${c.number} ${c.locationName ?? ""} ${c.counterName ?? ""} ${c.notes ?? ""}`}
           searchPlaceholder="Buscar conteo…"
           empty={
             <EmptyState
@@ -132,17 +149,15 @@ export function CountsPage({ description, onNavigate }: CountsPageProps) {
           }
         />
       </Panel>
-
-      <NewCountDialog
-        open={creating}
-        onOpenChange={setCreating}
-        onOpened={(countId) => {
-          setCreating(false)
-          setSelectedId(countId)
-        }}
-      />
     </div>
   )
+}
+
+/** An assigned count follows the S5 stages; an unassigned one keeps the admin sheet. */
+function CountDetail({ countId, onBack, onNavigate }: { countId: string; onBack: () => void; onNavigate?: (sectionId: string) => void }) {
+  const detail = useInventoryCount(countId)
+  if (detail.data && isAssigned(detail.data)) return <CountReview count={detail.data} onBack={onBack} onNavigate={onNavigate} />
+  return <CountSheet countId={countId} onBack={onBack} />
 }
 
 /** Per-count progress or valued difference; the detail query is shared by both cells. */
@@ -161,101 +176,6 @@ function CountStats({ countId, show }: { countId: string; show: "progress" | "de
   }
   const { valueDelta } = countApplySummary(rows)
   return <span className={cn("tabular-nums", signedClass(valueDelta))}>{formatMoney(valueDelta)}</span>
-}
-
-interface NewCountDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onOpened: (countId: string) => void
-}
-
-function NewCountDialog({ open, onOpenChange, onOpened }: NewCountDialogProps) {
-  const { toast } = useToast()
-  const locations = (useInventoryLocations().data ?? []).filter((l) => l.isActive)
-  const categories = useInventoryCategories().data ?? []
-  const items = useInventoryItems().data ?? []
-  const openCount = useOpenCount()
-  const [locationId, setLocationId] = useState("")
-  const [categoryId, setCategoryId] = useState("")
-  const [notes, setNotes] = useState("")
-  const [error, setError] = useState<string | null>(null)
-
-  const effectiveLocationId = locationId || locations.find((l) => l.isDefault)?.id || locations[0]?.id || ""
-  const categoryItemIds = categoryId
-    ? items.filter((item) => item.isActive && item.categoryId === categoryId).map((item) => item.id)
-    : null
-
-  const submit = async () => {
-    setError(null)
-    if (categoryItemIds && categoryItemIds.length === 0) {
-      setError("La categoría no tiene artículos activos.")
-      return
-    }
-    try {
-      const result = await openCount.mutateAsync({
-        locationId: effectiveLocationId || null,
-        itemIds: categoryItemIds,
-        notes: notes.trim() || null,
-      })
-      toast({ title: `Conteo #${result.number} abierto`, description: `${result.linesCount} artículos por contar` })
-      setCategoryId("")
-      setNotes("")
-      onOpened(result.countId)
-    } catch (err) {
-      setError(errorMessage(err))
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Nuevo conteo</DialogTitle>
-          <DialogDescription>Se toma una foto del stock esperado al abrir el conteo.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="count-location">Bodega</Label>
-            <NativeSelect id="count-location" value={effectiveLocationId} onChange={(e) => setLocationId(e.target.value)}>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="count-category">Artículos</Label>
-            <NativeSelect id="count-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">Todos los artículos</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  Categoría: {c.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="count-notes">Notas (opcional)</Label>
-            <Textarea id="count-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={submit} disabled={openCount.isPending}>
-            {openCount.isPending ? "Abriendo…" : "Abrir conteo"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
 }
 
 function CountSheet({ countId, onBack }: { countId: string; onBack: () => void }) {
@@ -326,7 +246,7 @@ function CountSheet({ countId, onBack }: { countId: string; onBack: () => void }
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
             {count.locationName}
-            <Badge variant={STATUS_VARIANT[count.status]}>{STATUS_LABEL[count.status]}</Badge>
+            <CountStageBadge count={count} />
             {count.notes && <span>· {count.notes}</span>}
           </span>
         }
