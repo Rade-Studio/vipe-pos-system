@@ -44,6 +44,7 @@ const methods = (totals: number[]) =>
   }))
 
 const DAY: CashDay = {
+  z: null,
   date: "2026-11-11",
   status: "empty",
   registers: [],

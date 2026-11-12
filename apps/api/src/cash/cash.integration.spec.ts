@@ -55,11 +55,19 @@ const c = {
   withdrawal: '97000000-0000-0000-0000-000000000d02',
   auditVoid: '97000000-0000-0000-0000-000000000e01',
   auditCancel: '97000000-0000-0000-0000-000000000e02',
+  regSep1: '97000000-0000-0000-0000-000000000a91',
+  regSep2: '97000000-0000-0000-0000-000000000a92',
 } as const;
 
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const REGISTER_OPEN = 'La caja sigue abierta: ciérrala antes de validar el turno.';
 const RANGE_TOO_LONG = 'El período no puede superar 366 días.';
 const RANGE_INVERTED = 'La fecha inicial debe ser anterior o igual a la final.';
-const DAY_KEYS = ['date', 'previous', 'registers', 'status', 'tipsByWaiter', 'totals', 'voids'];
+const DAY_KEYS = ['date', 'previous', 'registers', 'status', 'tipsByWaiter', 'totals', 'voids', 'z'];
+const DAY_OPEN = 'Hay un turno abierto en este día: ciérralo antes de emitir el informe Z.';
+const DAY_EMPTY = 'No hay turnos de caja en este día: no hay nada que cerrar.';
+const Z_KEYS = ['businessDay', 'emittedAt', 'emittedBy', 'number', 'snapshot'];
+const SNAPSHOT_KEYS = ['date', 'discounts', 'orders', 'previous', 'registers', 'status', 'taxes', 'tipsByMethod', 'tipsByWaiter', 'totals', 'voids'];
 const DAY_REGISTER_KEYS = [
   'cashDifference', 'closeNote', 'closedAt', 'closedBy', 'countedCash', 'deposits', 'expected', 'id', 'initialCash', 'methods',
   'openedAt', 'openedBy', 'salesNet', 'status', 'tickets', 'tips', 'tipsPayout', 'validatedAt', 'validatedBy', 'withdrawals',
@@ -105,6 +113,7 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
     const cookie = cookies[email];
     return {
       get: (url: string) => server.get(url).set('Cookie', cookie),
+      post: (url: string, body?: object) => server.post(url).set('Cookie', cookie).send(body),
     };
   };
   const adminA = () => as(fixtures.adminA.email);
@@ -359,6 +368,171 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       expect(body.previous).toMatchObject({ salesNet: 0 });
       expect(body.byCashier).toEqual([]);
       expect(body.tipsByWaiter).toEqual([]);
+    });
+  });
+
+  describe('POST /registers/:id/validate (S7)', () => {
+    it('refuses a cashier (403), an open register (409) and another restaurant (404), changing nothing', async () => {
+      expect((await cashierA().post(`/api/registers/${c.reg1}/validate`)).status).toBe(403);
+      const open = await adminA().post(`/api/registers/${c.reg4}/validate`);
+      expect(open.status).toBe(409);
+      expect(open.body).toMatchObject({ code: 'register_open', message: REGISTER_OPEN });
+      expect((await adminB().post(`/api/registers/${c.reg1}/validate`)).status).toBe(404);
+      expect(await db('SELECT validated_by, validated_at FROM cash_registers WHERE id = ANY($1)', [[c.reg1, c.reg4]])).toEqual([
+        { validated_by: null, validated_at: null },
+        { validated_by: null, validated_at: null },
+      ]);
+    });
+
+    it('stores the admin and the time once; a second call returns the stored values', async () => {
+      const first = await adminA().post(`/api/registers/${c.reg1}/validate`);
+      expect(first.status).toBe(200);
+      expect(first.body).toMatchObject({ id: c.reg1, status: 'closed', validatedBy: ADMIN_A, validatedAt: expect.stringMatching(ISO) });
+      const again = await adminA().post(`/api/registers/${c.reg1}/validate`);
+      expect(again.status).toBe(200);
+      expect(again.body).toMatchObject({ validatedBy: ADMIN_A, validatedAt: first.body.validatedAt });
+      expect((await adminA().get(`/api/registers/${c.reg1}`)).body).toMatchObject({ validatedBy: ADMIN_A, validatedAt: first.body.validatedAt });
+      const day = (await adminA().get('/api/cash/days/2026-11-10')).body;
+      expect(day.registers[0]).toMatchObject({ validatedBy: ADMIN_A, validatedAt: first.body.validatedAt });
+    });
+  });
+
+  describe('informe Z (S8, S9, S10)', () => {
+    const zRows = () => db<{ restaurant_id: string; number: number; business_day: string }>(
+      `SELECT restaurant_id, number, to_char(business_day, 'YYYY-MM-DD') AS business_day FROM z_reports ORDER BY restaurant_id, number`);
+
+    beforeAll(async () => {
+      // Two closed business days without sales for the concurrent emits.
+      await db(
+        `INSERT INTO cash_registers (id, opening_timestamp, closing_timestamp, initial_cash, final_cash, status, restaurant_id, opened_by, closed_by,
+                                     counted_cash, cash_difference) VALUES
+           ($1, '2026-09-01 10:00-05', '2026-09-01 20:00-05', 0, 0, 'closed', $3, $4, $4, 0, 0),
+           ($2, '2026-09-02 10:00-05', '2026-09-02 20:00-05', 0, 0, 'closed', $3, $4, $4, 0, 0)`,
+        [c.regSep1, c.regSep2, fixtures.restaurantA, c.cashierProfile],
+      );
+    });
+
+    it('answers 401 without a session and 403 for cashier and waiter, emitting nothing', async () => {
+      const server = request(app.getHttpServer());
+      expect((await server.post('/api/cash/days/2026-11-10/z')).status).toBe(401);
+      for (const who of [cashierA, waiterA]) {
+        expect((await who().post('/api/cash/days/2026-11-10/z')).status).toBe(403);
+        expect((await who().get('/api/cash/z?from=2026-11-01&to=2026-11-30')).status).toBe(403);
+        expect((await who().get('/api/cash/z/1')).status).toBe(403);
+      }
+      expect(await zRows()).toEqual([]);
+    });
+
+    it('refuses a day with an open register (409 day_open) and a day without registers (409 day_empty)', async () => {
+      const open = await adminA().post('/api/cash/days/2026-11-11/z');
+      expect(open.status).toBe(409);
+      expect(open.body).toMatchObject({ code: 'day_open', message: DAY_OPEN });
+      const empty = await adminA().post('/api/cash/days/2026-11-12/z');
+      expect(empty.status).toBe(409);
+      expect(empty.body).toMatchObject({ code: 'day_empty', message: DAY_EMPTY });
+      expect((await adminA().post('/api/cash/days/2026-02-30/z')).status).toBe(422);
+      expect(await zRows()).toEqual([]);
+    });
+
+    it('emits Z 1 for a closed day with the day snapshot, the taxes from salesNet, order range, tips apart and voids', async () => {
+      const day = (await adminA().get('/api/cash/days/2026-11-10')).body;
+      expect(day.z).toBeNull();
+      const res = await adminA().post('/api/cash/days/2026-11-10/z');
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body).sort()).toEqual(Z_KEYS);
+      expect(res.body).toMatchObject({ number: 1, businessDay: '2026-11-10', emittedBy: ADMIN_A, emittedAt: expect.stringMatching(ISO) });
+      const { snapshot } = res.body;
+      expect(Object.keys(snapshot).sort()).toEqual(SNAPSHOT_KEYS);
+      const { z: _z, ...daySummary } = day;
+      expect(snapshot).toMatchObject(daySummary);
+      // Default rate 10, prices with the tax included: base = 145000 / 1.1.
+      expect(snapshot.taxes).toEqual({ rate: 10, base: 131818, tax: 13182 });
+      expect(snapshot.taxes.base + snapshot.taxes.tax).toBe(snapshot.totals.salesNet);
+      const paid = [c.o1, c.o2, c.o4, c.o5].map((id) => numbers[id]);
+      expect(snapshot.orders).toEqual({ first: Math.min(...paid), last: Math.max(...paid) });
+      expect(snapshot.discounts).toBe(0);
+      expect(snapshot.tipsByMethod).toEqual([
+        { code: 'cash', name: 'Efectivo', kind: 'cash', amount: 5000 },
+        { code: 'transfer', name: 'Transferencia', kind: 'electronic', amount: 3000 },
+        { code: 'nequi', name: 'Nequi', kind: 'electronic', amount: 4000 },
+      ]);
+      expect(snapshot.tipsByWaiter).toEqual(day.tipsByWaiter);
+      expect(snapshot.totals).toMatchObject({ salesNet: 145000, tips: 12000 });
+      expect(snapshot.voids).toMatchObject({ count: 2, amount: 35000 });
+
+      const after = (await adminA().get('/api/cash/days/2026-11-10')).body;
+      expect(after.z).toEqual({ number: 1, emittedAt: res.body.emittedAt, emittedBy: ADMIN_A });
+      expect((await adminA().get('/api/cash/days/2026-11-03')).body.z).toBeNull();
+    });
+
+    it('is idempotent: a second emit of the same day returns the stored Z without a new number', async () => {
+      const first = (await adminA().get('/api/cash/z/1')).body;
+      const again = await adminA().post('/api/cash/days/2026-11-10/z');
+      expect(again.status).toBe(200);
+      expect(again.body).toEqual(first);
+      expect(await zRows()).toEqual([{ restaurant_id: fixtures.restaurantA, number: 1, business_day: '2026-11-10' }]);
+    });
+
+    it('numbers the next day 2, and concurrent emits never share a number; the configured tax rate is used', async () => {
+      expect((await adminA().post('/api/cash/days/2026-11-03/z')).body).toMatchObject({ number: 2, businessDay: '2026-11-03' });
+      await db(`INSERT INTO business_config (key, value, restaurant_id) VALUES ('tax_percentage', '19', $1)`, [
+        fixtures.restaurantA,
+      ]);
+      try {
+        const [a, b, again] = await Promise.all([
+          adminA().post('/api/cash/days/2026-09-01/z'),
+          adminA().post('/api/cash/days/2026-09-02/z'),
+          adminA().post('/api/cash/days/2026-09-02/z'),
+        ]);
+        expect([a.status, b.status, again.status]).toEqual([200, 200, 200]);
+        expect([a.body.number, b.body.number].sort()).toEqual([3, 4]);
+        expect(again.body.number).toBe(b.body.number);
+        expect(a.body.snapshot.taxes).toEqual({ rate: 19, base: 0, tax: 0 });
+        expect(a.body.snapshot.orders).toEqual({ first: null, last: null });
+      } finally {
+        await db(`DELETE FROM business_config WHERE key = 'tax_percentage' AND restaurant_id = $1`, [fixtures.restaurantA]);
+      }
+      expect((await zRows()).map((row) => row.number)).toEqual([1, 2, 3, 4]);
+    });
+
+    it('lists the Zs of a range by number with sales and difference, and flags gaps in the numbering', async () => {
+      const res = await adminA().get('/api/cash/z?from=2026-09-01&to=2026-11-30');
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body).sort()).toEqual(['from', 'gaps', 'items', 'to']);
+      expect(res.body.items.map((z: { number: number; businessDay: string }) => [z.number, z.businessDay])).toEqual([
+        [1, '2026-11-10'], [2, '2026-11-03'], [3, expect.any(String)], [4, expect.any(String)],
+      ]);
+      expect(Object.keys(res.body.items[0]).sort()).toEqual(['businessDay', 'difference', 'emittedAt', 'emittedBy', 'number', 'salesNet']);
+      expect(res.body.items[0]).toMatchObject({ salesNet: 145000, difference: -2000, emittedBy: ADMIN_A });
+      expect(res.body.gaps).toEqual([]);
+      expect((await adminA().get('/api/cash/z?from=2026-11-01&to=2026-11-30')).body.items.map((z: { number: number }) => z.number)).toEqual([1, 2]);
+
+      await db(`DELETE FROM z_reports WHERE restaurant_id = $1 AND number = 3`, [fixtures.restaurantA]);
+      const gap = (await adminA().get('/api/cash/z?from=2026-09-01&to=2026-11-30')).body;
+      expect(gap.items.map((z: { number: number }) => z.number)).toEqual([1, 2, 4]);
+      expect(gap.gaps).toEqual([3]);
+
+      for (const query of ['from=2026-11-01', 'from=x&to=2026-11-30', 'from=2026-11-30&to=2026-11-01']) {
+        expect((await adminA().get(`/api/cash/z?${query}`)).status).toBe(422);
+      }
+    });
+
+    it('serves one Z by number (404 unknown, 422 not a number)', async () => {
+      const res = await adminA().get('/api/cash/z/2');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ number: 2, businessDay: '2026-11-03', snapshot: { date: '2026-11-03', totals: { salesNet: 10000 } } });
+      expect((await adminA().get('/api/cash/z/99')).status).toBe(404);
+      expect((await adminA().get('/api/cash/z/abc')).status).toBe(422);
+    });
+
+    it("numbers per restaurant and never shows another restaurant's Zs", async () => {
+      expect((await adminB().get('/api/cash/z/1')).status).toBe(404);
+      expect((await adminB().get('/api/cash/z?from=2026-09-01&to=2026-11-30')).body).toMatchObject({ items: [], gaps: [] });
+      expect((await adminB().get('/api/cash/days/2026-11-10')).body.z).toBeNull();
+      const b = await adminB().post('/api/cash/days/2026-11-10/z');
+      expect(b.body).toMatchObject({ number: 1, businessDay: '2026-11-10', snapshot: { totals: { salesNet: 3000 } } });
+      expect((await adminA().get('/api/cash/z/1')).body.snapshot.totals.salesNet).toBe(145000);
+      expect((await adminA().get('/api/cash/z?from=2026-09-01&to=2026-11-30')).body.items).toHaveLength(3);
     });
   });
 });
