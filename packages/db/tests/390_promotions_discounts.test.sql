@@ -1,4 +1,4 @@
--- Promotions and order discounts (odd/tasks/promociones.md T1, S1-S2, migration 0027).
+-- Promotions and order discounts (odd/tasks/promociones.md T1, S1-S2, migration 0028).
 --
 -- The promotion kinds, modes and conditions with their per-kind checks, the
 -- defaults an existing promotion gets, the targets and combo tables, the

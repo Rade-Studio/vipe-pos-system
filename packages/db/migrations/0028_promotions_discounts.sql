@@ -193,7 +193,7 @@ ALTER TABLE public.order_items
     ADD COLUMN combo_id uuid,
     ADD CONSTRAINT order_items_promotion_id_fkey FOREIGN KEY (restaurant_id, promotion_id) REFERENCES public.promotions(restaurant_id, id) ON DELETE SET NULL (promotion_id);
 --> statement-breakpoint
-COMMENT ON COLUMN public.order_items.price IS 'Unit list price charged before discounts, options included (since 0027; older rows may hold a price a promotion already lowered). Discounts are order_discounts rows.';
+COMMENT ON COLUMN public.order_items.price IS 'Unit list price charged before discounts, options included (since 0028; older rows may hold a price a promotion already lowered). Discounts are order_discounts rows.';
 --> statement-breakpoint
 COMMENT ON COLUMN public.order_items.promotion_id IS 'The automatic promotion the line qualified for when it was sent (NULL = none or deleted promotion).';
 --> statement-breakpoint
@@ -243,7 +243,7 @@ CREATE TABLE public.order_discounts (
            ELSE reason IS NULL END)
 );
 --> statement-breakpoint
-COMMENT ON TABLE public.order_discounts IS 'One discount of an order (0027, S2): on a line (order_item_id) or on the bill, from a promotion (promotion_id, set NULL when it is deleted; label keeps its name) or manual, whole pesos > 0. source = manual (manual_item, manual_bill, or a manual-mode promotion as promotion_item/promotion_bill) needs a reason (3-200 characters) and carries created_by/authorized_by. combo rows carry the combo_id of their lines. Rows of a cancelled line do not count; orders.total_discounts and orders.subtotal come from private.order_bill_base().';
+COMMENT ON TABLE public.order_discounts IS 'One discount of an order (0028, S2): on a line (order_item_id) or on the bill, from a promotion (promotion_id, set NULL when it is deleted; label keeps its name) or manual, whole pesos > 0. source = manual (manual_item, manual_bill, or a manual-mode promotion as promotion_item/promotion_bill) needs a reason (3-200 characters) and carries created_by/authorized_by. combo rows carry the combo_id of their lines. Rows of a cancelled line do not count; orders.total_discounts and orders.subtotal come from private.order_bill_base().';
 --> statement-breakpoint
 COMMENT ON COLUMN public.order_discounts.requires_authorization IS 'Whether removing the row needs an apply_discount authorization, fixed when it is added: true for a free discount or a manual_pin promotion, false for a manual-mode promotion and for automatic rows. A later change of the promotion mode does not change it.';
 --> statement-breakpoint
@@ -356,7 +356,7 @@ CREATE FUNCTION private.order_bill_base(p_order_id uuid, OUT gross bigint, OUT d
                                    WHERE ci.combo_id = od.combo_id AND ci.status = 'cancelled'))) d
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.order_bill_base(uuid) IS 'Bill base of an order (0027): gross = sum(round(price * quantity)) of its lines (list prices), discounts = sum of its order_discounts whose line is not cancelled (a combo row only while no line of its combo is cancelled), capped at gross. subtotal = gross - discounts. Used by recompute_order_bill and pay_order; not executable by vipe_api.';
+COMMENT ON FUNCTION private.order_bill_base(uuid) IS 'Bill base of an order (0028): gross = sum(round(price * quantity)) of its lines (list prices), discounts = sum of its order_discounts whose line is not cancelled (a combo row only while no line of its combo is cancelled), capped at gross. subtotal = gross - discounts. Used by recompute_order_bill and pay_order; not executable by vipe_api.';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.order_bill_base(uuid) FROM PUBLIC;
 --> statement-breakpoint
@@ -374,7 +374,7 @@ DECLARE
   v_tip       bigint := 0;
   v_total     bigint := 0;
 BEGIN
-  -- 0027: a paid or cancelled order keeps the bill it was closed with.
+  -- 0028: a paid or cancelled order keeps the bill it was closed with.
   IF EXISTS (SELECT 1 FROM public.orders o WHERE o.id = p_order_id AND o.status IN ('paid', 'cancelled')) THEN
     RETURN QUERY SELECT o.subtotal, o.tax, o.tip, o.total, o.tax_percentage, o.tip_percentage
                    FROM public.orders o WHERE o.id = p_order_id;
@@ -408,13 +408,13 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.recompute_order_bill(p_order_id uuid) IS 'Private bill recompute helper (split_order, undo_split, void_order_items, void_payment, recompute_caller_order_bill). SECURITY DEFINER. Since 0027 subtotal is the net base of private.order_bill_base (list prices minus the order''s discounts) and total_discounts the discounts; tax and the suggested tip (tip_percentage, as pay_order) are computed on that subtotal. A paid or cancelled order is not rewritten (its current values are returned). Not executable by vipe_api.';
+COMMENT ON FUNCTION private.recompute_order_bill(p_order_id uuid) IS 'Private bill recompute helper (split_order, undo_split, void_order_items, void_payment, recompute_caller_order_bill). SECURITY DEFINER. Since 0028 subtotal is the net base of private.order_bill_base (list prices minus the order''s discounts) and total_discounts the discounts; tax and the suggested tip (tip_percentage, as pay_order) are computed on that subtotal. A paid or cancelled order is not rewritten (its current values are returned). Not executable by vipe_api.';
 --> statement-breakpoint
 ALTER TABLE public.payment_tenders
     DROP CONSTRAINT payment_tenders_amount_check,
     ADD CONSTRAINT payment_tenders_amount_check CHECK (amount > 0 OR (amount = 0 AND line_no = 1 AND method_kind = 'cash' AND cash_received = 0));
 --> statement-breakpoint
-COMMENT ON CONSTRAINT payment_tenders_amount_check ON public.payment_tenders IS 'A tender applies a positive amount; since 0027 a single 0 cash line with cash_received 0 closes an order with nothing to charge (pay_order checks amount_due + tip = 0).';
+COMMENT ON CONSTRAINT payment_tenders_amount_check ON public.payment_tenders IS 'A tender applies a positive amount; since 0028 a single 0 cash line with cash_received 0 closes an order with nothing to charge (pay_order checks amount_due + tip = 0).';
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.pay_order(p_order_id uuid, p_cash_register_id uuid, p_tip_amount bigint, p_tenders jsonb, p_idempotency_key uuid) RETURNS jsonb
     LANGUAGE plpgsql SECURITY DEFINER
@@ -550,7 +550,7 @@ BEGIN
         USING ERRCODE = '22023';
     END;
 
-    -- 0027: a single 0 tender closes an order with nothing to charge
+    -- 0028: a single 0 tender closes an order with nothing to charge
     -- (amount_due + tip = 0, a 100 % courtesy); step 6 checks it is cash and
     -- the sum check re-checks the amount under the order lock.
     IF v_amount IS NULL OR v_amount < 0
@@ -676,7 +676,7 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
-  -- 5. Server-side amount. 0027: the net base, list prices minus the
+  -- 5. Server-side amount. 0028: the net base, list prices minus the
   -- order's discounts (private.order_bill_base); a fully discounted order
   -- with lines is payable with a single 0 cash tender (step 2).
   SELECT b.gross, b.discounts INTO v_gross, v_discounts
@@ -740,7 +740,7 @@ BEGIN
         USING ERRCODE = '22023';
     END IF;
 
-    -- 0027: a 0 tender takes no cash, so it gives no change.
+    -- 0028: a 0 tender takes no cash, so it gives no change.
     IF v_amount = 0 AND v_cash_received IS DISTINCT FROM 0 THEN
       RAISE EXCEPTION 'pay_order: tender[%].cash_received must be 0 for a 0 amount', v_line_no
         USING ERRCODE = '22023';
@@ -1071,7 +1071,7 @@ BEGIN
     );
   END LOOP;
 
-  -- 0027: a combo moves whole: every standing line of its combo, all units.
+  -- 0028: a combo moves whole: every standing line of its combo, all units.
   FOR v_line_no IN 1..v_item_count LOOP
     SELECT oi.combo_id INTO v_combo_id
       FROM public.order_items oi
@@ -1137,7 +1137,7 @@ BEGIN
          SET order_id = v_child_id
        WHERE oi.id = v_item_id;
 
-      -- 0027: the line's discounts go with it.
+      -- 0028: the line's discounts go with it.
       UPDATE public.order_discounts d
          SET order_id = v_child_id
        WHERE d.order_item_id = v_item_id;
@@ -1168,7 +1168,7 @@ BEGIN
         FROM public.order_item_modifiers m
        WHERE m.order_item_id = v_item_id;
 
-      -- 0027: the line's item discounts are shared by units, allocated per
+      -- 0028: the line's item discounts are shared by units, allocated per
       -- line: the new line's running share over the rows (by created_at, id)
       -- is round(running amount * moved / quantity), clamped so neither side
       -- ever holds more than its own value round(price * quantity); each row
@@ -1215,7 +1215,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 0027: combo rows go with their lines (a combo moves whole, see 5).
+  -- 0028: combo rows go with their lines (a combo moves whole, see 5).
   UPDATE public.order_discounts d
      SET order_id = v_child_id
    WHERE d.order_id = p_parent_order_id
@@ -1390,7 +1390,7 @@ BEGIN
          SET quantity = oi.quantity + v_child_item.quantity
        WHERE oi.id = v_match.id;
 
-      -- 0027: the line's discounts move to the line it merges into.
+      -- 0028: the line's discounts move to the line it merges into.
       UPDATE public.order_discounts d
          SET order_id = v_parent.id, order_item_id = v_match.id
        WHERE d.order_item_id = v_child_item.id;
@@ -1407,7 +1407,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 0027: the child's manual bill discounts and combo rows go back to the
+  -- 0028: the child's manual bill discounts and combo rows go back to the
   -- parent; its automatic bill rows go with it (the API recomputes them).
   UPDATE public.order_discounts d
      SET order_id = v_parent.id
@@ -1443,7 +1443,7 @@ ALTER TABLE public.supervisor_authorizations
     OR (target_type = 'order' AND action IN ('cancel_order', 'void_item', 'apply_discount'))
     OR (target_type = 'payment' AND action = 'void_payment'));
 --> statement-breakpoint
-COMMENT ON COLUMN public.supervisor_authorizations.target_id IS 'The order (cancel_order, void_item, apply_discount since 0027) or payment (void_payment) the authorization is for (0018); the cancellation, void or discount must name the same target and be done by requested_by_profile_id. NULL on rows from before 0018, which back no event.';
+COMMENT ON COLUMN public.supervisor_authorizations.target_id IS 'The order (cancel_order, void_item, apply_discount since 0028) or payment (void_payment) the authorization is for (0018); the cancellation, void or discount must name the same target and be done by requested_by_profile_id. NULL on rows from before 0018, which back no event.';
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION private.create_target_authorization(p_supervisor_profile_id uuid, p_action text, p_now timestamptz, p_target_type text, p_target_id uuid)
     RETURNS uuid
@@ -1464,7 +1464,7 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.create_target_authorization(uuid, text, timestamptz, text, uuid) IS 'private.create_supervisor_authorization (same checks: an active admin or cashier with a PIN of the caller''s restaurant, requested_by = the caller, which on a shared terminal is the identified staff member) bound to one target: an order for cancel_order, void_item and apply_discount (0027), a payment for void_payment (else 22023, also for an unknown action). The target is not looked up here: an authorization for a foreign or unknown target simply backs no event.';
+COMMENT ON FUNCTION private.create_target_authorization(uuid, text, timestamptz, text, uuid) IS 'private.create_supervisor_authorization (same checks: an active admin or cashier with a PIN of the caller''s restaurant, requested_by = the caller, which on a shared terminal is the identified staff member) bound to one target: an order for cancel_order, void_item and apply_discount (0028), a payment for void_payment (else 22023, also for an unknown action). The target is not looked up here: an authorization for a foreign or unknown target simply backs no event.';
 --> statement-breakpoint
 CREATE FUNCTION private.discount_authorizer(p_order_id uuid, p_authorization_id uuid) RETURNS uuid
     LANGUAGE plpgsql SECURITY DEFINER
@@ -1482,7 +1482,7 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.discount_authorizer(uuid, uuid) IS 'The supervisor behind a manual discount or its removal (0027, S7): private.void_authorizer for action apply_discount on this order and the calling admin or cashier (42501 apply_discount: authorization_required / authorization_invalid / self_authorization_not_allowed). The API consumes the authorization (private.consume_supervisor_authorization) in the same transaction first.';
+COMMENT ON FUNCTION private.discount_authorizer(uuid, uuid) IS 'The supervisor behind a manual discount or its removal (0028, S7): private.void_authorizer for action apply_discount on this order and the calling admin or cashier (42501 apply_discount: authorization_required / authorization_invalid / self_authorization_not_allowed). The API consumes the authorization (private.consume_supervisor_authorization) in the same transaction first.';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.discount_authorizer(uuid, uuid) FROM PUBLIC;
 --> statement-breakpoint
