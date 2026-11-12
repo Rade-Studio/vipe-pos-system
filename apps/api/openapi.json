@@ -9623,6 +9623,428 @@
           "carta"
         ]
       }
+    },
+    "/api/carta/{slug}/m/{token}/status": {
+      "get": {
+        "operationId": "CartaTableController_status",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "guestKey",
+            "required": true,
+            "in": "query",
+            "description": "16-64 of [A-Za-z0-9_-].",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestTableStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "422": {
+            "description": "El identificador del comensal no es válido."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/m/{token}/proposals": {
+      "post": {
+        "operationId": "CartaTableController_propose",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pending until the waiter confirms it; nothing is cooked or charged before.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalCreated"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "409": {
+            "description": "Este restaurante toma los pedidos en la mesa. | Para pedir desde aquí, la mesa debe estar abierta | Uno de los platos se acabó por hoy."
+          },
+          "422": {
+            "description": "El identificador del comensal no es válido. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. | La nota del pedido admite hasta 200 caracteres."
+          },
+          "429": {
+            "description": "Ya enviaste varios pedidos; espera a que el mesero los revise. (3 pending), or Demasiadas solicitudes. Intenta de nuevo en un momento. (10 a minute)."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/m/{token}/bill": {
+      "get": {
+        "operationId": "CartaTableController_bill",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The open order, read only; 404 when the table is closed or the bill is hidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestTableBill"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/m/{token}/requests": {
+      "post": {
+        "operationId": "CartaTableController_request",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TableRequestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Ask for the bill or call the waiter; idempotent while unresolved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableRequestCreated"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "409": {
+            "description": "Este restaurante toma los pedidos en la mesa. | Para pedir desde aquí, la mesa debe estar abierta"
+          },
+          "422": {
+            "description": "Solo puedes pedir la cuenta o llamar al mesero."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. 6 a minute."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/feedback": {
+      "post": {
+        "operationId": "CartaTableController_feedback",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Stored for the restaurant."
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "422": {
+            "description": "La calificación va de 1 a 5 estrellas. | El comentario admite hasta 500 caracteres."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. 3 a minute per IP; 5 per table and 50 per restaurant an hour."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta-inbox": {
+      "get": {
+        "operationId": "CartaInboxController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Guest proposals and requests of the restaurant's open orders.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaInbox"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin, cashier or waiter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-inbox"
+        ]
+      }
+    },
+    "/api/carta-inbox/proposals/{id}/confirm": {
+      "post": {
+        "operationId": "CartaInboxController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The items were added to the open order as the waiter sends them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalConfirmed"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin, cashier or waiter."
+          },
+          "404": {
+            "description": "No encontramos este pedido."
+          },
+          "409": {
+            "description": "Este pedido ya fue confirmado o rechazado. | La mesa ya no tiene una cuenta abierta., or the waiter send's own 409s (stock, price)."
+          },
+          "422": {
+            "description": "Invalid id, or the waiter send refused a line (dish, options)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-inbox"
+        ]
+      }
+    },
+    "/api/carta-inbox/proposals/{id}/reject": {
+      "post": {
+        "operationId": "CartaInboxController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectProposalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "Not an admin, cashier or waiter."
+          },
+          "404": {
+            "description": "No encontramos este pedido."
+          },
+          "409": {
+            "description": "Este pedido ya fue confirmado o rechazado."
+          },
+          "422": {
+            "description": "El motivo admite hasta 140 caracteres."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-inbox"
+        ]
+      }
+    },
+    "/api/carta-inbox/requests/{id}/resolve": {
+      "post": {
+        "operationId": "CartaInboxController_resolve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Resolved (an already resolved request stays as it is)."
+          },
+          "403": {
+            "description": "Not an admin, cashier or waiter."
+          },
+          "404": {
+            "description": "No encontramos esta solicitud."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-inbox"
+        ]
+      }
     }
   },
   "info": {
@@ -22983,6 +23405,554 @@
           "restaurant",
           "dish"
         ]
+      },
+      "GuestProposalLine": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "quantity"
+        ]
+      },
+      "GuestProposal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "rejected"
+            ]
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "rejected",
+              "confirmed",
+              "kitchen",
+              "served",
+              "cancelled"
+            ],
+            "description": "Enviado, Confirmado, En la cocina, Servido."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "decidedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestProposalLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "stage",
+          "createdAt",
+          "decidedAt",
+          "rejectReason",
+          "lines"
+        ]
+      },
+      "GuestTableStatus": {
+        "type": "object",
+        "properties": {
+          "isOpen": {
+            "type": "boolean",
+            "description": "The table has an open order."
+          },
+          "waiterFirstName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Carolina"
+          },
+          "tableOrderingEnabled": {
+            "type": "boolean"
+          },
+          "showTableBill": {
+            "type": "boolean"
+          },
+          "proposals": {
+            "description": "Only this guest key's, for the current open order, oldest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestProposal"
+            }
+          },
+          "requests": {
+            "type": "array",
+            "description": "Unresolved requests of the open order.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "bill",
+                "waiter"
+              ]
+            }
+          }
+        },
+        "required": [
+          "isOpen",
+          "waiterFirstName",
+          "tableOrderingEnabled",
+          "showTableBill",
+          "proposals",
+          "requests"
+        ]
+      },
+      "ProposalLineRequest": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "optionIds": {
+            "description": "Chosen modifier option ids (distinct, <= 50).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 140
+          }
+        },
+        "required": [
+          "dishId",
+          "quantity"
+        ]
+      },
+      "ProposalRequest": {
+        "type": "object",
+        "properties": {
+          "guestKey": {
+            "type": "string",
+            "example": "k3J9xZ0qLmN4pQ7r",
+            "description": "Opaque per-browser id, 16-64 of [A-Za-z0-9_-]."
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalLineRequest"
+            }
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "guestKey",
+          "items"
+        ]
+      },
+      "ProposalCreated": {
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "example": "pending"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposalId",
+          "status",
+          "createdAt"
+        ]
+      },
+      "GuestBillLine": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "number"
+          },
+          "lineTotal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "quantity",
+          "unitPrice",
+          "lineTotal"
+        ]
+      },
+      "GuestBillDiscount": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "amount"
+        ]
+      },
+      "GuestTableBill": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestBillLine"
+            }
+          },
+          "discounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestBillDiscount"
+            }
+          },
+          "grossSubtotal": {
+            "type": "number"
+          },
+          "totalDiscounts": {
+            "type": "number"
+          },
+          "subtotal": {
+            "type": "number"
+          },
+          "tipPercentage": {
+            "type": "number",
+            "example": 10,
+            "description": "Suggested tip (voluntary)."
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lines",
+          "discounts",
+          "grossSubtotal",
+          "totalDiscounts",
+          "subtotal",
+          "tipPercentage",
+          "updatedAt"
+        ]
+      },
+      "TableRequestRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bill",
+              "waiter"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "TableRequestCreated": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bill",
+              "waiter"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "alreadyPending": {
+            "type": "boolean",
+            "description": "An unresolved request of this kind already existed; nothing new was stored."
+          }
+        },
+        "required": [
+          "kind",
+          "createdAt",
+          "alreadyPending"
+        ]
+      },
+      "FeedbackRequest": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Table QR token, when left from a table."
+          },
+          "rating": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500,
+            "description": "Private comment for the restaurant."
+          }
+        },
+        "required": [
+          "rating"
+        ]
+      },
+      "InboxOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "InboxProposalLine": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxOption"
+            }
+          }
+        },
+        "required": [
+          "dishId",
+          "name",
+          "quantity",
+          "note",
+          "options"
+        ]
+      },
+      "InboxProposal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tableNumber": {
+            "type": "number"
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true
+          },
+          "waiterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxProposalLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "tableNumber",
+          "zoneName",
+          "waiterName",
+          "note",
+          "createdAt",
+          "lines"
+        ]
+      },
+      "InboxRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bill",
+              "waiter"
+            ]
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tableNumber": {
+            "type": "number"
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true
+          },
+          "waiterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "orderId",
+          "tableNumber",
+          "zoneName",
+          "waiterName",
+          "createdAt"
+        ]
+      },
+      "CartaInbox": {
+        "type": "object",
+        "properties": {
+          "proposals": {
+            "description": "Pending proposals of open orders, newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxProposal"
+            }
+          },
+          "requests": {
+            "description": "Unresolved requests of open orders, newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxRequest"
+            }
+          }
+        },
+        "required": [
+          "proposals",
+          "requests"
+        ]
+      },
+      "ProposalConfirmed": {
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "example": "confirmed"
+          },
+          "stage": {
+            "type": "string",
+            "example": "kitchen",
+            "description": "The stage the guest now sees."
+          },
+          "orderItemIds": {
+            "description": "The order_items added for the proposal.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "proposalId",
+          "orderId",
+          "status",
+          "stage",
+          "orderItemIds"
+        ]
+      },
+      "RejectProposalRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 140,
+            "description": "Shown to the guest."
+          }
+        }
       }
     }
   }

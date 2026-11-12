@@ -2724,6 +2724,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/carta/{slug}/m/{token}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaTableController_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/m/{token}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaTableController_propose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/m/{token}/bill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaTableController_bill"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/m/{token}/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaTableController_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaTableController_feedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaInboxController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-inbox/proposals/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaInboxController_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-inbox/proposals/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaInboxController_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-inbox/requests/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaInboxController_resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7139,6 +7283,164 @@ export interface components {
         CartaDishShare: {
             restaurant: components["schemas"]["CartaShareRestaurant"];
             dish: components["schemas"]["CartaShareDish"];
+        };
+        GuestProposalLine: {
+            name: string | null;
+            quantity: number;
+        };
+        GuestProposal: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "rejected";
+            /**
+             * @description Enviado, Confirmado, En la cocina, Servido.
+             * @enum {string}
+             */
+            stage: "pending" | "rejected" | "confirmed" | "kitchen" | "served" | "cancelled";
+            createdAt: string;
+            decidedAt: string | null;
+            rejectReason: string | null;
+            lines: components["schemas"]["GuestProposalLine"][];
+        };
+        GuestTableStatus: {
+            /** @description The table has an open order. */
+            isOpen: boolean;
+            /** @example Carolina */
+            waiterFirstName: string | null;
+            tableOrderingEnabled: boolean;
+            showTableBill: boolean;
+            /** @description Only this guest key's, for the current open order, oldest first. */
+            proposals: components["schemas"]["GuestProposal"][];
+            /** @description Unresolved requests of the open order. */
+            requests: ("bill" | "waiter")[];
+        };
+        ProposalLineRequest: {
+            /** Format: uuid */
+            dishId: string;
+            quantity: number;
+            /** @description Chosen modifier option ids (distinct, <= 50). */
+            optionIds?: string[];
+            note?: string | null;
+        };
+        ProposalRequest: {
+            /**
+             * @description Opaque per-browser id, 16-64 of [A-Za-z0-9_-].
+             * @example k3J9xZ0qLmN4pQ7r
+             */
+            guestKey: string;
+            items: components["schemas"]["ProposalLineRequest"][];
+            note?: string | null;
+        };
+        ProposalCreated: {
+            /** Format: uuid */
+            proposalId: string;
+            /** @example pending */
+            status: string;
+            createdAt: string;
+        };
+        GuestBillLine: {
+            name: string;
+            quantity: number;
+            unitPrice: number;
+            lineTotal: number;
+        };
+        GuestBillDiscount: {
+            label: string;
+            amount: number;
+        };
+        GuestTableBill: {
+            lines: components["schemas"]["GuestBillLine"][];
+            discounts: components["schemas"]["GuestBillDiscount"][];
+            grossSubtotal: number;
+            totalDiscounts: number;
+            subtotal: number;
+            /**
+             * @description Suggested tip (voluntary).
+             * @example 10
+             */
+            tipPercentage: number;
+            updatedAt: string;
+        };
+        TableRequestRequest: {
+            /** @enum {string} */
+            kind: "bill" | "waiter";
+        };
+        TableRequestCreated: {
+            /** @enum {string} */
+            kind: "bill" | "waiter";
+            createdAt: string;
+            /** @description An unresolved request of this kind already existed; nothing new was stored. */
+            alreadyPending: boolean;
+        };
+        FeedbackRequest: {
+            /** @description Table QR token, when left from a table. */
+            token?: string;
+            rating: number;
+            /** @description Private comment for the restaurant. */
+            comment?: string | null;
+        };
+        InboxOption: {
+            /** Format: uuid */
+            id: string;
+            name: string | null;
+        };
+        InboxProposalLine: {
+            /** Format: uuid */
+            dishId: string;
+            name: string | null;
+            quantity: number;
+            note: string | null;
+            options: components["schemas"]["InboxOption"][];
+        };
+        InboxProposal: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderId: string;
+            tableNumber: number;
+            zoneName: string | null;
+            waiterName: string | null;
+            note: string | null;
+            createdAt: string;
+            lines: components["schemas"]["InboxProposalLine"][];
+        };
+        InboxRequest: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "bill" | "waiter";
+            /** Format: uuid */
+            orderId: string;
+            tableNumber: number;
+            zoneName: string | null;
+            waiterName: string | null;
+            createdAt: string;
+        };
+        CartaInbox: {
+            /** @description Pending proposals of open orders, newest first. */
+            proposals: components["schemas"]["InboxProposal"][];
+            /** @description Unresolved requests of open orders, newest first. */
+            requests: components["schemas"]["InboxRequest"][];
+        };
+        ProposalConfirmed: {
+            /** Format: uuid */
+            proposalId: string;
+            /** Format: uuid */
+            orderId: string;
+            /** @example confirmed */
+            status: string;
+            /**
+             * @description The stage the guest now sees.
+             * @example kitchen
+             */
+            stage: string;
+            /** @description The order_items added for the proposal. */
+            orderItemIds: string[];
+        };
+        RejectProposalRequest: {
+            /** @description Shown to the guest. */
+            reason?: string | null;
         };
     };
     responses: never;
@@ -15605,6 +15907,406 @@ export interface operations {
             };
             /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_status: {
+        parameters: {
+            query: {
+                /** @description 16-64 of [A-Za-z0-9_-]. */
+                guestKey: string;
+            };
+            header?: never;
+            path: {
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestTableStatus"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El identificador del comensal no es válido. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_propose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Pending until the waiter confirms it; nothing is cooked or charged before. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalCreated"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este restaurante toma los pedidos en la mesa. | Para pedir desde aquí, la mesa debe estar abierta | Uno de los platos se acabó por hoy. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El identificador del comensal no es válido. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. | La nota del pedido admite hasta 200 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya enviaste varios pedidos; espera a que el mesero los revise. (3 pending), or Demasiadas solicitudes. Intenta de nuevo en un momento. (10 a minute). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_bill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The open order, read only; 404 when the table is closed or the bill is hidden. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestTableBill"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TableRequestRequest"];
+            };
+        };
+        responses: {
+            /** @description Ask for the bill or call the waiter; idempotent while unresolved. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableRequestCreated"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este restaurante toma los pedidos en la mesa. | Para pedir desde aquí, la mesa debe estar abierta */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Solo puedes pedir la cuenta o llamar al mesero. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 6 a minute. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_feedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored for the restaurant. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La calificación va de 1 a 5 estrellas. | El comentario admite hasta 500 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 3 a minute per IP; 5 per table and 50 per restaurant an hour. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaInboxController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guest proposals and requests of the restaurant's open orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaInbox"];
+                };
+            };
+            /** @description Not an admin, cashier or waiter. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaInboxController_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The items were added to the open order as the waiter sends them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalConfirmed"];
+                };
+            };
+            /** @description Not an admin, cashier or waiter. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este pedido. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este pedido ya fue confirmado o rechazado. | La mesa ya no tiene una cuenta abierta., or the waiter send's own 409s (stock, price). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid id, or the waiter send refused a line (dish, options). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaInboxController_reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectProposalRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an admin, cashier or waiter. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este pedido. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este pedido ya fue confirmado o rechazado. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El motivo admite hasta 140 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaInboxController_resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resolved (an already resolved request stays as it is). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an admin, cashier or waiter. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos esta solicitud. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
