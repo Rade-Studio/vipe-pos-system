@@ -22,10 +22,10 @@ const service = vi.hoisted(() => ({
 vi.mock("@/lib/api/registers", () => service)
 
 const payments = vi.hoisted(() => ({ closeRegisterRpc: vi.fn() }))
-vi.mock("@/lib/api/payments", async (importActual) => ({
-  openOrdersConflictOf: (await importActual<typeof import("@/lib/api/payments")>()).openOrdersConflictOf,
-  ...payments,
-}))
+vi.mock("@/lib/api/payments", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/api/payments")>()
+  return { openOrdersConflictOf: actual.openOrdersConflictOf, closeRefusalOf: actual.closeRefusalOf, ...payments }
+})
 
 import { useCashRegisterStore } from "./use-cash-register-store"
 import { PaymentServiceError } from "@/lib/payments/types"
@@ -223,6 +223,25 @@ describe("closeRegister with open orders (S1, S2)", () => {
     payments.closeRegisterRpc.mockRejectedValue(conflict)
     await expect(useCashRegisterStore.getState().closeRegister()).rejects.toBe(conflict)
     expect(useCashRegisterStore.getState().currentRegister).toBe(register)
+  })
+
+  it("rethrows a 422 close refusal so the dialog shows the server message (caja-cierres S3)", async () => {
+    const message = "El conteo por denominación no suma el efectivo contado."
+    const refusal = new PaymentServiceError({
+      kind: "invalid-input",
+      message,
+      cause: new ApiError(422, "Unprocessable Entity", message, { code: "count_mismatch", message }),
+    })
+    payments.closeRegisterRpc.mockRejectedValue(refusal)
+    await expect(useCashRegisterStore.getState().closeRegister({ countedCash: 1 })).rejects.toBe(refusal)
+    expect(useCashRegisterStore.getState().currentRegister).toBe(register)
+  })
+
+  it("keeps the whole close result (count, closer) as lastClose", async () => {
+    const result = { ...closed, countedCash: 1000, cashDifference: 0, closeNote: null, denominations: [], closedBy: { id: "p", name: "Ana" } }
+    payments.closeRegisterRpc.mockResolvedValue(result)
+    await useCashRegisterStore.getState().closeRegister({ countedCash: 1000 })
+    expect(useCashRegisterStore.getState().lastClose).toBe(result)
   })
 
   it("still answers null on other errors", async () => {

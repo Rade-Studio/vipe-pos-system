@@ -1417,7 +1417,7 @@ describe("T24 review fixes", () => {
       expect(within(arqueo).getByRole("status")).toHaveTextContent("Cuadra")
 
       fireEvent.click(within(sheet).getByRole("button", { name: "Ir al cierre de caja" }))
-      expect(await screen.findByRole("dialog", { name: "Cerrar Caja" })).toBeInTheDocument()
+      expect(await screen.findByRole("dialog", { name: "Cierre de turno" })).toBeInTheDocument()
       const { closeRegisterRpc } = (await import("@/lib/api/payments")) as any
       expect(closeRegisterRpc).not.toHaveBeenCalled()
     } finally {
