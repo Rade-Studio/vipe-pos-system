@@ -25,6 +25,7 @@ export const businessConfig = pgTable("business_config", {
 	pgPolicy("business_config_update_policy", { as: "permissive", for: "update", to: ["vipe_api"] }),
 	check("business_config_waiter_access_mode", sql`((key)::text <> 'waiter_access_mode'::text) OR (value = ANY (ARRAY['own_accounts'::text, 'shared_terminal'::text]))`),
 	check("business_config_allow_self_authorization", sql`((key)::text <> 'allow_self_authorization'::text) OR (value = ANY (ARRAY['true'::text, 'false'::text]))`),
+	check("business_config_business_day_cutoff_hour", sql`((key)::text <> 'business_day_cutoff_hour'::text) OR (value = ANY (ARRAY['0'::text, '1'::text, '2'::text, '3'::text, '4'::text, '5'::text, '6'::text]))`),
 ]);
 
 export const cashRegisters = pgTable("cash_registers", {
@@ -43,8 +44,11 @@ export const cashRegisters = pgTable("cash_registers", {
 	closeNote: text("close_note"),
 	denominations: jsonb(),
 	closedBy: uuid("closed_by"),
+	validatedBy: uuid("validated_by"),
+	validatedAt: timestamp("validated_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	index("idx_cash_registers_closed_by").using("btree", table.closedBy.asc().nullsLast().op("uuid_ops")),
+	index("idx_cash_registers_validated_by").using("btree", table.validatedBy.asc().nullsLast().op("uuid_ops")),
 	index("idx_cash_registers_opened_by").using("btree", table.openedBy.asc().nullsLast().op("uuid_ops")),
 	index("idx_cash_registers_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("one_open_register_per_restaurant").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")).where(sql`((status)::text = 'open'::text)`),
@@ -57,6 +61,11 @@ export const cashRegisters = pgTable("cash_registers", {
 			columns: [table.restaurantId, table.closedBy],
 			foreignColumns: [profiles.restaurantId, profiles.id],
 			name: "cash_registers_closed_by_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.restaurantId, table.validatedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "cash_registers_validated_by_fkey"
 		}).onDelete("set null"),
 	foreignKey({
 			columns: [table.restaurantId],
@@ -72,6 +81,7 @@ export const cashRegisters = pgTable("cash_registers", {
 	check("cash_registers_close_note_check", sql`(char_length(close_note) >= 3) AND (char_length(close_note) <= 300)`),
 	check("cash_registers_count_note_check", sql`(cash_difference = (0)::numeric) OR (close_note IS NOT NULL)`),
 	check("cash_registers_denominations_check", sql`jsonb_typeof(denominations) = 'array'::text`),
+	check("cash_registers_validated_closed_check", sql`(validated_at IS NULL) OR ((status)::text = 'closed'::text)`),
 ]);
 
 export const cashTransactions = pgTable("cash_transactions", {

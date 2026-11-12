@@ -7,7 +7,7 @@ import { ApiError } from "./errors"
 const api = vi.hoisted(() => ({ GET: vi.fn(), PUT: vi.fn() }))
 vi.mock("@/lib/api/client", () => ({ api }))
 
-import { CONFIG_QUERY_KEY, fetchConfig, saveConfig } from "./config"
+import { BUSINESS_DAY_CUTOFF_HOURS, CONFIG_QUERY_KEY, DEFAULT_BUSINESS_DAY_CUTOFF_HOUR, fetchConfig, saveConfig } from "./config"
 
 const config = {
   taxPercentage: 10,
@@ -19,6 +19,7 @@ const config = {
   businessNit: "123456789",
   inventoryControlEnabled: false,
   deliveryDefaultFee: 0,
+  businessDayCutoffHour: 4,
 }
 
 beforeEach(() => {
@@ -42,6 +43,14 @@ describe("config", () => {
   it("passes API errors through", async () => {
     api.PUT.mockRejectedValueOnce(new ApiError(403, "Forbidden", "Forbidden resource"))
     await expect(saveConfig({ taxPercentage: 19 })).rejects.toMatchObject({ status: 403 })
+  })
+
+  it("saves the business day cut-off hour (0..6, default 4)", async () => {
+    api.PUT.mockResolvedValueOnce({ data: { ...config, businessDayCutoffHour: 2 } })
+    await expect(saveConfig({ businessDayCutoffHour: 2 })).resolves.toMatchObject({ businessDayCutoffHour: 2 })
+    expect(api.PUT).toHaveBeenCalledWith("/api/config", { body: { businessDayCutoffHour: 2 } })
+    expect(DEFAULT_BUSINESS_DAY_CUTOFF_HOUR).toBe(4)
+    expect(BUSINESS_DAY_CUTOFF_HOURS).toEqual([0, 1, 2, 3, 4, 5, 6])
   })
 
   it("exposes one query key for every config reader", () => {

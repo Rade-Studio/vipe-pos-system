@@ -165,6 +165,21 @@ export function getRegisterPaidOrders(registerId: string, options: { limit?: num
   })
 }
 
+/** A register as the server returns it, with its validation (caja-cierres S7). */
+export type ValidatedRegister = CashRegisterDto
+
+/**
+ * "Validar turno" (admin): stores the caller and the server clock once on a
+ * closed register; 409 `register_open` while open, a second call returns the
+ * stored validation.
+ */
+export function validateRegister(registerId: string): Promise<ValidatedRegister> {
+  return call(async () => {
+    const { data } = await api.POST("/api/registers/{id}/validate", byId(registerId))
+    return required(data)
+  })
+}
+
 // ---- Cash movements -------------------------------------------------------------------
 
 /**
