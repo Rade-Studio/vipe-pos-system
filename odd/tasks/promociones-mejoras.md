@@ -22,8 +22,9 @@ Follow-up of `odd/tasks/promociones.md` (delivered to dev in PR #176, 7180922). 
 | M1 API: void-aware preview, orders and payments advisories | S1 (API), S3, S4 | worker | — |
 | M2 Web: void sheet preview, delivery invoice, cashier advisories | S1 (web), S2, S5 | worker | M2 commit (L6) |
 | M3 Records | S6 | inline | 55d4604 |
-| M4 Delivery form parity | S7 | worker | — |
-| M5 "Para llevar" order type | S8 | worker (after design check) | — |
+| M4 Delivery form parity | S7 (except combos → M8) | worker | M4 commit (L9) |
+| M5 "Para llevar" order type | S8 | worker (after M1) | — |
+| M8 Delivery combos (API `combos` in create-delivery + combo builder in the form) | S7 | worker (after M1) | — |
 | M6 Weekly promotion stats | S9 | worker | — |
 | M7 Invoice layout rule | S10 | worker | — |
 
@@ -37,3 +38,4 @@ Follow-up of `odd/tasks/promociones.md` (delivered to dev in PR #176, 7180922). 
 - L6 (evidence, M2): void sheet preview (`voids` in pricing-preview, debounced), delivery invoice discounts, DiscountSheet toasts and messages, order-discounts read error with Reintentar, re-seed on discount change, zero-total from the server bill; 72 files 778 passed 1 skipped; typecheck and lint clean. The invoice layout item moves to S10 (printing files outside M2's surfaces). The preview has no order total yet; the note shows the base until M1 adds `total`.
 - L7 (coordination, caja e67917ab): caja's pending PRs touch apps/api/src/cash, components/admin/cash, ZReportSlip, business-config/TaxSettings/tax-label, X/Shift/Z slips, InvoicePrintView, CashRegisterStatus, CloseRegisterDialog and renderInvoice in lib/print/renderKitchenOrder.ts (tax line). Not CashierView, cashier queue/lists, the orders API or registers.service. For takeaway (S8): touch only renderKitchenOrder (the kitchen ticket) in that file, never renderInvoice; takeaway keeps its own order_type (not counted as salón; caja adds a "para llevar" counter). caja's 0029_z_reports is on dev (d25b9dd, #181, when 1793896481411) → our takeaway migration is 0030 with a later when.
 - L8 (evidence, M7): the on-screen invoice uses `totalsLayout()` (components/printing/totals-layout.ts), the same rule as the receipt renderers; printing 55/55.
+- L9 (evidence, M4): delivery form shows promotion tags, per-line discounts, the delivery bill discount with its minimum hint and "Ahorro con promociones"; total and courier-change validation use the net (tax on the net + fee) when the preview is available; `usePricingPreview` accepts a prebuilt draft (waiter unchanged). 29 files 433 passed; typecheck and lint clean. Combos not possible yet: `createDeliveryOrderSchema` has no `combos` → M8.
