@@ -1,15 +1,20 @@
 "use client"
 
+import { useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { EmptyState } from "@/components/admin/common/EmptyState"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { useCashDay, useValidateRegister } from "@/hooks/admin/use-cash"
+import { useCashDay, useCashLedger, useValidateRegister } from "@/hooks/admin/use-cash"
 import type { CashDay } from "@/lib/api/cash"
 import { formatBusinessDay, formatTime, shiftDay } from "@/lib/admin/cash"
 import { CashDayBoard } from "./CashDayBoard"
+import { CashLedgerView } from "./CashLedgerView"
+import { Segmented } from "./Segmented"
+
+type DayTab = "board" | "ledger"
 
 interface DayPickerProps {
   date: string
@@ -76,8 +81,10 @@ interface CashDayViewProps {
 }
 
 export function CashDayView({ date, today, onDateChange }: CashDayViewProps) {
+  const [tab, setTab] = useState<DayTab>("board")
   const { toast } = useToast()
   const dayQuery = useCashDay(date)
+  const ledgerQuery = useCashLedger(date, tab === "ledger")
   const validate = useValidateRegister(date)
   const day = dayQuery.data
 
@@ -114,7 +121,20 @@ export function CashDayView({ date, today, onDateChange }: CashDayViewProps) {
       ) : (
         <>
           <StatusLine day={day} />
-          <CashDayBoard day={day} validatingId={validate.isPending ? (validate.variables ?? null) : null} onValidate={onValidate} />
+          <Segmented
+            label="Vista del día"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "board", label: "Tablero" },
+              { value: "ledger", label: "Libro" },
+            ]}
+          />
+          {tab === "board" ? (
+            <CashDayBoard day={day} validatingId={validate.isPending ? (validate.variables ?? null) : null} onValidate={onValidate} />
+          ) : (
+            <CashLedgerView day={day} ledger={ledgerQuery.data} isLoading={ledgerQuery.isLoading} />
+          )}
         </>
       )}
     </div>

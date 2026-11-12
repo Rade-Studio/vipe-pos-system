@@ -14,7 +14,7 @@
  * so "fetch when the tab opens" (`enabled`) is enough — no refetch effect.
  */
 import { CASH_MOVEMENT_REASONS } from "@/lib/api/registers"
-import type { CashReportGroup } from "@/lib/api/cash"
+import type { CashLedgerEntry, CashReportGroup } from "@/lib/api/cash"
 import { DEFAULT_BUSINESS_DAY_CUTOFF_HOUR } from "@/lib/api/config"
 import { localDayKey } from "./dates"
 
@@ -182,6 +182,95 @@ export function movementReasonLabel(reason: string | null | undefined): string {
   return CASH_MOVEMENT_REASONS.find((r) => r.value === reason)?.label ?? reason
 }
 
+export const LEDGER_KIND_LABEL: Record<CashLedgerEntry["kind"], string> = {
+  opening: "Apertura",
+  payment: "Cobro",
+  cash_movement: "Movimiento",
+  payment_void: "Anulación de cobro",
+  order_cancellation: "Cancelación",
+  close: "Cierre",
+  validation: "Validación",
+}
+
+/** Tipo column: deposits and withdrawals read as Entrada / Salida. */
+export function ledgerKindLabel(entry: CashLedgerEntry): string {
+  if (entry.kind === "cash_movement") return entry.type === "withdrawal" ? "Salida" : "Entrada"
+  return LEDGER_KIND_LABEL[entry.kind]
+}
+
+function orderPlace(entry: CashLedgerEntry): string[] {
+  const parts: string[] = []
+  if (entry.table) parts.push(entry.table === "Domicilio" ? "Domicilio" : `Mesa ${entry.table}`)
+  if (entry.orderNumber !== null && entry.orderNumber !== undefined) parts.push(`Orden #${entry.orderNumber}`)
+  return parts
+}
+
+/** Detalle column: names and numbers only, never raw ids. */
+export function ledgerDetail(entry: CashLedgerEntry): string {
+  switch (entry.kind) {
+    case "opening":
+      return ["Fondo de caja", entry.openedBy?.name].filter(Boolean).join(" · ")
+    case "payment":
+      return [...orderPlace(entry), entry.waiter?.name, entry.voided ? "Anulado después" : undefined]
+        .filter(Boolean)
+        .join(" · ")
+    case "cash_movement":
+      return [movementReasonLabel(entry.reason), entry.description, entry.createdBy?.name].filter(Boolean).join(" · ")
+    case "payment_void":
+    case "order_cancellation":
+      return [
+        ...orderPlace(entry),
+        entry.reasonText || entry.reason,
+        entry.requestedBy,
+        entry.authorizedBy ? `Autorizó ${entry.authorizedBy}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    case "close":
+      return ["Cerró", entry.closedBy?.name, entry.note].filter(Boolean).join(" · ")
+    case "validation":
+      return ["Validó", entry.validatedBy?.name].filter(Boolean).join(" · ")
+  }
+}
+
+/** Método column: the tender method names of a payment. */
+export function ledgerMethods(entry: CashLedgerEntry): string {
+  return (entry.tenders ?? []).map((tender) => tender.method).join(" + ")
+}
+
+/** Valor column: payments and movements by amount, close by counted cash. */
+export function ledgerAmount(entry: CashLedgerEntry): number | null {
+  if (entry.kind === "close") return entry.counted ?? null
+  if (entry.kind === "validation") return null
+  const amount = entry.amount ?? null
+  if (amount === null) return null
+  if (entry.kind === "cash_movement" && entry.type === "withdrawal") return -amount
+  if (entry.kind === "payment_void" || entry.kind === "order_cancellation") return -amount
+  return amount
+}
+
+function csvCell(value: string | number): string {
+  const text = String(value)
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+/** Client-side CSV of the day ledger, Spanish headers, names instead of ids. */
+export function ledgerCsv(entries: readonly CashLedgerEntry[], turnoLabel: (registerId: string | null) => string): string {
+  const header = ["Turno", "Hora", "Tipo", "Detalle", "Método", "Propina", "Valor", "Saldo efectivo"]
+  const rows = entries.map((entry) => [
+    turnoLabel(entry.registerId),
+    formatTime(entry.at),
+    ledgerKindLabel(entry),
+    ledgerDetail(entry),
+    ledgerMethods(entry),
+    entry.tip ?? "",
+    ledgerAmount(entry) ?? "",
+    entry.cashBalance ?? "",
+  ])
+  return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n")
+}
+
 /** Query keys of the admin Caja reads. */
 export const cashDayQueryKey = (date: string) => ["cash", "day", date] as const
+export const cashLedgerQueryKey = (date: string) => ["cash", "ledger", date] as const
 export const cashReportQueryKey = (range: PeriodRange) => ["cash", "report", range.from, range.to, range.group] as const
