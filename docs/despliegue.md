@@ -512,7 +512,8 @@ bash /root/vipe-seed/demo/demo-db.sh --target coolify \
   UUID: código `2`. La contraseña se pasa a `node` por la entrada estándar y a `psql` solo llega el hash.
 - `--keep-password` solo va con `--reset`: dentro de la misma transacción, antes de borrar, lee el
   hash argon2id del administrador de la demo y lo usa para todas las cuentas nuevas; el hash no
-  sale de la sesión de base de datos. Sin demo cuyo hash conservar, código `2` sin cambiar nada.
+  sale de la sesión de base de datos. Sin demo cuyo hash conservar, o con `DEMO_PASSWORD` definida
+  a la vez (no se ignora en silencio), código `2` sin cambiar nada.
 - `--reset` falla con código `1`, antes de borrar, si una tabla de `public` con columna
   `restaurant_id` no está en la lista de `reset.sql`; la tabla nueva se agrega a esa lista.
 - Con `pnpm` 11 (la versión de las imágenes), `pnpm db:demo` devuelve los mismos códigos que el script

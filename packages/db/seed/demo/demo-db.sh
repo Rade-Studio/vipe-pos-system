@@ -36,7 +36,7 @@
 #   0  demo loaded
 #   1  any other failure (nothing is written: one transaction)
 #   2  invalid usage, DEMO_PASSWORD or uuid, or --keep-password without a
-#      demo admin password to keep
+#      demo admin password to keep or together with DEMO_PASSWORD
 #   3  the target already has restaurants (without --reset), or has
 #      restaurants the demo seed did not create
 set -euo pipefail
@@ -67,6 +67,9 @@ done
 
 if [[ "$keep_password" == true && "$reset" != true ]]; then
   target_die "--keep-password only goes with --reset" 2
+fi
+if [[ "$keep_password" == true && -n "${DEMO_PASSWORD:-}" ]]; then
+  target_die "DEMO_PASSWORD and --keep-password do not go together: unset DEMO_PASSWORD to keep the current password, or drop --keep-password to set it" 2
 fi
 if [[ "$keep_password" != true ]]; then
   if [[ -z "${DEMO_PASSWORD:-}" ]]; then

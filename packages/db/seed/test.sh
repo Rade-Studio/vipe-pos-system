@@ -358,6 +358,11 @@ expect_eq "demo: the reset deleted the desktop rows" "0" \
   "$(q "SELECT (SELECT count(*) FROM public.desktop_devices) + (SELECT count(*) FROM public.desktop_pairing_codes)")"
 expect_exit 0 "demo: --reset (2nd)" demo --reset --target coolify --app-uuid "$b" --db-uuid "$bdb"
 expect_eq "demo: still exactly one restaurant after two resets" "1" "$(q "SELECT count(*) FROM public.restaurants")"
+# A DEMO_PASSWORD next to --keep-password is refused, never silently ignored.
+before="$(fingerprint_b)"
+expect_exit 2 "demo: --keep-password with DEMO_PASSWORD set" demo --reset --keep-password --target coolify --app-uuid "$b" --db-uuid "$bdb"
+expect_stderr "demo: the refusal says the two do not go together" "DEMO_PASSWORD and --keep-password"
+expect_eq "demo: the conflicting run changed nothing" "$before" "$(fingerprint_b)"
 hash_before="$(q "SELECT md5(string_agg(DISTINCT password_hash, ',')) FROM public.users")"
 expect_exit 0 "demo: --reset --keep-password without DEMO_PASSWORD" \
   env -u DEMO_PASSWORD bash "$seed_dir/demo/demo-db.sh" --reset --keep-password --target coolify --app-uuid "$b" --db-uuid "$bdb"
