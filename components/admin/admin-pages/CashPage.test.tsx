@@ -1,22 +1,31 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { CashDay, CashPeriodBucket, CashReport } from "@/lib/api/cash"
+import type { CashDay, CashPeriodBucket, CashReport, CashZList, CashZReport } from "@/lib/api/cash"
 
 /**
  * caja-cierres T3 (S5-S6): admin Caja page. Día opens on the business day of
  * the cut-off; Período (04) shows the KPIs against the previous period, the
- * buckets, cashiers and tips. The Día content is covered in CashDayView.test.
+ * buckets, cashiers, tips and the informes Z of the range (S8). The Día content is covered in CashDayView.test.
  */
 
 const api = vi.hoisted(() => ({
   day: vi.fn(),
   report: vi.fn(),
+  zList: vi.fn(),
+  zOne: vi.fn(),
+  print: vi.fn(),
 }))
 vi.mock("@/lib/api/cash", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchCashDay: api.day,
   fetchCashReport: api.report,
+  fetchZReports: api.zList,
+  fetchZReport: api.zOne,
+}))
+vi.mock("@/components/printing/slip-format", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  printSlip: api.print,
 }))
 vi.mock("@/lib/api/config", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -93,6 +102,28 @@ const REPORT: CashReport = {
   tipsByWaiter: [{ waiterId: "w1", name: "Valentina Cardona", amount: 1200000 }],
 }
 
+const EMITTED_BY = { id: "p-mariana", name: "Mariana Restrepo Gil" }
+const zReport = (number: number, businessDay: string): CashZReport => {
+  const snapshot: Partial<CashDay> = { ...DAY }
+  delete snapshot.z
+  return {
+    number,
+    businessDay,
+    emittedAt: "2026-11-11T04:12:00.000Z",
+    emittedBy: EMITTED_BY,
+    snapshot: { ...(snapshot as Omit<CashDay, "z">), date: businessDay, taxes: { rate: 8, base: 0, tax: 0 }, orders: { first: null, last: null }, discounts: 0, tipsByMethod: [] },
+  }
+}
+const Z_LIST: CashZList = {
+  from: "2026-11-01",
+  to: "2026-11-11",
+  items: [
+    { number: 212, businessDay: "2026-11-08", salesNet: 5100000, difference: 0, emittedAt: "2026-11-09T04:00:00.000Z", emittedBy: EMITTED_BY },
+    { number: 214, businessDay: "2026-11-10", salesNet: 6221100, difference: -1500, emittedAt: "2026-11-11T04:12:00.000Z", emittedBy: EMITTED_BY },
+  ],
+  gaps: [213],
+}
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -108,6 +139,9 @@ beforeEach(() => {
   vi.setSystemTime(new Date(2026, 10, 12, 2, 0))
   api.day.mockReset().mockResolvedValue(DAY)
   api.report.mockReset().mockResolvedValue(REPORT)
+  api.zList.mockReset().mockResolvedValue({ ...Z_LIST, items: [], gaps: [] })
+  api.zOne.mockReset().mockImplementation(async (number: number) => zReport(number, "2026-11-10"))
+  api.print.mockReset().mockReturnValue(true)
 })
 afterEach(() => vi.useRealTimers())
 
@@ -169,5 +203,32 @@ describe("CashPage · Período", () => {
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2025-01-01" } })
     expect(screen.getByRole("alert")).toHaveTextContent("Elige un rango válido de hasta 366 días (desde antes que hasta).")
     expect(api.report).toHaveBeenCalledTimes(2)
+  })
+
+  it("lists the Zs of the period with a warning row for a numbering gap, and reprints one", async () => {
+    api.zList.mockResolvedValue(Z_LIST)
+    renderPage()
+    openPeriod()
+    const table = await screen.findByRole("table", { name: "Informes Z del período" })
+    await waitFor(() => expect(api.zList).toHaveBeenCalledWith({ from: "2026-11-01", to: "2026-11-11" }))
+    const rows = within(table).getAllByRole("row").slice(1)
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringMatching(/000212.*8 nov.*\$ 5\.100\.000.*\$ 0.*Mariana Restrepo Gil/),
+      expect.stringMatching(/Falta el Z N\.º 000213/),
+      expect.stringMatching(/000214.*10 nov.*\$ 6\.221\.100.*−\$ 1\.500.*Mariana Restrepo Gil/),
+    ])
+    expect(screen.getByRole("alert")).toHaveTextContent("Hay 1 número sin informe Z en la numeración del período.")
+    await act(async () => {
+      fireEvent.click(within(rows[2]).getByRole("button", { name: "Ver / reimprimir Z 000214" }))
+    })
+    await waitFor(() => expect(api.zOne).toHaveBeenCalledWith(214))
+    await waitFor(() => expect(api.print).toHaveBeenCalledTimes(1))
+    expect(api.print.mock.calls[0][1]).toMatchObject({ title: "Informe Z N.º 000214" })
+  })
+
+  it("says so when the period has no Z", async () => {
+    renderPage()
+    openPeriod()
+    expect(await screen.findByText("Sin informes Z en el período.")).toBeInTheDocument()
   })
 })

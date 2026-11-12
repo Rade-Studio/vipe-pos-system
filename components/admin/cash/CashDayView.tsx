@@ -1,18 +1,29 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2, Printer } from "lucide-react"
 import { EmptyState } from "@/components/admin/common/EmptyState"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { useCashDay, useCashLedger, useValidateRegister } from "@/hooks/admin/use-cash"
+import { useCashDay, useCashLedger, useEmitZReport, useValidateRegister } from "@/hooks/admin/use-cash"
 import type { CashDay } from "@/lib/api/cash"
-import { formatBusinessDay, formatTime, shiftDay } from "@/lib/admin/cash"
+import { ApiError } from "@/lib/api/errors"
+import { formatBusinessDay, formatTime, shiftDay, zNumberLabel } from "@/lib/admin/cash"
 import { CashDayBoard } from "./CashDayBoard"
 import { CashLedgerView } from "./CashLedgerView"
 import { Segmented } from "./Segmented"
+import { usePrintZ } from "./use-print-z"
 
 type DayTab = "board" | "ledger"
 
@@ -74,6 +85,82 @@ function StatusLine({ day }: { day: CashDay }) {
   )
 }
 
+/**
+ * Informe Z of the day (S8): "Emitir informe Z" once every turno closed,
+ * after a confirmation (it numbers the day and cannot be undone); then the
+ * Z number, who emitted it and when, with "Reimprimir Z".
+ */
+function ZReportBar({ date, day }: { date: string; day: CashDay }) {
+  const { toast } = useToast()
+  const [confirming, setConfirming] = useState(false)
+  const emit = useEmitZReport(date)
+  const { print, reprint, printing } = usePrintZ()
+
+  if (day.z) {
+    const z = day.z
+    return (
+      <div className="flex flex-col gap-2 rounded-md border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-medium">
+          {`Z N.º ${zNumberLabel(z.number)} emitido · por ${z.emittedBy?.name ?? "—"} · ${formatTime(z.emittedAt)}`}
+        </p>
+        <Button variant="outline" className="min-h-11" onClick={() => void reprint(z.number)} disabled={printing === z.number}>
+          {printing === z.number ? <Loader2 className="animate-spin" aria-hidden /> : <Printer aria-hidden />}
+          Reimprimir Z
+        </Button>
+      </div>
+    )
+  }
+
+  const closed = day.status === "closed"
+  const onConfirm = () =>
+    emit.mutate(undefined, {
+      onSuccess: (z) => {
+        setConfirming(false)
+        toast({ title: `Informe Z N.º ${zNumberLabel(z.number)} emitido` })
+        print(z)
+      },
+      onError: (error) => {
+        setConfirming(false)
+        toast({
+          title: "No se pudo emitir el informe Z",
+          description: error instanceof ApiError ? error.message : "Intenta nuevamente.",
+          variant: "destructive",
+        })
+      },
+    })
+
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-muted-foreground">
+        {closed ? "Informe Z sin emitir." : "Cierra todos los turnos del día para emitir el informe Z."}
+      </p>
+      <Button className="min-h-11" disabled={!closed || emit.isPending} onClick={() => setConfirming(true)}>
+        Emitir informe Z
+      </Button>
+      <AlertDialog open={confirming} onOpenChange={(open) => !emit.isPending && setConfirming(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Emitir el informe Z del día?</AlertDialogTitle>
+            <AlertDialogDescription>
+              El informe Z cierra el {formatBusinessDay(date)}: le da el siguiente número consecutivo y guarda sus totales tal como están.
+              Esta acción no se puede deshacer; después solo se puede reimprimir.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11" disabled={emit.isPending}>
+              Cancelar
+            </AlertDialogCancel>
+            <Button className="min-h-11" onClick={onConfirm} disabled={emit.isPending}>
+              {emit.isPending && <Loader2 className="animate-spin" aria-hidden />}
+              Emitir informe Z
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
 interface CashDayViewProps {
   date: string
   today: string
@@ -121,6 +208,7 @@ export function CashDayView({ date, today, onDateChange }: CashDayViewProps) {
       ) : (
         <>
           <StatusLine day={day} />
+          <ZReportBar date={date} day={day} />
           <Segmented
             label="Vista del día"
             value={tab}

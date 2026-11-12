@@ -28,6 +28,9 @@ import {
   registersByDateQueryKey,
   shiftDay,
   sortedRegisterIds,
+  zNumberLabel,
+  zQueryKey,
+  zReportsQueryKey,
 } from "./cash"
 import type { CashLedgerEntry } from "@/lib/api/cash"
 
@@ -205,5 +208,18 @@ describe("ledgerCsv", () => {
     expect(row).toContain("Mesa 7 · Orden #1046 · Valentina Cardona")
     expect(row).toContain("Cobro")
     expect(row).not.toContain("r1")
+  })
+})
+
+describe("informe Z helpers", () => {
+  it("pads the Z number to six digits", () => {
+    expect(zNumberLabel(215)).toBe("000215")
+    expect(zNumberLabel(1)).toBe("000001")
+    expect(zNumberLabel(1234567)).toBe("1234567")
+  })
+
+  it("keys the Z list by range and one Z by number under the cash prefix", () => {
+    expect(zReportsQueryKey({ from: "2026-11-01", to: "2026-11-30" })).toEqual(["cash", "z", "list", "2026-11-01", "2026-11-30"])
+    expect(zQueryKey(215)).toEqual(["cash", "z", 215])
   })
 })

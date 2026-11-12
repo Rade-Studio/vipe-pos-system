@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
+import { AlertTriangle, Loader2 } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { EmptyState } from "@/components/admin/common/EmptyState"
 import { Panel } from "@/components/admin/common/Panel"
@@ -9,7 +10,7 @@ import { formatAxisAmount } from "@/components/admin/SalesChart"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useCashReport } from "@/hooks/admin/use-cash"
+import { useCashReport, useZReports } from "@/hooks/admin/use-cash"
 import type { CashPeriodBucket } from "@/lib/api/cash"
 import {
   DIFFERENCE_TONE_CLASS,
@@ -22,10 +23,12 @@ import {
   periodRange,
   shiftDay,
   type PeriodKind,
+  zNumberLabel,
 } from "@/lib/admin/cash"
 import { cn } from "@/lib/utils"
 import { MethodTotals, WaiterTips } from "./CashDayBoard"
 import { Region, Segmented } from "./Segmented"
+import { usePrintZ } from "./use-print-z"
 
 const PERIODS: { value: PeriodKind; label: string }[] = [
   { value: "day", label: "Día" },
@@ -38,13 +41,100 @@ function bucketLabel(bucket: CashPeriodBucket): string {
   return bucket.start === bucket.end ? formatShortDay(bucket.start) : `${formatShortDay(bucket.start)} – ${formatShortDay(bucket.end)}`
 }
 
+/**
+ * Informes Z del período (S8): one row per Z by number, and a warning row
+ * where a number is missing between the first and the last.
+ */
+function ZReportsPanel({ range }: { range: { from: string; to: string } }) {
+  const { data, isLoading, isError } = useZReports(range)
+  const { reprint, printing } = usePrintZ()
+  const gaps = data?.gaps ?? []
+  const rows = [
+    ...(data?.items ?? []).map((item) => ({ number: item.number, item })),
+    ...gaps.map((number) => ({ number, item: null })),
+  ].sort((a, b) => a.number - b.number)
+
+  return (
+    <Panel title="Informes Z del período" description="Numeración consecutiva: un número sin informe es un hueco que hay que revisar." contentClassName="overflow-x-auto p-0">
+      {isLoading ? (
+        <Skeleton className="m-4 h-16" />
+      ) : isError || !data ? (
+        <p className="px-4 py-3 text-sm text-destructive">No se pudieron cargar los informes Z.</p>
+      ) : data.items.length === 0 ? (
+        <p className="px-4 py-3 text-sm text-muted-foreground">Sin informes Z en el período.</p>
+      ) : (
+        <>
+          {gaps.length > 0 && (
+            <p role="alert" className="mx-4 mt-3 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+              <AlertTriangle className="size-4 shrink-0" aria-hidden />
+              {gaps.length === 1
+                ? "Hay 1 número sin informe Z en la numeración del período."
+                : `Hay ${gaps.length} números sin informe Z en la numeración del período.`}
+            </p>
+          )}
+          <table aria-label="Informes Z del período" className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <th scope="col" className="px-4 py-2 font-medium">N.º</th>
+                <th scope="col" className="px-4 py-2 font-medium">Día</th>
+                <th scope="col" className="px-4 py-2 text-right font-medium">Ventas netas</th>
+                <th scope="col" className="px-4 py-2 text-right font-medium">Diferencia</th>
+                <th scope="col" className="px-4 py-2 font-medium">Emitido por</th>
+                <th scope="col" className="px-4 py-2"><span className="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ number, item }) => (
+                <Fragment key={number}>
+                  {item ? (
+                    <tr className="border-b last:border-0">
+                      <td className="px-4 py-2 font-medium tabular-nums">{zNumberLabel(item.number)}</td>
+                      <td className="px-4 py-2">{formatShortDay(item.businessDay)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{formatCop(item.salesNet)}</td>
+                      <td className={cn("px-4 py-2 text-right tabular-nums", DIFFERENCE_TONE_CLASS[differenceStatus(item.difference).tone])}>
+                        {formatSignedCop(item.difference)}
+                      </td>
+                      <td className="px-4 py-2">{item.emittedBy?.name ?? "—"}</td>
+                      <td className="px-4 py-2 text-right">
+                        <Button
+                          variant="outline"
+                          className="min-h-11"
+                          aria-label={`Ver / reimprimir Z ${zNumberLabel(item.number)}`}
+                          disabled={printing === item.number}
+                          onClick={() => void reprint(item.number)}
+                        >
+                          {printing === item.number && <Loader2 className="animate-spin" aria-hidden />}
+                          Ver / reimprimir
+                        </Button>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr className="border-b bg-amber-50 text-amber-900 last:border-0 dark:bg-amber-950 dark:text-amber-100">
+                      <td colSpan={6} className="px-4 py-2 font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          <AlertTriangle className="size-4 shrink-0" aria-hidden />
+                          Falta el Z N.º {zNumberLabel(number)} en la numeración
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </Panel>
+  )
+}
+
 interface CashPeriodViewProps {
   today: string
   /** A day bucket opens Día on that date. */
   onOpenDay: (date: string) => void
 }
 
-/** Resumen del período (design 04). */
+/** Resumen del período (design 04), with the informes Z of the range. */
 export function CashPeriodView({ today, onOpenDay }: CashPeriodViewProps) {
   const [kind, setKind] = useState<PeriodKind>("month")
   const [custom, setCustom] = useState({ from: shiftDay(today, -29), to: today })
@@ -222,6 +312,8 @@ export function CashPeriodView({ today, onOpenDay }: CashPeriodViewProps) {
               </p>
             </Panel>
           </div>
+
+          <ZReportsPanel range={{ from: range.from, to: range.to }} />
         </>
       )}
     </div>
