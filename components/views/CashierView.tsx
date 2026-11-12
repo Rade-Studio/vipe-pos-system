@@ -526,6 +526,9 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       bill: bill,
       waiter: waiter?.name ?? "N/A",
       table: table ? table.number : takeawayLabel(order),
+      ...(order.orderType
+        ? { orderType: order.orderType, ...(takeaway ? { customerName: order.customerName ?? null } : {}) }
+        : {}),
       paymentMethod: (order as any).paymentMethod || "cash"
     }
 
@@ -889,6 +892,10 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                     ...billSourceFromOrder(selectedEntry.payOrder),
                     discounts: (selectedEntry.payOrder as CashierOrder).discounts,
                     gross_subtotal: (selectedEntry.payOrder as CashierOrder).grossSubtotal,
+                    ...(selectedEntry.payOrder.orderType ? { order_type: selectedEntry.payOrder.orderType } : {}),
+                    ...(selectedEntry.payOrder.orderType === "takeaway"
+                      ? { customer_name: selectedEntry.payOrder.customerName ?? null }
+                      : {}),
                   }}
                   eyebrow={`Cobrar · ${selectedEntry.label}`}
                   onCancel={clearSelection}
