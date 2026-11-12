@@ -16,7 +16,10 @@ import {
 import type { AuthenticatedRequest } from '../auth/auth-context';
 import { Roles } from '../auth/roles.decorator';
 import { idParamSchema, parseInput } from '../common/validation';
+import { ManualDiscountsService } from './manual-discounts.service';
 import {
+  AddOrderDiscountRequest,
+  addOrderDiscountSchema,
   AddOrderItemsRequest,
   addOrderItemsSchema,
   CancelledOrder,
@@ -31,12 +34,15 @@ import {
   ORDER_LIST_LIMIT,
   ORDER_STATUSES,
   orderListQuerySchema,
+  parseDiscountBody,
   PriceChangedResponse,
   PricingPreview,
   PricingPreviewRequest,
   pricingPreviewSchema,
   PreviewDishLine,
   ComboLineRequest,
+  RemoveOrderDiscountRequest,
+  removeOrderDiscountSchema,
   ServeOrderItemsRequest,
   serveOrderItemsSchema,
   StockShortageResponse,
@@ -65,7 +71,10 @@ const includeFilter = (include: readonly string[] = []): OrderListFilter => ({
 @ApiUnprocessableEntityResponse({ description: 'Invalid input, unknown fields, unknown dish, table, waiter or item.' })
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(
+    private readonly orders: OrdersService,
+    private readonly manualDiscounts: ManualDiscountsService,
+  ) {}
 
   @Get()
   @ApiQuery({ name: 'status', required: false, description: `Comma-separated: ${ORDER_STATUSES.join(', ')}.` })
@@ -218,6 +227,38 @@ export class OrdersController {
   @ApiNotFoundResponse({ description: '`order_not_found`.' })
   voidItems(@Param('id') id: string, @Body() body: unknown): Promise<Order> {
     return this.orders.voidItems(parseInput(idParamSchema, id), parseInput(voidOrderItemsSchema, body));
+  }
+
+  @Post(':id/discounts')
+  @Roles('admin', 'cashier')
+  @ApiBody({ type: AddOrderDiscountRequest })
+  @ApiCreatedResponse({
+    type: Order,
+    description:
+      'S7: a manual discount (kind manual_item or manual_bill, source manual, reason, authorizedBy) computed by the server: on a line from its value minus the discounts already on it, on the order from the net subtotal, never above either; then the automatic discounts and the bill are recomputed. A promotion with mode manual needs no authorization (authorizedBy is the caller).',
+  })
+  @ApiForbiddenResponse({ description: `Not admin or cashier, or ${VOID_REFUSALS}` })
+  @ApiConflictResponse({ description: '`order_closed` (paid or cancelled).' })
+  @ApiNotFoundResponse({ description: '`order_not_found`.' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      '`discount_invalid`, `discount_reason_invalid`, `order_item_not_found`, `promotion_not_found`, `promotion_not_manual`, `promotion_kind_unsupported`, `promotion_not_available`, `promotion_not_applicable`, `promotion_max_uses`, `promotion_min_subtotal`, `discount_item_required`, `discount_item_not_allowed` or `discount_nothing_left`; nothing is stored.',
+  })
+  addDiscount(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Order> {
+    return this.manualDiscounts.add(parseInput(idParamSchema, id), parseDiscountBody(addOrderDiscountSchema, body), req.profile!.id);
+  }
+
+  @Delete(':id/discounts/:discountId')
+  @Roles('admin', 'cashier')
+  @ApiBody({ type: RemoveOrderDiscountRequest, required: false })
+  @ApiOkResponse({ type: Order, description: 'The manual discount removed (same authorization rule as adding it), the automatic discounts and the bill recomputed.' })
+  @ApiForbiddenResponse({ description: `Not admin or cashier, or ${VOID_REFUSALS}` })
+  @ApiConflictResponse({ description: '`order_closed` (paid or cancelled).' })
+  @ApiNotFoundResponse({ description: '`order_not_found` or `discount_not_found`.' })
+  @ApiUnprocessableEntityResponse({ description: '`discount_not_manual` (automatic discounts follow the promotions) or `discount_invalid`.' })
+  removeDiscount(@Param('id') id: string, @Param('discountId') discountId: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Order> {
+    const { authorizationId } = parseDiscountBody(removeOrderDiscountSchema, body);
+    return this.manualDiscounts.remove(parseInput(idParamSchema, id), parseInput(idParamSchema, discountId), authorizationId, req.profile!.id);
   }
 
   @Delete(':id')
