@@ -32,6 +32,11 @@ import {
   ORDER_STATUSES,
   orderListQuerySchema,
   PriceChangedResponse,
+  PricingPreview,
+  PricingPreviewRequest,
+  pricingPreviewSchema,
+  PreviewDishLine,
+  ComboLineRequest,
   ServeOrderItemsRequest,
   serveOrderItemsSchema,
   StockShortageResponse,
@@ -110,16 +115,35 @@ export class OrdersController {
   @Post()
   @Roles(...ORDER_TAKERS)
   @ApiBody({ type: CreateOrderRequest })
-  @ApiCreatedResponse({ type: Order, description: 'Order and items in kitchen, bill computed by the database, stock consumed, table in kitchen.' })
+  @ApiCreatedResponse({
+    type: Order,
+    description: 'Order and items in kitchen at list price, each with the automatic promotion fixed now, the discounts and the bill, stock consumed, table in kitchen.',
+  })
   @ApiConflictResponse({
     description:
-      'Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse) or Table has an open order (TableHasOpenOrderResponse).',
+      'Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse: a unitPrice different from the list price) or Table has an open order (TableHasOpenOrderResponse).',
     schema: { oneOf: [StockShortageResponse, PriceChangedResponse, TableHasOpenOrderResponse].map((type) => ({ $ref: `#/components/schemas/${type.name}` })) },
   })
   @ApiExtraModels(StockShortageResponse, PriceChangedResponse, TableHasOpenOrderResponse)
   @ApiForbiddenResponse({ description: 'Not admin, waiter or cashier.' })
   create(@Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Order> {
     return this.orders.create(parseInput(createOrderSchema, body), req.profile!.id);
+  }
+
+  @Post('pricing-preview')
+  @Roles(...ORDER_TAKERS, 'delivery_operator')
+  @HttpCode(200)
+  @ApiBody({ type: PricingPreviewRequest })
+  @ApiExtraModels(PreviewDishLine, ComboLineRequest)
+  @ApiOkResponse({
+    type: PricingPreview,
+    description:
+      'As if sent now (server clock, restaurant timezone, channel): the order lines (with the promotions fixed when sent) and the draft lines, their discounts, the bill discount, totals and hints ("Falta 1 unidad para otro 2x1.", "Envía antes de las 19:00.", "Domicilio: faltan $X para el 10% de descuento."). Writes nothing.',
+  })
+  @ApiNotFoundResponse({ description: 'orderId not found.' })
+  @ApiForbiddenResponse({ description: 'Not admin, waiter, cashier or delivery operator.' })
+  pricingPreview(@Body() body: unknown): Promise<PricingPreview> {
+    return this.orders.pricingPreview(parseInput(pricingPreviewSchema, body));
   }
 
   @Post(':id/items')
@@ -184,7 +208,11 @@ export class OrdersController {
   @Roles(...ORDER_TAKERS)
   @HttpCode(200)
   @ApiBody({ type: VoidOrderItemsRequest })
-  @ApiOkResponse({ type: Order, description: 'The order with the voided units removed and the bill recomputed; stock already consumed stays consumed.' })
+  @ApiOkResponse({
+    type: Order,
+    description:
+      'The order with the voided units removed, the automatic discounts and the bill recomputed; voiding a line of a combo voids the whole combo. Stock already consumed stays consumed.',
+  })
   @ApiForbiddenResponse({ description: `Not admin, waiter or cashier, or ${VOID_REFUSALS}` })
   @ApiConflictResponse({ description: '`order_closed` (paid or cancelled).' })
   @ApiNotFoundResponse({ description: '`order_not_found`.' })

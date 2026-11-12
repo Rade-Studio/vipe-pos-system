@@ -1,7 +1,17 @@
 import { authorizer, reasonOf, staffRef } from '../audit/audit.mappers';
 import { toIso } from '../common/validation';
 import { toLegacyTransaction, toPayment } from '../payments/payments.mappers';
-import { type CancelledOrder, type CompletedOrder, LEGACY_CANCELLATION_LABEL, type Order, type OrderItem, type OrderStatus, type OrderType, type StockShortage } from './orders.dto';
+import {
+  type CancelledOrder,
+  type CompletedOrder,
+  LEGACY_CANCELLATION_LABEL,
+  type Order,
+  type OrderDiscount,
+  type OrderItem,
+  type OrderStatus,
+  type OrderType,
+  type StockShortage,
+} from './orders.dto';
 
 type Json = Record<string, unknown>;
 
@@ -11,12 +21,28 @@ export interface OrderRow {
   table_number: number | null;
   waiter_name: string | null;
   items: Json[];
+  /** Every order_discounts row of the order (DISCOUNT_JSON), lines first. */
+  discounts?: Json[];
 }
 
 const text = (value: unknown) => (value === null || value === undefined ? null : String(value));
 const time = (value: unknown) => toIso(text(value));
 /** numeric columns arrive as JSON numbers through to_jsonb. */
 const num = (value: unknown) => Number(value ?? 0);
+
+/** One DISCOUNT_JSON row (order_discounts plus the authorizer's name). */
+export const toOrderDiscount = (row: Json): OrderDiscount => ({
+  id: String(row.id),
+  kind: row.kind as OrderDiscount['kind'],
+  source: row.source as OrderDiscount['source'],
+  label: String(row.label),
+  amount: num(row.amount),
+  promotionId: text(row.promotion_id),
+  orderItemId: text(row.order_item_id),
+  comboId: text(row.combo_id),
+  reason: text(row.reason),
+  authorizedBy: authorizer(row.authorized_by, row.authorized_by_name),
+});
 
 export const toOrderItem = (row: Json): OrderItem => ({
   id: String(row.id),
@@ -39,6 +65,10 @@ export const toOrderItem = (row: Json): OrderItem => ({
     name: String(m.option_name),
     price: num(m.price),
   })),
+  discounts: ((row.discounts as Json[] | undefined) ?? []).map(toOrderDiscount),
+  promotionId: text(row.promotion_id),
+  promotionName: text(row.promotion_name),
+  comboId: text(row.combo_id),
 });
 
 export function toOrder(row: OrderRow, include: { withTable?: boolean; withWaiter?: boolean } = {}): Order {
@@ -59,6 +89,8 @@ export function toOrder(row: OrderRow, include: { withTable?: boolean; withWaite
     tipPercentage: num(o.tip_percentage),
     total: num(o.total),
     totalDiscounts: num(o.total_discounts),
+    grossSubtotal: num(o.subtotal) + num(o.total_discounts),
+    discounts: (row.discounts ?? []).map(toOrderDiscount),
     isPartialOrder: o.is_partial_order === true,
     parentOrderId: text(o.parent_order_id),
     createdAt: time(o.created_at),

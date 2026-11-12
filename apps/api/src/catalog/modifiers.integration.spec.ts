@@ -199,12 +199,13 @@ describe('priced modifiers (Testcontainers, vipe_api)', () => {
       expect((await db('SELECT status FROM tables WHERE id = $1', [m.t1]))[0]).toEqual({ status: 'available' });
     });
 
-    it('charges the promoted dish price plus the options and stores the snapshot', async () => {
-      const res = await orderOn(m.t2, [{ dishId: m.promoBurger, quantity: 2, unitPrice: 11500, modifiers: opt(m.cheese) }]);
+    it('charges the list dish price plus the options, the promotion as a discount, and stores the snapshot', async () => {
+      const res = await orderOn(m.t2, [{ dishId: m.promoBurger, quantity: 2, unitPrice: 12500, modifiers: opt(m.cheese) }]);
       expect(res.status).toBe(201);
-      expect(res.body.subtotal).toBe(23000);
+      // Diez 10% on the unit price with its options: 1250 per unit.
+      expect(res.body).toMatchObject({ subtotal: 22500, totalDiscounts: 2500, grossSubtotal: 25000 });
       expect(res.body.items[0]).toMatchObject({
-        price: 11500,
+        price: 12500,
         quantity: 2,
         modifiers: [{ groupId: m.extras, groupName: 'Adiciones', optionId: m.cheese, name: 'Queso', price: 2500 }],
       });
@@ -212,7 +213,7 @@ describe('priced modifiers (Testcontainers, vipe_api)', () => {
         items: [{ dishId: m.burger, quantity: 1, modifiers: opt(m.bacon, m.wellDone), comments: 'Sin sal' }],
       });
       expect(add.status).toBe(201);
-      expect(add.body.subtotal).toBe(46000);
+      expect(add.body.subtotal).toBe(45500);
       expect(add.body.items[1]).toMatchObject({ price: 23000, comments: 'Sin sal' });
       expect(add.body.items[1].modifiers.map((x: { name: string }) => x.name)).toEqual(['Bien asado', 'Tocineta']);
     });

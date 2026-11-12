@@ -33,11 +33,12 @@ const o = {
 } as const;
 
 const ORDER_KEYS = [
-  'createdAt', 'guests', 'id', 'isPartialOrder', 'items', 'notes', 'orderNumber', 'orderType', 'parentOrderId', 'status', 'subtotal', 'tableId', 'tax',
-  'taxPercentage', 'tip', 'tipPercentage', 'total', 'totalDiscounts', 'updatedAt', 'waiterId',
+  'createdAt', 'discounts', 'grossSubtotal', 'guests', 'id', 'isPartialOrder', 'items', 'notes', 'orderNumber', 'orderType', 'parentOrderId', 'status',
+  'subtotal', 'tableId', 'tax', 'taxPercentage', 'tip', 'tipPercentage', 'total', 'totalDiscounts', 'updatedAt', 'waiterId',
 ];
 const ITEM_KEYS = [
-  'addedAt', 'comments', 'createdAt', 'dishId', 'id', 'modifiers', 'name', 'orderId', 'price', 'quantity', 'stationId', 'stationSource', 'status', 'updatedAt',
+  'addedAt', 'comboId', 'comments', 'createdAt', 'discounts', 'dishId', 'id', 'modifiers', 'name', 'orderId', 'price', 'promotionId', 'promotionName', 'quantity',
+  'stationId', 'stationSource', 'status', 'updatedAt',
 ];
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -370,14 +371,15 @@ describe('orders endpoints (Testcontainers, vipe_api)', () => {
       expect(await tableRow(o.t8)).toEqual({ status: 'available', waiter_id: null });
     });
 
-    it('charges the promoted price of a dish with an active promotion', async () => {
+    it('stores the list price of a dish with an active promotion and the discount as its own row', async () => {
       const res = await waiterA().post('/api/orders', {
         tableId: o.t8,
-        items: [{ dishId: o.promo, quantity: 1, unitPrice: 9000 }],
+        items: [{ dishId: o.promo, quantity: 1, unitPrice: 10000 }],
       });
       expect(res.status).toBe(201);
-      expect(res.body).toMatchObject({ subtotal: 9000 });
-      expect(res.body.items[0].price).toBe(9000);
+      expect(res.body).toMatchObject({ subtotal: 9000, totalDiscounts: 1000, grossSubtotal: 10000 });
+      expect(res.body.items[0]).toMatchObject({ price: 10000, promotionName: 'Diez' });
+      expect(res.body.items[0].discounts).toEqual([expect.objectContaining({ kind: 'promotion_item', label: 'Diez', amount: 1000 })]);
     });
 
     it('applies server prices and the 409 to POST /orders/:id/items', async () => {
