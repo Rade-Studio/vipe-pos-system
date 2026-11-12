@@ -97,6 +97,16 @@ beforeEach(() => {
 })
 
 describe("VoidFlow — anular plato", () => {
+  it("S13: warns that promotions are recomputed only when the order has discounts", () => {
+    renderFlow({ ...itemTarget, totalDiscounts: 24000 })
+    expect(screen.getByRole("note")).toHaveTextContent("Las promociones se recalculan al anular")
+  })
+
+  it("S13: no promotions note for an order without discounts", () => {
+    renderFlow({ ...itemTarget, totalDiscounts: 0 })
+    expect(screen.queryByText("Las promociones se recalculan al anular")).not.toBeInTheDocument()
+  })
+
   it("walks qué y motivo → quién autoriza → PIN → listo and sends the exact target", async () => {
     const { onDone } = renderFlow(itemTarget)
 

@@ -2,6 +2,7 @@ import { api } from "./client"
 import { ApiError } from "./errors"
 import type { components } from "./schema"
 import { dishIdFromCartItemId } from "@/lib/menu/cart-dish-id"
+import { isComboLine } from "@/lib/promotions/waiter"
 import type { CartItem, Order, OrderItem, OrderStatus } from "@/types"
 
 /**
@@ -21,6 +22,9 @@ type Schemas = components["schemas"]
 export type OrderDto = Schemas["Order"]
 export type OrderItemDto = Schemas["OrderItem"]
 export type OrderItemInput = Schemas["OrderItemInput"]
+/** S5: one combo line: the promotion and one dish per group. */
+export type ComboLineInput = Schemas["ComboLineRequest"]
+export type OrderDiscountDto = Schemas["OrderDiscount"]
 export type StockShortage = Schemas["StockShortage"]
 export type DishPrice = Schemas["DishPrice"]
 /** F7: a line of the 409 `Price changed` body, sent only when the request had options. */
@@ -42,8 +46,17 @@ export type CreateOrderBody = Omit<Schemas["CreateOrderRequest"], "orderType" | 
   force?: boolean
 }
 
-/** A domain item that also carries its dish (the API always sends it) and, with stations (F6), its station. */
-export type ApiOrderItem = OrderItem & { dishId?: string; stationId?: string }
+/**
+ * A domain item that also carries its dish (the API always sends it) and, with
+ * stations (F6), its station; with promotions (S8) its discounts and combo, only
+ * when it has them.
+ */
+export type ApiOrderItem = OrderItem & {
+  dishId?: string
+  stationId?: string
+  discounts?: Pick<OrderDiscountDto, "id" | "kind" | "label" | "amount" | "promotionId" | "authorizedBy">[]
+  comboId?: string
+}
 
 export const ORDER_INCLUDES = ["table", "waiter"] as const
 export type OrderInclude = (typeof ORDER_INCLUDES)[number]
@@ -76,6 +89,19 @@ function toOrderItem(item: OrderItemDto): ApiOrderItem {
     image: ITEM_IMAGE,
     status: item.status,
     addedAt: toDate(item.addedAt ?? item.createdAt),
+    ...(item.discounts?.length
+      ? {
+          discounts: item.discounts.map(({ id, kind, label, amount, promotionId, authorizedBy }) => ({
+            id,
+            kind,
+            label,
+            amount,
+            promotionId,
+            authorizedBy,
+          })),
+        }
+      : {}),
+    ...(item.comboId ? { comboId: item.comboId } : {}),
   }
 }
 
@@ -128,8 +154,12 @@ function itemDtoFromWire(row: WireRow): OrderItemDto {
     addedAt: str(row.added_at),
     createdAt: str(row.created_at),
     updatedAt: str(row.updated_at),
-    // Realtime rows do not carry the snapshot; the next read fills it.
+    // Realtime rows do not carry the snapshots or the discounts; the next read fills them.
     modifiers: [],
+    discounts: [],
+    promotionId: str(row.promotion_id),
+    promotionName: null,
+    comboId: str(row.combo_id),
   }
 }
 
@@ -159,6 +189,9 @@ export function orderDtoFromWire(row: unknown): OrderDto | null {
     tipPercentage: num(wire.tip_percentage),
     total: num(wire.total),
     totalDiscounts: num(wire.total_discounts),
+    // subtotal is the net base (S2).
+    grossSubtotal: num(wire.subtotal) + num(wire.total_discounts),
+    discounts: [],
     isPartialOrder: wire.is_partial_order === true,
     parentOrderId: str(wire.parent_order_id),
     createdAt: str(wire.created_at),
@@ -173,7 +206,8 @@ export function orderDtoFromWire(row: unknown): OrderDto | null {
  * comments and, with F7, the chosen options as `modifiers: [{optionId}]`. A line with no dish cannot be priced, so it is refused here.
  */
 export function orderItemsFromCart(cart: readonly CartItem[]): OrderItemInput[] {
-  return cart.map((item) => {
+  // S12: combo lines go in `combos` (combosFromCart).
+  return cart.filter((item) => !isComboLine(item)).map((item) => {
     const dishId = dishIdFromCartItemId(item.id)
     if (!dishId) throw new Error(`El producto ${item.name} no corresponde a un plato del menú`)
     const line: OrderItemInput = { dishId, quantity: item.quantity, unitPrice: item.price, comments: item.comments || null }
@@ -181,6 +215,18 @@ export function orderItemsFromCart(cart: readonly CartItem[]): OrderItemInput[] 
     if (item.modifiers?.length) line.modifiers = item.modifiers.map(({ optionId }) => ({ optionId }))
     return line
   })
+}
+
+/** S5/S12: the cart's combo lines, one per unit, each choice with its group. */
+export function combosFromCart(cart: readonly CartItem[]): ComboLineInput[] {
+  return cart.flatMap((item) =>
+    isComboLine(item)
+      ? Array.from({ length: item.quantity }, () => ({
+          comboPromotionId: item.combo.promotionId,
+          choices: item.combo.choices.map(({ groupId, dishId }) => ({ groupId, dishId })),
+        }))
+      : [],
+  )
 }
 
 // ---- 409 bodies -------------------------------------------------------------
@@ -238,9 +284,10 @@ export async function create(body: CreateOrderBody): Promise<OrderDto> {
 export async function addItemsToOrder(
   orderId: string,
   items: OrderItemInput[],
-  options: { force?: boolean } & OrderDetails = {},
+  options: { force?: boolean; combos?: ComboLineInput[] } & OrderDetails = {},
 ): Promise<OrderDto> {
   const body: Partial<Schemas["AddOrderItemsRequest"]> = { items }
+  if (options.combos?.length) body.combos = options.combos
   if (options.force) body.force = true
   if (options.guests !== undefined) body.guests = options.guests
   if (options.notes !== undefined) body.notes = options.notes

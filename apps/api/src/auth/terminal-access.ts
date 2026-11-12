@@ -33,6 +33,7 @@ const TERMINAL_ROUTES: Readonly<Record<string, TerminalRoute>> = {
   'GET /api/catalog/dishes': read,
   'GET /api/catalog/promotions': read,
   'GET /api/catalog/promotions/active': read,
+  'GET /api/catalog/promotions/today': read,
   'GET /api/catalog/promotions/:id/dishes': read,
   'GET /api/catalog/menu/tree': read,
   'GET /api/orders': read,
@@ -40,6 +41,8 @@ const TERMINAL_ROUTES: Readonly<Record<string, TerminalRoute>> = {
   'GET /api/payments/methods': read,
   'POST /api/inventory/check-stock': read,
   'POST /api/inventory/dish-availability': read,
+  // promociones S8: the waiter's draft priced as if sent now; no writes.
+  'POST /api/orders/pricing-preview': read,
   'POST /api/orders': write,
   'POST /api/orders/:id/items': write,
   'PATCH /api/orders/:id': write,

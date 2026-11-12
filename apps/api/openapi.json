@@ -547,10 +547,23 @@
         "operationId": "DishesController_list",
         "parameters": [
           {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "description": "With pricing=promotions; default dine_in.",
+            "schema": {
+              "enum": [
+                "dine_in",
+                "delivery"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "name": "pricing",
             "required": false,
             "in": "query",
-            "description": "Apply the best promotion active now; discounted dishes carry the promotion fields.",
+            "description": "Add the automatic product promotion a line of each dish would be sent with now (price stays the list price).",
             "schema": {
               "enum": [
                 "promotions"
@@ -885,7 +898,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Newest first.",
+            "description": "Newest first, with targets, combo groups, 30-day stats, schedule now, sentence and badge.",
             "content": {
               "application/json": {
                 "schema": {
@@ -925,7 +938,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "The promotion with its targets and combo groups, saved in one transaction.",
             "content": {
               "application/json": {
                 "schema": {
@@ -938,7 +951,7 @@
             "description": "Not an admin."
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown dish."
+            "description": "422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target; `message` lists `<field>: <code>`. Nothing is saved."
           }
         },
         "security": [
@@ -957,7 +970,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Active and inside their date window now (server clock).",
+            "description": "Active and inside their dates now (restaurant timezone), oldest first.",
             "content": {
               "application/json": {
                 "schema": {
@@ -965,6 +978,49 @@
                   "items": {
                     "$ref": "#/components/schemas/Promotion"
                   }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, unknown fields or unknown dish."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/promotions/today": {
+      "get": {
+        "operationId": "PromotionsController_today",
+        "parameters": [
+          {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "description": "Default dine_in.",
+            "schema": {
+              "enum": [
+                "dine_in",
+                "delivery"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "For the terminals: the promotions applying now on the channel (with the end of the window), later today (with the start) and the others with why not; paused and ended ones are left out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromotionsToday"
                 }
               }
             }
@@ -1008,7 +1064,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Omitted fields keep their value; the merged promotion is validated per kind. targets and comboGroups replace the stored ones when sent.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1021,7 +1077,7 @@
             "description": ""
           },
           "422": {
-            "description": "Invalid input, unknown fields or unknown dish."
+            "description": "422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target; `message` lists `<field>: <code>`. Nothing is saved."
           }
         },
         "security": [
@@ -1400,7 +1456,21 @@
     "/api/catalog/menu/tree": {
       "get": {
         "operationId": "MenuController_tree",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "description": "Channel of the dish promotion fields; default dine_in.",
+            "schema": {
+              "enum": [
+                "dine_in",
+                "delivery"
+              ],
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and modifier groups are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.",
@@ -1426,7 +1496,20 @@
     "/api/catalog/menu/draft": {
       "get": {
         "operationId": "MenuController_draft",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "dine_in",
+                "delivery"
+              ],
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The tree from the live structure: what the next publication serves (admin menu editor preview).",
@@ -1962,7 +2045,7 @@
         },
         "responses": {
           "201": {
-            "description": "Order and items in kitchen, bill computed by the database, stock consumed, table in kitchen.",
+            "description": "Order and items in kitchen at list price, each with the automatic promotion fixed now, the discounts and the bill, stock consumed, table in kitchen.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1975,7 +2058,7 @@
             "description": "Not admin, waiter or cashier."
           },
           "409": {
-            "description": "Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse) or Table has an open order (TableHasOpenOrderResponse).",
+            "description": "Insufficient stock (StockShortageResponse; send again with force: true), Price changed (PriceChangedResponse: a unitPrice different from the list price) or Table has an open order (TableHasOpenOrderResponse).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2242,6 +2325,51 @@
         ]
       }
     },
+    "/api/orders/pricing-preview": {
+      "post": {
+        "operationId": "OrdersController_pricingPreview",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PricingPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "As if sent now (server clock, restaurant timezone, channel): the order lines (with the promotions fixed when sent) and the draft lines, their discounts, the bill discount, totals and hints (\"Falta 1 unidad para otro 2x1.\", \"Envía antes de las 19:00.\", \"Domicilio: faltan $X para el 10% de descuento.\"). Writes nothing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingPreview"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin, waiter, cashier or delivery operator."
+          },
+          "404": {
+            "description": "orderId not found."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/orders/{id}/items": {
       "post": {
         "operationId": "OrdersController_addItems",
@@ -2486,7 +2614,7 @@
         },
         "responses": {
           "200": {
-            "description": "The order with the voided units removed and the bill recomputed; stock already consumed stays consumed.",
+            "description": "The order with the voided units removed, the automatic discounts and the bill recomputed; voiding a line of a combo voids the whole combo. Stock already consumed stays consumed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2506,6 +2634,128 @@
           },
           "422": {
             "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}/discounts": {
+      "post": {
+        "operationId": "OrdersController_addDiscount",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOrderDiscountRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "S7: a manual discount (kind manual_item or manual_bill, source manual, reason, authorizedBy) computed by the server: on a line from its value minus the discounts already on it, on the order from the net subtotal, never above either; then the automatic discounts and the bill are recomputed. A promotion with mode manual needs no authorization (authorizedBy is the caller).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`."
+          },
+          "404": {
+            "description": "`order_not_found`."
+          },
+          "409": {
+            "description": "`order_closed` (paid or cancelled)."
+          },
+          "422": {
+            "description": "`discount_invalid`, `discount_reason_invalid`, `order_item_not_found`, `promotion_not_found`, `promotion_not_manual`, `promotion_kind_unsupported`, `promotion_not_available`, `promotion_not_applicable`, `promotion_max_uses`, `promotion_min_subtotal`, `discount_item_required`, `discount_item_not_allowed` or `discount_nothing_left`; nothing is stored."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}/discounts/{discountId}": {
+      "delete": {
+        "operationId": "OrdersController_removeDiscount",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "discountId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveOrderDiscountRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The manual discount removed (same authorization rule as adding it), the automatic discounts and the bill recomputed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin or cashier, or 403 `authorization_required` (a supervisor PIN is needed), `authorization_invalid` (unknown, expired, used, another action) or `self_authorization_not_allowed`; the body carries `code`."
+          },
+          "404": {
+            "description": "`order_not_found` or `discount_not_found`."
+          },
+          "409": {
+            "description": "`order_closed` (paid or cancelled)."
+          },
+          "422": {
+            "description": "`discount_not_manual` (automatic discounts follow the promotions) or `discount_invalid`."
           }
         },
         "security": [
@@ -3535,7 +3785,7 @@
             "description": ""
           },
           "422": {
-            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023."
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code`: 422 P0001 (rule violation, message verbatim), 404 P0002, 403 42501, 422 22023. Moving only part of a combo (promociones S5) is 422 `combo_split_not_allowed` (body `code`) \"Un menú se mueve completo: pasa todos sus productos juntos\"; nothing moves."
           }
         },
         "security": [
@@ -8542,7 +8792,8 @@
             "enum": [
               "cancel_order",
               "void_item",
-              "void_payment"
+              "void_payment",
+              "apply_discount"
             ]
           },
           "profileId": {
@@ -8556,12 +8807,12 @@
               "order",
               "payment"
             ],
-            "description": "order for cancel_order and void_item, payment for void_payment (else 422)."
+            "description": "order for cancel_order, void_item and apply_discount, payment for void_payment (else 422)."
           },
           "targetId": {
             "type": "string",
             "format": "uuid",
-            "description": "The order or payment to cancel or void. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member)."
+            "description": "The order or payment to cancel, void or discount. The authorization backs only that target and only an action by the caller (on a shared terminal, the identified staff member)."
           }
         },
         "required": [
@@ -8600,7 +8851,8 @@
             "enum": [
               "cancel_order",
               "void_item",
-              "void_payment"
+              "void_payment",
+              "apply_discount"
             ]
           },
           "targetType": {
@@ -8890,7 +9142,7 @@
           },
           "price": {
             "type": "number",
-            "description": "Price after the best active promotion when pricing=promotions applied one."
+            "description": "List price; never rewritten by a promotion (S2). Send it, plus the options, as unitPrice."
           },
           "categoryId": {
             "type": "string",
@@ -8935,27 +9187,29 @@
             "format": "date-time",
             "nullable": true
           },
-          "originalPrice": {
-            "type": "number",
-            "description": "Only when a promotion applies (pricing=promotions)."
-          },
-          "discountAmount": {
-            "type": "number",
-            "description": "Only when a promotion applies."
-          },
-          "discountPercentage": {
-            "type": "number",
-            "nullable": true,
-            "description": "Only when a promotion applies; null for fixed amounts."
-          },
           "promotionId": {
             "type": "string",
             "format": "uuid",
-            "description": "Only when a promotion applies."
+            "description": "pricing=promotions: the automatic product_discount or buy_x_pay_y promotion a line of this dish would be sent with now on the channel."
           },
           "promotionName": {
             "type": "string",
-            "description": "Only when a promotion applies."
+            "description": "Only with promotionId."
+          },
+          "promotionBadge": {
+            "type": "string",
+            "example": "2x1",
+            "description": "Only with promotionId: 2x1, 3x2, 20%, -$3.000."
+          },
+          "promotionEndsAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "19:00",
+            "description": "Only with promotionId: end of the current window (restaurant time); null = all day."
+          },
+          "promoPrice": {
+            "type": "number",
+            "description": "Only for a product_discount: the unit price after the discount (the discount itself is an order line)."
           }
         },
         "required": [
@@ -9114,6 +9368,135 @@
           "groupIds"
         ]
       },
+      "ComboGroupDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "example": "Sopa"
+          },
+          "dishIds": {
+            "description": "Dishes the customer can pick in this group (exactly one).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "dishIds"
+        ]
+      },
+      "TimeWindowDto": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "example": "17:00",
+            "description": "HH:MM, inclusive."
+          },
+          "to": {
+            "type": "string",
+            "example": "19:00",
+            "description": "HH:MM, exclusive; from < to."
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "PromotionTargetsDto": {
+        "type": "object",
+        "properties": {
+          "dishIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "categoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subcategoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "dishIds",
+          "categoryIds",
+          "subcategoryIds"
+        ]
+      },
+      "PromotionStats": {
+        "type": "object",
+        "properties": {
+          "usesLast30Days": {
+            "type": "number",
+            "description": "Distinct non-cancelled orders of the last 30 days with a discount of this promotion."
+          },
+          "discountLast30Days": {
+            "type": "number",
+            "description": "Sum of those discounts, whole pesos."
+          }
+        },
+        "required": [
+          "usesLast30Days",
+          "discountLast30Days"
+        ]
+      },
+      "PromotionSchedule": {
+        "type": "object",
+        "properties": {
+          "activeNow": {
+            "type": "boolean",
+            "description": "Applies by itself right now (automatic, active, in dates, day and window); channels are not considered."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "not_started",
+              "ended",
+              "other_day",
+              "outside_hours",
+              "manual"
+            ]
+          },
+          "endsAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "19:00",
+            "description": "End of the current window (restaurant time); null when all day or not active."
+          },
+          "nextStartToday": {
+            "type": "string",
+            "nullable": true,
+            "example": "17:00",
+            "description": "Start of the next window later today, when outside hours."
+          }
+        },
+        "required": [
+          "activeNow",
+          "reason",
+          "endsAt",
+          "nextStartToday"
+        ]
+      },
       "Promotion": {
         "type": "object",
         "properties": {
@@ -9128,15 +9511,67 @@
             "type": "string",
             "nullable": true
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "product_discount",
+              "buy_x_pay_y",
+              "combo",
+              "bill_discount"
+            ],
+            "description": "product_discount: discountType/discountValue per unit on the targets. buy_x_pay_y: buyQuantity N >= 2, payQuantity 1 <= M < N, restDiscountPercent 1-100 (100 = free) on the targets. combo: comboPrice > 0 and 1-6 comboGroups. bill_discount: discountType/discountValue on the bill, optional minSubtotal and maxDiscount. Fields of other kinds are stored as null."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "manual",
+              "manual_pin"
+            ],
+            "description": "automatic applies by itself when items are sent; manual modes never do (the cashier applies them)."
+          },
           "discountType": {
             "type": "string",
             "enum": [
               "percentage",
               "fixed_amount"
-            ]
+            ],
+            "nullable": true
           },
           "discountValue": {
-            "type": "number"
+            "type": "number",
+            "nullable": true
+          },
+          "buyQuantity": {
+            "type": "number",
+            "nullable": true
+          },
+          "payQuantity": {
+            "type": "number",
+            "nullable": true
+          },
+          "restDiscountPercent": {
+            "type": "number",
+            "nullable": true
+          },
+          "comboPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "comboGroups": {
+            "description": "In order; empty unless combo.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComboGroupDto"
+            }
+          },
+          "minSubtotal": {
+            "type": "number",
+            "nullable": true
+          },
+          "maxDiscount": {
+            "type": "number",
+            "nullable": true
           },
           "startDate": {
             "type": "string",
@@ -9144,10 +9579,72 @@
           },
           "endDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "nullable": true,
+            "description": "null = no end."
+          },
+          "daysOfWeek": {
+            "description": "ISO 1 = Monday … 7 = Sunday; empty = every day.",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "timeWindows": {
+            "description": "Restaurant time; empty = all day.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeWindowDto"
+            }
+          },
+          "channels": {
+            "type": "array",
+            "description": "Empty = every channel.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "dine_in",
+                "takeaway",
+                "delivery"
+              ]
+            }
+          },
+          "maxUsesPerOrder": {
+            "type": "number",
+            "nullable": true
           },
           "active": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "false = \"Pausada\"."
+          },
+          "targets": {
+            "description": "product_discount and buy_x_pay_y: a dish matches if listed or in a listed category/subcategory.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PromotionTargetsDto"
+              }
+            ]
+          },
+          "stats": {
+            "$ref": "#/components/schemas/PromotionStats"
+          },
+          "schedule": {
+            "description": "Computed now (server clock, restaurant timezone).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PromotionSchedule"
+              }
+            ]
+          },
+          "sentence": {
+            "type": "string",
+            "example": "Lleva 2 cócteles y paga 1; sale gratis el más económico.",
+            "description": "The rule in Spanish."
+          },
+          "badge": {
+            "type": "string",
+            "example": "2x1",
+            "description": "Short label: 2x1, 3x2, 20%, -$3.000, Combo, 10%."
           },
           "createdAt": {
             "type": "string",
@@ -9164,13 +9661,197 @@
           "id",
           "name",
           "description",
+          "kind",
+          "mode",
           "discountType",
           "discountValue",
+          "buyQuantity",
+          "payQuantity",
+          "restDiscountPercent",
+          "comboPrice",
+          "comboGroups",
+          "minSubtotal",
+          "maxDiscount",
           "startDate",
           "endDate",
+          "daysOfWeek",
+          "timeWindows",
+          "channels",
+          "maxUsesPerOrder",
           "active",
+          "targets",
+          "stats",
+          "schedule",
+          "sentence",
+          "badge",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "TodayActivePromotion": {
+        "type": "object",
+        "properties": {
+          "promotion": {
+            "$ref": "#/components/schemas/Promotion"
+          },
+          "sentence": {
+            "type": "string"
+          },
+          "badge": {
+            "type": "string"
+          },
+          "endsAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "19:00",
+            "description": "End of the current window; null = until the end of the day."
+          },
+          "minutesLeft": {
+            "type": "number",
+            "nullable": true,
+            "description": "Minutes until endsAt."
+          }
+        },
+        "required": [
+          "promotion",
+          "sentence",
+          "badge",
+          "endsAt",
+          "minutesLeft"
+        ]
+      },
+      "TodayLaterPromotion": {
+        "type": "object",
+        "properties": {
+          "promotion": {
+            "$ref": "#/components/schemas/Promotion"
+          },
+          "sentence": {
+            "type": "string"
+          },
+          "badge": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "string",
+            "example": "17:00"
+          },
+          "minutesUntilStart": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "promotion",
+          "sentence",
+          "badge",
+          "startsAt",
+          "minutesUntilStart"
+        ]
+      },
+      "TodayOtherPromotion": {
+        "type": "object",
+        "properties": {
+          "promotion": {
+            "$ref": "#/components/schemas/Promotion"
+          },
+          "sentence": {
+            "type": "string"
+          },
+          "badge": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "other_day",
+              "outside_hours",
+              "other_channel",
+              "manual",
+              "not_started"
+            ],
+            "description": "Why it does not apply now on this channel."
+          }
+        },
+        "required": [
+          "promotion",
+          "sentence",
+          "badge",
+          "reason"
+        ]
+      },
+      "PromotionsToday": {
+        "type": "object",
+        "properties": {
+          "now": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "localTime": {
+            "type": "string",
+            "example": "18:05",
+            "description": "Restaurant time."
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ]
+          },
+          "active": {
+            "description": "Automatic promotions applying now on the channel.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodayActivePromotion"
+            }
+          },
+          "laterToday": {
+            "description": "Automatic promotions of the channel with a window later today.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodayLaterPromotion"
+            }
+          },
+          "others": {
+            "description": "The rest that is neither paused nor ended.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodayOtherPromotion"
+            }
+          }
+        },
+        "required": [
+          "now",
+          "localTime",
+          "channel",
+          "active",
+          "laterToday",
+          "others"
+        ]
+      },
+      "ComboGroupInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Ignored on write: the groups are replaced as a whole and get new ids."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "dishIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "dishIds"
         ]
       },
       "CreatePromotionRequest": {
@@ -9184,36 +9865,130 @@
             "type": "string",
             "nullable": true
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "product_discount",
+              "buy_x_pay_y",
+              "combo",
+              "bill_discount"
+            ],
+            "default": "product_discount",
+            "description": "product_discount: discountType/discountValue per unit on the targets. buy_x_pay_y: buyQuantity N >= 2, payQuantity 1 <= M < N, restDiscountPercent 1-100 (100 = free) on the targets. combo: comboPrice > 0 and 1-6 comboGroups. bill_discount: discountType/discountValue on the bill, optional minSubtotal and maxDiscount. Fields of other kinds are stored as null."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "manual",
+              "manual_pin"
+            ],
+            "default": "automatic"
+          },
           "discountType": {
             "type": "string",
             "enum": [
               "percentage",
               "fixed_amount"
-            ]
+            ],
+            "nullable": true
           },
           "discountValue": {
             "type": "number",
-            "minimum": 0
+            "nullable": true,
+            "minimum": 0,
+            "description": "percentage: 0 < v <= 100."
+          },
+          "buyQuantity": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 2
+          },
+          "payQuantity": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1
+          },
+          "restDiscountPercent": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 100,
+            "default": 100
+          },
+          "comboPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "comboGroups": {
+            "maxItems": 6,
+            "description": "Replaces every group (new ids).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComboGroupInput"
+            }
+          },
+          "minSubtotal": {
+            "type": "number",
+            "nullable": true
+          },
+          "maxDiscount": {
+            "type": "number",
+            "nullable": true
           },
           "startDate": {
             "type": "string",
-            "format": "date-time"
+            "description": "date-time, or YYYY-MM-DD = the start of that day in the restaurant timezone. Default: now."
           },
           "endDate": {
             "type": "string",
-            "format": "date-time"
+            "nullable": true,
+            "description": "date-time, or YYYY-MM-DD = the end of that day in the restaurant timezone; null = no end."
+          },
+          "daysOfWeek": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "timeWindows": {
+            "maxItems": 6,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeWindowDto"
+            }
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "dine_in",
+                "takeaway",
+                "delivery"
+              ]
+            }
+          },
+          "maxUsesPerOrder": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1
           },
           "active": {
             "type": "boolean",
             "default": true
+          },
+          "targets": {
+            "description": "Replaces every target when sent. PUT :id/dishes still replaces only the dish targets.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PromotionTargetsDto"
+              }
+            ]
           }
         },
         "required": [
-          "name",
-          "discountType",
-          "discountValue",
-          "startDate",
-          "endDate"
+          "name"
         ]
       },
       "UpdatePromotionRequest": {
@@ -9227,27 +10002,126 @@
             "type": "string",
             "nullable": true
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "product_discount",
+              "buy_x_pay_y",
+              "combo",
+              "bill_discount"
+            ],
+            "default": "product_discount",
+            "description": "product_discount: discountType/discountValue per unit on the targets. buy_x_pay_y: buyQuantity N >= 2, payQuantity 1 <= M < N, restDiscountPercent 1-100 (100 = free) on the targets. combo: comboPrice > 0 and 1-6 comboGroups. bill_discount: discountType/discountValue on the bill, optional minSubtotal and maxDiscount. Fields of other kinds are stored as null."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "manual",
+              "manual_pin"
+            ],
+            "default": "automatic"
+          },
           "discountType": {
             "type": "string",
             "enum": [
               "percentage",
               "fixed_amount"
-            ]
+            ],
+            "nullable": true
           },
           "discountValue": {
             "type": "number",
-            "minimum": 0
+            "nullable": true,
+            "minimum": 0,
+            "description": "percentage: 0 < v <= 100."
+          },
+          "buyQuantity": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 2
+          },
+          "payQuantity": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1
+          },
+          "restDiscountPercent": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 100,
+            "default": 100
+          },
+          "comboPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "comboGroups": {
+            "maxItems": 6,
+            "description": "Replaces every group (new ids).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComboGroupInput"
+            }
+          },
+          "minSubtotal": {
+            "type": "number",
+            "nullable": true
+          },
+          "maxDiscount": {
+            "type": "number",
+            "nullable": true
           },
           "startDate": {
             "type": "string",
-            "format": "date-time"
+            "description": "date-time, or YYYY-MM-DD = the start of that day in the restaurant timezone. Default: now."
           },
           "endDate": {
             "type": "string",
-            "format": "date-time"
+            "nullable": true,
+            "description": "date-time, or YYYY-MM-DD = the end of that day in the restaurant timezone; null = no end."
+          },
+          "daysOfWeek": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "timeWindows": {
+            "maxItems": 6,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeWindowDto"
+            }
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "dine_in",
+                "takeaway",
+                "delivery"
+              ]
+            }
+          },
+          "maxUsesPerOrder": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1
           },
           "active": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
+          },
+          "targets": {
+            "description": "Replaces every target when sent. PUT :id/dishes still replaces only the dish targets.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PromotionTargetsDto"
+              }
+            ]
           }
         }
       },
@@ -9386,7 +10260,7 @@
           },
           "price": {
             "type": "number",
-            "description": "Price after the best active promotion when pricing=promotions applied one."
+            "description": "List price; never rewritten by a promotion (S2). Send it, plus the options, as unitPrice."
           },
           "categoryId": {
             "type": "string",
@@ -9431,27 +10305,29 @@
             "format": "date-time",
             "nullable": true
           },
-          "originalPrice": {
-            "type": "number",
-            "description": "Only when a promotion applies (pricing=promotions)."
-          },
-          "discountAmount": {
-            "type": "number",
-            "description": "Only when a promotion applies."
-          },
-          "discountPercentage": {
-            "type": "number",
-            "nullable": true,
-            "description": "Only when a promotion applies; null for fixed amounts."
-          },
           "promotionId": {
             "type": "string",
             "format": "uuid",
-            "description": "Only when a promotion applies."
+            "description": "pricing=promotions: the automatic product_discount or buy_x_pay_y promotion a line of this dish would be sent with now on the channel."
           },
           "promotionName": {
             "type": "string",
-            "description": "Only when a promotion applies."
+            "description": "Only with promotionId."
+          },
+          "promotionBadge": {
+            "type": "string",
+            "example": "2x1",
+            "description": "Only with promotionId: 2x1, 3x2, 20%, -$3.000."
+          },
+          "promotionEndsAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "19:00",
+            "description": "Only with promotionId: end of the current window (restaurant time); null = all day."
+          },
+          "promoPrice": {
+            "type": "number",
+            "description": "Only for a product_discount: the unit price after the discount (the discount itself is an order line)."
           },
           "available": {
             "type": "boolean",
@@ -9533,7 +10409,7 @@
             }
           },
           "dishes": {
-            "description": "Active dishes by sortOrder, then name, priced with the promotions active now; dishes of an inactive subcategory are left out.",
+            "description": "Active dishes by sortOrder, then name, at list price with the promotion a line would be sent with now (channel query); dishes of an inactive subcategory are left out.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MenuTreeDish"
@@ -9986,6 +10862,103 @@
           }
         }
       },
+      "StaffRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Null when the profile was removed; the name stays."
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "OrderDiscount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "promotion_item",
+              "promotion_bill",
+              "combo",
+              "manual_item",
+              "manual_bill"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "manual"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "example": "Happy hour 2x1",
+            "description": "The promotion name when it was applied."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Whole pesos, > 0."
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Null for a free manual discount or a deleted promotion."
+          },
+          "orderItemId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Null for a bill discount; a combo discount sits on its first line."
+          },
+          "comboId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Manual discounts only."
+          },
+          "authorizedBy": {
+            "nullable": true,
+            "description": "Manual discounts only.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StaffRef"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "source",
+          "label",
+          "amount",
+          "promotionId",
+          "orderItemId",
+          "comboId",
+          "reason",
+          "authorizedBy"
+        ]
+      },
       "OrderItemModifier": {
         "type": "object",
         "properties": {
@@ -10038,7 +11011,7 @@
           },
           "price": {
             "type": "number",
-            "description": "Unit price charged."
+            "description": "Unit list price, options included; discounts are separate (discounts)."
           },
           "quantity": {
             "type": "number"
@@ -10091,6 +11064,30 @@
             "items": {
               "$ref": "#/components/schemas/OrderItemModifier"
             }
+          },
+          "discounts": {
+            "description": "Discounts on this line (a combo discount sits on the first line of the combo).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderDiscount"
+            }
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The promotion fixed when the line was sent (or its combo)."
+          },
+          "promotionName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Its name when the line was sent."
+          },
+          "comboId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Shared by the lines of one combo."
           }
         },
         "required": [
@@ -10107,7 +11104,11 @@
           "addedAt",
           "createdAt",
           "updatedAt",
-          "modifiers"
+          "modifiers",
+          "discounts",
+          "promotionId",
+          "promotionName",
+          "comboId"
         ]
       },
       "Order": {
@@ -10163,7 +11164,8 @@
             ]
           },
           "subtotal": {
-            "type": "number"
+            "type": "number",
+            "description": "Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it."
           },
           "tax": {
             "type": "number"
@@ -10181,7 +11183,19 @@
             "type": "number"
           },
           "totalDiscounts": {
-            "type": "number"
+            "type": "number",
+            "description": "Sum of discounts (capped at grossSubtotal)."
+          },
+          "grossSubtotal": {
+            "type": "number",
+            "description": "Sum of price x quantity at list price."
+          },
+          "discounts": {
+            "description": "Every discount of the order: line discounts in line order, then bill discounts.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderDiscount"
+            }
           },
           "isPartialOrder": {
             "type": "boolean"
@@ -10235,6 +11249,8 @@
           "tipPercentage",
           "total",
           "totalDiscounts",
+          "grossSubtotal",
+          "discounts",
           "isPartialOrder",
           "parentOrderId",
           "createdAt",
@@ -10479,7 +11495,8 @@
             ]
           },
           "subtotal": {
-            "type": "number"
+            "type": "number",
+            "description": "Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it."
           },
           "tax": {
             "type": "number"
@@ -10497,7 +11514,19 @@
             "type": "number"
           },
           "totalDiscounts": {
-            "type": "number"
+            "type": "number",
+            "description": "Sum of discounts (capped at grossSubtotal)."
+          },
+          "grossSubtotal": {
+            "type": "number",
+            "description": "Sum of price x quantity at list price."
+          },
+          "discounts": {
+            "description": "Every discount of the order: line discounts in line order, then bill discounts.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderDiscount"
+            }
           },
           "isPartialOrder": {
             "type": "boolean"
@@ -10568,6 +11597,8 @@
           "tipPercentage",
           "total",
           "totalDiscounts",
+          "grossSubtotal",
+          "discounts",
           "isPartialOrder",
           "parentOrderId",
           "createdAt",
@@ -10575,24 +11606,6 @@
           "items",
           "payment",
           "legacyTransactions"
-        ]
-      },
-      "StaffRef": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true,
-            "description": "Null when the profile was removed; the name stays."
-          },
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name"
         ]
       },
       "OrderCancellation": {
@@ -10764,7 +11777,8 @@
             ]
           },
           "subtotal": {
-            "type": "number"
+            "type": "number",
+            "description": "Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it."
           },
           "tax": {
             "type": "number"
@@ -10782,7 +11796,19 @@
             "type": "number"
           },
           "totalDiscounts": {
-            "type": "number"
+            "type": "number",
+            "description": "Sum of discounts (capped at grossSubtotal)."
+          },
+          "grossSubtotal": {
+            "type": "number",
+            "description": "Sum of price x quantity at list price."
+          },
+          "discounts": {
+            "description": "Every discount of the order: line discounts in line order, then bill discounts.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderDiscount"
+            }
           },
           "isPartialOrder": {
             "type": "boolean"
@@ -10849,6 +11875,8 @@
           "tipPercentage",
           "total",
           "totalDiscounts",
+          "grossSubtotal",
+          "discounts",
           "isPartialOrder",
           "parentOrderId",
           "createdAt",
@@ -10928,7 +11956,7 @@
           },
           "price": {
             "type": "number",
-            "description": "Current server price (promotions applied)."
+            "description": "Current list price."
           }
         },
         "required": [
@@ -11019,7 +12047,7 @@
           "unitPrice": {
             "type": "number",
             "minimum": 0,
-            "description": "Price the client showed: the dish price (promotions applied, server clock) plus the options. A different value answers 409 Price changed; with options the body also carries `lines` [{index, dishId, unitPrice}]."
+            "description": "Price the client showed: the dish LIST price plus the options (promotions are separate discounts). A different value answers 409 Price changed; with options the body also carries `lines` [{index, dishId, unitPrice}]."
           },
           "comments": {
             "type": "string",
@@ -11038,6 +12066,60 @@
         "required": [
           "dishId",
           "quantity"
+        ]
+      },
+      "ComboChoiceInput": {
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dishId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "One of the dishes of the group."
+          },
+          "comments": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "modifiers": {
+            "maxItems": 50,
+            "description": "Same rules as a dish line.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemModifierInput"
+            }
+          }
+        },
+        "required": [
+          "groupId",
+          "dishId"
+        ]
+      },
+      "ComboLineRequest": {
+        "type": "object",
+        "properties": {
+          "comboPromotionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A combo promotion active now for the channel."
+          },
+          "choices": {
+            "minItems": 1,
+            "maxItems": 6,
+            "description": "Exactly one per group.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComboChoiceInput"
+            }
+          }
+        },
+        "required": [
+          "comboPromotionId",
+          "choices"
         ]
       },
       "CreateOrderRequest": {
@@ -11061,11 +12143,19 @@
             "description": "Delivery orders are created by the delivery module."
           },
           "items": {
-            "minItems": 1,
             "maxItems": 100,
+            "description": "Dish lines; items and/or combos must bring at least one line.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OrderItemInput"
+            }
+          },
+          "combos": {
+            "maxItems": 20,
+            "description": "Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComboLineRequest"
             }
           },
           "tipPercentage": {
@@ -11094,19 +12184,296 @@
           }
         },
         "required": [
-          "tableId",
-          "items"
+          "tableId"
+        ]
+      },
+      "PreviewDishLine": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 999
+          },
+          "modifiers": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemModifierInput"
+            }
+          }
+        },
+        "required": [
+          "dishId",
+          "quantity"
+        ]
+      },
+      "PricingPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ]
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "An open order whose lines (sent, with their fixed promotions) are priced with the draft."
+          },
+          "lines": {
+            "type": "array",
+            "description": "Draft lines: dish lines and combo lines ({comboPromotionId, choices}).",
+            "maxItems": 100,
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/PreviewDishLine"
+                },
+                {
+                  "$ref": "#/components/schemas/ComboLineRequest"
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "channel",
+          "lines"
+        ]
+      },
+      "PreviewDiscount": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "promotion_item",
+              "promotion_bill",
+              "combo",
+              "manual_item",
+              "manual_bill"
+            ],
+            "description": "manual_item and manual_bill are the order's stored manual discounts."
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Null for a free manual discount."
+          },
+          "label": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "promotionId",
+          "label",
+          "amount"
+        ]
+      },
+      "PreviewLine": {
+        "type": "object",
+        "properties": {
+          "sent": {
+            "type": "boolean",
+            "description": "false for a draft line."
+          },
+          "orderItemId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The order line; null for a draft."
+          },
+          "draftIndex": {
+            "type": "number",
+            "nullable": true,
+            "description": "Index in `lines` of the draft (a combo line expands into one line per choice); null when sent."
+          },
+          "dishId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "number",
+            "description": "Unit list price, options included."
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Fixed when sent; for a draft, the promotion it would be sent with now."
+          },
+          "promotionName": {
+            "type": "string",
+            "nullable": true
+          },
+          "comboId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Shared by the lines of a combo; drafts get a temporary `draft-combo-N`."
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "discounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviewDiscount"
+            }
+          }
+        },
+        "required": [
+          "sent",
+          "orderItemId",
+          "draftIndex",
+          "dishId",
+          "name",
+          "quantity",
+          "unitPrice",
+          "promotionId",
+          "promotionName",
+          "comboId",
+          "addedAt",
+          "discounts"
+        ]
+      },
+      "PricingHintDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "missing_units",
+              "window_ending",
+              "bill_minimum"
+            ]
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message": {
+            "type": "string",
+            "example": "Falta 1 unidad para otro 2x1."
+          },
+          "missing": {
+            "type": "number",
+            "description": "missing_units: units; bill_minimum: pesos."
+          },
+          "minutesLeft": {
+            "type": "number",
+            "description": "window_ending: minutes until the window ends (<= 10)."
+          }
+        },
+        "required": [
+          "kind",
+          "promotionId",
+          "message"
+        ]
+      },
+      "PricingPreview": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "delivery"
+            ]
+          },
+          "now": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lines": {
+            "description": "Sent lines first (oldest first), then the drafts in order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviewLine"
+            }
+          },
+          "billDiscount": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PreviewDiscount"
+              }
+            ]
+          },
+          "manualDiscounts": {
+            "description": "The order's manual discounts on the bill (manual_bill).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviewDiscount"
+            }
+          },
+          "grossSubtotal": {
+            "type": "number"
+          },
+          "totalDiscounts": {
+            "type": "number",
+            "description": "Automatic line, combo and bill discounts plus the order's manual discounts (capped at grossSubtotal)."
+          },
+          "netSubtotal": {
+            "type": "number"
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingHintDto"
+            }
+          }
+        },
+        "required": [
+          "channel",
+          "now",
+          "lines",
+          "billDiscount",
+          "manualDiscounts",
+          "grossSubtotal",
+          "totalDiscounts",
+          "netSubtotal",
+          "hints"
         ]
       },
       "AddOrderItemsRequest": {
         "type": "object",
         "properties": {
           "items": {
-            "minItems": 1,
             "maxItems": 100,
+            "description": "Dish lines; items and/or combos must bring at least one line.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OrderItemInput"
+            }
+          },
+          "combos": {
+            "maxItems": 20,
+            "description": "Each combo inserts one line per choice at list price, sharing a comboId, plus one combo discount (sum of list prices - comboPrice). 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComboLineRequest"
             }
           },
           "force": {
@@ -11126,10 +12493,7 @@
             "maxLength": 300,
             "description": "Sets the order note; omitted keeps it."
           }
-        },
-        "required": [
-          "items"
-        ]
+        }
       },
       "UpdateOrderDetailsRequest": {
         "type": "object",
@@ -11269,6 +12633,56 @@
           "items",
           "reason"
         ]
+      },
+      "AddOrderDiscountRequest": {
+        "type": "object",
+        "properties": {
+          "orderItemId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A live line of the order; omitted = a discount on the order."
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A promotion with mode manual (no PIN) or manual_pin: product_discount needs orderItemId, bill_discount must not have it. Without it, discountType and discountValue make a free discount."
+          },
+          "discountType": {
+            "type": "string",
+            "enum": [
+              "percentage",
+              "fixed_amount"
+            ]
+          },
+          "discountValue": {
+            "type": "number",
+            "description": "Percentage 1-100 or whole pesos."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200,
+            "description": "Trimmed."
+          },
+          "authorizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "POST /auth/authorize (action apply_discount, target this order; a void_item one is 403 authorization_invalid); required unless the promotion mode is manual."
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "RemoveOrderDiscountRequest": {
+        "type": "object",
+        "properties": {
+          "authorizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Same rule as adding: required unless the promotion mode is manual."
+          }
+        }
       },
       "AuditEvent": {
         "type": "object",
@@ -12107,12 +13521,13 @@
           },
           "amount": {
             "type": "number",
-            "minimum": 1,
-            "description": "Applied amount in whole pesos (capped for cash)."
+            "minimum": 0,
+            "description": "Applied amount in whole pesos (capped for cash). 0 only as the single cash line, with cashReceived 0, of an order whose amount due and tip are 0 (a fully discounted order); a 0 line without cashReceived 0 is 422 `Una línea en 0 solo cierra una cuenta sin saldo: en efectivo y con efectivo recibido 0`, any other 0 line 422 22023."
           },
           "cashReceived": {
             "type": "number",
             "nullable": true,
+            "minimum": 0,
             "description": "Cash handed over; required for cash, null for electronic."
           },
           "reference": {

@@ -484,3 +484,103 @@ describe('modifier lines (F7)', () => {
     expect(renderInvoice({ ...inv, displayItems: [{ ...item, modifiers: [] }] })).toEqual(renderInvoice({ ...inv, displayItems: [item] }))
   })
 })
+
+// -----------------------------------------------------------
+// S14: discount lines on the invoice, never on the comanda
+// -----------------------------------------------------------
+describe('renderInvoice - discounts (S14)', () => {
+  const base = {
+    businessInfo: { name: 'Casa', nit: '1', address: 'a', phone: 'p' },
+    table: 7,
+    waiter: 'Andrés',
+    paymentMethod: 'cash',
+  }
+  const discounted = () =>
+    renderInvoice({
+      invoiceNumber: 'FE-1',
+      invoice: {
+        ...base,
+        bill: { subtotal: 24000, grossSubtotal: 62000, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 24000, totalDiscounts: 38000 },
+        discounts: [
+          { label: 'Happy hour 2x1', amount: 24000, orderItemId: 'm-1' },
+          { label: 'Cortesía cumpleaños', amount: 14000, orderItemId: null },
+        ],
+      },
+      displayItems: [
+        { name: 'Mojito', quantity: 2, price: 24000, discounts: [{ label: 'Happy hour 2x1', amount: 24000 }] },
+        { name: 'Tres leches', quantity: 1, price: 14000 },
+      ],
+    }).lines.map((l) => l.text)
+
+  it('prints the line discount under its item and the bill discount after the items', () => {
+    const text = discounted()
+    const mojito = text.findIndex((t) => t.includes('Mojito'))
+    expect(text[mojito + 1]).toBe('  Happy hour 2x1           -24.000')
+    const leches = text.findIndex((t) => t.includes('Tres leches'))
+    expect(text[leches + 1]).toBe('  Cortesía cumpleaños      -14.000')
+    expect(text[leches + 2]).toBe('--------------------------------')
+  })
+
+  it('prints SUBTOTAL (gross), DESCUENTOS, BASE then IVA, and HOY AHORRASTE before the footer', () => {
+    const text = discounted()
+    const at = text.indexOf('SUBTOTAL: 62.000')
+    expect(text.slice(at, at + 4)).toEqual(['SUBTOTAL: 62.000', 'DESCUENTOS: -38.000', 'BASE: 24.000', 'IVA: 0'])
+    expect(text.slice(-3)).toEqual(['HOY AHORRASTE $38.000', '¡GRACIAS POR SU COMPRA!', 'VUELVA PRONTO'])
+  })
+
+  it('falls back to net + discounts when the payload has no grossSubtotal', () => {
+    const text = renderInvoice({
+      invoiceNumber: 'FE-2',
+      invoice: {
+        ...base,
+        bill: { subtotal: 10000, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 10000, totalDiscounts: 2000 },
+        discounts: [{ label: 'Cortesía', amount: 2000 }],
+      },
+      displayItems: [{ name: 'Sopa', quantity: 1, price: 12000 }],
+    }).lines.map((l) => l.text)
+    expect(text).toContain('SUBTOTAL: 12.000')
+  })
+
+  it('keeps the previous totals for a payload without discount fields (desktop golden parity)', () => {
+    const text = renderInvoice({
+      invoiceNumber: 'FE-4',
+      invoice: { ...base, bill: { subtotal: 10000, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 10000, totalDiscounts: 2000 } },
+      displayItems: [{ name: 'Sopa', quantity: 1, price: 12000 }],
+    }).lines.map((l) => l.text)
+    const at = text.indexOf('SUBTOTAL: 10.000')
+    expect(text.slice(at, at + 3)).toEqual(['SUBTOTAL: 10.000', 'IVA: 0', 'DESCUENTOS: -2.000'])
+    expect(text.some((t) => /BASE|AHORRASTE/.test(t))).toBe(false)
+  })
+
+  it('keeps the old output without discounts', () => {
+    const text = renderInvoice({
+      invoiceNumber: 'FE-3',
+      invoice: { ...base, bill: { subtotal: 10000, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 10000, totalDiscounts: 0 } },
+      displayItems: [{ name: 'Sopa', quantity: 1, price: 10000 }],
+    }).lines.map((l) => l.text)
+    expect(text).toContain('SUBTOTAL: 10.000')
+    expect(text.some((t) => /DESCUENTOS|BASE|AHORRASTE/.test(t))).toBe(false)
+  })
+})
+
+describe('renderKitchenOrder - no prices or discounts (S14)', () => {
+  it('prints a discounted line without price, discount or promotion', () => {
+    const { lines, footer } = renderKitchenOrder({
+      orderNumber: 12,
+      table: 7,
+      waiter: 'Andrés',
+      items: [
+        {
+          name: 'Mojito',
+          quantity: 2,
+          price: 24000,
+          discounts: [{ label: 'Happy hour 2x1', amount: 24000 }],
+          promotionName: 'Happy hour 2x1',
+        } as unknown as { name: string; quantity: number },
+      ],
+    })
+    const text = [...lines, ...footer].map((l) => l.text).join('\n')
+    expect(text).toContain('MOJITO')
+    expect(text).not.toMatch(/24\.000|Happy hour|-\d|\$/)
+  })
+})

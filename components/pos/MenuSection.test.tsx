@@ -34,11 +34,6 @@ const dishRow = (id: string, name: string, categoryId: string) => ({
   price: 12000,
   categoryId,
   imageUrl: "/dish.png",
-  originalPrice: null,
-  discountAmount: null,
-  discountPercentage: null,
-  promotionId: null,
-  promotionName: null,
 })
 
 const rows = {
@@ -217,17 +212,17 @@ describe("MenuSection — existing behavior (preserve)", () => {
     env.getByCategoryWithPromotions.mockResolvedValue([
       {
         ...dishRow("d-9", "Promo", "cat-1"),
-        originalPrice: 20000,
-        price: 18000,
-        discountAmount: 2000,
-        discountPercentage: 10,
+        price: 20000,
         promotionId: "p-1",
         promotionName: "Lunch",
+        promotionBadge: "10%",
+        promotionEndsAt: null,
+        promoPrice: 18000,
       },
     ])
     renderMenu()
 
-    expect(await screen.findByText("-10%")).toBeInTheDocument()
+    expect(await screen.findByText("10%")).toBeInTheDocument()
     expect(screen.getByText("Lunch")).toBeInTheDocument()
   })
 })
