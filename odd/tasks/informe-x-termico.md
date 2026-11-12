@@ -13,8 +13,12 @@ The cashier's "Informe X" button opens the browser print dialog. It must print o
 | ID | Specs | Route | Commit |
 | --- | --- | --- | --- |
 | X1 API kind + desktop/pos renderers + cashier routing and modal | S1–S3 | worker | — |
+| X2 DB: print_jobs.kind accepts 'x_report' (migration, next free number at merge) + pgTAP | S1 | inline (parent) | X2 commit (L5) |
 
 ## Log
 
 - L1 (user): "Cuando le doy click a informe x me manda a imprimir en el navegador, deveria imprimir en la impresora termica si la tienen o mostrar una visual tipo modal para ver esos datos profesionalmente"
 - L2 (coordination, vipepos-caja 365b86a0): caja hands this over; it is not editing XReportSlip, ShiftCloseSlip, ZReportSlip, the shift close or printer sending. Do not change ShiftCloseSlip/ZReportSlip behaviour unless the user asks; keep the X data exactly as the Informe X endpoint returns it. caja's #200 adds two lines under the Header in CashierView/DeliveryView/KitchenView/WaiterView; merge dev on top if CashierView conflicts.
+- L3 (coordination, caja 093e04ce): ShiftCloseSlip imports cashSalesOf, methodLines and taxLines from XReportSlip.tsx; the Informe X button is in components/cashier/CashRegisterStatus.tsx and calls printSlip(<XReportSlip …>) from components/printing/slip-format, the same browser-print path the shift close and the Z (use-print-z.tsx) use. Keep those helpers' names and signatures, and run ShiftCloseSlip.test.tsx, XReportSlip.test.tsx and ZReportSlip.test.tsx.
+- L4 (evidence): `print_jobs.kind` has CHECK (kind IN ('invoice','command')) (packages/db/migrations/0010_printing.sql:24), so the new kind needs a migration; the parent writes it (X2) and coordinates the number with caja and carta-digital (carta has 0035/0036 drafts).
+- L5 (evidence, X2): migration `0035_print_job_x_report` (journal idx 33, when 1793914481411; caja and carta-digital confirmed 0035) replaces print_jobs_kind_check with ('invoice','command','x_report'); Drizzle check updated; pgTAP 420 (5 tests). Full suite in an isolated container: 53 files, 2452 tests, PASS.
