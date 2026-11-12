@@ -16,7 +16,20 @@ import { useMenuTree } from '@/hooks/use-menu-tree'
 import { usePromotionsToday } from '@/hooks/use-promotions'
 import { usePricingPreview } from '@/hooks/use-pricing-preview'
 import { DiscountRows, PromotionNudge, SavingsRow } from '@/components/promotions/OrderPromotions'
-import { categoryTag, dishTag, draftDiscounts, subcategoryTag, type DiscountRow } from '@/lib/promotions/waiter'
+import { ComboBuilder } from '@/components/promotions/ComboBuilder'
+import {
+  categoryTag,
+  comboSavingText,
+  comboTiles,
+  dishTag,
+  draftDiscounts,
+  ENDING_MINUTES,
+  scheduleShort,
+  sellsText,
+  subcategoryTag,
+  type CartCombo,
+  type DiscountRow,
+} from '@/lib/promotions/waiter'
 import type { PricingHintDto, PricingPreviewDto } from '@/lib/api/promotions'
 
 type PreviewDiscountDto = NonNullable<PricingPreviewDto['billDiscount']>
@@ -160,7 +173,14 @@ export function DeliveryOrderForm({
   const preview = pricingResult?.preview
   const pricing = useMemo(() => (preview ? { netSubtotal: preview.netSubtotal } : null), [preview])
   const lineDiscounts = useMemo(() => draftDiscounts(preview, pricingResult?.lineIds ?? []), [preview, pricingResult?.lineIds])
-  const discountsOf = (lineId: string): DiscountRow[] => lineDiscounts.get(lineId) ?? []
+  // A combo the preview has not priced yet shows its own saving (Σ list − combo price), as the waiter does.
+  const discountsOf = (lineId: string): DiscountRow[] => {
+    if (pricingResult?.lineIds.includes(lineId)) return lineDiscounts.get(lineId) ?? []
+    const line = draft.cartLines.find((l) => l.id === lineId)
+    return line?.combo && line.combo.listPrice > line.combo.comboPrice
+      ? [{ label: line.name, amount: (line.combo.listPrice - line.combo.comboPrice) * line.quantity }]
+      : []
+  }
   const billMinimum = preview?.hints.find((hint) => hint.kind === 'bill_minimum') ?? null
   const pickerTags = useMemo(
     () => ({
@@ -171,6 +191,38 @@ export function DeliveryOrderForm({
     }),
     [promotionsToday],
   )
+
+  // S7: the combos of today's delivery promotions as extra tiles; a live one opens the builder.
+  const [comboPromotionId, setComboPromotionId] = useState<string | null>(null)
+  const combos = useMemo(() => comboTiles(promotionsToday), [promotionsToday])
+  const menuDishes = useMemo(
+    () => new Map((menuTree.categories ?? []).flatMap((category) => category.dishes).map((dish) => [dish.id, dish])),
+    [menuTree.categories],
+  )
+  const comboTileList = combos.map((tile) => ({
+    id: `combo-${tile.promotion.id}`,
+    name: tile.promotion.name,
+    meta: tile.enabled ? tile.promotion.comboGroups.map((group) => group.name).join(' + ') : scheduleShort(tile.promotion),
+    tag: tile.enabled
+      ? {
+          promotionId: tile.promotion.id,
+          text: tile.endsAt ? `Combo · hasta ${tile.endsAt}` : 'Combo',
+          tone: tile.minutesLeft != null && tile.minutesLeft <= ENDING_MINUTES ? ('ending' as const) : ('on' as const),
+        }
+      : tile.startsAt
+        ? { promotionId: tile.promotion.id, text: `Combo desde ${tile.startsAt}`, tone: 'later' as const }
+        : null,
+    disabled: !tile.enabled,
+    onSelect: () => (tile.enabled ? setComboPromotionId(tile.promotion.id) : toast.info(sellsText(tile.promotion))),
+  }))
+  const buildingCombo = comboPromotionId ? (combos.find((tile) => tile.enabled && tile.promotion.id === comboPromotionId) ?? null) : null
+  const addCombo = (combo: CartCombo) => {
+    if (!buildingCombo) return
+    dispatch({ type: 'addCombo', name: buildingCombo.promotion.name, combo })
+    const saving = comboSavingText(combo.listPrice, combo.comboPrice).saving
+    toast.success(`${buildingCombo.promotion.name} agregado${saving ? ` · ${saving}` : ''}`)
+    setComboPromotionId(null)
+  }
 
   const issues = useMemo(() => validateDraft(draft, taxPct, pricing), [draft, taxPct, pricing])
   const totals = useMemo(() => draftTotals(draft, taxPct, pricing), [draft, taxPct, pricing])
@@ -513,6 +565,19 @@ export function DeliveryOrderForm({
                 onRetry={menuTree.refetch}
                 onAdd={onAddFromSteps}
                 tags={pickerTags}
+                extraTiles={comboTileList}
+                overlay={
+                  buildingCombo ? (
+                    <ComboBuilder
+                      key={buildingCombo.promotion.id}
+                      promotion={buildingCombo.promotion}
+                      dishes={menuDishes}
+                      endsAt={buildingCombo.endsAt}
+                      onAdd={addCombo}
+                    />
+                  ) : undefined
+                }
+                onCloseOverlay={() => setComboPromotionId(null)}
                 onExit={() => goTo('address')}
                 exitLabel="Dirección"
                 summary={
@@ -716,6 +781,7 @@ export function DeliveryOrderForm({
                   <span className="font-semibold tabular-nums text-muted-fg">{line.quantity}×</span>
                   <span className="min-w-0 [overflow-wrap:anywhere]">{line.name}</span>
                   <span className={MONEY}>{formatMoney(line.unitPrice * line.quantity)}</span>
+                  <ComboChoices line={line} />
                   <DiscountRows rows={discountsOf(line.id)} />
                 </li>
               ))}
@@ -974,23 +1040,37 @@ function CartPanel({
             <span className={MONEY}>{formatMoney(line.unitPrice * line.quantity)}</span>
           </div>
           <ModifierLines modifiers={line.modifiers} unitPrice={line.modifiers?.length ? line.unitPrice : undefined} />
+          <ComboChoices line={line} />
           <div className="flex flex-col gap-1">
             <DiscountRows rows={discountsOf(line.id)} />
           </div>
-          <Input
-            placeholder="Comentario"
-            value={line.comments ?? ''}
-            onChange={(e) =>
-              dispatch({
-                type: 'setItemComments',
-                lineId: line.id,
-                comments: e.target.value.length === 0 ? null : e.target.value,
-              })
-            }
-          />
+          {/* A combo's choices carry no comment. */}
+          {!line.combo && (
+            <Input
+              placeholder="Comentario"
+              value={line.comments ?? ''}
+              onChange={(e) =>
+                dispatch({
+                  type: 'setItemComments',
+                  lineId: line.id,
+                  comments: e.target.value.length === 0 ? null : e.target.value,
+                })
+              }
+            />
+          )}
         </div>
       ))}
     </div>
+  )
+}
+
+/** S7: the dishes chosen in a combo line ("Ajiaco · Bandeja · Jugo de mora"). */
+function ComboChoices({ line }: { line: OrderDraft['cartLines'][number] }) {
+  if (!line.combo) return null
+  return (
+    <p className="col-span-full text-xs text-muted-fg [overflow-wrap:anywhere]">
+      {line.combo.choices.map((choice) => choice.name).join(' · ')}
+    </p>
   )
 }
 

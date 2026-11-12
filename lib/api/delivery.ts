@@ -200,8 +200,8 @@ export async function updateCourier(id: string, input: UpdateCourierInput): Prom
 // ---- Orders -------------------------------------------------------------------
 
 function validateCreateDeliveryInput(input: CreateDeliveryOrderInput): void {
-  if (!Array.isArray(input.items) || input.items.length === 0) {
-    throw invalid("createDeliveryOrder: items must be a non-empty array")
+  if (!Array.isArray(input.items) || input.items.length + (input.combos?.length ?? 0) === 0) {
+    throw invalid("createDeliveryOrder: items and combos must not both be empty")
   }
   if (!Number.isInteger(input.deliveryFee) || input.deliveryFee < 0) {
     throw invalid("createDeliveryOrder: deliveryFee must be a non-negative integer")
@@ -237,6 +237,8 @@ export async function createDeliveryOrder(input: CreateDeliveryOrderInput): Prom
     notes: input.notes ?? null,
     // Sent only when chosen, so the old body stays byte-identical.
     ...(input.prepaidMethodId != null ? { prepaidMethodId: input.prepaidMethodId } : {}),
+    // Combos (S7) also only when there are any.
+    ...(input.combos?.length ? { combos: input.combos } : {}),
   }
   return call("createDeliveryOrder", () => api.POST("/api/delivery/orders", { body }))
 }
