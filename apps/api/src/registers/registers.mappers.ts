@@ -28,7 +28,7 @@ export interface RegisterRow {
 
 const text = (value: unknown) => (value === null || value === undefined ? null : String(value));
 const time = (value: unknown) => toIso(text(value));
-const profileRef = (id: unknown, name: unknown): ProfileRef | null =>
+export const profileRef = (id: unknown, name: unknown): ProfileRef | null =>
   id === null || id === undefined ? null : { id: String(id), name: text(name) ?? '' };
 
 export const toCashTransaction = (row: Json): CashTransaction => ({
