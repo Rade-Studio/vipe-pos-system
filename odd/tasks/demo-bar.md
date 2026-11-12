@@ -17,8 +17,22 @@ The data is fake but consistent across the whole product, and the load into stag
 
 - [x] T1. S5: `reset.sql` covers z_reports, inventory_transfers, inventory_transfer_lines, inventory_transit_lots, production_templates, modifier_groups, modifier_options, dish_modifier_groups, order_item_modifiers and the desktop_* tables, in foreign key order. Route: worker (with T2). RED on dev: test.sh 82 passed / 11 failed (the guard named 14 missing tables; the demo also failed tables_reservation_check from 0022). GREEN: 95/0. Commit: 5252f70.
 - [x] T2. S1, S2, S4, S6, S7 (--keep-password): bar seed (`demo.sql`, `demo-db.sh`, `seed/test.sh` contract, docs/despliegue.md 3.6, README). Route: worker (the first run stalled writing the file in one call; the continuation wrote it in sections). GREEN: test.sh 106 passed / 0 failed. Promotions applied in history: happy hour 2x1 en cócteles, 2x1 en cervezas nacionales (Nacionales subcategory), Cubeta + picada combo, 10 % in deliveries from $90.000, plus three product discounts. Only configured: the birthday courtesy shot (manual PIN) and "Novenas" (starts next month). Floor: Barra stools 1–8; Salón high tables 10–15 and lounges 16–17; Terraza 20–23; Segundo piso 30–33. Deviations: stools are numbered 1–8, not B1–B8 (table numbers are integers); Mondays are quiet, not closed; there is no second admin, so the approver is the main admin; production older than 7 days is backdated. Commit: 0d34a38.
-- [ ] T3. S1–S5: PR to dev, CI, merge. Route: parent. Commit: -
-- [ ] T4. S3, S7: back up the staging database, then load the bar with `--reset --keep-password` (no password handled); verify logins and screens. Route: parent. Commit: -
+- [x] T3. S1–S5: PR to dev, CI, merge. Route: parent. Delivered as two PRs so the native review fits:
+  - #203 (cfb5752): reset coverage and `--keep-password`. Native review approved in two rounds. The independent verifier found that `DEMO_PASSWORD` next to `--keep-password` was silently ignored; it is now refused with exit 2 (RED 101/3, GREEN 104/0).
+  - #204 (7730640): the bar data. Native review (reliability) approved before and after the rebase. Promociones reviewed the SQL port of the pricing engine against engine.ts and found no defects. test.sh 109/0.
+- [x] T4. S3, S7: back up the staging database, then load the bar with `--reset --keep-password` (no password handled); verify logins and screens. Route: parent. Done 2026-11-12 22:34 UTC:
+  - The backup is a gzip-checked pg_dump kept on the server (/root/vipe-backups).
+  - The load exited 0: 917 paid, 10 open and 3 cancelled orders, 31 registers, 109 deliveries, 9 categories, 66 dishes, 24 tables.
+  - Checked read-only: one restaurant (Bruma); zones Barra 8, Salón 8, Segundo piso 4, Terraza 4; one shared argon2id hash; 7 promotions applied; no negative lots; 29 Z; one transfer in transit; one count in progress; today's register open; `/` and `/api/health` return 200.
+  - Logins were not exercised: the password is the user's.
+
+Follow-ups from promociones' review, optional and not done:
+- `v_product` (demo.sql:275) sums every order_discount. Filter on `od.order_item_id IS NOT NULL` if a manual bill discount is ever seeded.
+- Beers get their subcategory by price (demo.sql:981). Assign it by name to make it robust.
+- America/Bogota is hard-coded in demo_rule_of and demo_live.
+- Open orders recalculated by the API apply the delivery bill discount at the current time.
+
+Also from the native reviews: promotion amounts are not asserted, a count's expected stock is taken at backdated time, one live order falls outside opening hours, and one dish can be silently dropped in the cart helper.
 
 ## Log
 
