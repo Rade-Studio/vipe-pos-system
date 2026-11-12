@@ -32,7 +32,7 @@ const s = {
 } as const;
 
 const PAID_ORDER_KEYS = [
-  'amountDue', 'orderId', 'orderNumber', 'orderType', 'paidAt', 'paymentId', 'tableNumber', 'tenders', 'tip', 'total',
+  'amountDue', 'customerName', 'orderId', 'orderNumber', 'orderType', 'paidAt', 'paymentId', 'tableNumber', 'tenders', 'tip', 'total',
   'waiter', 'zoneName',
 ];
 const PAID_TENDER_KEYS = ['amount', 'methodCode', 'methodKind', 'methodName', 'reference'];
@@ -201,6 +201,7 @@ describe('cashier shift endpoints (Testcontainers, vipe_api)', () => {
         orderId: s.o1,
         orderNumber: expect.any(Number),
         orderType: 'dine_in',
+        customerName: null,
         tableNumber: 7,
         zoneName: 'Terraza',
         waiter: { id: fixtures.waiterA.profileId, name: 'Waiter A' },
