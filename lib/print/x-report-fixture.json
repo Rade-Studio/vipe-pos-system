@@ -1,0 +1,359 @@
+{
+  "payload": {
+    "business": {
+      "name": "La Fonda de Mariana",
+      "nit": "901.234.567-8",
+      "address": "Cra. 70 # 44-21"
+    },
+    "cashierName": "Camilo Henao",
+    "openedAt": "2026-11-10T07:58:00.000-05:00",
+    "printedAt": "2026-11-10T13:30:00.000-05:00",
+    "tax": {
+      "type": "INC",
+      "rate": 8.5
+    },
+    "summary": {
+      "registersCount": 1,
+      "initialCash": 200000,
+      "paymentsCount": 39,
+      "totalBilled": 1604900,
+      "totalTips": 118700,
+      "totalSales": 1486200,
+      "totalChange": 2000,
+      "methods": [
+        {
+          "paymentMethodId": "m-1",
+          "code": "cash",
+          "name": "Efectivo",
+          "kind": "cash",
+          "sortOrder": 0,
+          "isActive": true,
+          "total": 584000,
+          "tendersCount": 15
+        },
+        {
+          "paymentMethodId": "m-2",
+          "code": "nequi",
+          "name": "Nequi",
+          "kind": "electronic",
+          "sortOrder": 1,
+          "isActive": true,
+          "total": 184000,
+          "tendersCount": 6
+        },
+        {
+          "paymentMethodId": "m-3",
+          "code": "transfer",
+          "name": "Transferencia Bancolombia empresarial",
+          "kind": "electronic",
+          "sortOrder": 2,
+          "isActive": true,
+          "total": 120000,
+          "tendersCount": 3
+        },
+        {
+          "paymentMethodId": "m-4",
+          "code": "bono",
+          "name": "Bono",
+          "kind": "electronic",
+          "sortOrder": 3,
+          "isActive": false,
+          "total": 0,
+          "tendersCount": 0
+        },
+        {
+          "paymentMethodId": "m-5",
+          "code": "card",
+          "name": "Datáfono",
+          "kind": "electronic",
+          "sortOrder": 4,
+          "isActive": true,
+          "total": 0,
+          "tendersCount": 0
+        }
+      ],
+      "cashDeposits": 50000,
+      "cashWithdrawals": 45000,
+      "expectedCash": 787000,
+      "tipsPayout": 0,
+      "expectedCashAfterTips": 787000,
+      "legacy": {
+        "paymentsCount": 0,
+        "total": 0,
+        "tips": 0,
+        "change": 0,
+        "byMethod": {}
+      }
+    }
+  },
+  "lines": {
+    "58": [
+      {
+        "text": "      LA FONDA DE MARIANA",
+        "bold": true
+      },
+      {
+        "text": "       NIT 901.234.567-8",
+        "bold": false
+      },
+      {
+        "text": "        Cra. 70 # 44-21",
+        "bold": false
+      },
+      {
+        "text": "--------------------------------",
+        "bold": false
+      },
+      {
+        "text": "           INFORME X",
+        "bold": true
+      },
+      {
+        "text": "Parcial · No reinicia contadores",
+        "bold": false
+      },
+      {
+        "text": "--------------------------------",
+        "bold": false
+      },
+      {
+        "text": "Cajero              Camilo Henao",
+        "bold": false
+      },
+      {
+        "text": "Abierto     10/11/2026 7:58 a.m.",
+        "bold": false
+      },
+      {
+        "text": "Impreso     10/11/2026 1:30 p.m.",
+        "bold": false
+      },
+      {
+        "text": "--------------------------------",
+        "bold": false
+      },
+      {
+        "text": "Ventas por método",
+        "bold": true
+      },
+      {
+        "text": "Efectivo (15)          $ 584.000",
+        "bold": false
+      },
+      {
+        "text": "Nequi (6)              $ 184.000",
+        "bold": false
+      },
+      {
+        "text": "Transferencia Bancolo… $ 120.000",
+        "bold": false
+      },
+      {
+        "text": "Datáfono (0)                 $ 0",
+        "bold": false
+      },
+      {
+        "text": "Ventas               $ 1.486.200",
+        "bold": true
+      },
+      {
+        "text": "Base                 $ 1.369.770",
+        "bold": false
+      },
+      {
+        "text": "INC (8,5 %)            $ 116.430",
+        "bold": false
+      },
+      {
+        "text": "Tiquetes                      39",
+        "bold": false
+      },
+      {
+        "text": "--------------------------------",
+        "bold": false
+      },
+      {
+        "text": "Efectivo en caja",
+        "bold": true
+      },
+      {
+        "text": "Fondo de caja          $ 200.000",
+        "bold": false
+      },
+      {
+        "text": "+ Ventas en efectivo   $ 584.000",
+        "bold": false
+      },
+      {
+        "text": "− Cambio entregado       $ 2.000",
+        "bold": false
+      },
+      {
+        "text": "+ Entradas              $ 50.000",
+        "bold": false
+      },
+      {
+        "text": "− Salidas               $ 45.000",
+        "bold": false
+      },
+      {
+        "text": "Esperado ahora         $ 787.000",
+        "bold": true
+      },
+      {
+        "text": "--------------------------------",
+        "bold": false
+      },
+      {
+        "text": "Propinas (aparte)      $ 118.700",
+        "bold": false
+      },
+      {
+        "text": "No son ingreso del restaurante.",
+        "bold": false
+      },
+      {
+        "text": "--------------------------------",
+        "bold": false
+      },
+      {
+        "text": "Este informe no cierra el turno.",
+        "bold": false
+      }
+    ],
+    "80": [
+      {
+        "text": "           LA FONDA DE MARIANA",
+        "bold": true
+      },
+      {
+        "text": "            NIT 901.234.567-8",
+        "bold": false
+      },
+      {
+        "text": "             Cra. 70 # 44-21",
+        "bold": false
+      },
+      {
+        "text": "------------------------------------------",
+        "bold": false
+      },
+      {
+        "text": "                INFORME X",
+        "bold": true
+      },
+      {
+        "text": "     Parcial · No reinicia contadores",
+        "bold": false
+      },
+      {
+        "text": "------------------------------------------",
+        "bold": false
+      },
+      {
+        "text": "Cajero                        Camilo Henao",
+        "bold": false
+      },
+      {
+        "text": "Abierto               10/11/2026 7:58 a.m.",
+        "bold": false
+      },
+      {
+        "text": "Impreso               10/11/2026 1:30 p.m.",
+        "bold": false
+      },
+      {
+        "text": "------------------------------------------",
+        "bold": false
+      },
+      {
+        "text": "Ventas por método",
+        "bold": true
+      },
+      {
+        "text": "Efectivo (15)                    $ 584.000",
+        "bold": false
+      },
+      {
+        "text": "Nequi (6)                        $ 184.000",
+        "bold": false
+      },
+      {
+        "text": "Transferencia Bancolombia empre… $ 120.000",
+        "bold": false
+      },
+      {
+        "text": "Datáfono (0)                           $ 0",
+        "bold": false
+      },
+      {
+        "text": "Ventas                         $ 1.486.200",
+        "bold": true
+      },
+      {
+        "text": "Base                           $ 1.369.770",
+        "bold": false
+      },
+      {
+        "text": "INC (8,5 %)                      $ 116.430",
+        "bold": false
+      },
+      {
+        "text": "Tiquetes                                39",
+        "bold": false
+      },
+      {
+        "text": "------------------------------------------",
+        "bold": false
+      },
+      {
+        "text": "Efectivo en caja",
+        "bold": true
+      },
+      {
+        "text": "Fondo de caja                    $ 200.000",
+        "bold": false
+      },
+      {
+        "text": "+ Ventas en efectivo             $ 584.000",
+        "bold": false
+      },
+      {
+        "text": "− Cambio entregado                 $ 2.000",
+        "bold": false
+      },
+      {
+        "text": "+ Entradas                        $ 50.000",
+        "bold": false
+      },
+      {
+        "text": "− Salidas                         $ 45.000",
+        "bold": false
+      },
+      {
+        "text": "Esperado ahora                   $ 787.000",
+        "bold": true
+      },
+      {
+        "text": "------------------------------------------",
+        "bold": false
+      },
+      {
+        "text": "Propinas (aparte)                $ 118.700",
+        "bold": false
+      },
+      {
+        "text": "No son ingreso del restaurante.",
+        "bold": false
+      },
+      {
+        "text": "------------------------------------------",
+        "bold": false
+      },
+      {
+        "text": "     Este informe no cierra el turno.",
+        "bold": false
+      }
+    ]
+  }
+}

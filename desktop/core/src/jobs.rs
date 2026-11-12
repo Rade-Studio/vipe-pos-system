@@ -5,7 +5,7 @@
 //! local printer serves the job, and `null` (restaurants without stations) means
 //! every printer.
 
-use crate::escpos::{build_comanda_bytes, build_invoice_bytes, py_truthy, Encoding, RenderError};
+use crate::escpos::{build_comanda_bytes, build_invoice_bytes, build_x_report_bytes, py_truthy, x_report_printable, Encoding, RenderError};
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -17,7 +17,7 @@ pub const COMMAND_MAX_AGE_HOURS: i64 = 12;
 #[serde(rename_all = "camelCase", from = "WireJob")]
 pub struct PrintJob {
     pub id: String,
-    /// `command` (comanda) or `invoice`.
+    /// `command` (comanda), `invoice` or `x_report` (Informe X).
     pub kind: String,
     /// The station id; `None` for jobs of restaurants without stations.
     #[serde(rename = "stationId")]
@@ -87,14 +87,27 @@ pub fn classify(job: &PrintJob, now: DateTime<Utc>) -> Disposition {
             }
             Disposition::Print
         }
+        "x_report" => {
+            if !x_report_printable(&job.payload) {
+                return Disposition::Skip("unprintable x_report".into());
+            }
+            Disposition::Print
+        }
         other => Disposition::Skip(format!("unknown kind {other}")),
     }
 }
 
 /// The ESC/POS bytes of a job (without preamble). A render error means the
-/// payload can never print and the job should be skipped.
+/// payload can never print and the job should be skipped. An `x_report`
+/// renders at 80 mm here; `render_job_on` takes the printer's paper.
 pub fn render_job(job: &PrintJob, encoding: Encoding, now: NaiveDateTime) -> Result<Vec<u8>, RenderError> {
+    render_job_on(job, encoding, 80, now)
+}
+
+/// `render_job` on paper of `paper_mm` (58 or 80); only the `x_report` lines depend on it.
+pub fn render_job_on(job: &PrintJob, encoding: Encoding, paper_mm: u8, now: NaiveDateTime) -> Result<Vec<u8>, RenderError> {
     match job.kind.as_str() {
+        "x_report" => build_x_report_bytes(&job.payload, encoding, paper_mm),
         "command" => {
             let order = command_order(&job.payload).ok_or_else(|| RenderError("unprintable command".into()))?;
             build_comanda_bytes(&order, encoding, now)
@@ -155,6 +168,25 @@ fn older_than(created_at: Option<&str>, now: DateTime<Utc>, age: Duration) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn x_report(payload: Value) -> PrintJob {
+        PrintJob { id: "x".into(), kind: "x_report".into(), station: None, created_at: Some("2026-01-01T00:00:00Z".into()), payload }
+    }
+
+    #[test]
+    fn an_x_report_prints_at_any_age_on_the_printer_paper_and_one_without_summary_is_skipped() {
+        let fixture: Value = serde_json::from_str(include_str!("../../../lib/print/x-report-fixture.json")).unwrap();
+        let job = x_report(fixture["payload"].clone());
+        assert_eq!(classify(&job, Utc::now()), Disposition::Print);
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 11, 10).unwrap().and_hms_opt(13, 30, 0).unwrap();
+        let wide = render_job(&job, Encoding::Utf8, now).unwrap();
+        assert_eq!(wide, build_x_report_bytes(&job.payload, Encoding::Utf8, 80).unwrap());
+        let narrow = render_job_on(&job, Encoding::Utf8, 58, now).unwrap();
+        assert_eq!(narrow, build_x_report_bytes(&job.payload, Encoding::Utf8, 58).unwrap());
+        assert_ne!(wide, narrow);
+        let empty = x_report(json!({"business": {"name": "Casa"}}));
+        assert_eq!(classify(&empty, Utc::now()), Disposition::Skip("unprintable x_report".into()));
+    }
 
     #[test]
     fn a_takeaway_command_passes_the_takeaway_block() {

@@ -6,6 +6,7 @@
 mod payment;
 mod py;
 mod render;
+mod x_report;
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use serde_json::Value;
@@ -17,6 +18,7 @@ pub fn money(v: &Value) -> Option<String> {
     py::Num::of(v).ok().map(py::currency)
 }
 pub use render::{render_invoice, render_kitchen_order};
+pub use x_report::{build_x_report_bytes, printable as x_report_printable, render_x_report, slip_chars};
 
 /// Text encoding sent to the printer (`print_encoder.py`): CP1252 is the safe
 /// default for Spanish text on legacy firmware; UTF-8 when the printer supports it.
@@ -140,6 +142,16 @@ pub fn printer_preamble(encoding: Encoding) -> Vec<u8> {
 pub(crate) fn format_invoice_date(value: Option<&Value>, now: NaiveDateTime) -> String {
     let parsed = value.and_then(Value::as_str).and_then(parse_iso);
     parsed.unwrap_or(now).format("%d/%m/%Y %H:%M:%S").to_string()
+}
+
+/// `slipDateTime` (components/printing/slip-format.ts) of an ISO date-time in
+/// its own wall time: `10/11/2026 7:58 a.m.`; None when it does not parse.
+pub(crate) fn format_slip_date_time(value: &str) -> Option<String> {
+    use chrono::Timelike;
+    let at = parse_iso(value)?;
+    let hour = at.hour();
+    let twelve = if hour % 12 == 0 { 12 } else { hour % 12 };
+    Some(format!("{} {twelve}:{:02} {}", at.format("%d/%m/%Y"), at.minute(), if hour < 12 { "a.m." } else { "p.m." }))
 }
 
 fn parse_iso(s: &str) -> Option<NaiveDateTime> {
