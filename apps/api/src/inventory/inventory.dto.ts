@@ -26,6 +26,9 @@ export const PAYMENT_STATUSES = ['pending', 'paid'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const COUNT_STATUSES = ['open', 'applied', 'cancelled'] as const;
 export type CountStatus = (typeof COUNT_STATUSES)[number];
+/** The count flow (S5): Borrador, En conteo, En revisión, Aplicado, Anulado. `status` keeps open for the first three. */
+export const COUNT_STAGES = ['draft', 'counting', 'review', 'applied', 'cancelled'] as const;
+export type CountStage = (typeof COUNT_STAGES)[number];
 export const TRANSFER_STATUSES = ['draft', 'in_transit', 'received', 'received_short', 'cancelled'] as const;
 export type TransferStatus = (typeof TRANSFER_STATUSES)[number];
 export const FORMULA_TARGET_TYPES = ['dish', 'prep'] as const;
@@ -823,22 +826,45 @@ export class UpdateProductionTemplateRequest {
 
 // ---- Counts ----------------------------------------------------------------------
 
-export const openCountSchema = z.strictObject({
-  locationId: z.guid().nullable().optional(),
-  itemIds: z.array(z.guid()).max(5000).nullable().optional(),
-  notes: nullableText(2000),
-});
+export const openCountSchema = z
+  .strictObject({
+    locationId: z.guid().nullable().optional(),
+    itemIds: z.array(z.guid()).max(5000).nullable().optional(),
+    notes: nullableText(2000),
+    counterId: z.guid().nullable().optional(),
+    approverId: z.guid().nullable().optional(),
+  })
+  .refine((value) => (value.counterId == null) === (value.approverId == null), {
+    message: 'counterId and approverId go together',
+    path: ['approverId'],
+  });
 
-export const countLineSchema = z.strictObject({ countedQuantity: quantity.min(0).nullable() });
+export const countLineSchema = z
+  .strictObject({ countedQuantity: quantity.min(0).nullable().optional(), reason: nullableText(500) })
+  .refine((value) => value.countedQuantity !== undefined || value.reason !== undefined, 'Send countedQuantity or reason');
+
+export const myCountLineSchema = z.strictObject({ countedQuantity: quantity.min(0).nullable() });
+
+export const recountSchema = z.strictObject({ lineIds: z.array(z.guid()).min(1).max(5000) });
 
 export class InventoryCount {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() number!: number;
   @ApiProperty({ format: 'uuid' }) locationId!: string;
   @ApiProperty({ type: String, nullable: true }) locationName!: string | null;
-  @ApiProperty({ enum: COUNT_STATUSES }) status!: CountStatus;
+  @ApiProperty({ enum: COUNT_STATUSES, description: 'Legacy: open while draft, counting or review. Prefer stage.' }) status!: CountStatus;
+  @ApiProperty({ enum: COUNT_STAGES }) stage!: CountStage;
   @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Who counts; null = the admin flow without counter.' })
+  counterId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) counterName!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'The approving admin.' }) approverId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) approverName!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) submittedAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) appliedAt!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) appliedBy!: string | null;
+  @ApiProperty({ type: String, nullable: true }) appliedByName!: string | null;
+  @ApiProperty({ description: 'Sum of the counted lines differences in COP (counted - expected) * cost.' }) differenceValue!: number;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
 }
 
@@ -850,11 +876,18 @@ export class CountLine {
   @ApiProperty({ type: String, nullable: true }) unit!: string | null;
   @ApiProperty() expectedQuantity!: number;
   @ApiProperty({ type: Number, nullable: true }) countedQuantity!: number | null;
-  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'counted - expected; null when not counted.' }) difference!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'difference * cost in COP.' }) differenceValue!: number | null;
+  @ApiProperty({ description: '|differenceValue| reaches reasonThreshold: applying a reviewed count needs notes.' })
+  reasonRequired!: boolean;
+  @ApiProperty({ description: 'Sent back to the counter for recount.' }) recount!: boolean;
+  @ApiProperty({ type: String, nullable: true, description: 'Reason of the difference.' }) notes!: string | null;
 }
 
 export class InventoryCountDetail extends InventoryCount {
-  @ApiProperty({ type: [CountLine], description: 'By item name (es).' }) lines!: CountLine[];
+  @ApiProperty({ description: 'COP; private.inventory_count_reason_threshold().' }) reasonThreshold!: number;
+  @ApiProperty({ type: [CountLine], description: 'By |differenceValue| (largest first) in review and applied, else by item name (es).' })
+  lines!: CountLine[];
 }
 
 export class OpenCountInput {
@@ -862,6 +895,10 @@ export class OpenCountInput {
   locationId?: string | null;
   @ApiPropertyOptional({ type: [String], nullable: true, description: 'null = every active item.' }) itemIds?: string[] | null;
   @ApiPropertyOptional({ type: String, nullable: true }) notes?: string | null;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Active profile of the restaurant; with approverId the count starts as a draft.' })
+  counterId?: string | null;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Active admin, not the counter.' })
+  approverId?: string | null;
 }
 
 export class OpenCountResult {
@@ -869,12 +906,19 @@ export class OpenCountResult {
   @ApiProperty() number!: number;
   @ApiProperty({ format: 'uuid' }) locationId!: string;
   @ApiProperty({ enum: COUNT_STATUSES }) status!: CountStatus;
+  @ApiProperty({ enum: COUNT_STAGES }) stage!: CountStage;
   @ApiProperty() linesCount!: number;
 }
 
 export class SetCountedQuantityRequest {
-  @ApiProperty({ type: Number, nullable: true, description: 'null clears the line (not counted yet).' })
-  countedQuantity!: number | null;
+  @ApiPropertyOptional({ type: Number, nullable: true, description: 'null clears the line (not counted yet). Counting only.' })
+  countedQuantity?: number | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Reason of the difference (line notes), counting or review.' })
+  reason?: string | null;
+}
+
+export class RecountRequest {
+  @ApiProperty({ type: [String], description: 'Lines sent back to the counter; only these are writable.' }) lineIds!: string[];
 }
 
 export class ApplyCountResult {
@@ -882,6 +926,40 @@ export class ApplyCountResult {
   @ApiProperty({ enum: COUNT_STATUSES }) status!: CountStatus;
   @ApiProperty() adjustedLines!: number;
   @ApiProperty() valueDelta!: number;
+}
+
+/** A count as its assigned counter sees it: never the expected stock, cost or difference. */
+export class MyCount {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() number!: number;
+  @ApiProperty({ format: 'uuid' }) locationId!: string;
+  @ApiProperty({ type: String, nullable: true }) locationName!: string | null;
+  @ApiProperty({ enum: COUNT_STAGES }) stage!: CountStage;
+  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) submittedAt!: string | null;
+  @ApiProperty() linesCount!: number;
+  @ApiProperty() countedLines!: number;
+  @ApiProperty({ description: 'Lines sent back for recount.' }) recountLines!: number;
+}
+
+export class MyCountLine {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) itemId!: string;
+  @ApiProperty({ type: String, nullable: true }) itemName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) sku!: string | null;
+  @ApiProperty({ type: String, nullable: true }) unit!: string | null;
+  @ApiProperty({ type: Number, nullable: true }) countedQuantity!: number | null;
+  @ApiProperty({ description: 'Sent back for recount: while any line is, only those are writable.' }) recount!: boolean;
+}
+
+export class MyCountDetail extends MyCount {
+  @ApiProperty({ type: [MyCountLine], description: 'By item name (es).' }) lines!: MyCountLine[];
+}
+
+export class SetMyCountedQuantityRequest {
+  @ApiProperty({ type: Number, nullable: true, description: 'null clears the line (not counted yet).' })
+  countedQuantity!: number | null;
 }
 
 // ---- Formulas --------------------------------------------------------------------

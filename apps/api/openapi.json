@@ -6342,11 +6342,153 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "countedQuantity while counting; reason (line notes) while counting or in review.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CountLine"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/counts/{id}/start": {
+      "post": {
+        "operationId": "CountsController_start",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "start_inventory_count: draft -> counting, expected stock taken again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryCount"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/counts/{id}/submit": {
+      "post": {
+        "operationId": "CountsController_submit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "submit_inventory_count: counting -> review, every line counted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryCount"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/counts/{id}/recount": {
+      "post": {
+        "operationId": "CountsController_recount",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecountRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "request_inventory_count_recount: review -> counting for those lines only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryCount"
                 }
               }
             }
@@ -6386,7 +6528,7 @@
         ],
         "responses": {
           "200": {
-            "description": "apply_inventory_count.",
+            "description": "apply_inventory_count: from review (or counting without counter), by an admin who did not count; reviewed lines at reasonThreshold or more need a reason.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6438,6 +6580,179 @@
           },
           "403": {
             "description": "Not admin."
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/my-counts": {
+      "get": {
+        "operationId": "MyCountsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Counting, in review and applied, newest first. Blind: never the expected stock, cost or difference. Any role; only counts assigned to the caller (404 otherwise).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MyCount"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/my-counts/{id}": {
+      "get": {
+        "operationId": "MyCountsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lines by item name (es). Blind: never the expected stock, cost or difference. Any role; only counts assigned to the caller (404 otherwise).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyCountDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/my-counts/{id}/lines/{lineId}": {
+      "patch": {
+        "operationId": "MyCountsController_setCounted",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMyCountedQuantityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "While counting; during a recount only the marked lines. Blind: never the expected stock, cost or difference. Any role; only counts assigned to the caller (404 otherwise).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyCountLine"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": "Invalid input or unknown fields. RPC errors keep their SQLSTATE in `code` and their message verbatim (`fn_name: ...`): 422 P0001 (rule; `details` = DETAIL, e.g. shortages JSON), 422 22023, 404 P0002, 403 42501."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/my-counts/{id}/submit": {
+      "post": {
+        "operationId": "MyCountsController_submit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "counting -> review, every line counted. Blind: never the expected stock, cost or difference. Any role; only counts assigned to the caller (404 otherwise).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyCount"
+                }
+              }
+            }
           },
           "404": {
             "description": ""
@@ -17996,16 +18311,65 @@
               "open",
               "applied",
               "cancelled"
+            ],
+            "description": "Legacy: open while draft, counting or review. Prefer stage."
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "counting",
+              "review",
+              "applied",
+              "cancelled"
             ]
           },
           "notes": {
             "type": "string",
             "nullable": true
           },
+          "counterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Who counts; null = the admin flow without counter."
+          },
+          "counterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "approverId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The approving admin."
+          },
+          "approverName": {
+            "type": "string",
+            "nullable": true
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
           "appliedAt": {
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "appliedBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "appliedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "differenceValue": {
+            "type": "number",
+            "description": "Sum of the counted lines differences in COP (counted - expected) * cost."
           },
           "createdAt": {
             "type": "string",
@@ -18018,8 +18382,17 @@
           "locationId",
           "locationName",
           "status",
+          "stage",
           "notes",
+          "counterId",
+          "counterName",
+          "approverId",
+          "approverName",
+          "submittedAt",
           "appliedAt",
+          "appliedBy",
+          "appliedByName",
+          "differenceValue",
           "createdAt"
         ]
       },
@@ -18053,9 +18426,28 @@
             "type": "number",
             "nullable": true
           },
+          "difference": {
+            "type": "number",
+            "nullable": true,
+            "description": "counted - expected; null when not counted."
+          },
+          "differenceValue": {
+            "type": "number",
+            "nullable": true,
+            "description": "difference * cost in COP."
+          },
+          "reasonRequired": {
+            "type": "boolean",
+            "description": "|differenceValue| reaches reasonThreshold: applying a reviewed count needs notes."
+          },
+          "recount": {
+            "type": "boolean",
+            "description": "Sent back to the counter for recount."
+          },
           "notes": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Reason of the difference."
           }
         },
         "required": [
@@ -18066,6 +18458,10 @@
           "unit",
           "expectedQuantity",
           "countedQuantity",
+          "difference",
+          "differenceValue",
+          "reasonRequired",
+          "recount",
           "notes"
         ]
       },
@@ -18093,10 +18489,46 @@
               "open",
               "applied",
               "cancelled"
+            ],
+            "description": "Legacy: open while draft, counting or review. Prefer stage."
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "counting",
+              "review",
+              "applied",
+              "cancelled"
             ]
           },
           "notes": {
             "type": "string",
+            "nullable": true
+          },
+          "counterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Who counts; null = the admin flow without counter."
+          },
+          "counterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "approverId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The approving admin."
+          },
+          "approverName": {
+            "type": "string",
+            "nullable": true
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time",
             "nullable": true
           },
           "appliedAt": {
@@ -18104,12 +18536,29 @@
             "format": "date-time",
             "nullable": true
           },
+          "appliedBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "appliedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "differenceValue": {
+            "type": "number",
+            "description": "Sum of the counted lines differences in COP (counted - expected) * cost."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
           },
+          "reasonThreshold": {
+            "type": "number",
+            "description": "COP; private.inventory_count_reason_threshold()."
+          },
           "lines": {
-            "description": "By item name (es).",
+            "description": "By |differenceValue| (largest first) in review and applied, else by item name (es).",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CountLine"
@@ -18122,9 +18571,19 @@
           "locationId",
           "locationName",
           "status",
+          "stage",
           "notes",
+          "counterId",
+          "counterName",
+          "approverId",
+          "approverName",
+          "submittedAt",
           "appliedAt",
+          "appliedBy",
+          "appliedByName",
+          "differenceValue",
           "createdAt",
+          "reasonThreshold",
           "lines"
         ]
       },
@@ -18148,6 +18607,18 @@
           "notes": {
             "type": "string",
             "nullable": true
+          },
+          "counterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Active profile of the restaurant; with approverId the count starts as a draft."
+          },
+          "approverId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Active admin, not the counter."
           }
         }
       },
@@ -18173,6 +18644,16 @@
               "cancelled"
             ]
           },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "counting",
+              "review",
+              "applied",
+              "cancelled"
+            ]
+          },
           "linesCount": {
             "type": "number"
           }
@@ -18182,6 +18663,7 @@
           "number",
           "locationId",
           "status",
+          "stage",
           "linesCount"
         ]
       },
@@ -18191,11 +18673,28 @@
           "countedQuantity": {
             "type": "number",
             "nullable": true,
-            "description": "null clears the line (not counted yet)."
+            "description": "null clears the line (not counted yet). Counting only."
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Reason of the difference (line notes), counting or review."
+          }
+        }
+      },
+      "RecountRequest": {
+        "type": "object",
+        "properties": {
+          "lineIds": {
+            "description": "Lines sent back to the counter; only these are writable.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
-          "countedQuantity"
+          "lineIds"
         ]
       },
       "ApplyCountResult": {
@@ -18225,6 +18724,201 @@
           "status",
           "adjustedLines",
           "valueDelta"
+        ]
+      },
+      "MyCount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "counting",
+              "review",
+              "applied",
+              "cancelled"
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "linesCount": {
+            "type": "number"
+          },
+          "countedLines": {
+            "type": "number"
+          },
+          "recountLines": {
+            "type": "number",
+            "description": "Lines sent back for recount."
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "locationId",
+          "locationName",
+          "stage",
+          "notes",
+          "createdAt",
+          "submittedAt",
+          "linesCount",
+          "countedLines",
+          "recountLines"
+        ]
+      },
+      "MyCountLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sku": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "countedQuantity": {
+            "type": "number",
+            "nullable": true
+          },
+          "recount": {
+            "type": "boolean",
+            "description": "Sent back for recount: while any line is, only those are writable."
+          }
+        },
+        "required": [
+          "id",
+          "itemId",
+          "itemName",
+          "sku",
+          "unit",
+          "countedQuantity",
+          "recount"
+        ]
+      },
+      "MyCountDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "counting",
+              "review",
+              "applied",
+              "cancelled"
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "linesCount": {
+            "type": "number"
+          },
+          "countedLines": {
+            "type": "number"
+          },
+          "recountLines": {
+            "type": "number",
+            "description": "Lines sent back for recount."
+          },
+          "lines": {
+            "description": "By item name (es).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyCountLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "locationId",
+          "locationName",
+          "stage",
+          "notes",
+          "createdAt",
+          "submittedAt",
+          "linesCount",
+          "countedLines",
+          "recountLines",
+          "lines"
+        ]
+      },
+      "SetMyCountedQuantityRequest": {
+        "type": "object",
+        "properties": {
+          "countedQuantity": {
+            "type": "number",
+            "nullable": true,
+            "description": "null clears the line (not counted yet)."
+          }
+        },
+        "required": [
+          "countedQuantity"
         ]
       },
       "FormulaLine": {

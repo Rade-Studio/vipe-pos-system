@@ -60,6 +60,10 @@ import {
   Lot,
   movementListQuerySchema,
   MovementPage,
+  MyCount,
+  myCountLineSchema,
+  MyCountDetail,
+  MyCountLine,
   OpenCountInput,
   OpenCountResult,
   openCountSchema,
@@ -84,10 +88,13 @@ import {
   ReceivePurchaseResult,
   ReceiveTransferRequest,
   receiveTransferSchema,
+  RecountRequest,
+  recountSchema,
   SaveFormulaInput,
   SaveFormulaResult,
   saveFormulaSchema,
   SetCountedQuantityRequest,
+  SetMyCountedQuantityRequest,
   Supplier,
   SupplierInput,
   TransferStockInput,
@@ -532,17 +539,51 @@ export class CountsController {
   @Patch(':id/lines/:lineId')
   @Roles(ADMIN)
   @ApiBody({ type: SetCountedQuantityRequest })
-  @ApiOkResponse({ type: CountLine })
+  @ApiOkResponse({ type: CountLine, description: 'countedQuantity while counting; reason (line notes) while counting or in review.' })
   @ApiNotFoundResponse()
   @ApiForbiddenResponse({ description: 'Not admin.' })
   setCounted(@Param('id') countId: string, @Param('lineId') lineId: string, @Body() body: unknown): Promise<CountLine> {
-    return this.counts.setCounted(id(countId), id(lineId), parseInput(countLineSchema, body).countedQuantity);
+    return this.counts.setLine(id(countId), id(lineId), parseInput(countLineSchema, body));
+  }
+
+  @Post(':id/start')
+  @Roles(ADMIN)
+  @HttpCode(200)
+  @ApiOkResponse({ type: InventoryCount, description: 'start_inventory_count: draft -> counting, expected stock taken again.' })
+  @ApiNotFoundResponse()
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  start(@Param('id') countId: string): Promise<InventoryCount> {
+    return this.counts.start(id(countId));
+  }
+
+  @Post(':id/submit')
+  @Roles(ADMIN)
+  @HttpCode(200)
+  @ApiOkResponse({ type: InventoryCount, description: 'submit_inventory_count: counting -> review, every line counted.' })
+  @ApiNotFoundResponse()
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  submit(@Param('id') countId: string): Promise<InventoryCount> {
+    return this.counts.submit(id(countId));
+  }
+
+  @Post(':id/recount')
+  @Roles(ADMIN)
+  @HttpCode(200)
+  @ApiBody({ type: RecountRequest })
+  @ApiOkResponse({ type: InventoryCount, description: 'request_inventory_count_recount: review -> counting for those lines only.' })
+  @ApiNotFoundResponse()
+  @ApiForbiddenResponse({ description: 'Not admin.' })
+  recount(@Param('id') countId: string, @Body() body: unknown): Promise<InventoryCount> {
+    return this.counts.recount(id(countId), parseInput(recountSchema, body).lineIds);
   }
 
   @Post(':id/apply')
   @Roles(ADMIN)
   @HttpCode(200)
-  @ApiOkResponse({ type: ApplyCountResult, description: 'apply_inventory_count.' })
+  @ApiOkResponse({
+    type: ApplyCountResult,
+    description: 'apply_inventory_count: from review (or counting without counter), by an admin who did not count; reviewed lines at reasonThreshold or more need a reason.',
+  })
   @ApiForbiddenResponse({ description: 'Not admin.' })
   apply(@Param('id') countId: string): Promise<ApplyCountResult> {
     return this.counts.apply(id(countId));
@@ -556,6 +597,45 @@ export class CountsController {
   @ApiForbiddenResponse({ description: 'Not admin.' })
   cancel(@Param('id') countId: string): Promise<InventoryCount> {
     return this.counts.cancel(id(countId));
+  }
+}
+
+const BLIND = 'Blind: never the expected stock, cost or difference. Any role; only counts assigned to the caller (404 otherwise).';
+
+@ApiTags('inventory')
+@ApiCookieAuth()
+@ApiUnprocessableEntityResponse({ description: `Invalid input or unknown fields. ${RPC_ERRORS}` })
+@Controller('inventory/my-counts')
+export class MyCountsController {
+  constructor(private readonly counts: CountsService) {}
+
+  @Get()
+  @ApiOkResponse({ type: [MyCount], description: `Counting, in review and applied, newest first. ${BLIND}` })
+  list(): Promise<MyCount[]> {
+    return this.counts.listMine();
+  }
+
+  @Get(':id')
+  @ApiOkResponse({ type: MyCountDetail, description: `Lines by item name (es). ${BLIND}` })
+  @ApiNotFoundResponse()
+  get(@Param('id') countId: string): Promise<MyCountDetail> {
+    return this.counts.getMine(id(countId));
+  }
+
+  @Patch(':id/lines/:lineId')
+  @ApiBody({ type: SetMyCountedQuantityRequest })
+  @ApiOkResponse({ type: MyCountLine, description: `While counting; during a recount only the marked lines. ${BLIND}` })
+  @ApiNotFoundResponse()
+  setCounted(@Param('id') countId: string, @Param('lineId') lineId: string, @Body() body: unknown): Promise<MyCountLine> {
+    return this.counts.countMine(id(countId), id(lineId), parseInput(myCountLineSchema, body).countedQuantity);
+  }
+
+  @Post(':id/submit')
+  @HttpCode(200)
+  @ApiOkResponse({ type: MyCount, description: `counting -> review, every line counted. ${BLIND}` })
+  @ApiNotFoundResponse()
+  submit(@Param('id') countId: string): Promise<MyCount> {
+    return this.counts.submitMine(id(countId));
   }
 }
 

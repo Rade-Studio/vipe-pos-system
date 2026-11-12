@@ -7,6 +7,7 @@ import type {
   BulkProduceResult,
   ConsumeOrderStockResult,
   CountLine,
+  CountStage,
   CountStatus,
   DishStockCheckResult,
   Formula,
@@ -19,6 +20,8 @@ import type {
   InventoryOverview,
   Lot,
   Movement,
+  MyCount,
+  MyCountLine,
   MovementDocumentKind,
   MovementType,
   OpenCountResult,
@@ -263,16 +266,57 @@ export const toTemplate = (row: Json): ProductionTemplate => ({
   updatedAt: time(row.updated_at)!,
 });
 
-/** `to_jsonb(inventory_counts) || {location_name}`. */
-export const toCount = (row: Json): InventoryCount => ({
+/** The stored status as the legacy `status` (open until applied or cancelled). */
+const legacyCountStatus = (stage: CountStage): CountStatus =>
+  stage === 'applied' || stage === 'cancelled' ? stage : 'open';
+
+/** `to_jsonb(inventory_counts) || {location_name, counter_name, approver_name, applied_by_name, difference_value}`. */
+export const toCount = (row: Json): InventoryCount => {
+  const stage = row.status as CountStage;
+  return {
+    id: String(row.id),
+    number: req(row, 'number'),
+    locationId: String(row.location_id),
+    locationName: text(row.location_name),
+    status: legacyCountStatus(stage),
+    stage,
+    notes: text(row.notes),
+    counterId: text(row.counter_id),
+    counterName: text(row.counter_name),
+    approverId: text(row.approver_id),
+    approverName: text(row.approver_name),
+    submittedAt: time(row.submitted_at),
+    appliedAt: time(row.applied_at),
+    appliedBy: text(row.applied_by),
+    appliedByName: text(row.applied_by_name),
+    differenceValue: zeroIfNull(row.difference_value),
+    createdAt: time(row.created_at)!,
+  };
+};
+
+/** private.inventory_count_blind: no expected stock, cost or difference. */
+export const toMyCount = (row: Json): MyCount => ({
   id: String(row.id),
   number: req(row, 'number'),
   locationId: String(row.location_id),
   locationName: text(row.location_name),
-  status: row.status as CountStatus,
+  stage: row.status as CountStage,
   notes: text(row.notes),
-  appliedAt: time(row.applied_at),
   createdAt: time(row.created_at)!,
+  submittedAt: time(row.submitted_at),
+  linesCount: req(row, 'lines_count'),
+  countedLines: req(row, 'counted_lines'),
+  recountLines: req(row, 'recount_lines'),
+});
+
+export const toMyCountLine = (row: Json): MyCountLine => ({
+  id: String(row.id),
+  itemId: String(row.ingredient_id),
+  itemName: text(row.item_name),
+  sku: text(row.sku),
+  unit: text(row.unit),
+  countedQuantity: numOrNull(row.counted_quantity),
+  recount: row.recount === true,
 });
 
 /** `to_jsonb(inventory_transfer_lines) || {item_name, sku, unit}`. */
@@ -318,7 +362,7 @@ export const toTransfer = (row: Json): InventoryTransfer => ({
   lines: list(row.lines).map(toTransferLine),
 });
 
-/** `to_jsonb(inventory_count_lines) || {item_name, sku, unit}`. */
+/** `to_jsonb(inventory_count_lines) || {item_name, sku, unit, difference, difference_value, reason_required}`. */
 export const toCountLine = (row: Json): CountLine => ({
   id: String(row.id),
   itemId: String(row.ingredient_id),
@@ -327,6 +371,10 @@ export const toCountLine = (row: Json): CountLine => ({
   unit: text(row.unit),
   expectedQuantity: req(row, 'expected_quantity'),
   countedQuantity: numOrNull(row.counted_quantity),
+  difference: numOrNull(row.difference),
+  differenceValue: numOrNull(row.difference_value),
+  reasonRequired: row.reason_required === true,
+  recount: row.recount === true,
   notes: text(row.notes),
 });
 
@@ -334,7 +382,8 @@ export const toOpenCountResult = (row: Json): OpenCountResult => ({
   countId: String(row.count_id),
   number: req(row, 'number'),
   locationId: String(row.location_id),
-  status: row.status as CountStatus,
+  status: legacyCountStatus(row.status as CountStage),
+  stage: row.status as CountStage,
   linesCount: req(row, 'lines_count'),
 });
 
