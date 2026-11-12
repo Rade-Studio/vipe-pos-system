@@ -36,16 +36,17 @@ Phase 4 — admin (artboard 02)
 
 | ID | Specs | Route | Commit |
 | --- | --- | --- | --- |
-| T1 DB: carta settings table, dish public details, table QR token, public read functions, pgTAP, seeds | S0–S2, S5–S7, S10 | worker + verify | — |
+| T1 DB: carta settings table, dish public details, table QR token, public read functions, pgTAP, seeds ✓ | S0–S2, S5–S7, S10 | worker + verify | 89509d2 (L17) |
 | T2 API public module: menu by slug, table by token, rate limit, OpenAPI | S1, S2, S5–S7, S10 | worker + verify | — (blocked: catalog seam waits for feat/promociones-mejoras merge, L13) |
 | T3 Web `/c/[slug]` vitrina: hero, dayparts, list, sheet, search, share, list mode, EN | S3–S11 | worker | — |
-| T4 DB+API table proposals, waiter confirm/reject, bill read, ask for bill | S12–S14 | worker + verify | — |
+| T4a DB table proposals, requests (bill/waiter), feedback, guest bill read, staff confirm/reject functions | S12–S14 | worker + verify | — |
+| T4b API guest table endpoints + waiter confirm (adds items to the open order) | S12–S14 | worker + verify | — |
 | T5 Web guest order/bill/review + waiter proposals inbox | S12–S14 | worker | — |
 | T6 DB+API guest delivery pending + operator confirm, public pricing | S15 | worker + verify | — |
 | T7 Web delivery checkout/tracking/WhatsApp + console inbox | S15, S16 | worker | — |
 | T8 Admin carta settings (after artboard 02) | S17 | worker | — |
 
-Delivery: forecast well above 400 authored lines (≈3,000+); `delivery_strategy=ask-on-risk`, `chain_strategy=feature-branch-chain` (L11): tracker branch `feat/carta-digital`; each slice is its own branch stacked on the previous one and PRs into the tracker; only the tracker merges to `dev`. Slices: 1 `feat/carta-digital-1-db` (T1).
+Delivery: forecast well above 400 authored lines (≈3,000+); `delivery_strategy=ask-on-risk`, `chain_strategy=feature-branch-chain` (L11): tracker branch `feat/carta-digital`; each slice is its own branch stacked on the previous one and PRs into the tracker; only the tracker merges to `dev`. Slices: 1 `feat/carta-digital-1-db` (T1, 89509d2); 2 `feat/carta-digital-2-mesa-db` (T4a), stacked on slice 1.
 
 ## Log
 
@@ -65,3 +66,5 @@ Delivery: forecast well above 400 authored lines (≈3,000+); `delivery_strategy
 - L14 (promociones session, numbering): "0030 = mi takeaway_orders, 0031 = tu public_carta, la de caja la siguiente libre al fusionar; regla general: quien fusione después renumera sobre lo que esté en dev, con journal `when` mayor que el último." Later carta migrations (T4, T6) take the next free number at merge time and renumber if dev moved.
 - L15 (caja session): caja merges `0032_inventory_transfers` with journal idx 30, when 1793903681411; carta's migration must take the next free idx and a `when` greater than the last on dev when it merges. Current 0031 draft: idx 31, when 1794069281411 (greater) — recheck idx/file name on rebase before merge.
 - L16 (promociones session): drizzle orders by journal `when`, not file name; promociones will take the next free number at merge ("0033_takeaway_orders si nada más entra antes") and suggests the same for public_carta: rename the draft 0031 to the next free number after dev, with the next idx and a greater `when`.
+- L17 (T1 evidence): RED 410 before the migration ("You planned 96 tests but ran 5"); GREEN 410 101/101 after adding 5 verifier regressions; full pgTAP 50 files / 2407 pass via /tmp/t410/run.sh (scratch container t410-carta-db:55432, because port 5432 belongs to another worktree's DB); db:typecheck pass; db:test-seeds fails identically on the base 19be448 (82 pass / 11 fail: tables_reservation_check in demo load, reset.sql coverage), pre-existing. Independent verify: all T1 S# met, no blockers; advisories A1 rename/re-point journal and snapshot at rebase, A2 SQL vs JS number parsing of hand-edited business_config, A3 dayparts cannot cross midnight, A4 T2 must filter raw rows through shared TS (inactive categories, expired promotions; modifier group rows lack created_at/updated_at), A5 drizzle cannot express SET NULL (column). Commit 89509d2 (1,374 authored lines: migration + pgTAP, naturally above the 400 heuristic). RDD assess (base 19be448, committedOnly): risk high (agent escalation item 2), reviewDue false (under_budget) → no native review; independent verifier covered it.
+
