@@ -46,6 +46,7 @@ import {
   promotionDishesSchema,
   PromotionsToday,
   promotionsTodayQuerySchema,
+  PromotionWeekStats,
   SetPromotionDishesRequest,
   UpdateCategoryRequest,
   updateCategorySchema,
@@ -58,6 +59,7 @@ import { DishesService } from './dishes.service';
 import { MenuService } from './menu.service';
 import { DishModifierGroupIds, DishModifierGroupsRequest, dishModifierGroupsSchema } from './modifiers.dto';
 import { ModifiersService } from './modifiers.service';
+import { PromotionWeekStatsService } from './promotion-week-stats.service';
 import { PromotionsService } from './promotions.service';
 import { SubcategoriesService } from './subcategories.service';
 
@@ -274,7 +276,10 @@ export class DishesController {
 @ApiUnprocessableEntityResponse({ description: 'Invalid input, unknown fields or unknown dish.' })
 @Controller('catalog/promotions')
 export class PromotionsController {
-  constructor(private readonly promotions: PromotionsService) {}
+  constructor(
+    private readonly promotions: PromotionsService,
+    private readonly weekStats: PromotionWeekStatsService,
+  ) {}
 
   @Get()
   @ApiOkResponse({ type: [Promotion], description: 'Newest first, with targets, combo groups, 30-day stats, schedule now, sentence and badge.' })
@@ -296,6 +301,17 @@ export class PromotionsController {
   })
   today(@Query() query: unknown): Promise<PromotionsToday> {
     return this.promotions.today(parseInput(promotionsTodayQuerySchema, query).channel);
+  }
+
+  @Get('stats/week')
+  @Roles(ADMIN)
+  @ApiOkResponse({
+    type: PromotionWeekStats,
+    description: 'Paid orders from Monday at the business-day cut-off (restaurant timezone) through now: discount granted, its share of gross sales, and the sales and bills with a promotion.',
+  })
+  @ApiForbiddenResponse({ description: 'Not an admin.' })
+  weekStatsNow(): Promise<PromotionWeekStats> {
+    return this.weekStats.week();
   }
 
   @Post()

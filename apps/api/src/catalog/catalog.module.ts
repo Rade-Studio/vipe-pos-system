@@ -13,10 +13,13 @@ import { DishesService } from './dishes.service';
 import { MenuService } from './menu.service';
 import { ModifierGroupsController, ModifierOptionsController } from './modifiers.controller';
 import { ModifiersService } from './modifiers.service';
+import { ConfigService } from '../settings/config.service';
+import { PromotionWeekStatsService } from './promotion-week-stats.service';
 import { PromotionsService } from './promotions.service';
 import { SubcategoriesService } from './subcategories.service';
 
-// SalesService (the availability rule) is stateless over the request
+// SalesService (the availability rule) and ConfigService (the business-day
+// cut-off of the weekly stats) are stateless over the request
 // UnitOfWork; providing it here rather than importing InventoryModule keeps the
 // module init order, and with it the OpenAPI path order, unchanged.
 @Module({
@@ -30,7 +33,7 @@ import { SubcategoriesService } from './subcategories.service';
     ModifierGroupsController,
     ModifierOptionsController,
   ],
-  providers: [CategoriesService, SubcategoriesService, DishesService, PromotionsService, MenuService, SalesService, ModifiersService],
+  providers: [CategoriesService, SubcategoriesService, DishesService, PromotionsService, MenuService, SalesService, ModifiersService, ConfigService, PromotionWeekStatsService],
   exports: [DishesService, PromotionsService],
 })
 export class CatalogModule {}

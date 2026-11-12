@@ -439,6 +439,16 @@ export class PromotionStats {
   @ApiProperty({ description: 'Sum of those discounts, whole pesos.' }) discountLast30Days!: number;
 }
 
+export class PromotionWeekStats {
+  @ApiProperty({ format: 'date-time', description: 'Monday at businessDayCutoffHour, restaurant timezone (the cash business-day rule).' }) weekStart!: string;
+  @ApiProperty({ format: 'date-time' }) now!: string;
+  @ApiProperty({ description: 'Sum of total_discounts of the paid orders of the week, whole pesos.' }) discountGranted!: number;
+  @ApiProperty({ description: 'Gross sales (subtotal + total_discounts) of those orders.' }) salesGross!: number;
+  @ApiProperty({ example: 5.4, description: 'discountGranted / salesGross x 100, one decimal; 0 without sales.' }) discountPercent!: number;
+  @ApiProperty({ description: 'Gross sales of the paid orders with at least one discount row.' }) salesWithPromotion!: number;
+  @ApiProperty({ description: 'Count of those orders.' }) billsWithPromotion!: number;
+}
+
 export class PromotionSchedule {
   @ApiProperty({ description: 'Applies by itself right now (automatic, active, in dates, day and window); channels are not considered.' })
   activeNow!: boolean;
