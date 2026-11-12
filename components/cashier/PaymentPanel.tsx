@@ -14,7 +14,7 @@ import { useConfigStore } from "@/store/use-config-store"
 import { formatCurrency } from "@/utils/helpers"
 import { toast } from "@/utils/toast"
 import { cn } from "@/lib/utils"
-import type { PrintableInvoice, PrintDiscount } from "@/types"
+import type { PrintableInvoice } from "@/types"
 import type { DeliveryOrder } from "@/lib/delivery/types"
 import { buildDeliveryPrintInfo } from "@/lib/delivery/print"
 import { listPaymentMethods, payOrder } from "@/lib/api/payments"
@@ -26,7 +26,8 @@ import { invoiceTendersFromPayOrder, legacyInvoiceFields } from "@/lib/payments/
 import { newIdempotencyKey } from "@/lib/payments/idempotency"
 import { computeSurplusAsTip, initialPaymentDraft, paymentDraftReducer, selectView } from "@/lib/payments/draft"
 import type { PaymentDraftAction, PaymentDraftState } from "@/lib/payments/draft"
-import { getById, toOrder, type OrderDiscountDto } from "@/lib/api/orders"
+import { getById, toOrder } from "@/lib/api/orders"
+import { invoiceDiscounts, type PaymentOrderSource } from "@/lib/payments/invoice-discounts"
 import { log } from "@/lib/log"
 import { useRegisterSummary } from "@/hooks/use-register-summary"
 import { canGiveChange, registerSummaryQueryKey } from "@/lib/payments/register-summary"
@@ -100,27 +101,7 @@ export interface PaymentPanelProps {
 /** pay_order's total mismatch (the bill changed on the server since it was read). */
 const TOTAL_MISMATCH = /tenders sum to (\d+) but amount_due \+ tip = (\d+)/
 
-/**
- * S14: the bill source plus the order's discount records and list-price
- * subtotal, so the invoice prints them; without them it prints as before.
- */
-export type PaymentOrderSource = CashierBillSource & {
-  discounts?: readonly OrderDiscountDto[]
-  gross_subtotal?: number
-}
-
-/** The order's discounts for the invoice, only when the records match its bill (else none). */
-function invoiceDiscounts(order: PaymentOrderSource) {
-  const discounts = order.discounts ?? []
-  const total = order.total_discounts ?? 0
-  if (discounts.length === 0 || discounts.reduce((sum, d) => sum + d.amount, 0) !== total) return null
-  const print = (d: OrderDiscountDto): PrintDiscount => ({ label: d.label, amount: d.amount, orderItemId: d.orderItemId })
-  return {
-    bill: discounts.filter((d) => !d.orderItemId).map(print),
-    byItem: (itemId: string) => discounts.filter((d) => d.orderItemId === itemId).map(print),
-    grossSubtotal: order.gross_subtotal ?? order.subtotal + total,
-  }
-}
+export type { PaymentOrderSource }
 
 interface OrderForBill extends PaymentOrderSource {
   order_items: CashierBillSource["order_items"]
@@ -396,7 +377,8 @@ export function PaymentPanel({
   const bill = serverBill(orderData, orderData.tip_percentage)
   const totalDiscounts = orderData.total_discounts ?? 0
   // S13: a fully discounted order (nothing due, no tip) closes with one cash tender of 0.
-  const zeroTotal = draft.amountDue === 0 && draft.tip === 0
+  // Decided from the server bill, never from a draft that may not be seeded for it yet.
+  const zeroTotal = bill.amountDue + deliveryFee === 0 && draft.amountDue === 0 && draft.tip === 0
   const zeroTenders = zeroTotal ? zeroTotalTenders(activeMethods) : []
   const canRegister = zeroTotal ? zeroTenders.length > 0 && !draft.submitting && !draft.lastError : view.canConfirm
   const issues = zeroTotal ? view.issues.filter((issue) => issue.code !== "nothing-to-charge") : view.issues

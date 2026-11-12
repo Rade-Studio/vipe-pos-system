@@ -91,13 +91,19 @@ export function renderKitchenOrder(order: {
   waiter: string
   items: Array<{ name: string; quantity: number; comments?: string; modifiers?: readonly PrintModifier[] | null }>
   delivery?: DeliveryPrintInfo
+  /** S8: a takeaway order prints `PARA LLEVAR · <nombre>` where the table goes (`label` as the API stores it). */
+  takeaway?: { customerName: string; label?: string } | null
 }): KitchenOrderRender {
   const title = order.orderNumber != null ? `COMANDA #${order.orderNumber}` : 'COMANDA'
   const stationLines: PrintLine[] = order.station?.name
     ? [{ text: `Estación: ${order.station.name}`, bold: false, align: 'left' }]
     : []
   const delivery = order.delivery
-  const tableDisplay = typeof order.table === 'number' ? `Mesa ${order.table}` : order.table
+  const tableDisplay = order.takeaway
+    ? (order.takeaway.label ?? `PARA LLEVAR · ${order.takeaway.customerName}`)
+    : typeof order.table === 'number'
+      ? `Mesa ${order.table}`
+      : order.table
   const dateDisplay = new Date().toLocaleString('es-CO', {
     day: '2-digit',
     month: '2-digit',

@@ -13,6 +13,7 @@ const catalog = vi.hoisted(() => ({
   fetchCategories: vi.fn(),
   fetchDishes: vi.fn(),
   fetchPromotions: vi.fn(),
+  fetchPromotionWeekStats: vi.fn(),
   createPromotion: vi.fn(),
   updatePromotion: vi.fn(),
   deletePromotion: vi.fn(),
@@ -41,6 +42,16 @@ function renderList() {
   )
 }
 
+const WEEK = {
+  weekStart: "2026-11-10T09:00:00.000Z",
+  now: "2026-11-13T23:10:00.000Z",
+  discountGranted: 1284600,
+  salesGross: 21059000,
+  discountPercent: 6.1,
+  salesWithPromotion: 6912000,
+  billsWithPromotion: 312,
+}
+
 const row = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name.replace(/[$()]/g, "\\$&")}`) })
 
 beforeEach(() => {
@@ -48,6 +59,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW)
   for (const fn of [...Object.values(catalog), subApi.getAll, toastMock]) fn.mockReset()
   catalog.fetchPromotions.mockResolvedValue(ALL_PROMOTIONS)
+  catalog.fetchPromotionWeekStats.mockResolvedValue(WEEK)
   catalog.fetchCategories.mockResolvedValue(CATEGORIES)
   catalog.fetchDishes.mockResolvedValue(DISHES)
   subApi.getAll.mockResolvedValue(SUBCATEGORIES)
@@ -104,9 +116,34 @@ describe("PromotionList (S9)", () => {
     const now = await screen.findByRole("group", { name: "Aplicando ahora" })
     expect(within(now).getByText("2")).toBeInTheDocument()
     expect(within(now).getByText("Happy hour 2x1 en cócteles termina a las 19:00")).toBeInTheDocument()
-    const granted = screen.getByRole("group", { name: "Descuento otorgado · 30 días" })
-    expect(within(granted).getByText("$10.966.100")).toBeInTheDocument()
-    expect(screen.queryByText(/Venta con promoción/)).not.toBeInTheDocument()
+    const granted = screen.getByRole("group", { name: "Descuento otorgado · esta semana" })
+    expect(await within(granted).findByText("$1.284.600")).toBeInTheDocument()
+    expect(within(granted).getByText("6,1% de la venta")).toBeInTheDocument()
+    const sales = screen.getByRole("group", { name: "Venta con promoción · esta semana" })
+    expect(within(sales).getByText("$6.912.000")).toBeInTheDocument()
+    expect(within(sales).getByText("312 cuentas")).toBeInTheDocument()
+    expect(screen.queryByText(/30 días/, { selector: "[role=group] *" })).not.toBeInTheDocument()
+  })
+
+  it("says 1 cuenta and 0% for a quiet week", async () => {
+    catalog.fetchPromotionWeekStats.mockResolvedValue({ ...WEEK, discountGranted: 0, salesGross: 0, discountPercent: 0, salesWithPromotion: 0, billsWithPromotion: 1 })
+    renderList()
+    const sales = await screen.findByRole("group", { name: "Venta con promoción · esta semana" })
+    expect(await within(sales).findByText("1 cuenta")).toBeInTheDocument()
+    expect(within(screen.getByRole("group", { name: "Descuento otorgado · esta semana" })).getByText("0% de la venta")).toBeInTheDocument()
+  })
+
+  it("shows loading and then the error of the weekly cards without hiding the list", async () => {
+    let fail: (error: Error) => void = () => {}
+    catalog.fetchPromotionWeekStats.mockReturnValue(new Promise((_, reject) => (fail = reject)))
+    renderList()
+    const granted = await screen.findByRole("group", { name: "Descuento otorgado · esta semana" })
+    expect(within(granted).getByText("Cargando…")).toBeInTheDocument()
+    expect(within(screen.getByRole("group", { name: "Venta con promoción · esta semana" })).getByText("Cargando…")).toBeInTheDocument()
+    await act(async () => fail(new Error("boom")))
+    expect(await within(granted).findByText("No se pudo cargar")).toBeInTheDocument()
+    expect(within(granted).getByText("—")).toBeInTheDocument()
+    expect(row("Happy hour 2x1 en cócteles")).toBeInTheDocument()
   })
 
   it("opens the editor for a row and for a new promotion", async () => {

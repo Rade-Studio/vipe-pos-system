@@ -62,7 +62,7 @@ const tenderReference = z.string().transform(normalizeTenderReference).pipe(z.st
 export const CASH_REFERENCE_MESSAGE = 'Una línea en efectivo no lleva referencia';
 /** 422 for a 0 line that is not cash with cashReceived 0 (promociones S7: only a fully discounted order closes with one). */
 export const ZERO_TENDER_MESSAGE = 'Una línea en 0 solo cierra una cuenta sin saldo: en efectivo y con efectivo recibido 0';
-/** 422 for a cash line that receives less than it applies (pay_order would refuse it with P0001). */
+/** 422 for a line of a cash method (by its kind) that receives less than it applies (pay_order would refuse it with P0001). */
 export const CASH_RECEIVED_SHORT_MESSAGE = 'El efectivo recibido no puede ser menor que el valor de la línea';
 
 const tenderInputSchema = z
@@ -75,8 +75,7 @@ const tenderInputSchema = z
     /** Manual card/transfer reference (non-cash lines only); null (or omitted) means none. */
     reference: tenderReference.nullable().optional(),
   })
-  .refine((tender) => tender.amount > 0 || tender.cashReceived === 0, { error: ZERO_TENDER_MESSAGE })
-  .refine((tender) => tender.amount === 0 || tender.cashReceived == null || tender.cashReceived >= tender.amount, { error: CASH_RECEIVED_SHORT_MESSAGE });
+  .refine((tender) => tender.amount > 0 || tender.cashReceived === 0, { error: ZERO_TENDER_MESSAGE });
 
 export const payOrderSchema = z.strictObject({
   orderId: z.guid(),
@@ -101,7 +100,12 @@ export class PayOrderTenderInput {
     description: `Applied amount in whole pesos (capped for cash). 0 only as the single cash line, with cashReceived 0, of an order whose amount due and tip are 0 (a fully discounted order); a 0 line without cashReceived 0 is 422 \`${ZERO_TENDER_MESSAGE}\`, any other 0 line 422 22023.`,
   })
   amount!: number;
-  @ApiPropertyOptional({ type: Number, nullable: true, minimum: 0, description: 'Cash handed over; required for cash, null for electronic.' })
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: 0,
+    description: `Cash handed over; required for cash, null for electronic. On a line whose method kind is cash, less than amount is 422 \`tenders.N: ${CASH_RECEIVED_SHORT_MESSAGE}\`; on an electronic line pay_order refuses any value (422 P0001).`,
+  })
   cashReceived?: number | null;
   @ApiPropertyOptional({
     type: String,
@@ -202,22 +206,28 @@ export class SplitOrderRequest {
   @ApiProperty({ type: [SplitOrderItemInput], minItems: 1, maxItems: MAX_SPLIT_ITEMS }) items!: SplitOrderItemInput[];
 }
 
+/** The bill of one order as stored after the split (or undo) and its promotion recompute: the same values GET /orders/:id answers. */
 export class OrderBillSummary {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
-  @ApiProperty() subtotal!: number;
-  @ApiProperty() tax!: number;
-  @ApiProperty() tip!: number;
-  @ApiProperty() total!: number;
+  @ApiProperty({ description: 'Net base after the discounts recomputed on this side (Order.subtotal).' }) subtotal!: number;
+  @ApiProperty({ description: 'Tax on subtotal.' }) tax!: number;
+  @ApiProperty({ description: 'Suggested tip on subtotal (tipPercentage).' }) tip!: number;
+  @ApiProperty({ description: 'subtotal + tax + tip.' }) total!: number;
 }
 
+/**
+ * POST /orders/:id/split: exactly these three keys. split_order, the
+ * promotion recompute of both orders and this read run in one transaction: a
+ * failure in any of them rolls the split back.
+ */
 export class SplitOrderResult {
-  @ApiProperty({ format: 'uuid' }) childOrderId!: string;
-  @ApiProperty({ type: OrderBillSummary }) parent!: OrderBillSummary;
-  @ApiProperty({ type: OrderBillSummary }) child!: OrderBillSummary;
+  @ApiProperty({ format: 'uuid', description: 'The new partial child order (parentOrderId = :id).' }) childOrderId!: string;
+  @ApiProperty({ type: OrderBillSummary, description: 'The bill of :id after the recompute.' }) parent!: OrderBillSummary;
+  @ApiProperty({ type: OrderBillSummary, description: 'The bill of the child after the recompute.' }) child!: OrderBillSummary;
 }
 
 export class UndoSplitResult {
-  @ApiProperty({ type: OrderBillSummary }) parent!: OrderBillSummary;
+  @ApiProperty({ type: OrderBillSummary, description: 'The bill of the parent after the lines came back and the recompute.' }) parent!: OrderBillSummary;
 }
 
 // ---- Payment void ------------------------------------------------------------

@@ -1,21 +1,21 @@
 /**
  * The cashier queue (T14): one row per table with dine-in orders to charge,
- * and one per partial ("pago parcial") child. Derived from the views in
+ * one per partial ("pago parcial") child and one per takeaway order (S8). Derived from the views in
  * `orders.ts`; nothing here is fetched or stored.
  */
 import type { CartItem, Order } from "@/types"
 import type { ChipTone } from "@/components/cashier/cashier-ui"
 import type { CashierOrder } from "./orders"
 
-export type QueueKind = "table" | "partial"
+export type QueueKind = "table" | "partial" | "takeaway"
 
 export interface QueueEntry {
-  /** Stable selection key: `table:<tableId>` or `partial:<orderId>`. */
+  /** Stable selection key: `table:<tableId>`, `partial:<orderId>` or `takeaway:<orderId>`. */
   key: string
   kind: QueueKind
   tableId: string
   tableNumber: number | undefined
-  /** "Mesa 12" or "Mesa 12 · Parcial". */
+  /** "Mesa 12", "Mesa 12 · Parcial" or "Para llevar · Ana". */
   label: string
   waiterName: string | undefined
   /** Zone of the table (T24), when the table is placed in one. */
@@ -52,6 +52,8 @@ function earliest(orders: readonly Order[]): Date {
 export interface QueueSources {
   byTable: Record<string, Order[]>
   partial: Order[]
+  /** Takeaway orders (S8); absent = none. */
+  takeaway?: Order[]
   tableNumberById: Record<string, number>
   /** Zone name by table id; a table without zone is absent. */
   zoneNameByTableId?: Record<string, string>
@@ -87,6 +89,12 @@ export function tableEntries({ byTable, tableNumberById, zoneNameByTableId = {},
     })
 }
 
+/** S8: "Para llevar · Ana", the cashier's name for a takeaway order. */
+export function takeawayLabel(order: Pick<Order, "customerName">): string {
+  const name = order.customerName?.trim()
+  return name ? `Para llevar · ${name}` : "Para llevar"
+}
+
 export function partialEntries({ partial, tableNumberById, zoneNameByTableId = {}, waiterName }: QueueSources): QueueEntry[] {
   return partial.map((order) => {
     const tableNumber = tableNumberById[order.tableId]
@@ -95,7 +103,7 @@ export function partialEntries({ partial, tableNumberById, zoneNameByTableId = {
       kind: "partial" as const,
       tableId: order.tableId,
       tableNumber,
-      label: `Mesa ${tableNumber ?? "?"} · Parcial`,
+      label: `${order.orderType === "takeaway" ? takeawayLabel(order) : `Mesa ${tableNumber ?? "?"}`} · Parcial`,
       waiterName: (order as CashierOrder).waiterName ?? waiterName(order.waiter),
       zoneName: zoneNameByTableId[order.tableId],
       ...captured([order]),
@@ -106,6 +114,25 @@ export function partialEntries({ partial, tableNumberById, zoneNameByTableId = {
       status: { label: "Parcial", tone: "warning" as const },
     }
   })
+}
+
+/** S8: one row per takeaway order, charged like a table's order; no table and no zone. */
+export function takeawayEntries({ takeaway = [], waiterName }: QueueSources): QueueEntry[] {
+  return takeaway.map((order) => ({
+    key: `takeaway:${order.id}`,
+    kind: "takeaway" as const,
+    tableId: "",
+    tableNumber: undefined,
+    label: takeawayLabel(order),
+    waiterName: (order as CashierOrder).waiterName ?? waiterName(order.waiter),
+    zoneName: undefined,
+    ...captured([order]),
+    orders: [order],
+    payOrder: order,
+    total: order.bill.total,
+    openedAt: order.createdAt,
+    status: tableStatus([order]),
+  }))
 }
 
 const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()

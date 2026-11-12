@@ -24,7 +24,7 @@ interface MenuSnapshot {
 }
 
 /** The order channel the promotion fields of the dishes are computed for. */
-type MenuChannel = 'dine_in' | 'delivery';
+type MenuChannel = 'dine_in' | 'takeaway' | 'delivery';
 
 const iso = (value: Date | string | null) => (value === null ? null : new Date(value).toISOString());
 

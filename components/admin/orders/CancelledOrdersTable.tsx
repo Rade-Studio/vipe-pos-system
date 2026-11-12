@@ -4,6 +4,7 @@ import { Chip, Money } from "@/components/cashier/cashier-ui"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cancelledTotals, clock, plural } from "@/lib/admin/voids"
 import type { CancelledOrderDto } from "@/lib/api/orders"
+import { takeawayLabel } from "@/lib/cashier/queue"
 import { formatCurrency } from "@/utils/helpers"
 
 interface CancelledOrdersTableProps {
@@ -85,6 +86,8 @@ export function CancelledOrdersTable({ orders, isLoading, isError, onOpenAudit }
                         <Chip tone="reserved">Domicilio</Chip>
                         {order.delivery && <small className="mt-1 block break-words text-xs text-muted-fg">{order.delivery.customerName}</small>}
                       </>
+                    ) : order.orderType === "takeaway" ? (
+                      takeawayLabel({ customerName: order.customerName ?? undefined })
                     ) : order.tableNumber != null ? (
                       `Mesa ${order.tableNumber}`
                     ) : (

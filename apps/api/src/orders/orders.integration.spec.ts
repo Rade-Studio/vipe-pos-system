@@ -33,7 +33,7 @@ const o = {
 } as const;
 
 const ORDER_KEYS = [
-  'createdAt', 'discounts', 'grossSubtotal', 'guests', 'id', 'isPartialOrder', 'items', 'notes', 'orderNumber', 'orderType', 'parentOrderId', 'status',
+  'createdAt', 'customerName', 'customerPhone', 'discounts', 'grossSubtotal', 'guests', 'id', 'isPartialOrder', 'items', 'notes', 'orderNumber', 'orderType', 'parentOrderId', 'status',
   'subtotal', 'tableId', 'tax', 'taxPercentage', 'tip', 'tipPercentage', 'total', 'totalDiscounts', 'updatedAt', 'waiterId',
 ];
 const ITEM_KEYS = [
@@ -395,7 +395,7 @@ describe('orders endpoints (Testcontainers, vipe_api)', () => {
       expect(ok.body.subtotal).toBe(18000);
     });
 
-    it('accepts only dine_in orders until delivery moves to the API', async () => {
+    it('refuses delivery orders: they are created by the delivery module', async () => {
       const res = await waiterA().post('/api/orders', {
         orderType: 'delivery',
         items: [{ dishId: o.arepa, quantity: 1 }],

@@ -229,11 +229,15 @@ function item(id: string, status: "kitchen" | "served" = "kitchen", minute = 0) 
   }
 }
 
-function row(id: string, options: { items?: Row[]; orderType?: "dine_in" | "delivery"; tableId?: string | null } = {}): Row {
+function row(
+  id: string,
+  options: { items?: Row[]; orderType?: "dine_in" | "takeaway" | "delivery"; tableId?: string | null; customerName?: string } = {},
+): Row {
   return {
     id,
     tableId: options.tableId === undefined ? `table-${id}` : options.tableId,
     orderType: options.orderType ?? "dine_in",
+    ...(options.customerName ? { customerName: options.customerName } : {}),
     waiterId: "w-1",
     status: "kitchen",
     subtotal: 100,
@@ -738,6 +742,25 @@ describe("kitchen ticket rail (rediseno-pos T13)", () => {
     act(() => screen.getByRole("button", { name: "Domicilios 1" }).click())
     expect(screen.queryByText("O-1-I-1")).toBeNull()
     expect(screen.getByText("Combo")).toBeInTheDocument()
+  })
+
+  it("shows a takeaway order as PARA LLEVAR · <nombre> and filters it under Para llevar, never under Mesas (S8)", async () => {
+    env.kitchenRows = [
+      row("o-1"),
+      row("p-1", { orderType: "takeaway", tableId: null, customerName: "Ana", items: [{ ...item("p-1-i-1"), name: "Hamburguesa" }] }),
+    ]
+    renderKitchen()
+    expect(await screen.findByText("Hamburguesa")).toBeInTheDocument()
+
+    const ticket = screen.getByRole("article", { name: /^PARA LLEVAR · Ana,/ })
+    expect(within(ticket).getByRole("heading", { name: "PARA LLEVAR · Ana" })).toBeInTheDocument()
+    expect(within(ticket).getByText("Para llevar", { selector: "span" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Mesas 1" })).toBeInTheDocument()
+    act(() => screen.getByRole("button", { name: "Para llevar 1" }).click())
+    expect(screen.queryByText("O-1-I-1")).toBeNull()
+    expect(screen.getByText("Hamburguesa")).toBeInTheDocument()
+    act(() => screen.getByRole("button", { name: "Mesas 1" }).click())
+    expect(screen.queryByText("Hamburguesa")).toBeNull()
   })
 
   it("confirms the whole order once, listing its items, with the existing bulk write", async () => {

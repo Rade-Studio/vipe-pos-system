@@ -19,6 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { takeawayPlace } from "@/lib/kitchen/ticket"
 
 interface OrderCardProps {
   order: Order
@@ -63,7 +64,8 @@ export function OrderCard({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null)
   const placeLabel =
-    heading ?? (order.orderType === "delivery" ? "DOMICILIO" : `Mesa ${table?.number || "?"}`)
+    heading ??
+    (order.orderType === "delivery" ? "DOMICILIO" : order.orderType === "takeaway" ? takeawayPlace(order) : `Mesa ${table?.number || "?"}`)
 
   // Estado de la orden (traducido)
   const orderStatus = {

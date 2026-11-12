@@ -248,6 +248,10 @@ describe("pricing preview", () => {
     grossSubtotal: 0,
     totalDiscounts: 0,
     netSubtotal: 0,
+    tax: null,
+    tip: null,
+    total: null,
+    deliveryFee: null,
     hints: [],
   }
 

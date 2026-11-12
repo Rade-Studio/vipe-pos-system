@@ -223,10 +223,18 @@ export interface CreateDeliveryItemInput {
   modifiers?: { optionId: string }[]
 }
 
+/** S7: a combo promotion live for delivery and one dish per group; the server stores one line per choice. */
+export interface CreateDeliveryComboInput {
+  comboPromotionId: string
+  choices: { groupId: string; dishId: string }[]
+}
+
 export interface CreateDeliveryOrderInput {
   customer: CreateDeliveryCustomerInput
   address: CreateDeliveryAddressInput
   items: CreateDeliveryItemInput[]
+  /** S7: present only when the cart has combos (422 combo_* from the server). */
+  combos?: CreateDeliveryComboInput[]
   /** Whole COP pesos, non-negative. */
   deliveryFee: number
   paymentMode: PaymentMode

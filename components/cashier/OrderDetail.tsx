@@ -79,7 +79,7 @@ export function OrderDetail({
   const header = entryHeader(entry)
   // S2 (F6): without thermal printers the same action shows the invoice on screen.
   const printingEnabled = usePrintingEnabled()
-  const { orders: dtos, refresh } = useOrderDiscounts(entry.orders)
+  const { orders: dtos, refresh, isError: discountsFailed, retry: retryDiscounts } = useOrderDiscounts(entry.orders)
   const promotions = useManualPromotions()
   const noPinPromotionIds = useMemo(
     () => new Set((promotions.data ?? []).filter((promotion) => promotion.mode === "manual").map((promotion) => promotion.id)),
@@ -252,6 +252,17 @@ export function OrderDetail({
         </div>
       )}
 
+      {discountsFailed ? (
+        <div
+          role="alert"
+          className="ml-auto flex w-full max-w-sm flex-wrap items-center justify-between gap-2 rounded-lg border border-status-danger-line bg-status-danger-bg px-3 py-2 text-sm text-status-danger-fg"
+        >
+          <span>No se pudieron cargar los descuentos de la cuenta.</span>
+          <Button variant="outline" className="h-11" onClick={retryDiscounts}>
+            Reintentar
+          </Button>
+        </div>
+      ) : (
       <ul aria-label="Totales de la cuenta" className="ml-auto w-full max-w-sm space-y-1 text-sm">
         {totalRows.map((row) => (
           <li
@@ -269,6 +280,7 @@ export function OrderDetail({
           </li>
         ))}
       </ul>
+      )}
 
       <DiscountSheet target={sheet} onClose={closeSheet} onApplied={refresh} />
     </div>

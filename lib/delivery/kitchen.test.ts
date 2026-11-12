@@ -13,6 +13,7 @@ import {
   pendingDeliveryPayments,
   shouldMarkDeliveryReady,
 } from './kitchen'
+import { wireRowToPartialOrder } from '@/lib/realtime/order-merge'
 import { DELIVERY_STATUSES } from './types'
 
 describe('orderTypeFromRow', () => {
@@ -22,6 +23,17 @@ describe('orderTypeFromRow', () => {
     expect(orderTypeFromRow({})).toBe('dine_in')
     expect(orderTypeFromRow(null)).toBe('dine_in')
     expect(orderTypeFromRow({ order_type: 'DELIVERY' })).toBe('dine_in')
+  })
+
+  it('keeps takeaway as its own type (S8)', () => {
+    expect(orderTypeFromRow({ order_type: 'takeaway' })).toBe('takeaway')
+  })
+
+  it('a realtime UPDATE of a takeaway row (WaiterView, CashierView, AdminView) stays takeaway (S8)', () => {
+    expect(wireRowToPartialOrder({ id: 'o1', status: 'delivered', table_id: null, order_type: 'takeaway' })).toMatchObject({
+      orderType: 'takeaway',
+      tableId: '',
+    })
   })
 })
 

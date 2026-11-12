@@ -320,6 +320,23 @@ describe('payments endpoints (Testcontainers, vipe_api)', () => {
       expect(await db('SELECT count(*)::int AS n FROM payments WHERE order_id = $1', [p.o3])).toEqual([{ n: 0 }]);
     });
 
+    it('checks short cash only on cash lines, by the method kind', async () => {
+      // An electronic line with a cashReceived below its amount is not "short cash": pay_order refuses the cashReceived itself.
+      const electronic = await cashierA().post('/api/payments', {
+        orderId: p.o3, cashRegisterId: p.registerA, tipAmount: 0, tenders: [{ paymentMethodId: methods.nequi, amount: 13000, cashReceived: 100 }], idempotencyKey: p.otherKey,
+      });
+      expect(electronic.status).toBe(422);
+      expect(electronic.body).toMatchObject({ code: 'P0001', message: 'pay_order: tender[1] is an electronic method but cash_received is not NULL' });
+      // A cash line after an electronic one keeps its index in the message.
+      const cash = await cashierA().post('/api/payments', {
+        orderId: p.o3, cashRegisterId: p.registerA, tipAmount: 0,
+        tenders: [{ paymentMethodId: methods.nequi, amount: 3000 }, cashTender(10000, 9000)], idempotencyKey: p.otherKey,
+      });
+      expect(cash.status).toBe(422);
+      expect(cash.body.message).toBe(`tenders.1: ${CASH_RECEIVED_SHORT_MESSAGE}`);
+      expect(await db('SELECT count(*)::int AS n FROM payments WHERE order_id = $1', [p.o3])).toEqual([{ n: 0 }]);
+    });
+
     it('lets the delivery operator pay', async () => {
       const res = await as(p.deliveryEmail).post('/api/payments', {
         orderId: p.o8, cashRegisterId: p.registerA, tipAmount: 0, tenders: [cashTender(2000, 2000)], idempotencyKey: p.key8,

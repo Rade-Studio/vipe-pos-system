@@ -29,6 +29,28 @@ interface ItemRow {
   added_at: string;
   status: string | null;
   combo_id: string | null;
+  options_price: string | number;
+}
+
+/** Units of a line to take out, as POST /orders/:id/items/void would. */
+export interface LineVoid {
+  orderItemId: string;
+  quantity: number;
+}
+
+/**
+ * The lines as they would be after voiding `voids` (void_order_items): each
+ * line loses the units, and a line left with 0 is voided. The caller expands
+ * a combo component to its whole combo first.
+ */
+export function applyVoids<T extends EngineItem>(items: readonly T[], voids: readonly LineVoid[]): T[] {
+  const taken = new Map(voids.map((v) => [v.orderItemId, v.quantity]));
+  return items.map((item) => {
+    const quantity = taken.get(item.id);
+    if (quantity === undefined || item.voided) return item;
+    const left = Math.max(0, item.quantity - quantity);
+    return { ...item, quantity: left, voided: left === 0 };
+  });
 }
 
 /** A manual order_discounts row (S7): kept by every recompute. */
@@ -144,7 +166,8 @@ export class OrderDiscountsService {
   async items(orderId: string): Promise<StoredItem[]> {
     const { rows } = await this.uow.db.execute(sql`
       SELECT oi.id, oi.dish_id, d.category_id, d.subcategory_id, oi.price, oi.quantity, oi.promotion_id,
-             oi.promotion_snapshot, to_jsonb(oi.added_at) #>> '{}' AS added_at, oi.status, oi.combo_id
+             oi.promotion_snapshot, to_jsonb(oi.added_at) #>> '{}' AS added_at, oi.status, oi.combo_id,
+             coalesce((SELECT sum(m.price) FROM public.order_item_modifiers m WHERE m.order_item_id = oi.id), 0) AS options_price
         FROM public.order_items oi
         LEFT JOIN public.dishes d ON d.id = oi.dish_id
        WHERE oi.order_id = ${orderId}
@@ -155,6 +178,7 @@ export class OrderDiscountsService {
       categoryId: row.category_id,
       subcategoryId: row.subcategory_id,
       unitPrice: Number(row.price),
+      optionsPrice: Number(row.options_price),
       quantity: Number(row.quantity),
       promotionId: row.promotion_id,
       addedAt: new Date(row.added_at).toISOString(),
@@ -177,6 +201,21 @@ export class OrderDiscountsService {
       if (rule.kind === 'bill_discount' && !rules.has(rule.id)) rules.set(rule.id, rule);
     }
     return rules;
+  }
+
+  /**
+   * The discounts of a set of lines: the automatic ones from the engine and
+   * the stored manual ones around them (withManualDiscounts). The one
+   * computation recompute stores and the pricing preview answers, so a
+   * preview (with drafts or voids) cannot drift from what a write stores.
+   */
+  static evaluate(
+    items: readonly EngineItem[],
+    manual: readonly ManualDiscount[],
+    rules: ReadonlyMap<string, Rule>,
+    ctx: EngineContext<PromotionChannel>,
+  ): { result: OrderDiscounts; manual: ManualDiscount[] } {
+    return withManualDiscounts(computeOrderDiscounts(items, rules, ctx), items, manual, rules, ctx);
   }
 
   /** The automatic product promotion of a line being sent now, with its snapshot. */
@@ -225,7 +264,7 @@ export class OrderDiscountsService {
     const rules = await this.rulesFor(items);
     const ctx = { now: clock.local, channel };
     const manual = await this.manual(orderId);
-    const { result, manual: kept } = withManualDiscounts(computeOrderDiscounts(items, rules, ctx), items, manual, rules, ctx);
+    const { result, manual: kept } = OrderDiscountsService.evaluate(items, manual, rules, ctx);
     const lowered = kept.filter((row) => {
       const before = manual.find((m) => m.id === row.id);
       return row.amount !== before?.amount || row.lineQuantity !== before?.lineQuantity;

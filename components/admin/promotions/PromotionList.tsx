@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/admin/common/EmptyState"
 import { useToast } from "@/hooks/use-toast"
-import type { PromotionDto as Promotion } from "@/lib/api/catalog"
+import { fetchPromotionWeekStats, type PromotionDto as Promotion, type PromotionWeekStatsDto } from "@/lib/api/catalog"
 import { ADMIN_LIST_STALE_MS, catalogKeys, errorMessage, fetchPromotions, invalidateCatalogReaders } from "@/lib/admin/catalog"
 import { PromotionForm } from "./PromotionForm"
 import { Pill, StatePill } from "./PromotionPills"
@@ -31,10 +31,15 @@ import {
  * sentence, pills, uses and discount of the last 30 days, the state from
  * `schedule`). A row opens the editor (T6, S10).
  *
- * The API gives each promotion's last 30 days only, so the discount card sums
- * those; there is no weekly figure, sales total or bill count to show "% de la
- * venta" or "Venta con promoción", and the page does not invent them.
+ * promociones-mejoras M6 (S9): the discount and "Venta con promoción" cards
+ * read the business week from `fetchPromotionWeekStats`, with their own
+ * loading and error states so the list never waits for them.
  */
+
+const WEEK_STATS_KEY = ["promotions", "stats", "week"] as const
+
+const percentText = (value: number) => `${value.toLocaleString("es-CO", { maximumFractionDigits: 1 })}%`
+const billsText = (count: number) => (count === 1 ? "1 cuenta" : `${count.toLocaleString("es-CO")} cuentas`)
 
 const MINUTE = 60_000
 
@@ -138,7 +143,20 @@ export function PromotionList() {
   const endingFirst = activeNow
     .filter((p) => p.schedule.endsAt)
     .sort((a, b) => (a.schedule.endsAt ?? "").localeCompare(b.schedule.endsAt ?? ""))[0]
-  const granted = promotions.reduce((sum, p) => sum + p.stats.discountLast30Days, 0)
+  const week = useQuery<PromotionWeekStatsDto>({
+    queryKey: WEEK_STATS_KEY,
+    queryFn: fetchPromotionWeekStats,
+    staleTime: ADMIN_LIST_STALE_MS,
+  })
+  useEffect(() => {
+    if (week.isError) log.error("Error loading promotion week stats:", { error: String(week.error) })
+  }, [week.isError, week.error])
+  const weekCard = (value: (stats: PromotionWeekStatsDto) => string, hint: (stats: PromotionWeekStatsDto) => string) =>
+    week.data
+      ? { value: value(week.data), hint: hint(week.data) }
+      : { value: "—", hint: week.isError ? "No se pudo cargar" : "Cargando…" }
+  const grantedCard = weekCard((w) => formatPesos(w.discountGranted), (w) => `${percentText(w.discountPercent)} de la venta`)
+  const salesCard = weekCard((w) => formatPesos(w.salesWithPromotion), (w) => billsText(w.billsWithPromotion))
 
   const openEditor = (promotion: Promotion | null) => {
     setEditing(promotion)
@@ -195,7 +213,7 @@ export function PromotionList() {
         />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <StatCard
               title="Aplicando ahora"
               value={String(activeNow.length)}
@@ -207,7 +225,8 @@ export function PromotionList() {
                     : "Ninguna en este momento"
               }
             />
-            <StatCard title="Descuento otorgado · 30 días" value={formatPesos(granted)} hint="Suma de todas las promociones" />
+            <StatCard title="Descuento otorgado · esta semana" value={grantedCard.value} hint={grantedCard.hint} />
+            <StatCard title="Venta con promoción · esta semana" value={salesCard.value} hint={salesCard.hint} />
           </div>
 
           <div role="tablist" aria-label="Estado" className="flex gap-1 overflow-x-auto border-b">

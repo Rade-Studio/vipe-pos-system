@@ -26,6 +26,7 @@ import {
   deleteOrder,
   getCancelledOrders,
   getById,
+  getVoidPreview,
   getByStatus,
   orderConflictOf,
   orderDtoFromWire,
@@ -48,6 +49,8 @@ function dto(overrides: Partial<OrderDto> = {}): OrderDto {
     waiterId: "w-1",
     status: "kitchen",
     orderType: "dine_in",
+    customerName: null,
+    customerPhone: null,
     subtotal: 20000,
     tax: 1600,
     taxPercentage: 8,
@@ -141,6 +144,14 @@ describe("toOrder", () => {
     expect(order.parentOrderId).toBe("o-0")
   })
 
+  it("keeps a takeaway order's type and customer (S8); a dine_in order has none", () => {
+    const order = toOrder(dto({ orderType: "takeaway", tableId: null, customerName: "Ana", customerPhone: "3150001122" }))
+    expect(order).toMatchObject({ orderType: "takeaway", tableId: "", customerName: "Ana", customerPhone: "3150001122" })
+    const dineIn = toOrder(dto())
+    expect(dineIn.customerName).toBeUndefined()
+    expect(dineIn.customerPhone).toBeUndefined()
+  })
+
   it("turns null guests and notes into undefined", () => {
     const order = toOrder(dto({ guests: null, notes: null }))
     expect(order.guests).toBeUndefined()
@@ -189,6 +200,13 @@ describe("orderDtoFromWire", () => {
     }
     expect(orderDtoFromWire(wire)).toEqual(dto())
     expect(orderDtoFromWire({ id: "o-1" })).toBeNull()
+  })
+
+  it("keeps takeaway and the customer of a realtime row (S8)", () => {
+    const wire = orderDtoFromWire({ id: "o-1", status: "kitchen", order_type: "takeaway", customer_name: "Ana", customer_phone: null })
+    expect(wire).toMatchObject({ orderType: "takeaway", customerName: "Ana", customerPhone: null })
+    expect(orderDtoFromWire({ id: "o-1", status: "kitchen", order_type: "delivery" })).toMatchObject({ orderType: "delivery", customerName: null })
+    expect(orderDtoFromWire({ id: "o-1", status: "kitchen" })).toMatchObject({ orderType: "dine_in" })
   })
 
   it("reads missing guests and notes as null and a missing order_number as 0", () => {
@@ -246,6 +264,15 @@ describe("requests", () => {
     await create({ tableId: "t-1", orderType: "dine_in", items, force: true })
     expect(api.POST).toHaveBeenLastCalledWith("/api/orders", {
       body: { tableId: "t-1", orderType: "dine_in", items, force: true },
+    })
+  })
+
+  it("creates a takeaway order with the customer and no table (S8)", async () => {
+    api.POST.mockResolvedValueOnce({ data: dto({ orderType: "takeaway", tableId: null, customerName: "Ana" }) })
+    const items = [{ dishId: "d-1", quantity: 1 }]
+    await create({ orderType: "takeaway", customerName: "Ana", customerPhone: "3150001122", items })
+    expect(api.POST).toHaveBeenCalledWith("/api/orders", {
+      body: { orderType: "takeaway", customerName: "Ana", customerPhone: "3150001122", items },
     })
   })
 
@@ -499,5 +526,38 @@ describe("promotions on the order (S8, S11, S12)", () => {
     expect((order.items[0] as { discounts?: unknown }).discounts).toEqual([
       { id: "od-2", kind: "manual_item", label: "Cortesía", amount: 5000, promotionId: null, authorizedBy: { id: "s-1", name: "Carlos Pérez" } },
     ])
+  })
+})
+
+describe("getVoidPreview (S1)", () => {
+  it("posts the void-aware preview with no draft lines and returns the recomputed figures", async () => {
+    api.POST.mockResolvedValueOnce({
+      data: {
+        grossSubtotal: 117000,
+        totalDiscounts: 24000,
+        netSubtotal: 93000,
+        total: 100440,
+        hints: [],
+        lines: [{ orderItemId: "i-1", promotionName: "2x1", name: "Mojito", quantity: 2 }],
+      },
+    })
+    const preview = await getVoidPreview({ orderId: "o-1", voids: [{ orderItemId: "i-1", quantity: 1 }] })
+    expect(api.POST).toHaveBeenLastCalledWith("/api/orders/pricing-preview", {
+      body: { channel: "dine_in", orderId: "o-1", lines: [], voids: [{ orderItemId: "i-1", quantity: 1 }] },
+    })
+    expect(preview).toEqual({
+      grossSubtotal: 117000,
+      totalDiscounts: 24000,
+      netSubtotal: 93000,
+      total: 100440,
+      lines: [{ orderItemId: "i-1", promotionName: "2x1" }],
+    })
+  })
+
+  it("keeps the total out when the answer has none and sends the given channel", async () => {
+    api.POST.mockResolvedValueOnce({ data: { grossSubtotal: 50000, totalDiscounts: 0, netSubtotal: 50000 } })
+    const preview = await getVoidPreview({ channel: "delivery", orderId: "o-2", voids: [{ orderItemId: "i-9", quantity: 2 }] })
+    expect(api.POST.mock.calls.at(-1)![1].body.channel).toBe("delivery")
+    expect(preview).toEqual({ grossSubtotal: 50000, totalDiscounts: 0, netSubtotal: 50000, lines: [] })
   })
 })

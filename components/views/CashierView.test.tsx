@@ -31,6 +31,8 @@ import { useProfileStore } from "@/store/useProfileStore"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import type { Profile } from "@/types"
 import { clockTime } from "@/lib/cashier/queue"
+import { menuCategory, menuDish } from "@/lib/order-steps/fixtures"
+import { sendCommand } from "@/lib/api/print"
 
 /* ------------------------------------------------------------------ mocks */
 
@@ -68,6 +70,13 @@ const withSnapshot = <T extends { items: Array<{ modifiers?: unknown }> }>(dto: 
 })
 
 const ordersIncludes: unknown[] = []
+const takeawayApi = vi.hoisted(() => ({
+  menuTree: vi.fn(),
+  promotionsToday: vi.fn(),
+  pricingPreview: vi.fn(),
+  createOrder: vi.fn(),
+  addItems: vi.fn(),
+}))
 const getByStatus = vi.fn(async (_statuses: string | string[]): Promise<Row[]> => [dbRow()])
 const getById = vi.fn(async (id: string) => dbRow({ id }))
 const getCurrentRegister = vi.fn(async () => ({
@@ -136,7 +145,16 @@ vi.mock("@/lib/api/client", () => {
         }
         if (path === "/api/tables") return { data: [] }
         if (path === "/api/orders/{id}") return { data: orderDtoFromWire(await getById(init.params.path.id)) }
+        // S8: the takeaway step flow reads the menu and the takeaway promotions.
+        if (path === "/api/catalog/menu/tree") return { data: await takeawayApi.menuTree() }
+        if (path === "/api/catalog/promotions/today") return { data: await takeawayApi.promotionsToday(init.params.query) }
         throw new Error(`unexpected GET ${path}`)
+      },
+      POST: async (path: string, init: any) => {
+        if (path === "/api/orders") return { data: await takeawayApi.createOrder(init.body) }
+        if (path === "/api/orders/{id}/items") return { data: await takeawayApi.addItems(init.params.path.id, init.body) }
+        if (path === "/api/orders/pricing-preview") return { data: await takeawayApi.pricingPreview(init.body) }
+        throw new Error(`unexpected POST ${path}`)
       },
     },
     onSessionRefreshed: () => () => {},
@@ -1517,5 +1535,127 @@ describe("F3 cashier voids", () => {
     } finally {
       printing.enabled = true
     }
+  })
+})
+
+describe("Para llevar (S8)", () => {
+  const ARROZ = "44444444-4444-4444-8444-444444444444"
+  beforeEach(() => {
+    takeawayApi.menuTree.mockResolvedValue({
+      categories: [menuCategory({ id: "cat-2", name: "Postres", dishes: [menuDish({ id: ARROZ, name: "Arroz con leche", price: 7000 })] })],
+    })
+    takeawayApi.promotionsToday.mockRejectedValue(new Error("no promotions"))
+    takeawayApi.pricingPreview.mockRejectedValue(new Error("no preview"))
+    takeawayApi.createOrder.mockReset()
+    takeawayApi.addItems.mockReset()
+    vi.mocked(sendCommand).mockClear()
+  })
+
+  const takeawayRow = (over: Record<string, unknown> = {}) =>
+    dbRow({ id: "o-take", table_id: null, order_type: "takeaway", customer_name: "Ana María", subtotal: 6_000, tax: 1_140, total: 7_140, ...over })
+
+  async function openTakeaway() {
+    getByStatus.mockResolvedValue([dbRow(), takeawayRow()])
+    renderCashier()
+    await queueRow("Mesa 1")
+    fireEvent.click(screen.getByRole("tab", { name: /^Para llevar/ }))
+    fireEvent.click(await queueRow("Para llevar · Ana María"))
+    await screen.findByText("Cobrar · Para llevar · Ana María")
+  }
+
+  it("reprints a takeaway order with the customer where the table goes (M5b)", async () => {
+    await openTakeaway()
+    fireEvent.click(screen.getByRole("button", { name: "Reimprimir" }))
+    const invoice = await screen.findByRole("dialog")
+    expect(invoice).toHaveTextContent("Para llevar · Ana María")
+    expect(invoice).not.toHaveTextContent("N/A")
+  })
+
+  it("Agregar productos reopens a sent takeaway order and sends only the new lines to it (M5b)", async () => {
+    takeawayApi.addItems.mockImplementation(async (id: string) =>
+      (await import("@/lib/api/orders")).orderDtoFromWire(takeawayRow({ id, status: "kitchen" })),
+    )
+    await openTakeaway()
+    fireEvent.click(screen.getByRole("button", { name: "Agregar productos" }))
+
+    expect(await screen.findByRole("heading", { name: "¿Qué categoría?" })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole("button", { name: /Postres/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /^Arroz con leche,/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /^Agregar 1 ·/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar a cocina (1)" }))
+    })
+
+    await waitFor(() => expect(takeawayApi.addItems).toHaveBeenCalledTimes(1))
+    expect(takeawayApi.addItems).toHaveBeenCalledWith("o-take", { items: [{ dishId: ARROZ, quantity: 1, unitPrice: 7000, comments: null }] })
+    expect(takeawayApi.createOrder).not.toHaveBeenCalled()
+    expect(sendCommand).toHaveBeenCalledWith({ orderId: "o-take", items: [expect.objectContaining({ name: "Arroz con leche" })] })
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "¿Qué categoría?" })).toBeNull())
+  })
+
+  it("a table order has no Agregar productos in the cashier detail (PRESERVE)", async () => {
+    renderCashier()
+    fireEvent.click(await queueRow("Mesa 1"))
+    expect(await screen.findByRole("button", { name: "Reimprimir" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Agregar productos" })).toBeNull()
+  })
+
+  it("lists takeaway orders under Para llevar, labelled with the customer, and charges them like a table", async () => {
+    getByStatus.mockResolvedValue([
+      dbRow(),
+      dbRow({ id: "o-take", table_id: null, order_type: "takeaway", customer_name: "Ana María", subtotal: 6_000, tax: 1_140, total: 7_140 }),
+    ])
+    renderCashier()
+    await queueRow("Mesa 1")
+    expect(screen.queryByRole("button", { name: /^Para llevar · Ana María/ })).toBeNull()
+    expect(screen.getByRole("tab", { name: /^Para llevar\s*1$/ })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /^Mesas\s*1$/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("tab", { name: /^Para llevar/ }))
+    fireEvent.click(await queueRow("Para llevar · Ana María"))
+    expect(await screen.findByText("Cobrar · Para llevar · Ana María")).toBeInTheDocument()
+    expect(registerButton()).toBeInTheDocument()
+  })
+
+  it("Nuevo para llevar asks the name and sends the order on channel takeaway with no table", async () => {
+    takeawayApi.createOrder.mockImplementation(async (body: Record<string, unknown>) => ({
+      ...(await import("@/lib/api/orders")).orderDtoFromWire(dbRow({ id: "o-new", table_id: null, order_type: "takeaway", customer_name: "Luis" })),
+      ...body,
+    }))
+    renderCashier()
+    await queueRow("Mesa 1")
+
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo para llevar" }))
+    const dialog = await screen.findByRole("dialog", { name: "Pedido para llevar" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tomar pedido" }))
+    expect(within(dialog).getByText("El nombre debe tener entre 2 y 60 caracteres")).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByLabelText(/Teléfono/), { target: { value: "12" } })
+    fireEvent.change(within(dialog).getByLabelText("Nombre del cliente"), { target: { value: "Luis" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tomar pedido" }))
+    expect(within(dialog).getByText("El teléfono debe tener entre 7 y 15 dígitos")).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByLabelText(/Teléfono/), { target: { value: "" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tomar pedido" }))
+
+    expect(await screen.findByRole("heading", { name: "¿Qué categoría?" })).toBeInTheDocument()
+    expect(takeawayApi.promotionsToday).toHaveBeenCalledWith({ channel: "takeaway" })
+    fireEvent.click(await screen.findByRole("button", { name: /Postres/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /^Arroz con leche,/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /^Agregar 1 ·/ }))
+    await waitFor(() => expect(takeawayApi.pricingPreview).toHaveBeenCalledWith(expect.objectContaining({ channel: "takeaway" })))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar a cocina (1)" }))
+    })
+
+    await waitFor(() => expect(takeawayApi.createOrder).toHaveBeenCalledTimes(1))
+    expect(takeawayApi.createOrder).toHaveBeenCalledWith({
+      orderType: "takeaway",
+      customerName: "Luis",
+      items: [{ dishId: ARROZ, quantity: 1, unitPrice: 7000, comments: null }],
+    })
+    expect(sendCommand).toHaveBeenCalledWith({ orderId: "o-new", items: [expect.objectContaining({ name: "Arroz con leche" })] })
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "¿Qué categoría?" })).toBeNull())
+    expect(screen.getByRole("tab", { name: /^Para llevar/ })).toHaveAttribute("aria-selected", "true")
+    // The queue is read again so the new order shows up.
+    await waitFor(() => expect(getByStatus).toHaveBeenCalledTimes(2))
   })
 })

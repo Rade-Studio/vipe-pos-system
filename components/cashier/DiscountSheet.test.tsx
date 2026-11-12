@@ -13,6 +13,8 @@ const auth = vi.hoisted(() => ({ authorizeSupervisor: vi.fn() }))
 vi.mock("@/lib/api/auth", async (importOriginal) => ({ ...(await importOriginal<object>()), ...auth }))
 const discounts = vi.hoisted(() => ({ addOrderDiscount: vi.fn(), removeOrderDiscount: vi.fn() }))
 vi.mock("@/lib/api/discounts", async (importOriginal) => ({ ...(await importOriginal<object>()), ...discounts }))
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+vi.mock("@/utils/toast", () => ({ toast }))
 vi.mock("@/lib/api/config", () => ({
   CONFIG_QUERY_KEY: ["config"],
   fetchConfig: async () => ({ allowSelfAuthorization: false }),
@@ -46,13 +48,13 @@ const authorization = {
   expiresAt: new Date(Date.now() + 120_000).toISOString(),
 }
 
-function renderSheet(target: DiscountSheetTarget) {
+function renderSheet(target: DiscountSheetTarget, loadSupervisors: () => Promise<Supervisor[]> = async () => [carlos]) {
   const onApplied = vi.fn()
   const onClose = vi.fn()
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <DiscountSheet target={target} onApplied={onApplied} onClose={onClose} loadSupervisors={async () => [carlos]} />
+      <DiscountSheet target={target} onApplied={onApplied} onClose={onClose} loadSupervisors={loadSupervisors} />
     </QueryClientProvider>,
   )
   return { onApplied, onClose }
@@ -70,6 +72,8 @@ async function authorizeWithPin() {
 }
 
 beforeEach(() => {
+  toast.success.mockReset()
+  toast.error.mockReset()
   auth.authorizeSupervisor.mockReset().mockResolvedValue(authorization)
   discounts.addOrderDiscount.mockReset().mockResolvedValue({ id: "o-1" })
   discounts.removeOrderDiscount.mockReset().mockResolvedValue({ id: "o-1" })
@@ -208,5 +212,93 @@ describe("DiscountSheet — remove", () => {
     click("Quitar descuento")
     await waitFor(() => expect(discounts.removeOrderDiscount).toHaveBeenCalledWith("o-1", "d-cortesia", undefined))
     expect(auth.authorizeSupervisor).not.toHaveBeenCalled()
+  })
+})
+
+describe("DiscountSheet — never silent (S5)", () => {
+  const discount = {
+    id: "d-cortesia",
+    orderId: "o-1",
+    label: "Cortesía de cumpleaños",
+    amount: 14000,
+    note: "Paula R. · PIN",
+    manual: true,
+    promotionId: "p-pin",
+  }
+
+  it("says what to choose when nothing is chosen", () => {
+    renderSheet(addTarget)
+    typeReason("Cliente frecuente")
+    click("Autorizar y aplicar")
+    expect(screen.getByText("Elige qué se aplica.")).toBeInTheDocument()
+    expect(discounts.addOrderDiscount).not.toHaveBeenCalled()
+  })
+
+  it("says to choose a product or the whole bill when the product is missing", () => {
+    renderSheet(addTarget)
+    pick("Qué se aplica", /Postre de la casa/)
+    typeReason("Cliente frecuente")
+    click("Aplicar")
+    expect(screen.getByText("Elige un producto o Toda la cuenta.")).toBeInTheDocument()
+    expect(discounts.addOrderDiscount).not.toHaveBeenCalled()
+  })
+
+  it("confirms an applied discount", async () => {
+    const { onClose } = renderSheet(addTarget)
+    pick("Qué se aplica", /Postre de la casa/)
+    pick("Producto", /Tres leches/)
+    typeReason("Cliente frecuente")
+    click("Aplicar")
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(toast.success).toHaveBeenCalledWith("Descuento aplicado")
+  })
+
+  it("confirms a removed discount", async () => {
+    const { onClose } = renderSheet({ mode: "remove", label: "Mesa 7", discount, requiresPin: false })
+    click("Quitar descuento")
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(toast.success).toHaveBeenCalledWith("Descuento quitado")
+  })
+
+  it("a stored discount whose refresh fails says the bill was not updated", async () => {
+    const { onApplied, onClose } = renderSheet(addTarget)
+    onApplied.mockRejectedValueOnce(new Error("offline"))
+    pick("Qué se aplica", /Postre de la casa/)
+    pick("Producto", /Tres leches/)
+    typeReason("Cliente frecuente")
+    click("Aplicar")
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(toast.error).toHaveBeenCalledWith("El descuento se guardó, pero la cuenta no se actualizó. Toca Reintentar.")
+  })
+
+  it("a refused removal shows the message and keeps the sheet", async () => {
+    discounts.removeOrderDiscount.mockRejectedValueOnce(new Error("offline"))
+    const { onClose } = renderSheet({ mode: "remove", label: "Mesa 7", discount, requiresPin: false })
+    click("Quitar descuento")
+    expect(await screen.findByText("No se pudo aplicar. Revisa la conexión e inténtalo de nuevo.")).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("a wrong PIN says so and applies nothing", async () => {
+    auth.authorizeSupervisor.mockRejectedValueOnce(new ApiError(401, "Unauthorized", "x", { code: "pin_invalid" }))
+    renderSheet(addTarget)
+    pick("Qué se aplica", /Cortesía de cumpleaños/)
+    pick("Producto", /Tres leches/)
+    typeReason("Cumpleaños")
+    click("Autorizar y aplicar")
+    await authorizeWithPin()
+    expect(await screen.findByText("PIN incorrecto.")).toBeInTheDocument()
+    expect(discounts.addOrderDiscount).not.toHaveBeenCalled()
+  })
+
+  it("a failed read of who authorizes offers Reintentar", async () => {
+    const load = vi.fn<() => Promise<Supervisor[]>>().mockRejectedValueOnce(new Error("offline")).mockResolvedValue([carlos])
+    renderSheet(addTarget, load)
+    pick("Qué se aplica", /Cortesía de cumpleaños/)
+    pick("Producto", /Tres leches/)
+    typeReason("Cumpleaños")
+    click("Autorizar y aplicar")
+    fireEvent.click(await screen.findByRole("button", { name: "Reintentar" }))
+    expect(await screen.findByRole("radio", { name: /Carlos Pérez/ })).toBeInTheDocument()
   })
 })

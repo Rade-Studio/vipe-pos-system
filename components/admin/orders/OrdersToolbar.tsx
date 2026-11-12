@@ -14,6 +14,7 @@ import {
 const TYPE_OPTIONS: Array<{ value: TypeFilter; label: string }> = [
   { value: "all", label: "Mesas y domicilios" },
   { value: "table", label: "Solo mesas" },
+  { value: "takeaway", label: "Para llevar" },
   { value: "delivery", label: "Solo domicilios" },
 ]
 

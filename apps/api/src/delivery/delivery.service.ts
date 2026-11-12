@@ -1,4 +1,5 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { sql } from '@vipe/db';
 import type { z } from 'zod';
 import type { CallerProfile } from '../auth/auth-context';
@@ -9,7 +10,10 @@ import { UnitOfWork } from '../db/unit-of-work';
 import { definedColumns, insertColumns, one, rows, rpc, setList } from '../inventory/inventory-sql';
 import { SalesService } from '../inventory/sales.service';
 import { PrintService } from '../print/print.service';
+import { validateCombo } from '../promotions/engine';
 import { OrderDiscountsService } from '../promotions/order-discounts.service';
+import { PromotionCatalog } from '../promotions/promotion-catalog.service';
+import { toSnapshot } from '../promotions/promotion-snapshot';
 import type { cancelOrderSchema } from '../orders/orders.dto';
 import type {
   ClosedTodaySummary,
@@ -61,6 +65,19 @@ function wire(input: Record<string, unknown>, names: Record<string, string>): Js
   );
 }
 
+type DeliveryLine = CreateDeliveryOrderInput['items'][number];
+/** A combo choice as a create_delivery_order line, with the combo it belongs to. */
+interface ComboChoiceLine {
+  line: DeliveryLine;
+  comboId: string;
+  promotionId: string;
+  snapshot: Record<string, unknown>;
+}
+
+/** Same line for the order_items row create_delivery_order wrote: dish, quantity, trimmed comments, options. */
+const lineKey = (dishId: string, quantity: number, comments: string | null | undefined, optionIds: readonly string[]) =>
+  JSON.stringify([dishId, quantity, (comments ?? '').trim() || null, [...optionIds].sort()]);
+
 /** One display line "line, neighborhood (reference)" (lib/delivery/address.ts formatAddress). */
 function formatAddress(delivery: DeliveryOrder): string {
   let line = delivery.addressLine.trim();
@@ -104,6 +121,7 @@ export class DeliveryService {
     private readonly clock: Clock,
     private readonly voids: VoidsService,
     private readonly discounts: OrderDiscountsService,
+    private readonly promotions: PromotionCatalog,
   ) {}
 
   /** `phone` is already normalised; RLS limits it to the caller's restaurant. */
@@ -181,9 +199,15 @@ export class DeliveryService {
    * discounts (OrderDiscountsService), consume_order_stock (a shortage is reported in
    * `consumption`, the order stands, as with the web's fire-and-forget call),
    * and the kitchen command job, which reaches the printers after the commit.
-   * Any failure, the print enqueue included, rolls everything back.
+   * Any failure, the print enqueue included, rolls everything back. Combos
+   * (S7) are checked with the engine on the delivery channel before any write
+   * (422 with the orders' codes), sent to the RPC as one line per choice and
+   * then marked with their combo and its promotion snapshot, as POST /orders
+   * stores them.
    */
   async createOrder(input: CreateDeliveryOrderInput, caller: CallerProfile): Promise<CreateDeliveryOrderResult> {
+    const comboLines = await this.comboLines(input.combos ?? []);
+    const allLines = [...input.items, ...comboLines.map((c) => c.line)];
     const customer = wire(input.customer, { id: 'id', phone: 'phone', name: 'name' });
     const address = wire(input.address, {
       id: 'id',
@@ -193,7 +217,7 @@ export class DeliveryService {
       label: 'label',
       save: 'save',
     });
-    const items = input.items.map((item) => ({
+    const items = allLines.map((item) => ({
       ...wire(item, { dishId: 'dish_id', quantity: 'quantity', comments: 'comments' }),
       ...(item.modifiers ? { option_ids: item.modifiers.map((m) => m.optionId) } : {}),
     }));
@@ -209,6 +233,7 @@ export class DeliveryService {
     // S3: create_delivery_order stores list prices; the lines get the promotion they qualify for now on
     // the delivery channel, then the automatic discounts (bill discount included) and the bill.
     const itemIds = (await rows<{ id: string }>(this.uow, sql`SELECT id FROM public.order_items WHERE order_id = ${orderId}`)).map((r) => r.id);
+    await this.markCombos(orderId, comboLines);
     await this.discounts.tagUntagged(orderId, itemIds);
     await this.discounts.recompute(orderId);
     const delivery = await this.readDelivery(orderId);
@@ -225,9 +250,9 @@ export class DeliveryService {
     // F7: the options of each line as the order stored them; a line without options prints as before.
     const modifiers = await resolveLineModifiers(
       this.uow,
-      input.items.map((item) => ({ dishId: item.dishId, optionIds: (item.modifiers ?? []).map((m) => m.optionId) })),
+      allLines.map((item) => ({ dishId: item.dishId, optionIds: (item.modifiers ?? []).map((m) => m.optionId) })),
     );
-    const lines = input.items.map((item, index) => {
+    const lines = allLines.map((item, index) => {
       const line: Json = { name: names.get(item.dishId) ?? '', quantity: item.quantity };
       const comments = item.comments?.trim();
       if (comments) line.comments = comments;
@@ -241,7 +266,7 @@ export class DeliveryService {
     const printJob = (await this.print.printingEnabled())
       ? await this.print.printCommand(
           { items: lines, waiter: caller.name.trim() || FALLBACK_WAITER, orderNumber: delivery.orderNumber, table: null, delivery: printInfo(delivery) },
-          input.items.map((item) => item.dishId),
+          allLines.map((item) => item.dishId),
         )
       : null;
 
@@ -253,6 +278,66 @@ export class DeliveryService {
       consumption,
       printJob,
     };
+  }
+
+  /**
+   * Each combo checked like POST /orders does (orders.service.ts priceLines):
+   * unknown → combo_unknown, otherwise the engine's validateCombo on the
+   * delivery channel now (combo_inactive, combo_group_missing, ...). A choice
+   * is one unit.
+   */
+  private async comboLines(combos: NonNullable<CreateDeliveryOrderInput['combos']>): Promise<ComboChoiceLine[]> {
+    if (combos.length === 0) return [];
+    const now = await this.promotions.now();
+    const rules = await this.promotions.rules();
+    const ctx = { now: now.local, channel: 'delivery' as const };
+    return combos.flatMap((combo) => {
+      const rule = rules.find((r) => r.id === combo.comboPromotionId && r.kind === 'combo');
+      if (!rule) {
+        throw new UnprocessableEntityException({ message: 'Unknown combo', code: 'combo_unknown' });
+      }
+      const check = validateCombo(rule, combo.choices, ctx);
+      if (!check.ok) {
+        throw new UnprocessableEntityException({ message: 'Invalid combo', code: check.errors[0], codes: check.errors });
+      }
+      const comboId = randomUUID();
+      const snapshot = toSnapshot(rule);
+      return combo.choices.map((choice) => ({
+        line: { dishId: choice.dishId, quantity: 1, comments: choice.comments, modifiers: choice.modifiers },
+        comboId,
+        promotionId: rule.id,
+        snapshot,
+      }));
+    });
+  }
+
+  /**
+   * create_delivery_order returns no line ids: each combo choice takes one
+   * stored line with the same dish, quantity, comments and options. Lines that
+   * match the same key are identical, so which one is taken does not matter.
+   */
+  private async markCombos(orderId: string, comboLines: readonly ComboChoiceLine[]): Promise<void> {
+    if (comboLines.length === 0) return;
+    const stored = await rows<{ id: string; dish_id: string; quantity: number; comments: string | null; option_ids: string[] }>(this.uow, sql`
+      SELECT oi.id, oi.dish_id, oi.quantity, oi.comments,
+             coalesce((SELECT array_agg(m.option_id::text) FROM public.order_item_modifiers m WHERE m.order_item_id = oi.id), '{}') AS option_ids
+        FROM public.order_items oi WHERE oi.order_id = ${orderId}`);
+    const free = new Map<string, string[]>();
+    for (const row of stored) {
+      const key = lineKey(row.dish_id, Number(row.quantity), row.comments, row.option_ids);
+      free.set(key, [...(free.get(key) ?? []), row.id]);
+    }
+    const marks = comboLines.map((c) => {
+      const key = lineKey(c.line.dishId, c.line.quantity, c.line.comments, (c.line.modifiers ?? []).map((m) => m.optionId));
+      const id = free.get(key)?.pop();
+      if (!id) throw new Error('create_delivery_order did not store a combo choice');
+      return { id, combo_id: c.comboId, promotion_id: c.promotionId, promotion_snapshot: c.snapshot };
+    });
+    await this.uow.db.execute(sql`
+      UPDATE public.order_items oi
+         SET combo_id = x.combo_id, promotion_id = x.promotion_id, promotion_snapshot = x.promotion_snapshot
+        FROM jsonb_to_recordset(${JSON.stringify(marks)}::jsonb) AS x(id uuid, combo_id uuid, promotion_id uuid, promotion_snapshot jsonb)
+       WHERE oi.id = x.id`);
   }
 
   async setStatus(orderId: string, input: z.infer<typeof setDeliveryStatusSchema>): Promise<DeliveryOrder> {

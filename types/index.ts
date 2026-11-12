@@ -67,8 +67,8 @@ export type Table = {
 // Order types
 export type OrderStatus = "active" | "cancelled" | "paid" | "delivered" | "kitchen"
 export type OrderItemStatus = "kitchen" | "served"
-/** orders.order_type: delivery orders have no table (table_id NULL). */
-export type OrderType = "dine_in" | "delivery"
+/** orders.order_type: delivery and takeaway ("para llevar", S8) orders have no table (table_id NULL). */
+export type OrderType = "dine_in" | "takeaway" | "delivery"
 
 export type OrderBill = {
   subtotal: number
@@ -115,6 +115,9 @@ export type Order = {
   tableId: string
   /** Absent on readers that do not map orders.order_type; treat as dine-in. */
   orderType?: OrderType
+  /** Takeaway only (S8): who picks the order up, and the optional phone. */
+  customerName?: string
+  customerPhone?: string
   items: OrderItem[]
   status: OrderStatus
   bill: OrderBill
@@ -315,4 +318,6 @@ export type CommandPayload = {
   table?: number | null;
   /** Present for delivery orders; see `DeliveryPrintInfo`. */
   delivery?: DeliveryPrintInfo;
+  /** S8: present for takeaway orders (set by the API), printed instead of the table. */
+  takeaway?: { customerName: string; label: string };
 }

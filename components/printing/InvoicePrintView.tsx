@@ -10,6 +10,7 @@ import { sendFactura } from "@/lib/api/print"
 import { usePrintingEnabled } from "@/lib/api/printing"
 import { Printer, Check, X, ArrowLeft, Receipt } from "lucide-react"
 import { billDiscounts, grossSubtotalOf, mergeDiscounts, renderInvoice, type PrintDiscount } from "@/lib/print/renderKitchenOrder"
+import { totalsLayout } from "./totals-layout"
 import type { CartItem, PrintableInvoice } from "@/types"
 import { log } from "@/lib/log"
 import { ModifierLines } from "@/components/modifiers/ModifierLines"
@@ -137,7 +138,9 @@ export function InvoicePrintView({
 
   // S14: cada descuento es su propia línea con el nombre de la promoción
   const orderDiscounts = billDiscounts((invoice as DiscountedInvoice).discounts)
-  const totalDiscounts = bill?.totalDiscounts || 0
+  // S10: un pago anterior sin grossSubtotal ni listas de descuentos conserva los totales de antes, como el ticket
+  const legacyTotals = totalsLayout(invoice as DiscountedInvoice) === "legacy"
+  const totalDiscounts = legacyTotals ? 0 : bill?.totalDiscounts || 0
 
   return (
     <Dialog
@@ -205,8 +208,14 @@ export function InvoicePrintView({
                   ) : (
                     <>
                       <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded">
-                        <span className="font-medium dark:text-white">Mesa:</span>
-                        <span className="float-right dark:text-gray-300">{displayTable}</span>
+                        {String(displayTable).startsWith("Para llevar") ? (
+                          <span className="font-medium dark:text-white">{displayTable}</span>
+                        ) : (
+                          <>
+                            <span className="font-medium dark:text-white">Mesa:</span>
+                            <span className="float-right dark:text-gray-300">{displayTable}</span>
+                          </>
+                        )}
                       </div>
                       <div className="bg-gray-50 dark:bg-gray-700 p-2 rounded col-span-2">
                         <span className="font-medium dark:text-white">Mesero:</span>
@@ -276,6 +285,12 @@ export function InvoicePrintView({
                     <span>{taxLabel(taxType, bill?.taxPercentage || 0)}:</span>
                     <span>{formatCurrency(bill?.tax || 0)}</span>
                   </div>
+                  {legacyTotals && (bill?.totalDiscounts || 0) > 0 && (
+                    <div className="flex justify-between text-sm text-red-600 dark:text-red-400">
+                      <span>Descuentos:</span>
+                      <span>-{formatCurrency(bill.totalDiscounts)}</span>
+                    </div>
+                  )}
                   {delivery && (
                     <div className="flex justify-between text-sm">
                       <span>Domicilio:</span>

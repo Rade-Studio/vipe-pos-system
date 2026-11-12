@@ -31,7 +31,7 @@ export class AuditEvent {
   @ApiProperty({ enum: AUDIT_EVENT_TYPES }) eventType!: AuditEventType;
   @ApiProperty({ format: 'uuid' }) orderId!: string;
   @ApiProperty({ type: Number, nullable: true }) orderNumber!: number | null;
-  @ApiProperty({ enum: ['dine_in', 'delivery'], description: 'delivery: a Domicilio (cancelled from Domicilios, F3b).' }) orderType!: 'dine_in' | 'delivery';
+  @ApiProperty({ enum: ['dine_in', 'delivery', 'takeaway'], description: 'delivery: a Domicilio (cancelled from Domicilios, F3b); takeaway: a Para llevar order (S8).' }) orderType!: 'dine_in' | 'delivery' | 'takeaway';
   @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Only for payment_voided.' }) paymentId!: string | null;
   @ApiProperty({ type: StaffRef, description: 'Who cancelled or voided.' }) actor!: StaffRef;
   @ApiProperty({ type: StaffRef, nullable: true, description: 'The supervisor whose PIN authorized it; null when none was needed.' })

@@ -2,6 +2,7 @@
 
 import { AlertTriangle } from "lucide-react"
 import type { AdminOrder } from "@/lib/admin/orders"
+import { takeawayLabel } from "@/lib/cashier/queue"
 import { OLD_ORDER_HOURS, elapsedLabel, isOldOrder } from "@/lib/floor/live"
 
 interface StaleOrdersBannerProps {
@@ -11,7 +12,13 @@ interface StaleOrdersBannerProps {
 }
 
 const placeLabel = (order: AdminOrder) =>
-  order.orderType === "delivery" ? "Domicilio" : (order.tableName ? `Mesa ${order.tableName}` : "Mesa sin número")
+  order.orderType === "delivery"
+    ? "Domicilio"
+    : order.orderType === "takeaway"
+      ? takeawayLabel(order)
+      : order.tableName
+        ? `Mesa ${order.tableName}`
+        : "Mesa sin número"
 
 /** S3: the active orders open 12 h or more, oldest first; nothing when there are none. */
 export function StaleOrdersBanner({ orders, nowMs }: StaleOrdersBannerProps) {

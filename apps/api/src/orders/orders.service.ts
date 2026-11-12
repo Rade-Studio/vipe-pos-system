@@ -8,8 +8,8 @@ import { DishesService } from '../catalog/dishes.service';
 import { linePrice, resolveLineModifiers } from '../catalog/line-modifiers';
 import { UnitOfWork } from '../db/unit-of-work';
 import { paymentJson } from '../payments/payments.mappers';
-import { computeOrderDiscounts, type EngineContext, type PreviewItem, pricingHints, validateCombo } from '../promotions/engine';
-import { OrderDiscountsService, withManualDiscounts } from '../promotions/order-discounts.service';
+import { type EngineContext, type PreviewItem, pricingHints, validateCombo } from '../promotions/engine';
+import { applyVoids, type LineVoid, OrderDiscountsService } from '../promotions/order-discounts.service';
 import { CHANNEL_LABELS, PromotionCatalog, type PromotionChannel, type RestaurantNow, type Rule } from '../promotions/promotion-catalog.service';
 import { toSnapshot } from '../promotions/promotion-snapshot';
 import { clockText } from '../promotions/promotion-text';
@@ -27,6 +27,7 @@ import {
   type OrderStatus,
   type OrderType,
   type PreviewLine,
+  PREVIEW_VOID_MESSAGES,
   type PricingPreview,
   type pricingPreviewSchema,
   type StockShortage,
@@ -50,6 +51,8 @@ interface PricedLine {
   dish: Dish;
   quantity: number;
   price: number;
+  /** The part of price that is the line's options (a combo charges them on top). */
+  optionsPrice: number;
   comments: string | null;
   optionIds: string[];
   promotionId: string | null;
@@ -175,7 +178,10 @@ export class OrdersService {
    * consumption and the table in kitchen, all in the request transaction.
    */
   async create(input: z.infer<typeof createOrderSchema>, callerProfileId: string): Promise<Order> {
-    const table = await this.lockTable(input.tableId);
+    if (input.orderType === 'takeaway') {
+      return this.createTakeaway(input, callerProfileId);
+    }
+    const table = await this.lockTable(input.tableId!);
     const [open] = await this.rows<{ id: string }>(sql`
       SELECT id FROM public.orders
        WHERE table_id = ${table.id} AND status = ANY(${sql.param(OPEN_STATUSES)}::text[])
@@ -213,6 +219,35 @@ export class OrdersService {
       UPDATE public.tables
          SET status = 'kitchen', waiter_id = coalesce(waiter_id, ${waiterId}), updated_at = now()
        WHERE id = ${table.id}`);
+    return this.get(order.id);
+  }
+
+  /**
+   * POST /orders with orderType takeaway (S8): the same lines, stock check and
+   * bill as a dine_in order on the takeaway channel, with the customer and no
+   * table; the waiter is the given one, else the caller.
+   */
+  private async createTakeaway(input: z.infer<typeof createOrderSchema>, callerProfileId: string): Promise<Order> {
+    const waiterId = input.waiterId ?? callerProfileId;
+    if (input.waiterId) {
+      await this.assertProfile(input.waiterId);
+    }
+    const pricing = await this.pricingContext('takeaway');
+    const lines = await this.priceLines(input.items ?? [], input.combos ?? [], pricing);
+    if (!input.force) {
+      await this.assertStock(lines);
+    }
+    const settings = await this.config.get();
+    const [order] = await this.rows<{ id: string }>(sql`
+      INSERT INTO public.orders
+        (table_id, waiter_id, status, order_type, customer_name, customer_phone,
+         subtotal, tax, tax_percentage, tip, tip_percentage, total, guests, notes)
+      VALUES
+        (NULL, ${waiterId}, 'kitchen', 'takeaway', ${input.customerName}, ${input.customerPhone},
+         0, 0, ${settings.taxPercentage}, 0, ${input.tipPercentage ?? settings.tipPercentage}, 0, ${input.guests ?? null}, ${input.notes ?? null})
+      RETURNING id`);
+    await this.insertItems(order.id, lines);
+    await this.afterItems(order.id, pricing.now);
     return this.get(order.id);
   }
 
@@ -366,11 +401,22 @@ export class OrdersService {
   /**
    * POST /orders/pricing-preview (S8): the order's lines (with the promotions
    * they were sent with) plus the draft lines tagged as if sent now, their
-   * discounts, the bill discount, totals and hints. Writes nothing.
+   * discounts, the bill discount, totals and hints. With an order, its own
+   * channel is used (the body channel is ignored) and `voids` takes units out
+   * as POST /orders/:id/items/void would (a combo component takes its whole
+   * combo); the discounts come from OrderDiscountsService.evaluate, the
+   * computation recompute stores, and tax and tip follow
+   * private.recompute_order_bill. Writes nothing.
    */
   async pricingPreview(input: z.infer<typeof pricingPreviewSchema>): Promise<PricingPreview> {
-    const pricing = await this.pricingContext(input.channel);
-    const existing = input.orderId ? await this.previewOrderItems(input.orderId) : [];
+    const voids = input.voids ?? [];
+    if (voids.length > 0 && !input.orderId) {
+      throw new UnprocessableEntityException({ message: PREVIEW_VOID_MESSAGES.void_order_required, code: 'void_order_required' });
+    }
+    const order = input.orderId ? await this.previewOrder(input.orderId) : null;
+    const channel = order?.channel ?? input.channel;
+    const pricing = await this.pricingContext(channel);
+    const existing = order ? applyVoids(order.items, await this.previewVoids(order.id, order.items, voids)) : [];
     const dishLines = input.lines.flatMap((line, index) => ('dishId' in line ? [{ line, index }] : []));
     const comboLines = input.lines.flatMap((line, index) => ('comboPromotionId' in line ? [{ line, index }] : []));
     const priced = await this.priceLines(
@@ -390,6 +436,7 @@ export class OrdersService {
       categoryId: line.dish.categoryId,
       subcategoryId: line.dish.subcategoryId,
       unitPrice: line.price,
+      optionsPrice: line.optionsPrice,
       quantity: line.quantity,
       promotionId: line.promotionId,
       addedAt: at,
@@ -406,8 +453,8 @@ export class OrdersService {
       if (!rules.has(rule.id)) rules.set(rule.id, rule);
     }
     // S7: the order's manual discounts count too, and the automatic ones get what they leave.
-    const manual = input.orderId ? await this.discounts.manual(input.orderId) : [];
-    const { result, manual: kept } = withManualDiscounts(computeOrderDiscounts(all, rules, pricing.ctx), all, manual, rules, pricing.ctx);
+    const manual = order ? await this.discounts.manual(order.id) : [];
+    const { result, manual: kept } = OrderDiscountsService.evaluate(all, manual, rules, pricing.ctx);
     const manualJson = (d: (typeof kept)[number]) => ({ kind: d.kind, promotionId: d.promotionId, label: d.label, amount: d.amount });
     const lineDiscounts = (itemId: string): PreviewLine['discounts'] => [
       ...kept.filter((d) => d.orderItemId === itemId).map(manualJson),
@@ -444,36 +491,80 @@ export class OrdersService {
         discounts: lineDiscounts(item.id),
       })),
     ];
-    const hints = pricingHints(all, pricing.rules, { ...pricing.ctx, channelLabel: CHANNEL_LABELS[input.channel] }).map((hint) =>
+    const hints = pricingHints(all, pricing.rules, { ...pricing.ctx, channelLabel: CHANNEL_LABELS[channel] }).map((hint) =>
       hint.kind === 'window_ending'
         ? { ...hint, message: `Envía antes de las ${clockText(pricing.now.local.minutes + hint.minutesLeft)}.` }
         : hint,
     );
     const bill = result.billDiscount;
     const totalDiscounts = Math.min(result.grossSubtotal, result.grossSubtotal - result.netSubtotal + kept.reduce((sum, d) => sum + d.amount, 0));
+    const netSubtotal = result.grossSubtotal - totalDiscounts;
+    const totals = order ? await this.previewTotals(order.id, netSubtotal) : { tax: null, tip: null, total: null, deliveryFee: null };
     return {
-      channel: input.channel,
+      channel,
       now: at,
       lines,
       billDiscount: bill ? { kind: 'promotion_bill', promotionId: bill.promotionId, label: bill.label, amount: bill.amount } : null,
       manualDiscounts: kept.filter((d) => d.orderItemId === null).map(manualJson),
       grossSubtotal: result.grossSubtotal,
       totalDiscounts,
-      netSubtotal: result.grossSubtotal - totalDiscounts,
+      netSubtotal,
+      ...totals,
       hints,
     };
   }
 
-  /** The lines of an order for the preview, with their names; 404 when the caller cannot see it. */
-  private async previewOrderItems(orderId: string) {
-    const [order] = await this.rows(sql`SELECT 1 FROM public.orders WHERE id = ${orderId}`);
+  /** An order for the preview: its channel and its lines with their names; 404 when the caller cannot see it. */
+  private async previewOrder(orderId: string) {
+    const [order] = await this.rows<{ order_type: OrderType | null }>(sql`SELECT order_type FROM public.orders WHERE id = ${orderId}`);
     if (!order) {
       throw new NotFoundException('Order not found');
     }
     const names = new Map(
       (await this.rows<{ id: string; name: string }>(sql`SELECT id, name FROM public.order_items WHERE order_id = ${orderId}`)).map((row) => [row.id, row.name]),
     );
-    return (await this.discounts.items(orderId)).map((item) => ({ ...item, sent: true, name: names.get(item.id) ?? '' }));
+    const items = (await this.discounts.items(orderId)).map((item) => ({ ...item, sent: true, name: names.get(item.id) ?? '' }));
+    return { id: orderId, channel: order.order_type ?? 'dine_in', items };
+  }
+
+  /**
+   * The units the preview takes out (S1): each a live line of the order, at
+   * most its quantity (422 void_item_unknown, void_quantity_invalid), then
+   * expanded by withWholeCombos exactly as voidItems does.
+   */
+  private async previewVoids(orderId: string, items: readonly PreviewItem[], voids: readonly LineVoid[]): Promise<LineVoid[]> {
+    if (voids.length === 0) return [];
+    const live = new Map(items.filter((item) => !item.voided).map((item) => [item.id, item.quantity]));
+    for (const v of voids) {
+      const quantity = live.get(v.orderItemId);
+      if (quantity === undefined) {
+        throw new UnprocessableEntityException({ message: PREVIEW_VOID_MESSAGES.void_item_unknown, code: 'void_item_unknown' });
+      }
+      if (v.quantity > quantity) {
+        throw new UnprocessableEntityException({ message: PREVIEW_VOID_MESSAGES.void_quantity_invalid, code: 'void_quantity_invalid' });
+      }
+    }
+    const lines = await this.withWholeCombos(orderId, voids.map((v) => ({ itemId: v.orderItemId, quantity: v.quantity })));
+    return lines.map((line) => ({ orderItemId: line.order_item_id, quantity: line.quantity }));
+  }
+
+  /**
+   * Tax, suggested tip and total of a net subtotal with the order's
+   * percentages, rounded as private.recompute_order_bill (Order.total, no
+   * delivery fee), and the delivery fee pay_order adds to the amount due.
+   */
+  private async previewTotals(orderId: string, subtotal: number) {
+    const [row] = await this.rows<{ tax: string | number; tip: string | number; delivery_fee: string | number | null }>(sql`
+      SELECT round((${subtotal}::bigint * coalesce(o.tax_percentage, 0) / 100)::numeric)::bigint AS tax,
+             round((${subtotal}::bigint * coalesce(o.tip_percentage, 0) / 100)::numeric)::bigint AS tip,
+             CASE WHEN o.order_type = 'delivery' THEN d.delivery_fee ELSE 0 END AS delivery_fee
+        FROM public.orders o
+        LEFT JOIN public.order_deliveries d ON d.order_id = o.id
+       WHERE o.id = ${orderId}`);
+    const tax = Number(row.tax);
+    const tip = Number(row.tip);
+    // RLS shows order_deliveries only to admin, cashier, delivery and kitchen: null for a waiter.
+    return { tax, tip, total: subtotal + tax + tip, deliveryFee: row.delivery_fee === null ? null : Number(row.delivery_fee) };
   }
 
   /**
@@ -612,6 +703,7 @@ export class OrdersService {
     }
     const modifiers = await resolveLineModifiers(this.uow, all);
     const unitPrices = all.map((line, index) => linePrice(catalog.get(line.dishId)!.price, modifiers[index]));
+    const optionsPrices = modifiers.map((options) => linePrice(0, options));
     if (items.some((item, index) => item.unitPrice !== undefined && item.unitPrice !== unitPrices[index])) {
       const withOptions = items.some((item) => (item.modifiers ?? []).length > 0);
       throw new ConflictException({
@@ -640,6 +732,7 @@ export class OrdersService {
         dish,
         quantity: item.quantity,
         price: unitPrices[index],
+        optionsPrice: optionsPrices[index],
         comments: item.comments ?? null,
         optionIds: all[index].optionIds,
         promotionId: tag.promotionId,
@@ -654,6 +747,7 @@ export class OrdersService {
         dish: catalog.get(choice.dishId)!,
         quantity: COMBO_QUANTITY,
         price: unitPrices[index],
+        optionsPrice: optionsPrices[index],
         comments: choice.comments ?? null,
         optionIds: all[index].optionIds,
         promotionId: rule.id,

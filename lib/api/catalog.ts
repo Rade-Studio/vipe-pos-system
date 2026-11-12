@@ -48,6 +48,24 @@ export type CreateCategoryBody = Schemas["CreateCategoryRequest"]
 export type UpdateCategoryBody = Schemas["UpdateCategoryRequest"]
 export type CreateDishBody = Schemas["CreateDishRequest"]
 export type UpdateDishBody = Schemas["UpdateDishRequest"]
+/**
+ * GET /api/catalog/promotions/stats/week (S9), admin only: paid orders from
+ * Monday at the business-day cut-off (restaurant timezone) through now.
+ * Hand-typed until the schema is regenerated with PromotionWeekStats.
+ */
+export interface PromotionWeekStatsDto {
+  weekStart: string
+  now: string
+  /** Σ total_discounts, whole pesos. */
+  discountGranted: number
+  /** Σ (subtotal + total_discounts). */
+  salesGross: number
+  /** discountGranted / salesGross × 100, one decimal; 0 without sales. */
+  discountPercent: number
+  /** Gross sales of the paid orders with at least one discount. */
+  salesWithPromotion: number
+  billsWithPromotion: number
+}
 export type CreatePromotionBody = Schemas["CreatePromotionRequest"]
 export type UpdatePromotionBody = Schemas["UpdatePromotionRequest"]
 export type ModifierGroupDto = Schemas["ModifierGroup"]
@@ -252,6 +270,13 @@ export async function createPromotion(body: CreatePromotionBody): Promise<Promot
 
 export async function updatePromotion(id: string, body: UpdatePromotionBody): Promise<PromotionDto> {
   const { data } = await api.PATCH("/api/catalog/promotions/{id}", { ...byId(id), body })
+  return required(data)
+}
+
+/** The admin header figures of the current business week (S9). */
+export async function fetchPromotionWeekStats(): Promise<PromotionWeekStatsDto> {
+  const get = api.GET as unknown as (path: string) => Promise<{ data?: PromotionWeekStatsDto }>
+  const { data } = await get("/api/catalog/promotions/stats/week")
   return required(data)
 }
 

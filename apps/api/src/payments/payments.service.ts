@@ -6,6 +6,7 @@ import { VoidsService } from '../audit/voids.service';
 import { UnitOfWork } from '../db/unit-of-work';
 import { OrderDiscountsService } from '../promotions/order-discounts.service';
 import {
+  CASH_RECEIVED_SHORT_MESSAGE,
   CASH_REFERENCE_MESSAGE,
   type Payment,
   type PaymentVoid,
@@ -64,7 +65,7 @@ export class PaymentsService {
   ) {}
 
   async pay(input: z.infer<typeof payOrderSchema>): Promise<PayOrderResult> {
-    await this.refuseCashReferences(input.tenders);
+    await this.checkCashLines(input.tenders);
     const tenders = toPayOrderTenders(input.tenders);
     const result = await this.rpc(sql`
       SELECT public.pay_order(${input.orderId}::uuid, ${input.cashRegisterId}::uuid, ${input.tipAmount}::bigint,
@@ -73,18 +74,24 @@ export class PaymentsService {
   }
 
   /**
-   * A reference only describes a card/transfer line: one on a cash method is
-   * 422 before pay_order runs. Unknown or foreign methods are left to the RPC.
+   * The lines of a cash method, by the method's kind, before pay_order runs:
+   * a reference only describes a card/transfer line (422 on cash), and cash
+   * received below the amount is 422 `tenders.N: …`. Unknown or foreign
+   * methods, and cashReceived on an electronic line, are left to the RPC.
    */
-  private async refuseCashReferences(tenders: TenderInput[]): Promise<void> {
-    const ids = tenders.filter((tender) => tender.reference).map((tender) => tender.paymentMethodId);
-    if (!ids.length) {
-      return;
-    }
+  private async checkCashLines(tenders: TenderInput[]): Promise<void> {
+    const ids = [...new Set(tenders.map((tender) => tender.paymentMethodId))];
     const { rows } = await this.uow.db.execute(sql`
-      SELECT 1 FROM public.payment_methods WHERE id = ANY(${sql.param(ids)}::uuid[]) AND kind = 'cash' LIMIT 1`);
-    if (rows.length) {
+      SELECT id FROM public.payment_methods WHERE id = ANY(${sql.param(ids)}::uuid[]) AND kind = 'cash'`);
+    const cash = new Set((rows as { id: string }[]).map((row) => row.id));
+    if (tenders.some((tender) => tender.reference && cash.has(tender.paymentMethodId))) {
       throw new UnprocessableEntityException(CASH_REFERENCE_MESSAGE);
+    }
+    const short = tenders.findIndex(
+      (tender) => cash.has(tender.paymentMethodId) && tender.amount > 0 && tender.cashReceived != null && tender.cashReceived < tender.amount,
+    );
+    if (short >= 0) {
+      throw new UnprocessableEntityException(`tenders.${short}: ${CASH_RECEIVED_SHORT_MESSAGE}`);
     }
   }
 
@@ -121,7 +128,8 @@ export class PaymentsService {
    * The moved lines carry their discounts pro rata; then both orders get
    * their automatic discounts recomputed (buy_x_pay_y regroups on each side,
    * the bill discount is evaluated again) in the same transaction, and the
-   * bills are read after it. Separating a combo is 422 combo_split_not_allowed.
+   * bills are read after it; a failing recompute rolls the split back.
+   * Separating a combo is 422 combo_split_not_allowed.
    */
   async split(parentOrderId: string, input: z.infer<typeof splitOrderSchema>): Promise<SplitOrderResult> {
     const items = input.items.map((item) => ({ order_item_id: item.orderItemId, quantity: item.quantity }));

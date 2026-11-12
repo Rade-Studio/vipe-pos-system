@@ -204,6 +204,13 @@ describe('computeOrderDiscounts: combo (S5)', () => {
     expect(computeOrderDiscounts(components([5000, 9000, 7000]), byId(menu), ctx).comboDiscounts).toEqual([]);
   });
 
+  it('charges the options on top: the discount uses the list prices without options', () => {
+    const lines = components([9000, 20000, 7000]).map((l, i) => (i === 1 ? { ...l, optionsPrice: 3000 } : l));
+    const result = computeOrderDiscounts(lines, byId(menu), ctx);
+    expect(result.comboDiscounts.map((d) => d.amount)).toEqual([9000]);
+    expect(result).toMatchObject({ grossSubtotal: 36000, netSubtotal: 27000 });
+  });
+
   it('ignores a fully voided combo', () => {
     const lines = components([9000, 17000, 7000]).map((l) => ({ ...l, voided: true }));
     expect(computeOrderDiscounts(lines, byId(menu), ctx)).toMatchObject({ comboDiscounts: [], grossSubtotal: 0 });

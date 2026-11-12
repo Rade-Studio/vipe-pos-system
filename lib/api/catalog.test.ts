@@ -33,6 +33,7 @@ import {
   fetchModifierGroups,
   fetchPromotionDishes,
   fetchPromotions,
+  fetchPromotionWeekStats,
   getMenuDraft,
   getMenuPublication,
   getMenuTree,
@@ -238,6 +239,23 @@ describe("menu publication and dish order (T20)", () => {
     expect(api.PUT).toHaveBeenCalledWith("/api/catalog/dishes/order", {
       body: { categoryId: "c-1", subcategoryId: null, ids: ["d-2", "d-1"] },
     })
+  })
+
+  it("reads the weekly promotion stats (S9)", async () => {
+    const week = {
+      weekStart: "2026-11-09T09:00:00.000Z",
+      now: "2026-11-11T20:00:00.000Z",
+      discountGranted: 3000,
+      salesGross: 60000,
+      discountPercent: 5,
+      salesWithPromotion: 30000,
+      billsWithPromotion: 2,
+    }
+    api.GET.mockResolvedValueOnce({ data: week })
+    await expect(fetchPromotionWeekStats()).resolves.toEqual(week)
+    expect(api.GET).toHaveBeenLastCalledWith("/api/catalog/promotions/stats/week")
+    api.GET.mockResolvedValueOnce({ data: undefined })
+    await expect(fetchPromotionWeekStats()).rejects.toBeInstanceOf(ApiError)
   })
 
   it("reads modifier groups, inactive ones only when asked", async () => {
