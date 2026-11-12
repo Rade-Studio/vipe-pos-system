@@ -266,17 +266,44 @@ fingerprint_b() { q "SELECT (SELECT string_agg(id::text, ',' ORDER BY id) FROM p
 
 expect_exit 2 "demo: --target coolify without an app uuid" env -u VIPE_COOLIFY_APP_UUID DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target coolify
 expect_exit 0 "demo: load on an empty database" demo --target coolify --app-uuid "$b" --db-uuid "$bdb"
-expect_eq "demo: one demo restaurant" "Casa Guadua" "$(q "SELECT string_agg(name, ',') FROM public.restaurants")"
+expect_eq "demo: one demo restaurant" "Bruma — Bar de coctelería" "$(q "SELECT string_agg(name, ',') FROM public.restaurants")"
 expect_eq "demo: preparations with production batches" "t" \
   "$(q "SELECT (SELECT count(*) FROM public.ingredients WHERE kind = 'prep') >= 3 AND (SELECT count(*) FROM public.production_batches) >= 3")"
 
-expect_eq "demo: three zones and every table placed on one" "Barra,Salón principal,Terraza/0" \
+expect_eq "demo: four bar zones and every table placed on one" "Barra,Salón,Segundo piso,Terraza/0" \
   "$(q "SELECT (SELECT string_agg(name, ',' ORDER BY name) FROM public.zones) || '/' || (SELECT count(*) FROM public.tables WHERE zone_id IS NULL OR x IS NULL)")"
-expect_eq "demo: categories with subcategories put every dish in one, Postres skips the step" "Bebidas:3,Entradas:3,Platos fuertes:2/0/0/8" \
+expect_eq "demo: categories with subcategories put every dish in one, Shots skips the step" "Botellas y medias:2,Cervezas:3,Sin alcohol:3/0/0/9" \
   "$(q "SELECT (SELECT string_agg(c.name || ':' || n, ',' ORDER BY c.name) FROM (SELECT category_id, count(*) AS n FROM public.subcategories GROUP BY category_id) s JOIN public.categories c ON c.id = s.category_id)
          || '/' || (SELECT count(*) FROM public.dishes d WHERE d.subcategory_id IS NULL AND EXISTS (SELECT 1 FROM public.subcategories s WHERE s.category_id = d.category_id))
-         || '/' || (SELECT count(*) FROM public.dishes d JOIN public.categories c ON c.id = d.category_id WHERE c.name = 'Postres' AND d.subcategory_id IS NOT NULL)
+         || '/' || (SELECT count(*) FROM public.dishes d JOIN public.categories c ON c.id = d.category_id WHERE c.name = 'Shots' AND d.subcategory_id IS NOT NULL)
          || '/' || (SELECT count(DISTINCT sort_order) FROM public.categories)")"
+
+expect_eq "demo: tables per zone (stools at the Barra)" "Barra:8,Salón:8,Segundo piso:4,Terraza:4" \
+  "$(q "SELECT string_agg(z.name || ':' || n, ',' ORDER BY z.name) FROM (SELECT zone_id, count(*) AS n FROM public.tables GROUP BY zone_id) t JOIN public.zones z ON z.id = t.zone_id")"
+# The editor's boxes (lib/floor/editor.ts halfBox): no two tables of a zone overlap, all inside the floor.
+expect_eq "demo: no table overlaps another or leaves its zone" "0/0" "$(q "
+WITH b AS (SELECT t.id, t.zone_id, t.x, t.y, t.w / 2 AS hw,
+                  (CASE WHEN t.shape IN ('round', 'square') THEN t.w ELSE t.h END) * z.aspect / 2 AS hh
+             FROM public.tables t JOIN public.zones z ON z.id = t.zone_id)
+SELECT (SELECT count(*) FROM b b1 JOIN b b2 ON b1.zone_id = b2.zone_id AND b1.id < b2.id
+         WHERE abs(b1.x - b2.x) < b1.hw + b2.hw AND abs(b1.y - b2.y) < b1.hh + b2.hh)
+       || '/' || (SELECT count(*) FROM b WHERE x - hw < 0 OR x + hw > 1 OR y - hh < 0 OR y + hh > 1)")"
+expect_eq "demo: promotions applied in the history (2x1 cocktails, 2x1 beers, combo, delivery bill)" "t" \
+  "$(q "SELECT count(DISTINCT p.name) = 4 FROM public.order_discounts od JOIN public.promotions p ON p.id = od.promotion_id
+         WHERE p.name IN ('Happy hour 2x1 en cócteles', '2x1 en cervezas nacionales', 'Cubeta + picada', '10 % en domicilios desde \$90.000')")"
+expect_eq "demo: modifiers, transfers, counts, purchases, takeaway and Z in place" "t" \
+  "$(q "SELECT (SELECT count(*) FROM public.order_item_modifiers) > 0
+           AND (SELECT count(*) FROM public.inventory_transfers WHERE status = 'received_short') = 1
+           AND (SELECT count(*) FROM public.inventory_transfers WHERE status = 'in_transit') = 1
+           AND (SELECT count(*) FROM public.inventory_counts WHERE status = 'applied') = 1
+           AND (SELECT count(*) FROM public.inventory_counts WHERE status = 'counting') = 1
+           AND (SELECT count(*) FROM public.purchase_orders WHERE status = 'ordered') >= 1
+           AND (SELECT count(*) FROM public.orders WHERE order_type = 'takeaway') > 0
+           AND (SELECT count(*) FROM public.z_reports) > 0")"
+expect_eq "demo: every Z covers a closed, validated business day" "0" \
+  "$(q "SELECT count(*) FROM public.z_reports z WHERE z.snapshot->>'status' <> 'closed' OR z.emitted_at > now()
+         OR NOT EXISTS (SELECT 1 FROM public.cash_registers r WHERE r.validated_at IS NOT NULL
+                         AND ((r.opening_timestamp AT TIME ZONE 'America/Bogota') - interval '5 hours')::date = z.business_day)")"
 
 # Invariants of the loaded demo (independent verifier of 2eaf3d5).
 expect_eq "demo: every payment inside its register's window" "0" \
