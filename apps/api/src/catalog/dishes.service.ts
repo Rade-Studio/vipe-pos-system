@@ -5,7 +5,7 @@ import { UnitOfWork } from '../db/unit-of-work';
 import { type createDishSchema, type Dish, DISH_MESSAGES, type dishListQuerySchema, type updateDishSchema } from './catalog.dto';
 import { toDish } from './catalog.mappers';
 import { type EngineContext, scheduleState, selectPromotionForNewItem, unitSaving } from '../promotions/engine';
-import { PromotionCatalog, type PromotionChannel, type Rule } from '../promotions/promotion-catalog.service';
+import { PromotionCatalog, type PromotionChannel, type RestaurantNow, type Rule } from '../promotions/promotion-catalog.service';
 import { clockText, promotionBadge } from '../promotions/promotion-text';
 import { ModifiersService } from './modifiers.service';
 
@@ -43,13 +43,7 @@ export class DishesService {
     if (query.pricing !== 'promotions' || list.length === 0) {
       return list;
     }
-    const rules = (await this.promotions.rules()).filter((rule) => rule.kind === 'product_discount' || rule.kind === 'buy_x_pay_y');
-    if (rules.length === 0) {
-      return list;
-    }
-    const now = await this.promotions.now();
-    const ctx: EngineContext<PromotionChannel> = { now: now.local, channel: query.channel ?? 'dine_in' };
-    return list.map((dish) => withPromotion(dish, rules, ctx));
+    return priceWithPromotions(list, await this.promotions.rules(), () => this.promotions.now(), query.channel ?? 'dine_in');
   }
 
   async create(input: z.infer<typeof createDishSchema>): Promise<Dish> {
@@ -219,6 +213,25 @@ function pgConstraint(error: unknown): string | undefined {
 function toColumns(input: DishInput): Partial<typeof dishes.$inferInsert> {
   const { price, ...rest } = input;
   return price === undefined ? rest : { ...rest, price: String(price) };
+}
+
+/**
+ * `pricing: 'promotions'` of list(): each dish with the automatic product
+ * promotion of `rules` a line of it would be sent with at `now` on `channel`.
+ * `now` is read only when a product promotion exists.
+ */
+export async function priceWithPromotions(
+  list: Dish[],
+  rules: Rule[],
+  now: () => Promise<RestaurantNow>,
+  channel: PromotionChannel,
+): Promise<Dish[]> {
+  const products = rules.filter((rule) => rule.kind === 'product_discount' || rule.kind === 'buy_x_pay_y');
+  if (products.length === 0) {
+    return list;
+  }
+  const ctx: EngineContext<PromotionChannel> = { now: (await now()).local, channel };
+  return list.map((dish) => withPromotion(dish, products, ctx));
 }
 
 /** The dish with the promotion fields of the promotion a line of it would get now; untouched when none. */

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CartaModule } from './carta/carta.module';
 import { CashModule } from './cash/cash.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
@@ -52,6 +53,7 @@ import { ZonesModule } from './zones/zones.module';
     AuditModule,
     StationsModule,
     DesktopModule,
+    CartaModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

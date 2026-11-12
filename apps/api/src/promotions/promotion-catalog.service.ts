@@ -29,7 +29,8 @@ export interface RestaurantNow {
   local: LocalClock;
 }
 
-interface PromotionJson {
+/** One promotion as records() reads it (and private.guest_menu_data returns it, 0034). */
+export interface PromotionJson {
   id: string;
   name: string;
   description: string | null;
@@ -77,9 +78,7 @@ export class PromotionCatalog {
   async now(): Promise<RestaurantNow> {
     const { rows } = await this.uow.db.execute(sql`
       SELECT coalesce((SELECT r.timezone FROM public.restaurants r WHERE r.id = private.current_restaurant_id()), 'America/Bogota') AS tz`);
-    const timeZone = String((rows[0] as { tz: string }).tz);
-    const instant = this.clock.now();
-    return { instant, timeZone, local: toLocalClock(instant, timeZone) };
+    return restaurantNow(this.clock.now(), String((rows[0] as { tz: string }).tz));
   }
 
   /** Every promotion, or only `ids`. */
@@ -116,10 +115,15 @@ export class PromotionCatalog {
   }
 }
 
+/** `instant` on the clock of `timeZone`: the one rule for "now" of a restaurant. */
+export function restaurantNow(instant: Date, timeZone: string): RestaurantNow {
+  return { instant, timeZone, local: toLocalClock(instant, timeZone) };
+}
+
 const num = (value: number | string | null | undefined, fallback: number) => (value === null || value === undefined ? fallback : Number(value));
 const nullableNum = (value: number | string | null | undefined) => (value === null || value === undefined ? null : Number(value));
 
-function toRecord(row: PromotionJson): PromotionRecord {
+export function toRecord(row: PromotionJson): PromotionRecord {
   const rule: Rule = {
     id: row.id,
     name: row.name,
