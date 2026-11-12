@@ -43,6 +43,12 @@ export const ADMIN_SECTIONS = [
   { id: "inventory/overview", group: "inventory", label: "Resumen", description: "Indicadores de inventario." },
   { id: "inventory/items", group: "inventory", label: "Artículos", description: "Catálogo de artículos e insumos." },
   { id: "inventory/movements", group: "inventory", label: "Movimientos", description: "Entradas, salidas y ajustes." },
+  {
+    id: "inventory/transfers",
+    group: "inventory",
+    label: "Transferencias",
+    description: "Mueve stock entre bodegas y sedes, varios artículos a la vez.",
+  },
   { id: "inventory/purchases", group: "inventory", label: "Compras", description: "Proveedores y órdenes de compra." },
   { id: "inventory/production", group: "inventory", label: "Producción", description: "Lotes de preparaciones." },
   { id: "inventory/counts", group: "inventory", label: "Conteos", description: "Conteos físicos y mermas." },
