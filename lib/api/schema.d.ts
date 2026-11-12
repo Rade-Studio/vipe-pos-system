@@ -2902,7 +2902,7 @@ export interface components {
              */
             localTime: string;
             /** @enum {string} */
-            channel: "dine_in" | "delivery";
+            channel: "dine_in" | "takeaway" | "delivery";
             /** @description Automatic promotions applying now on the channel. */
             active: components["schemas"]["TodayActivePromotion"][];
             /** @description Automatic promotions of the channel with a window later today. */
@@ -3407,8 +3407,15 @@ export interface components {
             waiterId: string | null;
             /** @enum {string} */
             status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
-            /** @enum {string} */
-            orderType: "dine_in" | "delivery";
+            /**
+             * @description takeaway (para llevar): no table, customerName set.
+             * @enum {string}
+             */
+            orderType: "dine_in" | "takeaway" | "delivery";
+            /** @description takeaway only: who picks the order up; null otherwise. */
+            customerName: string | null;
+            /** @description takeaway only, optional: 7..15 digits; null otherwise. */
+            customerPhone: string | null;
             /** @description Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it. */
             subtotal: number;
             tax: number;
@@ -3512,8 +3519,15 @@ export interface components {
             waiterId: string | null;
             /** @enum {string} */
             status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
-            /** @enum {string} */
-            orderType: "dine_in" | "delivery";
+            /**
+             * @description takeaway (para llevar): no table, customerName set.
+             * @enum {string}
+             */
+            orderType: "dine_in" | "takeaway" | "delivery";
+            /** @description takeaway only: who picks the order up; null otherwise. */
+            customerName: string | null;
+            /** @description takeaway only, optional: 7..15 digits; null otherwise. */
+            customerPhone: string | null;
             /** @description Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it. */
             subtotal: number;
             tax: number;
@@ -3598,8 +3612,15 @@ export interface components {
             waiterId: string | null;
             /** @enum {string} */
             status: "active" | "kitchen" | "delivered" | "cancelled" | "paid";
-            /** @enum {string} */
-            orderType: "dine_in" | "delivery";
+            /**
+             * @description takeaway (para llevar): no table, customerName set.
+             * @enum {string}
+             */
+            orderType: "dine_in" | "takeaway" | "delivery";
+            /** @description takeaway only: who picks the order up; null otherwise. */
+            customerName: string | null;
+            /** @description takeaway only, optional: 7..15 digits; null otherwise. */
+            customerPhone: string | null;
             /** @description Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it. */
             subtotal: number;
             tax: number;
@@ -3709,8 +3730,11 @@ export interface components {
             choices: components["schemas"]["ComboChoiceInput"][];
         };
         CreateOrderRequest: {
-            /** Format: uuid */
-            tableId: string;
+            /**
+             * Format: uuid
+             * @description Required for dine_in; refused for takeaway.
+             */
+            tableId?: string;
             /**
              * Format: uuid
              * @description Defaults to the table's waiter, else the caller.
@@ -3721,7 +3745,11 @@ export interface components {
              * @default dine_in
              * @enum {string}
              */
-            orderType: "dine_in";
+            orderType: "dine_in" | "takeaway";
+            /** @description takeaway only and required there, trimmed (El nombre del cliente debe tener entre 2 y 60 caracteres). */
+            customerName?: string;
+            /** @description takeaway only, optional: normalised like the delivery phones (7..15 digits); blank is null. */
+            customerPhone?: string | null;
             /** @description Dish lines; items and/or combos must bring at least one line. */
             items?: components["schemas"]["OrderItemInput"][];
             /** @description Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top of the combo price. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
@@ -3758,7 +3786,7 @@ export interface components {
              * @description Ignored when orderId is given: the order's own channel is used.
              * @enum {string}
              */
-            channel: "dine_in" | "delivery";
+            channel: "dine_in" | "takeaway" | "delivery";
             /**
              * Format: uuid
              * @description An open order whose lines (sent, with their fixed promotions) are priced with the draft.
@@ -3828,7 +3856,7 @@ export interface components {
              * @description The order's channel with orderId, else the body channel.
              * @enum {string}
              */
-            channel: "dine_in" | "delivery";
+            channel: "dine_in" | "takeaway" | "delivery";
             /** Format: date-time */
             now: string;
             /** @description Sent lines first (oldest first), then the drafts in order. */
@@ -5627,7 +5655,7 @@ export interface components {
              * @description Ignored: the API prints the sender's profile name.
              */
             waiter?: string;
-            /** @description Null or absent for delivery orders; the order's table wins. */
+            /** @description Null or absent for delivery orders; the order's table wins; dropped for a takeaway order (the payload carries takeaway instead). */
             table?: number | null;
             /** @description DeliveryPrintInfo (types/index.ts). */
             delivery?: {
@@ -5652,7 +5680,7 @@ export interface components {
             id: string;
             /** @enum {string} */
             kind: "invoice" | "command";
-            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
+            /** @description invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, takeaway? {customerName, label "PARA LLEVAR · <nombre>"} (instead of table), station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices. */
             payload: {
                 [key: string]: unknown;
             };
@@ -5796,8 +5824,10 @@ export interface components {
         CreateDeliveryOrderRequest: {
             customer: components["schemas"]["CreateDeliveryCustomer"];
             address: components["schemas"]["CreateDeliveryAddress"];
-            /** @description 1..100 lines validated by create_delivery_order. */
+            /** @description 1..100 lines together with the combo choices validated by create_delivery_order; may be empty when combos are sent. */
             items: components["schemas"]["CreateDeliveryItem"][];
+            /** @description Combos live now for the delivery channel. Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
+            combos?: components["schemas"]["ComboLineRequest"][];
             /** @description Whole COP pesos; >= 0 validated by create_delivery_order. */
             deliveryFee: number;
             /** @enum {string} */
@@ -6877,7 +6907,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description With pricing=promotions; default dine_in. */
-                channel?: "dine_in" | "delivery";
+                channel?: "dine_in" | "takeaway" | "delivery";
                 /** @description Add the automatic product promotion a line of each dish would be sent with now (price stays the list price). */
                 pricing?: "promotions";
                 active?: "true" | "false";
@@ -7235,7 +7265,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Default dine_in. */
-                channel?: "dine_in" | "delivery";
+                channel?: "dine_in" | "takeaway" | "delivery";
             };
             header?: never;
             path?: never;
@@ -7649,7 +7679,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Channel of the dish promotion fields; default dine_in. */
-                channel?: "dine_in" | "delivery";
+                channel?: "dine_in" | "takeaway" | "delivery";
             };
             header?: never;
             path?: never;
@@ -7671,7 +7701,7 @@ export interface operations {
     MenuController_draft: {
         parameters: {
             query?: {
-                channel?: "dine_in" | "delivery";
+                channel?: "dine_in" | "takeaway" | "delivery";
             };
             header?: never;
             path?: never;

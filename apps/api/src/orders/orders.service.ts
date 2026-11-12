@@ -178,7 +178,10 @@ export class OrdersService {
    * consumption and the table in kitchen, all in the request transaction.
    */
   async create(input: z.infer<typeof createOrderSchema>, callerProfileId: string): Promise<Order> {
-    const table = await this.lockTable(input.tableId);
+    if (input.orderType === 'takeaway') {
+      return this.createTakeaway(input, callerProfileId);
+    }
+    const table = await this.lockTable(input.tableId!);
     const [open] = await this.rows<{ id: string }>(sql`
       SELECT id FROM public.orders
        WHERE table_id = ${table.id} AND status = ANY(${sql.param(OPEN_STATUSES)}::text[])
@@ -216,6 +219,35 @@ export class OrdersService {
       UPDATE public.tables
          SET status = 'kitchen', waiter_id = coalesce(waiter_id, ${waiterId}), updated_at = now()
        WHERE id = ${table.id}`);
+    return this.get(order.id);
+  }
+
+  /**
+   * POST /orders with orderType takeaway (S8): the same lines, stock check and
+   * bill as a dine_in order on the takeaway channel, with the customer and no
+   * table; the waiter is the given one, else the caller.
+   */
+  private async createTakeaway(input: z.infer<typeof createOrderSchema>, callerProfileId: string): Promise<Order> {
+    const waiterId = input.waiterId ?? callerProfileId;
+    if (input.waiterId) {
+      await this.assertProfile(input.waiterId);
+    }
+    const pricing = await this.pricingContext('takeaway');
+    const lines = await this.priceLines(input.items ?? [], input.combos ?? [], pricing);
+    if (!input.force) {
+      await this.assertStock(lines);
+    }
+    const settings = await this.config.get();
+    const [order] = await this.rows<{ id: string }>(sql`
+      INSERT INTO public.orders
+        (table_id, waiter_id, status, order_type, customer_name, customer_phone,
+         subtotal, tax, tax_percentage, tip, tip_percentage, total, guests, notes)
+      VALUES
+        (NULL, ${waiterId}, 'kitchen', 'takeaway', ${input.customerName}, ${input.customerPhone},
+         0, 0, ${settings.taxPercentage}, 0, ${input.tipPercentage ?? settings.tipPercentage}, 0, ${input.guests ?? null}, ${input.notes ?? null})
+      RETURNING id`);
+    await this.insertItems(order.id, lines);
+    await this.afterItems(order.id, pricing.now);
     return this.get(order.id);
   }
 

@@ -41,6 +41,7 @@ import {
   MENU_MESSAGES,
   MenuPublicationStatus,
   menuTreeQuerySchema,
+  ORDER_CHANNELS,
   Promotion,
   PROMOTION_ERRORS_DESCRIPTION,
   promotionDishesSchema,
@@ -205,7 +206,7 @@ export class DishesController {
     enum: ['promotions'],
     description: 'Add the automatic product promotion a line of each dish would be sent with now (price stays the list price).',
   })
-  @ApiQuery({ name: 'channel', required: false, enum: ['dine_in', 'delivery'], description: 'With pricing=promotions; default dine_in.' })
+  @ApiQuery({ name: 'channel', required: false, enum: ORDER_CHANNELS, description: 'With pricing=promotions; default dine_in.' })
   @ApiOkResponse({ type: [Dish] })
   list(@Query() query: unknown): Promise<Dish[]> {
     return this.dishes.list(parseInput(dishListQuerySchema, query));
@@ -294,7 +295,7 @@ export class PromotionsController {
   }
 
   @Get('today')
-  @ApiQuery({ name: 'channel', required: false, enum: ['dine_in', 'delivery'], description: 'Default dine_in.' })
+  @ApiQuery({ name: 'channel', required: false, enum: ORDER_CHANNELS, description: 'Default dine_in.' })
   @ApiOkResponse({
     type: PromotionsToday,
     description: 'For the terminals: the promotions applying now on the channel (with the end of the window), later today (with the start) and the others with why not; paused and ended ones are left out.',
@@ -372,7 +373,7 @@ export class MenuController {
     description:
       'The waiter and delivery step picker: active categories, active subcategories and active dishes (plus the active dishes without category in `uncategorized`), priced and with availability. Structure (order, names, colours, icons, category/subcategory flags) is the latest publication; price, availability, stock and modifier groups are live. A row added since is hidden until published, a deleted one drops out; never published = the live structure.',
   })
-  @ApiQuery({ name: 'channel', required: false, enum: ['dine_in', 'delivery'], description: 'Channel of the dish promotion fields; default dine_in.' })
+  @ApiQuery({ name: 'channel', required: false, enum: ORDER_CHANNELS, description: 'Channel of the dish promotion fields; default dine_in.' })
   tree(@Query() query: unknown): Promise<MenuTree> {
     return this.menu.tree(parseInput(menuTreeQuerySchema, query).channel);
   }
@@ -381,7 +382,7 @@ export class MenuController {
   @Roles(ADMIN)
   @ApiOkResponse({ type: MenuTree, description: 'The tree from the live structure: what the next publication serves (admin menu editor preview).' })
   @ApiForbiddenResponse({ description: 'Not an admin.' })
-  @ApiQuery({ name: 'channel', required: false, enum: ['dine_in', 'delivery'] })
+  @ApiQuery({ name: 'channel', required: false, enum: ORDER_CHANNELS })
   draft(@Query() query: unknown): Promise<MenuTree> {
     return this.menu.draft(parseInput(menuTreeQuerySchema, query).channel);
   }

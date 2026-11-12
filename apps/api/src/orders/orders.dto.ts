@@ -4,14 +4,17 @@ import { z } from 'zod';
 import { StaffRef } from '../audit/audit.dto';
 import { OTHER_TEXT_ISSUE, requireOtherText, VOID_REASON_CODES, VOID_REASONS, voidReasonFields, type VoidReason } from '../audit/voids';
 import { dateQuery } from '../common/validation';
+import { normalizePhone } from '../delivery/phone';
 import { OrderItemModifier } from '../catalog/modifiers.dto';
 import { LegacyPaymentTransaction, Payment } from '../payments/payments.dto';
 
 export const ORDER_STATUSES = ['active', 'kitchen', 'delivered', 'cancelled', 'paid'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const ORDER_ITEM_STATUSES = ['kitchen', 'served'] as const;
-export const ORDER_TYPES = ['dine_in', 'delivery'] as const;
+export const ORDER_TYPES = ['dine_in', 'takeaway', 'delivery'] as const;
 export type OrderType = (typeof ORDER_TYPES)[number];
+/** The order types POST /orders creates; delivery goes through the delivery module (create_delivery_order). */
+export const CREATE_ORDER_TYPES = ['dine_in', 'takeaway'] as const;
 export const ORDER_INCLUDES = ['items', 'table', 'waiter'] as const;
 /** GET /orders answers at most this many rows (no pagination today). */
 export const ORDER_LIST_LIMIT = 500;
@@ -92,18 +95,56 @@ const notesSchema = z
  */
 const orderDetails = { guests: guestsSchema.optional(), notes: notesSchema.optional() };
 
-/** Delivery orders need their order_deliveries row: they go through create_delivery_order (T11). */
+export const CUSTOMER_NAME_MESSAGE = 'El nombre del cliente debe tener entre 2 y 60 caracteres';
+export const CUSTOMER_PHONE_MESSAGE = 'El teléfono debe tener entre 7 y 15 dígitos';
+/** orders_customer_phone_check (0030): normalised with the delivery rule; blank or null is none. */
+const customerPhoneSchema = z
+  .string({ error: CUSTOMER_PHONE_MESSAGE })
+  .max(100, { error: CUSTOMER_PHONE_MESSAGE })
+  .transform((value, ctx) => {
+    if (value.trim() === '') return null;
+    const phone = normalizePhone(value);
+    if (phone === null) {
+      ctx.addIssue({ code: 'custom', message: CUSTOMER_PHONE_MESSAGE });
+      return z.NEVER;
+    }
+    return phone;
+  })
+  .nullable();
+
+/**
+ * dine_in needs its table; takeaway (S8) has no table and needs the customer's
+ * name (the phone is optional). Delivery orders need their order_deliveries
+ * row: they go through create_delivery_order (T11).
+ */
 export const createOrderSchema = z
   .strictObject({
-    tableId: z.guid(),
+    tableId: z.guid().optional(),
     waiterId: z.guid().optional(),
-    orderType: z.literal('dine_in', { error: 'Only dine_in orders; delivery orders are created by the delivery module' }).optional(),
+    orderType: z.enum(CREATE_ORDER_TYPES, { error: 'Only dine_in or takeaway orders; delivery orders are created by the delivery module' }).optional(),
+    customerName: z.string({ error: CUSTOMER_NAME_MESSAGE }).optional(),
+    customerPhone: customerPhoneSchema.optional(),
     ...linesShape,
     tipPercentage: z.number().min(0).max(100).optional(),
     force: z.boolean().optional(),
     ...orderDetails,
   })
-  .refine(hasLines, LINES_ISSUE);
+  .refine(hasLines, LINES_ISSUE)
+  .transform((value, ctx) => {
+    const { customerName: rawName, ...rest } = value;
+    if ((value.orderType ?? 'dine_in') === 'dine_in') {
+      if (value.tableId === undefined) ctx.addIssue({ code: 'custom', path: ['tableId'], message: 'Elige la mesa del pedido' });
+      if (rawName !== undefined || (value.customerPhone ?? null) !== null) {
+        ctx.addIssue({ code: 'custom', path: ['customerName'], message: 'Solo un pedido para llevar lleva el nombre del cliente' });
+      }
+      return { ...rest, orderType: 'dine_in' as const, customerName: null, customerPhone: null };
+    }
+    if (value.tableId !== undefined) ctx.addIssue({ code: 'custom', path: ['tableId'], message: 'Un pedido para llevar no tiene mesa' });
+    // orders_customer_name_check (0030): stored trimmed, 2..60 characters.
+    const name = rawName?.trim() ?? '';
+    if (name.length < 2 || name.length > 60) ctx.addIssue({ code: 'custom', path: ['customerName'], message: CUSTOMER_NAME_MESSAGE });
+    return { ...rest, orderType: 'takeaway' as const, customerName: name, customerPhone: value.customerPhone ?? null };
+  });
 
 export const addOrderItemsSchema = z.strictObject({ ...linesShape, force: z.boolean().optional(), ...orderDetails }).refine(hasLines, LINES_ISSUE);
 
@@ -289,7 +330,10 @@ export class Order {
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) tableId!: string | null;
   @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Waiter profile id.' }) waiterId!: string | null;
   @ApiProperty({ enum: ORDER_STATUSES }) status!: OrderStatus;
-  @ApiProperty({ enum: ORDER_TYPES }) orderType!: OrderType;
+  @ApiProperty({ enum: ORDER_TYPES, description: 'takeaway (para llevar): no table, customerName set.' }) orderType!: OrderType;
+  @ApiProperty({ type: String, nullable: true, maxLength: 60, description: 'takeaway only: who picks the order up; null otherwise.' })
+  customerName!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'takeaway only, optional: 7..15 digits; null otherwise.' }) customerPhone!: string | null;
   @ApiProperty({ description: 'Net base: grossSubtotal - totalDiscounts; tax, tip and total are computed on it.' }) subtotal!: number;
   @ApiProperty() tax!: number;
   @ApiProperty() taxPercentage!: number;
@@ -425,11 +469,15 @@ const COMBOS_DESCRIPTION =
   'Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top of the combo price. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.';
 
 export class CreateOrderRequest {
-  @ApiProperty({ format: 'uuid' }) tableId!: string;
+  @ApiPropertyOptional({ format: 'uuid', description: 'Required for dine_in; refused for takeaway.' }) tableId?: string;
   @ApiPropertyOptional({ format: 'uuid', description: "Defaults to the table's waiter, else the caller." })
   waiterId?: string;
-  @ApiPropertyOptional({ enum: ['dine_in'], default: 'dine_in', description: 'Delivery orders are created by the delivery module.' })
-  orderType?: 'dine_in';
+  @ApiPropertyOptional({ enum: CREATE_ORDER_TYPES, default: 'dine_in', description: 'Delivery orders are created by the delivery module.' })
+  orderType?: 'dine_in' | 'takeaway';
+  @ApiPropertyOptional({ minLength: 2, maxLength: 60, description: `takeaway only and required there, trimmed (${CUSTOMER_NAME_MESSAGE}).` })
+  customerName?: string;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 100, description: 'takeaway only, optional: normalised like the delivery phones (7..15 digits); blank is null.' })
+  customerPhone?: string | null;
   @ApiPropertyOptional({ type: [OrderItemInput], maxItems: MAX_ITEMS, description: 'Dish lines; items and/or combos must bring at least one line.' })
   items?: OrderItemInput[];
   @ApiPropertyOptional({ type: [ComboLineRequest], maxItems: MAX_COMBOS, description: COMBOS_DESCRIPTION }) combos?: ComboLineRequest[];

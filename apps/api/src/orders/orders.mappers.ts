@@ -82,6 +82,8 @@ export function toOrder(row: OrderRow, include: { withTable?: boolean; withWaite
     waiterId: text(o.waiter_id),
     status: o.status as OrderStatus,
     orderType: o.order_type as OrderType,
+    customerName: text(o.customer_name),
+    customerPhone: text(o.customer_phone),
     subtotal: num(o.subtotal),
     tax: num(o.tax),
     taxPercentage: num(o.tax_percentage),

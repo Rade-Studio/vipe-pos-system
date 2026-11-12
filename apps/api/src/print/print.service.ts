@@ -19,6 +19,7 @@ import type {
   PrintJobKind,
   PrintJobsCreated,
 } from './print.dto';
+import { takeawayLabel } from './print.dto';
 import { newPrinterToken, type Printer } from './printer-identity';
 import { printLines } from './print-lines';
 
@@ -164,8 +165,9 @@ export class PrintService implements OnApplicationBootstrap {
    * one. An order outside the caller's restaurant is 404.
    */
   async commandFor(request: z.infer<typeof commandPrintSchema>, caller: CallerProfile): Promise<CommandJobInput> {
-    const [order] = await this.rows<{ order_number: number; table_number: number | null; waiter_name: string | null }>(sql`
-      SELECT o.order_number, t.number AS table_number, p.full_name AS waiter_name
+    const [order] = await this.rows<{ order_number: number; table_number: number | null; waiter_name: string | null; customer_name: string | null }>(sql`
+      SELECT o.order_number, t.number AS table_number, p.full_name AS waiter_name,
+             CASE WHEN o.order_type = 'takeaway' THEN o.customer_name END AS customer_name
         FROM public.orders o
         LEFT JOIN public.tables t ON t.id = o.table_id
         LEFT JOIN public.profiles p ON p.id = o.waiter_id
@@ -173,11 +175,20 @@ export class PrintService implements OnApplicationBootstrap {
     if (!order) {
       throw new NotFoundException('Order not found');
     }
-    const { orderId: _orderId, waiter: _waiter, ...rest } = request;
+    const { orderId: _orderId, waiter: _waiter, table, ...rest } = request;
+    // S8: a takeaway comanda names the customer where the table goes; a sent table is dropped.
+    const place =
+      order.customer_name !== null
+        ? { takeaway: { customerName: order.customer_name, label: takeawayLabel(order.customer_name) } }
+        : order.table_number !== null
+          ? { table: order.table_number }
+          : table !== undefined
+            ? { table }
+            : {};
     return {
       ...rest,
       items: printLines(rest.items),
-      ...(order.table_number !== null ? { table: order.table_number } : {}),
+      ...place,
       waiter: caller.name.trim() || order.waiter_name?.trim() || FALLBACK_WAITER,
       orderNumber: order.order_number,
     };

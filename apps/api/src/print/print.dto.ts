@@ -44,7 +44,12 @@ export interface CommandJobInput {
   orderNumber: number;
   table?: number | null;
   delivery?: Record<string, unknown>;
+  /** S8: a takeaway order's customer, printed instead of the table. */
+  takeaway?: { customerName: string; label: string };
 }
+
+/** The comanda header of a takeaway order (S8), as renderKitchenOrder prints it. */
+export const takeawayLabel = (customerName: string) => `PARA LLEVAR · ${customerName}`;
 
 export const pendingQuerySchema = z.strictObject({ after: z.guid().optional() });
 
@@ -83,7 +88,7 @@ export class CommandPrintRequest {
   @ApiPropertyOptional({ deprecated: true, description: "Ignored: the API prints the sender's profile name." })
   waiter?: string;
 
-  @ApiPropertyOptional({ type: Number, nullable: true, description: "Null or absent for delivery orders; the order's table wins." })
+  @ApiPropertyOptional({ type: Number, nullable: true, description: "Null or absent for delivery orders; the order's table wins; dropped for a takeaway order (the payload carries takeaway instead)." })
   table?: number | null;
 
   @ApiPropertyOptional({ type: 'object', additionalProperties: true, description: 'DeliveryPrintInfo (types/index.ts).' })
@@ -109,7 +114,7 @@ export class PendingPrintJob {
     type: 'object',
     additionalProperties: true,
     description:
-      'invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices.',
+      'invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, takeaway? {customerName, label "PARA LLEVAR · <nombre>"} (instead of table), station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices.',
   })
   payload!: Record<string, unknown>;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;

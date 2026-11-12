@@ -554,6 +554,7 @@
             "schema": {
               "enum": [
                 "dine_in",
+                "takeaway",
                 "delivery"
               ],
               "type": "string"
@@ -1008,6 +1009,7 @@
             "schema": {
               "enum": [
                 "dine_in",
+                "takeaway",
                 "delivery"
               ],
               "type": "string"
@@ -1497,6 +1499,7 @@
             "schema": {
               "enum": [
                 "dine_in",
+                "takeaway",
                 "delivery"
               ],
               "type": "string"
@@ -1536,6 +1539,7 @@
             "schema": {
               "enum": [
                 "dine_in",
+                "takeaway",
                 "delivery"
               ],
               "type": "string"
@@ -9964,6 +9968,7 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
             ]
           },
@@ -11373,8 +11378,21 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
-            ]
+            ],
+            "description": "takeaway (para llevar): no table, customerName set."
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "takeaway only: who picks the order up; null otherwise."
+          },
+          "customerPhone": {
+            "type": "string",
+            "nullable": true,
+            "description": "takeaway only, optional: 7..15 digits; null otherwise."
           },
           "subtotal": {
             "type": "number",
@@ -11455,6 +11473,8 @@
           "waiterId",
           "status",
           "orderType",
+          "customerName",
+          "customerPhone",
           "subtotal",
           "tax",
           "taxPercentage",
@@ -11704,8 +11724,21 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
-            ]
+            ],
+            "description": "takeaway (para llevar): no table, customerName set."
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "takeaway only: who picks the order up; null otherwise."
+          },
+          "customerPhone": {
+            "type": "string",
+            "nullable": true,
+            "description": "takeaway only, optional: 7..15 digits; null otherwise."
           },
           "subtotal": {
             "type": "number",
@@ -11803,6 +11836,8 @@
           "waiterId",
           "status",
           "orderType",
+          "customerName",
+          "customerPhone",
           "subtotal",
           "tax",
           "taxPercentage",
@@ -11986,8 +12021,21 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
-            ]
+            ],
+            "description": "takeaway (para llevar): no table, customerName set."
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "takeaway only: who picks the order up; null otherwise."
+          },
+          "customerPhone": {
+            "type": "string",
+            "nullable": true,
+            "description": "takeaway only, optional: 7..15 digits; null otherwise."
           },
           "subtotal": {
             "type": "number",
@@ -12081,6 +12129,8 @@
           "waiterId",
           "status",
           "orderType",
+          "customerName",
+          "customerPhone",
           "subtotal",
           "tax",
           "taxPercentage",
@@ -12340,7 +12390,8 @@
         "properties": {
           "tableId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Required for dine_in; refused for takeaway."
           },
           "waiterId": {
             "type": "string",
@@ -12350,10 +12401,23 @@
           "orderType": {
             "type": "string",
             "enum": [
-              "dine_in"
+              "dine_in",
+              "takeaway"
             ],
             "default": "dine_in",
             "description": "Delivery orders are created by the delivery module."
+          },
+          "customerName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60,
+            "description": "takeaway only and required there, trimmed (El nombre del cliente debe tener entre 2 y 60 caracteres)."
+          },
+          "customerPhone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 100,
+            "description": "takeaway only, optional: normalised like the delivery phones (7..15 digits); blank is null."
           },
           "items": {
             "maxItems": 100,
@@ -12395,10 +12459,7 @@
             "maxLength": 300,
             "description": "Order note, trimmed; blank is null."
           }
-        },
-        "required": [
-          "tableId"
-        ]
+        }
       },
       "PreviewDishLine": {
         "type": "object",
@@ -12452,6 +12513,7 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
             ],
             "description": "Ignored when orderId is given: the order's own channel is used."
@@ -12640,6 +12702,7 @@
             "type": "string",
             "enum": [
               "dine_in",
+              "takeaway",
               "delivery"
             ],
             "description": "The order's channel with orderId, else the body channel."
@@ -18392,7 +18455,7 @@
           "table": {
             "type": "number",
             "nullable": true,
-            "description": "Null or absent for delivery orders; the order's table wins."
+            "description": "Null or absent for delivery orders; the order's table wins; dropped for a takeaway order (the payload carries takeaway instead)."
           },
           "delivery": {
             "type": "object",
@@ -18456,7 +18519,7 @@
           "payload": {
             "type": "object",
             "additionalProperties": true,
-            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
+            "description": "invoice: {invoiceNumber, invoice, displayItems, station?}; command: {invoiceNumber (job id), orderNumber?, items, waiter, table?, delivery?, takeaway? {customerName, label \"PARA LLEVAR · <nombre>\"} (instead of table), station?}. Lines may carry modifiers [{group, name, price}] (F7; invoice line prices include them); readers ignore keys they do not know. station {id, name} only when the restaurant has stations (F6): one command per station with its lines, Caja on invoices."
           },
           "createdAt": {
             "type": "string",
@@ -18896,10 +18959,18 @@
           },
           "items": {
             "maxItems": 500,
-            "description": "1..100 lines validated by create_delivery_order.",
+            "description": "1..100 lines together with the combo choices validated by create_delivery_order; may be empty when combos are sent.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CreateDeliveryItem"
+            }
+          },
+          "combos": {
+            "maxItems": 20,
+            "description": "Combos live now for the delivery channel. Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComboLineRequest"
             }
           },
           "deliveryFee": {
