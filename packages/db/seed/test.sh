@@ -192,6 +192,12 @@ for bad in "" VBPB 'x;id' '../x'; do
   expect_exit 2 "bootstrap: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID ADMIN_PASSWORD=bootstrap-pass-2026 bash "$seed_dir/bootstrap/create-restaurant.sh" --target coolify --app-uuid "$bad" --db-uuid "$adb" "La Mesa" admin@mesa.example
   expect_exit 2 "demo: app uuid [$bad]" env -u VIPE_COOLIFY_APP_UUID DEMO_PASSWORD=demo-pass-2026 bash "$seed_dir/demo/demo-db.sh" --target coolify --app-uuid "$bad" --db-uuid "$adb"
 done
+# --keep-password without a demo to keep it from: exit 2 before any write.
+expect_exit 2 "demo: --keep-password without --reset" \
+  env -u DEMO_PASSWORD bash "$seed_dir/demo/demo-db.sh" --keep-password --target coolify --app-uuid "$a" --db-uuid "$adb"
+expect_exit 2 "demo: --reset --keep-password with no demo" \
+  env -u DEMO_PASSWORD bash "$seed_dir/demo/demo-db.sh" --reset --keep-password --target coolify --app-uuid "$a" --db-uuid "$adb"
+expect_stderr "demo: the refusal says there is no password to keep" "no demo admin password to keep"
 expect_eq "bootstrap: rejected input wrote nothing" "0/0/0" "$(fingerprint_a)"
 
 expect_exit 0 "bootstrap: create La Mesa (uuids from VIPE_COOLIFY_APP_UUID and VIPE_COOLIFY_DB_UUID)" \
@@ -352,6 +358,13 @@ expect_eq "demo: the reset deleted the desktop rows" "0" \
   "$(q "SELECT (SELECT count(*) FROM public.desktop_devices) + (SELECT count(*) FROM public.desktop_pairing_codes)")"
 expect_exit 0 "demo: --reset (2nd)" demo --reset --target coolify --app-uuid "$b" --db-uuid "$bdb"
 expect_eq "demo: still exactly one restaurant after two resets" "1" "$(q "SELECT count(*) FROM public.restaurants")"
+hash_before="$(q "SELECT md5(string_agg(DISTINCT password_hash, ',')) FROM public.users")"
+expect_exit 0 "demo: --reset --keep-password without DEMO_PASSWORD" \
+  env -u DEMO_PASSWORD bash "$seed_dir/demo/demo-db.sh" --reset --keep-password --target coolify --app-uuid "$b" --db-uuid "$bdb"
+expect_eq "demo: every account keeps the first DEMO_PASSWORD hash" "$hash_before/1" \
+  "$(q "SELECT md5(string_agg(DISTINCT password_hash, ',')) || '/' || count(DISTINCT password_hash) FROM public.users")"
+expect_eq "demo: the hash was not printed" "absent" \
+  "$(grep -qF '$argon2id$' "$scratch/out" "$scratch/err" && echo printed || echo absent)"
 
 # A tenant table reset.sql does not cover fails the reset before any delete.
 # A trigger proves that no DELETE runs before the guard fires.
