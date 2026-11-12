@@ -13042,9 +13042,10 @@
             "type": "string",
             "enum": [
               "dine_in",
-              "delivery"
+              "delivery",
+              "takeaway"
             ],
-            "description": "delivery: a Domicilio (cancelled from Domicilios, F3b)."
+            "description": "delivery: a Domicilio (cancelled from Domicilios, F3b); takeaway: a Para llevar order (S8)."
           },
           "paymentId": {
             "type": "string",

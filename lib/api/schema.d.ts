@@ -3978,10 +3978,10 @@ export interface components {
             orderId: string;
             orderNumber: number | null;
             /**
-             * @description delivery: a Domicilio (cancelled from Domicilios, F3b).
+             * @description delivery: a Domicilio (cancelled from Domicilios, F3b); takeaway: a Para llevar order (S8).
              * @enum {string}
              */
-            orderType: "dine_in" | "delivery";
+            orderType: "dine_in" | "delivery" | "takeaway";
             /**
              * Format: uuid
              * @description Only for payment_voided.
