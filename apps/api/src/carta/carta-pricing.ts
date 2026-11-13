@@ -56,17 +56,18 @@ export function percentOf(base: number, percentage: string): number {
 }
 
 /**
- * The tax percentage the real order of `channel` applies: delivery orders
- * read it as create_delivery_order (missing 0; null when it cannot cast, then
- * the preview has no tax because no such order can be created), dine_in and
- * takeaway as business-config.ts (default 10).
+ * The tax percentage the guest total includes on `channel`. Only delivery
+ * adds tax (L29: the cash prompt must match the confirmed delivery order),
+ * read as create_delivery_order does (missing 0; null when it cannot cast,
+ * then the preview has no tax because no such order can be created). Dine-in
+ * and takeaway totals keep their previous meaning, the staff netSubtotal.
  */
 export function channelTaxPercentage(
   channel: PromotionChannel,
-  carta: { taxPercentage: number | string; deliveryTaxPercentage: number | string | null },
+  carta: { deliveryTaxPercentage: number | string | null },
 ): string | null {
-  const value = channel === 'delivery' ? carta.deliveryTaxPercentage : carta.taxPercentage;
-  return value === null ? null : String(value);
+  if (channel !== 'delivery') return null;
+  return carta.deliveryTaxPercentage === null ? null : String(carta.deliveryTaxPercentage);
 }
 
 /**
