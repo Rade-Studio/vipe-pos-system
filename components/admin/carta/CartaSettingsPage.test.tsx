@@ -92,7 +92,7 @@ async function renderPage(onNavigate = vi.fn()) {
   return onNavigate
 }
 
-const TAB_NAMES = ["Publicación", "Marca", "Horarios", "Pedidos y platos", "QR"]
+const TAB_NAMES = ["Publicación", "Marca", "Horarios", "Pedidos y platos", "Idiomas", "QR"]
 const openTab = (name: string) => fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${name}`) }))
 
 beforeEach(() => {
@@ -313,7 +313,7 @@ describe("CartaSettingsPage — dishes and English", () => {
 
   it("English: the chip follows descriptionEnReviewed and writing marks it reviewed", async () => {
     await renderPage()
-    openTab("Publicación")
+    openTab("Idiomas")
     const reviewed = screen.getByRole("group", { name: "Inglés de Churrasco a la leña" })
     expect(within(reviewed).getByText("Revisada")).toBeTruthy()
     const pending = screen.getByRole("group", { name: "Inglés de Chorizo santarrosano" })
@@ -466,7 +466,7 @@ describe("CartaSettingsPage — table QR images (S18)", () => {
 })
 
 describe("CartaSettingsPage — tabs (S1)", () => {
-  it("renders the 5 tabs in order and shows only the active panel", async () => {
+  it("renders the 6 tabs in order and shows only the active panel", async () => {
     await renderPage()
     const tablist = screen.getByRole("tablist", { name: "Secciones de la carta" })
     const tabs = within(tablist).getAllByRole("tab")
@@ -514,5 +514,150 @@ describe("CartaSettingsPage — tabs (S1)", () => {
     expect(screen.getByRole("tab", { name: /^QR/ }).getAttribute("aria-selected")).toBe("true")
     fireEvent.keyDown(screen.getByRole("tab", { name: /^QR/ }), { key: "Home" })
     expect(first.getAttribute("aria-selected")).toBe("true")
+  })
+})
+
+/** T8 (S8) — Idiomas and Platos y etiquetas as searchable compact tables. */
+function manyDishes(n: number): CartaAdmin {
+  const base = fixture()
+  base.dishes = Array.from({ length: n }, (_, i) => ({
+    ...base.dishes[1],
+    id: `m-${i + 1}`,
+    name: `Plato ${String(i + 1).padStart(2, "0")}`,
+    description: `Descripción ${i + 1}`,
+  }))
+  return base
+}
+
+const englishRows = () => screen.queryAllByRole("group", { name: /^Inglés de / })
+const tagRows = () => screen.queryAllByRole("group", { name: /^Etiquetas de / })
+const echoDish = () =>
+  api.PUT.mockImplementation(async (_path: string, init: { params: { path: { dishId: string } }; body: Record<string, unknown> }) => ({
+    data: { dishId: init.params.path.dishId, ...init.body },
+  }))
+
+describe("CartaSettingsPage — Idiomas table (S8)", () => {
+  it("Idiomas is its own tab and Publicación no longer holds the English fields", async () => {
+    await renderPage()
+    expect(screen.queryByRole("switch", { name: "Inglés según el idioma del celular" })).toBeNull()
+    openTab("Idiomas")
+    expect(screen.getByRole("switch", { name: "Inglés según el idioma del celular" })).toBeTruthy()
+    expect(screen.getByText("1 de 2 platos con inglés revisado")).toBeTruthy()
+  })
+
+  it("search filters by name and by Spanish description, ignoring accents and case", async () => {
+    await renderPage()
+    openTab("Idiomas")
+    const search = screen.getByRole("searchbox", { name: "Buscar plato" })
+    fireEvent.change(search, { target: { value: "lena" } })
+    expect(englishRows().map((r) => r.getAttribute("aria-label"))).toEqual(["Inglés de Churrasco a la leña"])
+    fireEvent.change(search, { target: { value: "ARTESANAL" } })
+    expect(englishRows().map((r) => r.getAttribute("aria-label"))).toEqual(["Inglés de Chorizo santarrosano"])
+    fireEvent.change(search, { target: { value: "zzz" } })
+    expect(englishRows()).toHaveLength(0)
+    expect(screen.getByText("Ningún plato coincide con la búsqueda.")).toBeTruthy()
+  })
+
+  it("status chips show counts and filter the rows", async () => {
+    await renderPage()
+    openTab("Idiomas")
+    expect(screen.getByRole("button", { name: "Todos (2)" }).getAttribute("aria-pressed")).toBe("true")
+    expect(screen.getByRole("button", { name: "Automáticas (1)" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Sin inglés (1)" }))
+    expect(englishRows().map((r) => r.getAttribute("aria-label"))).toEqual(["Inglés de Chorizo santarrosano"])
+    fireEvent.click(screen.getByRole("button", { name: "Revisadas (1)" }))
+    expect(englishRows().map((r) => r.getAttribute("aria-label"))).toEqual(["Inglés de Churrasco a la leña"])
+  })
+
+  it("the category select filters the rows", async () => {
+    await renderPage()
+    openTab("Idiomas")
+    fireEvent.change(screen.getByRole("combobox", { name: "Categoría" }), { target: { value: "c-2" } })
+    expect(englishRows()).toHaveLength(0)
+    fireEvent.change(screen.getByRole("combobox", { name: "Categoría" }), { target: { value: "c-1" } })
+    expect(englishRows()).toHaveLength(2)
+  })
+
+  it("Guardar cambios (2) saves both edited dishes and then disables", async () => {
+    await renderPage()
+    openTab("Idiomas")
+    expect((screen.getByRole("button", { name: "Guardar cambios (0)" }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText("Descripción en inglés de Churrasco a la leña"), { target: { value: "Aged rump" } })
+    fireEvent.change(screen.getByLabelText("Descripción en inglés de Chorizo santarrosano"), { target: { value: "Sausage" } })
+    echoDish()
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios (2)" }))
+    await waitFor(() => expect(api.PUT).toHaveBeenCalledTimes(2))
+    expect(api.PUT).toHaveBeenCalledWith("/api/carta-admin/dishes/{dishId}", {
+      params: { path: { dishId: "d-1" } },
+      body: { tags: ["gluten_free"], descriptionEn: "Aged rump", descriptionEnReviewed: true },
+    })
+    expect(api.PUT).toHaveBeenCalledWith("/api/carta-admin/dishes/{dishId}", {
+      params: { path: { dishId: "d-2" } },
+      body: { tags: [], descriptionEn: "Sausage", descriptionEnReviewed: true },
+    })
+    await waitFor(() => expect((screen.getByRole("button", { name: "Guardar cambios (0)" }) as HTMLButtonElement).disabled).toBe(true))
+  })
+
+  it("shows 25 rows and Mostrar más for the rest; search resets the count", async () => {
+    api.GET.mockImplementation(async () => ({ data: manyDishes(30) }))
+    await renderPage()
+    openTab("Idiomas")
+    expect(englishRows()).toHaveLength(25)
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar más (5)" }))
+    expect(englishRows()).toHaveLength(30)
+    expect(screen.queryByRole("button", { name: /^Mostrar más/ })).toBeNull()
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar plato" }), { target: { value: "plato" } })
+    expect(englishRows()).toHaveLength(25)
+  })
+
+  it("an English edit puts the unsaved dot on the Idiomas tab", async () => {
+    await renderPage()
+    openTab("Idiomas")
+    fireEvent.change(screen.getByLabelText("Descripción en inglés de Chorizo santarrosano"), { target: { value: "Sausage" } })
+    expect(screen.getByRole("tab", { name: /^Idiomas/ }).querySelector("[data-dirty-dot]")).not.toBeNull()
+    expect(screen.getByRole("tab", { name: /^Publicación/ }).querySelector("[data-dirty-dot]")).toBeNull()
+  })
+
+  it("shows the empty state without dishes", async () => {
+    api.GET.mockImplementation(async () => ({ data: manyDishes(0) }))
+    await renderPage()
+    openTab("Idiomas")
+    expect(within(screen.getByRole("tabpanel", { name: "Idiomas" })).getByText("Aún no hay platos en el menú.")).toBeTruthy()
+  })
+})
+
+describe("CartaSettingsPage — Platos y etiquetas table (S8)", () => {
+  it("search and Sin etiquetas filter the rows", async () => {
+    await renderPage()
+    openTab("Pedidos y platos")
+    expect(screen.getByRole("button", { name: "Con etiquetas (1)" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Pausados (0)" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Sin etiquetas (1)" }))
+    expect(tagRows().map((r) => r.getAttribute("aria-label"))).toEqual(["Etiquetas de Chorizo santarrosano"])
+    fireEvent.click(screen.getByRole("button", { name: "Todos (2)" }))
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar plato" }), { target: { value: "CHURRASCO" } })
+    expect(tagRows().map((r) => r.getAttribute("aria-label"))).toEqual(["Etiquetas de Churrasco a la leña"])
+  })
+
+  it("Lo más pedido is not an editable tag and row save shows only when dirty", async () => {
+    await renderPage()
+    openTab("Pedidos y platos")
+    const row = screen.getByRole("group", { name: "Etiquetas de Churrasco a la leña" })
+    expect(within(row).queryByRole("button", { name: /Lo más pedido/ })).toBeNull()
+    expect(within(row).queryByRole("button", { name: "Guardar" })).toBeNull()
+    fireEvent.click(within(row).getByRole("button", { name: "Picante" }))
+    expect(within(row).getByRole("button", { name: "Guardar" })).toBeTruthy()
+  })
+
+  it("Guardar cambios saves every dish with edited tags", async () => {
+    await renderPage()
+    openTab("Pedidos y platos")
+    fireEvent.click(within(screen.getByRole("group", { name: "Etiquetas de Churrasco a la leña" })).getByRole("button", { name: "Picante" }))
+    fireEvent.click(within(screen.getByRole("group", { name: "Etiquetas de Chorizo santarrosano" })).getByRole("button", { name: "Lácteos" }))
+    echoDish()
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios (2)" }))
+    await waitFor(() => expect(api.PUT).toHaveBeenCalledTimes(2))
+    expect(api.PUT.mock.calls.map((c) => c[1].body.tags)).toEqual([["gluten_free", "spicy"], ["dairy"]])
+    await waitFor(() => expect(screen.getByRole("button", { name: "Guardar cambios (0)" })).toBeTruthy())
   })
 })
