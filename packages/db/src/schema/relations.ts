@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, promotionCategories, promotionSubcategories, promotionComboGroups, promotionComboOptions, orderDiscounts, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones, subcategories, cartaSettings, cartaDayparts, cartaDaypartCategories, dishPublicDetails, tableQrTokens } from "./schema";
+import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, promotionCategories, promotionSubcategories, promotionComboGroups, promotionComboOptions, orderDiscounts, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones, subcategories, cartaSettings, cartaDayparts, cartaDaypartCategories, dishPublicDetails, tableQrTokens, cartaTableProposals, cartaTableRequests, cartaFeedback } from "./schema";
 
 export const businessConfigRelations = relations(businessConfig, ({one}) => ({
 	restaurant: one(restaurants, {
@@ -704,6 +704,55 @@ export const dishPublicDetailsRelations = relations(dishPublicDetails, ({one}) =
 export const tableQrTokensRelations = relations(tableQrTokens, ({one}) => ({
 	table: one(tables, {
 		fields: [tableQrTokens.tableId],
+		references: [tables.id]
+	}),
+}));
+
+export const cartaTableProposalsRelations = relations(cartaTableProposals, ({one}) => ({
+	restaurant: one(restaurants, {
+		fields: [cartaTableProposals.restaurantId],
+		references: [restaurants.id]
+	}),
+	table: one(tables, {
+		fields: [cartaTableProposals.tableId],
+		references: [tables.id]
+	}),
+	order: one(orders, {
+		fields: [cartaTableProposals.orderId],
+		references: [orders.id]
+	}),
+	decidedBy: one(profiles, {
+		fields: [cartaTableProposals.decidedBy],
+		references: [profiles.id]
+	}),
+}));
+
+export const cartaTableRequestsRelations = relations(cartaTableRequests, ({one}) => ({
+	restaurant: one(restaurants, {
+		fields: [cartaTableRequests.restaurantId],
+		references: [restaurants.id]
+	}),
+	table: one(tables, {
+		fields: [cartaTableRequests.tableId],
+		references: [tables.id]
+	}),
+	order: one(orders, {
+		fields: [cartaTableRequests.orderId],
+		references: [orders.id]
+	}),
+	resolvedBy: one(profiles, {
+		fields: [cartaTableRequests.resolvedBy],
+		references: [profiles.id]
+	}),
+}));
+
+export const cartaFeedbackRelations = relations(cartaFeedback, ({one}) => ({
+	restaurant: one(restaurants, {
+		fields: [cartaFeedback.restaurantId],
+		references: [restaurants.id]
+	}),
+	table: one(tables, {
+		fields: [cartaFeedback.tableId],
 		references: [tables.id]
 	}),
 }));
