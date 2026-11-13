@@ -2848,3 +2848,62 @@ export const cartaFeedback = pgTable("carta_feedback", {
 	check("carta_feedback_rating_check", sql`(rating >= 1) AND (rating <= 5)`),
 	check("carta_feedback_comment_check", sql`(comment IS NULL) OR (length(comment) <= 500)`),
 ]);
+
+/** A guest's delivery order from the public carta (0037): pending until staff confirm it (the API creates and links the delivery order) or reject it. vipe_api only reads. */
+export const cartaDeliveryRequests = pgTable("carta_delivery_requests", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	restaurantId: uuid("restaurant_id").notNull(),
+	trackingToken: text("tracking_token").notNull(),
+	customerName: text("customer_name").notNull(),
+	phone: text().notNull(),
+	address: text().notNull(),
+	neighborhood: text(),
+	notes: text(),
+	paymentMethod: text("payment_method").notNull(),
+	cashFrom: integer("cash_from"),
+	items: jsonb().notNull(),
+	deliveryFee: bigint("delivery_fee", { mode: "number" }).default(0).notNull(),
+	status: text().default('pending').notNull(),
+	rejectReason: text("reject_reason"),
+	deliveryOrderId: uuid("delivery_order_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	decidedAt: timestamp("decided_at", { withTimezone: true, mode: 'string' }),
+	decidedBy: uuid("decided_by"),
+}, (table) => [
+	uniqueIndex("carta_delivery_requests_delivery_order_key").using("btree", table.deliveryOrderId.asc().nullsLast().op("uuid_ops")).where(sql`(delivery_order_id IS NOT NULL)`),
+	index("idx_carta_delivery_requests_pending").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.phone.asc().nullsLast().op("text_ops")).where(sql`(status = 'pending'::text)`),
+	index("idx_carta_delivery_requests_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	unique("carta_delivery_requests_tracking_token_key").on(table.trackingToken),
+	foreignKey({
+			columns: [table.restaurantId],
+			foreignColumns: [restaurants.id],
+			name: "carta_delivery_requests_restaurant_id_fkey"
+		}).onDelete("cascade"),
+	// ON DELETE SET NULL (delivery_order_id) in SQL: drizzle cannot express the column list.
+	foreignKey({
+			columns: [table.restaurantId, table.deliveryOrderId],
+			foreignColumns: [orders.restaurantId, orders.id],
+			name: "carta_delivery_requests_delivery_order_id_fkey"
+		}).onDelete("set null"),
+	// ON DELETE SET NULL (decided_by) in SQL.
+	foreignKey({
+			columns: [table.restaurantId, table.decidedBy],
+			foreignColumns: [profiles.restaurantId, profiles.id],
+			name: "carta_delivery_requests_decided_by_fkey"
+		}).onDelete("set null"),
+	pgPolicy("carta_delivery_requests_select_policy", { as: "permissive", for: "select", to: ["vipe_api"], using: sql`((( SELECT private.current_app_role() AS current_app_role) = ANY (ARRAY['admin'::text, 'cashier'::text, 'delivery_operator'::text])) AND (restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id)))` }),
+	check("carta_delivery_requests_tracking_token_check", sql`tracking_token ~ '^[A-Za-z0-9_-]{24}$'::text`),
+	check("carta_delivery_requests_customer_name_check", sql`(length(btrim(customer_name)) >= 1) AND (length(btrim(customer_name)) <= 120)`),
+	check("carta_delivery_requests_phone_check", sql`phone ~ '^[0-9]{7,15}$'::text`),
+	check("carta_delivery_requests_address_check", sql`(length(btrim(address)) >= 6) AND (length(btrim(address)) <= 200)`),
+	check("carta_delivery_requests_neighborhood_check", sql`(neighborhood IS NULL) OR (length(neighborhood) <= 80)`),
+	check("carta_delivery_requests_notes_check", sql`(notes IS NULL) OR (length(notes) <= 200)`),
+	check("carta_delivery_requests_payment_method_check", sql`payment_method = ANY (ARRAY['cash'::text, 'card'::text, 'transfer'::text])`),
+	check("carta_delivery_requests_cash_from_check", sql`(cash_from IS NULL) OR ((payment_method = 'cash'::text) AND (cash_from >= 0))`),
+	check("carta_delivery_requests_items_check", sql`(jsonb_typeof(items) = 'array'::text) AND ((jsonb_array_length(items) >= 1) AND (jsonb_array_length(items) <= 20))`),
+	check("carta_delivery_requests_delivery_fee_check", sql`delivery_fee >= 0`),
+	check("carta_delivery_requests_status_check", sql`status = ANY (ARRAY['pending'::text, 'confirmed'::text, 'rejected'::text])`),
+	check("carta_delivery_requests_decided_check", sql`(status = 'pending'::text) = (decided_at IS NULL)`),
+	check("carta_delivery_requests_reject_reason_check", sql`(reject_reason IS NULL) OR ((status = 'rejected'::text) AND (length(reject_reason) <= 140))`),
+	check("carta_delivery_requests_delivery_order_check", sql`(delivery_order_id IS NULL) OR (status = 'confirmed'::text)`),
+]);

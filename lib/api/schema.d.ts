@@ -2868,6 +2868,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/carta/{slug}/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaDeliveryController_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/delivery/{trackingToken}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaDeliveryController_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/pricing-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaDeliveryController_pricing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaDeliveryInboxController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-delivery/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaDeliveryInboxController_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-delivery/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaDeliveryInboxController_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7441,6 +7537,143 @@ export interface components {
         RejectProposalRequest: {
             /** @description Shown to the guest. */
             reason?: string | null;
+        };
+        DeliveryCustomerRequest: {
+            name: string;
+            /**
+             * @description Normalized like the delivery console (+57 mobile prefix dropped): 7 to 15 digits.
+             * @example 300 123 4567
+             */
+            phone: string;
+            address: string;
+            neighborhood?: string | null;
+        };
+        DeliveryPaymentRequest: {
+            /**
+             * @description Paid on delivery: Efectivo, Datáfono or Transferencia.
+             * @enum {string}
+             */
+            method: "cash" | "card" | "transfer";
+            /** @description "¿Con cuánto pagas?" (cash only). */
+            cashFrom?: number | null;
+        };
+        DeliverySubmitRequest: {
+            customer: components["schemas"]["DeliveryCustomerRequest"];
+            items: components["schemas"]["ProposalLineRequest"][];
+            payment: components["schemas"]["DeliveryPaymentRequest"];
+            notes?: string | null;
+        };
+        DeliverySubmitted: {
+            /** Format: uuid */
+            requestId: string;
+            /** @description Follow the order with GET /carta/:slug/delivery/:trackingToken (24 base64url characters). */
+            trackingToken: string;
+            /** @example pending */
+            status: string;
+            createdAt: string;
+        };
+        GuestDeliveryLine: {
+            name: string | null;
+            quantity: number;
+        };
+        GuestDeliveryStatus: {
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "rejected";
+            /**
+             * @description Recibido, Confirmado, En camino, Entregado: the delivery order's status once confirmed.
+             * @enum {string}
+             */
+            stage: "pending" | "rejected" | "received" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "failed" | "cancelled";
+            rejectReason: string | null;
+            createdAt: string;
+            lines: components["schemas"]["GuestDeliveryLine"][];
+            /** @description The delivery fee shown when sending. */
+            deliveryFee: number;
+            /** @description Null until the delivery order exists; then its total plus the delivery fee. */
+            total: number | null;
+            /**
+             * @description "Pedido D-0142": the delivery order's number once it exists.
+             * @example 142
+             */
+            orderNumber: number | null;
+            /** @enum {string} */
+            paymentMethod: "cash" | "card" | "transfer";
+        };
+        GuestPricingRequest: {
+            /** @enum {string} */
+            channel: "dine_in" | "takeaway" | "delivery";
+            items: components["schemas"]["ProposalLineRequest"][];
+        };
+        GuestPricingDiscount: {
+            /** @enum {string} */
+            kind: "promotion_item" | "combo" | "promotion_bill";
+            /** Format: uuid */
+            promotionId: string | null;
+            label: string;
+            amount: number;
+        };
+        GuestPricingLine: {
+            /** Format: uuid */
+            dishId: string;
+            name: string;
+            quantity: number;
+            /** @description Unit list price, options included. */
+            unitPrice: number;
+            /** Format: uuid */
+            promotionId: string | null;
+            promotionName: string | null;
+            discounts: components["schemas"]["GuestPricingDiscount"][];
+        };
+        GuestPricing: {
+            /** @enum {string} */
+            channel: "dine_in" | "takeaway" | "delivery";
+            /** @description In the order sent; same values as POST /orders/pricing-preview draft lines. */
+            lines: components["schemas"]["GuestPricingLine"][];
+            billDiscount: components["schemas"]["GuestPricingDiscount"] | null;
+            grossSubtotal: number;
+            totalDiscounts: number;
+            netSubtotal: number;
+            /** @description The carta's delivery fee on delivery, else 0. */
+            deliveryFee: number;
+            /** @description netSubtotal + deliveryFee. */
+            total: number;
+        };
+        DeliveryInboxLine: {
+            /** Format: uuid */
+            dishId: string;
+            name: string | null;
+            quantity: number;
+            note: string | null;
+            options: components["schemas"]["InboxOption"][];
+        };
+        DeliveryInboxRequest: {
+            /** Format: uuid */
+            id: string;
+            customerName: string;
+            /** @description The name already registered for this phone (null when new). Confirming keeps it; the carta name goes to the delivery notes. */
+            registeredName: string | null;
+            phone: string;
+            address: string;
+            neighborhood: string | null;
+            notes: string | null;
+            /** @enum {string} */
+            paymentMethod: "cash" | "card" | "transfer";
+            cashFrom: number | null;
+            deliveryFee: number;
+            createdAt: string;
+            lines: components["schemas"]["DeliveryInboxLine"][];
+            /** @description netSubtotal of POST /orders/pricing-preview on delivery now; null when a line no longer prices. */
+            previewSubtotal: number | null;
+            /** @description previewSubtotal + deliveryFee. */
+            previewTotal: number | null;
+        };
+        DeliveryRequestConfirmed: {
+            /** Format: uuid */
+            requestId: string;
+            /** @example confirmed */
+            status: string;
+            /** @description POST /delivery/orders' answer for the order created on confirm. */
+            order: components["schemas"]["CreateDeliveryOrderResult"];
         };
     };
     responses: never;
@@ -16307,6 +16540,279 @@ export interface operations {
             };
             /** @description No encontramos esta solicitud. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryController_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliverySubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Pending in the delivery inbox; stock and the kitchen ticket happen only when an operator confirms it. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliverySubmitted"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este restaurante recibe los domicilios por WhatsApp. | Uno de los platos se acabó por hoy. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Escribe tu nombre (hasta 120 caracteres). | El celular debe tener entre 7 y 15 dígitos. | Escribe la dirección completa (entre 6 y 200 caracteres). | El barrio admite hasta 80 caracteres. | Elige cómo pagas: efectivo, datáfono o transferencia. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. | La nota del pedido admite hasta 200 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya tienes pedidos pendientes; el restaurante te confirmará en minutos. (2 pending per phone) | El restaurante está recibiendo muchos pedidos; intenta en unos minutos. (30 pending within the hour) | Demasiadas solicitudes. Intenta de nuevo en un momento. (3 a minute). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryController_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                trackingToken: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description "Pedido D-0142 recibido": the stage of the request and, once confirmed, of its delivery. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestDeliveryStatus"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryController_pricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestPricingRequest"];
+            };
+        };
+        responses: {
+            /** @description The totals the guest will see, with the engine of POST /orders/pricing-preview; writes nothing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestPricing"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Uno de los platos se acabó por hoy. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Elige domicilio, para llevar o en la mesa. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 30 a minute. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryInboxController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending guest delivery requests, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryInboxRequest"][];
+                };
+            };
+            /** @description Not an admin, cashier or delivery operator (confirm: admin or delivery operator). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryInboxController_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The delivery order was created as POST /delivery/orders does (stock, kitchen ticket) and linked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryRequestConfirmed"];
+                };
+            };
+            /** @description Not an admin, cashier or delivery operator (confirm: admin or delivery operator). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este pedido a domicilio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este pedido ya fue confirmado o rechazado. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid id, or the console path refused a line (options, dish). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryInboxController_reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectProposalRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an admin, cashier or delivery operator (confirm: admin or delivery operator). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este pedido a domicilio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este pedido ya fue confirmado o rechazado. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El motivo admite hasta 140 caracteres. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

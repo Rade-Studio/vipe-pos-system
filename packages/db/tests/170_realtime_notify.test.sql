@@ -40,8 +40,8 @@ SELECT is(
      JOIN pg_proc p ON p.oid = t.tgfoid
      JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'private' AND p.proname = 'notify_change')::bigint,
-  7::bigint,
-  'only the realtime tables (order_items since T8a, zones since the floor plan, carta_table_proposals and carta_table_requests since the carta) use private.notify_change'
+  8::bigint,
+  'only the realtime tables (order_items since T8a, zones since the floor plan, carta_table_proposals, carta_table_requests and carta_delivery_requests since the carta) use private.notify_change'
 );
 
 -- 6. Both payload functions pin search_path to the empty string.

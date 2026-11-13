@@ -20,6 +20,13 @@ describe('cartaDbError', () => {
     expect(error.message).toBe('Para pedir desde aquí, la mesa debe estar abierta');
   });
 
+  it('a code shared by two functions keeps the copy of each (delivery vs table proposals)', () => {
+    const delivery = thrown(pgError('guest_submit_delivery: too_many_pending')) as HttpException;
+    expect([delivery.getStatus(), delivery.message]).toEqual([429, 'Ya tienes pedidos pendientes; el restaurante te confirmará en minutos.']);
+    const table = thrown(pgError('guest_submit_proposal: too_many_pending')) as HttpException;
+    expect([table.getStatus(), table.message]).toEqual([429, 'Ya enviaste varios pedidos; espera a que el mesero los revise.']);
+  });
+
   it('never forwards the raw message of an unmapped carta code', () => {
     const error = thrown(pgError('guest_submit_proposal: brand_new_code')) as HttpException;
     expect(error).toBeInstanceOf(HttpException);

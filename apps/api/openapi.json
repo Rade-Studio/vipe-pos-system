@@ -10045,6 +10045,283 @@
           "carta-inbox"
         ]
       }
+    },
+    "/api/carta/{slug}/delivery": {
+      "post": {
+        "operationId": "CartaDeliveryController_submit",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliverySubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pending in the delivery inbox; stock and the kitchen ticket happen only when an operator confirms it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliverySubmitted"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "409": {
+            "description": "Este restaurante recibe los domicilios por WhatsApp. | Uno de los platos se acabó por hoy."
+          },
+          "422": {
+            "description": "Escribe tu nombre (hasta 120 caracteres). | El celular debe tener entre 7 y 15 dígitos. | Escribe la dirección completa (entre 6 y 200 caracteres). | El barrio admite hasta 80 caracteres. | Elige cómo pagas: efectivo, datáfono o transferencia. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. | La nota del pedido admite hasta 200 caracteres."
+          },
+          "429": {
+            "description": "Ya tienes pedidos pendientes; el restaurante te confirmará en minutos. (2 pending per phone) | El restaurante está recibiendo muchos pedidos; intenta en unos minutos. (30 pending within the hour) | Demasiadas solicitudes. Intenta de nuevo en un momento. (3 a minute)."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/delivery/{trackingToken}": {
+      "get": {
+        "operationId": "CartaDeliveryController_status",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trackingToken",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "\"Pedido D-0142 recibido\": the stage of the request and, once confirmed, of its delivery.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestDeliveryStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/pricing-preview": {
+      "post": {
+        "operationId": "CartaDeliveryController_pricing",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestPricingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The totals the guest will see, with the engine of POST /orders/pricing-preview; writes nothing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPricing"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "409": {
+            "description": "Uno de los platos se acabó por hoy."
+          },
+          "422": {
+            "description": "Elige domicilio, para llevar o en la mesa. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. 30 a minute."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta-delivery": {
+      "get": {
+        "operationId": "CartaDeliveryInboxController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Pending guest delivery requests, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryInboxRequest"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin, cashier or delivery operator (confirm: admin or delivery operator)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-delivery"
+        ]
+      }
+    },
+    "/api/carta-delivery/{id}/confirm": {
+      "post": {
+        "operationId": "CartaDeliveryInboxController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The delivery order was created as POST /delivery/orders does (stock, kitchen ticket) and linked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryRequestConfirmed"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin, cashier or delivery operator (confirm: admin or delivery operator)."
+          },
+          "404": {
+            "description": "No encontramos este pedido a domicilio."
+          },
+          "409": {
+            "description": "Este pedido ya fue confirmado o rechazado."
+          },
+          "422": {
+            "description": "Invalid id, or the console path refused a line (options, dish)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-delivery"
+        ]
+      }
+    },
+    "/api/carta-delivery/{id}/reject": {
+      "post": {
+        "operationId": "CartaDeliveryInboxController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectProposalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "Not an admin, cashier or delivery operator (confirm: admin or delivery operator)."
+          },
+          "404": {
+            "description": "No encontramos este pedido a domicilio."
+          },
+          "409": {
+            "description": "Este pedido ya fue confirmado o rechazado."
+          },
+          "422": {
+            "description": "El motivo admite hasta 140 caracteres."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-delivery"
+        ]
+      }
     }
   },
   "info": {
@@ -23953,6 +24230,499 @@
             "description": "Shown to the guest."
           }
         }
+      },
+      "DeliveryCustomerRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "phone": {
+            "type": "string",
+            "example": "300 123 4567",
+            "description": "Normalized like the delivery console (+57 mobile prefix dropped): 7 to 15 digits."
+          },
+          "address": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 200
+          },
+          "neighborhood": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "name",
+          "phone",
+          "address"
+        ]
+      },
+      "DeliveryPaymentRequest": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "card",
+              "transfer"
+            ],
+            "description": "Paid on delivery: Efectivo, Datáfono or Transferencia."
+          },
+          "cashFrom": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "description": "\"¿Con cuánto pagas?\" (cash only)."
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "DeliverySubmitRequest": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/DeliveryCustomerRequest"
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalLineRequest"
+            }
+          },
+          "payment": {
+            "$ref": "#/components/schemas/DeliveryPaymentRequest"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "customer",
+          "items",
+          "payment"
+        ]
+      },
+      "DeliverySubmitted": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "trackingToken": {
+            "type": "string",
+            "description": "Follow the order with GET /carta/:slug/delivery/:trackingToken (24 base64url characters)."
+          },
+          "status": {
+            "type": "string",
+            "example": "pending"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "trackingToken",
+          "status",
+          "createdAt"
+        ]
+      },
+      "GuestDeliveryLine": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "quantity"
+        ]
+      },
+      "GuestDeliveryStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "rejected"
+            ]
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "rejected",
+              "received",
+              "preparing",
+              "ready",
+              "out_for_delivery",
+              "delivered",
+              "failed",
+              "cancelled"
+            ],
+            "description": "Recibido, Confirmado, En camino, Entregado: the delivery order's status once confirmed."
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestDeliveryLine"
+            }
+          },
+          "deliveryFee": {
+            "type": "number",
+            "description": "The delivery fee shown when sending."
+          },
+          "total": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null until the delivery order exists; then its total plus the delivery fee."
+          },
+          "orderNumber": {
+            "type": "number",
+            "nullable": true,
+            "example": 142,
+            "description": "\"Pedido D-0142\": the delivery order's number once it exists."
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "card",
+              "transfer"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "stage",
+          "rejectReason",
+          "createdAt",
+          "lines",
+          "deliveryFee",
+          "total",
+          "orderNumber",
+          "paymentMethod"
+        ]
+      },
+      "GuestPricingRequest": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "takeaway",
+              "delivery"
+            ]
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalLineRequest"
+            }
+          }
+        },
+        "required": [
+          "channel",
+          "items"
+        ]
+      },
+      "GuestPricingDiscount": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "promotion_item",
+              "combo",
+              "promotion_bill"
+            ]
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "label": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "promotionId",
+          "label",
+          "amount"
+        ]
+      },
+      "GuestPricingLine": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "number",
+            "description": "Unit list price, options included."
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "promotionName": {
+            "type": "string",
+            "nullable": true
+          },
+          "discounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestPricingDiscount"
+            }
+          }
+        },
+        "required": [
+          "dishId",
+          "name",
+          "quantity",
+          "unitPrice",
+          "promotionId",
+          "promotionName",
+          "discounts"
+        ]
+      },
+      "GuestPricing": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "takeaway",
+              "delivery"
+            ]
+          },
+          "lines": {
+            "description": "In the order sent; same values as POST /orders/pricing-preview draft lines.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestPricingLine"
+            }
+          },
+          "billDiscount": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuestPricingDiscount"
+              }
+            ]
+          },
+          "grossSubtotal": {
+            "type": "number"
+          },
+          "totalDiscounts": {
+            "type": "number"
+          },
+          "netSubtotal": {
+            "type": "number"
+          },
+          "deliveryFee": {
+            "type": "number",
+            "description": "The carta's delivery fee on delivery, else 0."
+          },
+          "total": {
+            "type": "number",
+            "description": "netSubtotal + deliveryFee."
+          }
+        },
+        "required": [
+          "channel",
+          "lines",
+          "billDiscount",
+          "grossSubtotal",
+          "totalDiscounts",
+          "netSubtotal",
+          "deliveryFee",
+          "total"
+        ]
+      },
+      "DeliveryInboxLine": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxOption"
+            }
+          }
+        },
+        "required": [
+          "dishId",
+          "name",
+          "quantity",
+          "note",
+          "options"
+        ]
+      },
+      "DeliveryInboxRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "registeredName": {
+            "type": "string",
+            "nullable": true,
+            "description": "The name already registered for this phone (null when new). Confirming keeps it; the carta name goes to the delivery notes."
+          },
+          "phone": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "neighborhood": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "card",
+              "transfer"
+            ]
+          },
+          "cashFrom": {
+            "type": "number",
+            "nullable": true
+          },
+          "deliveryFee": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryInboxLine"
+            }
+          },
+          "previewSubtotal": {
+            "type": "number",
+            "nullable": true,
+            "description": "netSubtotal of POST /orders/pricing-preview on delivery now; null when a line no longer prices."
+          },
+          "previewTotal": {
+            "type": "number",
+            "nullable": true,
+            "description": "previewSubtotal + deliveryFee."
+          }
+        },
+        "required": [
+          "id",
+          "customerName",
+          "registeredName",
+          "phone",
+          "address",
+          "neighborhood",
+          "notes",
+          "paymentMethod",
+          "cashFrom",
+          "deliveryFee",
+          "createdAt",
+          "lines",
+          "previewSubtotal",
+          "previewTotal"
+        ]
+      },
+      "DeliveryRequestConfirmed": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "example": "confirmed"
+          },
+          "order": {
+            "description": "POST /delivery/orders' answer for the order created on confirm.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateDeliveryOrderResult"
+              }
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "status",
+          "order"
+        ]
       }
     }
   }
