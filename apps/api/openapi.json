@@ -24564,13 +24564,22 @@
           "netSubtotal": {
             "type": "number"
           },
+          "taxPercentage": {
+            "type": "number",
+            "example": 8,
+            "description": "The tax percentage the guest total includes: only delivery adds tax, read as create_delivery_order (missing 0, an unusable value 0); dine_in and takeaway are always 0 (their total stays the net subtotal)."
+          },
+          "tax": {
+            "type": "number",
+            "description": "round(netSubtotal x taxPercentage / 100), as the bill; no tax on the delivery fee."
+          },
           "deliveryFee": {
             "type": "number",
             "description": "The carta's delivery fee on delivery, else 0."
           },
           "total": {
             "type": "number",
-            "description": "netSubtotal + deliveryFee."
+            "description": "netSubtotal + tax + deliveryFee: the amount due, without a tip."
           }
         },
         "required": [
@@ -24580,6 +24589,8 @@
           "grossSubtotal",
           "totalDiscounts",
           "netSubtotal",
+          "taxPercentage",
+          "tax",
           "deliveryFee",
           "total"
         ]
@@ -24675,10 +24686,15 @@
             "nullable": true,
             "description": "netSubtotal of POST /orders/pricing-preview on delivery now; null when a line no longer prices."
           },
+          "previewTax": {
+            "type": "number",
+            "nullable": true,
+            "description": "round(previewSubtotal x the delivery order's tax percentage / 100), as the guest preview; null with previewSubtotal."
+          },
           "previewTotal": {
             "type": "number",
             "nullable": true,
-            "description": "previewSubtotal + deliveryFee."
+            "description": "previewSubtotal + previewTax + deliveryFee: the total the guest saw."
           }
         },
         "required": [
@@ -24695,6 +24711,7 @@
           "createdAt",
           "lines",
           "previewSubtotal",
+          "previewTax",
           "previewTotal"
         ]
       },

@@ -8,6 +8,7 @@ import { DeliveryService } from '../delivery/delivery.service';
 import { OrdersService } from '../orders/orders.service';
 import type { DeliveryInboxRequest, DeliveryPaymentMethod, DeliveryRequestConfirmed } from './carta-delivery.dto';
 import { cartaDbError } from './carta-errors';
+import { percentOf } from './carta-pricing';
 
 /** private.confirm_delivery_request (0038). */
 interface ConfirmedRequest {
@@ -43,9 +44,9 @@ export class CartaDeliveryInboxService {
     private readonly orders: OrdersService,
   ) {}
 
-  /** Pending requests, newest first, each priced now on delivery by the staff pricing preview. */
+  /** Pending requests, newest first, each priced now on delivery by the staff pricing preview, with the delivery order's tax. */
   async list(): Promise<DeliveryInboxRequest[]> {
-    const requests = await this.rows<Omit<DeliveryInboxRequest, 'previewSubtotal' | 'previewTotal'>>(sql`
+    const requests = await this.rows<Omit<DeliveryInboxRequest, 'previewSubtotal' | 'previewTax' | 'previewTotal'>>(sql`
       SELECT jsonb_build_object(
                'id', d.id, 'customerName', d.customer_name,
                -- The name already registered for that phone (null when new): a carta order never renames it.
@@ -64,10 +65,20 @@ export class CartaDeliveryInboxService {
         FROM public.carta_delivery_requests d
        WHERE d.status = 'pending'
        ORDER BY d.created_at DESC, d.id DESC`);
+    // The tax the confirmed delivery order applies, as the guest preview (none when it cannot be used).
+    const [{ percentage }] = await this.rows<{ percentage: number | string | null }>(
+      sql`SELECT jsonb_build_object('percentage', private.delivery_tax_percentage(private.current_restaurant_id())) AS row`,
+    );
     const priced: DeliveryInboxRequest[] = [];
     for (const request of requests) {
       const subtotal = await this.previewSubtotal(request.lines);
-      priced.push({ ...request, previewSubtotal: subtotal, previewTotal: subtotal === null ? null : subtotal + request.deliveryFee });
+      const tax = subtotal === null ? null : percentage === null ? 0 : percentOf(subtotal, String(percentage));
+      priced.push({
+        ...request,
+        previewSubtotal: subtotal,
+        previewTax: tax,
+        previewTotal: subtotal === null || tax === null ? null : subtotal + tax + request.deliveryFee,
+      });
     }
     return priced;
   }

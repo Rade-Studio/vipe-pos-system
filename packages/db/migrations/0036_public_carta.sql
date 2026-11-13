@@ -412,6 +412,29 @@ REVOKE ALL ON FUNCTION private.guest_restaurant(text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION private.guest_restaurant(text) TO vipe_api;
 --> statement-breakpoint
+-- create_delivery_order's tax reading (0023): a missing or empty value is 0,
+-- otherwise value::numeric; NULL when that cast fails or is not finite, as
+-- such an order cannot be created. SECURITY INVOKER: RLS scopes staff callers.
+CREATE FUNCTION private.delivery_tax_percentage(p_restaurant_id uuid) RETURNS numeric
+    LANGUAGE sql STABLE
+    SET search_path TO ''
+    AS $$
+  SELECT CASE
+           WHEN s.v IS NULL THEN 0
+           WHEN NOT pg_input_is_valid(s.v, 'numeric') THEN NULL
+           WHEN s.v::numeric IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric) THEN NULL
+           ELSE s.v::numeric
+         END
+    FROM (SELECT (SELECT nullif(bc.value, '') FROM public.business_config bc
+                   WHERE bc.restaurant_id = p_restaurant_id AND bc.key = 'tax_percentage' LIMIT 1) AS v) s
+$$;
+--> statement-breakpoint
+COMMENT ON FUNCTION private.delivery_tax_percentage(uuid) IS 'The tax_percentage create_delivery_order (0023) applies: missing or empty -> 0, else value::numeric; NULL when the cast fails or is not finite (the order would fail). For guest_carta and the staff carta delivery inbox.';
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION private.delivery_tax_percentage(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION private.delivery_tax_percentage(uuid) TO vipe_api;
+--> statement-breakpoint
 CREATE FUNCTION private.guest_carta(p_slug text) RETURNS jsonb
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO ''
@@ -447,13 +470,19 @@ CREATE FUNCTION private.guest_carta(p_slug text) RETURNS jsonb
              SELECT substring(btrim(bc.value, E' \t\r\n') FROM '^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)')::numeric
                FROM public.business_config bc
               WHERE bc.restaurant_id = r.id AND bc.key = 'tip_percentage'
-              LIMIT 1), 10))
+              LIMIT 1), 10),
+           'taxPercentage', coalesce((
+             SELECT substring(btrim(bc.value, E' \t\r\n') FROM '^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)')::numeric
+               FROM public.business_config bc
+              WHERE bc.restaurant_id = r.id AND bc.key = 'tax_percentage'
+              LIMIT 1), 10),
+           'deliveryTaxPercentage', private.delivery_tax_percentage(r.id))
     FROM public.restaurants r
     JOIN public.carta_settings s ON s.restaurant_id = r.id
    WHERE r.id = private.guest_restaurant(p_slug)
 $$;
 --> statement-breakpoint
-COMMENT ON FUNCTION private.guest_carta(text) IS 'Guest-facing (public menu, no login, no app.user_id): the carta of a published slug, NULL otherwise. {restaurant: {name, slug, timezone, currency}, settings: {description, brandColor, logoUrl, coverUrl, instagram, tiktok, whatsapp, mapsUrl, googleReviewUrl, tableOrderingEnabled, deliveryOrderingEnabled, showTableBill, englishEnabled, openingHours}, dayparts: [{id, name, nameEn, startsAt "HH:MM", endsAt "HH:MM", sortOrder, featuredDishId, categoryIds}] (sort_order, starts_at), deliveryFee (business_config delivery_default_fee, a whole non-negative number else 0), tipPercentage (tip_percentage, default 10)}. Never returns timestamps, other business_config keys or staff data.';
+COMMENT ON FUNCTION private.guest_carta(text) IS 'Guest-facing (public menu, no login, no app.user_id): the carta of a published slug, NULL otherwise. {restaurant: {name, slug, timezone, currency}, settings: {description, brandColor, logoUrl, coverUrl, instagram, tiktok, whatsapp, mapsUrl, googleReviewUrl, tableOrderingEnabled, deliveryOrderingEnabled, showTableBill, englishEnabled, openingHours}, dayparts: [{id, name, nameEn, startsAt "HH:MM", endsAt "HH:MM", sortOrder, featuredDishId, categoryIds}] (sort_order, starts_at), deliveryFee (business_config delivery_default_fee, a whole non-negative number else 0), tipPercentage (tip_percentage, default 10), taxPercentage (tax_percentage, default 10: dine_in and takeaway), deliveryTaxPercentage (private.delivery_tax_percentage: missing 0, NULL when unusable)}. Never returns timestamps, other business_config keys or staff data.';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION private.guest_carta(text) FROM PUBLIC;
 --> statement-breakpoint

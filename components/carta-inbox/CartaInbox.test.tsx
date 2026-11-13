@@ -31,6 +31,8 @@ vi.mock("@/lib/api/realtime", () => ({
 }))
 
 import { CartaInbox } from "./CartaInbox"
+import { TerminalContext, type IdentityRequest, type TerminalApi } from "@/components/terminal/terminal-context"
+import { actingToken, clearActingToken, setActingToken } from "@/lib/terminal/acting"
 
 const proposal = {
   id: "p-1",
@@ -168,5 +170,58 @@ describe("carta inbox", () => {
     env.inbox = { proposals: [proposal, { ...proposal, id: "p-2", tableNumber: 3 }], requests: [billRequest, waiterRequest] }
     env.listeners.forEach((l) => l({ table: "carta_table_proposals", eventType: "INSERT", new: { id: "p-2" }, old: {} }))
     expect(await screen.findByRole("button", { name: "Carta (4 pendientes)" })).toBeInTheDocument()
+  })
+
+  describe("on a shared terminal (T5b, L29)", () => {
+    /** The terminal around the waiter app: a valid PIN sets the acting claim the API client sends on writes. */
+    function onTerminal(identified: boolean) {
+      const ensureIdentity = vi.fn(async (_request: IdentityRequest) => {
+        if (identified) setActingToken("acting-andres")
+        return identified
+      })
+      const terminal: TerminalApi = { identity: null, now: 0, ensureIdentity, endIdentity: () => {}, requestLogout: () => {} }
+      const sent: (string | null)[] = []
+      env.post.mockImplementation(async (url: string) => {
+        sent.push(actingToken())
+        return url.endsWith("/confirm") ? { data: { proposalId: "p-1", orderId: "o-1", status: "confirmed", stage: "kitchen", orderItemIds: ["i-1", "i-2"] } } : { data: undefined }
+      })
+      render(wrap(<TerminalContext.Provider value={terminal}><CartaInbox /></TerminalContext.Provider>))
+      return { ensureIdentity, sent }
+    }
+    const open = async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Carta (3 pendientes)" }))
+      return screen.findByRole("dialog", { name: "Pedidos de la carta" })
+    }
+
+    beforeEach(() => clearActingToken())
+
+    it("confirm asks for the PIN first and sends the identified waiter's acting claim", async () => {
+      const { ensureIdentity, sent } = onTerminal(true)
+      fireEvent.click(within(await open()).getByRole("button", { name: "Confirmar" }))
+      await waitFor(() => expect(env.post).toHaveBeenCalledWith("/api/carta-inbox/proposals/{id}/confirm", { params: { path: { id: "p-1" } } }))
+      expect(ensureIdentity).toHaveBeenCalledWith({ label: "Mesa 12" })
+      expect(sent).toEqual(["acting-andres"])
+    })
+
+    it("reject and Atendido go through the PIN too", async () => {
+      const { ensureIdentity, sent } = onTerminal(true)
+      const dialog = await open()
+      fireEvent.click(within(dialog).getByRole("button", { name: "Rechazar" }))
+      fireEvent.click(within(dialog).getByRole("button", { name: "Rechazar pedido" }))
+      await waitFor(() => expect(env.post).toHaveBeenCalledTimes(1))
+      const request = within(dialog).getByRole("article", { name: "Mesa 12 pide la cuenta" })
+      fireEvent.click(within(request).getByRole("button", { name: "Atendido" }))
+      await waitFor(() => expect(env.post).toHaveBeenCalledWith("/api/carta-inbox/requests/{id}/resolve", { params: { path: { id: "r-1" } } }))
+      expect(ensureIdentity).toHaveBeenCalledTimes(2)
+      expect(sent).toEqual(["acting-andres", "acting-andres"])
+    })
+
+    it("a closed PIN sheet sends nothing", async () => {
+      const { ensureIdentity } = onTerminal(false)
+      fireEvent.click(within(await open()).getByRole("button", { name: "Confirmar" }))
+      await waitFor(() => expect(ensureIdentity).toHaveBeenCalledTimes(1))
+      expect(env.post).not.toHaveBeenCalled()
+      expect(env.sendCommand).not.toHaveBeenCalled()
+    })
   })
 })
