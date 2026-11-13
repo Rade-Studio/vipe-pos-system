@@ -6,7 +6,7 @@ import type { MenuDataSource, MenuSnapshot } from '../catalog/menu-data-source';
 import { dishGroupsFromRows } from '../catalog/modifiers.service';
 import { type PromotionJson, type RestaurantNow, toRecord } from '../promotions/promotion-catalog.service';
 
-/** private.guest_menu_data(slug) (0034), as pg parses the jsonb. */
+/** private.guest_menu_data(slug) (0035), as pg parses the jsonb. */
 export interface GuestMenuData {
   snapshot: MenuSnapshot | null;
   categories: {

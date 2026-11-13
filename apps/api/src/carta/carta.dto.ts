@@ -8,7 +8,7 @@ export const CARTA_MESSAGES = {
 
 /** restaurants.slug as the carta links use it. */
 export const cartaSlugSchema = z.string().regex(/^[a-z0-9-]{1,64}$/);
-/** table_qr_tokens.token (0034): 24 base64url characters. */
+/** table_qr_tokens.token (0035): 24 base64url characters. */
 export const tableTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{24}$/);
 export const cartaDishIdSchema = z.guid();
 
