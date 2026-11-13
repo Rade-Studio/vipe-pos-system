@@ -2964,6 +2964,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/carta-admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaAdminController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CartaAdminController_updateSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/dayparts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CartaAdminController_replaceDayparts"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/dishes/{dishId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CartaAdminController_updateDish"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/tables/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaAdminController_regenerateAll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/tables/{tableId}/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaAdminController_regenerateTable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/slug": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CartaAdminController_updateSlug"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaAdminController_createAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7683,6 +7811,192 @@ export interface components {
             status: string;
             /** @description POST /delivery/orders' answer for the order created on confirm. */
             order: components["schemas"]["CreateDeliveryOrderResult"];
+        };
+        CartaAdminRestaurant: {
+            /** @example Brasa & Leña */
+            name: string;
+            /** @example brasa-y-lena */
+            slug: string;
+            /**
+             * @description Path of the public carta on the web origin.
+             * @example /c/brasa-y-lena
+             */
+            publicPath: string;
+            /** @example America/Bogota */
+            timezone: string;
+        };
+        CartaAdminSettings: {
+            /** @description Short description under the name (<= 160). */
+            description: string | null;
+            /** @example #b4532a */
+            brandColor: string | null;
+            logoUrl: string | null;
+            coverUrl: string | null;
+            /** @description Handle without @. */
+            instagram: string | null;
+            /** @description Handle without @. */
+            tiktok: string | null;
+            /** @description Digits with country code. */
+            whatsapp: string | null;
+            mapsUrl: string | null;
+            googleReviewUrl: string | null;
+            tableOrderingEnabled: boolean;
+            deliveryOrderingEnabled: boolean;
+            showTableBill: boolean;
+            /** @description Off: lang is always es and no English text is returned. */
+            englishEnabled: boolean;
+            /** @description null = not configured (always open). */
+            openingHours: components["schemas"]["CartaOpeningHours"] | null;
+            /** @description false = the link and the QRs show not found ("Volvemos pronto"). */
+            published: boolean;
+        };
+        CartaAdminDaypart: {
+            /** Format: uuid */
+            id: string;
+            /** @example Desayuno */
+            name: string;
+            nameEn: string | null;
+            /** @example 07:00 */
+            startsAt: string;
+            /**
+             * @description Exclusive; later than startsAt.
+             * @example 11:00
+             */
+            endsAt: string;
+            sortOrder: number;
+            /**
+             * Format: uuid
+             * @description "Plato del día".
+             */
+            featuredDishId: string | null;
+            /** @description Category ids, in menu order. */
+            categoryIds: string[];
+        };
+        CartaAdminCategory: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            active: boolean;
+        };
+        CartaAdminDish: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Spanish description of the dish. */
+            description: string | null;
+            price: number;
+            /** Format: uuid */
+            categoryId: string | null;
+            imageUrl: string | null;
+            /** @description Paused dishes are hidden from the carta. */
+            active: boolean;
+            tags: ("vegetarian" | "spicy" | "gluten_free" | "dairy")[];
+            /** @description Written by the restaurant (no translation service). */
+            descriptionEn: string | null;
+            descriptionEnReviewed: boolean;
+            /** @description "Lo más pedido": the guest menu rule (top 5 by units on paid orders of the last 30 days). */
+            mostOrdered: boolean;
+        };
+        CartaAdminTable: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** @example Terraza */
+            zoneName: string | null;
+            /** @description Current QR token. */
+            token: string;
+            /** @example /c/brasa-y-lena/m/<token> */
+            guestPath: string;
+        };
+        CartaAdmin: {
+            restaurant: components["schemas"]["CartaAdminRestaurant"];
+            /** @description Defaults when the carta was never configured. */
+            settings: components["schemas"]["CartaAdminSettings"];
+            dayparts: components["schemas"]["CartaAdminDaypart"][];
+            categories: components["schemas"]["CartaAdminCategory"][];
+            dishes: components["schemas"]["CartaAdminDish"][];
+            tables: components["schemas"]["CartaAdminTable"][];
+            /** @description Read-only here: business_config delivery_default_fee (Ajustes · Domicilios). */
+            deliveryDefaultFee: number;
+        };
+        UpdateCartaSettingsRequest: {
+            published?: boolean;
+            /** @description Blank clears. */
+            description?: string | null;
+            /**
+             * @description Stored lower case.
+             * @example #b4532a
+             */
+            brandColor?: string | null;
+            /** @description https only, e.g. a publicUrl of POST /carta-admin/assets. */
+            logoUrl?: string | null;
+            /** @description https only. */
+            coverUrl?: string | null;
+            /** @description Handle without @. */
+            instagram?: string | null;
+            /** @description Handle without @. */
+            tiktok?: string | null;
+            /**
+             * @description 7-15 digits with country code.
+             * @example 573104567890
+             */
+            whatsapp?: string | null;
+            /** @description https only. */
+            mapsUrl?: string | null;
+            /** @description https only. */
+            googleReviewUrl?: string | null;
+            tableOrderingEnabled?: boolean;
+            deliveryOrderingEnabled?: boolean;
+            showTableBill?: boolean;
+            englishEnabled?: boolean;
+            openingHours?: components["schemas"]["CartaOpeningHours"] | null;
+        };
+        CartaDaypartInput: {
+            name: string;
+            nameEn?: string | null;
+            /** @example 07:00 */
+            startsAt: string;
+            /** @example 11:00 */
+            endsAt: string;
+            /** @description Defaults to the position in the list. */
+            sortOrder?: number;
+            /** Format: uuid */
+            featuredDishId?: string | null;
+            categoryIds: string[];
+        };
+        ReplaceCartaDaypartsRequest: {
+            /** @description The whole list; it replaces the current one. */
+            dayparts: components["schemas"]["CartaDaypartInput"][];
+        };
+        UpdateDishDetailsRequest: {
+            tags: ("vegetarian" | "spicy" | "gluten_free" | "dairy")[];
+            descriptionEn?: string | null;
+            descriptionEnReviewed: boolean;
+        };
+        CartaDishDetails: {
+            /** Format: uuid */
+            dishId: string;
+            tags: ("vegetarian" | "spicy" | "gluten_free" | "dairy")[];
+            descriptionEn: string | null;
+            descriptionEnReviewed: boolean;
+        };
+        CartaTablesQr: {
+            tables: components["schemas"]["CartaAdminTable"][];
+        };
+        UpdateCartaSlugRequest: {
+            /** @example la-parrilla */
+            slug: string;
+        };
+        CreateCartaAssetRequest: {
+            /** @enum {string} */
+            kind: "logo" | "cover";
+            /**
+             * @description The PUT must send this exact Content-Type.
+             * @enum {string}
+             */
+            contentType: "image/png" | "image/jpeg" | "image/webp";
+            /** @description Bytes. The PUT must send exactly this Content-Length. */
+            size: number;
         };
     };
     responses: never;
@@ -16822,6 +17136,308 @@ export interface operations {
             };
             /** @description El motivo admite hasta 140 caracteres. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Everything the settings page shows, for the caller's restaurant. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdmin"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_updateSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCartaSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Created on the first save; omitted fields keep their value. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdminSettings"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description One Spanish message for the first invalid field; nothing is written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_replaceDayparts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplaceCartaDaypartsRequest"];
+            };
+        };
+        responses: {
+            /** @description The new list; it replaced the previous one in one transaction. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdminDaypart"][];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Las categorías de la franja deben ser de tu restaurante. | El plato del día debe ser un plato de tu restaurante. | Cada franja empieza antes de terminar, en HH:MM y sin cruzar la medianoche. | ...; the previous list stays. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_updateDish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dishId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDishDetailsRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaDishDetails"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este plato. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Las etiquetas válidas son Vegetariano, Picante, Sin gluten y Lácteos. | La descripción en inglés admite hasta 400 caracteres. | Indica si revisaste la descripción en inglés. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_regenerateAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every table got a new token in one transaction; the printed QRs stop working. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaTablesQr"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_regenerateTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The table with its new token; the old QR stops working. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdminTable"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos esta mesa. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_updateSlug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCartaSlugRequest"];
+            };
+        };
+        responses: {
+            /** @description The new public link; the old one and its printed QRs stop working. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdminRestaurant"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ese enlace ya lo usa otro restaurante */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Usa minúsculas y números separados por guiones (sin tildes, espacios ni guiones al inicio o al final), hasta 64 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_createAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCartaAssetRequest"];
+            };
+        };
+        responses: {
+            /** @description Presigned PUT under <restaurantId>/carta/; save publicUrl as logoUrl or coverUrl. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadTicket"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Elige si subes el logo o la portada. | Sube una imagen PNG, JPG o WebP (no SVG). | La imagen puede pesar hasta 5 MB. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Storage is not configured (no S3_* variables). */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

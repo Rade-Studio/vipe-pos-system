@@ -260,6 +260,13 @@
       "when": 1793925281411,
       "tag": "0038_carta_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793928881411,
+      "tag": "0039_carta_admin",
+      "breakpoints": true
     }
   ]
 }

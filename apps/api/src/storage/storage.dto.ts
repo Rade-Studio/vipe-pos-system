@@ -4,6 +4,9 @@ import { z } from 'zod';
 /** Same limit as components/ui/image-upload.tsx, now enforced by the API and the signed Content-Length. */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const UPLOAD_KINDS = ['dish'] as const;
+/** Folders under `<restaurantId>/` the API issues keys in. */
+export const UPLOAD_FOLDERS = ['dishes', 'carta'] as const;
+export type UploadFolder = (typeof UPLOAD_FOLDERS)[number];
 
 /**
  * `image/<subtype>`. SVG is refused: it can carry scripts and the bucket
