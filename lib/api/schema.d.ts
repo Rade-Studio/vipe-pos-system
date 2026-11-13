@@ -2676,6 +2676,54 @@ export interface paths {
         patch: operations["DesktopAdminController_rename"];
         trace?: never;
     };
+    "/api/carta/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/m/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaController_table"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/p/{dishId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaController_dish"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6870,6 +6918,227 @@ export interface components {
         };
         RenameDeviceRequest: {
             name: string;
+        };
+        CartaRestaurant: {
+            /** @example Brasa & Leña */
+            name: string;
+            /** @example brasa-y-lena */
+            slug: string;
+            /** @example COP */
+            currency: string;
+        };
+        CartaOpeningDay: {
+            /**
+             * @description HH:MM, restaurant time.
+             * @example 07:00
+             */
+            opens: string;
+            /**
+             * @description HH:MM; earlier than opens = closes after midnight.
+             * @example 22:30
+             */
+            closes: string;
+        };
+        CartaOpeningHours: {
+            /** @description Monday; null = closed. */
+            1: components["schemas"]["CartaOpeningDay"] | null;
+            2: components["schemas"]["CartaOpeningDay"] | null;
+            3: components["schemas"]["CartaOpeningDay"] | null;
+            4: components["schemas"]["CartaOpeningDay"] | null;
+            5: components["schemas"]["CartaOpeningDay"] | null;
+            6: components["schemas"]["CartaOpeningDay"] | null;
+            /** @description Sunday. */
+            7: components["schemas"]["CartaOpeningDay"] | null;
+        };
+        CartaSettings: {
+            /** @description Short description under the name (<= 160). */
+            description: string | null;
+            /** @example #b4532a */
+            brandColor: string | null;
+            logoUrl: string | null;
+            coverUrl: string | null;
+            /** @description Handle without @. */
+            instagram: string | null;
+            /** @description Handle without @. */
+            tiktok: string | null;
+            /** @description Digits with country code. */
+            whatsapp: string | null;
+            mapsUrl: string | null;
+            googleReviewUrl: string | null;
+            tableOrderingEnabled: boolean;
+            deliveryOrderingEnabled: boolean;
+            showTableBill: boolean;
+            /** @description Off: lang is always es and no English text is returned. */
+            englishEnabled: boolean;
+            /** @description null = not configured (always open). */
+            openingHours: components["schemas"]["CartaOpeningHours"] | null;
+        };
+        CartaNextOpening: {
+            /**
+             * @description Restaurant-local date.
+             * @example 2026-11-11
+             */
+            date: string;
+            /** @example 07:00 */
+            opensAt: string;
+            /**
+             * @description 0 = later today, 1 = tomorrow, ...
+             * @example 1
+             */
+            inDays: number;
+        };
+        CartaDaypart: {
+            /** Format: uuid */
+            id: string;
+            /** @example Desayuno */
+            name: string;
+            /** @description null when unset or English is off. */
+            nameEn: string | null;
+            /** @example 07:00 */
+            startsAt: string;
+            /**
+             * @description Exclusive.
+             * @example 11:00
+             */
+            endsAt: string;
+            /** @description Its [startsAt, endsAt) holds now (server clock, restaurant timezone). */
+            current: boolean;
+            /**
+             * Format: uuid
+             * @description "Plato del día"; null unless listed in the menu.
+             */
+            featuredDishId: string | null;
+            /** @description Categories of the daypart that the menu lists, in menu order. */
+            categoryIds: string[];
+        };
+        CartaSubcategory: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        CartaModifierOption: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Added to the unit price. */
+            price: number;
+        };
+        CartaModifierGroup: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            required: boolean;
+            minSelect: number;
+            maxSelect: number | null;
+            options: components["schemas"]["CartaModifierOption"][];
+        };
+        CartaDish: {
+            /** Format: uuid */
+            id: string;
+            /** @description Always in Spanish. */
+            name: string;
+            description: string | null;
+            /** @description The restaurant's English description; only when English is on and it is set. */
+            descriptionEn?: string;
+            /** @description List price, as the waiter menu. */
+            price: number;
+            /** Format: uuid */
+            categoryId: string | null;
+            /** Format: uuid */
+            subcategoryId: string | null;
+            /** @description Opaque image reference, as the waiter menu. */
+            imageUrl: string | null;
+            allowComments: boolean;
+            /** @description false = "Agotado hoy": listed after the available dishes, cannot be added. */
+            available: boolean;
+            tags: ("vegetarian" | "spicy" | "gluten_free" | "dairy" | "most_ordered")[];
+            /**
+             * Format: uuid
+             * @description The automatic promotion a line would get now on the channel (waiter menu rule).
+             */
+            promotionId?: string;
+            promotionName?: string;
+            /** @example 2x1 */
+            promotionBadge?: string;
+            /**
+             * @description End of the current window; null = all day.
+             * @example 16:00
+             */
+            promotionEndsAt?: string | null;
+            /** @description Only for a product discount: the unit price after it. */
+            promoPrice?: number;
+            modifierGroups: components["schemas"]["CartaModifierGroup"][];
+        };
+        CartaCategory: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            icon: string;
+            color: string;
+            hasSubcategories: boolean;
+            subcategories: components["schemas"]["CartaSubcategory"][];
+            dishes: components["schemas"]["CartaDish"][];
+        };
+        CartaMenu: {
+            /** @description The waiter menu tree for the channel: same categories, dishes, prices, promotions and availability. */
+            categories: components["schemas"]["CartaCategory"][];
+            /** @description Active dishes without category. */
+            uncategorized: components["schemas"]["CartaDish"][];
+        };
+        CartaTable: {
+            /** @example 12 */
+            number: number;
+            /** @example Terraza */
+            zoneName: string | null;
+            /** @description The table has an open order (guest orders need it). */
+            isOpen: boolean;
+        };
+        Carta: {
+            /**
+             * @description lang query, else Accept-Language (en* = en), else es.
+             * @enum {string}
+             */
+            lang: "es" | "en";
+            /** @enum {string} */
+            channel: "dine_in" | "takeaway" | "delivery";
+            restaurant: components["schemas"]["CartaRestaurant"];
+            settings: components["schemas"]["CartaSettings"];
+            /** @description Server clock in the restaurant timezone; true when no hours are configured. */
+            isOpenNow: boolean;
+            /**
+             * @description When open: the time it closes.
+             * @example 22:30
+             */
+            closesAt: string | null;
+            /** @description When closed: the next opening. */
+            nextOpening: components["schemas"]["CartaNextOpening"] | null;
+            /** Format: uuid */
+            currentDaypartId: string | null;
+            dayparts: components["schemas"]["CartaDaypart"][];
+            menu: components["schemas"]["CartaMenu"];
+            /** @example 4000 */
+            deliveryFee: number;
+            /** @example 10 */
+            tipPercentage: number;
+            /** @description Only on the table QR route. */
+            table?: components["schemas"]["CartaTable"];
+        };
+        CartaShareRestaurant: {
+            name: string;
+            slug: string;
+        };
+        CartaShareDish: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            price: number;
+            imageUrl: string | null;
+        };
+        CartaDishShare: {
+            restaurant: components["schemas"]["CartaShareRestaurant"];
+            dish: components["schemas"]["CartaShareDish"];
         };
     };
     responses: never;
@@ -15214,6 +15483,128 @@ export interface operations {
             };
             /** @description Name of 1..60 characters. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaController_get: {
+        parameters: {
+            query?: {
+                /** @description Wins over Accept-Language. */
+                lang?: "es" | "en";
+                /** @description Channel of the promotion fields; default delivery. */
+                channel?: "dine_in" | "takeaway" | "delivery";
+            };
+            header: {
+                "accept-language": string;
+            };
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The public menu of a published carta (no login). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Carta"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown or invalid slug, carta not published, unknown or old table token, or a dish the carta does not list: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaController_table: {
+        parameters: {
+            query?: {
+                lang?: "es" | "en";
+            };
+            header: {
+                "accept-language": string;
+            };
+            path: {
+                slug: string;
+                /** @description Table QR token (24 characters). */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The table of the QR and the dine_in menu. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Carta"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown or invalid slug, carta not published, unknown or old table token, or a dish the carta does not list: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaController_dish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                dishId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Link preview of a dish the carta lists; never carries a table. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaDishShare"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown or invalid slug, carta not published, unknown or old table token, or a dish the carta does not list: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -191,17 +191,12 @@ export class ModifiersService {
     if (dishIds.length === 0) {
       return result;
     }
-    const rows = await this.rows<{ dish_id: string; row: Json }>(sql`
+    return dishGroupsFromRows(dishIds, await this.rows<{ dish_id: string; row: Json }>(sql`
       SELECT dg.dish_id, to_jsonb(g) || jsonb_build_object('options', ${optionsOf(sql`g.id`, true)}) AS row
         FROM public.dish_modifier_groups dg
         JOIN public.modifier_groups g ON g.id = dg.group_id
        WHERE dg.dish_id = ANY(${sql.param(dishIds)}::uuid[]) AND g.is_active
-       ORDER BY dg.dish_id, dg.sort_order, lower(g.name), g.id`);
-    for (const { dish_id: dishId, row } of rows) {
-      const { id, name, required, minSelect, maxSelect, options } = toGroup(row);
-      result.get(dishId)?.push({ id, name, required, minSelect, maxSelect, options });
-    }
-    return result;
+       ORDER BY dg.dish_id, dg.sort_order, lower(g.name), g.id`));
   }
 
   private async group(id: string): Promise<ModifierGroup> {
@@ -258,6 +253,20 @@ export class ModifiersService {
   private async rows<T = Json>(query: SQL): Promise<T[]> {
     return (await this.uow.db.execute(query)).rows as T[];
   }
+}
+
+/**
+ * Dish.modifierGroups of each of `dishIds` from (dish_id, group row with its
+ * options) rows already in menu order: groupsForDishes' query, or the
+ * modifierLinks of private.guest_menu_data (0034). Dishes without rows get [].
+ */
+export function dishGroupsFromRows(dishIds: string[], rows: { dish_id: string; row: Json }[]): Map<string, DishModifierGroup[]> {
+  const result = new Map<string, DishModifierGroup[]>(dishIds.map((id) => [id, []]));
+  for (const { dish_id: dishId, row } of rows) {
+    const { id, name, required, minSelect, maxSelect, options } = toGroup(row);
+    result.get(dishId)?.push({ id, name, required, minSelect, maxSelect, options });
+  }
+  return result;
 }
 
 /**

@@ -34,6 +34,6 @@ import { SubcategoriesService } from './subcategories.service';
     ModifierOptionsController,
   ],
   providers: [CategoriesService, SubcategoriesService, DishesService, PromotionsService, MenuService, SalesService, ModifiersService, ConfigService, PromotionWeekStatsService],
-  exports: [DishesService, PromotionsService],
+  exports: [DishesService, PromotionsService, MenuService],
 })
 export class CatalogModule {}
