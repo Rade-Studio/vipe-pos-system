@@ -42,6 +42,7 @@ describe("admin navigation registry", () => {
       "Inventario",
       "Métodos de pago",
       "Domicilios",
+      "Carta digital",
       "Personal",
       "Acceso de meseros",
       "Estaciones y rutas",
@@ -58,6 +59,12 @@ describe("admin navigation registry", () => {
     expect(parseSectionHash("#settings/stations")).toBe("settings/stations")
     expect(getAdminSection("settings/print-station")).toMatchObject({ group: "settings", label: "Estación de impresión" })
     expect(parseSectionHash("#settings/print-station")).toBe("settings/print-station")
+  })
+
+  it("has the Carta digital page under Configuración (T8, S17)", () => {
+    // The admin dashboard is admin-only (lib/auth/roles viewForRole), as is /api/carta-admin.
+    expect(getAdminSection("settings/carta")).toMatchObject({ group: "settings", label: "Carta digital" })
+    expect(parseSectionHash("#settings/carta")).toBe("settings/carta")
   })
 
   it("has unique section ids and every section belongs to a declared group", () => {
