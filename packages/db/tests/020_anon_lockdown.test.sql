@@ -265,8 +265,8 @@ SELECT is(
       AND NOT (c.relname = 'profiles' AND p.priv <> 'SELECT')
       -- order_item_modifiers: SELECT only, written by SECURITY DEFINER functions (340_modifiers).
       AND NOT (c.relname = 'order_item_modifiers' AND p.priv <> 'SELECT')
-      -- Carta guest tables: SELECT only, written by the guest and staff SECURITY DEFINER functions (420_carta_table_orders).
-      AND NOT (c.relname IN ('carta_table_proposals', 'carta_table_requests', 'carta_feedback') AND p.priv <> 'SELECT')
+      -- Carta guest tables: SELECT only, written by the guest and staff SECURITY DEFINER functions (420_carta_table_orders, 430_carta_delivery).
+      AND NOT (c.relname IN ('carta_table_proposals', 'carta_table_requests', 'carta_feedback', 'carta_delivery_requests') AND p.priv <> 'SELECT')
       -- z_reports: append-only, SELECT and INSERT only (380_z_reports).
       AND NOT (c.relname = 'z_reports' AND p.priv IN ('UPDATE', 'DELETE'))
       AND NOT has_table_privilege('vipe_api', c.oid, p.priv)

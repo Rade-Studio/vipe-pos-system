@@ -18,6 +18,9 @@ export const CARTA_READ_LIMIT: RateLimitRule = { limit: 120, windowMs: 60_000 };
 export const CARTA_PROPOSAL_LIMIT: RateLimitRule = { limit: 10, windowMs: 60_000 };
 export const CARTA_REQUEST_LIMIT: RateLimitRule = { limit: 6, windowMs: 60_000 };
 export const CARTA_FEEDBACK_LIMIT: RateLimitRule = { limit: 3, windowMs: 60_000 };
+/** Guest delivery (S15): sending an order, and the pricing preview the cart refreshes. */
+export const CARTA_DELIVERY_LIMIT: RateLimitRule = { limit: 3, windowMs: 60_000 };
+export const CARTA_PRICING_LIMIT: RateLimitRule = { limit: 30, windowMs: 60_000 };
 
 /** Limit the route per client IP (RateLimitGuard); stricter rules suit guest writes. */
 export const RateLimit = (rule: RateLimitRule) => SetMetadata(RATE_LIMIT_KEY, rule);

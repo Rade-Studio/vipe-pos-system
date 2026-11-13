@@ -371,7 +371,7 @@ DECLARE
 BEGIN
   SELECT * INTO v_caller FROM private.inventory_caller(c_fn,
     ARRAY['admin', 'cashier', 'waiter', 'kitchen', 'delivery_operator']);
-  -- As before 0035 the check creates the default location when control is on
+  -- As before 0036 the check creates the default location when control is on
   -- (an invalid cart still raises below and rolls it back).
   IF private.inventory_control_enabled(v_caller.restaurant_id) THEN
     PERFORM private.ensure_default_inventory_location(v_caller.restaurant_id);

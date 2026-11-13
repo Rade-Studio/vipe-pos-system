@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, promotionCategories, promotionSubcategories, promotionComboGroups, promotionComboOptions, orderDiscounts, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones, subcategories, cartaSettings, cartaDayparts, cartaDaypartCategories, dishPublicDetails, tableQrTokens, cartaTableProposals, cartaTableRequests, cartaFeedback } from "./schema";
+import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, promotionCategories, promotionSubcategories, promotionComboGroups, promotionComboOptions, orderDiscounts, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones, subcategories, cartaSettings, cartaDayparts, cartaDaypartCategories, dishPublicDetails, tableQrTokens, cartaTableProposals, cartaTableRequests, cartaFeedback, cartaDeliveryRequests } from "./schema";
 
 export const businessConfigRelations = relations(businessConfig, ({one}) => ({
 	restaurant: one(restaurants, {
@@ -754,5 +754,20 @@ export const cartaFeedbackRelations = relations(cartaFeedback, ({one}) => ({
 	table: one(tables, {
 		fields: [cartaFeedback.tableId],
 		references: [tables.id]
+	}),
+}));
+
+export const cartaDeliveryRequestsRelations = relations(cartaDeliveryRequests, ({one}) => ({
+	restaurant: one(restaurants, {
+		fields: [cartaDeliveryRequests.restaurantId],
+		references: [restaurants.id]
+	}),
+	deliveryOrder: one(orders, {
+		fields: [cartaDeliveryRequests.deliveryOrderId],
+		references: [orders.id]
+	}),
+	decidedBy: one(profiles, {
+		fields: [cartaDeliveryRequests.decidedBy],
+		references: [profiles.id]
 	}),
 }));

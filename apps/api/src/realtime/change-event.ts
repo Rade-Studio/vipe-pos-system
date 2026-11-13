@@ -6,7 +6,8 @@ export type RealtimeTable =
   | 'zones'
   | 'order_deliveries'
   | 'carta_table_proposals'
-  | 'carta_table_requests';
+  | 'carta_table_requests'
+  | 'carta_delivery_requests';
 
 export type ChangeOp = 'INSERT' | 'UPDATE' | 'DELETE';
 
@@ -46,6 +47,7 @@ const TABLES: readonly string[] = [
   'order_deliveries',
   'carta_table_proposals',
   'carta_table_requests',
+  'carta_delivery_requests',
 ];
 const OPS: readonly string[] = ['INSERT', 'UPDATE', 'DELETE'];
 

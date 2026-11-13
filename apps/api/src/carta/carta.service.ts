@@ -20,7 +20,7 @@ import {
 } from './carta.dto';
 import { type GuestMenuData, guestMenuSource } from './guest-menu-source';
 
-/** private.guest_carta(slug) (0035). */
+/** private.guest_carta(slug) (0036). */
 interface GuestCarta {
   restaurant: { name: string; slug: string; timezone: string | null; currency: string };
   settings: Omit<CartaSettings, 'openingHours'> & { openingHours: OpeningHours };
@@ -38,7 +38,7 @@ interface GuestCarta {
   tipPercentage: number | string;
 }
 
-/** private.guest_table(slug, token) (0035). */
+/** private.guest_table(slug, token) (0036). */
 interface GuestTable {
   tableId: string;
   number: number;
@@ -69,7 +69,7 @@ const guestSettings = (settings: GuestCarta['settings']): CartaSettings => ({
   deliveryOrderingEnabled: settings.deliveryOrderingEnabled,
   showTableBill: settings.showTableBill,
   englishEnabled: settings.englishEnabled,
-  // guest_carta always returns the seven ISO days ("1".."7") or null (0035).
+  // guest_carta always returns the seven ISO days ("1".."7") or null (0036).
   openingHours: settings.openingHours as CartaSettings['openingHours'],
 });
 

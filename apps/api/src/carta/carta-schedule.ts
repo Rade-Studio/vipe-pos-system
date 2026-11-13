@@ -1,6 +1,6 @@
 import { type LocalClock, parseClock } from '../promotions/engine';
 
-/** carta_settings.opening_hours (0035): ISO day "1".."7" -> null (closed) or {opens, closes} "HH:MM"; null = not configured. */
+/** carta_settings.opening_hours (0036): ISO day "1".."7" -> null (closed) or {opens, closes} "HH:MM"; null = not configured. */
 export type OpeningHours = Record<string, { opens: string; closes: string } | null> | null;
 
 export interface OpeningState {
@@ -51,7 +51,7 @@ export function openingState(hours: OpeningHours, now: LocalClock): OpeningState
   return { isOpenNow: false, closesAt: null, nextOpening: null };
 }
 
-/** The daypart whose [startsAt, endsAt) holds `now` (dayparts never cross midnight, 0035); null between them. */
+/** The daypart whose [startsAt, endsAt) holds `now` (dayparts never cross midnight, 0036); null between them. */
 export function currentDaypartId(dayparts: readonly { id: string; startsAt: string; endsAt: string }[], now: LocalClock): string | null {
   return dayparts.find((d) => parseClock(d.startsAt) <= now.minutes && now.minutes < parseClock(d.endsAt))?.id ?? null;
 }

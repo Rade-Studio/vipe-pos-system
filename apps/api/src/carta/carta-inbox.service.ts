@@ -8,7 +8,7 @@ import type { CartaInbox, ProposalConfirmed } from './carta-table.dto';
 /** Order statuses that keep a table open (private.carta_open_order). */
 const OPEN_STATUSES = ['active', 'kitchen', 'delivered'];
 
-/** private.confirm_table_proposal (0036). */
+/** private.confirm_table_proposal (0037). */
 interface ConfirmedProposal {
   proposalId: string;
   orderId: string;
@@ -18,7 +18,7 @@ interface ConfirmedProposal {
 /**
  * The waiter's inbox of guest proposals and requests (S12, S14), inside the
  * request unit of work: RLS scopes the reads to the caller's restaurant and
- * the 0036 staff functions check the role and tenant again. The restaurant
+ * the 0037 staff functions check the role and tenant again. The restaurant
  * never comes from the client.
  */
 @Injectable()
