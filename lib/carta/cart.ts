@@ -4,14 +4,24 @@ import type { Carta } from "./types"
  * The guest's lines (S11, S12). One state shape for every ordering path:
  * `list` ("Mi lista", kept on the phone, nothing is sent) and, on a table QR
  * of a restaurant with `settings.tableOrderingEnabled`, `propose` ("Mi
- * pedido", sent to the waiter as a proposal); the components only ask for
+ * pedido", sent to the waiter as a proposal); off a table, `delivery`
+ * ("Pedido", checkout to the delivery console) with
+ * `settings.deliveryOrderingEnabled`, else `whatsapp` (a composed message to
+ * the restaurant's WhatsApp) when it has one. The components only ask for
  * the mode.
  */
 
-export type OrderingMode = "list" | "propose"
+export type OrderingMode = "list" | "propose" | "delivery" | "whatsapp"
 
 export function orderingMode(carta: Carta): OrderingMode {
-  return carta.table && carta.settings.tableOrderingEnabled ? "propose" : "list"
+  if (carta.table) return carta.settings.tableOrderingEnabled ? "propose" : "list"
+  if (carta.settings.deliveryOrderingEnabled) return "delivery"
+  return carta.settings.whatsapp ? "whatsapp" : "list"
+}
+
+/** Every mode but "list" builds a cart with quantities to send. */
+export function isOrdering(mode: OrderingMode): boolean {
+  return mode !== "list"
 }
 
 export interface CartOption {

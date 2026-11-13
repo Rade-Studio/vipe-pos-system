@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/Header"
 import { AssignedCountsEntry } from "@/components/counts/AssignedCountsEntry"
+import { CartaDeliveryInbox } from "@/components/carta-delivery-inbox/CartaDeliveryInbox"
 import type { Profile } from "@/types"
 import type { DeliveryRole } from "@/lib/delivery/types"
 import { DeliveryBoard } from "@/components/delivery/DeliveryBoard"
@@ -43,6 +44,7 @@ export function DeliveryView({ profile, onChangeProfile, authRole }: DeliveryVie
           title="Domicilios"
         />
         <AssignedCountsEntry />
+        <CartaDeliveryInbox role={authRole ?? profile.role} />
       </div>
       {withRoleNav && <RoleNav />}
       <main className="min-w-0 flex-1 overflow-auto">

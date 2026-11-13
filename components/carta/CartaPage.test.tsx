@@ -58,7 +58,7 @@ describe("hero (S4)", () => {
   })
 
   it("links only the configured social networks, each with an accessible name", async () => {
-    respond(carta())
+    respond({ ...carta(), settings: { ...carta().settings, whatsapp: "573001234567" } })
     await renderCarta()
     expect(screen.getByRole("link", { name: "Instagram @brasaylena" })).toHaveAttribute("href", "https://instagram.com/brasaylena")
     expect(screen.getByRole("link", { name: "WhatsApp del restaurante" })).toHaveAttribute("href", "https://wa.me/573001234567")
