@@ -32,7 +32,7 @@ function SaveDish({ dishId, dirtyIds, savingId, onSave }: Pick<DishDraftProps, "
 /** Platos y etiquetas: tag chips per dish; "Lo más pedido" is computed by the API. */
 export function DishesCard({ dishes, drafts, dirtyIds, savingId, onChange, onSave }: DishDraftProps) {
   return (
-    <CartaCard id="carta-platos" number={6} title="Platos y etiquetas" description="Toca una etiqueta para ponerla o quitarla.">
+    <CartaCard id="carta-platos" title="Platos y etiquetas" description="Toca una etiqueta para ponerla o quitarla.">
       {dishes.length === 0 && <p className="text-sm text-muted-foreground">Aún no hay platos en el menú.</p>}
       <ul className="divide-y rounded-md border">
         {dishes.map((dish) => {
@@ -85,7 +85,7 @@ export function LanguagesCard({
 }: DishDraftProps & { englishEnabled: boolean; onEnglishEnabled: (on: boolean) => void }) {
   const { dishes, drafts, onChange } = props
   return (
-    <CartaCard id="carta-idiomas" number={7} title="Idiomas" description="Para turistas, sin trabajo extra.">
+    <CartaCard id="carta-idiomas" title="Idiomas" description="Para turistas, sin trabajo extra.">
       <SwitchRow
         title="Inglés según el idioma del celular"
         description="Los comensales con el celular en inglés ven los nombres de las franjas y las descripciones que escribas aquí."

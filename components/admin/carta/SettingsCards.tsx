@@ -73,7 +73,7 @@ export function PublicationCard({
   }
 
   return (
-    <CartaCard id="carta-publicacion" number={1} title="Publicación" description="Quién puede ver la carta y en qué enlace.">
+    <CartaCard id="carta-publicacion" title="Publicación" description="Quién puede ver la carta y en qué enlace.">
       <SwitchRow title="Carta pública activa" description="Si la apagas, el enlace y los QR muestran “Volvemos pronto”.">
         <Switch aria-label="Carta pública activa" checked={draft.published} onCheckedChange={(published) => update({ published })} />
       </SwitchRow>
@@ -244,7 +244,7 @@ export function IdentityCard({ draft, update, errorOf, restaurantName }: Setting
   const brandError = errorOf("brandColor")
 
   return (
-    <CartaCard id="carta-identidad" number={2} title="Identidad" description="Un solo estilo elegante. Solo eliges logo, portada y color.">
+    <CartaCard id="carta-identidad" title="Identidad" description="Un solo estilo elegante. Solo eliges logo, portada y color.">
       <div className="grid gap-5 md:grid-cols-2">
         <AssetField
           kind="logo"
@@ -368,7 +368,7 @@ function TextField({
 
 export function ContactCard(props: SettingsCardProps) {
   return (
-    <CartaCard id="carta-redes" number={3} title="Redes y contacto" description="Solo aparecen en la carta los que llenes.">
+    <CartaCard id="carta-redes" title="Redes y contacto" description="Solo aparecen en la carta los que llenes.">
       <div className="grid gap-5 md:grid-cols-2">
         <TextField {...props} field="instagram" label="Instagram" prefix="@" placeholder="turestaurante" />
         <TextField {...props} field="tiktok" label="TikTok" prefix="@" placeholder="turestaurante" />
@@ -516,7 +516,7 @@ export function OrderingCard({
   onOpenDeliverySettings,
 }: SettingsCardProps & { restaurantName: string; deliveryFee: number; onOpenDeliverySettings: () => void }) {
   return (
-    <CartaCard id="carta-pedidos" number={5} title="Pedidos" description="Cómo piden tus comensales desde la carta.">
+    <CartaCard id="carta-pedidos" title="Pedidos" description="Cómo piden tus comensales desde la carta.">
       <SwitchRow
         title="Pedidos desde la mesa (QR)"
         description="Solo cuando la mesa está abierta. El mesero confirma el pedido antes de que llegue a cocina."

@@ -13,17 +13,15 @@ import {
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 
-/** Artboard 02 section card: "N · Title" and a one-line purpose. */
+/** Artboard 02 section card: title and a one-line purpose. */
 export function CartaCard({
   id,
-  number,
   title,
   description,
   actions,
   children,
 }: {
   id: string
-  number: number
   title: string
   description: string
   actions?: ReactNode
@@ -34,7 +32,7 @@ export function CartaCard({
       <div className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
         <div className="space-y-0.5">
           <h2 id={`${id}-title`} className="text-base font-semibold">
-            {number} · {title}
+            {title}
           </h2>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>

@@ -79,7 +79,6 @@ export function QrCard({
   return (
     <CartaCard
       id="carta-qr"
-      number={8}
       title="QR de las mesas"
       description="Cada mesa tiene su código: el pedido llega a la mesa correcta."
       actions={

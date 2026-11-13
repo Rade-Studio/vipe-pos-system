@@ -92,6 +92,9 @@ async function renderPage(onNavigate = vi.fn()) {
   return onNavigate
 }
 
+const TAB_NAMES = ["Publicación", "Marca", "Horarios", "Pedidos y platos", "QR"]
+const openTab = (name: string) => fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${name}`) }))
+
 beforeEach(() => {
   api.GET.mockReset().mockImplementation(async () => ({ data: fixture() }))
   api.PUT.mockReset()
@@ -109,6 +112,7 @@ describe("CartaSettingsPage — settings form", () => {
     expect(api.GET).toHaveBeenCalledWith("/api/carta-admin")
     expect(screen.getByText(`${window.location.origin}/c/brasa-y-lena`)).toBeTruthy()
     expect(saveBar()).toBeNull()
+    openTab("Marca")
 
     const description = screen.getByLabelText("Descripción corta") as HTMLTextAreaElement
     fireEvent.change(description, { target: { value: "Parrilla y cocteles" } })
@@ -130,6 +134,7 @@ describe("CartaSettingsPage — settings form", () => {
 
   it("shows the API's 422 message next to its field and keeps the changes", async () => {
     await renderPage()
+    openTab("Marca")
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "5731045678901" } })
     api.PUT.mockRejectedValue(new ApiError(422, "Unprocessable Entity", "El WhatsApp debe tener entre 7 y 15 dígitos, con el indicativo del país."))
     fireEvent.click(within(saveBar()!).getByRole("button", { name: "Guardar cambios" }))
@@ -141,6 +146,7 @@ describe("CartaSettingsPage — settings form", () => {
 
   it("shows an unexpected save failure in the save bar", async () => {
     await renderPage()
+    openTab("Marca")
     fireEvent.change(screen.getByLabelText("Descripción corta"), { target: { value: "Nueva" } })
     api.PUT.mockRejectedValue(new ApiError(422, "Unprocessable Entity", "No pudimos guardar los cambios. Intenta de nuevo."))
     fireEvent.click(within(saveBar()!).getByRole("button", { name: "Guardar cambios" }))
@@ -149,6 +155,7 @@ describe("CartaSettingsPage — settings form", () => {
 
   it("refuses an invalid WhatsApp inline, before any request", async () => {
     await renderPage()
+    openTab("Marca")
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "31a" } })
     expect(screen.getByText("El WhatsApp debe tener entre 7 y 15 dígitos, con el indicativo del país.")).toBeTruthy()
     fireEvent.click(within(saveBar()!).getByRole("button", { name: "Guardar cambios" }))
@@ -158,6 +165,7 @@ describe("CartaSettingsPage — settings form", () => {
 
   it("brand color: a light swatch gets the AA adjustment hint", async () => {
     await renderPage()
+    openTab("Marca")
     expect(screen.getByText("Se lee bien sobre fondo claro y oscuro.")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Amarillo" }))
     expect(screen.getByRole("button", { name: "Amarillo" }).getAttribute("aria-pressed")).toBe("true")
@@ -167,6 +175,7 @@ describe("CartaSettingsPage — settings form", () => {
 
   it("opening hours: a close after midnight is allowed and saved as is", async () => {
     await renderPage()
+    openTab("Horarios")
     fireEvent.change(screen.getByLabelText("Cierra el Martes"), { target: { value: "01:00" } })
     expect(screen.getByText("Cierra al día siguiente")).toBeTruthy()
     fireEvent.click(screen.getByRole("switch", { name: "Abierto el Lunes" }))
@@ -180,6 +189,7 @@ describe("CartaSettingsPage — settings form", () => {
 
   it("ordering: shows the delivery fee read-only and links to Domicilios", async () => {
     const onNavigate = await renderPage()
+    openTab("Pedidos y platos")
     expect(screen.getByText("Valor del domicilio $4.000")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Cambiar en Ajustes · Domicilios" }))
     expect(onNavigate).toHaveBeenCalledWith("settings/delivery")
@@ -189,6 +199,7 @@ describe("CartaSettingsPage — settings form", () => {
 
   it("uploads a logo: presign, PUT to the bucket, then the form is dirty", async () => {
     await renderPage()
+    openTab("Marca")
     api.POST.mockResolvedValue({ data: { uploadUrl: "https://bucket/put", publicUrl: "https://cdn/logo.png" } })
     const fetchMock = vi.fn(async () => new Response(null, { status: 200 }))
     vi.stubGlobal("fetch", fetchMock)
@@ -256,6 +267,7 @@ describe("CartaSettingsPage — slug", () => {
 describe("CartaSettingsPage — dayparts", () => {
   it("refuses from ≥ to and saves the list with PUT dayparts", async () => {
     await renderPage()
+    openTab("Horarios")
     fireEvent.click(screen.getByRole("button", { name: "Agregar franja" }))
     fireEvent.change(screen.getByLabelText("Nombre de la franja 2"), { target: { value: "Noche" } })
     fireEvent.change(screen.getByLabelText("Desde (franja 2)"), { target: { value: "22:00" } })
@@ -285,6 +297,7 @@ describe("CartaSettingsPage — dayparts", () => {
 describe("CartaSettingsPage — dishes and English", () => {
   it("toggles a tag and saves that dish; Lo más pedido is automatic", async () => {
     await renderPage()
+    openTab("Pedidos y platos")
     const row = screen.getByRole("group", { name: "Etiquetas de Churrasco a la leña" })
     expect(within(row).getByText("★ Lo más pedido")).toBeTruthy()
     fireEvent.click(within(row).getByRole("button", { name: "Picante" }))
@@ -300,6 +313,7 @@ describe("CartaSettingsPage — dishes and English", () => {
 
   it("English: the chip follows descriptionEnReviewed and writing marks it reviewed", async () => {
     await renderPage()
+    openTab("Publicación")
     const reviewed = screen.getByRole("group", { name: "Inglés de Churrasco a la leña" })
     expect(within(reviewed).getByText("Revisada")).toBeTruthy()
     const pending = screen.getByRole("group", { name: "Inglés de Chorizo santarrosano" })
@@ -320,6 +334,7 @@ describe("CartaSettingsPage — dishes and English", () => {
 describe("CartaSettingsPage — table QR", () => {
   it("lists the tables by zone with the full guest URL", async () => {
     await renderPage()
+    openTab("QR")
     const terrace = screen.getByRole("region", { name: "Terraza" })
     expect(within(terrace).getByText("Mesa 10")).toBeTruthy()
     expect(within(terrace).getByText(`${window.location.origin}/c/brasa-y-lena/m/tok-10`)).toBeTruthy()
@@ -327,6 +342,7 @@ describe("CartaSettingsPage — table QR", () => {
 
   it("regenerates one table after the confirmation", async () => {
     await renderPage()
+    openTab("QR")
     fireEvent.click(screen.getByRole("button", { name: "Regenerar QR de la mesa 4" }))
     const dialog = await screen.findByRole("alertdialog")
     expect(within(dialog).getByText(/Los QR impresos dejarán de funcionar/)).toBeTruthy()
@@ -338,6 +354,7 @@ describe("CartaSettingsPage — table QR", () => {
 
   it("Escape on Regenerar todos returns focus to that button", async () => {
     await renderPage()
+    openTab("QR")
     const opener = screen.getByRole("button", { name: "Regenerar todos" })
     opener.focus()
     fireEvent.click(opener)
@@ -349,6 +366,7 @@ describe("CartaSettingsPage — table QR", () => {
 
   it("regenerates all after the confirmation; cancel sends nothing", async () => {
     await renderPage()
+    openTab("QR")
     fireEvent.click(screen.getByRole("button", { name: "Regenerar todos" }))
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancelar" }))
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
@@ -377,6 +395,7 @@ describe("CartaSettingsPage — table QR images (S18)", () => {
 
   it("each table shows the QR of its full guest URL with its number and zone", async () => {
     await renderPage()
+    openTab("QR")
     expect(qrOf(4).innerHTML).toBe(svgOf(`${window.location.origin}/c/brasa-y-lena/m/tok-4`))
     expect(qrOf(10).innerHTML).toBe(svgOf(`${window.location.origin}/c/brasa-y-lena/m/tok-10`))
     expect(within(screen.getByRole("region", { name: "Terraza" })).getByText("Mesa 10 · Terraza")).toBeTruthy()
@@ -384,6 +403,7 @@ describe("CartaSettingsPage — table QR images (S18)", () => {
 
   it("after Regenerar the image encodes the new token", async () => {
     await renderPage()
+    openTab("QR")
     const before = qrOf(4).innerHTML
     fireEvent.click(screen.getByRole("button", { name: "Regenerar QR de la mesa 4" }))
     const dialog = await screen.findByRole("alertdialog")
@@ -413,6 +433,7 @@ describe("CartaSettingsPage — table QR images (S18)", () => {
     })
 
     await renderPage()
+    openTab("QR")
     fireEvent.click(screen.getByRole("button", { name: "Descargar PNG de la mesa 10" }))
 
     await waitFor(() => expect(clicks).toHaveLength(1))
@@ -427,6 +448,7 @@ describe("CartaSettingsPage — table QR images (S18)", () => {
   it("Descargar todas opens the print sheet with every table and prints it", async () => {
     const print = vi.spyOn(window, "print").mockImplementation(() => {})
     await renderPage()
+    openTab("QR")
     fireEvent.click(screen.getByRole("button", { name: "Descargar todas" }))
     const sheet = await screen.findByRole("region", { name: "QR para imprimir" })
     await waitFor(() => expect(print).toHaveBeenCalledTimes(1))
@@ -440,5 +462,57 @@ describe("CartaSettingsPage — table QR images (S18)", () => {
     )
     fireEvent.click(within(sheet).getByRole("button", { name: "Cerrar" }))
     expect(screen.queryByRole("region", { name: "QR para imprimir" })).toBeNull()
+  })
+})
+
+describe("CartaSettingsPage — tabs (S1)", () => {
+  it("renders the 5 tabs in order and shows only the active panel", async () => {
+    await renderPage()
+    const tablist = screen.getByRole("tablist", { name: "Secciones de la carta" })
+    const tabs = within(tablist).getAllByRole("tab")
+    expect(tabs.map((tab) => tab.textContent)).toEqual(TAB_NAMES)
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true")
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1)
+    expect(screen.getByRole("tabpanel", { name: "Publicación" })).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: "1 · Publicación" })).toBeNull()
+    expect(screen.getByRole("heading", { name: "Publicación", level: 2 })).toBeTruthy()
+
+    openTab("QR")
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1)
+    expect(screen.getByRole("tabpanel", { name: "QR" })).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: "Publicación", level: 2 })).toBeNull()
+    expect(screen.getByRole("heading", { name: "QR de las mesas", level: 2 })).toBeTruthy()
+  })
+
+  it("an unsaved edit survives switching tabs and the save bar stays", async () => {
+    await renderPage()
+    openTab("Marca")
+    fireEvent.change(screen.getByLabelText("Descripción corta"), { target: { value: "Parrilla y cocteles" } })
+    expect(saveBar()).not.toBeNull()
+    openTab("Horarios")
+    expect(saveBar()).not.toBeNull()
+    expect(screen.getByRole("tab", { name: /^Marca/ }).querySelector("[data-dirty-dot]")).not.toBeNull()
+    openTab("Marca")
+    expect((screen.getByLabelText("Descripción corta") as HTMLTextAreaElement).value).toBe("Parrilla y cocteles")
+    expect(saveBar()).not.toBeNull()
+  })
+
+  it("arrow keys, Home and End move between tabs", async () => {
+    await renderPage()
+    const first = screen.getByRole("tab", { name: /^Publicación/ })
+    fireEvent.keyDown(first, { key: "ArrowRight" })
+    const marca = screen.getByRole("tab", { name: /^Marca/ })
+    expect(marca.getAttribute("aria-selected")).toBe("true")
+    expect(document.activeElement).toBe(marca)
+    expect(marca.tabIndex).toBe(0)
+    expect(first.tabIndex).toBe(-1)
+    fireEvent.keyDown(marca, { key: "End" })
+    expect(screen.getByRole("tab", { name: /^QR/ }).getAttribute("aria-selected")).toBe("true")
+    fireEvent.keyDown(screen.getByRole("tab", { name: /^QR/ }), { key: "ArrowRight" })
+    expect(first.getAttribute("aria-selected")).toBe("true")
+    fireEvent.keyDown(first, { key: "ArrowLeft" })
+    expect(screen.getByRole("tab", { name: /^QR/ }).getAttribute("aria-selected")).toBe("true")
+    fireEvent.keyDown(screen.getByRole("tab", { name: /^QR/ }), { key: "Home" })
+    expect(first.getAttribute("aria-selected")).toBe("true")
   })
 })
