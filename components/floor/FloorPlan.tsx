@@ -145,7 +145,7 @@ export function FloorPlan({
             // Unzoomed, the page scrolls: tables on the last row overflow the floor a
             // little, and an own scroller with overscroll-contain caught the wheel.
             zoomed ? "overflow-auto overscroll-contain" : "overflow-x-clip",
-            compact ? "px-2 pb-6 pt-2" : "px-3 pb-12 pt-4 sm:px-6",
+            compact ? "px-2 pb-6 pt-2" : "px-3 pb-16 pt-4 sm:px-6 lg:pb-12",
           )}
         >
           <div data-testid="floor-zoom" className={cn("mx-auto", zoom === 0 && "max-w-[960px]")} style={{ width: `${ZOOM_STEPS[compact ? 0 : zoom] * 100}%` }}>

@@ -39,6 +39,14 @@ describe("matchTableAlerts", () => {
     expect(alerts.has("t-terraza-12")).toBe(false)
   })
 
+  it("with two zones sharing a name, an ambiguous number badges no table", () => {
+    const twins = (zoneId?: string) => ({ "z-t": "Salón", "z-s": "salón " })[zoneId ?? ""]
+    const alerts = matchTableAlerts({ proposals: [], requests: [request("bill", 12, "Salón"), request("waiter", 5, "Salón")] }, tables, twins)
+    expect(alerts.has("t-terraza-12")).toBe(false)
+    expect(alerts.has("t-salon-12")).toBe(false)
+    expect(alerts.get("t-salon-5")?.count).toBe(1)
+  })
+
   it("an empty or missing inbox gives no alerts", () => {
     expect(matchTableAlerts(undefined, tables, zoneNameOf).size).toBe(0)
   })

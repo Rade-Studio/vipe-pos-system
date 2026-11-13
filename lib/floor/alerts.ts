@@ -36,7 +36,8 @@ const norm = (name: string | null | undefined) => (name ?? "").trim().toLocaleLo
 
 /**
  * Table id → alert. With a zone name the table must be in that zone; without
- * one only a table number that is unique on the floor matches.
+ * one only a table number that is unique on the floor matches. Either way an
+ * ambiguous match (two zones sharing a name) badges no table.
  */
 export function matchTableAlerts(
   inbox: InboxLike | undefined,
@@ -47,8 +48,10 @@ export function matchTableAlerts(
   if (!inbox) return alerts
   const find = (row: InboxRow): Table | undefined => {
     const sameNumber = tables.filter((table) => table.number === row.tableNumber)
-    if (!row.zoneName) return sameNumber.length === 1 ? sameNumber[0] : undefined
-    return sameNumber.find((table) => norm(zoneNameOf(table.zoneId)) === norm(row.zoneName))
+    const candidates = row.zoneName
+      ? sameNumber.filter((table) => norm(zoneNameOf(table.zoneId)) === norm(row.zoneName))
+      : sameNumber
+    return candidates.length === 1 ? candidates[0] : undefined
   }
   const add = (row: InboxRow, kind: TableAlertKind) => {
     const table = find(row)

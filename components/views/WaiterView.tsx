@@ -127,7 +127,6 @@ export function releaseRefusal(status: string): string {
   return `No se puede liberar una mesa ${RELEASE_REFUSAL[status] ?? "en este estado"}.`
 }
 
-/** S8: the status shown on a takeaway order in the waiter's list. */
 const CUSTOM_SIDEBAR_WIDTH = "22rem" // Ajustado para optimizar espacio
 
 interface WaiterViewProps {
@@ -191,7 +190,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const [orderDrafts, setOrderDrafts] = useState<Record<string, { asked?: boolean; guests?: number | null; notes?: string }>>({})
   const [guestsPrompt, setGuestsPrompt] = useState<{ tableId: string; guests: number } | null>(null)
   const [savingDetails, setSavingDetails] = useState(false)
-  // The map's elapsed-time chips move with the clock.
+  // The tables' elapsed time (in their accessible names) moves with the clock.
   const [now, setNow] = useState(() => new Date())
   const [cartStyle, cartApi] = useSpring(() => ({ scale: 1 }))
 

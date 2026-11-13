@@ -179,10 +179,10 @@ export function CartaMenu({
 
       <div className="min-w-0 px-[18px] md:px-6 lg:px-0">
         {sections.map((s) => (
-          <section key={s.id} aria-labelledby={`cat-${s.id}`}>
+          <section key={s.id} aria-labelledby={`cat-${s.id}`} className="lg:[&>h2]:first:pt-0">
             <h2
               id={`cat-${s.id}`}
-              className="scroll-mt-28 pb-1.5 pt-[22px] md:pb-3 lg:scroll-mt-6 lg:first:pt-0 text-[13px] font-bold uppercase tracking-[0.14em] text-muted-fg"
+              className="scroll-mt-28 pb-1.5 pt-[22px] md:pb-3 lg:scroll-mt-6 text-[13px] font-bold uppercase tracking-[0.14em] text-muted-fg"
             >
               {s.name}
             </h2>
