@@ -9441,6 +9441,1217 @@
           "desktop"
         ]
       }
+    },
+    "/api/carta/{slug}": {
+      "get": {
+        "operationId": "CartaController_get",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "brasa-y-lena",
+              "type": "string"
+            }
+          },
+          {
+            "name": "accept-language",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lang",
+            "required": false,
+            "in": "query",
+            "description": "Wins over Accept-Language.",
+            "schema": {
+              "enum": [
+                "es",
+                "en"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "description": "Channel of the promotion fields; default delivery.",
+            "schema": {
+              "enum": [
+                "dine_in",
+                "takeaway",
+                "delivery"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The public menu of a published carta (no login).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Carta"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown or invalid slug, carta not published, unknown or old table token, or a dish the carta does not list: one body for all."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/m/{token}": {
+      "get": {
+        "operationId": "CartaController_table",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "description": "Table QR token (24 characters).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "accept-language",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lang",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "es",
+                "en"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The table of the QR and the dine_in menu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Carta"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown or invalid slug, carta not published, unknown or old table token, or a dish the carta does not list: one body for all."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/p/{dishId}": {
+      "get": {
+        "operationId": "CartaController_dish",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dishId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Link preview of a dish the carta lists; never carries a table.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaDishShare"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown or invalid slug, carta not published, unknown or old table token, or a dish the carta does not list: one body for all."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/m/{token}/status": {
+      "get": {
+        "operationId": "CartaTableController_status",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "guestKey",
+            "required": true,
+            "in": "query",
+            "description": "16-64 of [A-Za-z0-9_-].",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestTableStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "422": {
+            "description": "El identificador del comensal no es válido."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/m/{token}/proposals": {
+      "post": {
+        "operationId": "CartaTableController_propose",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pending until the waiter confirms it; nothing is cooked or charged before.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalCreated"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "409": {
+            "description": "Este restaurante toma los pedidos en la mesa. | Para pedir desde aquí, la mesa debe estar abierta | Uno de los platos se acabó por hoy."
+          },
+          "422": {
+            "description": "El identificador del comensal no es válido. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. | La nota del pedido admite hasta 200 caracteres."
+          },
+          "429": {
+            "description": "Ya enviaste varios pedidos; espera a que el mesero los revise. (3 pending), or Demasiadas solicitudes. Intenta de nuevo en un momento. (10 a minute)."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/m/{token}/bill": {
+      "get": {
+        "operationId": "CartaTableController_bill",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The open order, read only; 404 when the table is closed or the bill is hidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestTableBill"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/m/{token}/requests": {
+      "post": {
+        "operationId": "CartaTableController_request",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TableRequestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Ask for the bill or call the waiter; idempotent while unresolved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableRequestCreated"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "409": {
+            "description": "Este restaurante toma los pedidos en la mesa. | Para pedir desde aquí, la mesa debe estar abierta"
+          },
+          "422": {
+            "description": "Solo puedes pedir la cuenta o llamar al mesero."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. 6 a minute."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/feedback": {
+      "post": {
+        "operationId": "CartaTableController_feedback",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Stored for the restaurant."
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "422": {
+            "description": "La calificación va de 1 a 5 estrellas. | El comentario admite hasta 500 caracteres."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. 3 a minute per IP; 5 per table and 50 per restaurant an hour."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta-inbox": {
+      "get": {
+        "operationId": "CartaInboxController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Guest proposals and requests of the restaurant's open orders.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaInbox"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin, cashier or waiter."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-inbox"
+        ]
+      }
+    },
+    "/api/carta-inbox/proposals/{id}/confirm": {
+      "post": {
+        "operationId": "CartaInboxController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The items were added to the open order as the waiter sends them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalConfirmed"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin, cashier or waiter."
+          },
+          "404": {
+            "description": "No encontramos este pedido."
+          },
+          "409": {
+            "description": "Este pedido ya fue confirmado o rechazado. | La mesa ya no tiene una cuenta abierta., or the waiter send's own 409s (stock, price)."
+          },
+          "422": {
+            "description": "Invalid id, or the waiter send refused a line (dish, options)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-inbox"
+        ]
+      }
+    },
+    "/api/carta-inbox/proposals/{id}/reject": {
+      "post": {
+        "operationId": "CartaInboxController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectProposalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "Not an admin, cashier or waiter."
+          },
+          "404": {
+            "description": "No encontramos este pedido."
+          },
+          "409": {
+            "description": "Este pedido ya fue confirmado o rechazado."
+          },
+          "422": {
+            "description": "El motivo admite hasta 140 caracteres."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-inbox"
+        ]
+      }
+    },
+    "/api/carta-inbox/requests/{id}/resolve": {
+      "post": {
+        "operationId": "CartaInboxController_resolve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Resolved (an already resolved request stays as it is)."
+          },
+          "403": {
+            "description": "Not an admin, cashier or waiter."
+          },
+          "404": {
+            "description": "No encontramos esta solicitud."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-inbox"
+        ]
+      }
+    },
+    "/api/carta/{slug}/delivery": {
+      "post": {
+        "operationId": "CartaDeliveryController_submit",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliverySubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pending in the delivery inbox; stock and the kitchen ticket happen only when an operator confirms it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliverySubmitted"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "409": {
+            "description": "Este restaurante recibe los domicilios por WhatsApp. | Uno de los platos se acabó por hoy."
+          },
+          "422": {
+            "description": "Escribe tu nombre (hasta 120 caracteres). | El celular debe tener entre 7 y 15 dígitos. | Escribe la dirección completa (entre 6 y 200 caracteres). | El barrio admite hasta 80 caracteres. | Elige cómo pagas: efectivo, datáfono o transferencia. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. | La nota del pedido admite hasta 200 caracteres."
+          },
+          "429": {
+            "description": "Ya tienes pedidos pendientes; el restaurante te confirmará en minutos. (2 pending per phone) | El restaurante está recibiendo muchos pedidos; intenta en unos minutos. (30 pending within the hour) | Demasiadas solicitudes. Intenta de nuevo en un momento. (3 a minute)."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/delivery/{trackingToken}": {
+      "get": {
+        "operationId": "CartaDeliveryController_status",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trackingToken",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "\"Pedido D-0142 recibido\": the stage of the request and, once confirmed, of its delivery.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestDeliveryStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta/{slug}/pricing-preview": {
+      "post": {
+        "operationId": "CartaDeliveryController_pricing",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestPricingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The totals the guest will see, with the engine of POST /orders/pricing-preview; writes nothing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPricing"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all."
+          },
+          "409": {
+            "description": "Uno de los platos se acabó por hoy."
+          },
+          "422": {
+            "description": "Elige domicilio, para llevar o en la mesa. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato."
+          },
+          "429": {
+            "description": "Demasiadas solicitudes. Intenta de nuevo en un momento. 30 a minute."
+          }
+        },
+        "tags": [
+          "carta"
+        ]
+      }
+    },
+    "/api/carta-delivery": {
+      "get": {
+        "operationId": "CartaDeliveryInboxController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Pending guest delivery requests, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryInboxRequest"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin, cashier or delivery operator (confirm: admin or delivery operator)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-delivery"
+        ]
+      }
+    },
+    "/api/carta-delivery/{id}/confirm": {
+      "post": {
+        "operationId": "CartaDeliveryInboxController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The delivery order was created as POST /delivery/orders does (stock, kitchen ticket) and linked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryRequestConfirmed"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin, cashier or delivery operator (confirm: admin or delivery operator)."
+          },
+          "404": {
+            "description": "No encontramos este pedido a domicilio."
+          },
+          "409": {
+            "description": "Este pedido ya fue confirmado o rechazado."
+          },
+          "422": {
+            "description": "Invalid id, or the console path refused a line (options, dish)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-delivery"
+        ]
+      }
+    },
+    "/api/carta-delivery/{id}/reject": {
+      "post": {
+        "operationId": "CartaDeliveryInboxController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectProposalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "Not an admin, cashier or delivery operator (confirm: admin or delivery operator)."
+          },
+          "404": {
+            "description": "No encontramos este pedido a domicilio."
+          },
+          "409": {
+            "description": "Este pedido ya fue confirmado o rechazado."
+          },
+          "422": {
+            "description": "El motivo admite hasta 140 caracteres."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-delivery"
+        ]
+      }
+    },
+    "/api/carta-admin": {
+      "get": {
+        "operationId": "CartaAdminController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Everything the settings page shows, for the caller's restaurant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaAdmin"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/settings": {
+      "put": {
+        "operationId": "CartaAdminController_updateSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCartaSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created on the first save; omitted fields keep their value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaAdminSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "One Spanish message for the first invalid field; nothing is written."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/dayparts": {
+      "put": {
+        "operationId": "CartaAdminController_replaceDayparts",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceCartaDaypartsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new list; it replaced the previous one in one transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CartaAdminDaypart"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Las categorías de la franja deben ser de tu restaurante. | El plato del día debe ser un plato de tu restaurante. | Cada franja empieza antes de terminar, en HH:MM y sin cruzar la medianoche. | ...; the previous list stays."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/dishes/{dishId}": {
+      "put": {
+        "operationId": "CartaAdminController_updateDish",
+        "parameters": [
+          {
+            "name": "dishId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDishDetailsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaDishDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": "No encontramos este plato."
+          },
+          "422": {
+            "description": "Las etiquetas válidas son Vegetariano, Picante, Sin gluten y Lácteos. | La descripción en inglés admite hasta 400 caracteres. | Indica si revisaste la descripción en inglés."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/tables/qr": {
+      "post": {
+        "operationId": "CartaAdminController_regenerateAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Every table got a new token in one transaction; the printed QRs stop working.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaTablesQr"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/tables/{tableId}/qr": {
+      "post": {
+        "operationId": "CartaAdminController_regenerateTable",
+        "parameters": [
+          {
+            "name": "tableId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The table with its new token; the old QR stops working.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaAdminTable"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": "No encontramos esta mesa."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/slug": {
+      "put": {
+        "operationId": "CartaAdminController_updateSlug",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCartaSlugRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new public link; the old one and its printed QRs stop working.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaAdminRestaurant"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "Ese enlace ya lo usa otro restaurante"
+          },
+          "422": {
+            "description": "Usa minúsculas y números separados por guiones (sin tildes, espacios ni guiones al inicio o al final), hasta 64 caracteres."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/assets": {
+      "post": {
+        "operationId": "CartaAdminController_createAsset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCartaAssetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Presigned PUT under <restaurantId>/carta/; save publicUrl as logoUrl or coverUrl.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTicket"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Elige si subes el logo o la portada. | Sube una imagen PNG, JPG o WebP (no SVG). | La imagen puede pesar hasta 5 MB."
+          },
+          "503": {
+            "description": "Storage is not configured (no S3_* variables)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
     }
   },
   "info": {
@@ -22099,6 +23310,2370 @@
         },
         "required": [
           "name"
+        ]
+      },
+      "CartaRestaurant": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Brasa & Leña"
+          },
+          "slug": {
+            "type": "string",
+            "example": "brasa-y-lena"
+          },
+          "currency": {
+            "type": "string",
+            "example": "COP"
+          }
+        },
+        "required": [
+          "name",
+          "slug",
+          "currency"
+        ]
+      },
+      "CartaOpeningDay": {
+        "type": "object",
+        "properties": {
+          "opens": {
+            "type": "string",
+            "example": "07:00",
+            "description": "HH:MM, restaurant time."
+          },
+          "closes": {
+            "type": "string",
+            "example": "22:30",
+            "description": "HH:MM; earlier than opens = closes after midnight."
+          }
+        },
+        "required": [
+          "opens",
+          "closes"
+        ]
+      },
+      "CartaOpeningHours": {
+        "type": "object",
+        "properties": {
+          "1": {
+            "nullable": true,
+            "description": "Monday; null = closed.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningDay"
+              }
+            ]
+          },
+          "2": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningDay"
+              }
+            ]
+          },
+          "3": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningDay"
+              }
+            ]
+          },
+          "4": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningDay"
+              }
+            ]
+          },
+          "5": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningDay"
+              }
+            ]
+          },
+          "6": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningDay"
+              }
+            ]
+          },
+          "7": {
+            "nullable": true,
+            "description": "Sunday.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningDay"
+              }
+            ]
+          }
+        },
+        "required": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7"
+        ]
+      },
+      "CartaSettings": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Short description under the name (<= 160)."
+          },
+          "brandColor": {
+            "type": "string",
+            "nullable": true,
+            "example": "#b4532a"
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "instagram": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "tiktok": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "whatsapp": {
+            "type": "string",
+            "nullable": true,
+            "description": "Digits with country code."
+          },
+          "mapsUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "googleReviewUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "tableOrderingEnabled": {
+            "type": "boolean"
+          },
+          "deliveryOrderingEnabled": {
+            "type": "boolean"
+          },
+          "showTableBill": {
+            "type": "boolean"
+          },
+          "englishEnabled": {
+            "type": "boolean",
+            "description": "Off: lang is always es and no English text is returned."
+          },
+          "openingHours": {
+            "nullable": true,
+            "description": "null = not configured (always open).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningHours"
+              }
+            ]
+          }
+        },
+        "required": [
+          "description",
+          "brandColor",
+          "logoUrl",
+          "coverUrl",
+          "instagram",
+          "tiktok",
+          "whatsapp",
+          "mapsUrl",
+          "googleReviewUrl",
+          "tableOrderingEnabled",
+          "deliveryOrderingEnabled",
+          "showTableBill",
+          "englishEnabled",
+          "openingHours"
+        ]
+      },
+      "CartaNextOpening": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-11-11",
+            "description": "Restaurant-local date."
+          },
+          "opensAt": {
+            "type": "string",
+            "example": "07:00"
+          },
+          "inDays": {
+            "type": "number",
+            "example": 1,
+            "description": "0 = later today, 1 = tomorrow, ..."
+          }
+        },
+        "required": [
+          "date",
+          "opensAt",
+          "inDays"
+        ]
+      },
+      "CartaDaypart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Desayuno"
+          },
+          "nameEn": {
+            "type": "string",
+            "nullable": true,
+            "description": "null when unset or English is off."
+          },
+          "startsAt": {
+            "type": "string",
+            "example": "07:00"
+          },
+          "endsAt": {
+            "type": "string",
+            "example": "11:00",
+            "description": "Exclusive."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Its [startsAt, endsAt) holds now (server clock, restaurant timezone)."
+          },
+          "featuredDishId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "\"Plato del día\"; null unless listed in the menu."
+          },
+          "categoryIds": {
+            "description": "Categories of the daypart that the menu lists, in menu order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "nameEn",
+          "startsAt",
+          "endsAt",
+          "current",
+          "featuredDishId",
+          "categoryIds"
+        ]
+      },
+      "CartaSubcategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "CartaModifierOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "description": "Added to the unit price."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "price"
+        ]
+      },
+      "CartaModifierGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "minSelect": {
+            "type": "number"
+          },
+          "maxSelect": {
+            "type": "number",
+            "nullable": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaModifierOption"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "required",
+          "minSelect",
+          "maxSelect",
+          "options"
+        ]
+      },
+      "CartaDish": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Always in Spanish."
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "descriptionEn": {
+            "type": "string",
+            "description": "The restaurant's English description; only when English is on and it is set."
+          },
+          "price": {
+            "type": "number",
+            "description": "List price, as the waiter menu."
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Opaque image reference, as the waiter menu."
+          },
+          "allowComments": {
+            "type": "boolean"
+          },
+          "available": {
+            "type": "boolean",
+            "description": "false = \"Agotado hoy\": listed after the available dishes, cannot be added."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vegetarian",
+                "spicy",
+                "gluten_free",
+                "dairy",
+                "most_ordered"
+              ]
+            }
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The automatic promotion a line would get now on the channel (waiter menu rule)."
+          },
+          "promotionName": {
+            "type": "string"
+          },
+          "promotionBadge": {
+            "type": "string",
+            "example": "2x1"
+          },
+          "promotionEndsAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "16:00",
+            "description": "End of the current window; null = all day."
+          },
+          "promoPrice": {
+            "type": "number",
+            "description": "Only for a product discount: the unit price after it."
+          },
+          "modifierGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaModifierGroup"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "price",
+          "categoryId",
+          "subcategoryId",
+          "imageUrl",
+          "allowComments",
+          "available",
+          "tags",
+          "modifierGroups"
+        ]
+      },
+      "CartaCategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "icon": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "hasSubcategories": {
+            "type": "boolean"
+          },
+          "subcategories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaSubcategory"
+            }
+          },
+          "dishes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaDish"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "icon",
+          "color",
+          "hasSubcategories",
+          "subcategories",
+          "dishes"
+        ]
+      },
+      "CartaMenu": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "description": "The waiter menu tree for the channel: same categories, dishes, prices, promotions and availability.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaCategory"
+            }
+          },
+          "uncategorized": {
+            "description": "Active dishes without category.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaDish"
+            }
+          }
+        },
+        "required": [
+          "categories",
+          "uncategorized"
+        ]
+      },
+      "CartaTable": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "number",
+            "example": 12
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Terraza"
+          },
+          "isOpen": {
+            "type": "boolean",
+            "description": "The table has an open order (guest orders need it)."
+          }
+        },
+        "required": [
+          "number",
+          "zoneName",
+          "isOpen"
+        ]
+      },
+      "Carta": {
+        "type": "object",
+        "properties": {
+          "lang": {
+            "type": "string",
+            "enum": [
+              "es",
+              "en"
+            ],
+            "description": "lang query, else Accept-Language (en* = en), else es."
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "takeaway",
+              "delivery"
+            ]
+          },
+          "restaurant": {
+            "$ref": "#/components/schemas/CartaRestaurant"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/CartaSettings"
+          },
+          "isOpenNow": {
+            "type": "boolean",
+            "description": "Server clock in the restaurant timezone; true when no hours are configured."
+          },
+          "closesAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "22:30",
+            "description": "When open: the time it closes."
+          },
+          "nextOpening": {
+            "nullable": true,
+            "description": "When closed: the next opening.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaNextOpening"
+              }
+            ]
+          },
+          "currentDaypartId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "dayparts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaDaypart"
+            }
+          },
+          "menu": {
+            "$ref": "#/components/schemas/CartaMenu"
+          },
+          "deliveryFee": {
+            "type": "number",
+            "example": 4000
+          },
+          "tipPercentage": {
+            "type": "number",
+            "example": 10
+          },
+          "table": {
+            "description": "Only on the table QR route.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaTable"
+              }
+            ]
+          }
+        },
+        "required": [
+          "lang",
+          "channel",
+          "restaurant",
+          "settings",
+          "isOpenNow",
+          "closesAt",
+          "nextOpening",
+          "currentDaypartId",
+          "dayparts",
+          "menu",
+          "deliveryFee",
+          "tipPercentage"
+        ]
+      },
+      "CartaShareRestaurant": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ]
+      },
+      "CartaShareDish": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "price": {
+            "type": "number"
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "price",
+          "imageUrl"
+        ]
+      },
+      "CartaDishShare": {
+        "type": "object",
+        "properties": {
+          "restaurant": {
+            "$ref": "#/components/schemas/CartaShareRestaurant"
+          },
+          "dish": {
+            "$ref": "#/components/schemas/CartaShareDish"
+          }
+        },
+        "required": [
+          "restaurant",
+          "dish"
+        ]
+      },
+      "GuestProposalLine": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "quantity"
+        ]
+      },
+      "GuestProposal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "rejected"
+            ]
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "rejected",
+              "confirmed",
+              "kitchen",
+              "served",
+              "cancelled"
+            ],
+            "description": "Enviado, Confirmado, En la cocina, Servido."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "decidedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestProposalLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "stage",
+          "createdAt",
+          "decidedAt",
+          "rejectReason",
+          "lines"
+        ]
+      },
+      "GuestTableStatus": {
+        "type": "object",
+        "properties": {
+          "isOpen": {
+            "type": "boolean",
+            "description": "The table has an open order."
+          },
+          "waiterFirstName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Carolina"
+          },
+          "tableOrderingEnabled": {
+            "type": "boolean"
+          },
+          "showTableBill": {
+            "type": "boolean"
+          },
+          "proposals": {
+            "description": "Only this guest key's, for the current open order, oldest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestProposal"
+            }
+          },
+          "requests": {
+            "type": "array",
+            "description": "Unresolved requests of the open order.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "bill",
+                "waiter"
+              ]
+            }
+          }
+        },
+        "required": [
+          "isOpen",
+          "waiterFirstName",
+          "tableOrderingEnabled",
+          "showTableBill",
+          "proposals",
+          "requests"
+        ]
+      },
+      "ProposalLineRequest": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "optionIds": {
+            "description": "Chosen modifier option ids (distinct, <= 50).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 140
+          }
+        },
+        "required": [
+          "dishId",
+          "quantity"
+        ]
+      },
+      "ProposalRequest": {
+        "type": "object",
+        "properties": {
+          "guestKey": {
+            "type": "string",
+            "example": "k3J9xZ0qLmN4pQ7r",
+            "description": "Opaque per-browser id, 16-64 of [A-Za-z0-9_-]."
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalLineRequest"
+            }
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "guestKey",
+          "items"
+        ]
+      },
+      "ProposalCreated": {
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "example": "pending"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposalId",
+          "status",
+          "createdAt"
+        ]
+      },
+      "GuestBillLine": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "number"
+          },
+          "lineTotal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "quantity",
+          "unitPrice",
+          "lineTotal"
+        ]
+      },
+      "GuestBillDiscount": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "amount"
+        ]
+      },
+      "GuestTableBill": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestBillLine"
+            }
+          },
+          "discounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestBillDiscount"
+            }
+          },
+          "grossSubtotal": {
+            "type": "number"
+          },
+          "totalDiscounts": {
+            "type": "number"
+          },
+          "subtotal": {
+            "type": "number"
+          },
+          "tipPercentage": {
+            "type": "number",
+            "example": 10,
+            "description": "Suggested tip (voluntary)."
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lines",
+          "discounts",
+          "grossSubtotal",
+          "totalDiscounts",
+          "subtotal",
+          "tipPercentage",
+          "updatedAt"
+        ]
+      },
+      "TableRequestRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bill",
+              "waiter"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "TableRequestCreated": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bill",
+              "waiter"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "alreadyPending": {
+            "type": "boolean",
+            "description": "An unresolved request of this kind already existed; nothing new was stored."
+          }
+        },
+        "required": [
+          "kind",
+          "createdAt",
+          "alreadyPending"
+        ]
+      },
+      "FeedbackRequest": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Table QR token, when left from a table."
+          },
+          "rating": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500,
+            "description": "Private comment for the restaurant."
+          }
+        },
+        "required": [
+          "rating"
+        ]
+      },
+      "InboxOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "InboxProposalLine": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxOption"
+            }
+          }
+        },
+        "required": [
+          "dishId",
+          "name",
+          "quantity",
+          "note",
+          "options"
+        ]
+      },
+      "InboxProposal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tableNumber": {
+            "type": "number"
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true
+          },
+          "waiterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxProposalLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "tableNumber",
+          "zoneName",
+          "waiterName",
+          "note",
+          "createdAt",
+          "lines"
+        ]
+      },
+      "InboxRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bill",
+              "waiter"
+            ]
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tableNumber": {
+            "type": "number"
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true
+          },
+          "waiterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "orderId",
+          "tableNumber",
+          "zoneName",
+          "waiterName",
+          "createdAt"
+        ]
+      },
+      "CartaInbox": {
+        "type": "object",
+        "properties": {
+          "proposals": {
+            "description": "Pending proposals of open orders, newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxProposal"
+            }
+          },
+          "requests": {
+            "description": "Unresolved requests of open orders, newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxRequest"
+            }
+          }
+        },
+        "required": [
+          "proposals",
+          "requests"
+        ]
+      },
+      "ProposalConfirmed": {
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "example": "confirmed"
+          },
+          "stage": {
+            "type": "string",
+            "example": "kitchen",
+            "description": "The stage the guest now sees."
+          },
+          "orderItemIds": {
+            "description": "The order_items added for the proposal.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "proposalId",
+          "orderId",
+          "status",
+          "stage",
+          "orderItemIds"
+        ]
+      },
+      "RejectProposalRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 140,
+            "description": "Shown to the guest."
+          }
+        }
+      },
+      "DeliveryCustomerRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "phone": {
+            "type": "string",
+            "example": "300 123 4567",
+            "description": "Normalized like the delivery console (+57 mobile prefix dropped): 7 to 15 digits."
+          },
+          "address": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 200
+          },
+          "neighborhood": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "name",
+          "phone",
+          "address"
+        ]
+      },
+      "DeliveryPaymentRequest": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "card",
+              "transfer"
+            ],
+            "description": "Paid on delivery: Efectivo, Datáfono or Transferencia."
+          },
+          "cashFrom": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "description": "\"¿Con cuánto pagas?\" (cash only)."
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "DeliverySubmitRequest": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/DeliveryCustomerRequest"
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalLineRequest"
+            }
+          },
+          "payment": {
+            "$ref": "#/components/schemas/DeliveryPaymentRequest"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "customer",
+          "items",
+          "payment"
+        ]
+      },
+      "DeliverySubmitted": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "trackingToken": {
+            "type": "string",
+            "description": "Follow the order with GET /carta/:slug/delivery/:trackingToken (24 base64url characters)."
+          },
+          "status": {
+            "type": "string",
+            "example": "pending"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "trackingToken",
+          "status",
+          "createdAt"
+        ]
+      },
+      "GuestDeliveryLine": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "quantity"
+        ]
+      },
+      "GuestDeliveryStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "rejected"
+            ]
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "rejected",
+              "received",
+              "preparing",
+              "ready",
+              "out_for_delivery",
+              "delivered",
+              "failed",
+              "cancelled"
+            ],
+            "description": "Recibido, Confirmado, En camino, Entregado: the delivery order's status once confirmed."
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestDeliveryLine"
+            }
+          },
+          "deliveryFee": {
+            "type": "number",
+            "description": "The delivery fee shown when sending."
+          },
+          "total": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null until the delivery order exists; then its total plus the delivery fee."
+          },
+          "orderNumber": {
+            "type": "number",
+            "nullable": true,
+            "example": 142,
+            "description": "\"Pedido D-0142\": the delivery order's number once it exists."
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "card",
+              "transfer"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "stage",
+          "rejectReason",
+          "createdAt",
+          "lines",
+          "deliveryFee",
+          "total",
+          "orderNumber",
+          "paymentMethod"
+        ]
+      },
+      "GuestPricingRequest": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "takeaway",
+              "delivery"
+            ]
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalLineRequest"
+            }
+          }
+        },
+        "required": [
+          "channel",
+          "items"
+        ]
+      },
+      "GuestPricingDiscount": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "promotion_item",
+              "combo",
+              "promotion_bill"
+            ]
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "label": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "promotionId",
+          "label",
+          "amount"
+        ]
+      },
+      "GuestPricingLine": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "number",
+            "description": "Unit list price, options included."
+          },
+          "promotionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "promotionName": {
+            "type": "string",
+            "nullable": true
+          },
+          "discounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestPricingDiscount"
+            }
+          }
+        },
+        "required": [
+          "dishId",
+          "name",
+          "quantity",
+          "unitPrice",
+          "promotionId",
+          "promotionName",
+          "discounts"
+        ]
+      },
+      "GuestPricing": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "dine_in",
+              "takeaway",
+              "delivery"
+            ]
+          },
+          "lines": {
+            "description": "In the order sent; same values as POST /orders/pricing-preview draft lines.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuestPricingLine"
+            }
+          },
+          "billDiscount": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuestPricingDiscount"
+              }
+            ]
+          },
+          "grossSubtotal": {
+            "type": "number"
+          },
+          "totalDiscounts": {
+            "type": "number"
+          },
+          "netSubtotal": {
+            "type": "number"
+          },
+          "taxPercentage": {
+            "type": "number",
+            "example": 8,
+            "description": "The tax percentage the guest total includes: only delivery adds tax, read as create_delivery_order (missing 0, an unusable value 0); dine_in and takeaway are always 0 (their total stays the net subtotal)."
+          },
+          "tax": {
+            "type": "number",
+            "description": "round(netSubtotal x taxPercentage / 100), as the bill; no tax on the delivery fee."
+          },
+          "deliveryFee": {
+            "type": "number",
+            "description": "The carta's delivery fee on delivery, else 0."
+          },
+          "total": {
+            "type": "number",
+            "description": "netSubtotal + tax + deliveryFee: the amount due, without a tip."
+          }
+        },
+        "required": [
+          "channel",
+          "lines",
+          "billDiscount",
+          "grossSubtotal",
+          "totalDiscounts",
+          "netSubtotal",
+          "taxPercentage",
+          "tax",
+          "deliveryFee",
+          "total"
+        ]
+      },
+      "DeliveryInboxLine": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxOption"
+            }
+          }
+        },
+        "required": [
+          "dishId",
+          "name",
+          "quantity",
+          "note",
+          "options"
+        ]
+      },
+      "DeliveryInboxRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "registeredName": {
+            "type": "string",
+            "nullable": true,
+            "description": "The name already registered for this phone (null when new). Confirming keeps it; the carta name goes to the delivery notes."
+          },
+          "phone": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "neighborhood": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "card",
+              "transfer"
+            ]
+          },
+          "cashFrom": {
+            "type": "number",
+            "nullable": true
+          },
+          "deliveryFee": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryInboxLine"
+            }
+          },
+          "previewSubtotal": {
+            "type": "number",
+            "nullable": true,
+            "description": "netSubtotal of POST /orders/pricing-preview on delivery now; null when a line no longer prices."
+          },
+          "previewTax": {
+            "type": "number",
+            "nullable": true,
+            "description": "round(previewSubtotal x the delivery order's tax percentage / 100), as the guest preview; null with previewSubtotal."
+          },
+          "previewTotal": {
+            "type": "number",
+            "nullable": true,
+            "description": "previewSubtotal + previewTax + deliveryFee: the total the guest saw."
+          }
+        },
+        "required": [
+          "id",
+          "customerName",
+          "registeredName",
+          "phone",
+          "address",
+          "neighborhood",
+          "notes",
+          "paymentMethod",
+          "cashFrom",
+          "deliveryFee",
+          "createdAt",
+          "lines",
+          "previewSubtotal",
+          "previewTax",
+          "previewTotal"
+        ]
+      },
+      "DeliveryRequestConfirmed": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "example": "confirmed"
+          },
+          "order": {
+            "description": "POST /delivery/orders' answer for the order created on confirm.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateDeliveryOrderResult"
+              }
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "status",
+          "order"
+        ]
+      },
+      "CartaAdminRestaurant": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Brasa & Leña"
+          },
+          "slug": {
+            "type": "string",
+            "example": "brasa-y-lena"
+          },
+          "publicPath": {
+            "type": "string",
+            "example": "/c/brasa-y-lena",
+            "description": "Path of the public carta on the web origin."
+          },
+          "timezone": {
+            "type": "string",
+            "example": "America/Bogota"
+          }
+        },
+        "required": [
+          "name",
+          "slug",
+          "publicPath",
+          "timezone"
+        ]
+      },
+      "CartaAdminSettings": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Short description under the name (<= 160)."
+          },
+          "brandColor": {
+            "type": "string",
+            "nullable": true,
+            "example": "#b4532a"
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "instagram": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "tiktok": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "whatsapp": {
+            "type": "string",
+            "nullable": true,
+            "description": "Digits with country code."
+          },
+          "mapsUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "googleReviewUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "tableOrderingEnabled": {
+            "type": "boolean"
+          },
+          "deliveryOrderingEnabled": {
+            "type": "boolean"
+          },
+          "showTableBill": {
+            "type": "boolean"
+          },
+          "englishEnabled": {
+            "type": "boolean",
+            "description": "Off: lang is always es and no English text is returned."
+          },
+          "openingHours": {
+            "nullable": true,
+            "description": "null = not configured (always open).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningHours"
+              }
+            ]
+          },
+          "published": {
+            "type": "boolean",
+            "description": "false = the link and the QRs show not found (\"Volvemos pronto\")."
+          }
+        },
+        "required": [
+          "description",
+          "brandColor",
+          "logoUrl",
+          "coverUrl",
+          "instagram",
+          "tiktok",
+          "whatsapp",
+          "mapsUrl",
+          "googleReviewUrl",
+          "tableOrderingEnabled",
+          "deliveryOrderingEnabled",
+          "showTableBill",
+          "englishEnabled",
+          "openingHours",
+          "published"
+        ]
+      },
+      "CartaAdminDaypart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Desayuno"
+          },
+          "nameEn": {
+            "type": "string",
+            "nullable": true
+          },
+          "startsAt": {
+            "type": "string",
+            "example": "07:00"
+          },
+          "endsAt": {
+            "type": "string",
+            "example": "11:00",
+            "description": "Exclusive; later than startsAt."
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "featuredDishId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "\"Plato del día\"."
+          },
+          "categoryIds": {
+            "description": "Category ids, in menu order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "nameEn",
+          "startsAt",
+          "endsAt",
+          "sortOrder",
+          "featuredDishId",
+          "categoryIds"
+        ]
+      },
+      "CartaAdminCategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "active"
+        ]
+      },
+      "CartaAdminDish": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Spanish description of the dish."
+          },
+          "price": {
+            "type": "number"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Paused dishes are hidden from the carta."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vegetarian",
+                "spicy",
+                "gluten_free",
+                "dairy"
+              ]
+            }
+          },
+          "descriptionEn": {
+            "type": "string",
+            "nullable": true,
+            "description": "Written by the restaurant (no translation service)."
+          },
+          "descriptionEnReviewed": {
+            "type": "boolean"
+          },
+          "mostOrdered": {
+            "type": "boolean",
+            "description": "\"Lo más pedido\": the guest menu rule (top 5 by units on paid orders of the last 30 days)."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "price",
+          "categoryId",
+          "imageUrl",
+          "active",
+          "tags",
+          "descriptionEn",
+          "descriptionEnReviewed",
+          "mostOrdered"
+        ]
+      },
+      "CartaAdminTable": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Terraza"
+          },
+          "token": {
+            "type": "string",
+            "description": "Current QR token."
+          },
+          "guestPath": {
+            "type": "string",
+            "example": "/c/brasa-y-lena/m/<token>"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "zoneName",
+          "token",
+          "guestPath"
+        ]
+      },
+      "CartaAdmin": {
+        "type": "object",
+        "properties": {
+          "restaurant": {
+            "$ref": "#/components/schemas/CartaAdminRestaurant"
+          },
+          "settings": {
+            "description": "Defaults when the carta was never configured.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaAdminSettings"
+              }
+            ]
+          },
+          "dayparts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminDaypart"
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminCategory"
+            }
+          },
+          "dishes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminDish"
+            }
+          },
+          "tables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminTable"
+            }
+          },
+          "deliveryDefaultFee": {
+            "type": "number",
+            "description": "Read-only here: business_config delivery_default_fee (Ajustes · Domicilios)."
+          }
+        },
+        "required": [
+          "restaurant",
+          "settings",
+          "dayparts",
+          "categories",
+          "dishes",
+          "tables",
+          "deliveryDefaultFee"
+        ]
+      },
+      "UpdateCartaSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "published": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 160,
+            "description": "Blank clears."
+          },
+          "brandColor": {
+            "type": "string",
+            "nullable": true,
+            "example": "#b4532a",
+            "description": "Stored lower case."
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "https only, e.g. a publicUrl of POST /carta-admin/assets."
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "https only."
+          },
+          "instagram": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "tiktok": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "whatsapp": {
+            "type": "string",
+            "nullable": true,
+            "example": "573104567890",
+            "description": "7-15 digits with country code."
+          },
+          "mapsUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "https only."
+          },
+          "googleReviewUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "https only."
+          },
+          "tableOrderingEnabled": {
+            "type": "boolean"
+          },
+          "deliveryOrderingEnabled": {
+            "type": "boolean"
+          },
+          "showTableBill": {
+            "type": "boolean"
+          },
+          "englishEnabled": {
+            "type": "boolean"
+          },
+          "openingHours": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningHours"
+              }
+            ]
+          }
+        }
+      },
+      "CartaDaypartInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "nameEn": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 40
+          },
+          "startsAt": {
+            "type": "string",
+            "example": "07:00"
+          },
+          "endsAt": {
+            "type": "string",
+            "example": "11:00"
+          },
+          "sortOrder": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Defaults to the position in the list."
+          },
+          "featuredDishId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "categoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "startsAt",
+          "endsAt",
+          "categoryIds"
+        ]
+      },
+      "ReplaceCartaDaypartsRequest": {
+        "type": "object",
+        "properties": {
+          "dayparts": {
+            "maxItems": 12,
+            "description": "The whole list; it replaces the current one.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaDaypartInput"
+            }
+          }
+        },
+        "required": [
+          "dayparts"
+        ]
+      },
+      "UpdateDishDetailsRequest": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vegetarian",
+                "spicy",
+                "gluten_free",
+                "dairy"
+              ]
+            }
+          },
+          "descriptionEn": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 400
+          },
+          "descriptionEnReviewed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tags",
+          "descriptionEnReviewed"
+        ]
+      },
+      "CartaDishDetails": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vegetarian",
+                "spicy",
+                "gluten_free",
+                "dairy"
+              ]
+            }
+          },
+          "descriptionEn": {
+            "type": "string",
+            "nullable": true
+          },
+          "descriptionEnReviewed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dishId",
+          "tags",
+          "descriptionEn",
+          "descriptionEnReviewed"
+        ]
+      },
+      "CartaTablesQr": {
+        "type": "object",
+        "properties": {
+          "tables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminTable"
+            }
+          }
+        },
+        "required": [
+          "tables"
+        ]
+      },
+      "UpdateCartaSlugRequest": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "example": "la-parrilla",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        },
+        "required": [
+          "slug"
+        ]
+      },
+      "CreateCartaAssetRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "logo",
+              "cover"
+            ]
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "description": "The PUT must send this exact Content-Type."
+          },
+          "size": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5242880,
+            "description": "Bytes. The PUT must send exactly this Content-Length."
+          }
+        },
+        "required": [
+          "kind",
+          "contentType",
+          "size"
         ]
       }
     }

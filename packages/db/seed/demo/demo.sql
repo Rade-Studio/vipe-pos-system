@@ -2000,3 +2000,82 @@ BEGIN
   PERFORM set_config('app.user_id', '', true);
 END
 $counts$;
+
+-- ---------------------------------------------------------------------------
+-- Public carta (odd/tasks/carta-digital.md, L27, L31): published settings,
+-- two dayparts (they cannot cross midnight, so the night one ends at 23:59)
+-- and the guest-facing details of a dozen dishes. The QR token of every table
+-- comes from the tables trigger. Ids are resolved by name and a missing one
+-- raises, so a menu change in this file breaks the load instead of the carta.
+-- ---------------------------------------------------------------------------
+
+DO $carta$
+DECLARE
+  v_rid uuid := current_setting('vipe.restaurant_id')::uuid;
+  v_daypart uuid;
+  v_dish uuid;
+  r record;
+  n text;
+BEGIN
+  INSERT INTO public.carta_settings (restaurant_id, published, description, brand_color, instagram, tiktok, whatsapp,
+                                     maps_url, google_review_url, table_ordering_enabled, delivery_ordering_enabled,
+                                     show_table_bill, english_enabled, opening_hours)
+  VALUES (v_rid, true, 'Bar de coctelería · Chapinero, Bogotá', '#5b3a8c', 'brumabar', 'brumabar', '573215550188',
+          'https://maps.google.com/?q=Bruma+Bar+de+cocteleria+Chapinero+Bogota',
+          'https://search.google.com/local/writereview?placeid=ChIJBrumaBarChapinero',
+          true, true, true, true,
+          '{"1": null, "2": {"opens": "17:00", "closes": "01:00"}, "3": {"opens": "17:00", "closes": "01:00"},
+            "4": {"opens": "17:00", "closes": "01:00"}, "5": {"opens": "17:00", "closes": "02:00"},
+            "6": {"opens": "17:00", "closes": "02:00"}, "7": {"opens": "16:00", "closes": "23:00"}}')
+  ON CONFLICT (restaurant_id) DO NOTHING;
+
+  FOR r IN SELECT * FROM (VALUES
+      ('Happy hour', 'Happy hour', time '17:00', time '20:00', 0, 'Mojito',
+       ARRAY['Cocteles clásicos', 'Cervezas', 'Micheladas', 'Shots', 'Picadas y comida de bar', 'Sin alcohol']),
+      ('Noche', 'Night', time '20:00', time '23:59', 1, 'Bruma de maracuyá',
+       ARRAY['Cocteles de autor', 'Cocteles clásicos', 'Cervezas', 'Cubetas', 'Micheladas', 'Shots',
+             'Botellas y medias', 'Picadas y comida de bar', 'Sin alcohol'])
+    ) AS p(name, name_en, starts_at, ends_at, sort_order, featured, categories)
+  LOOP
+    CONTINUE WHEN EXISTS (SELECT 1 FROM public.carta_dayparts d WHERE d.restaurant_id = v_rid AND d.name = r.name);
+    SELECT d.id INTO v_dish FROM public.dishes d WHERE d.restaurant_id = v_rid AND d.name = r.featured;
+    IF v_dish IS NULL THEN
+      RAISE EXCEPTION 'demo carta: dish % not found', r.featured;
+    END IF;
+    INSERT INTO public.carta_dayparts (restaurant_id, name, name_en, starts_at, ends_at, sort_order, featured_dish_id)
+    VALUES (v_rid, r.name, r.name_en, r.starts_at, r.ends_at, r.sort_order, v_dish) RETURNING id INTO v_daypart;
+    FOREACH n IN ARRAY r.categories LOOP
+      IF NOT EXISTS (SELECT 1 FROM public.categories c WHERE c.restaurant_id = v_rid AND c.name = n) THEN
+        RAISE EXCEPTION 'demo carta: category % not found', n;
+      END IF;
+      INSERT INTO public.carta_daypart_categories (restaurant_id, daypart_id, category_id)
+      SELECT v_rid, v_daypart, c.id FROM public.categories c WHERE c.restaurant_id = v_rid AND c.name = n;
+    END LOOP;
+  END LOOP;
+
+  FOR r IN SELECT * FROM (VALUES
+      ('Bruma de maracuyá', '{}'::text[], 'Gin, house passion fruit syrup, lime and soda. Our signature.', true),
+      ('Niebla de Monserrate', '{}', 'Aguardiente, lime, fresh mint and simple syrup.', true),
+      ('Lulo picante', '{spicy}', 'White rum, lulo, simple syrup and a touch of chili.', true),
+      ('Café de la Séptima', '{}', 'Aged rum, coffee liqueur and espresso.', false),
+      ('Mojito', '{}', 'Rum of your choice, mint, lime and soda.', true),
+      ('Piña colada', '{}', 'Rum of your choice, cream of coconut and pineapple.', false),
+      ('Michelada con Águila', '{spicy}', 'Salt-rimmed glass with Águila beer and the base you choose.', true),
+      ('Nachos con queso y guacamole', '{vegetarian,dairy}', 'Tortilla chips with melted cheddar cheese and guacamole.', false),
+      ('Patacones con hogao', '{vegetarian,gluten_free}', 'Four fried green plantains with our tomato and onion hogao.', false),
+      ('Alitas x10', '{spicy}', 'Ten chicken wings with the sauce of your choice.', true),
+      ('Picada para 2', '{}', 'Chorizo, pork belly, wings, creole potatoes, plantain and arepa to share.', false),
+      ('Limonada de coco', '{vegetarian,gluten_free}', 'Fresh lime blended with cream of coconut.', false),
+      ('Nojito', '{vegetarian,gluten_free}', 'Alcohol-free mojito with mint, lime and soda.', false)
+    ) AS t(name, tags, description_en, reviewed)
+  LOOP
+    SELECT d.id INTO v_dish FROM public.dishes d WHERE d.restaurant_id = v_rid AND d.name = r.name;
+    IF v_dish IS NULL THEN
+      RAISE EXCEPTION 'demo carta: dish % not found', r.name;
+    END IF;
+    INSERT INTO public.dish_public_details (dish_id, restaurant_id, tags, description_en, description_en_reviewed)
+    VALUES (v_dish, v_rid, r.tags, r.description_en, r.reviewed)
+    ON CONFLICT (dish_id) DO NOTHING;
+  END LOOP;
+END
+$carta$;

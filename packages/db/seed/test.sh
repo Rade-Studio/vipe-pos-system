@@ -305,6 +305,17 @@ expect_eq "demo: every Z covers a closed, validated business day" "0" \
          OR NOT EXISTS (SELECT 1 FROM public.cash_registers r WHERE r.validated_at IS NOT NULL
                          AND ((r.opening_timestamp AT TIME ZONE 'America/Bogota') - interval '5 hours')::date = z.business_day)")"
 
+# The public carta of the demo (odd/tasks/carta-digital.md, L27, L31).
+bruma_slug="$(q "SELECT slug FROM public.restaurants")"
+expect_eq "demo carta: published, two dayparts by start" "true/Happy hour,Noche" \
+  "$(q "SELECT (SELECT bool_and(published) FROM public.carta_settings) || '/' || (SELECT string_agg(name, ',' ORDER BY starts_at) FROM public.carta_dayparts)")"
+expect_eq "demo carta: every table has a QR token" "0" \
+  "$(q "SELECT count(*) FROM public.tables t WHERE NOT EXISTS (SELECT 1 FROM public.table_qr_tokens k WHERE k.table_id = t.id)")"
+expect_eq "demo carta: guest_carta answers the slug with two dayparts" "2" \
+  "$(q "SELECT jsonb_array_length(private.guest_carta('$bruma_slug') -> 'dayparts')")"
+expect_eq "demo carta: guest_menu_data lists dishes, at least 10 with public details" "t" \
+  "$(q "SELECT jsonb_array_length(private.guest_menu_data('$bruma_slug') -> 'dishes') > 0 AND (SELECT count(*) FROM public.dish_public_details) >= 10")"
+
 # Invariants of the loaded demo (independent verifier of 2eaf3d5).
 expect_eq "demo: every payment inside its register's window" "0" \
   "$(q "SELECT count(*) FROM public.payments p JOIN public.cash_registers c ON c.id = p.cash_register_id

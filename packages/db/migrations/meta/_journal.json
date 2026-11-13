@@ -239,6 +239,34 @@
       "when": 1793914481411,
       "tag": "0035_print_job_x_report",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793918081411,
+      "tag": "0036_public_carta",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793921681411,
+      "tag": "0037_carta_table_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793925281411,
+      "tag": "0038_carta_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793928881411,
+      "tag": "0039_carta_admin",
+      "breakpoints": true
     }
   ]
 }

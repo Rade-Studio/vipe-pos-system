@@ -14,17 +14,8 @@ import {
 } from './catalog.dto';
 import { CategoriesService } from './categories.service';
 import { DishesService } from './dishes.service';
+import type { MenuChannel, MenuDataSource, MenuSnapshot } from './menu-data-source';
 import { SubcategoriesService } from './subcategories.service';
-
-/** menu_publications.snapshot, the shape of private.menu_structure() (migration 0015). */
-interface MenuSnapshot {
-  categories: Record<string, { name: string; icon: string; color: string; sort_order: number; active: boolean }>;
-  subcategories: Record<string, { category_id: string; name: string; sort_order: number; active: boolean }>;
-  dishes: Record<string, { name: string; category_id: string | null; subcategory_id: string | null; sort_order: number }>;
-}
-
-/** The order channel the promotion fields of the dishes are computed for. */
-type MenuChannel = 'dine_in' | 'takeaway' | 'delivery';
 
 const iso = (value: Date | string | null) => (value === null ? null : new Date(value).toISOString());
 
@@ -40,9 +31,25 @@ const bySortOrder = <T extends { sortOrder: number }>(rows: T[]) => [...rows].so
  * missing from the snapshot waits for the next publication; no publication
  * serves the live structure. Pricing and availability are the existing rules:
  * DishesService with `pricing: 'promotions'` and SalesService.availability.
+ * The rows come from a MenuDataSource: the caller's (RLS) for staff, or the
+ * public carta's (treeFrom), so both menus run this one set of rules.
  */
 @Injectable()
 export class MenuService {
+  /** The caller's rows under RLS, through the request unit of work. */
+  private readonly staff: MenuDataSource = {
+    snapshot: async () => {
+      const [latest] = await this.rows<{ snapshot: MenuSnapshot }>(sql`
+        SELECT snapshot FROM public.menu_publications ORDER BY published_at DESC, id DESC LIMIT 1`);
+      return latest?.snapshot ?? null;
+    },
+    categories: () => this.categories.list(),
+    subcategories: () => this.subcategories.list({ includeInactive: true }),
+    dishes: (channel) => this.dishes.list({ active: true, pricing: 'promotions', channel }),
+    liveDishIds: async () => new Set((await this.rows<{ id: string }>(sql`SELECT id FROM public.dishes`)).map((row) => row.id)),
+    availability: (dishIds) => this.sales.availability(dishIds),
+  };
+
   constructor(
     private readonly uow: UnitOfWork,
     private readonly categories: CategoriesService,
@@ -52,15 +59,18 @@ export class MenuService {
   ) {}
 
   /** What waiters and delivery see: the published structure. */
-  async tree(channel: MenuChannel = 'dine_in'): Promise<MenuTree> {
-    const [latest] = await this.rows<{ snapshot: MenuSnapshot }>(sql`
-      SELECT snapshot FROM public.menu_publications ORDER BY published_at DESC, id DESC LIMIT 1`);
-    return this.build(latest?.snapshot ?? null, channel);
+  tree(channel: MenuChannel = 'dine_in'): Promise<MenuTree> {
+    return this.treeFrom(this.staff, channel);
+  }
+
+  /** tree() over another restaurant-scoped source: the public carta's guest rows. */
+  async treeFrom(source: MenuDataSource, channel: MenuChannel): Promise<MenuTree> {
+    return this.build(source, await source.snapshot(), channel);
   }
 
   /** The admin editor's preview: the live structure, what the next publication would serve. */
   draft(channel: MenuChannel = 'dine_in'): Promise<MenuTree> {
-    return this.build(null, channel);
+    return this.build(this.staff, null, channel);
   }
 
   async status(): Promise<MenuPublicationStatus> {
@@ -85,20 +95,22 @@ export class MenuService {
     return this.status();
   }
 
-  private async build(snapshot: MenuSnapshot | null, channel: MenuChannel): Promise<MenuTree> {
-    const categories = this.structureCategories(await this.categories.list(), snapshot, await this.liveDishIds(snapshot));
+  private async build(source: MenuDataSource, snapshot: MenuSnapshot | null, channel: MenuChannel): Promise<MenuTree> {
+    // Every live dish id (active or not), for hasSubcategories of a published category.
+    const liveDishes = snapshot ? await source.liveDishIds() : new Set<string>();
+    const categories = this.structureCategories(await source.categories(), snapshot, liveDishes);
     const shownCategories = new Set(categories.map((category) => category.id));
-    const subcategories = this.structureSubcategories(await this.subcategories.list({ includeInactive: true }), snapshot).filter(
+    const subcategories = this.structureSubcategories(await source.subcategories(), snapshot).filter(
       (subcategory) => shownCategories.has(subcategory.categoryId),
     );
     const shownSubcategories = new Set(subcategories.map((subcategory) => subcategory.id));
     // A dish of an inactive (or unpublished) subcategory would have no tile to sit under.
-    const dishes = this.structureDishes(await this.dishes.list({ active: true, pricing: 'promotions', channel }), snapshot).filter(
+    const dishes = this.structureDishes(await source.dishes(channel), snapshot).filter(
       (dish) =>
         (dish.categoryId === null || shownCategories.has(dish.categoryId)) &&
         (dish.subcategoryId === null || shownSubcategories.has(dish.subcategoryId)),
     );
-    const available = await this.sales.availability(dishes.map((dish) => dish.id));
+    const available = await source.availability(dishes.map((dish) => dish.id));
     const withStock = (dish: Dish): MenuTreeDish => ({ ...dish, available: available[dish.id] ?? false });
     return {
       categories: categories.map((category) => ({
@@ -108,14 +120,6 @@ export class MenuService {
       })),
       uncategorized: dishes.filter((dish) => dish.categoryId === null).map(withStock),
     };
-  }
-
-  /** Every live dish id (active or not), for hasSubcategories of a published category. */
-  private async liveDishIds(snapshot: MenuSnapshot | null): Promise<Set<string>> {
-    if (!snapshot) {
-      return new Set();
-    }
-    return new Set((await this.rows<{ id: string }>(sql`SELECT id FROM public.dishes`)).map((row) => row.id));
   }
 
   private structureCategories(live: Category[], snapshot: MenuSnapshot | null, liveDishes: Set<string>): Category[] {

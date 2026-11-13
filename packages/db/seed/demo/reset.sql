@@ -28,6 +28,8 @@ DECLARE
   c_tables constant text[] := ARRAY[
     'order_cancellations', 'order_item_voids', 'payment_voids', 'audit_log',
     'supervisor_authorizations', 'staff_pins',
+    'carta_delivery_requests', 'carta_feedback', 'carta_table_requests', 'carta_table_proposals',
+    'carta_daypart_categories', 'carta_dayparts', 'dish_public_details', 'table_qr_tokens', 'carta_settings',
     'menu_publications', 'payment_tenders', 'payments', 'payment_transactions', 'cash_transactions', 'order_deliveries',
     'order_discounts', 'order_item_modifiers', 'order_items', 'orders', 'z_reports', 'cash_registers',
     'print_jobs', 'printer_tokens', 'desktop_drawer_events', 'desktop_printer_stations', 'desktop_printers',

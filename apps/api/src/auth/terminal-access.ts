@@ -59,6 +59,13 @@ const TERMINAL_ROUTES: Readonly<Record<string, TerminalRoute>> = {
   'POST /api/orders/:id/cancel': write,
   'POST /api/orders/:id/items/void': write,
   'DELETE /api/orders/:id': write,
+  // carta-digital T5b (L29): the waiter carta inbox; the identified waiter
+  // confirms, rejects and resolves (decided_by / resolved_by are them). The
+  // delivery console (/api/carta-delivery) is not a terminal route.
+  'GET /api/carta-inbox': read,
+  'POST /api/carta-inbox/proposals/:id/confirm': write,
+  'POST /api/carta-inbox/proposals/:id/reject': write,
+  'POST /api/carta-inbox/requests/:id/resolve': write,
 };
 
 /** The terminal rule of a route, or undefined when a terminal may not call it. */

@@ -43,6 +43,7 @@ import { PrintersPage } from "@/components/admin/settings/PrintersPage"
 import { PrintStationPage } from "@/components/admin/settings/PrintStationPage"
 import { WaiterAccessPage } from "@/components/admin/settings/WaiterAccessPage"
 import { StationsPage } from "@/components/admin/settings/StationsPage"
+import { CartaSettingsPage } from "@/components/admin/carta/CartaSettingsPage"
 import { useHashSection } from "@/hooks/use-hash-section"
 import { getAdminSection, isAdminSectionId, type AdminSectionId } from "@/lib/admin/navigation"
 import {
@@ -356,6 +357,8 @@ export function AdminView({ profile, onChangeProfile, authRole }: AdminViewProps
         return <PaymentMethodsSettings />
       case "settings/delivery":
         return <DeliverySettings />
+      case "settings/carta":
+        return <CartaSettingsPage onNavigate={navigateTo} />
       case "settings/staff":
         return <StaffSettings />
       case "settings/access":

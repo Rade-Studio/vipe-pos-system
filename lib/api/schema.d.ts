@@ -2676,6 +2676,422 @@ export interface paths {
         patch: operations["DesktopAdminController_rename"];
         trace?: never;
     };
+    "/api/carta/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/m/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaController_table"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/p/{dishId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaController_dish"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/m/{token}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaTableController_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/m/{token}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaTableController_propose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/m/{token}/bill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaTableController_bill"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/m/{token}/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaTableController_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaTableController_feedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaInboxController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-inbox/proposals/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaInboxController_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-inbox/proposals/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaInboxController_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-inbox/requests/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaInboxController_resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaDeliveryController_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/delivery/{trackingToken}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaDeliveryController_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta/{slug}/pricing-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaDeliveryController_pricing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaDeliveryInboxController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-delivery/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaDeliveryInboxController_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-delivery/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaDeliveryInboxController_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CartaAdminController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CartaAdminController_updateSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/dayparts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CartaAdminController_replaceDayparts"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/dishes/{dishId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CartaAdminController_updateDish"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/tables/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaAdminController_regenerateAll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/tables/{tableId}/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaAdminController_regenerateTable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/slug": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CartaAdminController_updateSlug"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/carta-admin/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CartaAdminController_createAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6870,6 +7286,717 @@ export interface components {
         };
         RenameDeviceRequest: {
             name: string;
+        };
+        CartaRestaurant: {
+            /** @example Brasa & Leña */
+            name: string;
+            /** @example brasa-y-lena */
+            slug: string;
+            /** @example COP */
+            currency: string;
+        };
+        CartaOpeningDay: {
+            /**
+             * @description HH:MM, restaurant time.
+             * @example 07:00
+             */
+            opens: string;
+            /**
+             * @description HH:MM; earlier than opens = closes after midnight.
+             * @example 22:30
+             */
+            closes: string;
+        };
+        CartaOpeningHours: {
+            /** @description Monday; null = closed. */
+            1: components["schemas"]["CartaOpeningDay"] | null;
+            2: components["schemas"]["CartaOpeningDay"] | null;
+            3: components["schemas"]["CartaOpeningDay"] | null;
+            4: components["schemas"]["CartaOpeningDay"] | null;
+            5: components["schemas"]["CartaOpeningDay"] | null;
+            6: components["schemas"]["CartaOpeningDay"] | null;
+            /** @description Sunday. */
+            7: components["schemas"]["CartaOpeningDay"] | null;
+        };
+        CartaSettings: {
+            /** @description Short description under the name (<= 160). */
+            description: string | null;
+            /** @example #b4532a */
+            brandColor: string | null;
+            logoUrl: string | null;
+            coverUrl: string | null;
+            /** @description Handle without @. */
+            instagram: string | null;
+            /** @description Handle without @. */
+            tiktok: string | null;
+            /** @description Digits with country code. */
+            whatsapp: string | null;
+            mapsUrl: string | null;
+            googleReviewUrl: string | null;
+            tableOrderingEnabled: boolean;
+            deliveryOrderingEnabled: boolean;
+            showTableBill: boolean;
+            /** @description Off: lang is always es and no English text is returned. */
+            englishEnabled: boolean;
+            /** @description null = not configured (always open). */
+            openingHours: components["schemas"]["CartaOpeningHours"] | null;
+        };
+        CartaNextOpening: {
+            /**
+             * @description Restaurant-local date.
+             * @example 2026-11-11
+             */
+            date: string;
+            /** @example 07:00 */
+            opensAt: string;
+            /**
+             * @description 0 = later today, 1 = tomorrow, ...
+             * @example 1
+             */
+            inDays: number;
+        };
+        CartaDaypart: {
+            /** Format: uuid */
+            id: string;
+            /** @example Desayuno */
+            name: string;
+            /** @description null when unset or English is off. */
+            nameEn: string | null;
+            /** @example 07:00 */
+            startsAt: string;
+            /**
+             * @description Exclusive.
+             * @example 11:00
+             */
+            endsAt: string;
+            /** @description Its [startsAt, endsAt) holds now (server clock, restaurant timezone). */
+            current: boolean;
+            /**
+             * Format: uuid
+             * @description "Plato del día"; null unless listed in the menu.
+             */
+            featuredDishId: string | null;
+            /** @description Categories of the daypart that the menu lists, in menu order. */
+            categoryIds: string[];
+        };
+        CartaSubcategory: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        CartaModifierOption: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Added to the unit price. */
+            price: number;
+        };
+        CartaModifierGroup: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            required: boolean;
+            minSelect: number;
+            maxSelect: number | null;
+            options: components["schemas"]["CartaModifierOption"][];
+        };
+        CartaDish: {
+            /** Format: uuid */
+            id: string;
+            /** @description Always in Spanish. */
+            name: string;
+            description: string | null;
+            /** @description The restaurant's English description; only when English is on and it is set. */
+            descriptionEn?: string;
+            /** @description List price, as the waiter menu. */
+            price: number;
+            /** Format: uuid */
+            categoryId: string | null;
+            /** Format: uuid */
+            subcategoryId: string | null;
+            /** @description Opaque image reference, as the waiter menu. */
+            imageUrl: string | null;
+            allowComments: boolean;
+            /** @description false = "Agotado hoy": listed after the available dishes, cannot be added. */
+            available: boolean;
+            tags: ("vegetarian" | "spicy" | "gluten_free" | "dairy" | "most_ordered")[];
+            /**
+             * Format: uuid
+             * @description The automatic promotion a line would get now on the channel (waiter menu rule).
+             */
+            promotionId?: string;
+            promotionName?: string;
+            /** @example 2x1 */
+            promotionBadge?: string;
+            /**
+             * @description End of the current window; null = all day.
+             * @example 16:00
+             */
+            promotionEndsAt?: string | null;
+            /** @description Only for a product discount: the unit price after it. */
+            promoPrice?: number;
+            modifierGroups: components["schemas"]["CartaModifierGroup"][];
+        };
+        CartaCategory: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            icon: string;
+            color: string;
+            hasSubcategories: boolean;
+            subcategories: components["schemas"]["CartaSubcategory"][];
+            dishes: components["schemas"]["CartaDish"][];
+        };
+        CartaMenu: {
+            /** @description The waiter menu tree for the channel: same categories, dishes, prices, promotions and availability. */
+            categories: components["schemas"]["CartaCategory"][];
+            /** @description Active dishes without category. */
+            uncategorized: components["schemas"]["CartaDish"][];
+        };
+        CartaTable: {
+            /** @example 12 */
+            number: number;
+            /** @example Terraza */
+            zoneName: string | null;
+            /** @description The table has an open order (guest orders need it). */
+            isOpen: boolean;
+        };
+        Carta: {
+            /**
+             * @description lang query, else Accept-Language (en* = en), else es.
+             * @enum {string}
+             */
+            lang: "es" | "en";
+            /** @enum {string} */
+            channel: "dine_in" | "takeaway" | "delivery";
+            restaurant: components["schemas"]["CartaRestaurant"];
+            settings: components["schemas"]["CartaSettings"];
+            /** @description Server clock in the restaurant timezone; true when no hours are configured. */
+            isOpenNow: boolean;
+            /**
+             * @description When open: the time it closes.
+             * @example 22:30
+             */
+            closesAt: string | null;
+            /** @description When closed: the next opening. */
+            nextOpening: components["schemas"]["CartaNextOpening"] | null;
+            /** Format: uuid */
+            currentDaypartId: string | null;
+            dayparts: components["schemas"]["CartaDaypart"][];
+            menu: components["schemas"]["CartaMenu"];
+            /** @example 4000 */
+            deliveryFee: number;
+            /** @example 10 */
+            tipPercentage: number;
+            /** @description Only on the table QR route. */
+            table?: components["schemas"]["CartaTable"];
+        };
+        CartaShareRestaurant: {
+            name: string;
+            slug: string;
+        };
+        CartaShareDish: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            price: number;
+            imageUrl: string | null;
+        };
+        CartaDishShare: {
+            restaurant: components["schemas"]["CartaShareRestaurant"];
+            dish: components["schemas"]["CartaShareDish"];
+        };
+        GuestProposalLine: {
+            name: string | null;
+            quantity: number;
+        };
+        GuestProposal: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "rejected";
+            /**
+             * @description Enviado, Confirmado, En la cocina, Servido.
+             * @enum {string}
+             */
+            stage: "pending" | "rejected" | "confirmed" | "kitchen" | "served" | "cancelled";
+            createdAt: string;
+            decidedAt: string | null;
+            rejectReason: string | null;
+            lines: components["schemas"]["GuestProposalLine"][];
+        };
+        GuestTableStatus: {
+            /** @description The table has an open order. */
+            isOpen: boolean;
+            /** @example Carolina */
+            waiterFirstName: string | null;
+            tableOrderingEnabled: boolean;
+            showTableBill: boolean;
+            /** @description Only this guest key's, for the current open order, oldest first. */
+            proposals: components["schemas"]["GuestProposal"][];
+            /** @description Unresolved requests of the open order. */
+            requests: ("bill" | "waiter")[];
+        };
+        ProposalLineRequest: {
+            /** Format: uuid */
+            dishId: string;
+            quantity: number;
+            /** @description Chosen modifier option ids (distinct, <= 50). */
+            optionIds?: string[];
+            note?: string | null;
+        };
+        ProposalRequest: {
+            /**
+             * @description Opaque per-browser id, 16-64 of [A-Za-z0-9_-].
+             * @example k3J9xZ0qLmN4pQ7r
+             */
+            guestKey: string;
+            items: components["schemas"]["ProposalLineRequest"][];
+            note?: string | null;
+        };
+        ProposalCreated: {
+            /** Format: uuid */
+            proposalId: string;
+            /** @example pending */
+            status: string;
+            createdAt: string;
+        };
+        GuestBillLine: {
+            name: string;
+            quantity: number;
+            unitPrice: number;
+            lineTotal: number;
+        };
+        GuestBillDiscount: {
+            label: string;
+            amount: number;
+        };
+        GuestTableBill: {
+            lines: components["schemas"]["GuestBillLine"][];
+            discounts: components["schemas"]["GuestBillDiscount"][];
+            grossSubtotal: number;
+            totalDiscounts: number;
+            subtotal: number;
+            /**
+             * @description Suggested tip (voluntary).
+             * @example 10
+             */
+            tipPercentage: number;
+            updatedAt: string;
+        };
+        TableRequestRequest: {
+            /** @enum {string} */
+            kind: "bill" | "waiter";
+        };
+        TableRequestCreated: {
+            /** @enum {string} */
+            kind: "bill" | "waiter";
+            createdAt: string;
+            /** @description An unresolved request of this kind already existed; nothing new was stored. */
+            alreadyPending: boolean;
+        };
+        FeedbackRequest: {
+            /** @description Table QR token, when left from a table. */
+            token?: string;
+            rating: number;
+            /** @description Private comment for the restaurant. */
+            comment?: string | null;
+        };
+        InboxOption: {
+            /** Format: uuid */
+            id: string;
+            name: string | null;
+        };
+        InboxProposalLine: {
+            /** Format: uuid */
+            dishId: string;
+            name: string | null;
+            quantity: number;
+            note: string | null;
+            options: components["schemas"]["InboxOption"][];
+        };
+        InboxProposal: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderId: string;
+            tableNumber: number;
+            zoneName: string | null;
+            waiterName: string | null;
+            note: string | null;
+            createdAt: string;
+            lines: components["schemas"]["InboxProposalLine"][];
+        };
+        InboxRequest: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "bill" | "waiter";
+            /** Format: uuid */
+            orderId: string;
+            tableNumber: number;
+            zoneName: string | null;
+            waiterName: string | null;
+            createdAt: string;
+        };
+        CartaInbox: {
+            /** @description Pending proposals of open orders, newest first. */
+            proposals: components["schemas"]["InboxProposal"][];
+            /** @description Unresolved requests of open orders, newest first. */
+            requests: components["schemas"]["InboxRequest"][];
+        };
+        ProposalConfirmed: {
+            /** Format: uuid */
+            proposalId: string;
+            /** Format: uuid */
+            orderId: string;
+            /** @example confirmed */
+            status: string;
+            /**
+             * @description The stage the guest now sees.
+             * @example kitchen
+             */
+            stage: string;
+            /** @description The order_items added for the proposal. */
+            orderItemIds: string[];
+        };
+        RejectProposalRequest: {
+            /** @description Shown to the guest. */
+            reason?: string | null;
+        };
+        DeliveryCustomerRequest: {
+            name: string;
+            /**
+             * @description Normalized like the delivery console (+57 mobile prefix dropped): 7 to 15 digits.
+             * @example 300 123 4567
+             */
+            phone: string;
+            address: string;
+            neighborhood?: string | null;
+        };
+        DeliveryPaymentRequest: {
+            /**
+             * @description Paid on delivery: Efectivo, Datáfono or Transferencia.
+             * @enum {string}
+             */
+            method: "cash" | "card" | "transfer";
+            /** @description "¿Con cuánto pagas?" (cash only). */
+            cashFrom?: number | null;
+        };
+        DeliverySubmitRequest: {
+            customer: components["schemas"]["DeliveryCustomerRequest"];
+            items: components["schemas"]["ProposalLineRequest"][];
+            payment: components["schemas"]["DeliveryPaymentRequest"];
+            notes?: string | null;
+        };
+        DeliverySubmitted: {
+            /** Format: uuid */
+            requestId: string;
+            /** @description Follow the order with GET /carta/:slug/delivery/:trackingToken (24 base64url characters). */
+            trackingToken: string;
+            /** @example pending */
+            status: string;
+            createdAt: string;
+        };
+        GuestDeliveryLine: {
+            name: string | null;
+            quantity: number;
+        };
+        GuestDeliveryStatus: {
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "rejected";
+            /**
+             * @description Recibido, Confirmado, En camino, Entregado: the delivery order's status once confirmed.
+             * @enum {string}
+             */
+            stage: "pending" | "rejected" | "received" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "failed" | "cancelled";
+            rejectReason: string | null;
+            createdAt: string;
+            lines: components["schemas"]["GuestDeliveryLine"][];
+            /** @description The delivery fee shown when sending. */
+            deliveryFee: number;
+            /** @description Null until the delivery order exists; then its total plus the delivery fee. */
+            total: number | null;
+            /**
+             * @description "Pedido D-0142": the delivery order's number once it exists.
+             * @example 142
+             */
+            orderNumber: number | null;
+            /** @enum {string} */
+            paymentMethod: "cash" | "card" | "transfer";
+        };
+        GuestPricingRequest: {
+            /** @enum {string} */
+            channel: "dine_in" | "takeaway" | "delivery";
+            items: components["schemas"]["ProposalLineRequest"][];
+        };
+        GuestPricingDiscount: {
+            /** @enum {string} */
+            kind: "promotion_item" | "combo" | "promotion_bill";
+            /** Format: uuid */
+            promotionId: string | null;
+            label: string;
+            amount: number;
+        };
+        GuestPricingLine: {
+            /** Format: uuid */
+            dishId: string;
+            name: string;
+            quantity: number;
+            /** @description Unit list price, options included. */
+            unitPrice: number;
+            /** Format: uuid */
+            promotionId: string | null;
+            promotionName: string | null;
+            discounts: components["schemas"]["GuestPricingDiscount"][];
+        };
+        GuestPricing: {
+            /** @enum {string} */
+            channel: "dine_in" | "takeaway" | "delivery";
+            /** @description In the order sent; same values as POST /orders/pricing-preview draft lines. */
+            lines: components["schemas"]["GuestPricingLine"][];
+            billDiscount: components["schemas"]["GuestPricingDiscount"] | null;
+            grossSubtotal: number;
+            totalDiscounts: number;
+            netSubtotal: number;
+            /**
+             * @description The tax percentage the guest total includes: only delivery adds tax, read as create_delivery_order (missing 0, an unusable value 0); dine_in and takeaway are always 0 (their total stays the net subtotal).
+             * @example 8
+             */
+            taxPercentage: number;
+            /** @description round(netSubtotal x taxPercentage / 100), as the bill; no tax on the delivery fee. */
+            tax: number;
+            /** @description The carta's delivery fee on delivery, else 0. */
+            deliveryFee: number;
+            /** @description netSubtotal + tax + deliveryFee: the amount due, without a tip. */
+            total: number;
+        };
+        DeliveryInboxLine: {
+            /** Format: uuid */
+            dishId: string;
+            name: string | null;
+            quantity: number;
+            note: string | null;
+            options: components["schemas"]["InboxOption"][];
+        };
+        DeliveryInboxRequest: {
+            /** Format: uuid */
+            id: string;
+            customerName: string;
+            /** @description The name already registered for this phone (null when new). Confirming keeps it; the carta name goes to the delivery notes. */
+            registeredName: string | null;
+            phone: string;
+            address: string;
+            neighborhood: string | null;
+            notes: string | null;
+            /** @enum {string} */
+            paymentMethod: "cash" | "card" | "transfer";
+            cashFrom: number | null;
+            deliveryFee: number;
+            createdAt: string;
+            lines: components["schemas"]["DeliveryInboxLine"][];
+            /** @description netSubtotal of POST /orders/pricing-preview on delivery now; null when a line no longer prices. */
+            previewSubtotal: number | null;
+            /** @description round(previewSubtotal x the delivery order's tax percentage / 100), as the guest preview; null with previewSubtotal. */
+            previewTax: number | null;
+            /** @description previewSubtotal + previewTax + deliveryFee: the total the guest saw. */
+            previewTotal: number | null;
+        };
+        DeliveryRequestConfirmed: {
+            /** Format: uuid */
+            requestId: string;
+            /** @example confirmed */
+            status: string;
+            /** @description POST /delivery/orders' answer for the order created on confirm. */
+            order: components["schemas"]["CreateDeliveryOrderResult"];
+        };
+        CartaAdminRestaurant: {
+            /** @example Brasa & Leña */
+            name: string;
+            /** @example brasa-y-lena */
+            slug: string;
+            /**
+             * @description Path of the public carta on the web origin.
+             * @example /c/brasa-y-lena
+             */
+            publicPath: string;
+            /** @example America/Bogota */
+            timezone: string;
+        };
+        CartaAdminSettings: {
+            /** @description Short description under the name (<= 160). */
+            description: string | null;
+            /** @example #b4532a */
+            brandColor: string | null;
+            logoUrl: string | null;
+            coverUrl: string | null;
+            /** @description Handle without @. */
+            instagram: string | null;
+            /** @description Handle without @. */
+            tiktok: string | null;
+            /** @description Digits with country code. */
+            whatsapp: string | null;
+            mapsUrl: string | null;
+            googleReviewUrl: string | null;
+            tableOrderingEnabled: boolean;
+            deliveryOrderingEnabled: boolean;
+            showTableBill: boolean;
+            /** @description Off: lang is always es and no English text is returned. */
+            englishEnabled: boolean;
+            /** @description null = not configured (always open). */
+            openingHours: components["schemas"]["CartaOpeningHours"] | null;
+            /** @description false = the link and the QRs show not found ("Volvemos pronto"). */
+            published: boolean;
+        };
+        CartaAdminDaypart: {
+            /** Format: uuid */
+            id: string;
+            /** @example Desayuno */
+            name: string;
+            nameEn: string | null;
+            /** @example 07:00 */
+            startsAt: string;
+            /**
+             * @description Exclusive; later than startsAt.
+             * @example 11:00
+             */
+            endsAt: string;
+            sortOrder: number;
+            /**
+             * Format: uuid
+             * @description "Plato del día".
+             */
+            featuredDishId: string | null;
+            /** @description Category ids, in menu order. */
+            categoryIds: string[];
+        };
+        CartaAdminCategory: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            active: boolean;
+        };
+        CartaAdminDish: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Spanish description of the dish. */
+            description: string | null;
+            price: number;
+            /** Format: uuid */
+            categoryId: string | null;
+            imageUrl: string | null;
+            /** @description Paused dishes are hidden from the carta. */
+            active: boolean;
+            tags: ("vegetarian" | "spicy" | "gluten_free" | "dairy")[];
+            /** @description Written by the restaurant (no translation service). */
+            descriptionEn: string | null;
+            descriptionEnReviewed: boolean;
+            /** @description "Lo más pedido": the guest menu rule (top 5 by units on paid orders of the last 30 days). */
+            mostOrdered: boolean;
+        };
+        CartaAdminTable: {
+            /** Format: uuid */
+            id: string;
+            number: number;
+            /** @example Terraza */
+            zoneName: string | null;
+            /** @description Current QR token. */
+            token: string;
+            /** @example /c/brasa-y-lena/m/<token> */
+            guestPath: string;
+        };
+        CartaAdmin: {
+            restaurant: components["schemas"]["CartaAdminRestaurant"];
+            /** @description Defaults when the carta was never configured. */
+            settings: components["schemas"]["CartaAdminSettings"];
+            dayparts: components["schemas"]["CartaAdminDaypart"][];
+            categories: components["schemas"]["CartaAdminCategory"][];
+            dishes: components["schemas"]["CartaAdminDish"][];
+            tables: components["schemas"]["CartaAdminTable"][];
+            /** @description Read-only here: business_config delivery_default_fee (Ajustes · Domicilios). */
+            deliveryDefaultFee: number;
+        };
+        UpdateCartaSettingsRequest: {
+            published?: boolean;
+            /** @description Blank clears. */
+            description?: string | null;
+            /**
+             * @description Stored lower case.
+             * @example #b4532a
+             */
+            brandColor?: string | null;
+            /** @description https only, e.g. a publicUrl of POST /carta-admin/assets. */
+            logoUrl?: string | null;
+            /** @description https only. */
+            coverUrl?: string | null;
+            /** @description Handle without @. */
+            instagram?: string | null;
+            /** @description Handle without @. */
+            tiktok?: string | null;
+            /**
+             * @description 7-15 digits with country code.
+             * @example 573104567890
+             */
+            whatsapp?: string | null;
+            /** @description https only. */
+            mapsUrl?: string | null;
+            /** @description https only. */
+            googleReviewUrl?: string | null;
+            tableOrderingEnabled?: boolean;
+            deliveryOrderingEnabled?: boolean;
+            showTableBill?: boolean;
+            englishEnabled?: boolean;
+            openingHours?: components["schemas"]["CartaOpeningHours"] | null;
+        };
+        CartaDaypartInput: {
+            name: string;
+            nameEn?: string | null;
+            /** @example 07:00 */
+            startsAt: string;
+            /** @example 11:00 */
+            endsAt: string;
+            /** @description Defaults to the position in the list. */
+            sortOrder?: number;
+            /** Format: uuid */
+            featuredDishId?: string | null;
+            categoryIds: string[];
+        };
+        ReplaceCartaDaypartsRequest: {
+            /** @description The whole list; it replaces the current one. */
+            dayparts: components["schemas"]["CartaDaypartInput"][];
+        };
+        UpdateDishDetailsRequest: {
+            tags: ("vegetarian" | "spicy" | "gluten_free" | "dairy")[];
+            descriptionEn?: string | null;
+            descriptionEnReviewed: boolean;
+        };
+        CartaDishDetails: {
+            /** Format: uuid */
+            dishId: string;
+            tags: ("vegetarian" | "spicy" | "gluten_free" | "dairy")[];
+            descriptionEn: string | null;
+            descriptionEnReviewed: boolean;
+        };
+        CartaTablesQr: {
+            tables: components["schemas"]["CartaAdminTable"][];
+        };
+        UpdateCartaSlugRequest: {
+            /** @example la-parrilla */
+            slug: string;
+        };
+        CreateCartaAssetRequest: {
+            /** @enum {string} */
+            kind: "logo" | "cover";
+            /**
+             * @description The PUT must send this exact Content-Type.
+             * @enum {string}
+             */
+            contentType: "image/png" | "image/jpeg" | "image/webp";
+            /** @description Bytes. The PUT must send exactly this Content-Length. */
+            size: number;
         };
     };
     responses: never;
@@ -15214,6 +16341,1103 @@ export interface operations {
             };
             /** @description Name of 1..60 characters. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaController_get: {
+        parameters: {
+            query?: {
+                /** @description Wins over Accept-Language. */
+                lang?: "es" | "en";
+                /** @description Channel of the promotion fields; default delivery. */
+                channel?: "dine_in" | "takeaway" | "delivery";
+            };
+            header: {
+                "accept-language": string;
+            };
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The public menu of a published carta (no login). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Carta"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown or invalid slug, carta not published, unknown or old table token, or a dish the carta does not list: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaController_table: {
+        parameters: {
+            query?: {
+                lang?: "es" | "en";
+            };
+            header: {
+                "accept-language": string;
+            };
+            path: {
+                slug: string;
+                /** @description Table QR token (24 characters). */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The table of the QR and the dine_in menu. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Carta"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown or invalid slug, carta not published, unknown or old table token, or a dish the carta does not list: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaController_dish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                dishId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Link preview of a dish the carta lists; never carries a table. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaDishShare"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown or invalid slug, carta not published, unknown or old table token, or a dish the carta does not list: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 120 reads a minute per IP and route; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_status: {
+        parameters: {
+            query: {
+                /** @description 16-64 of [A-Za-z0-9_-]. */
+                guestKey: string;
+            };
+            header?: never;
+            path: {
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestTableStatus"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El identificador del comensal no es válido. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_propose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Pending until the waiter confirms it; nothing is cooked or charged before. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalCreated"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este restaurante toma los pedidos en la mesa. | Para pedir desde aquí, la mesa debe estar abierta | Uno de los platos se acabó por hoy. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El identificador del comensal no es válido. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. | La nota del pedido admite hasta 200 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya enviaste varios pedidos; espera a que el mesero los revise. (3 pending), or Demasiadas solicitudes. Intenta de nuevo en un momento. (10 a minute). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_bill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The open order, read only; 404 when the table is closed or the bill is hidden. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestTableBill"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TableRequestRequest"];
+            };
+        };
+        responses: {
+            /** @description Ask for the bill or call the waiter; idempotent while unresolved. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableRequestCreated"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este restaurante toma los pedidos en la mesa. | Para pedir desde aquí, la mesa debe estar abierta */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Solo puedes pedir la cuenta o llamar al mesero. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 6 a minute. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaTableController_feedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored for the restaurant. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos esta carta. Unknown slug or token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La calificación va de 1 a 5 estrellas. | El comentario admite hasta 500 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 3 a minute per IP; 5 per table and 50 per restaurant an hour. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaInboxController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guest proposals and requests of the restaurant's open orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaInbox"];
+                };
+            };
+            /** @description Not an admin, cashier or waiter. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaInboxController_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The items were added to the open order as the waiter sends them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalConfirmed"];
+                };
+            };
+            /** @description Not an admin, cashier or waiter. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este pedido. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este pedido ya fue confirmado o rechazado. | La mesa ya no tiene una cuenta abierta., or the waiter send's own 409s (stock, price). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid id, or the waiter send refused a line (dish, options). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaInboxController_reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectProposalRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an admin, cashier or waiter. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este pedido. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este pedido ya fue confirmado o rechazado. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El motivo admite hasta 140 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaInboxController_resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resolved (an already resolved request stays as it is). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an admin, cashier or waiter. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos esta solicitud. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryController_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliverySubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Pending in the delivery inbox; stock and the kitchen ticket happen only when an operator confirms it. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliverySubmitted"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este restaurante recibe los domicilios por WhatsApp. | Uno de los platos se acabó por hoy. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Escribe tu nombre (hasta 120 caracteres). | El celular debe tener entre 7 y 15 dígitos. | Escribe la dirección completa (entre 6 y 200 caracteres). | El barrio admite hasta 80 caracteres. | Elige cómo pagas: efectivo, datáfono o transferencia. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. | La nota del pedido admite hasta 200 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya tienes pedidos pendientes; el restaurante te confirmará en minutos. (2 pending per phone) | El restaurante está recibiendo muchos pedidos; intenta en unos minutos. (30 pending within the hour) | Demasiadas solicitudes. Intenta de nuevo en un momento. (3 a minute). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryController_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                trackingToken: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description "Pedido D-0142 recibido": the stage of the request and, once confirmed, of its delivery. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestDeliveryStatus"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. Reads 120 a minute; Retry-After in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryController_pricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestPricingRequest"];
+            };
+        };
+        responses: {
+            /** @description The totals the guest will see, with the engine of POST /orders/pricing-preview; writes nothing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestPricing"];
+                };
+            };
+            /** @description No encontramos esta carta. Unknown slug or tracking token, unpublished carta, or another restaurant's token: one body for all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Uno de los platos se acabó por hoy. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Elige domicilio, para llevar o en la mesa. | Revisa los platos del pedido: entre 1 y 20 líneas de 1 a 20 unidades. | Revisa las opciones elegidas para el plato. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Demasiadas solicitudes. Intenta de nuevo en un momento. 30 a minute. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryInboxController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending guest delivery requests, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryInboxRequest"][];
+                };
+            };
+            /** @description Not an admin, cashier or delivery operator (confirm: admin or delivery operator). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryInboxController_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The delivery order was created as POST /delivery/orders does (stock, kitchen ticket) and linked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryRequestConfirmed"];
+                };
+            };
+            /** @description Not an admin, cashier or delivery operator (confirm: admin or delivery operator). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este pedido a domicilio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este pedido ya fue confirmado o rechazado. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid id, or the console path refused a line (options, dish). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaDeliveryInboxController_reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectProposalRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an admin, cashier or delivery operator (confirm: admin or delivery operator). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este pedido a domicilio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Este pedido ya fue confirmado o rechazado. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El motivo admite hasta 140 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Everything the settings page shows, for the caller's restaurant. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdmin"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_updateSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCartaSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Created on the first save; omitted fields keep their value. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdminSettings"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description One Spanish message for the first invalid field; nothing is written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_replaceDayparts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplaceCartaDaypartsRequest"];
+            };
+        };
+        responses: {
+            /** @description The new list; it replaced the previous one in one transaction. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdminDaypart"][];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Las categorías de la franja deben ser de tu restaurante. | El plato del día debe ser un plato de tu restaurante. | Cada franja empieza antes de terminar, en HH:MM y sin cruzar la medianoche. | ...; the previous list stays. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_updateDish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dishId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDishDetailsRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaDishDetails"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos este plato. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Las etiquetas válidas son Vegetariano, Picante, Sin gluten y Lácteos. | La descripción en inglés admite hasta 400 caracteres. | Indica si revisaste la descripción en inglés. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_regenerateAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every table got a new token in one transaction; the printed QRs stop working. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaTablesQr"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_regenerateTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The table with its new token; the old QR stops working. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdminTable"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontramos esta mesa. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_updateSlug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCartaSlugRequest"];
+            };
+        };
+        responses: {
+            /** @description The new public link; the old one and its printed QRs stop working. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartaAdminRestaurant"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ese enlace ya lo usa otro restaurante */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Usa minúsculas y números separados por guiones (sin tildes, espacios ni guiones al inicio o al final), hasta 64 caracteres. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CartaAdminController_createAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCartaAssetRequest"];
+            };
+        };
+        responses: {
+            /** @description Presigned PUT under <restaurantId>/carta/; save publicUrl as logoUrl or coverUrl. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadTicket"];
+                };
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Elige si subes el logo o la portada. | Sube una imagen PNG, JPG o WebP (no SVG). | La imagen puede pesar hasta 5 MB. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Storage is not configured (no S3_* variables). */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
