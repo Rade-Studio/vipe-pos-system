@@ -401,8 +401,9 @@ describe('carta delivery (Testcontainers, guest + staff)', () => {
       const fee = channel === 'delivery' ? 5000 : 0;
       // Without an order the staff preview has no tax; the bill's rule is round(netSubtotal x taxPercentage / 100).
       expect(staff.body.tax).toBeNull();
-      const tax = Math.round((staff.body.netSubtotal * 8) / 100);
-      expect(guest.body).toMatchObject({ taxPercentage: 8, tax, deliveryFee: fee, total: staff.body.netSubtotal + tax + fee });
+      // L29: only the delivery total includes tax; dine_in and takeaway keep the staff netSubtotal as total.
+      const tax = channel === 'delivery' ? Math.round((staff.body.netSubtotal * 8) / 100) : 0;
+      expect(guest.body).toMatchObject({ taxPercentage: channel === 'delivery' ? 8 : 0, tax, deliveryFee: fee, total: staff.body.netSubtotal + tax + fee });
       expect(staff.body.totalDiscounts).toBeGreaterThan(0);
       expect(staff.body.billDiscount).not.toBeNull();
     });
@@ -423,14 +424,13 @@ describe('carta delivery (Testcontainers, guest + staff)', () => {
       expect(guest.body.total).toBe(preview.body.total);
     });
 
-    it('without a tax_percentage row: delivery has no tax and matches the confirmed order, dine_in reads 10 % (decision 1)', async () => {
+    it('without a tax_percentage row: delivery has no tax and matches the confirmed order; dine_in never adds tax (L29)', async () => {
       await db("DELETE FROM business_config WHERE restaurant_id = $1 AND key = 'tax_percentage'", [fixtures.restaurantA]);
       try {
         const preview = await http().post('/api/carta/rest-a/pricing-preview').send({ channel: 'delivery', items });
         expect(preview.body).toMatchObject({ taxPercentage: 0, tax: 0, total: preview.body.netSubtotal + 5000 });
         const dineIn = await http().post('/api/carta/rest-a/pricing-preview').send({ channel: 'dine_in', items });
-        const tax = Math.round(dineIn.body.netSubtotal / 10);
-        expect(dineIn.body).toMatchObject({ taxPercentage: 10, tax, total: dineIn.body.netSubtotal + tax });
+        expect(dineIn.body).toMatchObject({ taxPercentage: 0, tax: 0, total: dineIn.body.netSubtotal });
         const { requestId, trackingToken } = await pending(body({ items, payment: { method: 'cash', cashFrom: 200000 } }));
         expect((await confirm(requestId)).status).toBe(200);
         expect((await status(trackingToken)).body.total).toBe(preview.body.total);
