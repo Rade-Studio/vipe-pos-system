@@ -61,7 +61,7 @@ export function CartaMenu({
   return (
     <>
       {!carta.isOpenNow && (
-        <div role="status" aria-labelledby="banner-closed" className={cn("mx-[18px] mt-3.5 grid gap-0.5 rounded-card border px-3.5 py-3 text-[13px]", TONES.reserved)}>
+        <div role="status" aria-labelledby="banner-closed" className={cn("mx-[18px] mt-3.5 grid gap-0.5 rounded-card border px-3.5 py-3 text-[13px] md:mx-6", TONES.reserved)}>
           <b id="banner-closed" className="text-[13.5px]">
             {t.closed}
           </b>
@@ -70,17 +70,18 @@ export function CartaMenu({
       )}
       {notice}
       {peeking && viewed && (
-        <div role="status" className={cn("mx-[18px] mt-3.5 grid gap-0.5 rounded-card border px-3.5 py-3 text-[13px]", TONES.served)}>
+        <div role="status" className={cn("mx-[18px] mt-3.5 grid gap-0.5 rounded-card border px-3.5 py-3 text-[13px] md:mx-6", TONES.served)}>
           <b className="text-[13.5px]">{daypartName(viewed, lang)}</b>
           <span>{peekSentence(viewed, lang, t)}</span>
         </div>
       )}
 
+      <div className="md:mx-6 md:mt-4 md:grid md:grid-cols-2 md:items-start md:gap-4 md:[&>*:only-child]:col-span-2">
       {carta.dayparts.length > 0 && (
         <div
           role="group"
           aria-label={t.dayparts}
-          className="mx-[18px] mt-4 grid auto-cols-fr grid-flow-col gap-1 rounded-xl border border-line bg-surface-2 p-1"
+          className="mx-[18px] mt-4 md:mx-0 md:mt-0 grid auto-cols-fr grid-flow-col gap-1 rounded-xl border border-line bg-surface-2 p-1"
         >
           {carta.dayparts.map((d) => {
             const selected = d.id === viewedDaypartId
@@ -114,7 +115,7 @@ export function CartaMenu({
           type="button"
           onClick={() => onOpenDish(special)}
           className={cn(
-            "mx-[18px] mt-3.5 grid w-[calc(100%-36px)] grid-cols-[minmax(0,1fr)_92px] gap-3 rounded-card border p-3.5 text-left",
+            "mx-[18px] mt-3.5 md:mx-0 md:mt-0 md:w-full grid w-[calc(100%-36px)] grid-cols-[minmax(0,1fr)_92px] gap-3 rounded-card border p-3.5 text-left",
             BRAND_TINT,
             FOCUS,
           )}
@@ -130,9 +131,11 @@ export function CartaMenu({
           <DishPhoto src={special.imageUrl} sizes="92px" className="h-[92px] w-[92px] rounded-[20px]" />
         </button>
       )}
+      </div>
 
-      <div className="sticky top-0 z-10 mt-1.5 border-b border-line bg-canvas pt-3.5">
-        <div role="search" className="relative mx-[18px]">
+      <div className="lg:mt-6 lg:grid lg:grid-cols-[210px_minmax(0,1fr)] lg:gap-8 lg:px-6">
+      <div className="sticky top-0 z-10 mt-1.5 border-b border-line bg-canvas pt-3.5 md:mt-3 lg:top-4 lg:mt-0 lg:self-start lg:border-b-0 lg:pt-0">
+        <div role="search" className="relative mx-[18px] md:mx-6 lg:mx-0">
           <SearchIcon className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-muted-fg" />
           <label htmlFor="carta-q" className="sr-only">
             {t.search}
@@ -150,7 +153,7 @@ export function CartaMenu({
         {sections.length > 0 && (
           <nav
             aria-label={t.categories}
-            className="flex snap-x snap-mandatory gap-1 overflow-x-auto px-[18px] pt-2 [mask-image:linear-gradient(90deg,#000_85%,transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex snap-x snap-mandatory gap-1 overflow-x-auto px-[18px] pt-2 [mask-image:linear-gradient(90deg,#000_85%,transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:px-6 lg:max-h-[calc(100dvh-6rem)] lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:px-0 lg:pt-4 lg:[mask-image:none]"
           >
             {sections.map((s, i) => {
               const current = (activeCategory ?? sections[0].id) === s.id || (!activeCategory && i === 0)
@@ -161,8 +164,8 @@ export function CartaMenu({
                   aria-current={current ? "true" : undefined}
                   onClick={() => setActiveCategory(s.id)}
                   className={cn(
-                    "inline-flex min-h-11 flex-none snap-start items-center whitespace-nowrap border-b-2 border-transparent px-3 text-sm font-medium text-muted-fg",
-                    current && "border-[var(--brand)] text-fg",
+                    "inline-flex min-h-11 flex-none snap-start items-center whitespace-nowrap border-b-2 border-transparent px-3 text-sm font-medium text-muted-fg lg:whitespace-normal lg:rounded-r-lg lg:border-b-0 lg:border-l-2 lg:py-2 lg:hover:bg-surface-2",
+                    current && "border-[var(--brand)] text-fg lg:bg-surface-2",
                     FOCUS,
                   )}
                 >
@@ -174,16 +177,16 @@ export function CartaMenu({
         )}
       </div>
 
-      <div className="px-[18px]">
+      <div className="min-w-0 px-[18px] md:px-6 lg:px-0">
         {sections.map((s) => (
           <section key={s.id} aria-labelledby={`cat-${s.id}`}>
             <h2
               id={`cat-${s.id}`}
-              className="scroll-mt-28 pb-1.5 pt-[22px] text-[13px] font-bold uppercase tracking-[0.14em] text-muted-fg"
+              className="scroll-mt-28 pb-1.5 pt-[22px] md:pb-3 lg:scroll-mt-6 lg:first:pt-0 text-[13px] font-bold uppercase tracking-[0.14em] text-muted-fg"
             >
               {s.name}
             </h2>
-            <ul>
+            <ul className="md:grid md:grid-cols-2 md:gap-3 xl:grid-cols-3">
               {s.dishes.map((d) => (
                 <DishRow
                   key={d.id}
@@ -215,6 +218,7 @@ export function CartaMenu({
             </button>
           </div>
         )}
+      </div>
       </div>
     </>
   )
@@ -267,7 +271,7 @@ function DishRow({
   const description = dishDescription(dish, lang)
   const out = !dish.available
   return (
-    <li className="grid grid-cols-[minmax(0,1fr)_96px] items-start gap-3.5 border-b border-line py-3.5 last:border-b-0">
+    <li className="grid grid-cols-[minmax(0,1fr)_96px] items-start gap-3.5 border-b border-line py-3.5 last:border-b-0 md:rounded-card md:border md:bg-surface md:p-3.5 md:last:border-b">
       <button
         type="button"
         onClick={onOpen}

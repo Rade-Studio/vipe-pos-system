@@ -29,10 +29,10 @@ export function DishLanding({ slug, dishId }: { slug: string; dishId: string }) 
   if (!query.data) return <CartaSkeleton t={t} />
   const { restaurant, dish } = query.data
   return (
-    <main className="carta-root mx-auto grid min-h-dvh w-full max-w-[480px] content-start gap-4 overflow-x-hidden bg-canvas px-[18px] pb-10 pt-6 text-fg">
+    <main className="carta-root mx-auto grid min-h-dvh w-full max-w-[480px] md:max-w-2xl md:px-6 content-start gap-4 overflow-x-hidden bg-canvas px-[18px] pb-10 pt-6 text-fg">
       <style>{brandCss(brandPalette(null))}</style>
       <p className="text-sm font-semibold text-muted-fg">{restaurant.name}</p>
-      <DishPhoto src={dish.imageUrl} sizes="480px" className="aspect-[4/3] w-full rounded-card-lg" />
+      <DishPhoto src={dish.imageUrl} sizes="(min-width: 768px) 672px, 480px" className="aspect-[4/3] w-full rounded-card-lg" />
       <div>
         <h1 className="text-[26px] font-semibold leading-tight tracking-tight">{dish.name}</h1>
         <p className="mt-1 text-lg font-semibold tabular-nums">{formatCop(dish.price)}</p>

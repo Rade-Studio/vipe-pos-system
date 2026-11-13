@@ -4,7 +4,7 @@ import type { CartaStrings } from "@/lib/carta/i18n"
 import { cn } from "@/lib/utils"
 import { FOCUS, GHOST } from "./styles"
 
-const SHELL = "mx-auto min-h-dvh w-full max-w-[480px] overflow-x-hidden bg-canvas text-fg"
+const SHELL = "mx-auto min-h-dvh w-full max-w-[480px] md:max-w-2xl overflow-x-hidden bg-canvas text-fg"
 
 export function CartaSkeleton({ t }: { t: CartaStrings }) {
   return (

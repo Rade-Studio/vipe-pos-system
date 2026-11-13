@@ -14,8 +14,8 @@ Visual/UX pass on four existing surfaces: admin Carta digital settings, public c
 
 ## Tasks
 
-- [x] T1 — S1 — worker A — admin carta tabs (`components/admin/carta/**`) — commit: see git log (feat(carta-admin))
-- [ ] T2 — S2 — worker B — public carta responsive md/lg (`components/carta/**`, `app/c/**`) — commit: —
+- [x] T1 — S1 — worker A — admin carta tabs (`components/admin/carta/**`) — commit: 55a94aa
+- [x] T2 — S2 — worker B — public carta responsive md/lg (`components/carta/**`, `app/c/**`) — commit: feat(carta)
 - [ ] T3 — S3, S6 — worker C — takeaway list sheet + waiter header/toolbar on mobile (`WaiterView.tsx`, `components/layout/Header*`, `components/takeaway/**`) — commit: —
 - [ ] T4 — S4, S5, S6 — worker D — floor: no overlapping pills, legend, carta alert per table (`components/floor/**`, `lib/floor/**`, `components/carta-inbox/**`, `components/pos/TablesSection.tsx`) — commit: —
 - [ ] T5 — all — parent — typecheck, full vitest, lint; risk line — commit: —

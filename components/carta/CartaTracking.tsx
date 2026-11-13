@@ -48,7 +48,7 @@ export function CartaTracking({ slug, trackingToken }: { slug: string; trackingT
   }
   if (status.isError && failureOf(status.error) === "not_found") {
     return (
-      <main className="mx-auto grid min-h-dvh w-full max-w-[480px] content-center justify-items-center gap-3 bg-canvas px-6 text-center text-fg">
+      <main className="mx-auto grid min-h-dvh w-full max-w-[480px] md:max-w-2xl content-center justify-items-center gap-3 bg-canvas px-6 text-center text-fg">
         <h1 className="text-xl font-semibold tracking-tight">{t.trackNotFound}</h1>
         <a href={cartaPath(slug)} className={cn(GHOST, "mt-2", FOCUS)}>
           {t.seeCarta}
@@ -71,7 +71,7 @@ export function CartaTracking({ slug, trackingToken }: { slug: string; trackingT
           ? t.trackCancelledTitle
           : t.trackTitle(order.orderNumber ? deliveryOrderLabel(order.orderNumber) : null)
   return (
-    <div lang={carta.lang} className="carta-root mx-auto min-h-dvh w-full max-w-[480px] overflow-x-hidden bg-canvas text-fg">
+    <div lang={carta.lang} className="carta-root mx-auto min-h-dvh w-full max-w-[480px] md:max-w-2xl overflow-x-hidden bg-canvas text-fg">
       <style>{css}</style>
       <main className="grid content-start gap-3.5 px-[18px] pb-16 pt-6">
         <a href={cartaPath(slug)} className={cn("inline-flex min-h-11 w-fit items-center rounded-lg text-[13.5px] font-medium text-muted-fg underline underline-offset-4", FOCUS)}>
