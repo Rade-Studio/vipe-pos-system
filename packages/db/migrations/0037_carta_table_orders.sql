@@ -10,7 +10,7 @@
 --    stars and optional private comment at the end. Staff of the restaurant
 --    read proposals and requests, only an admin reads feedback; vipe_api
 --    writes none of them directly (SELECT only, no write policy).
--- 2. Guest functions (vipe_api on the pool, no app.user_id, like 0035):
+-- 2. Guest functions (vipe_api on the pool, no app.user_id, like 0036):
 --    guest_submit_proposal, guest_table_status, guest_table_bill,
 --    guest_request, guest_feedback. They resolve the restaurant only from a
 --    published slug (private.guest_restaurant) and the table only from its
@@ -448,7 +448,7 @@ BEGIN
       'grossSubtotal', v_base.gross,
       'totalDiscounts', v_base.discounts,
       'subtotal', v_base.gross - v_base.discounts,
-      -- Same reading as guest_carta (0035).
+      -- Same reading as guest_carta (0036).
       'tipPercentage', coalesce((
         SELECT substring(pg_catalog.btrim(bc.value, E' \t\r\n') FROM '^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)')::numeric
           FROM public.business_config bc

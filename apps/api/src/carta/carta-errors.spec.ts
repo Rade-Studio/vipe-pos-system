@@ -13,7 +13,7 @@ const thrown = (error: unknown) => {
 };
 
 describe('cartaDbError', () => {
-  it('maps a known 0036 code to its Spanish answer', () => {
+  it('maps a known 0037 code to its Spanish answer', () => {
     const error = thrown(pgError('guest_submit_proposal: table_not_open')) as HttpException;
     expect(error).toBeInstanceOf(HttpException);
     expect(error.getStatus()).toBe(409);

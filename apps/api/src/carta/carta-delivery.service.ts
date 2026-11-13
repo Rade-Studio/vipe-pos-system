@@ -13,9 +13,9 @@ const notFound = () => new NotFoundException(CARTA_MESSAGES.notFound);
 /**
  * The guest side of the carta delivery (S15): no login and no unit of work,
  * like CartaTableService. The restaurant comes only from the slug and the
- * request only from its tracking token, inside the 0037 guest SECURITY
+ * request only from its tracking token, inside the 0038 guest SECURITY
  * DEFINER functions run on the pool without app.user_id; the staff identity
- * is never read. The pricing preview prices the guest rows of 0035 with the
+ * is never read. The pricing preview prices the guest rows of 0036 with the
  * staff engine (carta-pricing.ts) and touches no order.
  */
 @Injectable()

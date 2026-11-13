@@ -27,11 +27,11 @@ export const CARTA_TABLE_MESSAGES = {
   itemNotInOrder: 'Un plato no pertenece a la cuenta de la mesa.',
 } as const;
 
-/** carta_table_proposals.guest_key (0036). */
+/** carta_table_proposals.guest_key (0037). */
 export const guestKeySchema = z.string().regex(/^[A-Za-z0-9_-]{16,64}$/);
 export const TABLE_REQUEST_KINDS = ['bill', 'waiter'] as const;
 
-/** Same bounds as private.carta_proposal_items (0036); unknown keys are stripped. */
+/** Same bounds as private.carta_proposal_items (0037); unknown keys are stripped. */
 export const proposalSchema = z.object({
   guestKey: guestKeySchema,
   items: z

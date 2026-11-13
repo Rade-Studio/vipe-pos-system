@@ -9,12 +9,12 @@
 --    and kitchen tickets happen only on confirm. Staff of the restaurant who
 --    work deliveries read (admin, cashier, delivery_operator: the customer
 --    registry roles); vipe_api writes nothing directly (SELECT only).
--- 2. Guest functions (vipe_api on the pool, no app.user_id, like 0035/0036):
+-- 2. Guest functions (vipe_api on the pool, no app.user_id, like 0036/0037):
 --    guest_submit_delivery and guest_delivery_status. The restaurant comes
 --    only from a published slug, the request only from its random tracking
 --    token (24 base64url characters, private.new_table_qr_token); they never
 --    read the staff identity and return no staff, customer-list or other
---    order data. Lines are validated by 0036's private.carta_proposal_items,
+--    order data. Lines are validated by 0037's private.carta_proposal_items,
 --    unchanged.
 -- 3. Staff functions (app.user_id set): confirm_delivery_request,
 --    link_delivery_request, reject_delivery_request for admin, cashier and

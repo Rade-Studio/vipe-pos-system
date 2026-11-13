@@ -31,7 +31,7 @@ export const DELIVERY_PAYMENT_METHODS = ['cash', 'card', 'transfer'] as const;
 export type DeliveryPaymentMethod = (typeof DELIVERY_PAYMENT_METHODS)[number];
 export const DELIVERY_STAGES = ['pending', 'rejected', 'received', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'failed', 'cancelled'] as const;
 
-/** carta_delivery_requests.tracking_token (0037): 24 base64url characters. */
+/** carta_delivery_requests.tracking_token (0038): 24 base64url characters. */
 export const trackingTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{24}$/);
 
 /** The proposals' line rule (private.carta_proposal_items); unknown keys are stripped. */
@@ -50,7 +50,7 @@ const phoneSchema = z
     return normalized;
   });
 
-/** Same bounds as private.guest_submit_delivery (0037). */
+/** Same bounds as private.guest_submit_delivery (0038). */
 export const deliverySubmitSchema = z.object({
   customer: z.object({
     name: z.string().trim().min(1).max(120),

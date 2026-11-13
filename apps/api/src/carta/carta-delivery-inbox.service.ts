@@ -9,7 +9,7 @@ import { OrdersService } from '../orders/orders.service';
 import type { DeliveryInboxRequest, DeliveryPaymentMethod, DeliveryRequestConfirmed } from './carta-delivery.dto';
 import { cartaDbError } from './carta-errors';
 
-/** private.confirm_delivery_request (0037). */
+/** private.confirm_delivery_request (0038). */
 interface ConfirmedRequest {
   requestId: string;
   customer: { name: string; phone: string };
@@ -31,7 +31,7 @@ const PAYMENT_NOTES: Record<DeliveryPaymentMethod, string | null> = {
 
 /**
  * The operators' inbox of guest delivery requests (S15), inside the request
- * unit of work: RLS scopes the reads to the caller's restaurant and the 0037
+ * unit of work: RLS scopes the reads to the caller's restaurant and the 0038
  * staff functions check the role and tenant again. The restaurant never
  * comes from the client.
  */

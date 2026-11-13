@@ -6,7 +6,7 @@ import { RATE_LIMIT_MESSAGE } from './rate-limit';
 
 const tooMany = (message: string) => () => new HttpException(message, HttpStatus.TOO_MANY_REQUESTS);
 
-/** The `<function>: <code>` errors of 0036 and 0037, as HTTP with the artboard copy; the DB message never leaves the API. */
+/** The `<function>: <code>` errors of 0037 and 0038, as HTTP with the artboard copy; the DB message never leaves the API. */
 const CODES: Record<string, () => HttpException> = {
   carta_not_found: () => new NotFoundException(CARTA_MESSAGES.notFound),
   table_not_found: () => new NotFoundException(CARTA_MESSAGES.notFound),
@@ -55,7 +55,7 @@ const FUNCTION_CODES: Record<string, () => HttpException> = {
 /** A carta function error whose code has no mapping yet: a generic answer, never the DB text. */
 const UNMAPPED_MESSAGE = 'No pudimos procesar la solicitud.';
 
-/** The function and code of a raised 0036/0037 error (pg directly, or Drizzle's `cause` chain). */
+/** The function and code of a raised 0037/0038 error (pg directly, or Drizzle's `cause` chain). */
 function raisedCode(error: unknown): { fn: string; code: string } | undefined {
   for (let current = error, depth = 0; current instanceof Error && depth < 5; depth++) {
     const { code } = current as { code?: unknown };
@@ -68,7 +68,7 @@ function raisedCode(error: unknown): { fn: string; code: string } | undefined {
   return undefined;
 }
 
-/** Rethrow a 0036/0037 function error as its HTTP answer (unmapped codes get a generic 422); anything else unchanged. */
+/** Rethrow a 0037/0038 function error as its HTTP answer (unmapped codes get a generic 422); anything else unchanged. */
 export function cartaDbError(error: unknown): never {
   const raised = raisedCode(error);
   if (raised === undefined) {

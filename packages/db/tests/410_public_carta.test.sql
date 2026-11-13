@@ -1,5 +1,5 @@
 -- Public digital menu (odd/tasks/carta-digital.md T1, S1, S2, S5, S6, S7,
--- S10, L12, migration 0035).
+-- S10, L12, migration 0036).
 --
 -- carta_settings, carta_dayparts, carta_daypart_categories,
 -- dish_public_details and table_qr_tokens: shape, checks, tenant RLS (staff

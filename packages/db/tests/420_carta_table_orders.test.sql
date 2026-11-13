@@ -1,5 +1,5 @@
 -- Guest dine-in from the table QR (odd/tasks/carta-digital.md T4a, S2, S12,
--- S13, S14, migration 0036).
+-- S13, S14, migration 0037).
 --
 -- carta_table_proposals, carta_table_requests and carta_feedback: staff read
 -- (feedback: admin only), nobody writes them directly. Guests (vipe_api with

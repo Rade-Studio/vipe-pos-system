@@ -1555,7 +1555,7 @@ export const tables = pgTable("tables", {
 			name: "tables_zone_id_fkey"
 		}).onDelete("restrict"),
 	unique("tables_restaurant_id_number_key").on(table.number, table.restaurantId),
-	// Composite target of table_qr_tokens (0035).
+	// Composite target of table_qr_tokens (0036).
 	unique("tables_restaurant_id_id_key").on(table.restaurantId, table.id),
 	pgPolicy("tables_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: sql`(restaurant_id = ( SELECT private.current_restaurant_id() AS current_restaurant_id))` }),
 	pgPolicy("tables_insert_policy", { as: "permissive", for: "insert", to: ["vipe_api"] }),
@@ -2587,7 +2587,7 @@ export const orderDiscounts = pgTable("order_discounts", {
 	check("order_discounts_reason_check", sql`CASE WHEN (source = 'manual'::text) THEN ((reason IS NOT NULL) AND ((length(btrim(reason)) >= 3) AND (length(btrim(reason)) <= 200))) ELSE (reason IS NULL) END`),
 ]);
 
-/** Public digital menu of a restaurant (0035): one row per restaurant, no row = not published. Staff read, admin writes. */
+/** Public digital menu of a restaurant (0036): one row per restaurant, no row = not published. Staff read, admin writes. */
 export const cartaSettings = pgTable("carta_settings", {
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).primaryKey().notNull(),
 	published: boolean().default(false).notNull(),
@@ -2604,7 +2604,7 @@ export const cartaSettings = pgTable("carta_settings", {
 	deliveryOrderingEnabled: boolean("delivery_ordering_enabled").default(false).notNull(),
 	showTableBill: boolean("show_table_bill").default(true).notNull(),
 	englishEnabled: boolean("english_enabled").default(true).notNull(),
-	// {"1".."7": null | {opens: "HH:MM", closes: "HH:MM"}}; private.carta_opening_hours_valid (0035).
+	// {"1".."7": null | {opens: "HH:MM", closes: "HH:MM"}}; private.carta_opening_hours_valid (0036).
 	openingHours: jsonb("opening_hours"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -2629,7 +2629,7 @@ export const cartaSettings = pgTable("carta_settings", {
 	check("carta_settings_opening_hours_check", sql`private.carta_opening_hours_valid(opening_hours)`),
 ]);
 
-/** Dayparts of the public menu (0035), restaurant timezone, starts_at < ends_at; featured_dish_id is the "Plato del día". */
+/** Dayparts of the public menu (0036), restaurant timezone, starts_at < ends_at; featured_dish_id is the "Plato del día". */
 export const cartaDayparts = pgTable("carta_dayparts", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
@@ -2665,7 +2665,7 @@ export const cartaDayparts = pgTable("carta_dayparts", {
 	check("carta_dayparts_sort_order_check", sql`sort_order >= 0`),
 ]);
 
-/** Categories a daypart lists (0035); same restaurant through the composite keys. */
+/** Categories a daypart lists (0036); same restaurant through the composite keys. */
 export const cartaDaypartCategories = pgTable("carta_daypart_categories", {
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
 	daypartId: uuid("daypart_id").notNull(),
@@ -2690,7 +2690,7 @@ export const cartaDaypartCategories = pgTable("carta_daypart_categories", {
 	pgPolicy("carta_daypart_categories_delete_policy", { as: "permissive", for: "delete", to: ["vipe_api"], using: ADMIN_TENANT }),
 ]);
 
-/** Public menu details of a dish (0035): tags and the English description. Staff read, admin writes. */
+/** Public menu details of a dish (0036): tags and the English description. Staff read, admin writes. */
 export const dishPublicDetails = pgTable("dish_public_details", {
 	dishId: uuid("dish_id").primaryKey().notNull(),
 	restaurantId: uuid("restaurant_id").default(sql`private.current_restaurant_id()`).notNull(),
@@ -2714,7 +2714,7 @@ export const dishPublicDetails = pgTable("dish_public_details", {
 	check("dish_public_details_description_en_check", sql`(description_en IS NULL) OR (length(description_en) <= 400)`),
 ]);
 
-/** Random QR token of a table (0035), created by a trigger; vipe_api only reads (private.regenerate_table_qr_token replaces it). */
+/** Random QR token of a table (0036), created by a trigger; vipe_api only reads (private.regenerate_table_qr_token replaces it). */
 export const tableQrTokens = pgTable("table_qr_tokens", {
 	tableId: uuid("table_id").primaryKey().notNull(),
 	restaurantId: uuid("restaurant_id").notNull(),
@@ -2732,7 +2732,7 @@ export const tableQrTokens = pgTable("table_qr_tokens", {
 	check("table_qr_tokens_token_check", sql`token ~ '^[A-Za-z0-9_-]{24}$'::text`),
 ]);
 
-/** A guest's order from the table QR (0036), pending until staff confirm or reject it. vipe_api only reads; private.guest_submit_proposal and the staff functions write. */
+/** A guest's order from the table QR (0037), pending until staff confirm or reject it. vipe_api only reads; private.guest_submit_proposal and the staff functions write. */
 export const cartaTableProposals = pgTable("carta_table_proposals", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	restaurantId: uuid("restaurant_id").notNull(),
@@ -2782,7 +2782,7 @@ export const cartaTableProposals = pgTable("carta_table_proposals", {
 	check("carta_table_proposals_order_item_ids_check", sql`(order_item_ids IS NULL) OR ((status = 'confirmed'::text) AND ((cardinality(order_item_ids) >= 1) AND (cardinality(order_item_ids) <= 60)))`),
 ]);
 
-/** A guest asks for the bill or calls the waiter (0036) for the table's open order; one unresolved row per order and kind. vipe_api only reads. */
+/** A guest asks for the bill or calls the waiter (0037) for the table's open order; one unresolved row per order and kind. vipe_api only reads. */
 export const cartaTableRequests = pgTable("carta_table_requests", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	restaurantId: uuid("restaurant_id").notNull(),
@@ -2822,7 +2822,7 @@ export const cartaTableRequests = pgTable("carta_table_requests", {
 	check("carta_table_requests_resolved_check", sql`(resolved_by IS NULL) OR (resolved_at IS NOT NULL)`),
 ]);
 
-/** Stars and optional private comment a guest leaves (0036). Admin reads; only private.guest_feedback writes. */
+/** Stars and optional private comment a guest leaves (0037). Admin reads; only private.guest_feedback writes. */
 export const cartaFeedback = pgTable("carta_feedback", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	restaurantId: uuid("restaurant_id").notNull(),
@@ -2849,7 +2849,7 @@ export const cartaFeedback = pgTable("carta_feedback", {
 	check("carta_feedback_comment_check", sql`(comment IS NULL) OR (length(comment) <= 500)`),
 ]);
 
-/** A guest's delivery order from the public carta (0037): pending until staff confirm it (the API creates and links the delivery order) or reject it. vipe_api only reads. */
+/** A guest's delivery order from the public carta (0038): pending until staff confirm it (the API creates and links the delivery order) or reject it. vipe_api only reads. */
 export const cartaDeliveryRequests = pgTable("carta_delivery_requests", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	restaurantId: uuid("restaurant_id").notNull(),

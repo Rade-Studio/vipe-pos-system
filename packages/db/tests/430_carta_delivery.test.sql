@@ -1,5 +1,5 @@
 -- Guest delivery from the public carta (odd/tasks/carta-digital.md T6, S2,
--- S15, migration 0037).
+-- S15, migration 0038).
 --
 -- carta_delivery_requests: admin, cashier and delivery operator of the
 -- restaurant read; nobody writes it directly. Guests (vipe_api with no
