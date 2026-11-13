@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useTerminal } from "@/components/terminal/terminal-context"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
   confirmErrorMessage,
@@ -108,8 +109,23 @@ function useRefreshInbox() {
   return () => queryClient.invalidateQueries({ queryKey: CARTA_INBOX_KEY })
 }
 
+/**
+ * Runs a write once someone is identified: on a shared terminal (T5b, L29)
+ * the PIN sheet first, so the API client sends that waiter's acting claim,
+ * as on the waiter's own order writes; a closed sheet sends nothing. With
+ * own accounts it runs at once.
+ */
+function useIdentified() {
+  const terminal = useTerminal()
+  return async (label: string, write: () => void) => {
+    if (terminal && !(await terminal.ensureIdentity({ label }))) return
+    write()
+  }
+}
+
 function RequestCard({ request }: { request: InboxRequest }) {
   const refresh = useRefreshInbox()
+  const identified = useIdentified()
   const titleId = useId()
   const resolve = useMutation({ mutationFn: () => resolveRequest(request.id), onSuccess: refresh })
   const tone =
@@ -129,7 +145,7 @@ function RequestCard({ request }: { request: InboxRequest }) {
           </p>
         )}
       </div>
-      <Button variant="outline" className="min-h-11 bg-background text-foreground" disabled={resolve.isPending} onClick={() => resolve.mutate()}>
+      <Button variant="outline" className="min-h-11 bg-background text-foreground" disabled={resolve.isPending} onClick={() => void identified(`Mesa ${request.tableNumber}`, () => resolve.mutate())}>
         Atendido
       </Button>
     </article>
@@ -139,6 +155,7 @@ function RequestCard({ request }: { request: InboxRequest }) {
 function ProposalCard({ proposal }: { proposal: InboxProposal }) {
   const refresh = useRefreshInbox()
   const printingEnabled = usePrintingEnabled()
+  const identified = useIdentified()
   const titleId = useId()
   const reasonId = useId()
   const [rejecting, setRejecting] = useState(false)
@@ -212,7 +229,7 @@ function ProposalCard({ proposal }: { proposal: InboxProposal }) {
             <Button variant="outline" className="min-h-11 flex-1" disabled={busy} onClick={() => setRejecting(false)}>
               Cancelar
             </Button>
-            <Button variant="destructive" className="min-h-11 flex-1" disabled={busy} onClick={() => reject.mutate()}>
+            <Button variant="destructive" className="min-h-11 flex-1" disabled={busy} onClick={() => void identified(`Mesa ${proposal.tableNumber}`, () => reject.mutate())}>
               Rechazar pedido
             </Button>
           </div>
@@ -222,7 +239,7 @@ function ProposalCard({ proposal }: { proposal: InboxProposal }) {
           <Button variant="outline" className="min-h-11 flex-1" disabled={busy} onClick={() => setRejecting(true)}>
             Rechazar
           </Button>
-          <Button className="min-h-11 flex-1" disabled={busy} onClick={() => confirm.mutate()}>
+          <Button className="min-h-11 flex-1" disabled={busy} onClick={() => void identified(`Mesa ${proposal.tableNumber}`, () => confirm.mutate())}>
             Confirmar
           </Button>
         </div>
