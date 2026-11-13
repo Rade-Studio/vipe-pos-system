@@ -15,10 +15,10 @@ Visual/UX pass on four existing surfaces: admin Carta digital settings, public c
 ## Tasks
 
 - [x] T1 — S1 — worker A — admin carta tabs (`components/admin/carta/**`) — commit: 55a94aa
-- [x] T2 — S2 — worker B — public carta responsive md/lg (`components/carta/**`, `app/c/**`) — commit: feat(carta)
-- [ ] T3 — S3, S6 — worker C — takeaway list sheet + waiter header/toolbar on mobile (`WaiterView.tsx`, `components/layout/Header*`, `components/takeaway/**`) — commit: —
-- [ ] T4 — S4, S5, S6 — worker D — floor: no overlapping pills, legend, carta alert per table (`components/floor/**`, `lib/floor/**`, `components/carta-inbox/**`, `components/pos/TablesSection.tsx`) — commit: —
-- [ ] T5 — all — parent — typecheck, full vitest, lint; risk line — commit: —
+- [x] T2 — S2 — worker B — public carta responsive md/lg (`components/carta/**`, `app/c/**`) — commit: 1cb4541
+- [x] T3 — S3, S6 — worker C — takeaway list sheet + waiter header/toolbar on mobile (`WaiterView.tsx`, `components/layout/Header*`, `components/takeaway/**`) — commit: "feat(waiter): takeaway orders in a sheet…" (this commit)
+- [x] T4 — S4, S5, S6 — worker D — floor: no overlapping pills, legend, carta alert per table (`components/floor/**`, `lib/floor/**`, `components/carta-inbox/**`, `components/pos/TablesSection.tsx`) — commit: 063a0bf
+- [x] T5 — all — parent — typecheck, full vitest, lint; risk line — evidence: tsc exit 0; vitest 264 files, 2929 passed / 1 skipped; eslint 0 errors (12 pre-existing warnings)
 
 ## Log
 
@@ -30,3 +30,4 @@ Visual/UX pass on four existing surfaces: admin Carta digital settings, public c
   - S3: the takeaway chips leave the floor. The "Para llevar" toolbar button shows a count badge and opens a side sheet listing active takeaway orders (name, status, total, tap opens the flow) with "Nuevo pedido para llevar" at the top — same pattern as the Carta inbox button.
   - S5: the floor no longer prints status/elapsed pills under tables (state = table colour; full text stays in the accessible name and in the table panel). A compact colour legend under the floor removes colour-only ambiguity. The ≥12 h old-order warning stays as an icon-only badge on the table.
   - S4: each table with pending carta inbox items (proposal / bill / waiter call) gets an attention badge on its top-right corner (pulsing, icon by kind), added to its accessible name; matched by zone + table number (inbox has no tableId). Waiter floor only.
+- **L4 (evidence, parent):** T4 removed the floor pill, so WaiterView T22 "draws the minutes since the open order started on its table" now asserts the time only in the accessible name (committed with 063a0bf). Inbox matching is zone name + number because `Table` exposes no open orderId. No browser/visual check was run; breakpoints and badge look remain to be verified by eye.

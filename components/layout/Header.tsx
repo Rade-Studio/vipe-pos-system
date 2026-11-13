@@ -34,12 +34,13 @@ export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }
   const identity = terminal?.identity
 
   return (
-    <header className="flex justify-between items-center mb-6 sticky top-0 z-10 bg-background pb-2 pt-4">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-        <h1 className="text-xl sm:text-2xl font-bold">{title}</h1>
+    // S6: below sm the actions are icon-only 44 px buttons (full name in aria-label/title) so a 360 px phone never overflows.
+    <header className="sticky top-0 z-10 mb-2 flex min-w-0 items-center justify-between gap-2 bg-background pb-2 pt-2 sm:mb-6 sm:pt-4">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+        <h1 className="truncate text-xl font-bold sm:text-2xl">{title}</h1>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <ThemeToggle />
         {terminal ? (
           identity ? (
@@ -68,10 +69,9 @@ export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }
             Es la única forma de que admin previsualice las otras vistas
             sin deslogearse, incluso desde una vista impersonada. */}
         {authRole === "admin" && (
-          <Button variant="outline" size="sm" onClick={onChangeProfile}>
-            <UserCog className="mr-2 h-4 w-4" />
+          <Button variant="outline" size="sm" className="min-h-11 min-w-11" aria-label="Cambiar Perfil" title="Cambiar Perfil" onClick={onChangeProfile}>
+            <UserCog className="h-4 w-4 sm:mr-2" aria-hidden />
             <span className="hidden sm:inline">Cambiar Perfil</span>
-            <span className="sm:hidden">Cambiar</span>
           </Button>
         )}
         {!terminal && (
@@ -80,16 +80,16 @@ export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }
             size="sm"
             className="min-h-11 min-w-11"
             aria-label="Cambiar mi PIN"
+            title="Cambiar mi PIN"
             onClick={() => setPinOpen(true)}
           >
             <KeyRound className="h-4 w-4 sm:mr-2" aria-hidden />
             <span className="hidden sm:inline">Cambiar mi PIN</span>
           </Button>
         )}
-        <Button variant="outline" size="sm" className="min-h-11" onClick={handleLogout}>
-          <LogOut className="mr-2 h-4 w-4" />
+        <Button variant="outline" size="sm" className="min-h-11 min-w-11" aria-label="Cerrar Sesión" title="Cerrar Sesión" onClick={handleLogout}>
+          <LogOut className="h-4 w-4 sm:mr-2" aria-hidden />
           <span className="hidden sm:inline">Cerrar Sesión</span>
-          <span className="sm:hidden">Salir</span>
         </Button>
       </div>
       {!terminal && <ChangeOwnPinDialog open={pinOpen} onOpenChange={setPinOpen} who={`${profile.name} · ${getRoleLabel(profile.role)}`} />}

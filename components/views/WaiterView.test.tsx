@@ -1056,6 +1056,7 @@ describe("WaiterView — step order flow (T10)", () => {
     renderView()
     await flush()
     await tap("Para llevar")
+    await tap("Nuevo pedido para llevar")
     const dialog = screen.getByRole("dialog", { name: "Pedido para llevar" })
     fireEvent.change(within(dialog).getByLabelText("Nombre del cliente"), { target: { value: " A " } })
     await act(async () => within(dialog).getByRole("button", { name: "Tomar pedido" }).click())
@@ -1094,6 +1095,29 @@ describe("WaiterView — step order flow (T10)", () => {
     expect(env.assignWaiter).not.toHaveBeenCalled()
   })
 
+  it("badges the Para llevar button with the count of open takeaway orders (S3)", async () => {
+    env.orderGetByStatus.mockResolvedValue([
+      { ...orderDto("o-a", null, "takeaway"), customerName: "Ana", status: "kitchen", total: 7000 },
+      { ...orderDto("o-b", null, "takeaway"), customerName: "Luis", status: "active", total: 3000 },
+      orderDto("o-1", "t-1"),
+    ])
+    renderView()
+    await flush()
+    expect(screen.getByRole("button", { name: "Para llevar (2 pedidos)" })).toHaveTextContent("2")
+  })
+
+  it("shows an empty state and starts a new takeaway from the sheet (S3)", async () => {
+    renderView()
+    await flush()
+    await act(async () => screen.getByRole("button", { name: "Para llevar" }).click())
+    await flush()
+    expect(screen.getByText("No hay pedidos para llevar abiertos.")).toBeInTheDocument()
+    await act(async () => screen.getByRole("button", { name: "Nuevo pedido para llevar" }).click())
+    await flush()
+    expect(screen.queryByText("No hay pedidos para llevar abiertos.")).not.toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "Pedido para llevar" })).toBeInTheDocument()
+  })
+
   it("lists the open takeaway orders and adds items to one with POST /orders/:id/items; a table is unaffected (S8)", async () => {
     env.orderGetByStatus.mockResolvedValue([
       { ...orderDto("o-take", null, "takeaway"), customerName: "Ana", status: "kitchen", total: 7000 },
@@ -1101,10 +1125,15 @@ describe("WaiterView — step order flow (T10)", () => {
     ])
     renderView()
     await flush()
+    // S3: the orders no longer sit on the floor; they live in the "Para llevar" sheet.
+    expect(screen.queryByRole("region", { name: "Pedidos para llevar" })).not.toBeInTheDocument()
+    await act(async () => screen.getByRole("button", { name: "Para llevar (1 pedido)" }).click())
+    await flush()
     const list = screen.getByRole("region", { name: "Pedidos para llevar" })
-    const entry = within(list).getByRole("button", { name: /Para llevar · Ana/ })
+    const entry = within(list).getByRole("button", { name: /Ana/ })
     expect(entry).toHaveTextContent("En cocina")
     expect(entry.textContent).toContain(formatCurrency(7000))
+    expect(entry.className).toMatch(/\bmin-h-11\b/)
     expect(within(list).getAllByRole("button")).toHaveLength(1)
     expect(screen.getByText("Mesa 1")).toBeInTheDocument()
 
@@ -1113,9 +1142,9 @@ describe("WaiterView — step order flow (T10)", () => {
       for (const cb of env.orderCallbacks) cb({ eventType: "UPDATE", new: { id: "o-take", status: "delivered" }, old: { id: "o-take" } })
     })
     await flush()
-    expect(within(list).getByRole("button", { name: /Para llevar · Ana/ })).toHaveTextContent("Entregado")
+    expect(within(screen.getByRole("region", { name: "Pedidos para llevar" })).getByRole("button", { name: /Ana/ })).toHaveTextContent("Entregado")
 
-    await act(async () => entry.click())
+    await act(async () => within(screen.getByRole("region", { name: "Pedidos para llevar" })).getByRole("button", { name: /Ana/ }).click())
     await flush()
     expect(screen.getByRole("heading", { name: "¿Qué categoría?" })).toBeInTheDocument()
     await tap(/Postres/)
@@ -1133,6 +1162,7 @@ describe("WaiterView — step order flow (T10)", () => {
     renderView()
     await flush()
     await tap("Para llevar")
+    await tap("Nuevo pedido para llevar")
     await tap("Cancelar")
     expect(screen.queryByRole("dialog", { name: "Pedido para llevar" })).toBeNull()
     expect(screen.queryByRole("heading", { name: "¿Qué categoría?" })).toBeNull()
