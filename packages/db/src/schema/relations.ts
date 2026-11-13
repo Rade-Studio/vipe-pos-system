@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, promotionCategories, promotionSubcategories, promotionComboGroups, promotionComboOptions, orderDiscounts, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones, subcategories } from "./schema";
+import { restaurants, businessConfig, cashRegisters, cashTransactions, categories, couriers, customers, customerAddresses, dishes, ingredientCategories, ingredients, ingredientTransactions, ingredientTransactionsOrders, orders, suppliers, inventoryCounts, inventoryCountLines, profiles, inventoryLocations, inventoryLots, inventoryMovements, orderDeliveries, orderItems, tables, paymentMethods, payments, paymentTenders, paymentTransactions, productionBatches, users, promotionDishes, promotions, promotionCategories, promotionSubcategories, promotionComboGroups, promotionComboOptions, orderDiscounts, purchaseOrderLines, purchaseOrders, recipeIngredients, recipes, authSessions, printerTokens, printJobs, zones, subcategories, cartaSettings, cartaDayparts, cartaDaypartCategories, dishPublicDetails, tableQrTokens } from "./schema";
 
 export const businessConfigRelations = relations(businessConfig, ({one}) => ({
 	restaurant: one(restaurants, {
@@ -661,5 +661,49 @@ export const orderDiscountsRelations = relations(orderDiscounts, ({one}) => ({
 	promotion: one(promotions, {
 		fields: [orderDiscounts.promotionId],
 		references: [promotions.id]
+	}),
+}));
+
+export const cartaSettingsRelations = relations(cartaSettings, ({one}) => ({
+	restaurant: one(restaurants, {
+		fields: [cartaSettings.restaurantId],
+		references: [restaurants.id]
+	}),
+}));
+
+export const cartaDaypartsRelations = relations(cartaDayparts, ({one, many}) => ({
+	restaurant: one(restaurants, {
+		fields: [cartaDayparts.restaurantId],
+		references: [restaurants.id]
+	}),
+	featuredDish: one(dishes, {
+		fields: [cartaDayparts.featuredDishId],
+		references: [dishes.id]
+	}),
+	cartaDaypartCategories: many(cartaDaypartCategories),
+}));
+
+export const cartaDaypartCategoriesRelations = relations(cartaDaypartCategories, ({one}) => ({
+	daypart: one(cartaDayparts, {
+		fields: [cartaDaypartCategories.daypartId],
+		references: [cartaDayparts.id]
+	}),
+	category: one(categories, {
+		fields: [cartaDaypartCategories.categoryId],
+		references: [categories.id]
+	}),
+}));
+
+export const dishPublicDetailsRelations = relations(dishPublicDetails, ({one}) => ({
+	dish: one(dishes, {
+		fields: [dishPublicDetails.dishId],
+		references: [dishes.id]
+	}),
+}));
+
+export const tableQrTokensRelations = relations(tableQrTokens, ({one}) => ({
+	table: one(tables, {
+		fields: [tableQrTokens.tableId],
+		references: [tables.id]
 	}),
 }));

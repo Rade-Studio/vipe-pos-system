@@ -239,6 +239,13 @@
       "when": 1793914481411,
       "tag": "0035_print_job_x_report",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793918081411,
+      "tag": "0036_public_carta",
+      "breakpoints": true
     }
   ]
 }
