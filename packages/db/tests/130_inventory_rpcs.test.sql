@@ -299,7 +299,11 @@ SELECT is(
     SELECT (r->>'unit_cost') || '|' || (r->>'expires_on')
       FROM (SELECT public.produce_preparation('aaaaaaaa-0000-4000-8000-0000000013f3', 1000) AS r) s
   $q$),
-  '1.5000|' || (current_date + 3)::text, 'production unit cost = consumed cost / quantity, expiry = today + shelf life');
+  -- "Today" is the restaurant's local date (0025), not current_date in the session time zone.
+  (SELECT '1.5000|' || ((now() AT TIME ZONE COALESCE(r.timezone, 'America/Bogota'))::date + 3)::text
+     FROM public.ingredients i JOIN public.restaurants r ON r.id = i.restaurant_id
+    WHERE i.id = 'aaaaaaaa-0000-4000-8000-0000000013f3'),
+  'production unit cost = consumed cost / quantity, expiry = today + shelf life');
 SELECT is(
   pg_temp.inv_text($q$
     SELECT string_agg(quantity::text, ',' ORDER BY expires_on NULLS LAST)
