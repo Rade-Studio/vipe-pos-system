@@ -4,23 +4,27 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { failureOf, fetchCarta } from "@/lib/carta/api"
 import { brandCss, brandPalette } from "@/lib/carta/brand"
-import { cartCount, orderingMode } from "@/lib/carta/cart"
+import { cartCount, isOrdering, orderingMode } from "@/lib/carta/cart"
+import { isTrackingDone, trackingPath } from "@/lib/carta/delivery"
 import { STRINGS, TRANSLATION_FOOTER } from "@/lib/carta/i18n"
 import { canAddNow, daypartName, defaultDaypartId, findDish, hasRequiredModifiers, dishUnitPrice } from "@/lib/carta/menu"
 import type { Carta, CartaDish, CartaLang } from "@/lib/carta/types"
 import { guestErrorMessage, sendFeedback, sendProposal, sendTableRequest, type TableRequestKind } from "@/lib/carta/table"
 import { useCartaCart } from "@/lib/carta/use-cart"
+import { useDeliveryStatus, useTrackingToken } from "@/lib/carta/use-delivery"
 import { useTableBill, useTableStatus } from "@/lib/carta/use-table"
 import { cn } from "@/lib/utils"
 import { CartaHero } from "./CartaHero"
 import { CartaMenu } from "./CartaMenu"
 import { CartaFailureView, CartaSkeleton } from "./CartaStates"
+import { DeliveryCheckout } from "./DeliveryCheckout"
 import { DishSheet } from "./DishSheet"
 import { BillIcon, ListIcon, MenuIcon } from "./icons"
 import { MyList } from "./MyList"
 import { CallWaiter, MyOrder } from "./MyOrder"
 import { ShareSheet } from "./ShareSheet"
 import { TableBill } from "./TableBill"
+import { WhatsappOrder } from "./WhatsappOrder"
 import { BRAND_FILL, BRAND_TEXT, FOCUS, TONES } from "./styles"
 
 type Sheet = { kind: "dish"; dishId: string } | { kind: "share"; dishId: string | null } | null
@@ -86,8 +90,19 @@ function CartaView({
   const [announcement, setAnnouncement] = useState("")
   const css = useMemo(() => brandCss(brandPalette(carta.settings.brandColor)), [carta.settings.brandColor])
 
-  // "list" keeps "Mi lista" on the phone (S11); "propose" sends "Mi pedido" to the waiter (S12).
+  // "list" keeps "Mi lista" on the phone (S11); "propose" sends "Mi pedido" to the waiter (S12);
+  // "delivery" checks out to the delivery console (S15); "whatsapp" composes the message (S16).
   const mode = orderingMode(carta)
+  const ordering = isOrdering(mode)
+  const [trackingToken, rememberTracking] = useTrackingToken(slug)
+  const lastDelivery = useDeliveryStatus(slug, carta.table ? null : trackingToken, false)
+  const lastStage = lastDelivery.data?.stage
+  const lastGone = lastDelivery.isError && failureOf(lastDelivery.error) === "not_found"
+  useEffect(() => {
+    // "Ver mi pedido" only while the last order is under way.
+    if ((lastStage && isTrackingDone(lastStage)) || lastGone) rememberTracking(null)
+  }, [lastStage, lastGone, rememberTracking])
+  const showTracking = !!trackingToken && !!lastStage && !isTrackingDone(lastStage)
   const table = carta.table
   const status = useTableStatus(slug, token, mode === "propose")
   const waiter = status.data?.waiterFirstName || t.yourWaiter
@@ -142,7 +157,7 @@ function CartaView({
 
   const addPlain = (dish: CartaDish) => {
     dispatch({ type: "add", line: { dishId: dish.id, name: dish.name, unitPrice: dishUnitPrice(dish), options: [], note: null } })
-    setAnnouncement(mode === "propose" ? t.addedOrder(dish.name) : t.added(dish.name))
+    setAnnouncement(ordering ? t.addedOrder(dish.name) : t.added(dish.name))
   }
 
   const quickAdd = (dish: CartaDish) => {
@@ -182,6 +197,17 @@ function CartaView({
               onQuickAdd={quickAdd}
               ordering={mode}
               notice={
+                showTracking && trackingToken ? (
+                  <a
+                    href={trackingPath(slug, trackingToken)}
+                    aria-label={t.myDelivery}
+                    aria-describedby="banner-delivery"
+                    className={cn("mx-[18px] mt-3.5 flex items-center justify-between gap-3 rounded-card border px-3.5 py-3 text-[13.5px]", TONES.kitchen, FOCUS)}
+                  >
+                    <span id="banner-delivery">{t.myDeliveryHint}</span>
+                    <b className="whitespace-nowrap underline underline-offset-4">{t.myDelivery}</b>
+                  </a>
+                ) : (
                 mode === "propose" &&
                 !tableOpen &&
                 carta.isOpenNow &&
@@ -196,6 +222,7 @@ function CartaView({
                     </b>
                     <span>{t.tableClosedHint(table.number)}</span>
                   </div>
+                )
                 )
               }
             />
@@ -240,6 +267,22 @@ function CartaView({
             callWaiter={<CallWaiter t={t} waiter={waiter} onCall={() => request("waiter")} />}
           />
         </main>
+      ) : mode === "delivery" ? (
+        <main>
+          <DeliveryCheckout
+            carta={carta}
+            slug={slug}
+            lines={lines}
+            dispatch={dispatch}
+            t={t}
+            onBrowse={() => setTab("menu")}
+            onSent={rememberTracking}
+          />
+        </main>
+      ) : mode === "whatsapp" && carta.settings.whatsapp ? (
+        <main>
+          <WhatsappOrder carta={carta} whatsapp={carta.settings.whatsapp} lines={lines} dispatch={dispatch} t={t} onBrowse={() => setTab("menu")} />
+        </main>
       ) : (
         <main>
           <MyList lines={lines} dispatch={dispatch} t={t} onBrowse={() => setTab("menu")} />
@@ -262,7 +305,7 @@ function CartaView({
                 <span aria-hidden="true" className="mr-1.5 inline-grid h-[26px] min-w-[26px] place-items-center rounded-pill bg-white/20 px-1.5 text-[13px] tabular-nums dark:bg-black/15">
                   {count}
                 </span>
-                {mode === "propose" ? t.seeOrder : t.seeList}
+                {mode === "propose" ? t.seeOrder : ordering ? t.seeCart : t.seeList}
               </span>
             </button>
           </div>
@@ -271,7 +314,7 @@ function CartaView({
           {(
             [
               ["menu", t.tabMenu, MenuIcon],
-              ["list", mode === "propose" ? t.tabOrder : t.tabList, ListIcon],
+              ["list", mode === "propose" ? t.tabOrder : ordering ? t.tabCart : t.tabList, ListIcon],
               ...(billShown ? ([["bill", t.tabBill, BillIcon]] as const) : []),
             ] as const
           ).map(([key, label, Icon]) => {
@@ -317,7 +360,7 @@ function CartaView({
           onShare={() => setSheet({ kind: "share", dishId: sheetDish.id })}
           onAdd={(choice) => {
             dispatch({ type: "add", line: { dishId: sheetDish.id, name: sheetDish.name, ...choice } })
-            setAnnouncement(mode === "propose" ? t.addedOrder(sheetDish.name) : t.added(sheetDish.name))
+            setAnnouncement(ordering ? t.addedOrder(sheetDish.name) : t.added(sheetDish.name))
             setSheet(null)
           }}
         />

@@ -31,7 +31,7 @@ interface MenuProps {
   lines: CartLine[]
   onOpenDish: (dish: CartaDish) => void
   onQuickAdd: (dish: CartaDish) => void
-  /** "propose": "+" adds to "Mi pedido" (S12) instead of toggling "Mi lista". */
+  /** Any mode but "list" ("propose", "delivery", "whatsapp"): "+" adds to the cart instead of toggling "Mi lista". */
   ordering?: OrderingMode
   /** A banner after the closed one (the table QR's closed table, S12). */
   notice?: React.ReactNode
@@ -287,8 +287,8 @@ function DishRow({
           <button
             type="button"
             onClick={onQuickAdd}
-            aria-label={ordering === "propose" ? t.addOrder(dish.name) : listed ? t.removeList(dish.name) : t.addList(dish.name)}
-            aria-pressed={ordering === "propose" ? undefined : listed}
+            aria-label={ordering !== "list" ? t.addOrder(dish.name) : listed ? t.removeList(dish.name) : t.addList(dish.name)}
+            aria-pressed={ordering !== "list" ? undefined : listed}
             className={cn(
               "absolute bottom-0 right-0 grid h-11 w-11 place-items-center rounded-full text-[22px] leading-none shadow-[0_6px_16px_-6px_rgba(0,0,0,0.5)]",
               listed ? cn("bg-surface outline outline-2 outline-[var(--brand)]", BRAND_TEXT) : BRAND_FILL,

@@ -32,7 +32,8 @@ export function carta(overrides: Partial<Carta> = {}): Carta {
       coverUrl: null,
       instagram: "brasaylena",
       tiktok: null,
-      whatsapp: "573001234567",
+      // Set per test: a WhatsApp number turns the delivery carta into the S16 fallback.
+      whatsapp: null,
       mapsUrl: null,
       googleReviewUrl: null,
       tableOrderingEnabled: false,
