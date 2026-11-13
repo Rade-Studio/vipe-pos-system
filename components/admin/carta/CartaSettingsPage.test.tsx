@@ -11,6 +11,7 @@ const toastMock = vi.hoisted(() => vi.fn())
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }))
 
 import { CartaSettingsPage } from "./CartaSettingsPage"
+import { qrSvg } from "@/lib/carta/qr"
 
 function fixture(): CartaAdmin {
   return {
@@ -360,5 +361,84 @@ describe("CartaSettingsPage — table QR", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Sí, regenerar" }))
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith("/api/carta-admin/tables/qr"))
     expect(await screen.findByText(`${window.location.origin}/c/brasa-y-lena/m/tok-4-x`)).toBeTruthy()
+  })
+})
+
+describe("CartaSettingsPage — table QR images (S18)", () => {
+  /** The markup the DOM keeps for a QR of the URL (it serializes self-closing tags). */
+  const svgOf = (url: string) => {
+    const box = document.createElement("div")
+    box.innerHTML = qrSvg(url)
+    return box.innerHTML
+  }
+  const qrOf = (n: number) => screen.getByRole("img", { name: `Código QR de la mesa ${n}` })
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it("each table shows the QR of its full guest URL with its number and zone", async () => {
+    await renderPage()
+    expect(qrOf(4).innerHTML).toBe(svgOf(`${window.location.origin}/c/brasa-y-lena/m/tok-4`))
+    expect(qrOf(10).innerHTML).toBe(svgOf(`${window.location.origin}/c/brasa-y-lena/m/tok-10`))
+    expect(within(screen.getByRole("region", { name: "Terraza" })).getByText("Mesa 10 · Terraza")).toBeTruthy()
+  })
+
+  it("after Regenerar the image encodes the new token", async () => {
+    await renderPage()
+    const before = qrOf(4).innerHTML
+    fireEvent.click(screen.getByRole("button", { name: "Regenerar QR de la mesa 4" }))
+    const dialog = await screen.findByRole("alertdialog")
+    api.POST.mockResolvedValue({ data: { id: "t-4", number: 4, zoneName: "Salón", token: "new-4", guestPath: "/c/brasa-y-lena/m/new-4" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sí, regenerar" }))
+    await waitFor(() => expect(qrOf(4).innerHTML).toBe(svgOf(`${window.location.origin}/c/brasa-y-lena/m/new-4`)))
+    expect(qrOf(4).innerHTML).not.toBe(before)
+  })
+
+  it("Descargar PNG saves a 1024 px PNG named after the restaurant and table", async () => {
+    const png = new Blob(["png"], { type: "image/png" })
+    const drawImage = vi.fn()
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage, imageSmoothingEnabled: true } as never)
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(png))
+    const created: Blob[] = []
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      created.push(blob)
+      return `blob:${created.length}`
+    })
+    URL.revokeObjectURL = vi.fn()
+    const loads = vi.spyOn(HTMLImageElement.prototype, "src", "set").mockImplementation(function (this: HTMLImageElement) {
+      queueMicrotask(() => this.onload?.(new Event("load")))
+    })
+    const clicks: HTMLAnchorElement[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicks.push(this)
+    })
+
+    await renderPage()
+    fireEvent.click(screen.getByRole("button", { name: "Descargar PNG de la mesa 10" }))
+
+    await waitFor(() => expect(clicks).toHaveLength(1))
+    expect(clicks[0].download).toBe("carta-brasa-y-lena-mesa-10.png")
+    expect(created[0].type).toBe("image/svg+xml")
+    expect(await created[0].text()).toBe(qrSvg(`${window.location.origin}/c/brasa-y-lena/m/tok-10`))
+    expect(created[1]).toBe(png)
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1024, 1024)
+    expect(loads).toHaveBeenCalled()
+  })
+
+  it("Descargar todas opens the print sheet with every table and prints it", async () => {
+    const print = vi.spyOn(window, "print").mockImplementation(() => {})
+    await renderPage()
+    fireEvent.click(screen.getByRole("button", { name: "Descargar todas" }))
+    const sheet = await screen.findByRole("region", { name: "QR para imprimir" })
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1))
+    // Every tent card names the restaurant.
+    expect(within(sheet).getAllByText("Brasa & Leña").length).toBeGreaterThan(0)
+    expect(within(sheet).getAllByText("Escanea para ver la carta y pedir")).toHaveLength(2)
+    expect(within(sheet).getByText("Mesa 4 · Salón")).toBeTruthy()
+    expect(within(sheet).getByText("Mesa 10 · Terraza")).toBeTruthy()
+    expect(within(sheet).getByRole("img", { name: "Código QR de la mesa 10" }).innerHTML).toBe(
+      svgOf(`${window.location.origin}/c/brasa-y-lena/m/tok-10`),
+    )
+    fireEvent.click(within(sheet).getByRole("button", { name: "Cerrar" }))
+    expect(screen.queryByRole("region", { name: "QR para imprimir" })).toBeNull()
   })
 })

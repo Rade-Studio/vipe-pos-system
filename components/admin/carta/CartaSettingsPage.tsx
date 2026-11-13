@@ -276,6 +276,7 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
           <QrCard
             tables={data.tables}
             origin={origin}
+            restaurantName={data.restaurant.name}
             onTables={(tables) => setData((current) => (current ? { ...current, tables } : current))}
           />
         </div>

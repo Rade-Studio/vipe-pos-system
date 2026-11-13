@@ -1,31 +1,40 @@
 "use client"
 
-import { useState } from "react"
-import { Copy, RefreshCw } from "lucide-react"
+import { useCallback, useState } from "react"
+import { Copy, Download, Printer, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { guestUrl, regenerateAllQr, regenerateTableQr, type CartaAdminTable } from "@/lib/api/carta-admin"
+import { downloadBlob, fileName, qrPngBlob, qrSvg } from "@/lib/carta/qr"
 import { CartaCard, ConfirmDialog } from "./parts"
+import { QrPrintSheet } from "./QrPrintSheet"
 
 type Pending = { kind: "all" } | { kind: "table"; table: CartaAdminTable } | null
 
+/** The restaurant slug of a guest path ("/c/<slug>/m/<token>"). */
+const slugOf = (guestPath: string) => guestPath.split("/")[2] ?? "carta"
+
 /**
- * QR de las mesas (S17). Each table's code is its full guest URL. The repo has
- * no QR library, so the card shows the link to copy into any QR generator;
+ * QR de las mesas (S17, S18). Each table's code is its full guest URL, shown as
+ * a QR image the business downloads as PNG, or prints for all tables at once;
  * regenerating (one or all) asks first because printed codes stop working.
  */
 export function QrCard({
   tables,
   origin,
+  restaurantName,
   onTables,
 }: {
   tables: CartaAdminTable[]
   origin: string
+  restaurantName?: string
   onTables: (tables: CartaAdminTable[]) => void
 }) {
   const { toast } = useToast()
   const [pending, setPending] = useState<Pending>(null)
   const [open, setOpen] = useState(false)
+  const [printing, setPrinting] = useState(false)
+  const closePrint = useCallback(() => setPrinting(false), [])
 
   const zones = new Map<string, CartaAdminTable[]>()
   for (const table of [...tables].sort((a, b) => a.number - b.number)) {
@@ -59,6 +68,14 @@ export function QrCard({
     toast({ title: "Enlace copiado" })
   }
 
+  const download = async (table: CartaAdminTable, url: string) => {
+    try {
+      downloadBlob(await qrPngBlob(url, 1024), fileName(slugOf(table.guestPath), table.number))
+    } catch {
+      toast({ title: "No se pudo descargar el QR", description: "Intenta de nuevo.", variant: "destructive" })
+    }
+  }
+
   return (
     <CartaCard
       id="carta-qr"
@@ -67,15 +84,21 @@ export function QrCard({
       description="Cada mesa tiene su código: el pedido llega a la mesa correcta."
       actions={
         tables.length > 0 && (
-          <Button type="button" variant="outline" size="sm" onClick={() => ask({ kind: "all" })}>
-            <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Regenerar todos
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setPrinting(true)}>
+              <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Descargar todas
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => ask({ kind: "all" })}>
+              <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Regenerar todos
+            </Button>
+          </div>
         )
       }
     >
       {tables.length === 0 && <p className="text-sm text-muted-foreground">Crea mesas en Mesas para tener sus códigos.</p>}
-      <p className="text-sm text-muted-foreground">Copia el enlace de cada mesa en tu generador de QR para imprimirlo.</p>
+      <p className="text-sm text-muted-foreground">Descarga el QR de cada mesa o imprímelos todos en hojas A4.</p>
       {[...zones].map(([zone, list]) => (
         <section key={zone} aria-label={zone} className="space-y-2">
           <h3 className="text-sm font-semibold">{zone}</h3>
@@ -85,8 +108,21 @@ export function QrCard({
               return (
                 <li key={table.id} className="min-w-0 space-y-2 rounded-md border p-3">
                   <p className="text-sm font-semibold">Mesa {table.number}</p>
+                  <span
+                    role="img"
+                    aria-label={`Código QR de la mesa ${table.number}`}
+                    className="mx-auto block h-40 w-40 [&>svg]:h-full [&>svg]:w-full"
+                    dangerouslySetInnerHTML={{ __html: qrSvg(url) }}
+                  />
+                  <p className="text-center text-sm">
+                    Mesa {table.number} · {zone}
+                  </p>
                   <p className="break-all font-mono text-xs text-muted-foreground">{url}</p>
                   <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" aria-label={`Descargar PNG de la mesa ${table.number}`} onClick={() => void download(table, url)}>
+                      <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                      Descargar PNG
+                    </Button>
                     <Button type="button" variant="outline" size="sm" aria-label={`Copiar enlace de la mesa ${table.number}`} onClick={() => copy(url)}>
                       <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" />
                       Copiar enlace
@@ -107,6 +143,17 @@ export function QrCard({
           </ul>
         </section>
       ))}
+
+      {printing && (
+        <QrPrintSheet
+          restaurantName={restaurantName}
+          tables={tables
+            .slice()
+            .sort((a, b) => a.number - b.number)
+            .map((table) => ({ id: table.id, number: table.number, zoneName: table.zoneName, url: guestUrl(origin, table.guestPath) }))}
+          onClose={closePrint}
+        />
+      )}
 
       <ConfirmDialog
         open={open}
