@@ -8,16 +8,20 @@ import { cartCount, orderingMode } from "@/lib/carta/cart"
 import { STRINGS, TRANSLATION_FOOTER } from "@/lib/carta/i18n"
 import { canAddNow, daypartName, defaultDaypartId, findDish, hasRequiredModifiers, dishUnitPrice } from "@/lib/carta/menu"
 import type { Carta, CartaDish, CartaLang } from "@/lib/carta/types"
+import { guestErrorMessage, sendFeedback, sendProposal, sendTableRequest, type TableRequestKind } from "@/lib/carta/table"
 import { useCartaCart } from "@/lib/carta/use-cart"
+import { useTableBill, useTableStatus } from "@/lib/carta/use-table"
 import { cn } from "@/lib/utils"
 import { CartaHero } from "./CartaHero"
 import { CartaMenu } from "./CartaMenu"
 import { CartaFailureView, CartaSkeleton } from "./CartaStates"
 import { DishSheet } from "./DishSheet"
-import { ListIcon, MenuIcon } from "./icons"
+import { BillIcon, ListIcon, MenuIcon } from "./icons"
 import { MyList } from "./MyList"
+import { CallWaiter, MyOrder } from "./MyOrder"
 import { ShareSheet } from "./ShareSheet"
-import { BRAND_FILL, BRAND_TEXT, FOCUS } from "./styles"
+import { TableBill } from "./TableBill"
+import { BRAND_FILL, BRAND_TEXT, FOCUS, TONES } from "./styles"
 
 type Sheet = { kind: "dish"; dishId: string } | { kind: "share"; dishId: string | null } | null
 
@@ -38,7 +42,7 @@ export function CartaPage({ slug, token }: { slug: string; token?: string }) {
   })
 
   if (query.data) {
-    return <CartaView carta={query.data} slug={slug} onLang={setLang} />
+    return <CartaView carta={query.data} slug={slug} token={token} onLang={setLang} />
   }
   const t = STRINGS[lang ?? "es"]
   if (query.isError) {
@@ -47,11 +51,21 @@ export function CartaPage({ slug, token }: { slug: string; token?: string }) {
   return <CartaSkeleton t={t} />
 }
 
-function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang: (lang: CartaLang) => void }) {
+function CartaView({
+  carta,
+  slug,
+  token,
+  onLang,
+}: {
+  carta: Carta
+  slug: string
+  token?: string
+  onLang: (lang: CartaLang) => void
+}) {
   const lang = carta.lang
   const t = STRINGS[lang]
   const { lines, dispatch } = useCartaCart(slug)
-  const [tab, setTab] = useState<"menu" | "list">("menu")
+  const [tab, setTab] = useState<"menu" | "list" | "bill">("menu")
   const [viewedId, setViewedId] = useState<string | null>(null)
   const [sheet, setSheetState] = useState<Sheet>(null)
   // The control that opened the first sheet gets the focus back when the last
@@ -72,8 +86,48 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
   const [announcement, setAnnouncement] = useState("")
   const css = useMemo(() => brandCss(brandPalette(carta.settings.brandColor)), [carta.settings.brandColor])
 
-  // Phase 1 has one path: the local list. T5 branches on the mode here.
+  // "list" keeps "Mi lista" on the phone (S11); "propose" sends "Mi pedido" to the waiter (S12).
   const mode = orderingMode(carta)
+  const table = carta.table
+  const status = useTableStatus(slug, token, mode === "propose")
+  const waiter = status.data?.waiterFirstName || t.yourWaiter
+  const tableOpen = status.data?.isOpen ?? table?.isOpen ?? false
+  const billEnabled = !!table && carta.settings.showTableBill && status.data?.showTableBill !== false
+  const bill = useTableBill(slug, token, billEnabled, tab === "bill")
+  // S13: a closed table (404) or a hidden bill has no tab.
+  const billShown = billEnabled && !!bill.data
+  const activeTab = tab === "bill" && !billShown ? "menu" : tab
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const tableRef = { slug, token: token ?? "" }
+
+  const send = async (note: string): Promise<boolean> => {
+    if (!status.guestKey) return false
+    setSending(true)
+    setSendError(null)
+    try {
+      await sendProposal(tableRef, status.guestKey, lines, note)
+      dispatch({ type: "replace", lines: [] })
+      setAnnouncement(t.sent(waiter))
+      void status.refetch()
+      return true
+    } catch (error) {
+      // The cart stays: the guest fixes it or tries again.
+      setSendError(guestErrorMessage(error, t.sendFailed))
+      return false
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const request = async (kind: TableRequestKind): Promise<boolean> => {
+    try {
+      await sendTableRequest(tableRef, kind)
+      return true
+    } catch {
+      return false
+    }
+  }
   const viewedDaypartId = viewedId ?? defaultDaypartId(carta)
   const canAdd = canAddNow(carta, viewedDaypartId)
   const count = cartCount(lines)
@@ -88,7 +142,7 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
 
   const addPlain = (dish: CartaDish) => {
     dispatch({ type: "add", line: { dishId: dish.id, name: dish.name, unitPrice: dishUnitPrice(dish), options: [], note: null } })
-    setAnnouncement(t.added(dish.name))
+    setAnnouncement(mode === "propose" ? t.addedOrder(dish.name) : t.added(dish.name))
   }
 
   const quickAdd = (dish: CartaDish) => {
@@ -107,7 +161,7 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
   return (
     <div lang={lang} className="carta-root mx-auto min-h-dvh w-full max-w-[480px] overflow-x-hidden bg-canvas text-fg">
       <style>{css}</style>
-      {tab === "menu" ? (
+      {activeTab === "menu" ? (
         <>
           <CartaHero
             carta={carta}
@@ -126,6 +180,24 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
               lines={lines}
               onOpenDish={(d) => setSheet({ kind: "dish", dishId: d.id })}
               onQuickAdd={quickAdd}
+              ordering={mode}
+              notice={
+                mode === "propose" &&
+                !tableOpen &&
+                carta.isOpenNow &&
+                table && (
+                  <div
+                    role="status"
+                    aria-labelledby="banner-table"
+                    className={cn("mx-[18px] mt-3.5 grid gap-0.5 rounded-card border px-3.5 py-3 text-[13px]", TONES.warning)}
+                  >
+                    <b id="banner-table" className="text-[13.5px]">
+                      {t.tableClosedTitle}
+                    </b>
+                    <span>{t.tableClosedHint(table.number)}</span>
+                  </div>
+                )
+              }
             />
           </main>
           <footer className="grid gap-1 px-[18px] pb-36 pt-7 text-center text-xs text-muted-fg">
@@ -134,6 +206,40 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
             <span>{t.madeWith}</span>
           </footer>
         </>
+      ) : activeTab === "bill" && bill.data && table ? (
+        <main>
+          <TableBill
+            bill={bill.data}
+            t={t}
+            tableNumber={table.number}
+            waiter={waiter}
+            canAsk={mode === "propose"}
+            onAsk={() => (mode === "propose" ? request("bill") : Promise.resolve(true))}
+            review={{
+              googleReviewUrl: carta.settings.googleReviewUrl,
+              onFeedback: (rating, comment) => sendFeedback(slug, { token, rating, comment }),
+            }}
+            footer={mode === "propose" && <CallWaiter t={t} waiter={waiter} onCall={() => request("waiter")} />}
+          />
+        </main>
+      ) : mode === "propose" && table ? (
+        <main>
+          <MyOrder
+            lines={lines}
+            dispatch={dispatch}
+            t={t}
+            tableNumber={table.number}
+            waiter={waiter}
+            tableOpen={tableOpen}
+            cartaOpen={carta.isOpenNow}
+            proposals={status.data?.proposals ?? []}
+            sending={sending}
+            error={sendError}
+            onSend={send}
+            onBrowse={() => setTab("menu")}
+            callWaiter={<CallWaiter t={t} waiter={waiter} onCall={() => request("waiter")} />}
+          />
+        </main>
       ) : (
         <main>
           <MyList lines={lines} dispatch={dispatch} t={t} onBrowse={() => setTab("menu")} />
@@ -141,7 +247,7 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
       )}
 
       <div className="fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-[480px]">
-        {tab === "menu" && count > 0 && (
+        {activeTab === "menu" && count > 0 && (
           <div className="px-3 pb-3">
             <button
               type="button"
@@ -156,7 +262,7 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
                 <span aria-hidden="true" className="mr-1.5 inline-grid h-[26px] min-w-[26px] place-items-center rounded-pill bg-white/20 px-1.5 text-[13px] tabular-nums dark:bg-black/15">
                   {count}
                 </span>
-                {t.seeList}
+                {mode === "propose" ? t.seeOrder : t.seeList}
               </span>
             </button>
           </div>
@@ -165,7 +271,8 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
           {(
             [
               ["menu", t.tabMenu, MenuIcon],
-              ["list", t.tabList, ListIcon],
+              ["list", mode === "propose" ? t.tabOrder : t.tabList, ListIcon],
+              ...(billShown ? ([["bill", t.tabBill, BillIcon]] as const) : []),
             ] as const
           ).map(([key, label, Icon]) => {
             const badge = key === "list" && count > 0
@@ -173,12 +280,12 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
               <button
                 key={key}
                 type="button"
-                aria-current={tab === key ? "page" : undefined}
+                aria-current={activeTab === key ? "page" : undefined}
                 aria-label={badge ? `${label} (${count})` : label}
                 onClick={() => setTab(key)}
                 className={cn(
                   "relative grid min-h-14 content-center justify-items-center gap-0.5 rounded-xl text-xs font-medium text-muted-fg",
-                  tab === key && BRAND_TEXT,
+                  activeTab === key && BRAND_TEXT,
                   FOCUS,
                 )}
               >
@@ -210,7 +317,7 @@ function CartaView({ carta, slug, onLang }: { carta: Carta; slug: string; onLang
           onShare={() => setSheet({ kind: "share", dishId: sheetDish.id })}
           onAdd={(choice) => {
             dispatch({ type: "add", line: { dishId: sheetDish.id, name: sheetDish.name, ...choice } })
-            setAnnouncement(t.added(sheetDish.name))
+            setAnnouncement(mode === "propose" ? t.addedOrder(sheetDish.name) : t.added(sheetDish.name))
             setSheet(null)
           }}
         />

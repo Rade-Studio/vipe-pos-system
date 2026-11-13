@@ -8,6 +8,7 @@ import { useProfileStore } from "@/store/useProfileStore"
 import type { Profile, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { AssignedCountsEntry } from "@/components/counts/AssignedCountsEntry"
+import { CartaInbox } from "@/components/carta-inbox/CartaInbox"
 import { TablesSection } from "@/components/pos/TablesSection"
 import { TablePanel } from "@/components/floor/TablePanel"
 import { GuestsStepper } from "@/components/floor/GuestsStepper"
@@ -1614,7 +1615,8 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
           <AssignedCountsEntry />
 
-          <div className="mb-1 flex justify-end px-1">
+          <div className="mb-1 flex justify-end gap-1 px-1">
+            <CartaInbox />
             <Button variant="outline" className="min-h-11 gap-2" onClick={startTakeaway}>
               <ShoppingBag className="h-[18px] w-[18px]" aria-hidden />
               Para llevar

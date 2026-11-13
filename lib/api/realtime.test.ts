@@ -403,6 +403,44 @@ describe("delivery subscription (T11)", () => {
   })
 })
 
+describe("carta inbox subscription (T5)", () => {
+  it("hands carta proposal, request and delivery request events to inbox subscribers only", () => {
+    const seen: unknown[] = []
+    const others: unknown[] = []
+    const unsubscribe = realtimeService.subscribeToCartaInbox((payload) => seen.push(payload))
+    const stopTables = realtimeService.subscribeToTables((payload) => others.push(payload))
+    const stopOrders = realtimeService.subscribeToOrders((payload) => others.push(payload))
+    const stopZones = realtimeService.subscribeToZones((payload) => others.push(payload))
+    const stopDeliveries = realtimeService.subscribeToDeliveries((payload) => others.push(payload))
+    const kitchen = subscribeKitchen()
+
+    const proposal = change("carta_table_proposals", "INSERT", { id: "p-1", status: "pending" })
+    const request = change("carta_table_requests", "UPDATE", { id: "r-1", kind: "bill" })
+    const deliveryRequest = change("carta_delivery_requests", "INSERT", { id: "d-1" })
+    env.serverEmit("pos_changes", proposal)
+    env.serverEmit("pos_changes", request)
+    env.serverEmit("pos_changes", deliveryRequest)
+    env.serverEmit("pos_changes", change("orders", "UPDATE", { id: "o-1", order_type: "dine_in" }))
+
+    expect(seen).toEqual([proposal, request, deliveryRequest])
+    expect(others).toHaveLength(1)
+    expect(kitchen.deletes).toEqual([])
+    expect(env.ioCalls).toHaveLength(1)
+    expect(realtimeService.getChannelsStatus().channels.map((c) => c.id)).toContain("carta-inbox")
+
+    stopTables()
+    stopOrders()
+    stopZones()
+    stopDeliveries()
+    kitchen.unsubscribe()
+    expect(env.socket.disconnects).toBe(0)
+    unsubscribe()
+    expect(env.socket.disconnects).toBe(1)
+    env.serverEmit("pos_changes", proposal)
+    expect(seen).toHaveLength(3)
+  })
+})
+
 describe("resync and reconnect", () => {
   const KEYS = [["orders"], ["orders", "kitchen"], ["tables"], ["zones"], ["active-deliveries"]]
 

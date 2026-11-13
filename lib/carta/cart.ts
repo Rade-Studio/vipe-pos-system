@@ -1,17 +1,17 @@
 import type { Carta } from "./types"
 
 /**
- * The guest's lines (S11). One state shape for every ordering path: in this
- * phase the only path is `list` ("Mi lista", kept on the phone, nothing is
- * sent). T5 adds the table proposal path when `settings.tableOrderingEnabled`
- * by extending `OrderingMode` and `orderingMode` and reading the same lines;
- * the components only ask for the mode.
+ * The guest's lines (S11, S12). One state shape for every ordering path:
+ * `list` ("Mi lista", kept on the phone, nothing is sent) and, on a table QR
+ * of a restaurant with `settings.tableOrderingEnabled`, `propose` ("Mi
+ * pedido", sent to the waiter as a proposal); the components only ask for
+ * the mode.
  */
 
-export type OrderingMode = "list"
+export type OrderingMode = "list" | "propose"
 
-export function orderingMode(_carta: Carta): OrderingMode {
-  return "list"
+export function orderingMode(carta: Carta): OrderingMode {
+  return carta.table && carta.settings.tableOrderingEnabled ? "propose" : "list"
 }
 
 export interface CartOption {
@@ -67,6 +67,10 @@ export function cartReducer(lines: CartLine[], action: CartAction): CartLine[] {
 
 export function cartCount(lines: CartLine[]): number {
   return lines.reduce((sum, l) => sum + l.qty, 0)
+}
+
+export function cartTotal(lines: CartLine[]): number {
+  return lines.reduce((sum, l) => sum + l.qty * l.unitPrice, 0)
 }
 
 export function dishCount(lines: CartLine[], dishId: string): number {

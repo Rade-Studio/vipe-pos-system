@@ -1,7 +1,8 @@
 "use client"
 
+import type React from "react"
 import { useState } from "react"
-import { dishCount, type CartLine } from "@/lib/carta/cart"
+import { dishCount, type CartLine, type OrderingMode } from "@/lib/carta/cart"
 import { formatCop, formatTime } from "@/lib/carta/format"
 import { TAG_LABELS, type CartaStrings } from "@/lib/carta/i18n"
 import {
@@ -30,10 +31,26 @@ interface MenuProps {
   lines: CartLine[]
   onOpenDish: (dish: CartaDish) => void
   onQuickAdd: (dish: CartaDish) => void
+  /** "propose": "+" adds to "Mi pedido" (S12) instead of toggling "Mi lista". */
+  ordering?: OrderingMode
+  /** A banner after the closed one (the table QR's closed table, S12). */
+  notice?: React.ReactNode
 }
 
 /** Banners, dayparts, dish of the day, search, category tabs and dish rows (S5–S8). */
-export function CartaMenu({ carta, lang, t, viewedDaypartId, onViewDaypart, canAdd, lines, onOpenDish, onQuickAdd }: MenuProps) {
+export function CartaMenu({
+  carta,
+  lang,
+  t,
+  viewedDaypartId,
+  onViewDaypart,
+  canAdd,
+  lines,
+  onOpenDish,
+  onQuickAdd,
+  ordering = "list",
+  notice,
+}: MenuProps) {
   const [query, setQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const viewed = carta.dayparts.find((d) => d.id === viewedDaypartId) ?? null
@@ -51,6 +68,7 @@ export function CartaMenu({ carta, lang, t, viewedDaypartId, onViewDaypart, canA
           <span>{closedSentence(carta, t)}</span>
         </div>
       )}
+      {notice}
       {peeking && viewed && (
         <div role="status" className={cn("mx-[18px] mt-3.5 grid gap-0.5 rounded-card border px-3.5 py-3 text-[13px]", TONES.served)}>
           <b className="text-[13.5px]">{daypartName(viewed, lang)}</b>
@@ -173,7 +191,8 @@ export function CartaMenu({ carta, lang, t, viewedDaypartId, onViewDaypart, canA
                   lang={lang}
                   t={t}
                   canAdd={canAdd}
-                  listed={dishCount(lines, d.id) > 0}
+                  listed={ordering === "list" && dishCount(lines, d.id) > 0}
+                  ordering={ordering}
                   onOpen={() => onOpenDish(d)}
                   onQuickAdd={() => onQuickAdd(d)}
                 />
@@ -234,6 +253,7 @@ function DishRow({
   listed,
   onOpen,
   onQuickAdd,
+  ordering,
 }: {
   dish: CartaDish
   lang: CartaLang
@@ -242,6 +262,7 @@ function DishRow({
   listed: boolean
   onOpen: () => void
   onQuickAdd: () => void
+  ordering: OrderingMode
 }) {
   const description = dishDescription(dish, lang)
   const out = !dish.available
@@ -266,8 +287,8 @@ function DishRow({
           <button
             type="button"
             onClick={onQuickAdd}
-            aria-label={listed ? t.removeList(dish.name) : t.addList(dish.name)}
-            aria-pressed={listed}
+            aria-label={ordering === "propose" ? t.addOrder(dish.name) : listed ? t.removeList(dish.name) : t.addList(dish.name)}
+            aria-pressed={ordering === "propose" ? undefined : listed}
             className={cn(
               "absolute bottom-0 right-0 grid h-11 w-11 place-items-center rounded-full text-[22px] leading-none shadow-[0_6px_16px_-6px_rgba(0,0,0,0.5)]",
               listed ? cn("bg-surface outline outline-2 outline-[var(--brand)]", BRAND_TEXT) : BRAND_FILL,
