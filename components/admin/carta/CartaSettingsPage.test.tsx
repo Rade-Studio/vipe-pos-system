@@ -216,11 +216,25 @@ describe("CartaSettingsPage — slug", () => {
     fireEvent.change(slug, { target: { value: "la-parrilla" } })
     fireEvent.click(screen.getByRole("button", { name: "Cambiar enlace" }))
     const dialog = await screen.findByRole("alertdialog")
-    expect(within(dialog).getByText(/Los QR impresos y los enlaces que compartiste con \/c\/brasa-y-lena dejarán de funcionar/)).toBeTruthy()
+    expect(dialog).toHaveTextContent(/Los QR impresos y los enlaces que compartiste con \/c\/brasa-y-lena dejarán de funcionar/)
     api.PUT.mockRejectedValue(new ApiError(409, "Conflict", "Ese enlace ya lo usa otro restaurante"))
     fireEvent.click(within(dialog).getByRole("button", { name: "Sí, cambiar enlace" }))
     expect(await screen.findByText("Ese enlace ya lo usa otro restaurante")).toBeTruthy()
     expect(api.PUT).toHaveBeenCalledWith("/api/carta-admin/slug", { body: { slug: "la-parrilla" } })
+  })
+
+  it("closing the confirmation returns focus to Cambiar enlace and shows /c/<slug> unbroken", async () => {
+    await renderPage()
+    fireEvent.change(screen.getByLabelText("Nombre en el enlace"), { target: { value: "la-parrilla" } })
+    const opener = screen.getByRole("button", { name: "Cambiar enlace" })
+    opener.focus()
+    fireEvent.click(opener)
+    const dialog = await screen.findByRole("alertdialog")
+    expect(within(dialog).getByText("/c/brasa-y-lena").tagName).toBe("CODE")
+    expect(within(dialog).getByText("/c/brasa-y-lena")).toHaveClass("whitespace-nowrap")
+    fireEvent.keyDown(dialog, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(opener))
   })
 
   it("after a confirmed change the public link and the QR links follow the new slug", async () => {
@@ -319,6 +333,17 @@ describe("CartaSettingsPage — table QR", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Sí, regenerar" }))
     expect(await screen.findByText(`${window.location.origin}/c/brasa-y-lena/m/new-4`)).toBeTruthy()
     expect(api.POST).toHaveBeenCalledWith("/api/carta-admin/tables/{tableId}/qr", { params: { path: { tableId: "t-4" } } })
+  })
+
+  it("Escape on Regenerar todos returns focus to that button", async () => {
+    await renderPage()
+    const opener = screen.getByRole("button", { name: "Regenerar todos" })
+    opener.focus()
+    fireEvent.click(opener)
+    const dialog = await screen.findByRole("alertdialog")
+    fireEvent.keyDown(dialog, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(opener))
   })
 
   it("regenerates all after the confirmation; cancel sends nothing", async () => {

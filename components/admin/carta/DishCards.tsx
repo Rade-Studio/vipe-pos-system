@@ -39,12 +39,12 @@ export function DishesCard({ dishes, drafts, dirtyIds, savingId, onChange, onSav
           const tags = drafts[dish.id]?.tags ?? dish.tags
           return (
             <li key={dish.id}>
-              <div role="group" aria-label={`Etiquetas de ${dish.name}`} className="flex flex-col gap-2 px-3 py-3 md:flex-row md:items-center">
+              <div role="group" aria-label={`Etiquetas de ${dish.name}`} className="flex flex-col gap-2 px-3 py-3">
                 <div className="min-w-0 flex-1 space-y-1">
                   <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                     <span className="truncate">{dish.name}</span>
                     <span className="text-muted-foreground">{formatCop(dish.price)}</span>
-                    {dish.mostOrdered && <StaticChip tone="ok">★ Lo más pedido</StaticChip>}
+                    {dish.mostOrdered && <StaticChip tone="ok"><span className="whitespace-nowrap">★ Lo más pedido</span></StaticChip>}
                     {!dish.active && <StaticChip tone="warn">Pausado</StaticChip>}
                   </p>
                 </div>

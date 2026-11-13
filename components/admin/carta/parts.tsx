@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -152,14 +152,26 @@ export function ConfirmDialog({
 }: {
   open: boolean
   title: string
-  description: string
+  description: ReactNode
   confirmLabel: string
   onConfirm: () => void
   onOpenChange: (open: boolean) => void
 }) {
+  // No Radix trigger opens it, so remember the opener (before focus moves in) and return there.
+  const opener = useRef<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    if (open) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  }, [open])
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent
+        onCloseAutoFocus={(event) => {
+          const target = opener.current
+          if (!target?.isConnected) return
+          event.preventDefault()
+          target.focus()
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>

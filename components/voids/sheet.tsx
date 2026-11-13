@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { useLayoutEffect, useRef, type ReactNode } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { Check, Delete, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -18,6 +18,11 @@ export const STEP_SHEET_CLASS = cn(
 )
 
 export function StepSheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  // Opened from code (a PIN asked by a flow), not a Radix trigger: remember what had focus and return there.
+  const opener = useRef<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    if (open) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  }, [open])
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(next) => !next && onClose()}>
       {open && (
@@ -29,6 +34,12 @@ export function StepSheet({ open, onClose, children }: { open: boolean; onClose:
             onOpenAutoFocus={(event) => {
               event.preventDefault()
               ;(event.currentTarget as HTMLElement | null)?.focus()
+            }}
+            onCloseAutoFocus={(event) => {
+              const target = opener.current
+              if (!target?.isConnected) return
+              event.preventDefault()
+              target.focus()
             }}
             className={STEP_SHEET_CLASS}
           >

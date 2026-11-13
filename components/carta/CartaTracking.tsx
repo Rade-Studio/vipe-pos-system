@@ -62,15 +62,23 @@ export function CartaTracking({ slug, trackingToken }: { slug: string; trackingT
   if (!carta || !status.data) return <CartaSkeleton t={t} />
 
   const order = status.data
+  const heading =
+    order.stage === "rejected"
+      ? t.trackRejectedTitle
+      : order.stage === "failed"
+        ? t.trackFailedTitle
+        : order.stage === "cancelled"
+          ? t.trackCancelledTitle
+          : t.trackTitle(order.orderNumber ? deliveryOrderLabel(order.orderNumber) : null)
   return (
     <div lang={carta.lang} className="carta-root mx-auto min-h-dvh w-full max-w-[480px] overflow-x-hidden bg-canvas text-fg">
       <style>{css}</style>
       <main className="grid content-start gap-3.5 px-[18px] pb-16 pt-6">
-        <a href={cartaPath(slug)} className={cn("w-fit rounded-lg text-[13.5px] font-medium text-muted-fg underline underline-offset-4", FOCUS)}>
+        <a href={cartaPath(slug)} className={cn("inline-flex min-h-11 w-fit items-center rounded-lg text-[13.5px] font-medium text-muted-fg underline underline-offset-4", FOCUS)}>
           {carta.restaurant.name}
         </a>
         <header>
-          <h1 className="text-[22px] font-semibold tracking-tight">{t.trackTitle(order.orderNumber ? deliveryOrderLabel(order.orderNumber) : null)}</h1>
+          <h1 className="text-[22px] font-semibold tracking-tight">{heading}</h1>
           <p className="mt-1 text-[13.5px] text-muted-fg">{t.trackKeep}</p>
         </header>
         <div aria-live="polite">
@@ -159,7 +167,7 @@ function OrderState({ order, t }: { order: GuestDeliveryStatus; t: CartaStrings 
             </span>
             <span>
               {row.label}
-              {row.hint && state !== "todo" && <small className="block text-[12.5px] text-muted-fg">{row.hint}</small>}
+              {row.hint && state === "done" && <small className="block text-[12.5px] text-muted-fg">{row.hint}</small>}
             </span>
           </li>
         )

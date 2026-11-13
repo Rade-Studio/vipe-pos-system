@@ -1,6 +1,6 @@
 "use client"
 
-import { useContext, useEffect, useId, useState } from "react"
+import { useContext, useEffect, useId, useRef, useState } from "react"
 import { QueryClientContext, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -122,6 +122,19 @@ function RequestCard({ request, canConfirm }: { request: DeliveryInboxRequest; c
   const hintId = useId()
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState("")
+  const rejectButton = useRef<HTMLButtonElement>(null)
+  const reasonInput = useRef<HTMLInputElement>(null)
+  const toggled = useRef(false)
+  useEffect(() => {
+    // Opening the reason focuses it; Cancelar hands focus back to "Rechazar".
+    if (!toggled.current) return
+    toggled.current = false
+    ;(rejecting ? reasonInput.current : rejectButton.current)?.focus()
+  }, [rejecting])
+  const toggleRejecting = (next: boolean) => {
+    toggled.current = true
+    setRejecting(next)
+  }
   const refresh = () => queryClient.invalidateQueries({ queryKey: CARTA_DELIVERY_KEY })
   const confirm = useMutation({
     mutationFn: () => confirmDeliveryRequest(request.id),
@@ -197,6 +210,7 @@ function RequestCard({ request, canConfirm }: { request: DeliveryInboxRequest; c
             Motivo (opcional)
           </label>
           <input
+            ref={reasonInput}
             id={reasonId}
             value={reason}
             maxLength={140}
@@ -205,7 +219,7 @@ function RequestCard({ request, canConfirm }: { request: DeliveryInboxRequest; c
             className="min-h-11 rounded-md border bg-background px-3 text-sm"
           />
           <div className="flex gap-2">
-            <Button variant="outline" className="min-h-11 flex-1" disabled={busy} onClick={() => setRejecting(false)}>
+            <Button variant="outline" className="min-h-11 flex-1" disabled={busy} onClick={() => toggleRejecting(false)}>
               Cancelar
             </Button>
             <Button variant="destructive" className="min-h-11 flex-1" disabled={busy} onClick={() => reject.mutate()}>
@@ -216,7 +230,7 @@ function RequestCard({ request, canConfirm }: { request: DeliveryInboxRequest; c
       ) : (
         <>
           <div className="flex gap-2">
-            <Button variant="outline" className="min-h-11 flex-1" disabled={busy} onClick={() => setRejecting(true)}>
+            <Button ref={rejectButton} variant="outline" className="min-h-11 flex-1" disabled={busy} onClick={() => toggleRejecting(true)}>
               Rechazar
             </Button>
             <Button

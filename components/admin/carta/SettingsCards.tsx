@@ -135,7 +135,12 @@ export function PublicationCard({
         open={confirming}
         onOpenChange={setConfirming}
         title="¿Cambiar el enlace de tu carta?"
-        description={`Los QR impresos y los enlaces que compartiste con /c/${restaurant.slug} dejarán de funcionar. Tendrás que imprimir y pegar los QR nuevos en las mesas.`}
+        description={
+          <>
+            Los QR impresos y los enlaces que compartiste con <code className="whitespace-nowrap">/c/{restaurant.slug}</code> dejarán de
+            funcionar. Tendrás que imprimir y pegar los QR nuevos en las mesas.
+          </>
+        }
         confirmLabel="Sí, cambiar enlace"
         onConfirm={() => void change()}
       />
@@ -442,65 +447,59 @@ export function OpeningHoursEditor({ draft, update, errorOf }: SettingsCardProps
           Quitar horario
         </Button>
       </div>
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-medium">Día</th>
-              <th className="px-3 py-2 font-medium">Abre</th>
-              <th className="px-3 py-2 font-medium">Cierra</th>
-              <th className="px-3 py-2 text-right font-medium">Abierto</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {DAYS.map(([day, name]) => {
-              const value = hours[day]
-              return (
-                <tr key={day}>
-                  <th scope="row" className="px-3 py-2 text-left font-medium">
-                    {name}
-                  </th>
-                  {value ? (
-                    <>
-                      <td className="px-3 py-2">
-                        <input
-                          type="time"
-                          aria-label={`Abre el ${name}`}
-                          value={value.opens}
-                          onChange={(event) => setDay(day, { ...value, opens: event.target.value })}
-                          className={cn(inputClass, "h-9 w-28")}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="time"
-                          aria-label={`Cierra el ${name}`}
-                          value={value.closes}
-                          onChange={(event) => setDay(day, { ...value, closes: event.target.value })}
-                          className={cn(inputClass, "h-9 w-28")}
-                        />
-                        {closesAfterMidnight(value) && (
-                          <span className="mt-1 block text-xs text-muted-foreground">Cierra al día siguiente</span>
-                        )}
-                      </td>
-                    </>
-                  ) : (
-                    <td colSpan={2} className="px-3 py-2 text-muted-foreground">
-                      Cerrado
-                    </td>
-                  )}
-                  <td className="px-3 py-2 text-right">
-                    <Switch
-                      aria-label={`Abierto el ${name}`}
-                      checked={Boolean(value)}
-                      onCheckedChange={(open) => setDay(day, open ? DEFAULT_DAY : null)}
+      <div className="rounded-md border text-sm">
+        {/* Below sm each day stacks: day + Abierto on one line, Abre/Cierra below (no horizontal scroll at 390 px). */}
+        <div aria-hidden="true" className="hidden grid-cols-[7rem_auto_auto_minmax(0,1fr)] gap-x-3 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground sm:grid">
+          <span>Día</span>
+          <span className="w-32">Abre</span>
+          <span className="w-32">Cierra</span>
+          <span className="text-right">Abierto</span>
+        </div>
+        <ul className="divide-y">
+          {DAYS.map(([day, name]) => {
+            const value = hours[day]
+            return (
+              <li
+                key={day}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-3 py-2 sm:grid-cols-[7rem_auto_auto_minmax(0,1fr)]"
+              >
+                <span className="self-center font-medium">{name}</span>
+                <div className="flex justify-end sm:order-last">
+                  <Switch
+                    aria-label={`Abierto el ${name}`}
+                    checked={Boolean(value)}
+                    onCheckedChange={(open) => setDay(day, open ? DEFAULT_DAY : null)}
+                  />
+                </div>
+                {value ? (
+                  <div className="col-span-2 flex flex-wrap items-start gap-3 sm:contents">
+                    <input
+                      type="time"
+                      aria-label={`Abre el ${name}`}
+                      value={value.opens}
+                      onChange={(event) => setDay(day, { ...value, opens: event.target.value })}
+                      className={cn(inputClass, "h-9 w-32")}
                     />
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                    <div>
+                      <input
+                        type="time"
+                        aria-label={`Cierra el ${name}`}
+                        value={value.closes}
+                        onChange={(event) => setDay(day, { ...value, closes: event.target.value })}
+                        className={cn(inputClass, "h-9 w-32")}
+                      />
+                      {closesAfterMidnight(value) && (
+                        <span className="mt-1 block text-xs text-muted-foreground">Cierra al día siguiente</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <span className="col-span-2 text-muted-foreground sm:self-center">Cerrado</span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>

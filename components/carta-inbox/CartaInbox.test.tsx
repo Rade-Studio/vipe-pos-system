@@ -33,6 +33,8 @@ vi.mock("@/lib/api/realtime", () => ({
 import { CartaInbox } from "./CartaInbox"
 import { TerminalContext, type IdentityRequest, type TerminalApi } from "@/components/terminal/terminal-context"
 import { actingToken, clearActingToken, setActingToken } from "@/lib/terminal/acting"
+import { StepSheet, StepHeader } from "@/components/voids/sheet"
+import { useState } from "react"
 
 const proposal = {
   id: "p-1",
@@ -214,6 +216,48 @@ describe("carta inbox", () => {
       await waitFor(() => expect(env.post).toHaveBeenCalledWith("/api/carta-inbox/requests/{id}/resolve", { params: { path: { id: "r-1" } } }))
       expect(ensureIdentity).toHaveBeenCalledTimes(2)
       expect(sent).toEqual(["acting-andres", "acting-andres"])
+    })
+
+    it("closing the PIN sheet returns focus to Atendido", async () => {
+      let resolve: (ok: boolean) => void = () => {}
+      function PinTerminal({ children }: { children: React.ReactNode }) {
+        const [open, setOpen] = useState(false)
+        const terminal: TerminalApi = {
+          identity: null,
+          now: 0,
+          ensureIdentity: () =>
+            new Promise<boolean>((done) => {
+              resolve = done
+              setOpen(true)
+            }),
+          endIdentity: () => {},
+          requestLogout: () => {},
+        }
+        return (
+          <TerminalContext.Provider value={terminal}>
+            {children}
+            <StepSheet
+              open={open}
+              onClose={() => {
+                setOpen(false)
+                resolve(false)
+              }}
+            >
+              <StepHeader eyebrow="Mesa 12" title="Ingresa tu PIN" />
+            </StepSheet>
+          </TerminalContext.Provider>
+        )
+      }
+      render(wrap(<PinTerminal><CartaInbox /></PinTerminal>))
+      const request = within(await open()).getByRole("article", { name: "Mesa 12 pide la cuenta" })
+      const attended = within(request).getByRole("button", { name: "Atendido" })
+      attended.focus()
+      fireEvent.click(attended)
+      const pin = await screen.findByRole("dialog", { name: "Ingresa tu PIN" })
+      fireEvent.click(within(pin).getByRole("button", { name: "Cerrar" }))
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Ingresa tu PIN" })).toBeNull())
+      await waitFor(() => expect(document.activeElement).toBe(attended))
+      expect(env.post).not.toHaveBeenCalled()
     })
 
     it("a closed PIN sheet sends nothing", async () => {

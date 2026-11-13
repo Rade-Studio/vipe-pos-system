@@ -157,6 +157,16 @@ describe("carta delivery inbox", () => {
     expect(env.refreshActive).not.toHaveBeenCalled()
   })
 
+  it("Rechazar focuses Motivo; Cancelar returns focus to Rechazar", async () => {
+    const dialog = await openInbox()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rechazar" }))
+    expect(document.activeElement).toBe(within(dialog).getByLabelText("Motivo (opcional)"))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
+    expect(within(dialog).queryByLabelText("Motivo (opcional)")).toBeNull()
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Rechazar" }))
+    expect(env.post).not.toHaveBeenCalled()
+  })
+
   it("a cashier sees the requests and can reject, but confirm is disabled with the reason", async () => {
     const dialog = await openInbox("cashier")
     expect(within(dialog).getByRole("button", { name: "Confirmar" })).toBeDisabled()

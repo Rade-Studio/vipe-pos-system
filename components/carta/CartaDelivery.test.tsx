@@ -272,6 +272,8 @@ describe("tracking page (S15)", () => {
     expect(steps().getByText("Confirmado")).toBeInTheDocument()
     expect(screen.getByText("2 × Limonada de coco")).toBeInTheDocument()
     expect(screen.getByText("Efectivo")).toBeInTheDocument()
+    expect(screen.queryByText("El restaurante lo está preparando.")).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: env.carta.restaurant.name })).toHaveClass("inline-flex", "min-h-11", "items-center")
     expect(env.get).toHaveBeenCalledWith("/api/carta/{slug}/delivery/{trackingToken}", { params: { path: { slug: SLUG, trackingToken: TOKEN } } })
   })
 
@@ -307,6 +309,17 @@ describe("tracking page (S15)", () => {
     env.status = status({ status: "confirmed", stage: "cancelled", orderNumber: 7 })
     await renderTracking()
     expect(await screen.findByText("El pedido se canceló.")).toBeInTheDocument()
+  })
+
+  it.each([
+    ["rejected", "Pedido rechazado"],
+    ["failed", "Pedido no entregado"],
+    ["cancelled", "Pedido cancelado"],
+  ] as const)("%s: the heading says so, not 'Pedido recibido'", async (stage, heading) => {
+    env.status = status({ status: stage === "rejected" ? "rejected" : "confirmed", stage })
+    await renderTracking()
+    expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument()
+    expect(screen.queryByText("Pedido recibido")).not.toBeInTheDocument()
   })
 
   it("an unknown token shows not found", async () => {

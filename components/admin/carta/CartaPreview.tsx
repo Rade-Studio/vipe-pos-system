@@ -38,7 +38,7 @@ export function CartaPreview({
   }
 
   return (
-    <aside aria-label="Vista previa en vivo" className="sticky top-4 space-y-2">
+    <aside aria-label="Vista previa en vivo" className="sticky top-[4.5rem] space-y-2">
       <p className="text-sm font-medium text-muted-foreground">Vista previa en vivo</p>
       <style>{css}</style>
       <div className="carta-admin-preview mx-auto w-[340px] overflow-hidden rounded-[28px] border-[6px] border-foreground/80 bg-canvas text-fg">
