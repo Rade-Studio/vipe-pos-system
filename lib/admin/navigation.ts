@@ -58,6 +58,12 @@ export const ADMIN_SECTIONS = [
   { id: "settings/inventory", group: "settings", label: "Inventario", description: "Control automático de stock." },
   { id: "settings/payment-methods", group: "settings", label: "Métodos de pago", description: "Medios de pago aceptados." },
   { id: "settings/delivery", group: "settings", label: "Domicilios", description: "Repartidores y tarifa de domicilio." },
+  {
+    id: "settings/carta",
+    group: "settings",
+    label: "Carta digital",
+    description: "Tu carta pública: enlace, marca, horarios, pedidos, etiquetas, inglés y los QR de las mesas.",
+  },
   { id: "settings/staff", group: "settings", label: "Personal", description: "Usuarios y roles del equipo." },
   { id: "settings/access", group: "settings", label: "Acceso de meseros", description: "Cuenta propia o terminal compartida, y el PIN del personal." },
   {
