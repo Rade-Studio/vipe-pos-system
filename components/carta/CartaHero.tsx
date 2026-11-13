@@ -34,9 +34,9 @@ export function CartaHero({
   return (
     <header>
       <div
-        className="relative h-32 bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand)_35%,var(--brand-line)_100%)]"
+        className="relative h-32 md:h-48 lg:h-64 lg:overflow-hidden lg:rounded-b-card-lg bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand)_35%,var(--brand-line)_100%)]"
       >
-        {settings.coverUrl && <Image src={settings.coverUrl} alt="" fill priority sizes="480px" className="object-cover" />}
+        {settings.coverUrl && <Image src={settings.coverUrl} alt="" fill priority sizes="(min-width: 1024px) 1152px, (min-width: 768px) 768px, 480px" className="object-cover" />}
         {onToggleLang && (
           <button
             type="button"
@@ -51,23 +51,23 @@ export function CartaHero({
           </button>
         )}
       </div>
-      <section aria-labelledby="carta-name" className="relative -mt-9 px-[18px] pb-1">
+      <section aria-labelledby="carta-name" className="relative -mt-9 px-[18px] pb-1 md:-mt-12 md:px-6">
         <div
           className={cn(
-            "relative grid h-[72px] w-[72px] place-items-center overflow-hidden rounded-[22px] border-4 border-canvas text-[22px] font-bold tracking-tight",
+            "relative grid h-[72px] w-[72px] md:h-24 md:w-24 md:text-[28px] place-items-center overflow-hidden rounded-[22px] border-4 border-canvas text-[22px] font-bold tracking-tight",
             BRAND_FILL,
           )}
         >
           {settings.logoUrl ? (
-            <Image src={settings.logoUrl} alt="" fill sizes="72px" className="object-cover" />
+            <Image src={settings.logoUrl} alt="" fill sizes="96px" className="object-cover" />
           ) : (
             <span aria-hidden="true">{initials(restaurant.name)}</span>
           )}
         </div>
-        <h1 id="carta-name" className="mt-2.5 text-[26px] font-semibold leading-tight tracking-tight">
+        <h1 id="carta-name" className="mt-2.5 text-[26px] md:text-[34px] font-semibold leading-tight tracking-tight">
           {restaurant.name}
         </h1>
-        {settings.description && <p className="mt-1 text-[13.5px] text-muted-fg">{settings.description}</p>}
+        {settings.description && <p className="mt-1 text-[13.5px] text-muted-fg md:max-w-2xl md:text-[15px]">{settings.description}</p>}
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <span className={cn(CHIP, status.open ? TONES.ok : TONES.reserved)}>
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />

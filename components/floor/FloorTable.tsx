@@ -1,14 +1,14 @@
 "use client"
 
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react"
-import { Bookmark, Check, Clock, ConciergeBell, User, type LucideIcon } from "lucide-react"
+import { AlarmClock, Bookmark, Check, Clock, ConciergeBell, Hand, Receipt, ShoppingBag, User, type LucideIcon } from "lucide-react"
 import type { Table, TableStatus } from "@/types"
 import { cn } from "@/lib/utils"
 import { chairPositions, initials, isInactive, seatsText, tableAccessibleName, tableBox } from "@/lib/floor/layout"
 import { SHAPE_LABELS } from "@/lib/floor/editor"
 import { isOldElapsed } from "@/lib/floor/live"
-import { arrivalLabel, reservationLine } from "@/lib/tables/reservation"
-import { StatusChip } from "./StatusChip"
+import { alertIconKind, alertText, type TableAlert, type TableAlertKind } from "@/lib/floor/alerts"
+import { reservationLine } from "@/lib/tables/reservation"
 import { INACTIVE_TONE, toneClasses } from "./tones"
 
 interface FloorTableProps {
@@ -19,10 +19,12 @@ interface FloorTableProps {
   /** The signed-in waiter's table: "Tú" badge. */
   mine: boolean
   waiterName?: string
-  /** Time since the open order started ("18 min", T22); top-right chip in live mode. */
+  /** Time since the open order started ("18 min", T22); in the accessible name (no pill, ux-carta-mesero S5). */
   elapsed?: string | null
+  /** Live mode: pending carta requests on the table (ux-carta-mesero S4). */
+  alert?: TableAlert
   onSelect: (tableId: string) => void
-  /** live: status chip and waiter badge; edit: shape and chairs only (admin editor); mini: number and a status icon. */
+  /** live: tone, waiter badge, old-order and carta badges; edit: shape and chairs only (admin editor); mini: number and a status icon. */
   mode?: FloorMode
   onPointerDown?: (tableId: string, event: PointerEvent<HTMLButtonElement>) => void
   onKeyDown?: (tableId: string, event: KeyboardEvent<HTMLButtonElement>) => void
@@ -42,14 +44,15 @@ const STATUS_ICON: Record<TableStatus, LucideIcon> = {
 export const editAccessibleName = (table: Table): string =>
   [`Mesa ${table.number}`, SHAPE_LABELS[table.shape ?? "square"], seatsText(table.seats)].join(", ")
 
-/** "18 min" → "18m", "1 h 05" → "1h05": the status chip below 1024 px. */
-const shortElapsed = (label: string) => label.replace(" min", "m").replace(" h ", "h")
+const ALERT_ICON: Record<TableAlertKind, LucideIcon> = { bill: Receipt, waiter: Hand, proposal: ShoppingBag }
 
 const TOP_RADIUS = { round: "rounded-full", bar: "rounded-[8px]", square: "rounded-[18px]", rect: "rounded-[18px]" } as const
 
 /**
  * One table on the floor: tabletop at its x/y, rotated, chairs from `seats`,
- * number, waiter badge and the status chip under it. Selection is the
+ * number and waiter badge. The state is the tabletop colour only (the
+ * floor's legend and the accessible name say it in words): pills under
+ * neighbouring tables overlapped (ux-carta-mesero S5). Selection is the
  * `aria-pressed` accent ring; keyboard focus is a dashed outline, so they
  * never look alike.
  */
@@ -60,6 +63,7 @@ export function FloorTable({
   mine,
   waiterName,
   elapsed,
+  alert: alertProp,
   onSelect,
   mode = "live",
   onPointerDown,
@@ -70,9 +74,11 @@ export function FloorTable({
   const inactive = isInactive(table)
   const tone = inactive ? INACTIVE_TONE : toneClasses(table.status)
   const elapsedChip = mode === "live" && !inactive ? elapsed : null
-  // S2: a reserved table names its reservation under it and in its name.
+  // S2: a reserved table names its reservation in its name.
   const reservation = mode === "live" ? reservationLine(table) : null
-  // S3: an order open 12 h or more turns the chip to the warning tone.
+  const alert = mode === "live" ? alertProp : undefined
+  const AlertIcon = alert ? ALERT_ICON[alertIconKind(alert)] : null
+  // S3: an order open 12 h or more gets the warning badge.
   const oldOrder = !reservation && isOldElapsed(elapsedChip)
   const shadow = [
     selected ? "0 0 0 3px var(--floor), 0 0 0 6px var(--accent)" : null,
@@ -96,7 +102,9 @@ export function FloorTable({
       aria-label={
         mode === "edit"
           ? editAccessibleName(table)
-          : [tableAccessibleName(table, waiterName, elapsedChip), reservation].filter(Boolean).join(", ")
+          : [tableAccessibleName(table, waiterName, elapsedChip), reservation, alert ? alertText(alert) : null]
+              .filter(Boolean)
+              .join(", ")
       }
       data-inactive={inactive && mode !== "edit" ? "true" : undefined}
       {...(interactive
@@ -165,38 +173,29 @@ export function FloorTable({
         </span>
       )}
 
-      {mode === "live" && <StatusChip
-        status={table.status}
-        inactive={inactive}
-        data-testid="table-status"
-        data-old={oldOrder ? "true" : undefined}
-        // T22/S6: the time since the order opened rides in the status chip under the
-        // table, so it never covers the number, the waiter badge or a neighbour.
-        extra={
-          reservation ? (
-            // Short under the table so it never reaches a neighbour's chip (the
-            // floor is narrow next to the panel); the arrival shows from 1280 px,
-            // the panel and the accessible name always have both.
-            <span className="min-w-0 max-w-[3.5rem] truncate sm:max-w-[4.5rem] xl:max-w-[14rem]">
-              {`· ${table.reservationName}`}
-              {table.reservationArrivalAt && (
-                <span className="hidden tabular-nums xl:inline">{` · ${arrivalLabel(table.reservationArrivalAt)}`}</span>
-              )}
-            </span>
-          ) : elapsedChip ? (
-            <span className="tabular-nums">
-              {" · "}
-              <span className="lg:hidden">{shortElapsed(elapsedChip)}</span>
-              <span className="hidden lg:inline">{elapsedChip}</span>
-            </span>
-          ) : null
-        }
-        className={cn(
-          "absolute left-1/2 top-full z-20 -translate-x-1/2 px-1.5 text-[11px] shadow-sm sm:text-xs",
-          chairs.length > 0 ? "mt-[calc(var(--cs)*1.3+4px)]" : "mt-2",
-          oldOrder && "bg-status-warning-bg border-status-warning-line text-status-warning-fg",
-        )}
-      />}
+      {oldOrder && (
+        // S3: an order open 12 h or more; its age is in the accessible name.
+        <span
+          data-testid="table-old"
+          aria-hidden
+          className="absolute -bottom-2 -right-2 z-20 grid h-[clamp(18px,3cqi,26px)] w-[clamp(18px,3cqi,26px)] place-items-center rounded-full border border-status-warning-line bg-status-warning-bg text-status-warning-fg shadow-sm"
+        >
+          <AlarmClock className="h-[60%] w-[60%]" strokeWidth={2.4} />
+        </span>
+      )}
+
+      {alert && AlertIcon && (
+        // ux-carta-mesero S4: a carta request waits on this table (top-right; top-left is the waiter badge).
+        <span
+          data-testid="table-alert"
+          data-kind={alertIconKind(alert)}
+          aria-hidden
+          className="absolute -right-3 -top-2 z-30 grid h-[clamp(22px,3.4cqi,30px)] min-w-[clamp(22px,3.4cqi,30px)] place-items-center gap-0.5 rounded-full border-2 border-[var(--floor)] bg-brand px-1 text-[11px] font-bold leading-none text-brand-contrast shadow-md motion-safe:animate-pulse motion-reduce:animate-none [grid-auto-flow:column]"
+        >
+          <AlertIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
+          {alert.count > 1 && <span className="tabular-nums">{alert.count}</span>}
+        </span>
+      )}
     </Root>
   )
 }

@@ -97,10 +97,11 @@ describe("FloorPlan — status and waiter", () => {
     ["occupied", "Ocupada"],
     ["kitchen", "En cocina"],
     ["served", "Servida"],
-  ] as const)("labels %s as %s, in text and in the accessible name", (status, label) => {
+  ] as const)("names %s as %s in the accessible name and the legend, with no pill", (status, label) => {
     renderPlan([placed("t-1", 1, { status })])
-    expect(within(tableButton(1)).getByText(label)).toBeInTheDocument()
+    expect(within(tableButton(1)).queryByText(label)).not.toBeInTheDocument()
     expect(tableButton(1).getAttribute("aria-label")).toContain(`, ${label},`)
+    expect(within(screen.getByRole("list", { name: "Estados de las mesas" })).getByText(label)).toBeInTheDocument()
   })
 
   it("marks the current waiter's table with Tú and another waiter's with initials", () => {
@@ -198,16 +199,13 @@ describe("FloorPlan — zones", () => {
 })
 
 describe("FloorPlan — live details (T22)", () => {
-  it("draws the elapsed-time chip and the waiter initials on a table with an open order", () => {
+  it("names the elapsed time and draws the waiter initials on a table with an open order, with no pill (ux-carta-mesero S5)", () => {
     renderPlan([placed("t-1", 4, { status: "kitchen", waiter: "w-2" }), placed("t-2", 5, { x: 0.6 })], {
       elapsedOf: (table) => (table.id === "t-1" ? "18 min" : null),
     })
-    // The time rides in the status chip under the table, never over the number or the badge (S6).
-    const status = within(tableButton(4)).getByTestId("table-status")
-    expect(status).toHaveTextContent("En cocina")
-    expect(within(status).getByText("18 min")).toBeInTheDocument()
-    expect(within(status).getByText("18m")).toBeInTheDocument()
-    expect(within(tableButton(4)).getAllByText("18 min")).toHaveLength(1)
+    // Neighbouring pills overlapped: state is the table colour, the text lives in the name.
+    expect(screen.queryByTestId("table-status")).not.toBeInTheDocument()
+    expect(within(tableButton(4)).queryByText(/18/)).not.toBeInTheDocument()
     expect(within(tableButton(4)).getByText("CR")).toBeInTheDocument()
     expect(tableButton(4)).toHaveAccessibleName("Mesa 4, En cocina, sin sillas, Carolina Ruiz, abierta hace 18 min")
     expect(within(tableButton(5)).queryByText(/min$/)).not.toBeInTheDocument()
@@ -218,7 +216,6 @@ describe("FloorPlan — live details (T22)", () => {
     const table = tableButton(4)
     expect(table).toHaveAccessibleName("Mesa 4, Inactiva, sin sillas")
     expect(table).toHaveAttribute("data-inactive", "true")
-    expect(within(table).getByText("Inactiva")).toBeInTheDocument()
     expect(within(table).queryByText("Libre")).not.toBeInTheDocument()
     expect(tableButton(5)).not.toHaveAttribute("data-inactive")
     // The consumer decides what a tap on it does (the waiter refuses a new order).
@@ -241,6 +238,41 @@ describe("FloorPlan — live details (T22)", () => {
     expect(within(minimap).getByTestId("minimap-view")).toBeInTheDocument()
     act(() => screen.getByRole("button", { name: "Ajustar" }).click())
     expect(screen.queryByRole("button", { name: /^Minimapa/ })).not.toBeInTheDocument()
+  })
+})
+
+describe("FloorPlan — legend and carta alerts (ux-carta-mesero S4, S5)", () => {
+  it("lists every table state under the live floor, with Inactiva", () => {
+    renderPlan([placed("t-1", 1)])
+    const legend = screen.getByRole("list", { name: "Estados de las mesas" })
+    expect(within(legend).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "Libre",
+      "Reservada",
+      "Ocupada",
+      "En cocina",
+      "Servida",
+      "Inactiva",
+    ])
+  })
+
+  it("names a reserved table's reservation without a pill", () => {
+    renderPlan([placed("t-1", 3, { status: "reserved", reservationName: "Familia López" })])
+    expect(tableButton(3).getAttribute("aria-label")).toMatch(/Reserva: Familia López/)
+    expect(within(tableButton(3)).queryByText(/Familia López/)).not.toBeInTheDocument()
+  })
+
+  it("draws a table's carta alert from alertOf", () => {
+    renderPlan([placed("t-1", 1, { status: "occupied" }), placed("t-2", 2, { x: 0.6 })], {
+      alertOf: (table) => (table.id === "t-1" ? { kinds: new Set(["waiter"] as const), count: 1 } : undefined),
+    })
+    expect(within(tableButton(1)).getByTestId("table-alert")).toBeInTheDocument()
+    expect(tableButton(1).getAttribute("aria-label")).toMatch(/llama al mesero$/)
+    expect(within(tableButton(2)).queryByTestId("table-alert")).not.toBeInTheDocument()
+  })
+
+  it("the compact map has no legend", () => {
+    renderPlan([placed("t-1", 1)], { compact: true })
+    expect(screen.queryByRole("list", { name: "Estados de las mesas" })).not.toBeInTheDocument()
   })
 })
 

@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { Loader2 } from "lucide-react"
 import { EmptyState } from "@/components/admin/common/EmptyState"
 import { PageHeader } from "@/components/admin/common/PageHeader"
 import { SaveBar } from "@/components/admin/common/SaveBar"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import {
   DESCRIPTION_MAX,
@@ -33,16 +34,26 @@ import { CartaCard, StaticChip, useMinWidth } from "./parts"
 import { QrCard } from "./QrCard"
 import { ContactCard, IdentityCard, OpeningHoursEditor, OrderingCard, PublicationCard } from "./SettingsCards"
 
-const INDEX = [
-  ["carta-publicacion", "Publicación"],
-  ["carta-identidad", "Identidad"],
-  ["carta-redes", "Redes y contacto"],
-  ["carta-horarios", "Horarios y franjas"],
-  ["carta-pedidos", "Pedidos"],
-  ["carta-platos", "Platos y etiquetas"],
-  ["carta-idiomas", "Idiomas"],
-  ["carta-qr", "QR de las mesas"],
+const TABS = [
+  ["publicacion", "Publicación"],
+  ["marca", "Marca"],
+  ["horarios", "Horarios"],
+  ["pedidos", "Pedidos y platos"],
+  ["qr", "QR"],
 ] as const
+type Tab = (typeof TABS)[number][0]
+const tabId = (tab: Tab) => `carta-tab-${tab}`
+const panelId = (tab: Tab) => `carta-panel-${tab}`
+
+/** The settings fields each tab edits, for its unsaved-changes dot. */
+const TAB_FIELDS: Record<Tab, (keyof CartaAdminSettings)[]> = {
+  publicacion: ["published", "englishEnabled"],
+  marca: ["description", "brandColor", "logoUrl", "coverUrl", "instagram", "tiktok", "whatsapp", "mapsUrl", "googleReviewUrl"],
+  horarios: ["openingHours"],
+  pedidos: ["tableOrderingEnabled", "deliveryOrderingEnabled", "showTableBill"],
+  qr: [],
+}
+const differs = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b)
 
 const detailsOf = (dish: CartaAdmin["dishes"][number]): CartaDishDetails => ({
   tags: dish.tags,
@@ -84,6 +95,8 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
   const [dishDrafts, setDishDrafts] = useState<Record<string, CartaDishDetails>>({})
   const [savingDish, setSavingDish] = useState<string | null>(null)
   const [origin, setOrigin] = useState("")
+  const [tab, setTab] = useState<Tab>("publicacion")
+  const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
 
   const load = async () => {
     setLoadFailed(false)
@@ -111,6 +124,22 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
     () => new Set(Object.keys(dishDrafts).filter((id) => JSON.stringify(dishDrafts[id]) !== JSON.stringify(dishSaved[id]))),
     [dishDrafts, dishSaved],
   )
+
+  const dirtyTabs = useMemo(() => {
+    const tabs = new Set<Tab>()
+    if (draft && saved) {
+      for (const [t, fields] of Object.entries(TAB_FIELDS) as [Tab, (keyof CartaAdminSettings)[]][]) {
+        if (fields.some((field) => differs(draft[field], saved[field]))) tabs.add(t)
+      }
+    }
+    for (const id of dirtyDishes) {
+      const now = dishDrafts[id]
+      const before = dishSaved[id]
+      if (differs(now?.tags, before?.tags)) tabs.add("pedidos")
+      if (differs(now?.descriptionEn, before?.descriptionEn) || differs(now?.descriptionEnReviewed, before?.descriptionEnReviewed)) tabs.add("publicacion")
+    }
+    return tabs
+  }, [draft, saved, dirtyDishes, dishDrafts, dishSaved])
 
   if (loadFailed) {
     return (
@@ -217,6 +246,27 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
     }
   }
 
+  const selectTab = (next: Tab, focus = false) => {
+    setTab(next)
+    if (focus) tabRefs.current[next]?.focus()
+  }
+
+  const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const i = TABS.findIndex(([t]) => t === tab)
+    const j =
+      event.key === "ArrowRight" ? i + 1 : event.key === "ArrowLeft" ? i - 1 : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : null
+    if (j === null) return
+    event.preventDefault()
+    selectTab(TABS[(j + TABS.length) % TABS.length][0], true)
+  }
+
+  // Every panel stays mounted (only hidden) so unsaved edits survive a tab switch.
+  const panel = (t: Tab, children: ReactNode) => (
+    <section key={t} role="tabpanel" id={panelId(t)} aria-labelledby={tabId(t)} hidden={tab !== t} tabIndex={-1} className="space-y-6">
+      {children}
+    </section>
+  )
+
   const cardProps = { draft, update, errorOf }
   const dishProps = { dishes: data.dishes, drafts: dishDrafts, dirtyIds: dirtyDishes, savingId: savingDish, onChange: changeDish, onSave: (id: string) => void saveDish(id) }
 
@@ -228,57 +278,88 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
         actions={<StaticChip tone={saved.published ? "ok" : "warn"}>● {saved.published ? "Publicada" : "No publicada"}</StaticChip>}
       />
 
-      <nav aria-label="Secciones de la carta" className="flex gap-2 overflow-x-auto pb-1">
-        {INDEX.map(([id, label], index) => (
-          <a
-            key={id}
-            href={`#${id}`}
-            onClick={(event) => {
-              // The admin route lives in the hash: scroll instead of navigating.
-              event.preventDefault()
-              document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+      <div role="tablist" aria-label="Secciones de la carta" className="flex gap-1 overflow-x-auto border-b">
+        {TABS.map(([t, label]) => (
+          <button
+            key={t}
+            ref={(el) => {
+              tabRefs.current[t] = el
             }}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
+            type="button"
+            role="tab"
+            id={tabId(t)}
+            aria-selected={tab === t}
+            aria-controls={panelId(t)}
+            tabIndex={tab === t ? 0 : -1}
+            onClick={() => selectTab(t)}
+            onKeyDown={onTabKey}
+            className={cn(
+              "-mb-px inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              tab === t && "border-primary text-foreground",
+            )}
           >
-            <span aria-hidden="true">{index + 1}</span>
             {label}
-          </a>
+            {dirtyTabs.has(t) && (
+              <span data-dirty-dot aria-hidden="true" title="Cambios sin guardar" className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            )}
+          </button>
         ))}
-      </nav>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0 space-y-6">
-          <PublicationCard
-            {...cardProps}
-            restaurant={data.restaurant}
-            publicUrl={guestUrl(origin, data.restaurant.publicPath)}
-            onChangeSlug={changeSlug}
-          />
-          <IdentityCard {...cardProps} restaurantName={data.restaurant.name} />
-          <ContactCard {...cardProps} />
-          <CartaCard id="carta-horarios" number={4} title="Horarios y franjas" description="La carta muestra lo que sirves a cada hora.">
-            <OpeningHoursEditor {...cardProps} />
-            <DaypartsEditor
-              dayparts={data.dayparts}
-              categories={data.categories}
-              dishes={data.dishes}
-              onSaved={(dayparts) => setData((current) => (current ? { ...current, dayparts } : current))}
-            />
-          </CartaCard>
-          <OrderingCard
-            {...cardProps}
-            restaurantName={data.restaurant.name}
-            deliveryFee={data.deliveryDefaultFee}
-            onOpenDeliverySettings={() => onNavigate?.("settings/delivery")}
-          />
-          <DishesCard {...dishProps} />
-          <LanguagesCard {...dishProps} englishEnabled={draft.englishEnabled} onEnglishEnabled={(englishEnabled) => update({ englishEnabled })} />
-          <QrCard
-            tables={data.tables}
-            origin={origin}
-            restaurantName={data.restaurant.name}
-            onTables={(tables) => setData((current) => (current ? { ...current, tables } : current))}
-          />
+          {panel(
+            "publicacion",
+            <>
+              <PublicationCard
+                {...cardProps}
+                restaurant={data.restaurant}
+                publicUrl={guestUrl(origin, data.restaurant.publicPath)}
+                onChangeSlug={changeSlug}
+              />
+              <LanguagesCard {...dishProps} englishEnabled={draft.englishEnabled} onEnglishEnabled={(englishEnabled) => update({ englishEnabled })} />
+            </>,
+          )}
+          {panel(
+            "marca",
+            <>
+              <IdentityCard {...cardProps} restaurantName={data.restaurant.name} />
+              <ContactCard {...cardProps} />
+            </>,
+          )}
+          {panel(
+            "horarios",
+            <CartaCard id="carta-horarios" title="Horarios y franjas" description="La carta muestra lo que sirves a cada hora.">
+              <OpeningHoursEditor {...cardProps} />
+              <DaypartsEditor
+                dayparts={data.dayparts}
+                categories={data.categories}
+                dishes={data.dishes}
+                onSaved={(dayparts) => setData((current) => (current ? { ...current, dayparts } : current))}
+              />
+            </CartaCard>,
+          )}
+          {panel(
+            "pedidos",
+            <>
+              <OrderingCard
+                {...cardProps}
+                restaurantName={data.restaurant.name}
+                deliveryFee={data.deliveryDefaultFee}
+                onOpenDeliverySettings={() => onNavigate?.("settings/delivery")}
+              />
+              <DishesCard {...dishProps} />
+            </>,
+          )}
+          {panel(
+            "qr",
+            <QrCard
+              tables={data.tables}
+              origin={origin}
+              restaurantName={data.restaurant.name}
+              onTables={(tables) => setData((current) => (current ? { ...current, tables } : current))}
+            />,
+          )}
         </div>
         {wide && (
           <div className="hidden lg:block">

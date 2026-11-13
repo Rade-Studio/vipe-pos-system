@@ -68,6 +68,23 @@ describe("Header sign-out", () => {
   })
 })
 
+/** S6: on a phone the header actions fold to icon-only 44 px buttons with their full names and never overflow. */
+describe("Header on mobile (S6)", () => {
+  it("names each action fully, with 44 px icon targets and labels only from sm up", () => {
+    render(<Header profile={profile} onChangeProfile={vi.fn()} authRole="admin" />)
+    for (const name of ["Cambiar Perfil", "Cambiar mi PIN", "Cerrar Sesión"]) {
+      const button = screen.getByRole("button", { name })
+      expect(button.className).toMatch(/\bmin-h-11\b/)
+      expect(button.className).toMatch(/\bmin-w-11\b/)
+      expect(button.title).toBe(name)
+      expect(within(button).getByText(name).className).toMatch(/\bhidden\b.*\bsm:inline\b/)
+    }
+    const header = screen.getByRole("banner")
+    expect(header.className).toMatch(/\bmin-w-0\b/)
+    expect(header.className).toMatch(/\bgap-2\b/)
+  })
+})
+
 /**
  * F4 (L14 (3), L15): every role changes its own PIN from the header of its
  * view (waiter, cashier, kitchen, delivery) after typing the current one. On a

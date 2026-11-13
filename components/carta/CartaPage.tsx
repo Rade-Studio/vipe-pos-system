@@ -174,7 +174,7 @@ function CartaView({
   const shareDish = sheet?.kind === "share" && sheet.dishId ? findDish(carta, sheet.dishId) ?? null : null
 
   return (
-    <div lang={lang} className="carta-root mx-auto min-h-dvh w-full max-w-[480px] overflow-x-hidden bg-canvas text-fg">
+    <div lang={lang} className={cn("carta-root mx-auto min-h-dvh w-full max-w-[480px] overflow-x-hidden bg-canvas text-fg", activeTab === "menu" ? "md:max-w-3xl lg:max-w-6xl" : "md:max-w-2xl")}>
       <style>{css}</style>
       {activeTab === "menu" ? (
         <>
@@ -202,7 +202,7 @@ function CartaView({
                     href={trackingPath(slug, trackingToken)}
                     aria-label={t.myDelivery}
                     aria-describedby="banner-delivery"
-                    className={cn("mx-[18px] mt-3.5 flex items-center justify-between gap-3 rounded-card border px-3.5 py-3 text-[13.5px]", TONES.kitchen, FOCUS)}
+                    className={cn("mx-[18px] mt-3.5 md:mx-6 flex items-center justify-between gap-3 rounded-card border px-3.5 py-3 text-[13.5px]", TONES.kitchen, FOCUS)}
                   >
                     <span id="banner-delivery">{t.myDeliveryHint}</span>
                     <b className="whitespace-nowrap underline underline-offset-4">{t.myDelivery}</b>
@@ -215,7 +215,7 @@ function CartaView({
                   <div
                     role="status"
                     aria-labelledby="banner-table"
-                    className={cn("mx-[18px] mt-3.5 grid gap-0.5 rounded-card border px-3.5 py-3 text-[13px]", TONES.warning)}
+                    className={cn("mx-[18px] mt-3.5 grid gap-0.5 rounded-card border px-3.5 py-3 text-[13px] md:mx-6", TONES.warning)}
                   >
                     <b id="banner-table" className="text-[13.5px]">
                       {t.tableClosedTitle}
@@ -227,7 +227,7 @@ function CartaView({
               }
             />
           </main>
-          <footer className="grid gap-1 px-[18px] pb-36 pt-7 text-center text-xs text-muted-fg">
+          <footer className="grid gap-1 px-[18px] pb-36 pt-7 md:px-6 text-center text-xs text-muted-fg">
             <span>{t.pricesNote}</span>
             {lang === "en" && <span lang="en">{TRANSLATION_FOOTER}</span>}
             <span>{t.madeWith}</span>
@@ -289,9 +289,9 @@ function CartaView({
         </main>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-[480px]">
+      <div className="fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-[480px] md:bottom-4 md:max-w-md md:px-3">
         {activeTab === "menu" && count > 0 && (
-          <div className="px-3 pb-3">
+          <div className="px-3 pb-3 md:px-0">
             <button
               type="button"
               onClick={() => setTab("list")}
@@ -310,7 +310,7 @@ function CartaView({
             </button>
           </div>
         )}
-        <nav aria-label={t.tabs} className="grid auto-cols-fr grid-flow-col border-t border-line bg-canvas px-1.5 pb-[max(6px,env(safe-area-inset-bottom))] pt-1">
+        <nav aria-label={t.tabs} className="grid auto-cols-fr grid-flow-col border-t border-line bg-canvas px-1.5 pb-[max(6px,env(safe-area-inset-bottom))] pt-1 md:rounded-full md:border md:border-line-strong md:pb-1 md:shadow-[0_16px_32px_-14px_rgba(0,0,0,0.45)]">
           {(
             [
               ["menu", t.tabMenu, MenuIcon],
@@ -327,7 +327,7 @@ function CartaView({
                 aria-label={badge ? `${label} (${count})` : label}
                 onClick={() => setTab(key)}
                 className={cn(
-                  "relative grid min-h-14 content-center justify-items-center gap-0.5 rounded-xl text-xs font-medium text-muted-fg",
+                  "relative grid min-h-14 content-center justify-items-center gap-0.5 rounded-xl md:min-h-12 md:rounded-full text-xs font-medium text-muted-fg",
                   activeTab === key && BRAND_TEXT,
                   FOCUS,
                 )}

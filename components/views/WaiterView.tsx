@@ -17,7 +17,7 @@ import { CartSidebar } from "@/components/pos/CartSidebar"
 import { StepPicker, type StepPickerItem } from "@/components/order-steps/StepPicker"
 import { OrderColumn, OrderReview, lineCount, lineTotal } from "@/components/order-steps/OrderReview"
 import { ToastAction } from "@/components/ui/toast"
-import { AlertTriangle, ArrowLeft, ChevronRight, Send, ShoppingBag, ShoppingCart } from "lucide-react"
+import { AlertTriangle, ArrowLeft, ChevronRight, Send, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
 import { ReserveSheet } from "@/components/tables/ReserveSheet"
@@ -81,6 +81,7 @@ import { mergeOrdersForWaiter, wireRowToPartialOrder, withoutVoidedWireLines, ty
 import { WaiterVoidActions } from "@/components/waiter/WaiterVoidActions"
 import { TakeawayStartDialog } from "@/components/takeaway/TakeawayStartDialog"
 import { TakeawayOrderFlow } from "@/components/takeaway/TakeawayOrderFlow"
+import { TakeawayListSheet } from "@/components/takeaway/TakeawayListSheet"
 import type { TakeawayCustomer } from "@/components/takeaway/customer"
 import { useTerminal } from "@/components/terminal/terminal-context"
 import { log } from "@/lib/log"
@@ -89,7 +90,6 @@ import { useWaiters } from "@/hooks/use-waiters"
 import { useZones } from "@/hooks/use-zones"
 import { MENU_TREE_KEY, useMenuTree } from "@/hooks/use-menu-tree"
 import { formatCurrency } from "@/utils/helpers"
-import { takeawayLabel } from "@/lib/cashier/queue"
 import { useConfigStore } from "@/store/use-config-store"
 import { invalidationsFor } from "@/hooks/inventory/invalidations"
 import {
@@ -125,13 +125,6 @@ const RELEASE_REFUSAL: Record<string, string> = {
 /** The manual release refusal, with the table status in Spanish (S1). */
 export function releaseRefusal(status: string): string {
   return `No se puede liberar una mesa ${RELEASE_REFUSAL[status] ?? "en este estado"}.`
-}
-
-/** S8: the status shown on a takeaway order in the waiter's list. */
-const TAKEAWAY_STATUS: Partial<Record<Order["status"], string>> = {
-  active: "Abierto",
-  kitchen: "En cocina",
-  delivered: "Entregado",
 }
 
 const CUSTOM_SIDEBAR_WIDTH = "22rem" // Ajustado para optimizar espacio
@@ -197,7 +190,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   const [orderDrafts, setOrderDrafts] = useState<Record<string, { asked?: boolean; guests?: number | null; notes?: string }>>({})
   const [guestsPrompt, setGuestsPrompt] = useState<{ tableId: string; guests: number } | null>(null)
   const [savingDetails, setSavingDetails] = useState(false)
-  // The map's elapsed-time chips move with the clock.
+  // The tables' elapsed time (in their accessible names) moves with the clock.
   const [now, setNow] = useState(() => new Date())
   const [cartStyle, cartApi] = useSpring(() => ({ scale: 1 }))
 
@@ -1057,7 +1050,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   // S8: "Para llevar" asks the customer's name, then takes the order with the same step flow (no table).
   const [takeawayDialogOpen, setTakeawayDialogOpen] = useState(false)
   const [takeawayCustomer, setTakeawayCustomer] = useState<TakeawayCustomer | null>(null)
-  // S8 (M5c): the open takeaway orders, listed next to the button; opening one adds items to it.
+  // S8 (M5c), S3: the open takeaway orders, listed in the Para llevar sheet; opening one adds items to it.
   const [openTakeawayId, setOpenTakeawayId] = useState<string | null>(null)
   const takeawayOrders = useMemo(() => ordersData.filter((o) => o.orderType === "takeaway"), [ordersData])
   const startTakeaway = useCallback(() => {
@@ -1615,25 +1608,11 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
           <AssignedCountsEntry />
 
-          <div className="mb-1 flex justify-end gap-1 px-1">
+          {/* S3/S6: Carta and Para llevar share one wrapping toolbar; takeaway orders live in the sheet, off the floor. */}
+          <div className="mb-1 flex flex-wrap items-center justify-end gap-1 px-1">
             <CartaInbox />
-            <Button variant="outline" className="min-h-11 gap-2" onClick={startTakeaway}>
-              <ShoppingBag className="h-[18px] w-[18px]" aria-hidden />
-              Para llevar
-            </Button>
+            <TakeawayListSheet orders={takeawayOrders} onStart={startTakeaway} onOpen={setOpenTakeawayId} />
           </div>
-
-          {takeawayOrders.length > 0 && (
-            <section aria-label="Pedidos para llevar" className="mb-1 flex flex-wrap gap-1 px-1">
-              {takeawayOrders.map((o) => (
-                <Button key={o.id} variant="outline" className="min-h-11 gap-2" onClick={() => setOpenTakeawayId(o.id)}>
-                  <span>{takeawayLabel(o)}</span>
-                  <span className="text-muted-foreground">{TAKEAWAY_STATUS[o.status] ?? o.status}</span>
-                  <span className="tabular-nums">{formatCurrency(o.bill?.total ?? 0)}</span>
-                </Button>
-              ))}
-            </section>
-          )}
 
           <div className="mb-1">
             <TablesSection

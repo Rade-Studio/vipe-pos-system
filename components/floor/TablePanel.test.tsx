@@ -59,14 +59,15 @@ describe("TablePanel — reservations (reservas-mesas T2, S1, S2, S5)", () => {
 import { FloorTable } from "./FloorTable"
 
 describe("FloorTable — a reserved tile names the reservation (T2, S2)", () => {
-  it("shows the name and the arrival under the table and in its accessible name", () => {
+  // ux-carta-mesero S5: no pill under the tile; the name and arrival live in its accessible name.
+  it("names the reservation and the arrival in its accessible name, with no pill", () => {
     const at = new Date()
     at.setHours(20, 30, 0, 0)
     const t = table({ status: "reserved", x: 0.5, y: 0.5, w: 0.1, h: 0.1, reservationName: "Familia López", reservationArrivalAt: at.toISOString() })
     render(<FloorTable table={t} aspect={1.6} selected={false} mine={false} onSelect={() => {}} />)
     const tile = screen.getByRole("button", { name: /^Mesa 7, Reservada/ })
     expect(tile).toHaveAccessibleName(expect.stringContaining("Reserva: Familia López · llega 8:30 p. m."))
-    expect(screen.getByTestId("table-status")).toHaveTextContent("Familia López · 8:30 p. m.")
+    expect(screen.queryByTestId("table-status")).not.toBeInTheDocument()
   })
 })
 
