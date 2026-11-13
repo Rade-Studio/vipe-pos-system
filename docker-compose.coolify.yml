@@ -122,6 +122,9 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # Server-side link previews of the public carta (lib/carta/server.ts) read the
+      # API over the compose network; the browser keeps going through the proxy.
+      API_PROXY_TARGET: http://api:4000
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
       interval: 15s
