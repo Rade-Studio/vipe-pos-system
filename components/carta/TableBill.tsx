@@ -99,7 +99,7 @@ export function TableBill({
           />
         </div>
       )}
-      <ul className="rounded-card border border-line bg-surface px-3.5">
+      <ul className="rounded-card border border-line bg-surface px-3.5 py-1">
         {bill.lines.map((line, i) => {
           const amount = formatCop(line.lineTotal)
           if (mode === "equal") {
@@ -157,13 +157,13 @@ export function TableBill({
       <div className="grid gap-1.5 rounded-card border border-line bg-surface p-3.5 text-sm">
         {bill.discounts.map((d) => (
           <div key={d.label} className="flex justify-between gap-2.5 text-muted-fg">
-            <span>{d.label}</span>
-            <span className="tabular-nums">{formatCop(-d.amount)}</span>
+            <span className="min-w-0">{d.label}</span>
+            <span className="shrink-0 whitespace-nowrap tabular-nums">{formatCop(-d.amount)}</span>
           </div>
         ))}
         <div className="flex justify-between gap-2.5">
-          <span>{t.tableTotal}</span>
-          <span className="tabular-nums">{formatCop(bill.subtotal)}</span>
+          <span className="min-w-0">{t.tableTotal}</span>
+          <span className="shrink-0 whitespace-nowrap tabular-nums">{formatCop(bill.subtotal)}</span>
         </div>
         <label htmlFor={tipId} className="flex min-h-11 cursor-pointer items-center justify-between gap-2.5 text-[13px] text-fg-2">
           <span>{t.tip(bill.tipPercentage)}</span>

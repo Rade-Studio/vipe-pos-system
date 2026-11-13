@@ -122,7 +122,7 @@ function RequestCard({ request }: { request: InboxRequest }) {
         <h3 id={titleId} className="font-semibold">
           {requestText(request)}
         </h3>
-        <p className="text-xs opacity-80">{[request.zoneName, meta(request)].filter(Boolean).join(" · ")}</p>
+        <p className="text-xs">{[request.zoneName, meta(request)].filter(Boolean).join(" · ")}</p>
         {resolve.isError && (
           <p role="alert" className="text-xs font-medium">
             No se pudo marcar como atendido. Intenta de nuevo.

@@ -51,7 +51,7 @@ export function ReviewCard({
             onClick={() => setRating(k)}
             className={cn(
               "h-11 w-11 rounded-xl border border-line-strong bg-surface text-[22px] text-muted-fg",
-              k <= rating && cn("border-[var(--brand)]", BRAND_TEXT),
+              k <= rating && cn("border-[var(--brand-line)] bg-[var(--brand-tint)]", BRAND_TEXT),
               FOCUS,
             )}
           >
