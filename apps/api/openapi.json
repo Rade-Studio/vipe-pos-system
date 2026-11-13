@@ -10322,6 +10322,336 @@
           "carta-delivery"
         ]
       }
+    },
+    "/api/carta-admin": {
+      "get": {
+        "operationId": "CartaAdminController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Everything the settings page shows, for the caller's restaurant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaAdmin"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/settings": {
+      "put": {
+        "operationId": "CartaAdminController_updateSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCartaSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created on the first save; omitted fields keep their value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaAdminSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "One Spanish message for the first invalid field; nothing is written."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/dayparts": {
+      "put": {
+        "operationId": "CartaAdminController_replaceDayparts",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceCartaDaypartsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new list; it replaced the previous one in one transaction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CartaAdminDaypart"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Las categorías de la franja deben ser de tu restaurante. | El plato del día debe ser un plato de tu restaurante. | Cada franja empieza antes de terminar, en HH:MM y sin cruzar la medianoche. | ...; the previous list stays."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/dishes/{dishId}": {
+      "put": {
+        "operationId": "CartaAdminController_updateDish",
+        "parameters": [
+          {
+            "name": "dishId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDishDetailsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaDishDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": "No encontramos este plato."
+          },
+          "422": {
+            "description": "Las etiquetas válidas son Vegetariano, Picante, Sin gluten y Lácteos. | La descripción en inglés admite hasta 400 caracteres. | Indica si revisaste la descripción en inglés."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/tables/qr": {
+      "post": {
+        "operationId": "CartaAdminController_regenerateAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Every table got a new token in one transaction; the printed QRs stop working.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaTablesQr"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/tables/{tableId}/qr": {
+      "post": {
+        "operationId": "CartaAdminController_regenerateTable",
+        "parameters": [
+          {
+            "name": "tableId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The table with its new token; the old QR stops working.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaAdminTable"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": "No encontramos esta mesa."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/slug": {
+      "put": {
+        "operationId": "CartaAdminController_updateSlug",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCartaSlugRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new public link; the old one and its printed QRs stop working.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaAdminRestaurant"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "409": {
+            "description": "Ese enlace ya lo usa otro restaurante"
+          },
+          "422": {
+            "description": "Usa minúsculas y números separados por guiones (sin tildes, espacios ni guiones al inicio o al final), hasta 64 caracteres."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
+    },
+    "/api/carta-admin/assets": {
+      "post": {
+        "operationId": "CartaAdminController_createAsset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCartaAssetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Presigned PUT under <restaurantId>/carta/; save publicUrl as logoUrl or coverUrl.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTicket"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "422": {
+            "description": "Elige si subes el logo o la portada. | Sube una imagen PNG, JPG o WebP (no SVG). | La imagen puede pesar hasta 5 MB."
+          },
+          "503": {
+            "description": "Storage is not configured (no S3_* variables)."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "carta-admin"
+        ]
+      }
     }
   },
   "info": {
@@ -24739,6 +25069,611 @@
           "requestId",
           "status",
           "order"
+        ]
+      },
+      "CartaAdminRestaurant": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Brasa & Leña"
+          },
+          "slug": {
+            "type": "string",
+            "example": "brasa-y-lena"
+          },
+          "publicPath": {
+            "type": "string",
+            "example": "/c/brasa-y-lena",
+            "description": "Path of the public carta on the web origin."
+          },
+          "timezone": {
+            "type": "string",
+            "example": "America/Bogota"
+          }
+        },
+        "required": [
+          "name",
+          "slug",
+          "publicPath",
+          "timezone"
+        ]
+      },
+      "CartaAdminSettings": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Short description under the name (<= 160)."
+          },
+          "brandColor": {
+            "type": "string",
+            "nullable": true,
+            "example": "#b4532a"
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "instagram": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "tiktok": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "whatsapp": {
+            "type": "string",
+            "nullable": true,
+            "description": "Digits with country code."
+          },
+          "mapsUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "googleReviewUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "tableOrderingEnabled": {
+            "type": "boolean"
+          },
+          "deliveryOrderingEnabled": {
+            "type": "boolean"
+          },
+          "showTableBill": {
+            "type": "boolean"
+          },
+          "englishEnabled": {
+            "type": "boolean",
+            "description": "Off: lang is always es and no English text is returned."
+          },
+          "openingHours": {
+            "nullable": true,
+            "description": "null = not configured (always open).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningHours"
+              }
+            ]
+          },
+          "published": {
+            "type": "boolean",
+            "description": "false = the link and the QRs show not found (\"Volvemos pronto\")."
+          }
+        },
+        "required": [
+          "description",
+          "brandColor",
+          "logoUrl",
+          "coverUrl",
+          "instagram",
+          "tiktok",
+          "whatsapp",
+          "mapsUrl",
+          "googleReviewUrl",
+          "tableOrderingEnabled",
+          "deliveryOrderingEnabled",
+          "showTableBill",
+          "englishEnabled",
+          "openingHours",
+          "published"
+        ]
+      },
+      "CartaAdminDaypart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Desayuno"
+          },
+          "nameEn": {
+            "type": "string",
+            "nullable": true
+          },
+          "startsAt": {
+            "type": "string",
+            "example": "07:00"
+          },
+          "endsAt": {
+            "type": "string",
+            "example": "11:00",
+            "description": "Exclusive; later than startsAt."
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "featuredDishId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "\"Plato del día\"."
+          },
+          "categoryIds": {
+            "description": "Category ids, in menu order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "nameEn",
+          "startsAt",
+          "endsAt",
+          "sortOrder",
+          "featuredDishId",
+          "categoryIds"
+        ]
+      },
+      "CartaAdminCategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "active"
+        ]
+      },
+      "CartaAdminDish": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Spanish description of the dish."
+          },
+          "price": {
+            "type": "number"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Paused dishes are hidden from the carta."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vegetarian",
+                "spicy",
+                "gluten_free",
+                "dairy"
+              ]
+            }
+          },
+          "descriptionEn": {
+            "type": "string",
+            "nullable": true,
+            "description": "Written by the restaurant (no translation service)."
+          },
+          "descriptionEnReviewed": {
+            "type": "boolean"
+          },
+          "mostOrdered": {
+            "type": "boolean",
+            "description": "\"Lo más pedido\": the guest menu rule (top 5 by units on paid orders of the last 30 days)."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "price",
+          "categoryId",
+          "imageUrl",
+          "active",
+          "tags",
+          "descriptionEn",
+          "descriptionEnReviewed",
+          "mostOrdered"
+        ]
+      },
+      "CartaAdminTable": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "number"
+          },
+          "zoneName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Terraza"
+          },
+          "token": {
+            "type": "string",
+            "description": "Current QR token."
+          },
+          "guestPath": {
+            "type": "string",
+            "example": "/c/brasa-y-lena/m/<token>"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "zoneName",
+          "token",
+          "guestPath"
+        ]
+      },
+      "CartaAdmin": {
+        "type": "object",
+        "properties": {
+          "restaurant": {
+            "$ref": "#/components/schemas/CartaAdminRestaurant"
+          },
+          "settings": {
+            "description": "Defaults when the carta was never configured.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaAdminSettings"
+              }
+            ]
+          },
+          "dayparts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminDaypart"
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminCategory"
+            }
+          },
+          "dishes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminDish"
+            }
+          },
+          "tables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminTable"
+            }
+          },
+          "deliveryDefaultFee": {
+            "type": "number",
+            "description": "Read-only here: business_config delivery_default_fee (Ajustes · Domicilios)."
+          }
+        },
+        "required": [
+          "restaurant",
+          "settings",
+          "dayparts",
+          "categories",
+          "dishes",
+          "tables",
+          "deliveryDefaultFee"
+        ]
+      },
+      "UpdateCartaSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "published": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 160,
+            "description": "Blank clears."
+          },
+          "brandColor": {
+            "type": "string",
+            "nullable": true,
+            "example": "#b4532a",
+            "description": "Stored lower case."
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "https only, e.g. a publicUrl of POST /carta-admin/assets."
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "https only."
+          },
+          "instagram": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "tiktok": {
+            "type": "string",
+            "nullable": true,
+            "description": "Handle without @."
+          },
+          "whatsapp": {
+            "type": "string",
+            "nullable": true,
+            "example": "573104567890",
+            "description": "7-15 digits with country code."
+          },
+          "mapsUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "https only."
+          },
+          "googleReviewUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "https only."
+          },
+          "tableOrderingEnabled": {
+            "type": "boolean"
+          },
+          "deliveryOrderingEnabled": {
+            "type": "boolean"
+          },
+          "showTableBill": {
+            "type": "boolean"
+          },
+          "englishEnabled": {
+            "type": "boolean"
+          },
+          "openingHours": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CartaOpeningHours"
+              }
+            ]
+          }
+        }
+      },
+      "CartaDaypartInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "nameEn": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 40
+          },
+          "startsAt": {
+            "type": "string",
+            "example": "07:00"
+          },
+          "endsAt": {
+            "type": "string",
+            "example": "11:00"
+          },
+          "sortOrder": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Defaults to the position in the list."
+          },
+          "featuredDishId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "categoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "startsAt",
+          "endsAt",
+          "categoryIds"
+        ]
+      },
+      "ReplaceCartaDaypartsRequest": {
+        "type": "object",
+        "properties": {
+          "dayparts": {
+            "maxItems": 12,
+            "description": "The whole list; it replaces the current one.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaDaypartInput"
+            }
+          }
+        },
+        "required": [
+          "dayparts"
+        ]
+      },
+      "UpdateDishDetailsRequest": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vegetarian",
+                "spicy",
+                "gluten_free",
+                "dairy"
+              ]
+            }
+          },
+          "descriptionEn": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 400
+          },
+          "descriptionEnReviewed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tags",
+          "descriptionEnReviewed"
+        ]
+      },
+      "CartaDishDetails": {
+        "type": "object",
+        "properties": {
+          "dishId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vegetarian",
+                "spicy",
+                "gluten_free",
+                "dairy"
+              ]
+            }
+          },
+          "descriptionEn": {
+            "type": "string",
+            "nullable": true
+          },
+          "descriptionEnReviewed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dishId",
+          "tags",
+          "descriptionEn",
+          "descriptionEnReviewed"
+        ]
+      },
+      "CartaTablesQr": {
+        "type": "object",
+        "properties": {
+          "tables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartaAdminTable"
+            }
+          }
+        },
+        "required": [
+          "tables"
+        ]
+      },
+      "UpdateCartaSlugRequest": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "example": "la-parrilla",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        },
+        "required": [
+          "slug"
+        ]
+      },
+      "CreateCartaAssetRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "logo",
+              "cover"
+            ]
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "description": "The PUT must send this exact Content-Type."
+          },
+          "size": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5242880,
+            "description": "Bytes. The PUT must send exactly this Content-Length."
+          }
+        },
+        "required": [
+          "kind",
+          "contentType",
+          "size"
         ]
       }
     }

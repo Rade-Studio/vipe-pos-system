@@ -6,7 +6,7 @@ import { sql } from '@vipe/db';
 import type { z } from 'zod';
 import { ENV, type Env, type StorageEnv } from '../config/env';
 import { UnitOfWork } from '../db/unit-of-work';
-import { type createUploadSchema, extensionOf, type UploadTicket } from './storage.dto';
+import { type createUploadSchema, extensionOf, type UploadFolder, type UploadTicket } from './storage.dto';
 
 const UPLOAD_TTL_SECONDS = 300;
 /** Characters of the keys this API issues; anything else (%, ?, #, \) is refused on delete. */
@@ -46,9 +46,13 @@ export class StorageService implements OnApplicationShutdown {
     this.client?.destroy();
   }
 
-  async createUpload(input: z.infer<typeof createUploadSchema>): Promise<UploadTicket> {
+  /** `folder` is a closed list (dishes for POST /storage/uploads, carta for the carta admin's logo and cover). */
+  async createUpload(
+    input: Pick<z.infer<typeof createUploadSchema>, 'contentType' | 'size'>,
+    folder: UploadFolder = 'dishes',
+  ): Promise<UploadTicket> {
     const { config, client } = this.configured();
-    const key = `${await this.restaurantId()}/dishes/${randomUUID()}.${extensionOf(input.contentType)}`;
+    const key = `${await this.restaurantId()}/${folder}/${randomUUID()}.${extensionOf(input.contentType)}`;
     const uploadUrl = await getSignedUrl(
       client,
       new PutObjectCommand({ Bucket: config.bucket, Key: key, ContentType: input.contentType, ContentLength: input.size }),
