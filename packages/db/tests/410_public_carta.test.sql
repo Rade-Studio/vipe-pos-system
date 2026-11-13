@@ -11,7 +11,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(101);
+SELECT plan(104);
 
 -- ============================================
 -- 1. Schema, grants, policies
@@ -88,6 +88,7 @@ INSERT INTO public.business_config (restaurant_id, key, value) VALUES
   ('41000000-0000-0000-0000-0000000000a1', 'inventory_control_enabled', 'true'),
   ('41000000-0000-0000-0000-0000000000a1', 'delivery_default_fee', '4000'),
   ('41000000-0000-0000-0000-0000000000a1', 'tip_percentage', '12'),
+  ('41000000-0000-0000-0000-0000000000a1', 'tax_percentage', ' 8 '),
   ('41000000-0000-0000-0000-0000000000b2', 'delivery_default_fee', '12.5');
 INSERT INTO public.ingredients (id, restaurant_id, name, unit, kind, cost) VALUES
   ('41600000-0000-0000-0000-000000000001', '41000000-0000-0000-0000-0000000000a1', 'Harina', 'g', 'raw', 7);
@@ -276,6 +277,30 @@ SELECT is((private.guest_carta('t410-a') -> 'deliveryFee', private.guest_carta('
   'guest_carta returns the delivery fee and the tip percentage');
 SELECT is((private.guest_carta('t410-b') -> 'deliveryFee', private.guest_carta('t410-b') -> 'tipPercentage')::text, '(0,10)',
   'a non-whole delivery fee reads 0 and a missing tip reads 10, as the API does');
+SELECT is((private.guest_carta('t410-a') -> 'taxPercentage', private.guest_carta('t410-b') -> 'taxPercentage')::text, '(8,10)',
+  'guest_carta returns the tax percentage; a missing one reads 10, as the API does');
+SELECT is((private.guest_carta('t410-a') -> 'deliveryTaxPercentage', private.guest_carta('t410-b') -> 'deliveryTaxPercentage')::text, '(8,0)',
+  'guest_carta returns the delivery tax percentage; a missing one reads 0, as create_delivery_order does');
+-- The guest reads as vipe_api; the config is changed as the owner (no tenant in this section).
+CREATE TEMP TABLE t410_tax (v text, p jsonb) ON COMMIT DROP;
+GRANT INSERT, SELECT ON t410_tax TO vipe_api;
+RESET ROLE;
+UPDATE public.business_config SET value = '' WHERE restaurant_id = '41000000-0000-0000-0000-0000000000a1' AND key = 'tax_percentage';
+SET LOCAL ROLE vipe_api;
+INSERT INTO t410_tax SELECT 'empty', private.guest_carta('t410-a') -> 'deliveryTaxPercentage';
+RESET ROLE;
+UPDATE public.business_config SET value = '8abc' WHERE restaurant_id = '41000000-0000-0000-0000-0000000000a1' AND key = 'tax_percentage';
+SET LOCAL ROLE vipe_api;
+INSERT INTO t410_tax SELECT 'junk', private.guest_carta('t410-a') -> 'deliveryTaxPercentage';
+RESET ROLE;
+UPDATE public.business_config SET value = 'NaN' WHERE restaurant_id = '41000000-0000-0000-0000-0000000000a1' AND key = 'tax_percentage';
+SET LOCAL ROLE vipe_api;
+INSERT INTO t410_tax SELECT 'nan', private.guest_carta('t410-a') -> 'deliveryTaxPercentage';
+RESET ROLE;
+UPDATE public.business_config SET value = ' 8 ' WHERE restaurant_id = '41000000-0000-0000-0000-0000000000a1' AND key = 'tax_percentage';
+SET LOCAL ROLE vipe_api;
+SELECT is((SELECT string_agg(v || '=' || coalesce(p::text, 'null'), ',' ORDER BY v) FROM t410_tax), 'empty=0,junk=null,nan=null',
+  'an empty delivery tax reads 0 and a value create_delivery_order cannot use reads null');
 
 CREATE TEMP TABLE t410_menu ON COMMIT DROP AS SELECT private.guest_menu_data('t410-a') AS m;
 SELECT is((SELECT array_agg(k ORDER BY k) FROM t410_menu, jsonb_object_keys(m) k),

@@ -250,7 +250,8 @@ describe('carta delivery (Testcontainers, guest + staff)', () => {
         createdAt: expect.any(String),
         lines: [{ dishId: c.steak, name: 'Churrasco', quantity: 1, note: 'jugoso', options: [{ id: c.wellDone, name: 'Bien asado' }] }],
         previewSubtotal: 32000,
-        previewTotal: 37000,
+        previewTax: 2560,
+        previewTotal: 39560,
       });
       const cookieB = await login(fixtures.adminB.email);
       const foreign = await http().get('/api/carta-delivery').set('Cookie', cookieB);
@@ -398,9 +399,52 @@ describe('carta delivery (Testcontainers, guest + staff)', () => {
         netSubtotal: staff.body.netSubtotal,
       });
       const fee = channel === 'delivery' ? 5000 : 0;
-      expect(guest.body).toMatchObject({ deliveryFee: fee, total: staff.body.netSubtotal + fee });
+      // Without an order the staff preview has no tax; the bill's rule is round(netSubtotal x taxPercentage / 100).
+      expect(staff.body.tax).toBeNull();
+      const tax = Math.round((staff.body.netSubtotal * 8) / 100);
+      expect(guest.body).toMatchObject({ taxPercentage: 8, tax, deliveryFee: fee, total: staff.body.netSubtotal + tax + fee });
       expect(staff.body.totalDiscounts).toBeGreaterThan(0);
       expect(staff.body.billDiscount).not.toBeNull();
+    });
+
+    it('the delivery preview total is the confirmed order total the guest tracks, tax included (L29)', async () => {
+      const preview = await http().post('/api/carta/rest-a/pricing-preview').send({ channel: 'delivery', items });
+      expect(preview.status).toBe(200);
+      expect(preview.body.tax).toBeGreaterThan(0);
+      const { requestId, trackingToken } = await pending(body({ items, payment: { method: 'cash', cashFrom: 200000 } }));
+      const confirmed = await confirm(requestId);
+      expect(confirmed.status).toBe(200);
+      const [order] = await db<{ subtotal: string; tax: string; tax_percentage: string }>(
+        'SELECT subtotal, tax, tax_percentage FROM orders WHERE id = $1',
+        [confirmed.body.order.orderId],
+      );
+      expect([Number(order.subtotal), Number(order.tax), Number(order.tax_percentage)]).toEqual([preview.body.netSubtotal, preview.body.tax, 8]);
+      const guest = await status(trackingToken);
+      expect(guest.body.total).toBe(preview.body.total);
+    });
+
+    it('without a tax_percentage row: delivery has no tax and matches the confirmed order, dine_in reads 10 % (decision 1)', async () => {
+      await db("DELETE FROM business_config WHERE restaurant_id = $1 AND key = 'tax_percentage'", [fixtures.restaurantA]);
+      try {
+        const preview = await http().post('/api/carta/rest-a/pricing-preview').send({ channel: 'delivery', items });
+        expect(preview.body).toMatchObject({ taxPercentage: 0, tax: 0, total: preview.body.netSubtotal + 5000 });
+        const dineIn = await http().post('/api/carta/rest-a/pricing-preview').send({ channel: 'dine_in', items });
+        const tax = Math.round(dineIn.body.netSubtotal / 10);
+        expect(dineIn.body).toMatchObject({ taxPercentage: 10, tax, total: dineIn.body.netSubtotal + tax });
+        const { requestId, trackingToken } = await pending(body({ items, payment: { method: 'cash', cashFrom: 200000 } }));
+        expect((await confirm(requestId)).status).toBe(200);
+        expect((await status(trackingToken)).body.total).toBe(preview.body.total);
+      } finally {
+        await db("INSERT INTO business_config (restaurant_id, key, value) VALUES ($1, 'tax_percentage', '8')", [fixtures.restaurantA]);
+      }
+    });
+
+    it('the inbox shows the tax and total the guest saw (decision 2)', async () => {
+      await db("UPDATE carta_delivery_requests SET status = 'rejected', decided_at = now() WHERE status = 'pending'");
+      const preview = await http().post('/api/carta/rest-a/pricing-preview').send({ channel: 'delivery', items });
+      await pending(body({ items }));
+      const inbox = await http().get('/api/carta-delivery').set('Cookie', operatorCookie);
+      expect(inbox.body[0]).toMatchObject({ previewSubtotal: preview.body.netSubtotal, previewTax: preview.body.tax, previewTotal: preview.body.total });
     });
 
     it('422 on a bad channel and invalid options, 409 on a paused dish, 404 on an unknown slug', async () => {
@@ -503,7 +547,7 @@ describe('carta delivery (Testcontainers, guest + staff)', () => {
       ]);
     }
     await db(`INSERT INTO carta_settings (restaurant_id, published, delivery_ordering_enabled) VALUES ($1, true, true), ($2, true, true)`, [A, B]);
-    await db(`INSERT INTO business_config (restaurant_id, key, value) VALUES ($1, 'delivery_default_fee', '5000')`, [A]);
+    await db(`INSERT INTO business_config (restaurant_id, key, value) VALUES ($1, 'delivery_default_fee', '5000'), ($1, 'tax_percentage', '8')`, [A]);
     await db(`INSERT INTO categories (id, name, icon, restaurant_id) VALUES ($1, 'Platos', 'utensils', $2)`, [c.mains, A]);
     await db(
       `INSERT INTO dishes (id, name, price, category_id, active, restaurant_id) VALUES

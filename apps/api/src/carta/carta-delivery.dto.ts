@@ -183,8 +183,10 @@ export class GuestPricing {
   @ApiProperty() grossSubtotal!: number;
   @ApiProperty() totalDiscounts!: number;
   @ApiProperty() netSubtotal!: number;
+  @ApiProperty({ example: 8, description: 'The tax percentage the real order of the channel applies: delivery as create_delivery_order (missing 0, an unusable value 0), dine_in and takeaway business_config tax_percentage (default 10).' }) taxPercentage!: number;
+  @ApiProperty({ description: 'round(netSubtotal x taxPercentage / 100), as the bill; no tax on the delivery fee.' }) tax!: number;
   @ApiProperty({ description: 'The carta\'s delivery fee on delivery, else 0.' }) deliveryFee!: number;
-  @ApiProperty({ description: 'netSubtotal + deliveryFee.' }) total!: number;
+  @ApiProperty({ description: 'netSubtotal + tax + deliveryFee: the amount due, without a tip.' }) total!: number;
 }
 
 export class DeliveryInboxLine {
@@ -215,7 +217,13 @@ export class DeliveryInboxRequest {
   @ApiProperty({ type: [DeliveryInboxLine] }) lines!: DeliveryInboxLine[];
   @ApiProperty({ type: Number, nullable: true, description: 'netSubtotal of POST /orders/pricing-preview on delivery now; null when a line no longer prices.' })
   previewSubtotal!: number | null;
-  @ApiProperty({ type: Number, nullable: true, description: 'previewSubtotal + deliveryFee.' }) previewTotal!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'round(previewSubtotal x the delivery order\'s tax percentage / 100), as the guest preview; null with previewSubtotal.',
+  })
+  previewTax!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'previewSubtotal + previewTax + deliveryFee: the total the guest saw.' }) previewTotal!: number | null;
 }
 
 export class DeliveryRequestConfirmed {

@@ -4,7 +4,7 @@ import { DbClient } from '../db/db-client';
 import { restaurantNow } from '../promotions/promotion-catalog.service';
 import { cartaDbError } from './carta-errors';
 import type { DeliverySubmitInput, DeliverySubmitted, GuestDeliveryStatus, GuestPricing, GuestPricingInput } from './carta-delivery.dto';
-import { guestPricing } from './carta-pricing';
+import { channelTaxPercentage, guestPricing } from './carta-pricing';
 import { CARTA_MESSAGES, cartaSlugSchema } from './carta.dto';
 import type { GuestMenuData } from './guest-menu-source';
 
@@ -49,7 +49,7 @@ export class CartaDeliveryService {
     if (!cartaSlugSchema.safeParse(slug).success) {
       throw notFound();
     }
-    const { rows } = await this.client.pool.query<{ carta: { restaurant: { timezone: string | null }; deliveryFee: number | string } | null; menu: GuestMenuData | null }>(
+    const { rows } = await this.client.pool.query<{ carta: { restaurant: { timezone: string | null }; deliveryFee: number | string; taxPercentage: number | string; deliveryTaxPercentage: number | string | null } | null; menu: GuestMenuData | null }>(
       'SELECT private.guest_carta($1) AS carta, private.guest_menu_data($1) AS menu',
       [slug],
     );
@@ -58,7 +58,7 @@ export class CartaDeliveryService {
       throw notFound();
     }
     const now = restaurantNow(this.clock.now(), carta.restaurant.timezone ?? 'America/Bogota');
-    return guestPricing(menu, now, input.channel, input.items, Number(carta.deliveryFee));
+    return guestPricing(menu, now, input.channel, input.items, Number(carta.deliveryFee), channelTaxPercentage(input.channel, carta));
   }
 
   /** A malformed slug is the carta's one 404 before any query. */
