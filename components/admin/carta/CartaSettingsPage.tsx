@@ -39,6 +39,7 @@ const TABS = [
   ["marca", "Marca"],
   ["horarios", "Horarios"],
   ["pedidos", "Pedidos y platos"],
+  ["idiomas", "Idiomas"],
   ["qr", "QR"],
 ] as const
 type Tab = (typeof TABS)[number][0]
@@ -47,10 +48,11 @@ const panelId = (tab: Tab) => `carta-panel-${tab}`
 
 /** The settings fields each tab edits, for its unsaved-changes dot. */
 const TAB_FIELDS: Record<Tab, (keyof CartaAdminSettings)[]> = {
-  publicacion: ["published", "englishEnabled"],
+  publicacion: ["published"],
   marca: ["description", "brandColor", "logoUrl", "coverUrl", "instagram", "tiktok", "whatsapp", "mapsUrl", "googleReviewUrl"],
   horarios: ["openingHours"],
   pedidos: ["tableOrderingEnabled", "deliveryOrderingEnabled", "showTableBill"],
+  idiomas: ["englishEnabled"],
   qr: [],
 }
 const differs = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b)
@@ -125,6 +127,19 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
     [dishDrafts, dishSaved],
   )
 
+  // Which dishes differ in their tags, and which in their English text.
+  const [dirtyTags, dirtyEnglish] = useMemo(() => {
+    const tags = new Set<string>()
+    const english = new Set<string>()
+    for (const id of dirtyDishes) {
+      const now = dishDrafts[id]
+      const before = dishSaved[id]
+      if (differs(now?.tags, before?.tags)) tags.add(id)
+      if (differs(now?.descriptionEn, before?.descriptionEn) || differs(now?.descriptionEnReviewed, before?.descriptionEnReviewed)) english.add(id)
+    }
+    return [tags, english]
+  }, [dirtyDishes, dishDrafts, dishSaved])
+
   const dirtyTabs = useMemo(() => {
     const tabs = new Set<Tab>()
     if (draft && saved) {
@@ -132,14 +147,10 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
         if (fields.some((field) => differs(draft[field], saved[field]))) tabs.add(t)
       }
     }
-    for (const id of dirtyDishes) {
-      const now = dishDrafts[id]
-      const before = dishSaved[id]
-      if (differs(now?.tags, before?.tags)) tabs.add("pedidos")
-      if (differs(now?.descriptionEn, before?.descriptionEn) || differs(now?.descriptionEnReviewed, before?.descriptionEnReviewed)) tabs.add("publicacion")
-    }
+    if (dirtyTags.size > 0) tabs.add("pedidos")
+    if (dirtyEnglish.size > 0) tabs.add("idiomas")
     return tabs
-  }, [draft, saved, dirtyDishes, dishDrafts, dishSaved])
+  }, [draft, saved, dirtyTags, dirtyEnglish])
 
   if (loadFailed) {
     return (
@@ -268,7 +279,7 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
   )
 
   const cardProps = { draft, update, errorOf }
-  const dishProps = { dishes: data.dishes, drafts: dishDrafts, dirtyIds: dirtyDishes, savingId: savingDish, onChange: changeDish, onSave: (id: string) => void saveDish(id) }
+  const dishProps = { dishes: data.dishes, categories: data.categories, drafts: dishDrafts, savingId: savingDish, onChange: changeDish, onSave: saveDish }
 
   return (
     <div className="space-y-6">
@@ -317,7 +328,6 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
                 publicUrl={guestUrl(origin, data.restaurant.publicPath)}
                 onChangeSlug={changeSlug}
               />
-              <LanguagesCard {...dishProps} englishEnabled={draft.englishEnabled} onEnglishEnabled={(englishEnabled) => update({ englishEnabled })} />
             </>,
           )}
           {panel(
@@ -348,8 +358,17 @@ export function CartaSettingsPage({ onNavigate }: { onNavigate?: (sectionId: str
                 deliveryFee={data.deliveryDefaultFee}
                 onOpenDeliverySettings={() => onNavigate?.("settings/delivery")}
               />
-              <DishesCard {...dishProps} />
+              <DishesCard {...dishProps} dirtyIds={dirtyTags} />
             </>,
+          )}
+          {panel(
+            "idiomas",
+            <LanguagesCard
+              {...dishProps}
+              dirtyIds={dirtyEnglish}
+              englishEnabled={draft.englishEnabled}
+              onEnglishEnabled={(englishEnabled) => update({ englishEnabled })}
+            />,
           )}
           {panel(
             "qr",
