@@ -4,6 +4,7 @@ import { useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } fro
 import type { Table } from "@/types"
 import { cn } from "@/lib/utils"
 import type { FloorZone } from "@/lib/floor/layout"
+import type { TableAlert } from "@/lib/floor/alerts"
 import { FloorTable, type FloorMode } from "./FloorTable"
 import { FLOOR_TOKENS } from "./tones"
 
@@ -17,6 +18,8 @@ export interface FloorMapProps {
   waiterNameOf?: (table: Table) => string | undefined
   /** Live mode: time since the table's open order started (T22). */
   elapsedOf?: (table: Table) => string | null | undefined
+  /** Live mode: pending carta requests per table (ux-carta-mesero S4, waiter floor only). */
+  alertOf?: (table: Table) => TableAlert | undefined
   /** Lean the floor back (2.5D). Flat under prefers-reduced-motion and in edit mode. */
   tilt?: boolean
   mode?: FloorMode
@@ -49,6 +52,7 @@ export function FloorMap({
   currentWaiterId,
   waiterNameOf,
   elapsedOf,
+  alertOf,
   tilt = true,
   mode = "live",
   onMoveTable,
@@ -137,6 +141,7 @@ export function FloorMap({
             mine={!!currentWaiterId && table.waiter === currentWaiterId}
             waiterName={waiterNameOf?.(table)}
             elapsed={elapsedOf?.(table)}
+            alert={alertOf?.(table)}
             onSelect={onSelectTable}
             mode={mode}
             onPointerDown={onMoveTable ? startDrag : undefined}

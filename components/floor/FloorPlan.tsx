@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } fr
 import { Maximize2, Minus, Plus } from "lucide-react"
 import type { Table } from "@/types"
 import { cn } from "@/lib/utils"
-import { isPlaced, type FloorZone } from "@/lib/floor/layout"
+import { INACTIVE_LABEL, TABLE_STATUS, isPlaced, type FloorZone } from "@/lib/floor/layout"
+import type { TableAlert } from "@/lib/floor/alerts"
 import { FloorMap } from "./FloorMap"
-import { toneClasses } from "./tones"
+import { INACTIVE_TONE, toneClasses } from "./tones"
 import { UnplacedStrip } from "./UnplacedStrip"
 
 export interface FloorPlanProps {
@@ -18,6 +19,8 @@ export interface FloorPlanProps {
   waiterNameOf?: (table: Table) => string | undefined
   /** Time since each table's open order started ("18 min", T22). */
   elapsedOf?: (table: Table) => string | null | undefined
+  /** Pending carta requests per table (ux-carta-mesero S4); only the waiter floor passes it. */
+  alertOf?: (table: Table) => TableAlert | undefined
   /** Small read-only map (admin overview): no zoom, no "Sin ubicar" strip, number + status icon per table. */
   compact?: boolean
   className?: string
@@ -26,8 +29,14 @@ export interface FloorPlanProps {
 /** Floor width as a multiple of the viewport: 1 fits, the rest scroll. */
 const ZOOM_STEPS = [1, 1.5, 2, 2.5] as const
 
+/** The legend under the live floor (ux-carta-mesero S5): the colour of every state, in words. */
+const LEGEND = [
+  ...Object.entries(TABLE_STATUS).map(([status, { label }]) => ({ label, dot: toneClasses(status as keyof typeof TABLE_STATUS).dot })),
+  { label: INACTIVE_LABEL, dot: INACTIVE_TONE.dot },
+]
+
 const ICON_BUTTON =
-  "inline-flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-pill border border-line bg-surface px-3 text-sm font-medium text-fg disabled:opacity-50 focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
+  "inline-flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-pill bg-surface px-2.5 text-sm font-medium text-fg disabled:opacity-50 focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
 
 /**
  * Zone tabs + the zone's floor (zoomable) + the "Sin ubicar" strip: the floor
@@ -41,6 +50,7 @@ export function FloorPlan({
   currentWaiterId,
   waiterNameOf,
   elapsedOf,
+  alertOf,
   compact = false,
   className,
 }: FloorPlanProps) {
@@ -121,7 +131,40 @@ export function FloorPlan({
               )
             })}
           </div>
-          {!compact && <div className="flex shrink-0 items-center gap-1 lg:hidden">
+        </div>
+      )}
+
+      {zone && (
+        <div className="relative min-w-0">
+        <div
+          ref={scrollerRef}
+          data-testid="floor-scroller"
+          onScroll={zoomed ? measure : undefined}
+          className={cn(
+            "min-w-0 rounded-card-lg bg-[radial-gradient(120%_80%_at_50%_0%,var(--accent-tint),transparent_60%)]",
+            // Unzoomed, the page scrolls: tables on the last row overflow the floor a
+            // little, and an own scroller with overscroll-contain caught the wheel.
+            zoomed ? "overflow-auto overscroll-contain" : "overflow-x-clip",
+            compact ? "px-2 pb-6 pt-2" : "px-3 pb-12 pt-4 sm:px-6",
+          )}
+        >
+          <div data-testid="floor-zoom" className={cn("mx-auto", zoom === 0 && "max-w-[960px]")} style={{ width: `${ZOOM_STEPS[compact ? 0 : zoom] * 100}%` }}>
+            <FloorMap
+              zone={zone}
+              tables={zoneTables}
+              selectedTableId={selectedTableId}
+              onSelectTable={onSelectTable}
+              currentWaiterId={currentWaiterId}
+              waiterNameOf={waiterNameOf}
+              elapsedOf={elapsedOf}
+              alertOf={alertOf}
+              mode={compact ? "mini" : "live"}
+            />
+          </div>
+        </div>
+          {!compact && (
+          // S6: a floating cluster in the floor's bottom padding, so the zone tabs keep the whole row on a phone.
+          <div role="group" aria-label="Zoom del plano" className="absolute bottom-1 left-2 z-10 flex items-center gap-1 rounded-pill border border-line bg-card/90 p-0.5 shadow-sm backdrop-blur lg:hidden">
             <button
               type="button"
               aria-label="Alejar"
@@ -150,37 +193,8 @@ export function FloorPlan({
               <Maximize2 className="h-4 w-4" aria-hidden />
               <span className="hidden sm:inline">Ajustar</span>
             </button>
-          </div>}
-        </div>
-      )}
-
-      {zone && (
-        <div className="relative min-w-0">
-        <div
-          ref={scrollerRef}
-          data-testid="floor-scroller"
-          onScroll={zoomed ? measure : undefined}
-          className={cn(
-            "min-w-0 rounded-card-lg bg-[radial-gradient(120%_80%_at_50%_0%,var(--accent-tint),transparent_60%)]",
-            // Unzoomed, the page scrolls: tables on the last row overflow the floor a
-            // little, and an own scroller with overscroll-contain caught the wheel.
-            zoomed ? "overflow-auto overscroll-contain" : "overflow-x-clip",
-            compact ? "px-2 pb-6 pt-2" : "px-3 pb-12 pt-4 sm:px-6",
-          )}
-        >
-          <div data-testid="floor-zoom" className={cn("mx-auto", zoom === 0 && "max-w-[960px]")} style={{ width: `${ZOOM_STEPS[compact ? 0 : zoom] * 100}%` }}>
-            <FloorMap
-              zone={zone}
-              tables={zoneTables}
-              selectedTableId={selectedTableId}
-              onSelectTable={onSelectTable}
-              currentWaiterId={currentWaiterId}
-              waiterNameOf={waiterNameOf}
-              elapsedOf={elapsedOf}
-              mode={compact ? "mini" : "live"}
-            />
           </div>
-        </div>
+        )}
         {zoomed && (
           // Phone/tablet only: from 1024 px the floor fits and has no zoom.
           <button
@@ -211,6 +225,17 @@ export function FloorPlan({
           </button>
         )}
         </div>
+      )}
+
+      {!compact && zone && (
+        <ul aria-label="Estados de las mesas" className="-mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-2 text-xs text-muted-fg">
+          {LEGEND.map((item) => (
+            <li key={item.label} className="inline-flex items-center gap-1.5">
+              <span aria-hidden className={cn("h-2.5 w-2.5 shrink-0 rounded-full", item.dot)} />
+              {item.label}
+            </li>
+          ))}
+        </ul>
       )}
 
       {!compact && (

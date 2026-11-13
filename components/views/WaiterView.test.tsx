@@ -1609,7 +1609,8 @@ describe("WaiterView — elapsed time on the map (T22)", () => {
     ])
     renderView()
     await flush()
-    expect(screen.getByRole("button", { name: /^Mesa 1, En cocina, .*abierta hace 18 min$/ })).toHaveTextContent("18 min")
+    // S5 (L3): the floor no longer prints the elapsed pill; the minutes stay in the accessible name.
+    expect(screen.getByRole("button", { name: /^Mesa 1, En cocina, .*abierta hace 18 min$/ })).not.toHaveTextContent("18 min")
     expect(screen.getByRole("button", { name: /^Mesa 2,/ })).not.toHaveTextContent("min")
   })
 })

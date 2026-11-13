@@ -5,6 +5,7 @@ import type { Profile, Table } from "@/types"
 import type { FloorZone } from "@/lib/floor/layout"
 import { TableGrid } from "@/components/pos/TableGrid"
 import { FloorPlan } from "@/components/floor/FloorPlan"
+import { useCartaTableAlerts } from "@/components/carta-inbox/use-carta-inbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTableStore } from "@/store/useTableStore"
 
@@ -51,6 +52,8 @@ export function TablesSection({
     },
     [profiles],
   )
+  // ux-carta-mesero S4: pending carta requests drawn on their table.
+  const alertOf = useCartaTableAlerts(tables, floor?.zones)
   // Same as the grid: tapping the selected table again deselects it.
   const selectTable = useCallback(
     (tableId: string) => {
@@ -78,6 +81,7 @@ export function TablesSection({
         currentWaiterId={floor.currentWaiterId ?? profile.id}
         waiterNameOf={waiterNameOf}
         elapsedOf={floor.elapsedOf}
+        alertOf={alertOf}
       />
     )
   }

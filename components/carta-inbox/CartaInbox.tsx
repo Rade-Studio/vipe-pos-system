@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useId, useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useId, useState } from "react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTerminal } from "@/components/terminal/terminal-context"
@@ -9,7 +9,6 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import {
   confirmErrorMessage,
   confirmProposal,
-  getInbox,
   kitchenCommandFor,
   rejectProposal,
   resolveRequest,
@@ -19,10 +18,11 @@ import {
 import { conflictMessage } from "@/lib/api/errors"
 import { sendCommand } from "@/lib/api/print"
 import { usePrintingEnabled } from "@/lib/api/printing"
-import { realtimeService } from "@/lib/api/realtime"
 import { clockTime } from "@/lib/order-steps/details"
 
-export const CARTA_INBOX_KEY = ["carta-inbox"] as const
+import { CARTA_INBOX_KEY, useCartaInbox } from "./use-carta-inbox"
+
+export { CARTA_INBOX_KEY }
 
 const tableLabel = (row: { tableNumber: number; zoneName: string | null }) =>
   row.zoneName ? `Mesa ${row.tableNumber} · ${row.zoneName}` : `Mesa ${row.tableNumber}`
@@ -40,17 +40,8 @@ const meta = (row: { zoneName: string | null; waiterName: string | null; created
  * comanda is queued here, as the waiter's own send does.
  */
 export function CartaInbox() {
-  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-  const { data } = useQuery({ queryKey: CARTA_INBOX_KEY, queryFn: getInbox, retry: false })
-
-  useEffect(() => {
-    // The shared client may predate the carta stream (screens that mock it).
-    const unsubscribe = realtimeService.subscribeToCartaInbox?.(() => {
-      void queryClient.invalidateQueries({ queryKey: CARTA_INBOX_KEY })
-    })
-    return () => unsubscribe?.()
-  }, [queryClient])
+  const { data } = useCartaInbox()
 
   const proposals = data?.proposals ?? []
   const requests = data?.requests ?? []
