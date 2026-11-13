@@ -183,7 +183,7 @@ export class GuestPricing {
   @ApiProperty() grossSubtotal!: number;
   @ApiProperty() totalDiscounts!: number;
   @ApiProperty() netSubtotal!: number;
-  @ApiProperty({ example: 8, description: 'The tax percentage the real order of the channel applies: delivery as create_delivery_order (missing 0, an unusable value 0), dine_in and takeaway business_config tax_percentage (default 10).' }) taxPercentage!: number;
+  @ApiProperty({ example: 8, description: 'The tax percentage the guest total includes: only delivery adds tax, read as create_delivery_order (missing 0, an unusable value 0); dine_in and takeaway are always 0 (their total stays the net subtotal).' }) taxPercentage!: number;
   @ApiProperty({ description: 'round(netSubtotal x taxPercentage / 100), as the bill; no tax on the delivery fee.' }) tax!: number;
   @ApiProperty({ description: 'The carta\'s delivery fee on delivery, else 0.' }) deliveryFee!: number;
   @ApiProperty({ description: 'netSubtotal + tax + deliveryFee: the amount due, without a tip.' }) total!: number;
