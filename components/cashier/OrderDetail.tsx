@@ -4,6 +4,16 @@ import { useMemo, useState } from "react"
 import { Ban, Gift, Printer, Receipt, SplitSquareVertical, Trash2, Undo2, X } from "lucide-react"
 import { usePrintingEnabled } from "@/lib/api/printing"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { formatCurrency } from "@/utils/helpers"
 import type { CartItem } from "@/types"
 import { billLineKey, entryHeader, type QueueEntry, type QueueTotals } from "@/lib/cashier/queue"
@@ -90,6 +100,7 @@ export function OrderDetail({
   const discounted = bill !== null && bill.totalDiscounts > 0
   const [removing, setRemoving] = useState<DiscountSheetTarget | null>(null)
   const [adding, setAdding] = useState(false)
+  const [confirmUndo, setConfirmUndo] = useState(false)
   // Built on render, so promotions that arrive after opening still show.
   const sheet: DiscountSheetTarget | null =
     adding && bill
@@ -158,10 +169,33 @@ export function OrderDetail({
             </Button>
           )}
           {onUndoSplit && (
-            <Button variant="outline" className="h-11" onClick={onUndoSplit} disabled={undoBusy}>
+            <Button variant="outline" className="h-11" onClick={() => setConfirmUndo(true)} disabled={undoBusy}>
               <Trash2 aria-hidden="true" className="h-4 w-4" />
               Eliminar
             </Button>
+          )}
+          {onUndoSplit && (
+            <AlertDialog open={confirmUndo} onOpenChange={setConfirmUndo}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar esta orden parcial?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Sus productos vuelven a la orden original de la mesa.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      setConfirmUndo(false)
+                      onUndoSplit()
+                    }}
+                  >
+                    Sí, eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
           <Button variant="outline" className="h-11" onClick={onReprint}>
             {printingEnabled ? <Printer aria-hidden="true" className="h-4 w-4" /> : <Receipt aria-hidden="true" className="h-4 w-4" />}

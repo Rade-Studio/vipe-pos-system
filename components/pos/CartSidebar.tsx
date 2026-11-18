@@ -6,7 +6,6 @@ import {
   Trash2,
   Send,
   ShoppingCart,
-  Percent,
   Minus,
   Plus,
 } from "lucide-react";
@@ -22,14 +21,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
-import { Slider } from "../ui/slider";
 import { useConfigStore } from "@/store/use-config-store";
 import { useCartStore } from "@/store/useCartStore";
 import { useDrag } from "@use-gesture/react";
@@ -69,8 +60,9 @@ export function CartSidebar({
   const [editingComments, setEditingComments] = useState<
     Record<string, string>
   >({});
-  const [showTipDialog, setShowTipDialog] = useState(false);
-  const { tipPercentage, taxPercentage, setTipPercentage } = useConfigStore();
+  // H-047: the tip comes from Ajustes and is read-only here; the cashier or
+  // the customer adjusts it at payment time.
+  const { tipPercentage, taxPercentage } = useConfigStore();
   const calculateOrderBill = useCartStore((s) => s.calculateOrderBill);
 
   const bill = calculateOrderBill(cartItems, tipPercentage, taxPercentage);
@@ -111,10 +103,6 @@ export function CartSidebar({
       delete newState[itemId];
       return newState;
     });
-  };
-
-  const handleTipChange = (value: number[]) => {
-    setTipPercentage(value[0]);
   };
 
   const startEditingComments = (itemId: string, currentComments = "") => {
@@ -275,16 +263,8 @@ export function CartSidebar({
                 <span>{formatCurrency(bill.tax)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="flex items-center text-muted-foreground">
+                <span className="text-muted-foreground">
                   Propina ({bill.tipPercentage}%):
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="ml-1 h-5 w-5"
-                    onClick={() => setShowTipDialog(true)}
-                  >
-                    <Percent className="h-3 w-3" />
-                  </Button>
                 </span>
                 <span>{formatCurrency(bill.tip)}</span>
               </div>
@@ -321,46 +301,6 @@ export function CartSidebar({
         </>
       )}
 
-      {/* Diálogo para ajustar la propina */}
-      <Dialog open={showTipDialog} onOpenChange={setShowTipDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Ajustar propina</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="mb-6">
-              <div className="flex justify-between mb-2">
-                <span>Porcentaje de propina:</span>
-                <span className="font-semibold">{tipPercentage}%</span>
-              </div>
-              <Slider
-                value={[tipPercentage]}
-                min={0}
-                max={25}
-                step={1}
-                onValueChange={handleTipChange}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal:</span>
-                <span>{formatCurrency(bill.subtotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  Propina ({tipPercentage}%):
-                </span>
-                <span>
-                  {formatCurrency(bill.subtotal * (tipPercentage / 100))}
-                </span>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setShowTipDialog(false)}>Aceptar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 

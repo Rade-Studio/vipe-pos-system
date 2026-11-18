@@ -248,10 +248,11 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     queryFn: fetchTables,
   })
 
-  const { data: ordersData = [] } = useQuery({
+  const { data: ordersQueryData } = useQuery({
     queryKey: ['orders'],
     queryFn: fetchOrders,
   })
+  const ordersData = useMemo(() => ordersQueryData ?? [], [ordersQueryData])
   // T22: the open order of each table, from the orders this screen already
   // reads (the table record has no start time).
   const openByTable = useMemo(() => openOrdersByTable(ordersData), [ordersData])
@@ -311,11 +312,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     setLoading(false)  // data loaded → clear loading state regardless of count
   }, [tablesData])
 
+  // H-046: an empty answer clears the list too (the table's last order was paid).
   useEffect(() => {
-    if (ordersData.length > 0) {
-      setActiveOrders(ordersData)
-    }
-  }, [ordersData])
+    if (ordersQueryData) setActiveOrders(ordersQueryData)
+  }, [ordersQueryData])
 
   // Configurar suscripciones en tiempo real.
   // T6/S2: sin dependencia de `activeTable`. Antes el `useCallback` que la lista

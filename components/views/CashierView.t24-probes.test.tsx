@@ -182,9 +182,8 @@ describe("T24 only", () => {
     h.postImpl = () => { throw new TypeError("Failed to fetch") }
     await confirm(); await waitFor(() => expect(h.posts).toHaveLength(1))
     h.postImpl = null
-    // After a failed send the confirm stays disabled until the bill or the
-    // selection changes (pre-existing rule, L20): nothing is re-sent.
-    await waitFor(async () => expect(await findReg()).toBeDisabled())
+    // H-065: after a failed send the cashier can retry; nothing is re-sent on its own.
+    await waitFor(async () => expect(await findReg()).toBeEnabled())
     expect(h.posts).toHaveLength(1)
   })
   it("switch order during window: nothing sent; kept for same bill only", async () => {

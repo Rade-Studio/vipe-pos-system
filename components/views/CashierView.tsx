@@ -108,6 +108,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const [splitGate] = useState(createSingleFlight)
   const [undoGate] = useState(createSingleFlight)
   const [partialParentItems, setPartialParentItems] = useState<CartItem[]>([])
+  const [partialPercentages, setPartialPercentages] = useState({ tax: 0, tip: 0 })
   const [shiftSheetOpen, setShiftSheetOpen] = useState(false)
   // "Precio cambió" (T24): reported by the payment panel, shown over the detail
   // pane (on phone at the top of the current step), as in the design.
@@ -376,6 +377,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     }
 
     setPartialParentItems(parentItems)
+    setPartialPercentages({ tax: parentOrder.bill?.taxPercentage ?? 0, tip: parentOrder.bill?.tipPercentage ?? 0 })
     setSelectedTableId(tableId)
     setPartialPaymentDialogOpen(true)
   }
@@ -992,6 +994,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
           open={partialPaymentDialogOpen}
           onOpenChange={setPartialPaymentDialogOpen}
           tableItems={partialParentItems}
+          taxPercentage={partialPercentages.tax}
+          tipPercentage={partialPercentages.tip}
           onCreatePartialOrder={handleCreatePartialOrder}
           busy={isSplitting}
         />

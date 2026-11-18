@@ -327,9 +327,8 @@ describe("PROBE re-bill", () => {
     expect(bodyAt(0).tenders[0].amount).toBe(47_600)
   })
 
-  // Pre-existing behaviour (also in the old dialog): after a failed pay_order the draft keeps lastError and
-  // the confirm stays disabled until the bill or the selection changes, so a same-key retry is unreachable.
-  it.skip("P6 same-bill failure keeps the idempotency key on retry", async () => {
+  // H-065: after a failed pay_order the cashier can retry the same bill with the same key.
+  it("P6 same-bill failure keeps the idempotency key on retry", async () => {
     renderCashier()
     await openPaymentFor("Mesa 1")
     await addCashLine()
