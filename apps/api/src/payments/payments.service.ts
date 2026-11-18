@@ -70,7 +70,24 @@ export class PaymentsService {
     const result = await this.rpc(sql`
       SELECT public.pay_order(${input.orderId}::uuid, ${input.cashRegisterId}::uuid, ${input.tipAmount}::bigint,
                               ${JSON.stringify(tenders)}::jsonb, ${input.idempotencyKey}::uuid) AS result`);
-    return toPayOrderResult(result);
+    const paid = toPayOrderResult(result);
+    if (paid.status === 'paid') {
+      await this.clearReleasedTableWaiter(input.orderId);
+    }
+    return paid;
+  }
+
+  /**
+   * H-031: pay_order frees the table when its last open order is paid but
+   * keeps `waiter_id`. In the same transaction, a table it just freed
+   * (`available`, still locked by the RPC) loses its waiter; a table with
+   * another open order is not `available` and keeps it.
+   */
+  private async clearReleasedTableWaiter(orderId: string): Promise<void> {
+    await this.uow.db.execute(sql`
+      UPDATE public.tables t SET waiter_id = NULL, updated_at = now()
+        FROM public.orders o
+       WHERE o.id = ${orderId}::uuid AND t.id = o.table_id AND t.status = 'available' AND t.waiter_id IS NOT NULL`);
   }
 
   /**

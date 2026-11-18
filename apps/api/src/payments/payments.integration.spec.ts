@@ -41,6 +41,14 @@ const p = {
   key2: '99000000-0000-4000-8000-0000000000c2',
   key5: '99000000-0000-4000-8000-0000000000c5',
   otherKey: '99000000-0000-4000-8000-0000000000ff',
+  /** H-031: a table with one order (released on pay) and a table with two (kept). */
+  soloTable: '99000000-0000-0000-0000-0000000000d1',
+  soloOrder: '99000000-0000-0000-0000-0000000000d2',
+  pairTable: '99000000-0000-0000-0000-0000000000d3',
+  pairOrder: '99000000-0000-0000-0000-0000000000d4',
+  pairOther: '99000000-0000-0000-0000-0000000000d5',
+  keySolo: '99000000-0000-4000-8000-0000000000d1',
+  keyPair: '99000000-0000-4000-8000-0000000000d3',
 } as const;
 
 const METHOD_KEYS = ['code', 'id', 'isActive', 'kind', 'name', 'sortOrder'];
@@ -470,6 +478,24 @@ describe('payments endpoints (Testcontainers, vipe_api)', () => {
       expect((await waiterA().get('/api/orders/completed')).status).toBe(422);
     });
   });
+
+  describe('table release on pay (H-031)', () => {
+    it("frees the table and clears its waiter when the table's last open order is paid", async () => {
+      const res = await pay(p.soloOrder, p.keySolo, [cashTender(6000, 6000)]);
+      expect(res.status).toBe(200);
+      const table = await waiterA().get('/api/tables');
+      expect(table.body.find((row: { id: string }) => row.id === p.soloTable)).toMatchObject({ status: 'available', waiterId: null });
+      expect(await db('SELECT status, waiter_id FROM tables WHERE id = $1', [p.soloTable])).toEqual([{ status: 'available', waiter_id: null }]);
+    });
+
+    it('keeps the table, its status and its waiter while another order of the table is still open', async () => {
+      const res = await pay(p.pairOrder, p.keyPair, [cashTender(6000, 6000)]);
+      expect(res.status).toBe(200);
+      expect(await db('SELECT status, waiter_id FROM tables WHERE id = $1', [p.pairTable])).toEqual([
+        { status: 'kitchen', waiter_id: fixtures.waiterA.profileId },
+      ]);
+    });
+  });
 });
 
 async function seedPayments(superuserUrl: string) {
@@ -536,5 +562,19 @@ async function seedPayments(superuserUrl: string) {
     `INSERT INTO payment_transactions (id, order_id, amount, method, timestamp, cash_register_id, tip_amount, restaurant_id)
        VALUES ($1, $2, 7000, 'nequi', now(), $3, 0, $4)`,
     [p.legacyTx, p.legacyOrder, p.registerA, A],
+  );
+  await q(
+    `INSERT INTO tables (id, number, status, waiter_id, restaurant_id) VALUES ($1, 91, 'served', $3, $4), ($2, 92, 'kitchen', $3, $4)`,
+    [p.soloTable, p.pairTable, fixtures.waiterA.profileId, A],
+  );
+  await q(
+    `INSERT INTO orders (id, table_id, status, subtotal, tax, tax_percentage, total, restaurant_id) VALUES
+       ($1, $4, 'delivered', 6000, 0, 0, 6000, $6), ($2, $5, 'delivered', 6000, 0, 0, 6000, $6), ($3, $5, 'kitchen', 6000, 0, 0, 6000, $6)`,
+    [p.soloOrder, p.pairOrder, p.pairOther, p.soloTable, p.pairTable, A],
+  );
+  await q(
+    `INSERT INTO order_items (order_id, name, price, quantity, status, restaurant_id) VALUES
+       ($1, 'Arepa', 6000, 1, 'served', $4), ($2, 'Arepa', 6000, 1, 'served', $4), ($3, 'Arepa', 6000, 1, 'kitchen', $4)`,
+    [p.soloOrder, p.pairOrder, p.pairOther, A],
   );
 }

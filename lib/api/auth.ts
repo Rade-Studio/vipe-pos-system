@@ -4,6 +4,7 @@ import { ApiError } from "./errors"
 import { ACTING_HEADER } from "@/lib/terminal/acting"
 import type { components } from "./schema"
 import type { Profile, ProfileRole } from "@/types"
+import { CART_STORAGE_KEY } from "@/store/useCartStore"
 
 export type Session = components["schemas"]["SessionResponse"]
 
@@ -51,6 +52,12 @@ export async function signOutAndReload(): Promise<void> {
       variant: "destructive",
     })
     return
+  }
+  // A shared device must not hand the waiter's unsent carts to the next user (H-052).
+  try {
+    window.localStorage.removeItem(CART_STORAGE_KEY)
+  } catch {
+    // Storage unavailable (private mode): nothing was saved either.
   }
   window.location.href = "/portal"
 }

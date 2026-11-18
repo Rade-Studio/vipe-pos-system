@@ -31,10 +31,11 @@ const menu = [
   }),
 ]
 
-function renderPicker(onAdd = vi.fn<(item: StepPickerItem) => (() => void) | void>(), onExit = vi.fn()) {
+function renderPicker(onAdd = vi.fn<(item: StepPickerItem) => (() => void) | void>(), onExit = vi.fn(), searchable = false) {
   render(
     <StepPicker
       menu={menu}
+      searchable={searchable}
       onAdd={onAdd}
       onExit={onExit}
       exitLabel="Mapa"
@@ -249,5 +250,66 @@ describe("StepPicker modifier sheet (F7)", () => {
     fireEvent.change(screen.getByLabelText("Nota para cocina (opcional)"), { target: { value: " sin hielo " } })
     await click(screen.getByRole("button", { name: /^Agregar 1 ·/ }))
     expect(onAdd.mock.calls[0][0]).toEqual({ dish: withGroups[0].dishes[1], category: withGroups[0], quantity: 1, comments: "sin hielo" })
+  })
+})
+
+describe("StepPicker search and empty categories (H-054)", () => {
+  const search = () => screen.getByRole("searchbox", { name: "Buscar plato" })
+  const type = async (value: string) => {
+    await act(async () => {
+      fireEvent.change(search(), { target: { value } })
+    })
+  }
+
+  it("finds a dish of any category ignoring case and accents, and goes straight to Agregar", async () => {
+    const { onAdd } = renderPicker(undefined, undefined, true)
+    await type("  ARROZ con LECHE ")
+    expect(screen.queryByRole("button", { name: /Platos fuertes/ })).not.toBeInTheDocument()
+    expect(screen.getByText("1 plato encontrado")).toBeInTheDocument()
+    await click(screen.getByRole("button", { name: `Arroz con leche, ${formatCurrency(7000)}, Postres` }))
+    expect(heading()).toHaveTextContent("Arroz con leche")
+    await click(screen.getByRole("button", { name: /^Agregar 1 ·/ }))
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    expect(onAdd.mock.calls[0][0]).toEqual({ dish: menu[1].dishes[0], category: menu[1], quantity: 1 })
+    // After the add the picker is back on Categoría with an empty search.
+    expect(heading()).toHaveTextContent("¿Qué categoría?")
+    expect(search()).toHaveValue("")
+  })
+
+  it("matches without accents and keeps a sold-out result in place with its toast", async () => {
+    const { onAdd } = renderPicker(undefined, undefined, true)
+    await type("ajíaco")
+    await click(screen.getByRole("button", { name: `Ajiaco, ${formatCurrency(28000)}, agotado, Platos fuertes` }))
+    expect(toastFn).toHaveBeenCalledWith({ title: "Agotado: Ajiaco · ofrece otra opción" })
+    expect(heading()).toHaveTextContent("¿Qué categoría?")
+    expect(onAdd).not.toHaveBeenCalled()
+  })
+
+  it("says when nothing matches and shows the categories again once the search is cleared", async () => {
+    renderPicker(undefined, undefined, true)
+    await type("pizza")
+    expect(screen.getByText("No hay platos que coincidan con “pizza”.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Postres/ })).not.toBeInTheDocument()
+    await type("")
+    expect(screen.getByRole("button", { name: /Platos fuertes/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Postres/ })).toBeInTheDocument()
+  })
+
+  it("offers no search unless asked (the delivery picker keeps its steps only)", () => {
+    renderPicker()
+    expect(screen.queryByRole("searchbox", { name: "Buscar plato" })).not.toBeInTheDocument()
+  })
+
+  it("hides a category without dishes and keeps the others in menu order", () => {
+    render(
+      <StepPicker
+        menu={[menuCategory({ id: "c-0", name: "Vacía", dishes: [] }), ...menu]}
+        onAdd={vi.fn()}
+        onExit={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: /Vacía/ })).not.toBeInTheDocument()
+    const tiles = screen.getAllByRole("button", { name: /subcategorías|directo/ })
+    expect(tiles.map((tile) => tile.textContent)).toEqual([expect.stringContaining("Platos fuertes"), expect.stringContaining("Postres")])
   })
 })

@@ -92,6 +92,8 @@ export interface StepPickerProps {
   banner?: ReactNode
   tags?: StepPickerTags
   extraTiles?: readonly StepPickerExtraTile[]
+  /** H-054: "Buscar plato" on Categoría (the waiter's flow; delivery keeps the steps only). */
+  searchable?: boolean
 }
 
 const TILE =
@@ -102,6 +104,10 @@ const TILE =
 const FULL_GRID = "grid grid-cols-2 gap-2.5 md:grid-cols-3 md:gap-3 xl:grid-cols-4 xl:gap-3.5"
 const EMBEDDED_GRID = "grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3"
 const FOCUS = "focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-focus"
+
+/** H-054: case- and accent-insensitive text for the dish search. */
+const searchText = (value: string) =>
+  value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/\s+/g, " ").trim()
 
 const subcategoryValueOf = (category: MenuTreeCategoryDto, id: string | null) =>
   id === null ? null : (category.subcategories.find((sub) => sub.id === id)?.name ?? null)
@@ -170,6 +176,7 @@ export function StepPicker({
   banner,
   tags,
   extraTiles = [],
+  searchable = false,
 }: StepPickerProps) {
   const GRID = embedded ? EMBEDDED_GRID : FULL_GRID
   const showHeader = !embedded || header != null
@@ -180,6 +187,8 @@ export function StepPicker({
   const direction = useRef<"fwd" | "back">("fwd")
   // F7: a dish with modifier groups opens the sheet over step 3 instead of step 4.
   const [sheetDishId, setSheetDishId] = useState<string | null>(null)
+  // H-054: "Buscar plato" on Categoría finds a dish in any category.
+  const [query, setQuery] = useState("")
 
   const dispatch = (action: StepAction) => {
     direction.current = action.type === "back" || action.type === "crumb" || action.type === "added" ? "back" : "fwd"
@@ -243,6 +252,65 @@ export function StepPicker({
     4: step === 4 ? "Cantidad" : "—",
   }
 
+  /** A dish tile; `where` names its category in the search results. */
+  const dishTile = (entry: MenuTreeDishDto, owner: MenuTreeCategoryDto, pick: () => void, where?: string) => {
+    const tone = categoryTone(owner.color)
+    const out = !entry.available
+    const tag = out ? null : tags?.dish?.(entry)
+    return (
+      <button
+        key={`${owner.id}-${entry.id}`}
+        type="button"
+        aria-disabled={out || undefined}
+        aria-label={`${entry.name}, ${formatCurrency(entry.price)}${out ? ", agotado" : ""}${tag ? `, ${tag.text}` : ""}${where ? `, ${where}` : ""}`}
+        className={cn(
+          TILE,
+          out
+            ? "cursor-not-allowed border-dashed border-line-strong bg-surface-2 shadow-none motion-safe:active:translate-y-0 motion-safe:active:scale-100"
+            : tone.tile,
+        )}
+        onClick={() => {
+          if (out) toast({ title: soldOutMessage(entry.name) })
+          else pick()
+        }}
+      >
+        <Bar className={out ? "bg-line-strong" : tone.bar} />
+        <span
+          className={cn(
+            "min-w-0 max-w-full text-[17px] font-semibold leading-snug [overflow-wrap:anywhere] lg:text-lg",
+            out && "text-fg-2 line-through decoration-muted-fg",
+          )}
+        >
+          {entry.name}
+        </span>
+        <span className="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-1.5">
+          <span className="flex flex-col">
+            {entry.promoPrice != null && entry.promoPrice < entry.price ? (
+              <>
+                <span className="text-xs tabular-nums text-muted-fg line-through">{formatCurrency(entry.price)}</span>
+                <span className="text-lg font-semibold tabular-nums">{formatCurrency(entry.promoPrice)}</span>
+              </>
+            ) : (
+              <span className="text-lg font-semibold tabular-nums">{formatCurrency(entry.price)}</span>
+            )}
+          </span>
+          {tag && <PromoTagPill tag={tag} />}
+          {!out && entry.modifierGroups.length > 0 && (
+            <span className="inline-flex h-7 flex-none items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-card px-2.5 text-[13px] font-medium text-fg-2">
+              <Layers className="h-3.5 w-3.5" aria-hidden />
+              Con opciones
+            </span>
+          )}
+          {out && (
+            <span className="inline-flex h-7 flex-none items-center whitespace-nowrap rounded-full border border-line-strong bg-status-reserved-bg px-3 text-[13px] font-medium text-status-reserved-fg">
+              Agotado
+            </span>
+          )}
+        </span>
+      </button>
+    )
+  }
+
   const renderStage = () => {
     if (isError && !menu) {
       return (
@@ -276,11 +344,52 @@ export function StepPicker({
     }
 
     if (step === 1 || !category) {
+      const needle = searchable ? searchText(query) : ""
+      const found = needle
+        ? menu.flatMap((entry) => entry.dishes.filter((item) => searchText(item.name).includes(needle)).map((item) => ({ item, entry })))
+        : []
       return (
         <>
           <StageHeading headingRef={headingRef} title="¿Qué categoría?" hint="Siempre en el mismo orden" />
+          {searchable && (
+          <input
+            type="search"
+            aria-label="Buscar plato"
+            placeholder="Buscar plato"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className={cn("mb-3 min-h-[52px] w-full rounded-[14px] border border-line-strong bg-card px-3.5 py-3 text-[15px] text-fg placeholder:text-muted-fg", FOCUS)}
+          />
+          )}
+          {needle ? (
+            found.length === 0 ? (
+              <p className="py-6 text-fg-2">No hay platos que coincidan con “{query.trim()}”.</p>
+            ) : (
+              <>
+                <p className="mx-0.5 mb-3 text-sm text-fg-2">
+                  {found.length === 1 ? "1 plato encontrado" : `${found.length} platos encontrados`}
+                </p>
+                <div className={GRID}>
+                  {found.map(({ item, entry }) =>
+                    dishTile(
+                      item,
+                      entry,
+                      () => {
+                        setQuery("")
+                        dispatch({ type: "category", id: entry.id, skipsSubcategories: skipsSubcategories(entry) })
+                        if (item.modifierGroups.length > 0) setSheetDishId(item.id)
+                        else dispatch({ type: "dish", id: item.id, available: item.available })
+                      },
+                      entry.name,
+                    ),
+                  )}
+                </div>
+              </>
+            )
+          ) : (
           <div className={GRID}>
-            {menu.map((entry) => {
+            {/* H-054: a category without dishes is hidden. */}
+            {menu.filter((entry) => entry.dishes.length > 0).map((entry) => {
               const tone = categoryTone(entry.color)
               return (
                 <button
@@ -332,6 +441,7 @@ export function StepPicker({
               </button>
             ))}
           </div>
+          )}
         </>
       )
     }
@@ -384,63 +494,12 @@ export function StepPicker({
             <p className="py-6 text-fg-2">No hay platos en esta categoría.</p>
           ) : (
             <div className={GRID}>
-              {dishes.map((entry) => {
-                const out = !entry.available
-                const tag = out ? null : tags?.dish?.(entry)
-                return (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    aria-disabled={out || undefined}
-                    aria-label={`${entry.name}, ${formatCurrency(entry.price)}${out ? ", agotado" : ""}${tag ? `, ${tag.text}` : ""}`}
-                    className={cn(
-                      TILE,
-                      out
-                        ? "cursor-not-allowed border-dashed border-line-strong bg-surface-2 shadow-none motion-safe:active:translate-y-0 motion-safe:active:scale-100"
-                        : tone.tile,
-                    )}
-                    onClick={() => {
-                      if (out) toast({ title: soldOutMessage(entry.name) })
-                      else if (entry.modifierGroups.length > 0) return setSheetDishId(entry.id)
-                      dispatch({ type: "dish", id: entry.id, available: entry.available })
-                    }}
-                  >
-                    <Bar className={out ? "bg-line-strong" : tone.bar} />
-                    <span
-                      className={cn(
-                        "min-w-0 max-w-full text-[17px] font-semibold leading-snug [overflow-wrap:anywhere] lg:text-lg",
-                        out && "text-fg-2 line-through decoration-muted-fg",
-                      )}
-                    >
-                      {entry.name}
-                    </span>
-                    <span className="mt-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-1.5">
-                      <span className="flex flex-col">
-                        {entry.promoPrice != null && entry.promoPrice < entry.price ? (
-                          <>
-                            <span className="text-xs tabular-nums text-muted-fg line-through">{formatCurrency(entry.price)}</span>
-                            <span className="text-lg font-semibold tabular-nums">{formatCurrency(entry.promoPrice)}</span>
-                          </>
-                        ) : (
-                          <span className="text-lg font-semibold tabular-nums">{formatCurrency(entry.price)}</span>
-                        )}
-                      </span>
-                      {tag && <PromoTagPill tag={tag} />}
-                      {!out && entry.modifierGroups.length > 0 && (
-                        <span className="inline-flex h-7 flex-none items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-card px-2.5 text-[13px] font-medium text-fg-2">
-                          <Layers className="h-3.5 w-3.5" aria-hidden />
-                          Con opciones
-                        </span>
-                      )}
-                      {out && (
-                        <span className="inline-flex h-7 flex-none items-center whitespace-nowrap rounded-full border border-line-strong bg-status-reserved-bg px-3 text-[13px] font-medium text-status-reserved-fg">
-                          Agotado
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                )
-              })}
+              {dishes.map((entry) =>
+                dishTile(entry, category, () => {
+                  if (entry.modifierGroups.length > 0) return setSheetDishId(entry.id)
+                  dispatch({ type: "dish", id: entry.id, available: entry.available })
+                }),
+              )}
             </div>
           )}
         </>
