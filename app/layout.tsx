@@ -14,6 +14,8 @@ export const dynamic = "force-dynamic"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
+  // H-108: absolute URLs for canonical and og:image. NEXT_PUBLIC_SITE_URL is the public origin.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
   title: BRAND_NAME,
   description: "Sistema de punto de venta para restaurantes",
   icons: {

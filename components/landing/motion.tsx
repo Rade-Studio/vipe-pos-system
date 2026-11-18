@@ -155,7 +155,7 @@ export function Reveal({
   // The polymorphic tags all accept an HTMLElement ref; narrow to div for typing.
   const Component = Tag as "div"
   return (
-    <Component ref={ref} className={className} style={style}>
+    <Component ref={ref} className={className} style={style} data-reveal="">
       {children}
     </Component>
   )
@@ -176,6 +176,7 @@ export function SplitWords({ text, className, delay = 0, step = 70 }: { text: st
         <span key={`${word}-${index}`} aria-hidden className="inline-block overflow-hidden pb-[0.12em] align-bottom">
           <span
             className={cn("inline-block", className)}
+            data-reveal=""
             style={{
               transform: shown ? "none" : "translate3d(0, 110%, 0) rotate(6deg)",
               transition: reduced ? "none" : `transform 1000ms cubic-bezier(.16,1,.3,1) ${delay + index * step}ms`,

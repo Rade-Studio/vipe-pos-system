@@ -129,7 +129,7 @@ export function Hero() {
               </div>
               <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
                 <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="absolute inline-flex h-full w-full animate-ping motion-reduce:animate-none rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                 </span>
                 Sincronizado
@@ -147,7 +147,7 @@ export function Hero() {
                   )}
                 >
                   {pulse === index && (
-                    <span className="absolute inset-0 animate-ping rounded-2xl border border-current opacity-40" />
+                    <span className="absolute inset-0 animate-ping motion-reduce:animate-none rounded-2xl border border-current opacity-40" />
                   )}
                   <span className="text-2xl font-semibold text-white">{index + 1}</span>
                   <span className="mt-1 text-[11px] uppercase tracking-wider">{statusStyle[status].label}</span>
@@ -179,7 +179,7 @@ export function Hero() {
         style={{ opacity: Math.max(0, 1 - y / 300) }}
       >
         Desliza
-        <ChevronDown className="h-5 w-5 animate-bounce" />
+        <ChevronDown className="h-5 w-5 animate-bounce motion-reduce:animate-none" />
       </a>
     </section>
   )
