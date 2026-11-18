@@ -1608,6 +1608,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
           <AssignedCountsEntry />
 
+          <main>
           {/* S3/S6: Carta and Para llevar share one wrapping toolbar; takeaway orders live in the sheet, off the floor. */}
           <div className="mb-1 flex flex-wrap items-center justify-end gap-1 px-1">
             <CartaInbox />
@@ -1627,6 +1628,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
               floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id, elapsedOf }}
             />
           </div>
+          </main>
         </div>
       </div>
 

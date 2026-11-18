@@ -10,6 +10,7 @@ import { signOutAndReload } from "@/lib/api/auth"
 import { roleLabel } from "@/lib/auth/roles"
 import { useTerminal } from "@/components/terminal/terminal-context"
 import { countdown } from "@/lib/terminal/format"
+import { SkipLink } from "./SkipLink"
 
 interface HeaderProps {
   profile: Profile
@@ -36,6 +37,7 @@ export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }
   return (
     // S6: below sm the actions are icon-only 44 px buttons (full name in aria-label/title) so a 360 px phone never overflows.
     <header className="sticky top-0 z-10 mb-2 flex min-w-0 items-center justify-between gap-2 bg-background pb-2 pt-2 sm:mb-6 sm:pt-4">
+      <SkipLink />
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
         <h1 className="truncate text-xl font-bold sm:text-2xl">{title}</h1>
       </div>

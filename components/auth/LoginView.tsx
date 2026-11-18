@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,15 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [asTerminal, setAsTerminal] = useState(false)
   const [animationComplete, setAnimationComplete] = useState(false)
   const { toast } = useToast()
+  // H-096: the error is shown next to the fields (role="alert") and focus goes back to them.
+  const [error, setError] = useState<string | null>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    // After a failed request the fields are enabled again: put the focus back on them.
+    if (error && !isLoading && document.activeElement !== passwordRef.current) emailRef.current?.focus()
+  }, [error, isLoading])
+  const errorProps = error ? { "aria-invalid": true, "aria-describedby": "login-error" } : {}
 
   useEffect(() => {
     // Trigger animation after component mounts
@@ -39,6 +48,8 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
     e.preventDefault()
 
     if (!email || !password) {
+      setError("Ingresa tu email y contraseña")
+      ;(email ? passwordRef : emailRef).current?.focus()
       toast({
         title: "Campos requeridos",
         description: "Por favor ingresa tu email y contraseña",
@@ -48,6 +59,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
     }
 
     setIsLoading(true)
+    setError(null)
 
     try {
       const session = asTerminal ? await terminalLogin(email, password) : await login(email, password)
@@ -60,9 +72,11 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
 
       onLoginSuccess(session)
     } catch (error: any) {
+      const message = error.message || "Verifica tus credenciales e intenta nuevamente"
+      setError(message)
       toast({
         title: asTerminal ? "No se pudo abrir la terminal" : "Error al iniciar sesión",
-        description: error.message || "Verifica tus credenciales e intenta nuevamente",
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -170,6 +184,8 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
+                    ref={emailRef}
+                    {...errorProps}
                   />
                 </div>
               </div>
@@ -191,9 +207,16 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isLoading}
+                    ref={passwordRef}
+                    {...errorProps}
                   />
                 </div>
               </div>
+              {error && (
+                <p id="login-error" role="alert" className="text-sm font-medium text-red-600 dark:text-red-400">
+                  {error}
+                </p>
+              )}
             </CardContent>
 
             <CardFooter className="flex-col gap-3">

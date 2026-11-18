@@ -197,3 +197,12 @@ describe("AdminShell brand and phone drawer", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 })
+
+describe("AdminShell landmarks (H-009, H-102)", () => {
+  it("has one main region and a skip link to it", () => {
+    render(<Harness />)
+    expect(screen.getAllByRole("main")).toHaveLength(1)
+    fireEvent.click(screen.getByRole("link", { name: "Saltar al contenido" }))
+    expect(screen.getByRole("main")).toHaveFocus()
+  })
+})

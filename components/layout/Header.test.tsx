@@ -147,3 +147,18 @@ describe("Header — Cambiar mi PIN", () => {
     expect(screen.getByRole("button", { name: "Cambiar mi PIN" })).toBeInTheDocument()
   })
 })
+
+describe("Header skip link (H-102)", () => {
+  it("is the first focusable element and moves focus to the main region", () => {
+    const { container } = render(
+      <>
+        <Header profile={profile} onChangeProfile={vi.fn()} />
+        <main>contenido</main>
+      </>,
+    )
+    const first = container.querySelector<HTMLElement>("a, button, input, [tabindex]")
+    expect(first).toHaveTextContent("Saltar al contenido")
+    fireEvent.click(screen.getByRole("link", { name: "Saltar al contenido" }))
+    expect(screen.getByRole("main")).toHaveFocus()
+  })
+})

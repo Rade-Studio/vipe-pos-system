@@ -2345,3 +2345,13 @@ describe("WaiterView — promotions while taking the order (S11, S12)", () => {
     expect(useCartStore.getState().cartItems["t-1"]).toEqual([])
   })
 })
+
+describe("waiter landmarks (H-009, H-102)", () => {
+  it("renders the floor inside one main region with a skip link to it", async () => {
+    renderView()
+    await flush()
+    expect(screen.getAllByRole("main")).toHaveLength(1)
+    fireEvent.click(screen.getByRole("link", { name: "Saltar al contenido" }))
+    expect(screen.getByRole("main")).toHaveFocus()
+  })
+})

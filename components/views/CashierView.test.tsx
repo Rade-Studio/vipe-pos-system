@@ -1669,3 +1669,13 @@ describe("Para llevar (S8)", () => {
     await waitFor(() => expect(getByStatus).toHaveBeenCalledTimes(2))
   })
 })
+
+describe("cashier landmarks (H-009)", () => {
+  it("renders one main region holding the queue", async () => {
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    const mains = screen.getAllByRole("main")
+    expect(mains).toHaveLength(1)
+    expect(within(mains[0]).getByText("Mesa 1")).toBeInTheDocument()
+  })
+})

@@ -77,3 +77,32 @@ describe("ImageUpload", () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 })
+
+describe("ImageUpload — keyboard and drop (H-093)", () => {
+  it("opens the file picker from a real button", () => {
+    const { container, getByRole } = render(<ImageUpload value="" onChange={vi.fn()} />)
+    const input = container.querySelector<HTMLInputElement>("#image-upload")!
+    const click = vi.spyOn(input, "click")
+    const box = getByRole("button", { name: /Arrastra una imagen o haz clic para seleccionar/ })
+    expect(box.tagName).toBe("BUTTON")
+    fireEvent.click(box)
+    expect(click).toHaveBeenCalled()
+  })
+
+  it("uploads a dropped image", async () => {
+    const onChange = vi.fn()
+    const { getByRole } = render(<ImageUpload value="" onChange={onChange} />)
+    const box = getByRole("button", { name: /Arrastra una imagen/ })
+    await act(async () => {
+      fireEvent.drop(box, { dataTransfer: { files: [png] } })
+    })
+    expect(storage.uploadImage).toHaveBeenCalledWith(png, "dishes")
+    expect(onChange).toHaveBeenLastCalledWith(publicUrl)
+  })
+
+  it("names the remove button", async () => {
+    const { container, getByRole } = render(<ImageUpload value="" onChange={vi.fn()} />)
+    await pick(container, png)
+    expect(getByRole("button", { name: "Quitar imagen" })).toBeInTheDocument()
+  })
+})

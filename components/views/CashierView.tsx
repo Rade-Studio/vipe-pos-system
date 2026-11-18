@@ -690,6 +690,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       />
       <AssignedCountsEntry />
 
+      <main className="flex flex-1 flex-col min-[1180px]:min-h-0">
       <Tabs
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as CashierTab)}
@@ -945,6 +946,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
           <TransactionsList registerLoading={!registerSettled} />
         </TabsContent>
       </Tabs>
+      </main>
 
       <ShiftSummarySheet
         open={shiftSheetOpen}

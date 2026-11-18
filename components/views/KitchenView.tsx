@@ -637,7 +637,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Cocina" />
       <AssignedCountsEntry />
 
-      <div className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6">
+      <main className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6">
         <div className="flex min-h-0 flex-1 flex-col">
           {prepStations.length > 0 && (
             <div
@@ -921,7 +921,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
             />
           )}
         </div>
-      </div>
+      </main>
 
       {/* Confirm Dialog for Mark All as Delivered */}
       <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>

@@ -960,3 +960,10 @@ describe("kitchen ticket real data (rediseno-pos T23)", () => {
     expect(screen.getByText("25+ min")).toBeInTheDocument()
   })
 })
+
+describe("kitchen landmarks (H-009)", () => {
+  it("renders the board inside one main region", async () => {
+    renderKitchen()
+    await waitFor(() => expect(screen.getAllByRole("main")).toHaveLength(1))
+  })
+})
