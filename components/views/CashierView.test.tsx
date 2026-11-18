@@ -452,6 +452,28 @@ describe("Resumen del turno (S1: no duplicate register load, one summary query)"
   })
 })
 
+describe("Transacciones reprint (H-069)", () => {
+  it("reprints a paid order that is no longer in the open list by reading it by id", async () => {
+    listRegisterPayments.mockResolvedValueOnce([
+      {
+        id: "p-9", orderId: "o-paid-1", cashRegisterId: "reg-1", cashierProfileId: "c-1",
+        amountDue: 7_140, tipAmount: 0, totalCharged: 7_140, changeGiven: 0, idempotencyKey: "k9", createdAt: "2026-10-07T13:00:00.000Z",
+        tenders: [],
+      },
+    ] as never)
+    getById.mockResolvedValueOnce(
+      dbRow({ id: "o-paid-1", status: "paid", table_id: null, order_type: "takeaway", customer_name: "Ana María", waiter_id: null }),
+    )
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Resumen del turno" }), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole("button", { name: "o-paid-1" }))
+    const invoice = await screen.findByRole("dialog")
+    expect(getById).toHaveBeenCalledWith("o-paid-1")
+    expect(invoice).toHaveTextContent("Para llevar · Ana María")
+  })
+})
+
 describe("Mesas (reservas-mesas T3, S4: the floor map in caja)", () => {
   it("keeps Cobro as the default tab, with its queue", async () => {
     renderCashier()

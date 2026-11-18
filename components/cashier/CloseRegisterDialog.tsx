@@ -18,7 +18,6 @@ import { useRegisterSummary } from "@/hooks/use-register-summary"
 import type { RegisterSummary as RegisterSummaryType } from "@/lib/payments/register-summary"
 import {
   hasLegacy,
-  summaryRows,
   tipsShortfall,
 } from "@/lib/payments/register-summary"
 import { createSingleFlight } from "@/lib/payments/single-flight"
@@ -47,6 +46,7 @@ import { CLOSE_STEP_PANEL_ID, CloseStepper, closeStepTabId, type CloseStep } fro
 import { MovementsStep } from "./close-register/MovementsStep"
 import { ArqueoStep } from "./close-register/ArqueoStep"
 import { ConfirmStep } from "./close-register/ConfirmStep"
+import { CloseCashSummary } from "./close-register/CloseCashSummary"
 
 interface CloseRegisterDialogProps {
   open: boolean
@@ -437,63 +437,13 @@ function CloseSummaryView({
   heading: string
   compact?: boolean
 }) {
-  const rows = summaryRows(summary)
   const shortfall = tipsShortfall(summary)
 
   return (
     <div className="space-y-3">
       <h3 className="font-semibold">{heading}</h3>
 
-      {rows.length > 0 && (
-        <div className="space-y-1 rounded-md border p-3 text-sm">
-          <p className="font-medium">Ventas por método</p>
-          {rows.map((row) => (
-            <div key={row.paymentMethodId} className="flex justify-between">
-              <span>{row.name}</span>
-              <span>{formatCurrency(row.total)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="space-y-1 rounded-md border p-3 text-sm">
-        <div className="flex justify-between">
-          <span>Efectivo inicial</span>
-          <span>{formatCurrency(summary.initialCash)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Ventas</span>
-          <span>{formatCurrency(summary.totalSales)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Propinas</span>
-          <span>{formatCurrency(summary.totalTips)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Cambio entregado</span>
-          <span>-{formatCurrency(summary.totalChange)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Ingresos de efectivo</span>
-          <span>{formatCurrency(summary.cashDeposits)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Retiros de efectivo</span>
-          <span>-{formatCurrency(summary.cashWithdrawals)}</span>
-        </div>
-        <div className="flex justify-between border-t pt-1 font-medium">
-          <span>Efectivo esperado</span>
-          <span>{formatCurrency(summary.expectedCash)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Propinas a entregar a meseros</span>
-          <span>-{formatCurrency(summary.tipsPayout)}</span>
-        </div>
-        <div className="flex justify-between border-t pt-1 font-bold">
-          <span>Efectivo esperado después de propinas</span>
-          <span>{formatCurrency(summary.expectedCashAfterTips)}</span>
-        </div>
-      </div>
+      <CloseCashSummary summary={summary} />
 
       {shortfall > 0 && (
         <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
@@ -538,16 +488,6 @@ function CloseSummaryView({
         </div>
       )}
 
-      <div className="rounded-md border p-3 text-sm">
-        <div className="flex justify-between">
-          <span>Cuentas pagadas</span>
-          <span>{summary.paymentsCount}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Total facturado</span>
-          <span>{formatCurrency(summary.totalBilled)}</span>
-        </div>
-      </div>
     </div>
   )
 }

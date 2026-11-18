@@ -26,7 +26,7 @@ import { PartialPaymentDialog } from "@/components/cashier/PartialPaymentDialog"
 import { toast } from "@/utils/toast"
 import { TransactionsList } from "@/components/cashier/TransactionsList"
 import { realtimeService } from "@/lib/api/realtime"
-import { getByStatus, getById as getOrderDto } from "@/lib/api/orders"
+import { getByStatus, getById as getOrderDto, toOrder } from "@/lib/api/orders"
 import { listPaymentMethods, listRegisterPayments } from "@/lib/api/payments"
 import { invoiceTendersFromPayment, legacyInvoiceFields } from "@/lib/payments/invoice-tenders"
 import { queryClient } from "@/lib/queryClient"
@@ -531,7 +531,22 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   // Función para mostrar la factura completada
   const showInvoice = (orderId: string) => {
     const order = getOrderById(orderId)
-    if (!order) return
+    if (order) showInvoiceOf(order)
+  }
+
+  // H-069: Transacciones reprints a paid order, which is no longer in the
+  // open-orders list (and the register may be closed): it is read by id.
+  const reprintPaidOrder = async (orderId: string) => {
+    const listed = getOrderById(orderId)
+    if (listed) return showInvoiceOf(listed)
+    try {
+      showInvoiceOf(toOrder(await getOrderDto(orderId)))
+    } catch {
+      toast.error("No se pudo cargar la factura. Intenta de nuevo.")
+    }
+  }
+
+  const showInvoiceOf = (order: Order) => {
     const invoice = invoiceForOrder(order)
     if (!invoice) return
     setInvoiceIsPayment(false)
@@ -1024,7 +1039,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         <TabsContent value="transactions" className="mt-0">
           {/* The open register is loaded once, by this screen; the list only
               renders it and keeps a spinner until it is known. */}
-          <TransactionsList registerLoading={!registerSettled} />
+          <TransactionsList registerLoading={!registerSettled} onReprint={(orderId) => void reprintPaidOrder(orderId)} />
         </TabsContent>
       </Tabs>
 

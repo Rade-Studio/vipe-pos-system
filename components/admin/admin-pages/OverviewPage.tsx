@@ -1,10 +1,10 @@
 "use client"
 
-import { useMemo, type ReactNode } from "react"
+import { useEffect, useMemo, type ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import type { PopularDish } from "@/types"
 import { cn } from "@/lib/utils"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useShallow } from "zustand/react/shallow"
 import { ChefHat, DollarSign, Table2, Users } from "lucide-react"
 import { useProfileStore } from "@/store/useProfileStore"
@@ -24,6 +24,10 @@ import { countOrdersByStatus, countPaidOrdersOn, type AdminOrder } from "@/lib/a
 import { DASHBOARD_DAYS, DASHBOARD_STALE_MS, dashboardSummaryKey } from "@/lib/admin/dashboard"
 import { startOfLocalDayMs } from "@/lib/admin/dates"
 import { LiveRoomCard } from "@/components/admin/overview/LiveRoomCard"
+import { realtimeService } from "@/lib/api/realtime"
+
+/** H-081: events closer than this are one summary read (well under the 1 s of the other screens). */
+const LIVE_REFRESH_MS = 300
 
 /** Stable empty arrays: `useQuery` defaults must not be a new identity per render. */
 const EMPTY_DAILY_SALES: never[] = []
@@ -186,6 +190,23 @@ export function OverviewPage({ description, activeOrders, onNavigate }: Overview
     queryFn: () => fetchDashboardSummary(DASHBOARD_DAYS),
     staleTime: DASHBOARD_STALE_MS,
   })
+  // H-081: an order or payment change (a sale, an order sent to the kitchen)
+  // reads the summary again; a burst of events is one read.
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsubscribe = realtimeService.subscribeToOrders(() => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        timer = null
+        void queryClient.invalidateQueries({ queryKey: dashboardSummaryKey(DASHBOARD_DAYS) })
+      }, LIVE_REFRESH_MS)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      unsubscribe()
+    }
+  }, [queryClient])
   const dailySales = summary?.dailySales ?? EMPTY_DAILY_SALES
   const popularDishes = summary?.popularDishes ?? EMPTY_POPULAR_DISHES
 

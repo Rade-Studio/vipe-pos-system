@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -26,6 +26,18 @@ vi.mock("@/hooks/use-zones", () => ({
   }),
 }))
 
+const realtime = vi.hoisted(() => ({ orderCallbacks: [] as ((payload: unknown) => void)[], unsubscribed: 0 }))
+vi.mock("@/lib/api/realtime", () => ({
+  realtimeService: {
+    subscribeToOrders: (cb: (payload: unknown) => void) => {
+      realtime.orderCallbacks.push(cb)
+      return () => {
+        realtime.unsubscribed += 1
+      }
+    },
+  },
+}))
+
 import { OverviewPage } from "./OverviewPage"
 import { useTableStore } from "@/store/useTableStore"
 import { takeEditorZone } from "@/lib/admin/floor/editor-zone"
@@ -33,7 +45,7 @@ import type { AdminOrder } from "@/lib/admin/orders"
 
 function renderPage(onNavigate?: (sectionId: string) => void, activeOrders: AdminOrder[] = []) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  return render(
     <QueryClientProvider client={client}>
       <OverviewPage description="" activeOrders={activeOrders} onNavigate={onNavigate} />
     </QueryClientProvider>,
@@ -45,6 +57,30 @@ beforeEach(() => {
   adminOrders.fetch.mockResolvedValue([])
   dashboard.fetchDashboardSummary.mockReset()
   useTableStore.setState({ tables: [] })
+  realtime.orderCallbacks = []
+  realtime.unsubscribed = 0
+})
+
+describe("OverviewPage live sales (H-081)", () => {
+  const summary = (monthSales: number, kitchenOrders: number) => ({ monthSales, kitchenOrders, dailySales: [], popularDishes: [] })
+  const orderEvent = (status: string, oldStatus: string) => ({
+    schema: "public", table: "orders", eventType: "UPDATE", new: { id: "o-1", status }, old: { id: "o-1", status: oldStatus }, errors: null,
+  })
+
+  it("reads the sales KPIs again when an order is paid, coalescing a burst of events into one read", async () => {
+    dashboard.fetchDashboardSummary.mockResolvedValueOnce(summary(100000, 2)).mockResolvedValueOnce(summary(147600, 1))
+    const { unmount } = renderPage()
+    expect(await screen.findByText("$ 100.000")).toBeInTheDocument()
+    expect(realtime.orderCallbacks).toHaveLength(1)
+    act(() => {
+      realtime.orderCallbacks[0](orderEvent("delivered", "kitchen"))
+      realtime.orderCallbacks[0](orderEvent("paid", "delivered"))
+    })
+    expect(await screen.findByText("$ 147.600")).toBeInTheDocument()
+    expect(dashboard.fetchDashboardSummary).toHaveBeenCalledTimes(2)
+    unmount()
+    expect(realtime.unsubscribed).toBe(1)
+  })
 })
 
 describe("OverviewPage", () => {
