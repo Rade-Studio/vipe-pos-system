@@ -1,6 +1,7 @@
 "use client"
 
 import { UtensilsCrossed } from "lucide-react"
+import { BRAND_NAME } from "@/lib/brand"
 import {
   Sidebar,
   SidebarContent,
@@ -57,7 +58,7 @@ export function AdminSidebar({ section, onNavigate, businessName, roleName = "Ad
             <UtensilsCrossed className="h-[18px] w-[18px]" aria-hidden />
           </div>
           <div className="grid min-w-0 leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate font-semibold text-fg">VipePOS</span>
+            <span className="truncate font-semibold text-fg">{BRAND_NAME}</span>
             <span className="truncate text-xs text-muted-fg">
               {businessName ? `${businessName} · ${roleName}` : roleName}
             </span>

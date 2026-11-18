@@ -164,3 +164,11 @@ describe("LoginView — errors reach assistive tech (H-096)", () => {
     expect(screen.getByLabelText("Email")).not.toHaveAttribute("aria-invalid")
   })
 })
+
+describe("LoginView brand (H-005)", () => {
+  it("uses the single brand name", () => {
+    const { container } = render(<LoginView onLoginSuccess={vi.fn()} />)
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("VipePOS")
+    expect(container).not.toHaveTextContent("VibePOS")
+  })
+})

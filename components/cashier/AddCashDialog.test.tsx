@@ -73,3 +73,14 @@ describe("AddCashDialog reason", () => {
     await waitFor(() => expect(registers.addCashTransaction).toHaveBeenCalledWith("r-1", 5000, "deposit", "other", "Vuelto del banco"))
   })
 })
+
+describe("AddCashDialog copy (H-103)", () => {
+  it("asks for the amount with tú and sends nothing", async () => {
+    render(<AddCashDialog open onOpenChange={() => {}} />)
+    fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "change_fund" } })
+    submit()
+    expect(await screen.findByText("Ingresa un valor válido mayor a cero")).toBeInTheDocument()
+    expect(toast.error).toHaveBeenCalledWith("Ingresa un valor válido para el efectivo a agregar")
+    expect(registers.addCashTransaction).not.toHaveBeenCalled()
+  })
+})

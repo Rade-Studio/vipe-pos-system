@@ -77,7 +77,7 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
     const numericAmount = Number.parseFloat(amount)
 
     if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
-      setError("Por favor ingrese un monto válido")
+      setError("Ingresa un monto válido")
       return
     }
 

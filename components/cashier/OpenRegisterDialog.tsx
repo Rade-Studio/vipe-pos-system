@@ -34,8 +34,8 @@ export function OpenRegisterDialog({ open, onOpenChange, onSuccess }: OpenRegist
     const cashAmount = Number.parseFloat(initialCash || "0")
 
     if (isNaN(cashAmount) || cashAmount < 0) {
-      setError("Por favor ingrese un valor válido")
-      toast.error("Por favor ingrese un valor válido para el efectivo inicial")
+      setError("Ingresa un valor válido")
+      toast.error("Ingresa un valor válido para el efectivo inicial")
       return
     }
 

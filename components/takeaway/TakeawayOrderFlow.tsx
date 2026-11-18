@@ -357,13 +357,13 @@ export function TakeawayOrderFlow({ customer, order, onClose, onSent }: Takeaway
         setShortages(conflict.shortages)
       } else if (conflict?.kind === "priceChanged") {
         reprice(conflict.prices, conflict.lines)
-        toast({ title: "Precios actualizados", description: "Algunos precios cambiaron. Revise el pedido y envíe de nuevo.", variant: "destructive" })
+        toast({ title: "Precios actualizados", description: "Algunos precios cambiaron. Revisa el pedido y envíalo de nuevo.", variant: "destructive" })
       } else {
         log.error("Error al enviar el pedido para llevar:", { error: String(error) })
         const shown = error instanceof ApiError && error.status === 422
         toast({
           title: "Error",
-          description: shown ? (error as ApiError).message : "No se pudo enviar el pedido. Intente nuevamente.",
+          description: shown ? (error as ApiError).message : "No se pudo enviar el pedido. Intenta de nuevo.",
           variant: "destructive",
         })
       }

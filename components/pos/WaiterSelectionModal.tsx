@@ -73,7 +73,7 @@ export function WaiterSelectionModal({ open, onOpenChange, onSelect, defaultWait
             </div>
           ) : isError ? (
             <div className="text-center text-red-500 py-4">
-              No se pudieron cargar los meseros. Intente nuevamente.
+              No se pudieron cargar los meseros. Intenta de nuevo.
               <button onClick={handleRetry} className="block mx-auto mt-2 text-sm text-primary hover:underline">
                 Reintentar
               </button>

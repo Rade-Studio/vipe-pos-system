@@ -168,7 +168,7 @@ export function OrderCard({
                     <span className="font-bold">{placeLabel}</span>
                   </div>
                   <Badge variant="outline" className="ml-2">
-                    {order.items.length} item(s)
+                    {order.items.length} producto(s)
                   </Badge>
                 </>
               )}

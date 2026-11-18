@@ -502,3 +502,12 @@ describe("DishForm — sections (menu-platos T2)", () => {
     expect(within(screen.getByRole("region", { name: "Disponibilidad" })).getByText(/Agotado ahora/)).toBeInTheDocument()
   })
 })
+
+describe("DishForm limits (H-023)", () => {
+  it("caps the fields at the API limits so the browser rejects too-long input first", () => {
+    render(<DishForm categories={categories} onSuccess={vi.fn()} isNewDish />)
+    expect(screen.getByLabelText("Nombre del plato")).toHaveAttribute("maxLength", "100")
+    expect(screen.getByLabelText("Precio")).toHaveAttribute("max", "99999999")
+    expect(screen.getByLabelText("Descripción")).toHaveAttribute("maxLength", "500")
+  })
+})

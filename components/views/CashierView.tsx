@@ -340,7 +340,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const handleOpenPartialPayment = (tableId: string) => {
     // Verificar si la caja está abierta
     if (!isRegisterOpen()) {
-      toast.error("Debe abrir la caja antes de procesar pagos")
+      toast.error("Debes abrir la caja antes de procesar pagos")
       return
     }
 
@@ -358,7 +358,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     )
     if (!parentId) {
       toast.error(
-        "No hay una orden principal válida para crear el pago parcial. Verifique que la mesa tenga una sola orden en estado activo, en cocina o entregada.",
+        "No hay una orden principal válida para crear el pago parcial. Verifica que la mesa tenga una sola orden en estado activo, en cocina o entregada.",
       )
       return
     }
@@ -394,7 +394,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       case 'invalid-input':
         return 'La selección de productos no es válida'
       default:
-        return 'No se pudo procesar la operación. Intente nuevamente.'
+        return 'No se pudo procesar la operación. Intenta de nuevo.'
     }
   }
 
@@ -430,7 +430,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     const validation = buildSplitItems(parentItems, selection)
     if ('error' in validation) {
       const messages: Record<typeof validation.error, string> = {
-        empty: 'Debe seleccionar al menos un producto para el pago parcial',
+        empty: 'Debes seleccionar al menos un producto para el pago parcial',
         'over-quantity':
           'La cantidad seleccionada supera la cantidad disponible en la orden',
         'unknown-item': 'Uno de los productos seleccionados ya no pertenece a la orden',

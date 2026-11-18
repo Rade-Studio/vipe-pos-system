@@ -405,6 +405,7 @@ export function DishForm({
                 value={formData.name}
                 onChange={handleChange}
                 required
+                maxLength={100}
                 placeholder="Ej: Ensalada César"
                 className="min-h-11 w-full"
               />
@@ -425,6 +426,7 @@ export function DishForm({
                   key="price"
                   step="1"
                   min="0"
+                  max="99999999"
                   value={formData.price}
                   onChange={handleChange}
                   required
@@ -503,6 +505,7 @@ export function DishForm({
                 key="description"
                 value={formData.description}
                 onChange={handleChange}
+                maxLength={500}
                 placeholder="Breve descripción del plato..."
                 rows={3}
                 className="resize-none"

@@ -171,7 +171,7 @@ export function CashRegisterStatus() {
             <Chip tone="warning" dot>
               Caja cerrada
             </Chip>
-            <span className="text-sm text-muted-fg">Debe abrir la caja para procesar pagos.</span>
+            <span className="text-sm text-muted-fg">Debes abrir la caja para procesar pagos.</span>
             <button
               type="button"
               className={cn(action, "ml-auto border-transparent bg-brand text-brand-contrast hover:bg-brand-strong")}

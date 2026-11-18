@@ -66,7 +66,9 @@ describe("api client", () => {
       .catch((error: unknown) => error)
 
     expect(failure).toBeInstanceOf(ApiError)
-    expect(failure).toMatchObject({ status: 401, error: "Unauthorized", message: "Invalid credentials" })
+    // H-023: the generic login failure is shown in Spanish; the body keeps the API's words.
+    expect(failure).toMatchObject({ status: 401, error: "Unauthorized", message: "Email o contraseña incorrectos." })
+    expect((failure as ApiError).body).toMatchObject({ message: "Invalid credentials" })
   })
 
   it("keeps the extra fields of a 409 body (shortages, prices, orderId) on the ApiError", async () => {

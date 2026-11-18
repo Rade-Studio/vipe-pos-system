@@ -278,7 +278,8 @@ async function addCashForRemainingAndRegister() {
 async function payTheOrderInCash() {
   await openPaymentFor("Mesa 1")
   await addCashForRemainingAndRegister()
-  fireEvent.click(await screen.findByRole("button", { name: "Cerrar" }))
+  // The invoice footer "Cerrar" comes before the dialog X (also "Cerrar" since H-103).
+  fireEvent.click((await screen.findAllByRole("button", { name: "Cerrar" }))[0])
 }
 
 function setOnline(online: boolean) {

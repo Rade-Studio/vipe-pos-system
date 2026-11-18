@@ -162,3 +162,15 @@ describe("Header skip link (H-102)", () => {
     expect(screen.getByRole("main")).toHaveFocus()
   })
 })
+
+describe("Header title (H-005, H-006)", () => {
+  it("shows the given view title", () => {
+    render(<Header profile={profile} onChangeProfile={vi.fn()} title="Mesas" />)
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Mesas")
+  })
+
+  it("falls back to the single brand name", () => {
+    render(<Header profile={profile} onChangeProfile={vi.fn()} />)
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^VipePOS$/)
+  })
+})

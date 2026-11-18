@@ -425,7 +425,7 @@ export function InvoicePrintView({
                     <div className="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-lg border border-amber-200 dark:border-amber-900 mb-4">
                       <h4 className="font-medium text-amber-800 dark:text-amber-400 mb-2">Confirmación de pago</h4>
                       <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
-                        Verifique los detalles de la factura antes de confirmar el pago.
+                        Verifica los detalles de la factura antes de confirmar el pago.
                       </p>
 
                       <div className="flex flex-col gap-2">

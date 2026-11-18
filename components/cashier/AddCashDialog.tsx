@@ -47,8 +47,8 @@ export function AddCashDialog({ open, onOpenChange, onSuccess }: AddCashDialogPr
     const amount = Number.parseFloat(cashAmount || "0")
 
     if (isNaN(amount) || amount <= 0) {
-      setError("Por favor ingrese un valor válido mayor a cero")
-      toast.error("Por favor ingrese un valor válido para el efectivo a agregar")
+      setError("Ingresa un valor válido mayor a cero")
+      toast.error("Ingresa un valor válido para el efectivo a agregar")
       return
     }
 

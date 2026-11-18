@@ -11,6 +11,7 @@ import { roleLabel } from "@/lib/auth/roles"
 import { useTerminal } from "@/components/terminal/terminal-context"
 import { countdown } from "@/lib/terminal/format"
 import { SkipLink } from "./SkipLink"
+import { BRAND_NAME } from "@/lib/brand"
 
 interface HeaderProps {
   profile: Profile
@@ -22,7 +23,7 @@ interface HeaderProps {
   title?: string
 }
 
-export function Header({ profile, onChangeProfile, authRole, title = "VibePOS" }: HeaderProps) {
+export function Header({ profile, onChangeProfile, authRole, title = BRAND_NAME }: HeaderProps) {
   const getRoleLabel = (role: string) => roleLabel(role) ?? role
 
   // F4b: on a shared terminal this same header shows who is identified, and

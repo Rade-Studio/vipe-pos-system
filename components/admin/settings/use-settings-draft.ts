@@ -84,7 +84,7 @@ export function useSettingsDraft<K extends SettingsKey>(keys: readonly K[]) {
       applyToStore(previous)
       toast({
         title: "Error",
-        description: "No se pudieron guardar los cambios. Intente nuevamente.",
+        description: "No se pudieron guardar los cambios. Intenta de nuevo.",
         variant: "destructive",
       })
       return

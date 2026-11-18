@@ -797,7 +797,7 @@ describe("WaiterView — sending through the API (T8b)", () => {
     expect(env.toastFn).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Precios actualizados",
-        description: "Algunos precios cambiaron. Revise el carrito y envíe de nuevo.",
+        description: "Algunos precios cambiaron. Revisa el carrito y envíalo de nuevo.",
       }),
     )
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["menu"] })
@@ -2353,5 +2353,15 @@ describe("waiter landmarks (H-009, H-102)", () => {
     expect(screen.getAllByRole("main")).toHaveLength(1)
     fireEvent.click(screen.getByRole("link", { name: "Saltar al contenido" }))
     expect(screen.getByRole("main")).toHaveFocus()
+  })
+})
+
+describe("waiter header (H-006)", () => {
+  it("names the view instead of the brand", async () => {
+    renderView()
+    await flush()
+    const title = screen.getByRole("heading", { level: 1 })
+    expect(title).toHaveTextContent(/^Mesas$/)
+    expect(title).not.toHaveTextContent(/VibePOS|VipePOS/)
   })
 })

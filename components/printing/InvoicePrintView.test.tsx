@@ -60,7 +60,9 @@ describe("InvoicePrintView", () => {
     expect(screen.getAllByText("F-0001").length).toBeGreaterThan(0)
     expect(screen.queryByRole("button", { name: /Imprimir/ })).not.toBeInTheDocument()
     expect(screen.queryByText("Imprimir factura")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Cerrar" })).toBeInTheDocument()
+    // The dialog X is also named "Cerrar" (sr-only label); the footer button is the visible one.
+    const footerClose = screen.getAllByRole("button", { name: "Cerrar" }).find((b) => !b.querySelector(".sr-only"))
+    expect(footerClose).toBeInTheDocument()
     expect(env.sendFactura).not.toHaveBeenCalled()
   })
 

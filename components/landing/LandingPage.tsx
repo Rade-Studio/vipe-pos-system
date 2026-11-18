@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { ArrowRight } from "lucide-react"
+import { BRAND_NAME } from "@/lib/brand"
 import { DeliverySection } from "@/components/landing/DeliverySection"
 import { FeaturesSection } from "@/components/landing/FeaturesSection"
 import { Hero } from "@/components/landing/Hero"
@@ -36,7 +37,7 @@ function Navbar() {
         <a href="#inicio" className="flex items-center gap-2.5 font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/vipe-pos.png" alt="" className="h-8 w-8" />
-          VipePOS
+          {BRAND_NAME}
         </a>
         <nav className="hidden items-center gap-8 text-sm text-zinc-400 md:flex">
           {nav.map((item) => (
@@ -110,7 +111,7 @@ export function LandingPage() {
       </main>
       <footer className="border-t border-white/10 px-6 py-10">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-sm text-zinc-500 sm:flex-row">
-          <span>© {new Date().getFullYear()} VipePOS · Punto de venta para restaurantes</span>
+          <span>© {new Date().getFullYear()} {BRAND_NAME} · Punto de venta para restaurantes</span>
           <span>Hecho con Next.js, NestJS, PostgreSQL y mucho café.</span>
         </div>
       </footer>

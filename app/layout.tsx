@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ClientProviders } from "@/components/ClientProviders"
+import { BRAND_NAME } from "@/lib/brand"
 
 // The app is fully auth-aware and every page boots from the user's
 // authenticated session (loadProfileFromAuth, getSession, etc.). Forcing
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Vipe POS",
+  title: BRAND_NAME,
   description: "Sistema de punto de venta para restaurantes",
   icons: {
     icon: [

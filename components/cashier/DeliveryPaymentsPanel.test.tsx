@@ -162,7 +162,7 @@ describe("DeliveryPaymentsPanel — register open check", () => {
     fireEvent.click(screen.getByRole("button", { name: /cobrar/i }))
 
     await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Debe abrir la caja antes de procesar pagos"),
+      expect(toastError).toHaveBeenCalledWith("Debes abrir la caja antes de procesar pagos"),
     )
     expect(screen.queryByText("Cargando información de la orden...")).not.toBeInTheDocument()
   })

@@ -27,6 +27,9 @@ const SQLSTATE_RESPONSES: Record<string, { statusCode: number; message: string }
   '22P02': { statusCode: 422, message: 'Invalid data' },
   // Raised by the RPCs for bad input (22023) and rows missing or in another tenant (P0002).
   '22023': { statusCode: 422, message: 'Invalid data' },
+  // A text longer than its column (22001) or a number outside its type (22003): bad input, not a 500.
+  '22001': { statusCode: 422, message: 'Value too long' },
+  '22003': { statusCode: 422, message: 'Number out of range' },
   P0002: { statusCode: 404, message: 'Not found' },
 };
 

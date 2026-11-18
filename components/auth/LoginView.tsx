@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/components/theme/theme-toggle"
 import { login, terminalLogin, type Session } from "@/lib/api/auth"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { BRAND_NAME } from "@/lib/brand"
 
 interface LoginViewProps {
   /** Called with the session the API returned; the cookies are already set. */
@@ -67,7 +68,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
       toast(
         asTerminal
           ? { title: "Terminal abierta", description: "Cada mesero se identifica con su PIN." }
-          : { title: "Inicio de sesión exitoso", description: "Bienvenido al sistema VibePOS" },
+          : { title: "Inicio de sesión exitoso", description: `Bienvenido a ${BRAND_NAME}` },
       )
 
       onLoginSuccess(session)
@@ -128,7 +129,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             </div>
           </div>
           <h1 className="text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-violet-400 to-indigo-400">
-            VibePOS
+            {BRAND_NAME}
           </h1>
           <p className="mt-2 text-white/80 dark:text-white/70">
             Sistema de punto de venta con estilo para restaurantes
@@ -257,7 +258,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             animationComplete ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0",
           )}
         >
-          © {new Date().getFullYear()} VibePOS • Todos los derechos reservados
+          © {new Date().getFullYear()} {BRAND_NAME} • Todos los derechos reservados
         </div>
       </div>
     </div>
