@@ -373,7 +373,8 @@ export class DeliveryService {
    * Every delivery not delivered or cancelled, plus the delivered and
    * cancelled ones updated since local midnight in the restaurant's timezone
    * (the web used the browser's midnight); "now" comes from the injected
-   * Clock. Newest update first.
+   * Clock. A delivered one whose order is not paid stays whatever its day
+   * (H-071): the courier still holds the money. Newest update first.
    */
   async listActive(): Promise<DeliveryOrderWithBill[]> {
     const now = this.clock.now().toISOString();
@@ -385,28 +386,31 @@ export class DeliveryService {
         JOIN public.restaurants r ON r.id = od.restaurant_id
        WHERE od.delivery_status NOT IN ('delivered', 'cancelled')
           OR od.updated_at >= ${restaurantMidnight(now)}
+          OR (od.delivery_status = 'delivered' AND o.status <> 'paid')
        ORDER BY od.updated_at DESC, od.order_id`);
     return result.map(toDeliveryWithBill);
   }
 
   /**
    * "Cerrados hoy" of the board: delivered and cancelled deliveries updated
-   * since local midnight (the listActive rule), failed ones that failed since
+   * since local midnight (the listActive rule, so a delivered one still unpaid
+   * from an earlier day counts too, H-071), failed ones that failed since
    * then, and the average dispatched_at → delivered_at of the delivered ones
-   * in rounded minutes.
+   * updated today in rounded minutes.
    */
   async closedToday(): Promise<ClosedTodaySummary> {
     const now = this.clock.now().toISOString();
     const [row] = await rows<{ row: Json }>(this.uow, sql`
       SELECT jsonb_build_object(
-               'delivered', count(*) FILTER (WHERE od.delivery_status = 'delivered' AND od.updated_at >= m.midnight),
+               'delivered', count(*) FILTER (WHERE od.delivery_status = 'delivered' AND (od.updated_at >= m.midnight OR o.status <> 'paid')),
                'cancelled', count(*) FILTER (WHERE od.delivery_status = 'cancelled' AND od.updated_at >= m.midnight),
                'failed', count(*) FILTER (WHERE od.delivery_status = 'failed' AND od.failed_at >= m.midnight),
                'average_minutes', round(avg(extract(epoch FROM od.delivered_at - od.dispatched_at) / 60)
                  FILTER (WHERE od.delivery_status = 'delivered' AND od.updated_at >= m.midnight AND od.dispatched_at IS NOT NULL))) AS row
         FROM public.restaurants r -- RLS: only the caller's restaurant
         CROSS JOIN LATERAL (SELECT ${restaurantMidnight(now)} AS midnight) m
-        LEFT JOIN public.order_deliveries od ON od.restaurant_id = r.id`);
+        LEFT JOIN public.order_deliveries od ON od.restaurant_id = r.id
+        LEFT JOIN public.orders o ON o.id = od.order_id`);
     return toClosedTodaySummary(row?.row ?? { delivered: 0, cancelled: 0, failed: 0, average_minutes: null });
   }
 }

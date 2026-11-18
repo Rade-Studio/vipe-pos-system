@@ -597,6 +597,22 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       expect((await waiterA().get('/api/delivery/active')).status).toBe(403);
     });
 
+    it('keeps a delivered but unpaid delivery from an earlier day until it is paid (H-071)', async () => {
+      const { orderId } = (await create()).body;
+      await act(orderId, 'mark_ready');
+      expect((await act(orderId, 'dispatch', { courierId: d.pedro })).status).toBe(200);
+      expect((await act(orderId, 'deliver')).status).toBe(200);
+      await db(`SET session_replication_role = replica; UPDATE order_deliveries SET updated_at = now() - interval '2 days' WHERE order_id = '${orderId}'`);
+      const listed = async () => {
+        const res = await cashierA().get('/api/delivery/active');
+        expect(res.status).toBe(200);
+        return res.body.find((r: { delivery: { orderId: string } }) => r.delivery.orderId === orderId);
+      };
+      expect(await listed()).toMatchObject({ isPaid: false, delivery: { orderId, status: 'delivered' } });
+      await db(`SET session_replication_role = replica; UPDATE orders SET status = 'paid' WHERE id = '${orderId}'`);
+      expect(await listed()).toBeUndefined();
+    });
+
     /** Three cancelled deliveries whose updated_at is pinned, read under a fixed clock. */
     const boundary = async (nowIso: string, rows: Record<string, string>) => {
       const ids: Record<string, string> = {};
@@ -910,10 +926,13 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
           await asB.post(`/api/delivery/orders/${id}/status`, { action: 'dispatch', courierId: d.courierB });
           await asB.post(`/api/delivery/orders/${id}/status`, { action, ...extra });
         };
-        const [d30, d20, old, failed, cancelled] = [await newB(), await newB(), await newB(), await newB(), await newB()];
+        const [d30, d20, old, failed, cancelled, oldUnpaid] = [
+          await newB(), await newB(), await newB(), await newB(), await newB(), await newB(),
+        ];
         await out(d30, 'deliver');
         await out(d20, 'deliver');
         await out(old, 'deliver');
+        await out(oldUnpaid, 'deliver');
         await out(failed, 'fail', { reason: 'No contesta' });
         await asB.post(`/api/delivery/orders/${cancelled}/cancel`, { reason: 'customer_left' });
         const pin = (id: string, set: string) =>
@@ -921,12 +940,19 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
         await pin(d30, `dispatched_at = delivered_at - interval '30 minutes'`);
         await pin(d20, `dispatched_at = delivered_at - interval '20 minutes'`);
         await pin(old, `dispatched_at = now() - interval '3 days', delivered_at = now() - interval '3 days', updated_at = now() - interval '3 days'`);
+        await pin(oldUnpaid, `dispatched_at = now() - interval '3 days', delivered_at = now() - interval '3 days', updated_at = now() - interval '3 days'`);
+        // The old delivered one was paid; the other is still owed (H-071).
+        await db(`SET session_replication_role = replica; UPDATE orders SET status = 'paid' WHERE id = '${old}'`);
 
         const res = await asB.get('/api/delivery/closed-today');
         expect(res.status).toBe(200);
-        expect(res.body).toEqual({ deliveredCount: 2, cancelledCount: 1, failedCount: 1, averageDeliveryMinutes: 25 });
+        // H-071: the unpaid one stays on the board, so it counts as delivered; the average is today's only.
+        expect(res.body).toEqual({ deliveredCount: 3, cancelledCount: 1, failedCount: 1, averageDeliveryMinutes: 25 });
+        const board = (await asB.get('/api/delivery/active')).body.map((r: { delivery: { orderId: string; status: string } }) => r.delivery);
+        expect(board.filter((row: { status: string }) => row.status === 'delivered').map((row: { orderId: string }) => row.orderId).sort())
+          .toEqual([d30, d20, oldUnpaid].sort());
         const [rows] = await db<{ n: number }>('SELECT count(*)::int AS n FROM order_deliveries WHERE restaurant_id = $1', [B]);
-        expect(rows.n).toBe(5);
+        expect(rows.n).toBe(6);
       });
 
       it('is open to the board readers and forbidden to the waiter', async () => {
