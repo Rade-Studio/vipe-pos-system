@@ -3330,6 +3330,7 @@ export interface components {
         CreateDishRequest: {
             name: string;
             description?: string | null;
+            /** @description List price; greater than 0 (H-021). */
             price: number;
             /** Format: uuid */
             categoryId?: string | null;
@@ -3358,6 +3359,7 @@ export interface components {
         UpdateDishRequest: {
             name?: string;
             description?: string | null;
+            /** @description List price; greater than 0 (H-021). */
             price?: number;
             /** Format: uuid */
             categoryId?: string | null;
@@ -5117,6 +5119,7 @@ export interface components {
             legacy: components["schemas"]["RegisterLegacySummary"];
         };
         OpenRegisterRequest: {
+            /** @description Whole pesos (H-061). */
             initialCash: number;
         };
         CloseRegisterRequest: {
@@ -5190,6 +5193,7 @@ export interface components {
             tenders: components["schemas"]["PaidOrderTender"][];
         };
         CreateCashTransactionRequest: {
+            /** @description Whole pesos (H-068). */
             amount: number;
             /** @enum {string} */
             type: "deposit" | "withdrawal";
@@ -6750,7 +6754,7 @@ export interface components {
             items: components["schemas"]["CreateDeliveryItem"][];
             /** @description Combos live now for the delivery channel. Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored. */
             combos?: components["schemas"]["ComboLineRequest"][];
-            /** @description Whole COP pesos; >= 0 validated by create_delivery_order. */
+            /** @description Whole COP pesos; >= 0 validated by create_delivery_order; above 200000 is a 422 from the API. */
             deliveryFee: number;
             /** @enum {string} */
             paymentMode: "prepaid" | "cash_on_delivery";
@@ -8858,7 +8862,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target; `message` lists `<field>: <code>`. Nothing is saved. */
+            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target, discount_exceeds_price; `message` lists `<field>: <code>`. Nothing is saved. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -9021,7 +9025,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target; `message` lists `<field>: <code>`. Nothing is saved. */
+            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target, discount_exceeds_price; `message` lists `<field>: <code>`. Nothing is saved. */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -221,6 +221,16 @@ describe('catalog endpoints (Testcontainers, vipe_api)', () => {
       expect(await db("SELECT 1 FROM dishes WHERE name = 'Foreign'")).toHaveLength(0);
     });
 
+    it('answers 422 for a dish at $0 on create and update, and stores nothing (H-021)', async () => {
+      const created = await adminA().post('/api/catalog/dishes', { name: 'Gratis', price: 0 });
+      expect(created.status).toBe(422);
+      expect(await db("SELECT 1 FROM dishes WHERE name = 'Gratis'")).toHaveLength(0);
+      const patched = await adminA().patch(`/api/catalog/dishes/${c.jugo}`, { price: 0 });
+      expect(patched.status).toBe(422);
+      const [row] = await db<{ price: string }>('SELECT price FROM dishes WHERE id = $1', [c.jugo]);
+      expect(row.price).toBe('5000.00');
+    });
+
     it('rejects dish writes from a waiter with 403', async () => {
       expect((await waiterA().post('/api/catalog/dishes', { name: 'W', price: 1 })).status).toBe(403);
       expect((await waiterA().patch(`/api/catalog/dishes/${c.jugo}`, { price: 1 })).status).toBe(403);
@@ -295,6 +305,36 @@ describe('catalog endpoints (Testcontainers, vipe_api)', () => {
       const updated = await adminA().patch(`/api/catalog/promotions/${created.body.id}`, { discountValue: 2000, active: false });
       expect(updated.status).toBe(200);
       expect(updated.body).toMatchObject({ id: created.body.id, discountValue: 2000, active: false });
+    });
+
+    it('refuses a fixed discount equal to or above a targeted dish price, and stores nothing (H-021)', async () => {
+      const base = {
+        name: 'Jugo gratis', discountType: 'fixed_amount', startDate: '2026-01-01T00:00:00Z', endDate: '2026-12-31T00:00:00Z',
+      };
+      for (const targets of [
+        { dishIds: [c.jugo], categoryIds: [], subcategoryIds: [] },
+        { dishIds: [], categoryIds: [c.drinks], subcategoryIds: [] },
+      ]) {
+        const res = await adminA().post('/api/catalog/promotions', { ...base, discountValue: 5000, targets });
+        expect(res.status).toBe(422);
+        expect(res.body).toMatchObject({ code: 'discount_exceeds_price' });
+        expect(res.body.message).toContain('discountValue: discount_exceeds_price');
+      }
+      expect(await db("SELECT 1 FROM promotions WHERE name = 'Jugo gratis'")).toHaveLength(0);
+    });
+
+    it('still accepts a fixed discount below every targeted price, and refuses an edit that reaches it (H-021)', async () => {
+      const created = await adminA().post('/api/catalog/promotions', {
+        name: 'Jugo rebajado', discountType: 'fixed_amount', discountValue: 4999, startDate: '2026-01-01T00:00:00Z',
+        endDate: '2026-12-31T00:00:00Z', targets: { dishIds: [c.jugo], categoryIds: [], subcategoryIds: [] },
+      });
+      expect(created.status).toBe(201);
+      expect(created.body).toMatchObject({ discountType: 'fixed_amount', discountValue: 4999 });
+      const raised = await adminA().patch(`/api/catalog/promotions/${created.body.id}`, { discountValue: 6000 });
+      expect(raised.status).toBe(422);
+      expect(raised.body).toMatchObject({ code: 'discount_exceeds_price' });
+      expect(await db('SELECT discount_value FROM promotions WHERE id = $1', [created.body.id])).toEqual([{ discount_value: '4999.00' }]);
+      expect((await adminA().delete(`/api/catalog/promotions/${created.body.id}`)).status).toBe(204);
     });
 
     it('answers 422 for an invalid discount type or date and 403 for a waiter', async () => {

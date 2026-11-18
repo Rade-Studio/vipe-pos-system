@@ -219,3 +219,49 @@ describe("DeliveryOrderForm — fee edit (T25, preserved)", () => {
     expect((await submit()).deliveryFee).toBe(7500)
   })
 })
+
+describe("DeliveryOrderForm — fee validation (H-075)", () => {
+  async function onPayment() {
+    renderForm()
+    await lookUp()
+    await addLimonada()
+    await click(formStep("Pago"))
+  }
+  const fee = () => screen.getByLabelText("Domicilio")
+  const squash = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, "")
+
+  it("shows an error for a negative or decimal fee and does not create the delivery", async () => {
+    await onPayment()
+    for (const value of ["-3000", "4,5", "3000.5"]) {
+      fireEvent.change(fee(), { target: { value } })
+      expect(fee()).toHaveValue(value)
+      expect(fee()).toHaveAttribute("aria-invalid", "true")
+      expect(screen.getByText("Ingresa un valor entero en pesos, mayor o igual a 0")).toBeInTheDocument()
+    }
+    await click(formStep("Confirmar"))
+    expect(screen.getByRole("button", { name: "Crear domicilio" })).toBeDisabled()
+    expect(env.createDeliveryOrder).not.toHaveBeenCalled()
+  })
+
+  it("refuses a fee above the limit", async () => {
+    await onPayment()
+    fireEvent.change(fee(), { target: { value: "250000" } })
+    expect(fee()).toHaveAttribute("aria-invalid", "true")
+    const described = document.getElementById(fee().getAttribute("aria-describedby")!)
+    expect(squash(described?.textContent)).toBe(squash("El domicilio no puede superar $ 200.000"))
+    await click(formStep("Confirmar"))
+    expect(screen.getByRole("button", { name: "Crear domicilio" })).toBeDisabled()
+    expect(env.createDeliveryOrder).not.toHaveBeenCalled()
+  })
+
+  it("warns when the fee is far above the suggested one but still lets it through", async () => {
+    await onPayment()
+    fireEvent.change(fee(), { target: { value: "20.000" } })
+    expect(fee()).toHaveAttribute("aria-invalid", "false")
+    expect(squash(screen.getByText(/muy por encima/).textContent)).toBe(
+      squash("Es muy por encima de la tarifa sugerida ($ 5.000); revisa antes de crear el domicilio"),
+    )
+    expect((await submit()).deliveryFee).toBe(20000)
+  })
+})
+

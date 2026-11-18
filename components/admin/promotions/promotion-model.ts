@@ -373,6 +373,7 @@ export const PROMOTION_ERROR_MESSAGES: Record<string, string> = {
   max_uses_invalid: "El máximo por cuenta va de 1 a 999",
   end_before_start: "La fecha final no puede ser antes de la inicial",
   unknown_target: "Un producto o grupo elegido ya no existe; quítalo y vuelve a guardar",
+  discount_exceeds_price: "El descuento no puede ser igual o mayor al precio del plato",
 }
 
 /** Field key → message; `form` holds what belongs to no field. */
@@ -412,6 +413,11 @@ export function apiFieldErrors(error: unknown): FieldErrors | null {
     const key = match ? fieldKey(match[1]) : "form"
     const code = match ? match[2] : part.trim()
     errors[key] ??= PROMOTION_ERROR_MESSAGES[code] ?? (typeof error.body.code === "string" ? PROMOTION_ERROR_MESSAGES[error.body.code] : undefined) ?? part
+  }
+  // H-021: the API names the dish the fixed discount would leave at $0.
+  const { dishName, dishPrice } = error.body as { dishName?: unknown; dishPrice?: unknown }
+  if (errors.discountValue && typeof dishName === "string" && typeof dishPrice === "number") {
+    errors.discountValue = `${PROMOTION_ERROR_MESSAGES.discount_exceeds_price} (${dishName}, ${formatPesos(dishPrice)})`
   }
   return errors
 }

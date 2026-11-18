@@ -410,6 +410,16 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       expect(await snapshot()).toEqual(before);
     });
 
+    it('refuses a fee above 200.000 with 422 and writes nothing (H-075)', async () => {
+      const before = await snapshot();
+      const res = await create({ deliveryFee: 200_001 });
+      expect(res.status).toBe(422);
+      expect(await snapshot()).toEqual(before);
+      const ok = await create({ deliveryFee: 200_000 });
+      expect(ok.status).toBe(201);
+      expect(ok.body.delivery.deliveryFee).toBe(200_000);
+    });
+
     it('a waiter, a cashier and the kitchen are refused by the RPC (42501), an admin may create', async () => {
       const before = await snapshot();
       for (const caller of [waiterA(), cashierA(), kitchenA()]) {
@@ -938,6 +948,7 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
     expect(req.notes.description).toContain('validated by create_delivery_order');
     expect(req.deliveryFee.description).toContain('validated by create_delivery_order');
     expect(req.deliveryFee).not.toHaveProperty('minimum');
+    expect(req.deliveryFee).toMatchObject({ maximum: 200_000 });
     const item = schemas.CreateDeliveryItem.properties;
     expect(item.quantity).not.toHaveProperty('minimum');
     expect(item.quantity.description).toContain('validated by create_delivery_order');

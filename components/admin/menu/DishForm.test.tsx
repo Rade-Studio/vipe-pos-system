@@ -168,6 +168,25 @@ describe("DishForm", () => {
     })
   })
 
+  it("refuses a price of $0 before calling the API (H-021)", async () => {
+    const onSuccess = vi.fn()
+    render(<DishForm dish={dish} categories={categories} onSuccess={onSuccess} />)
+    await waitFor(() => expect(screen.getByDisplayValue("Sopa")).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText("Precio"), { target: { value: "0" } })
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("button", { name: "Guardar cambios" }).closest("form")!)
+    })
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: "Error al guardar el plato: El precio debe ser mayor que $ 0" }),
+      ),
+    )
+    expect(catalog.updateDish).not.toHaveBeenCalled()
+    expect(onSuccess).not.toHaveBeenCalled()
+  })
+
   it("shows the API message when the save fails", async () => {
     catalog.updateDish.mockRejectedValue(new Error("Unknown category"))
     render(<DishForm dish={dish} categories={categories} onSuccess={vi.fn()} />)

@@ -80,4 +80,15 @@ describe("WithdrawCashDialog reason", () => {
     expect(await screen.findByText(/No hay suficiente efectivo en caja/)).toBeInTheDocument()
     expect(registers.addCashTransaction).not.toHaveBeenCalled()
   })
+
+  it("takes whole pesos only: no decimal key, a typed point is ignored (H-068)", async () => {
+    render(<WithdrawCashDialog open onOpenChange={() => {}} />)
+    expect(screen.queryByRole("button", { name: "." })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "5" }))
+    fireEvent.keyDown(window, { key: "." })
+    fireEvent.click(screen.getByRole("button", { name: "5" }))
+    fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "supplier" } })
+    submit()
+    await waitFor(() => expect(registers.addCashTransaction).toHaveBeenCalledWith("r-1", 55, "withdrawal", "supplier", ""))
+  })
 })

@@ -106,6 +106,7 @@ export class PromotionsService {
       RETURNING id`);
     const id = String((rows[0] as { id: string }).id);
     await this.writeChildren(id, shape, { targets: true, comboGroups: true });
+    await this.assertDiscountBelowPrices(id, shape);
     return this.one(id);
   }
 
@@ -124,6 +125,11 @@ export class PromotionsService {
       targets: body.targets !== undefined || !keepsTargets,
       comboGroups: body.comboGroups !== undefined || shape.kind !== 'combo',
     });
+    // Only an edit of the discount or its targets is checked: pausing or
+    // renaming a promotion whose dish got cheaper later keeps working.
+    if (body.kind !== undefined || body.discountType !== undefined || body.discountValue !== undefined || body.targets !== undefined) {
+      await this.assertDiscountBelowPrices(id, shape);
+    }
     return this.one(id);
   }
 
@@ -267,6 +273,34 @@ export class PromotionsService {
         await this.insertLinks(sql`public.promotion_combo_options (group_id, dish_id)`, sql`public.dishes`, groupId, group.dishIds, `comboGroups.${position}.dishIds`);
       }
     }
+  }
+
+  /**
+   * H-021: a fixed product discount must stay below the list price of every
+   * dish it targets, or the dish would be sold at $0. The cheapest offending
+   * dish is named in the 422 (`dishName`, `dishPrice`); the request
+   * transaction rolls the write back. The engine still caps any discount at
+   * the price, so promotions stored before this rule keep working.
+   */
+  private async assertDiscountBelowPrices(id: string, p: PromotionShape): Promise<void> {
+    if (p.kind !== 'product_discount' || p.discountType !== 'fixed_amount' || p.discountValue === null) return;
+    const { rows } = await this.uow.db.execute(sql`
+      SELECT d.name, d.price::float8 AS price
+        FROM public.dishes d
+       WHERE d.price <= ${p.discountValue}
+         AND (d.id IN (SELECT dish_id FROM public.promotion_dishes WHERE promotion_id = ${id})
+           OR d.category_id IN (SELECT category_id FROM public.promotion_categories WHERE promotion_id = ${id})
+           OR d.subcategory_id IN (SELECT subcategory_id FROM public.promotion_subcategories WHERE promotion_id = ${id}))
+       ORDER BY d.price, d.name
+       LIMIT 1`);
+    const dish = rows[0] as { name: string; price: number } | undefined;
+    if (!dish) return;
+    throw new UnprocessableEntityException({
+      message: 'discountValue: discount_exceeds_price',
+      code: 'discount_exceeds_price' satisfies PromotionErrorCode,
+      dishName: dish.name,
+      dishPrice: Number(dish.price),
+    });
   }
 
   private async insertLinks(into: SQL, from: SQL, ownerId: string, ids: readonly string[], path: string): Promise<void> {

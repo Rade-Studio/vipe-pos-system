@@ -257,4 +257,17 @@ describe("validation (S10)", () => {
     })
     expect(apiFieldErrors(new ApiError(500, "Internal Server Error", "boom"))).toBeNull()
   })
+
+  it("names the dish a fixed discount would leave at $0 (H-021)", () => {
+    const error = new ApiError(422, "Unprocessable Entity", "discountValue: discount_exceeds_price", {
+      code: "discount_exceeds_price",
+      dishName: "Jugo de mango",
+      dishPrice: 5000,
+    })
+    expect(apiFieldErrors(error)).toEqual({
+      discountValue: "El descuento no puede ser igual o mayor al precio del plato (Jugo de mango, $5.000)",
+    })
+    const unnamed = new ApiError(422, "Unprocessable Entity", "discountValue: discount_exceeds_price", { code: "discount_exceeds_price" })
+    expect(apiFieldErrors(unnamed)).toEqual({ discountValue: "El descuento no puede ser igual o mayor al precio del plato" })
+  })
 })

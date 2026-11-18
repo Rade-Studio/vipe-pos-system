@@ -24,6 +24,8 @@ const MAX_LINES = 500;
 const BY_RPC = 'validated by create_delivery_order';
 /** Same caps as the orders' combos (orders.dto.ts comboLineSchema, MAX_COMBOS). */
 const MAX_COMBOS = 20;
+/** H-075: upper limit of one delivery fee, whole COP pesos (lib/delivery/order-draft.ts DELIVERY_FEE_MAX). */
+export const DELIVERY_FEE_MAX = 200_000;
 const MAX_COMBO_CHOICES = 6;
 /**
  * A combo (S7): the promotion and one dish per group, the shape of POST
@@ -108,7 +110,7 @@ export const createDeliveryOrderSchema = z
       )
       .max(MAX_LINES),
     combos: z.array(comboLineSchema).max(MAX_COMBOS).optional(),
-    deliveryFee: z.number().int(),
+    deliveryFee: z.number().int().max(DELIVERY_FEE_MAX),
     paymentMode: z.enum(PAYMENT_MODES),
     cashChangeFor: z.number().int().nullable().optional(),
     notes: z.string().max(TEXT_MAX).nullable().optional(),
@@ -283,7 +285,12 @@ export class CreateDeliveryOrderRequest {
       'Combos live now for the delivery channel. Each combo inserts one line per choice at list price (its options included), sharing a comboId, plus one combo discount: sum of the dish list prices WITHOUT options - comboPrice, so the options of a component are charged on top. 422 code combo_unknown | combo_inactive | combo_group_missing | combo_choice_invalid | combo_duplicate_group; nothing is stored.',
   })
   combos?: ComboLineRequest[];
-  @ApiProperty({ type: 'integer', description: `Whole COP pesos; >= 0 ${BY_RPC}.` }) deliveryFee!: number;
+  @ApiProperty({
+    type: 'integer',
+    maximum: DELIVERY_FEE_MAX,
+    description: `Whole COP pesos; >= 0 ${BY_RPC}; above ${DELIVERY_FEE_MAX} is a 422 from the API.`,
+  })
+  deliveryFee!: number;
   @ApiProperty({ enum: PAYMENT_MODES }) paymentMode!: PaymentMode;
   @ApiPropertyOptional({
     type: 'integer',
