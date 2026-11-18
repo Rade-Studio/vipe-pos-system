@@ -143,7 +143,7 @@ export function PartialPaymentDialog({
 
         <div className="py-4">
           <p className="text-sm text-muted-foreground mb-4">
-            Seleccione los productos que desea incluir en el pago parcial y ajuste las cantidades con los botones + y -.
+            Selecciona los productos que quieres incluir en el pago parcial y ajusta las cantidades con los botones + y -.
           </p>
 
           {tableItems && tableItems.length > 0 ? (

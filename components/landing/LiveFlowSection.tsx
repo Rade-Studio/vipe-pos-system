@@ -2,7 +2,7 @@
 
 import { Receipt } from "lucide-react"
 import { flow } from "@/components/landing/content"
-import { segment, useScrollProgress } from "@/components/landing/motion"
+import { segment, usePrefersReducedMotion, useScrollProgress } from "@/components/landing/motion"
 import { cn } from "@/lib/utils"
 
 const stationColors = ["text-violet-300", "text-orange-300", "text-emerald-300", "text-sky-300"]
@@ -13,7 +13,43 @@ const stationGlows = [
   "shadow-[0_0_60px_-6px_rgba(56,189,248,0.9)]",
 ]
 
+/** H-105: the four steps in reading order; the animated stage below only illustrates them. */
+function FlowSteps({ className, ...rest }: { className?: string; "data-noscript-show"?: boolean }) {
+  return (
+    <ol aria-label="Cómo funciona, paso a paso" className={className} {...rest}>
+      {flow.map((item, index) => (
+        <li key={item.role}>
+          <p className={cn("text-sm font-medium uppercase tracking-[0.2em]", stationColors[index])}>
+            {index + 1}. {item.role}
+          </p>
+          <h3 className="mt-1 text-2xl font-semibold">{item.title}</h3>
+          <p className="mt-2 text-lg text-zinc-400">{item.description}</p>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 export function LiveFlowSection() {
+  const reduced = usePrefersReducedMotion()
+  if (reduced) {
+    // Reduced motion: no scroll-driven stage, every step visible at once.
+    return (
+      <section id="flujo" className="relative px-6 py-32">
+        <div className="mx-auto max-w-4xl">
+          <p className="text-center text-sm uppercase tracking-[0.3em] text-violet-300">Un pedido, cero fricción</p>
+          <h2 className="mx-auto mt-4 max-w-3xl text-center text-4xl font-semibold tracking-tight sm:text-6xl">
+            De la mesa al reporte, <span className="lp-gradient-text">sin tocar un papel.</span>
+          </h2>
+          <FlowSteps className="mt-16 grid gap-10 sm:grid-cols-2" />
+        </div>
+      </section>
+    )
+  }
+  return <AnimatedFlow />
+}
+
+function AnimatedFlow() {
   const [ref, progress] = useScrollProgress<HTMLElement>("sticky")
   // The ticket travels during the middle of the pin; the edges give breathing room.
   const travel = segment(progress, 0.08, 0.92)
@@ -31,7 +67,10 @@ export function LiveFlowSection() {
             De la mesa al reporte, <span className="lp-gradient-text">sin tocar un papel.</span>
           </h2>
 
-          <div className="relative mx-auto mt-36 max-w-4xl">
+          {/* Read by assistive tech (and shown without JavaScript); the stage is decoration. */}
+          <FlowSteps className="sr-only" data-noscript-show />
+
+          <div aria-hidden data-noscript-hide className="relative mx-auto mt-36 max-w-4xl">
             {/* Inset by half a station so the rail runs center to center. */}
             <div className="absolute inset-x-7 top-7 h-1 -translate-y-1/2 sm:inset-x-10 sm:top-10">
               <div className="absolute inset-0 rounded-full bg-white/10" />
@@ -79,25 +118,25 @@ export function LiveFlowSection() {
             </div>
           </div>
 
-          <div className="relative mx-auto mt-16 h-40 max-w-2xl text-center">
+          <div aria-hidden data-noscript-hide className="relative mx-auto mt-16 h-40 max-w-2xl text-center">
             {flow.map((item, index) => (
               <div
                 key={item.role}
                 className="absolute inset-0 transition-all duration-500"
+                data-noscript-hide
                 style={{
                   opacity: index === active ? 1 : 0,
                   transform: index === active ? "none" : `translateY(${index < active ? -24 : 24}px)`,
                 }}
-                aria-hidden={index !== active}
               >
-                <h3 className="text-2xl font-semibold sm:text-3xl">{item.title}</h3>
+                <p className="text-2xl font-semibold sm:text-3xl">{item.title}</p>
                 <p className="mt-3 text-lg text-zinc-400">{item.description}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 gap-2">
+        <div aria-hidden className="absolute bottom-10 left-1/2 flex -translate-x-1/2 gap-2">
           {flow.map((item, index) => (
             <span
               key={item.role}

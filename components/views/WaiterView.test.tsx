@@ -797,7 +797,7 @@ describe("WaiterView — sending through the API (T8b)", () => {
     expect(env.toastFn).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Precios actualizados",
-        description: "Algunos precios cambiaron. Revise el carrito y envíe de nuevo.",
+        description: "Algunos precios cambiaron. Revisa el carrito y envíalo de nuevo.",
       }),
     )
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["menu"] })
@@ -2343,5 +2343,25 @@ describe("WaiterView — promotions while taking the order (S11, S12)", () => {
     expect(screen.queryByRole("group", { name: "Cantidad de Menú ejecutivo" })).not.toBeInTheDocument()
     await tap("Quitar Menú ejecutivo")
     expect(useCartStore.getState().cartItems["t-1"]).toEqual([])
+  })
+})
+
+describe("waiter landmarks (H-009, H-102)", () => {
+  it("renders the floor inside one main region with a skip link to it", async () => {
+    renderView()
+    await flush()
+    expect(screen.getAllByRole("main")).toHaveLength(1)
+    fireEvent.click(screen.getByRole("link", { name: "Saltar al contenido" }))
+    expect(screen.getByRole("main")).toHaveFocus()
+  })
+})
+
+describe("waiter header (H-006)", () => {
+  it("names the view instead of the brand", async () => {
+    renderView()
+    await flush()
+    const title = screen.getByRole("heading", { level: 1 })
+    expect(title).toHaveTextContent(/^Mesas$/)
+    expect(title).not.toHaveTextContent(/VibePOS|VipePOS/)
   })
 })

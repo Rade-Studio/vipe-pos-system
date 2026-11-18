@@ -4,7 +4,7 @@ import {useCashRegisterStore} from "@/store/use-cash-register-store"
 import {formatCurrency} from "@/utils/helpers"
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table"
 import {useState} from "react";
-import {toast} from "sonner";
+import {toast} from "@/hooks/use-toast";
 import {RefreshCw} from "lucide-react";
 import {Button} from "../ui/button";
 import {usePagination} from "@/hooks/use-pagination";

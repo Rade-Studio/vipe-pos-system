@@ -118,7 +118,7 @@ export function DeliverySection() {
                   <circle r={delivered ? 18 : 14} className={cn("transition-all duration-500", delivered ? "fill-emerald-500/30 stroke-emerald-300" : "fill-fuchsia-500/20 stroke-fuchsia-400/60")} />
                   <MapPin x={-7} y={-7} width={14} height={14} className={delivered ? "text-emerald-200" : "text-fuchsia-200"} />
                 </g>
-                <g transform={`translate(${bikeX} ${bikeY})`} style={{ opacity: active >= 3 ? 1 : 0, transition: "opacity 400ms ease" }}>
+                <g transform={`translate(${bikeX} ${bikeY})`} data-reveal="" style={{ opacity: active >= 3 ? 1 : 0, transition: "opacity 400ms ease" }}>
                   <circle r={13} className="fill-white" />
                   <Bike x={-8} y={-8} width={16} height={16} className="text-zinc-950" />
                 </g>

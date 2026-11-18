@@ -145,3 +145,44 @@ describe("TableGrid — reserve only free tables (reservas-mesas T2, S1, S2, S5)
     expect(onReserveTable).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("TableGrid — keyboard (H-093)", () => {
+  beforeEach(() => {
+    useTableStore.setState({
+      tables: [{ id: "t-1", number: 1, status: "available", waiter: undefined, waiter_name: undefined }],
+    })
+  })
+
+  function renderGrid(accessible: boolean, onSelectTable = vi.fn()) {
+    render(
+      <TableGrid
+        activeTable={null}
+        waiterId="w-1"
+        onSelectTable={onSelectTable}
+        onReserveTable={() => {}}
+        onReleaseTable={() => {}}
+        isAccessible={() => accessible}
+        profiles={[]}
+      />,
+    )
+    return onSelectTable
+  }
+
+  it("exposes each table as a focusable button that selects it", () => {
+    const onSelectTable = renderGrid(true)
+    const card = screen.getByRole("button", { name: /^Mesa 1/ })
+    expect(card.tagName).toBe("BUTTON")
+    card.focus()
+    expect(card).toHaveFocus()
+    fireEvent.click(card)
+    expect(onSelectTable).toHaveBeenCalledWith("t-1")
+  })
+
+  it("disables the table button when the table is not accessible", () => {
+    const onSelectTable = renderGrid(false)
+    const card = screen.getByRole("button", { name: /^Mesa 1/ })
+    expect(card).toBeDisabled()
+    fireEvent.click(card)
+    expect(onSelectTable).not.toHaveBeenCalled()
+  })
+})

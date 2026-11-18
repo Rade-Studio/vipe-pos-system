@@ -62,7 +62,7 @@ export function TableManagementPanel() {
         log.error("Error al cargar mesas:", { error: String(error) })
         toast({
           title: "Error",
-          description: "No se pudieron cargar las mesas. Intente nuevamente.",
+          description: "No se pudieron cargar las mesas. Intenta de nuevo.",
           variant: "destructive",
         })
       } finally {
@@ -105,7 +105,7 @@ export function TableManagementPanel() {
     if (!newTableNumber || isNaN(Number.parseInt(newTableNumber))) {
       toast({
         title: "Error",
-        description: "Por favor ingrese un número de mesa válido.",
+        description: "Ingresa un número de mesa válido.",
         variant: "destructive",
       })
       return
@@ -129,7 +129,7 @@ export function TableManagementPanel() {
       log.error("Error al crear mesa:", { error: String(error) })
       toast({
         title: "Error",
-        description: conflictMessage(error, "No se pudo crear la mesa. Intente nuevamente."),
+        description: conflictMessage(error, "No se pudo crear la mesa. Intenta de nuevo."),
         variant: "destructive",
       })
     }
@@ -153,7 +153,7 @@ export function TableManagementPanel() {
     if (!editTableId || !editTableNumber || isNaN(Number.parseInt(editTableNumber))) {
       toast({
         title: "Error",
-        description: "Por favor ingrese un número de mesa válido.",
+        description: "Ingresa un número de mesa válido.",
         variant: "destructive",
       })
       return
@@ -190,7 +190,7 @@ export function TableManagementPanel() {
       log.error("Error al actualizar mesa:", { error: String(error) })
       toast({
         title: "Error",
-        description: conflictMessage(error, "No se pudo actualizar la mesa. Intente nuevamente."),
+        description: conflictMessage(error, "No se pudo actualizar la mesa. Intenta de nuevo."),
         variant: "destructive",
       })
     }
@@ -230,7 +230,7 @@ export function TableManagementPanel() {
       } else {
         toast({
           title: "Error",
-          description: "No se pudo eliminar la mesa. Intente nuevamente.",
+          description: "No se pudo eliminar la mesa. Intenta de nuevo.",
           variant: "destructive",
         })
       }
@@ -423,7 +423,7 @@ export function TableManagementPanel() {
                 <Label htmlFor="editTableStatus">Estado</Label>
                 <Select value={editTableStatus} onValueChange={setEditTableStatus}>
                   <SelectTrigger id="editTableStatus" className="mt-1">
-                    <SelectValue placeholder="Seleccione un estado" />
+                    <SelectValue placeholder="Selecciona un estado" />
                   </SelectTrigger>
                   <SelectContent>
                     {manualStatusOptions(editTableCurrentStatus).map((option) => (
@@ -486,7 +486,7 @@ export function TableManagementPanel() {
               <DialogTitle>Confirmar eliminación</DialogTitle>
             </DialogHeader>
             <div className="py-4">
-              <p>¿Está seguro que desea eliminar esta mesa?</p>
+              <p>¿Seguro que quieres eliminar esta mesa?</p>
               <p className="text-sm text-muted-foreground mt-2">
                 No se podrá eliminar si tiene órdenes activas asociadas.
               </p>

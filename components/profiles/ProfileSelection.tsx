@@ -13,6 +13,7 @@ import { useOrderStore } from "@/store/useOrderStore"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
 import { useConfigStore } from "@/store/use-config-store"
 import { cn } from "@/lib/utils"
+import { BRAND_NAME } from "@/lib/brand"
 
 interface ProfileSelectionProps {
   profiles: Profile[]
@@ -120,7 +121,7 @@ export function ProfileSelection({ profiles, onSelectProfile }: ProfileSelection
           </span>
           <span className="min-w-0">
             <span className="block truncate">{businessName}</span>
-            <small className="block text-xs font-normal leading-tight text-muted-fg">VipePOS</small>
+            <small className="block text-xs font-normal leading-tight text-muted-fg">{BRAND_NAME}</small>
           </span>
         </div>
         <div className="flex-1" />

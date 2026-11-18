@@ -129,3 +129,46 @@ describe("LoginView", () => {
     expect(screen.getByRole("button", { name: "Iniciar sesión" })).toBeInTheDocument()
   })
 })
+
+describe("LoginView — errors reach assistive tech (H-096)", () => {
+  it("announces a failed login next to the fields and returns focus to the email", async () => {
+    api.POST.mockRejectedValue(new ApiError(401, "Unauthorized", "Credenciales inválidas"))
+    render(<LoginView onLoginSuccess={vi.fn()} />)
+
+    submit("admin@vipe.local", "wrong")
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Credenciales inválidas")
+    const email = screen.getByLabelText("Email")
+    const password = screen.getByLabelText("Contraseña")
+    await waitFor(() => expect(email).toHaveFocus())
+    for (const field of [email, password]) {
+      expect(field).toHaveAttribute("aria-invalid", "true")
+      expect(field).toHaveAttribute("aria-describedby", alert.id)
+    }
+  })
+
+  it("focuses the first empty field when a field is missing", () => {
+    render(<LoginView onLoginSuccess={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@vipe.local" } })
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar sesión" }))
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Ingresa tu email y contraseña")
+    expect(screen.getByLabelText("Contraseña")).toHaveFocus()
+    expect(api.POST).not.toHaveBeenCalled()
+  })
+
+  it("has no error state before the first submit", () => {
+    render(<LoginView onLoginSuccess={vi.fn()} />)
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.getByLabelText("Email")).not.toHaveAttribute("aria-invalid")
+  })
+})
+
+describe("LoginView brand (H-005)", () => {
+  it("uses the single brand name", () => {
+    const { container } = render(<LoginView onLoginSuccess={vi.fn()} />)
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("VipePOS")
+    expect(container).not.toHaveTextContent("VibePOS")
+  })
+})

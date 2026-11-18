@@ -146,16 +146,24 @@ export function TableGrid({
                   getBackgroundColor(table.status),
                   isActive ? "ring-2 ring-primary" : "",
                   !accessible ? "opacity-70" : "",
-                  "cursor-pointer",
                 )}
-                onClick={() => accessible && onSelectTable(isActive ? null : table.id)}
               >
-                <div className="absolute top-0 left-0 right-0 bg-black/5 dark:bg-white/5 py-1.5 px-3 flex justify-between items-center">
+                {/* H-093: the whole card is one real button (keyboard: Tab, Enter, Space);
+                    the visible content below is decoration, the actions sit above it. */}
+                <button
+                  type="button"
+                  className="absolute inset-0 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:cursor-not-allowed"
+                  aria-label={`Mesa ${table.number}, ${getStatusLabel(table.status)}${reservation ? `, ${reservation}` : ""}${waiterName ? `, ${waiterName}` : ""}`}
+                  aria-pressed={isActive}
+                  disabled={!accessible}
+                  onClick={() => onSelectTable(isActive ? null : table.id)}
+                />
+                <div aria-hidden className="pointer-events-none absolute top-0 left-0 right-0 bg-black/5 dark:bg-white/5 py-1.5 px-3 flex justify-between items-center">
                   <div className="text-base font-bold">Mesa {table.number}</div>
                   <div className="flex items-center gap-1">{getStatusIcon(table.status)}</div>
                 </div>
 
-                <div className="flex flex-col items-center justify-center h-full pt-8 pb-4 px-3">
+                <div aria-hidden className="pointer-events-none flex flex-col items-center justify-center h-full pt-8 pb-4 px-3">
                   {/* Mostrar el estado como un badge pequeño */}
                   <Badge variant="outline" className={`${getStatusColor(table.status)} text-xs px-2 py-0.5 mb-2`}>
                     {getStatusLabel(table.status)}
@@ -178,7 +186,7 @@ export function TableGrid({
 
                 {/* Reservar (free) / Sentar clientes and Cancelar reserva (reserved) */}
                 {accessible && !isAdminView && (isFree || isReserved) && (
-                  <div className="absolute bottom-1 right-1 flex gap-1">
+                  <div className="absolute bottom-1 right-1 z-10 flex gap-1">
                     {isReserved && onSeatTable && (
                       <GridAction label="Sentar clientes" onClick={() => onSeatTable(table.id)}>
                         <Armchair className="h-4 w-4" aria-hidden />

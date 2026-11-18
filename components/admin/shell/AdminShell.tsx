@@ -9,6 +9,7 @@ import { useConfigStore } from "@/store/use-config-store"
 import { AdminSidebar } from "./AdminSidebar"
 import { AdminTopbar } from "./AdminTopbar"
 import { CommandMenu } from "./CommandMenu"
+import { SkipLink } from "@/components/layout/SkipLink"
 
 interface AdminShellProps {
   profile: Profile
@@ -68,6 +69,7 @@ export function AdminShell({ profile, authRole, onChangeProfile, section, onNavi
       onOpenChange={setSidebarOpen}
       style={{ "--sidebar-width": "16rem", "--sidebar-width-icon": "4.5rem" } as CSSProperties}
     >
+      <SkipLink />
       <AdminSidebar
         section={section}
         onNavigate={onNavigate}

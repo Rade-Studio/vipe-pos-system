@@ -51,7 +51,7 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
       log.error("Error al cargar categorías:", { err: String(categoriesError) })
       toast({
         title: "Error",
-        description: "No se pudieron cargar las categorías. Intente nuevamente.",
+        description: "No se pudieron cargar las categorías. Intenta de nuevo.",
         variant: "destructive",
       })
     }
@@ -62,7 +62,7 @@ export function MenuSection({ onAddToCart }: MenuSectionProps) {
       log.error("Error al cargar platos:", { err: String(dishesError) })
       toast({
         title: "Error",
-        description: "No se pudieron cargar los platos. Intente nuevamente.",
+        description: "No se pudieron cargar los platos. Intenta de nuevo.",
         variant: "destructive",
       })
     }

@@ -288,7 +288,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     if (waitersError) {
       toast({
         title: "Error",
-        description: "No se pudieron cargar los meseros. Intente nuevamente.",
+        description: "No se pudieron cargar los meseros. Intenta de nuevo.",
         variant: "destructive",
       })
     }
@@ -548,7 +548,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
             .catch((err) => {
               toast({
                 title: "Error",
-                description: "No se pudo actualizar el estado de la mesa. Intente nuevamente.",
+                description: "No se pudo actualizar el estado de la mesa. Intenta de nuevo.",
                 variant: "destructive",
               })
             })
@@ -593,7 +593,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       } catch (err: any) {
         toast({
           title: "Error",
-          description: `No se pudo asignar la mesa. ${conflictMessage(err, "Intente nuevamente.")}`,
+          description: `No se pudo asignar la mesa. ${conflictMessage(err, "Intenta de nuevo.")}`,
           variant: "destructive",
         })
         return false
@@ -639,7 +639,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         } catch (err) {
           toast({
             title: "Error",
-            description: "No se pudo asignar el mesero a la mesa. Intente nuevamente.",
+            description: "No se pudo asignar el mesero a la mesa. Intenta de nuevo.",
             variant: "destructive",
           })
         }
@@ -722,7 +722,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         }
         toast({
           title: "Error",
-          description: conflictMessage(err, "No se pudo liberar la mesa. Intente nuevamente."),
+          description: conflictMessage(err, "No se pudo liberar la mesa. Intenta de nuevo."),
           variant: "destructive",
         })
       }
@@ -943,7 +943,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         repriceCart(activeTable, conflict.prices, conflict.lines)
         toast({
           title: "Precios actualizados",
-          description: "Algunos precios cambiaron. Revise el carrito y envíe de nuevo.",
+          description: "Algunos precios cambiaron. Revisa el carrito y envíalo de nuevo.",
           variant: "destructive",
         })
       } else {
@@ -955,7 +955,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           error instanceof ApiError && error.status === 422 && String(error.body.code ?? "").startsWith("modifier_")
         toast({
           title: "Error",
-          description: inactive || modifierRefusal ? (error as ApiError).message : "No se pudo enviar la orden a cocina. Intente nuevamente.",
+          description: inactive || modifierRefusal ? (error as ApiError).message : "No se pudo enviar la orden a cocina. Intenta de nuevo.",
           variant: "destructive",
         })
       }
@@ -1135,7 +1135,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     } catch (err) {
       toast({
         title: "Error",
-        description: conflictMessage(err, "No se pudieron guardar los datos del pedido. Intente nuevamente."),
+        description: conflictMessage(err, "No se pudieron guardar los datos del pedido. Intenta de nuevo."),
         variant: "destructive",
       })
       return false
@@ -1605,9 +1605,10 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
       {/* Contenido principal */}
       <div className="flex-1 overflow-auto bg-muted/20 p-0">
         <div className="p-1 md:p-2">
-          <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} />
+          <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Mesas" />
           <AssignedCountsEntry />
 
+          <main>
           {/* S3/S6: Carta and Para llevar share one wrapping toolbar; takeaway orders live in the sheet, off the floor. */}
           <div className="mb-1 flex flex-wrap items-center justify-end gap-1 px-1">
             <CartaInbox />
@@ -1627,6 +1628,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
               floor={{ zones: floorZones, currentWaiterId: authProfile?.id ?? profile.id, elapsedOf }}
             />
           </div>
+          </main>
         </div>
       </div>
 

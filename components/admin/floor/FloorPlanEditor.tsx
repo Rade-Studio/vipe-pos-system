@@ -124,7 +124,7 @@ export function FloorPlanEditor() {
       })
       .catch((error) => {
         log.error("Error al cargar mesas:", { error: String(error) })
-        toast({ title: "Error", description: "No se pudieron cargar las mesas. Intente nuevamente.", variant: "destructive" })
+        toast({ title: "Error", description: "No se pudieron cargar las mesas. Intenta de nuevo.", variant: "destructive" })
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -259,7 +259,7 @@ export function FloorPlanEditor() {
       setAnnouncement("Plano guardado")
     } catch (error) {
       log.error("Error al guardar el plano:", { error: String(error) })
-      setSaveError(error instanceof ApiError && error.status < 500 ? error.message : "No se pudo guardar el plano. Intente nuevamente.")
+      setSaveError(error instanceof ApiError && error.status < 500 ? error.message : "No se pudo guardar el plano. Intenta de nuevo.")
     } finally {
       setSaving(false)
     }
@@ -305,7 +305,7 @@ export function FloorPlanEditor() {
       log.error("Error al eliminar mesa:", { error: String(error) })
       toast({
         title: error instanceof ApiError && error.status === 409 ? "No se puede eliminar" : "Error",
-        description: conflictMessage(error, "No se pudo eliminar la mesa. Intente nuevamente."),
+        description: conflictMessage(error, "No se pudo eliminar la mesa. Intenta de nuevo."),
         variant: "destructive",
       })
     }

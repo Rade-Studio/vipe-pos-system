@@ -1,7 +1,9 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, Menu, X } from "lucide-react"
+import { BRAND_NAME } from "@/lib/brand"
 import { DeliverySection } from "@/components/landing/DeliverySection"
 import { FeaturesSection } from "@/components/landing/FeaturesSection"
 import { Hero } from "@/components/landing/Hero"
@@ -22,9 +24,21 @@ const nav = [
   { href: "#roadmap", label: "Roadmap" },
 ]
 
+/**
+ * H-106: without JavaScript nothing animates in, so the server HTML must not stay
+ * hidden. The animated blocks carry data-reveal; the scroll-driven flow stage is
+ * swapped for its static list of steps.
+ */
+const NO_SCRIPT_CSS =
+  "[data-reveal]{opacity:1 !important;transform:none !important;filter:none !important}" +
+  "[data-noscript-hide]{display:none !important}" +
+  "[data-noscript-show]{position:static !important;width:auto !important;height:auto !important;margin:2rem 0 0 !important;overflow:visible !important;clip:auto !important;white-space:normal !important}" +
+  "#flujo{height:auto !important}#flujo>div{position:static !important;height:auto !important;padding:8rem 0}"
+
 function Navbar() {
   const { y, progress } = usePageScroll()
-  const scrolled = y > 24
+  const [menuOpen, setMenuOpen] = useState(false)
+  const scrolled = y > 24 || menuOpen
   return (
     <header
       className={cn(
@@ -35,8 +49,8 @@ function Navbar() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <a href="#inicio" className="flex items-center gap-2.5 font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/vipe-pos.png" alt="" className="h-8 w-8" />
-          VipePOS
+          <img src="/vipe-pos-64.png" alt="" width={32} height={32} className="h-8 w-8" />
+          {BRAND_NAME}
         </a>
         <nav className="hidden items-center gap-8 text-sm text-zinc-400 md:flex">
           {nav.map((item) => (
@@ -45,13 +59,43 @@ function Navbar() {
             </a>
           ))}
         </nav>
-        <Link
-          href="/portal"
-          className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/20"
-        >
-          Entrar al sistema
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/portal"
+            className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/20"
+          >
+            Entrar al sistema
+          </Link>
+          {/* H-107: below md the section links live behind this menu button. */}
+          <button
+            type="button"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition hover:bg-white/10 md:hidden"
+            aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
+            aria-expanded={menuOpen}
+            aria-controls="landing-menu"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {menuOpen ? <X className="h-5 w-5" aria-hidden /> : <Menu className="h-5 w-5" aria-hidden />}
+          </button>
+        </div>
       </div>
+      {menuOpen && (
+        <nav id="landing-menu" aria-label="Menú" className="border-t border-white/10 px-6 pb-4 md:hidden">
+          <ul className="flex flex-col">
+            {nav.map((item) => (
+              <li key={item.href}>
+                <a
+                  href={item.href}
+                  className="block py-3 text-base text-zinc-300 transition hover:text-white"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {item.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
       <div
         aria-hidden
         className="h-px origin-left bg-gradient-to-r from-violet-500 via-fuchsia-400 to-sky-400"
@@ -96,6 +140,7 @@ function FinalCta() {
 export function LandingPage() {
   return (
     <div className="lp-root min-h-screen bg-[#07060d] text-white antialiased selection:bg-violet-500/40">
+      <noscript dangerouslySetInnerHTML={{ __html: `<style>${NO_SCRIPT_CSS}</style>` }} />
       <Navbar />
       <main>
         <Hero />
@@ -110,7 +155,7 @@ export function LandingPage() {
       </main>
       <footer className="border-t border-white/10 px-6 py-10">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-sm text-zinc-500 sm:flex-row">
-          <span>© {new Date().getFullYear()} VipePOS · Punto de venta para restaurantes</span>
+          <span>© {new Date().getFullYear()} {BRAND_NAME} · Punto de venta para restaurantes</span>
           <span>Hecho con Next.js, NestJS, PostgreSQL y mucho café.</span>
         </div>
       </footer>

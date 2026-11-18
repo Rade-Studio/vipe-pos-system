@@ -351,7 +351,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       log.error("Error al reconectar:", { error: String(error) })
       toast({
         title: "Error",
-        description: "No se pudo restablecer la conexión. Intente nuevamente.",
+        description: "No se pudo restablecer la conexión. Intenta de nuevo.",
         variant: "destructive",
       })
     }
@@ -467,7 +467,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
         log.error("Se requiere el ID del item para marcarlo como entregado")
         toast({
           title: "Error",
-          description: "No se pudo procesar la acción. Intente nuevamente.",
+          description: "No se pudo procesar la acción. Intenta de nuevo.",
           variant: "destructive",
         })
         return
@@ -521,7 +521,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       log.error("Error al marcar el item como entregado:", { error: String(error) })
       toast({
         title: "Error",
-        description: "No se pudo marcar el producto como entregado. Intente nuevamente.",
+        description: "No se pudo marcar el producto como entregado. Intenta de nuevo.",
         variant: "destructive",
       })
     }
@@ -591,7 +591,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       log.error("Error al marcar todos los items como entregados:", { error: String(error) })
       toast({
         title: "Error",
-        description: "No se pudieron marcar todos los productos como entregados. Intente nuevamente.",
+        description: "No se pudieron marcar todos los productos como entregados. Intenta de nuevo.",
         variant: "destructive",
       })
     } finally {
@@ -637,7 +637,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
       <Header profile={profile} onChangeProfile={onChangeProfile} authRole={authRole} title="Cocina" />
       <AssignedCountsEntry />
 
-      <div className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6">
+      <main className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6">
         <div className="flex min-h-0 flex-1 flex-col">
           {prepStations.length > 0 && (
             <div
@@ -921,7 +921,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
             />
           )}
         </div>
-      </div>
+      </main>
 
       {/* Confirm Dialog for Mark All as Delivered */}
       <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>

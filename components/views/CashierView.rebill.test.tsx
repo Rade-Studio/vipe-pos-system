@@ -223,7 +223,8 @@ async function addCashForRemainingAndRegister() {
 async function payTheOrderInCash() {
   await openPaymentFor("Mesa 1")
   await addCashForRemainingAndRegister()
-  fireEvent.click(await screen.findByRole("button", { name: "Cerrar" }))
+  // The invoice footer "Cerrar" comes before the dialog X (also "Cerrar" since H-103).
+  fireEvent.click((await screen.findAllByRole("button", { name: "Cerrar" }))[0])
 }
 
 function setOnline(online: boolean) {
@@ -379,7 +380,7 @@ describe("PROBE re-bill", () => {
       resolve({ paymentId: "p", status: "paid", amountDue: 47_600, tipAmount: 0, totalCharged: 47_600, changeGiven: 0,
         drawerWarning: false, drawerCashBefore: 0, alreadyPaid: false, tenders: [{ methodCode: "cash", amount: 47_600, cashReceived: 47_600 }] })
     })
-    await screen.findByRole("button", { name: "Cerrar" })
+    await screen.findAllByRole("button", { name: "Cerrar" })
     expect(payOrder).toHaveBeenCalledTimes(1)
   })
 

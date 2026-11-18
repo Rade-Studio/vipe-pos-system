@@ -147,3 +147,30 @@ describe("Header — Cambiar mi PIN", () => {
     expect(screen.getByRole("button", { name: "Cambiar mi PIN" })).toBeInTheDocument()
   })
 })
+
+describe("Header skip link (H-102)", () => {
+  it("is the first focusable element and moves focus to the main region", () => {
+    const { container } = render(
+      <>
+        <Header profile={profile} onChangeProfile={vi.fn()} />
+        <main>contenido</main>
+      </>,
+    )
+    const first = container.querySelector<HTMLElement>("a, button, input, [tabindex]")
+    expect(first).toHaveTextContent("Saltar al contenido")
+    fireEvent.click(screen.getByRole("link", { name: "Saltar al contenido" }))
+    expect(screen.getByRole("main")).toHaveFocus()
+  })
+})
+
+describe("Header title (H-005, H-006)", () => {
+  it("shows the given view title", () => {
+    render(<Header profile={profile} onChangeProfile={vi.fn()} title="Mesas" />)
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Mesas")
+  })
+
+  it("falls back to the single brand name", () => {
+    render(<Header profile={profile} onChangeProfile={vi.fn()} />)
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^VipePOS$/)
+  })
+})

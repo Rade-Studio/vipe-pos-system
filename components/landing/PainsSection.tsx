@@ -34,6 +34,7 @@ function PainRow({ pain, index }: { pain: Pain; index: number }) {
           </p>
           <p
             className="mt-3 flex items-center gap-3 text-lg text-emerald-300 sm:text-xl"
+            data-reveal=""
             style={{
               opacity: done ? 1 : 0,
               transform: done ? "none" : "translate3d(-16px,0,0)",

@@ -278,7 +278,8 @@ async function addCashForRemainingAndRegister() {
 async function payTheOrderInCash() {
   await openPaymentFor("Mesa 1")
   await addCashForRemainingAndRegister()
-  fireEvent.click(await screen.findByRole("button", { name: "Cerrar" }))
+  // The invoice footer "Cerrar" comes before the dialog X (also "Cerrar" since H-103).
+  fireEvent.click((await screen.findAllByRole("button", { name: "Cerrar" }))[0])
 }
 
 function setOnline(online: boolean) {
@@ -1667,5 +1668,15 @@ describe("Para llevar (S8)", () => {
     expect(screen.getByRole("tab", { name: /^Para llevar/ })).toHaveAttribute("aria-selected", "true")
     // The queue is read again so the new order shows up.
     await waitFor(() => expect(getByStatus).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe("cashier landmarks (H-009)", () => {
+  it("renders one main region holding the queue", async () => {
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    const mains = screen.getAllByRole("main")
+    expect(mains).toHaveLength(1)
+    expect(within(mains[0]).getByText("Mesa 1")).toBeInTheDocument()
   })
 })

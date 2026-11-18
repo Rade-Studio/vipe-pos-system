@@ -49,7 +49,7 @@ export function DeliveryPaymentsPanel({ onPaid }: DeliveryPaymentsPanelProps) {
     try {
       await loadOpenRegister()
       if (!isRegisterOpen()) {
-        toast.error("Debe abrir la caja antes de procesar pagos")
+        toast.error("Debes abrir la caja antes de procesar pagos")
         return
       }
       setPayingId(orderId)

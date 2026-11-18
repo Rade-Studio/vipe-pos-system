@@ -47,6 +47,9 @@ describe('toErrorResponse', () => {
     ['22P02', 422, 'Unprocessable Entity', 'Invalid data'],
     ['22023', 422, 'Unprocessable Entity', 'Invalid data'],
     ['P0002', 404, 'Not Found', 'Not found'],
+    // H-023: a too-long text or an out-of-range number is the client's fault, not a 500.
+    ['22001', 422, 'Unprocessable Entity', 'Value too long'],
+    ['22003', 422, 'Unprocessable Entity', 'Number out of range'],
   ])('maps SQLSTATE %s to %i with its code and without the driver message', (code, statusCode, error, message) => {
     expect(toErrorResponse(pgError(code))).toEqual({ statusCode, error, message, code });
     expect(toErrorResponse(drizzleWrapped(pgError(code)))).toEqual({ statusCode, error, message, code });

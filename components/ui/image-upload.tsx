@@ -29,6 +29,7 @@ export function ImageUpload({
   const [isUploading, setIsUploading] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [imageError, setImageError] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -71,7 +72,10 @@ export function ImageUpload({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (file) handleFile(file)
+  }
+
+  const handleFile = (file: File) => {
 
     log.info("Archivo seleccionado:", { name: file.name, type: file.type, size: file.size })
 
@@ -138,21 +142,37 @@ export function ImageUpload({
             size="icon"
             className="absolute top-2 right-2 h-8 w-8 rounded-full"
             onClick={handleRemoveImage}
+            aria-label="Quitar imagen"
+            title="Quitar imagen"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden />
           </Button>
         </div>
       ) : (
-        <div
-          className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-md p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+        // H-093: a real button (Tab, Enter, Space) that also accepts a dropped file.
+        <button
+          type="button"
+          disabled={isUploading}
+          className={`w-full border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isDragging ? "border-primary bg-gray-50 dark:bg-gray-900" : "border-gray-300 dark:border-gray-700"}`}
           onClick={() => document.getElementById("image-upload")?.click()}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setIsDragging(true)
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault()
+            setIsDragging(false)
+            const file = e.dataTransfer?.files?.[0]
+            if (file) handleFile(file)
+          }}
         >
-          <Upload className="h-10 w-10 text-gray-400 mb-2" />
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+          <Upload className="h-10 w-10 text-gray-400 mb-2" aria-hidden />
+          <span className="block text-sm text-gray-500 dark:text-gray-400 mb-2">
             Arrastra una imagen o haz clic para seleccionar
-          </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500">PNG, JPG o GIF (máx. 5MB)</p>
-        </div>
+          </span>
+          <span className="block text-xs text-gray-400 dark:text-gray-500">PNG, JPG o GIF (máx. 5MB)</span>
+        </button>
       )}
 
       <div className="flex justify-center">

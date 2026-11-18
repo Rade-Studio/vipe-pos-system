@@ -61,7 +61,7 @@ export function CashierTablesView() {
   const zoneName = selected?.zoneId ? zones?.find((zone) => zone.id === selected.zoneId)?.name : undefined
 
   const failed = (what: string, err: unknown) =>
-    toast({ title: "Error", description: `${what} ${conflictMessage(err, "Intente nuevamente.")}`, variant: "destructive" })
+    toast({ title: "Error", description: `${what} ${conflictMessage(err, "Intenta de nuevo.")}`, variant: "destructive" })
 
   const reserve = (tableId: string) => {
     const table = tables.find((t) => t.id === tableId)
