@@ -213,6 +213,11 @@ pub fn render_invoice(
     if discounted {
         lines.push(PrintLine { text: format!("HOY AHORRASTE ${}", currency(discounts)), bold: true, align: Align::Center });
     }
+    // H-014 / S2: `_fiscal_lines`, the DIAN lines the web builds from the payment's fiscal
+    // snapshot; only non-empty strings print, an older payload prints none.
+    if let Some(Value::Array(fiscal)) = invoice.get("fiscalLines") {
+        lines.extend(fiscal.iter().filter_map(Value::as_str).filter(|t| !t.is_empty()).map(center));
+    }
     lines.push(center("GRACIAS POR SU COMPRA!"));
     lines.push(center("VUELVA PRONTO"));
     Ok(lines)

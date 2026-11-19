@@ -383,6 +383,11 @@ def render_invoice(invoice_number: str, invoice: dict, display_items: list[dict]
 
     lines.append({"text": "--------------------------------", "bold": False, "align": "center"})
 
+    # H-014 / S2: the DIAN lines (regime, resolution, validity, range) the web
+    # builds from the payment's fiscal snapshot; absent on older payloads.
+    for text in _fiscal_lines(invoice.get("fiscalLines")):
+        lines.append({"text": text, "bold": False, "align": "center"})
+
     # Footer
     for text in ["GRACIAS POR SU COMPRA!", "VUELVA PRONTO"]:
         lines.append({"text": text, "bold": False, "align": "center"})
@@ -590,6 +595,13 @@ def build_x_report_bytes(payload: dict, encoding: str = "cp1252", paper_mm: int 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _fiscal_lines(raw) -> list[str]:
+    """The non-empty strings of ``invoice.fiscalLines``; anything else prints nothing."""
+    if not isinstance(raw, list):
+        return []
+    return [entry for entry in raw if isinstance(entry, str) and entry]
+
 
 def _delivery_block(raw):
     """Return the `delivery` payload block when it is a dict, else None."""

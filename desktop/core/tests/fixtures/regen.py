@@ -55,6 +55,8 @@ mods = [{"group": "Término", "name": "Medio", "price": 0}, {"group": "Adiciones
 kit_case("modifiers_comanda", {"invoiceNumber": "job-4", "orderNumber": 132, "table": 3, "waiter": "Ana", "items": [{"name": "Hamburguesa", "quantity": 2, "comments": "bien caliente", "modifiers": mods}, {"name": "Jugo", "quantity": 1, "modifiers": []}]})
 kit_case("modifiers_malformed", {"invoiceNumber": "job-5", "table": 3, "waiter": "Ana", "items": [{"name": "Arepa", "quantity": 1, "modifiers": [None, 7, {"name": "Queso", "price": True}, {"group": "Salsa", "name": None, "price": "x"}]}, {"name": "Jugo", "quantity": 1, "modifiers": "x"}]})
 inv_case("modifiers_invoice", dict(bi), [{"name": "Hamburguesa", "quantity": 2, "price": 29500, "modifiers": mods}, {"name": "Jugo", "quantity": 1, "price": 5000, "modifiers": None}])
+# H-014 / S2: the DIAN lines the web builds from the payment's fiscal snapshot, before the thanks; non-strings print nothing.
+inv_case("fiscal_lines", {**bi, "fiscalLines": ["RÉGIMEN SIMPLE DE TRIBUTACIÓN", "RES. DIAN No. 18764000001234", "DEL 01/01/2026 AL 31/12/2027", "RANGO POS-1 AL POS-5000", 7, None, ""]}, base_inv["displayItems"], number="POS-000123")
 doc["cases"].extend(extra)
 json.dump(doc, open(out, "w"), ensure_ascii=False, indent=1)
 print("extra", len(extra))

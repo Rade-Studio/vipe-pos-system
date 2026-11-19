@@ -682,5 +682,42 @@ class ModifierLinesTests(unittest.TestCase):
         self.assertIn("  T\u00e9rmino: Medio\n".encode("cp1252"), raw)
 
 
+_FISCAL_LINES = [
+    "RESPONSABLE DE IVA",
+    "RES. DIAN No. 18764000001234",
+    "DEL 01/01/2026 AL 31/12/2027",
+    "RANGO POS-1 AL POS-5000",
+]
+
+
+class TestInvoiceFiscalLines(unittest.TestCase):
+    """H-014 / S2: the DIAN lines the web sends in ``invoice.fiscalLines``."""
+
+    def _invoice(self, **extra):
+        return {"businessInfo": _BASE_BUSINESS, "bill": _BASE_BILL, "paymentMethod": "cash", "date": "2025-01-15T12:30:00", **extra}
+
+    def test_prints_each_fiscal_line_centered_before_the_thanks(self):
+        render = render_invoice("POS-000123", self._invoice(fiscalLines=_FISCAL_LINES), [_BASE_ITEM])
+        texts = [line["text"] for line in render["lines"]]
+        start = texts.index("GRACIAS POR SU COMPRA!") - len(_FISCAL_LINES)
+        self.assertEqual(texts[start:start + len(_FISCAL_LINES)], _FISCAL_LINES)
+        self.assertTrue(all(line["align"] == "center" and not line["bold"] for line in render["lines"][start:start + 4]))
+
+    def test_without_fiscal_lines_the_bytes_are_unchanged(self):
+        invoice = self._invoice()
+        expected = build_invoice_bytes("I", invoice, [_BASE_ITEM])
+        self.assertEqual(build_invoice_bytes("I", self._invoice(fiscalLines=[]), [_BASE_ITEM]), expected)
+        self.assertEqual(build_invoice_bytes("I", self._invoice(fiscalLines=None), [_BASE_ITEM]), expected)
+
+    def test_ignores_entries_that_are_not_text(self):
+        texts = [l["text"] for l in render_invoice("I", self._invoice(fiscalLines=[7, None, "RESPONSABLE DE IVA", ""]), [_BASE_ITEM])["lines"]]
+        self.assertEqual(texts[texts.index("GRACIAS POR SU COMPRA!") - 1], "RESPONSABLE DE IVA")
+        self.assertNotIn("7", texts)
+
+    def test_fiscal_lines_encode_in_cp1252(self):
+        raw = build_invoice_bytes("I", self._invoice(fiscalLines=["R\u00c9GIMEN SIMPLE DE TRIBUTACI\u00d3N"]), [_BASE_ITEM], encoding="cp1252")
+        self.assertIn("R\u00c9GIMEN SIMPLE DE TRIBUTACI\u00d3N".encode("cp1252"), raw)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -650,3 +650,31 @@ describe('renderInvoice - tax type label', () => {
     expect(texts()).toContain('IVA: 800')
   })
 })
+
+describe('renderInvoice - DIAN lines (H-014 / S2)', () => {
+  const bill = { subtotal: 10000, tax: 0, taxPercentage: 0, tip: 0, tipPercentage: 0, total: 10000, totalDiscounts: 0 }
+  const render = (fiscalLines?: readonly unknown[]) =>
+    renderInvoice({
+      invoiceNumber: 'POS-000123',
+      invoice: { businessInfo: BUSINESS, bill, date: '2025-01-15T12:30:00', ...(fiscalLines ? { fiscalLines } : {}) },
+      displayItems: [{ name: 'Arepa', quantity: 1, price: 10000 }],
+    }).lines
+  const FISCAL = ['RESPONSABLE DE IVA', 'RES. DIAN No. 18764000001234', 'DEL 01/01/2026 AL 31/12/2027', 'RANGO POS-1 AL POS-5000']
+
+  it('prints each line centered right before the thanks, like pos/print_renderer.py', () => {
+    const lines = render(FISCAL)
+    const thanks = lines.findIndex((l) => l.text === '¡GRACIAS POR SU COMPRA!')
+    expect(lines.slice(thanks - 4, thanks)).toEqual(FISCAL.map((text) => ({ text, align: 'center' })))
+  })
+
+  it('prints only non-empty strings', () => {
+    const texts = render([7, null, '', 'RESPONSABLE DE IVA']).map((l) => l.text)
+    expect(texts[texts.indexOf('¡GRACIAS POR SU COMPRA!') - 1]).toBe('RESPONSABLE DE IVA')
+    expect(texts).not.toContain('7')
+  })
+
+  it('leaves an invoice without DIAN lines as it was', () => {
+    expect(render([])).toEqual(render())
+    expect(render().map((l) => l.text)).not.toContain('RESPONSABLE DE IVA')
+  })
+})

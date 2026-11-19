@@ -45,12 +45,12 @@ const p = {
 
 const METHOD_KEYS = ['code', 'id', 'isActive', 'kind', 'name', 'sortOrder'];
 const PAY_KEYS = [
-  'alreadyPaid', 'amountDue', 'changeGiven', 'drawerCashBefore', 'drawerWarning', 'paymentId', 'status', 'tenders',
-  'tipAmount', 'totalCharged',
+  'alreadyPaid', 'amountDue', 'changeGiven', 'drawerCashBefore', 'drawerWarning', 'invoiceFiscal', 'invoiceNumber',
+  'invoiceWarnings', 'paymentId', 'status', 'tenders', 'tipAmount', 'totalCharged',
 ];
 const PAYMENT_KEYS = [
-  'amountDue', 'cashRegisterId', 'cashierProfileId', 'changeGiven', 'createdAt', 'id', 'idempotencyKey', 'orderId',
-  'tenders', 'tipAmount', 'totalCharged',
+  'amountDue', 'cashRegisterId', 'cashierProfileId', 'changeGiven', 'createdAt', 'id', 'idempotencyKey', 'invoiceFiscal',
+  'invoiceNumber', 'orderId', 'tenders', 'tipAmount', 'totalCharged',
 ];
 const TENDER_KEYS = ['amount', 'cashReceived', 'id', 'lineNo', 'methodCode', 'methodKind', 'paymentId', 'paymentMethodId', 'reference'];
 const LEGACY_KEYS = [
@@ -214,6 +214,9 @@ describe('payments endpoints (Testcontainers, vipe_api)', () => {
         drawerWarning: false,
         drawerCashBefore: 0,
         tenders: [{ lineNo: 1, methodCode: 'cash', amount: 10000, cashReceived: 10000 }],
+        invoiceNumber: expect.stringMatching(/^POS-\d{6}$/),
+        invoiceFiscal: { prefix: 'POS', resolution: null, rangeFrom: 1, rangeTo: null, validFrom: null, validTo: null, taxRegime: null },
+        invoiceWarnings: [],
       });
       expect(await db('SELECT status FROM orders WHERE id = $1', [p.o1])).toEqual([{ status: 'paid' }]);
     });

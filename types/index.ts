@@ -304,6 +304,8 @@ export interface PrintableInvoice {
   change?: number
   /** Present for delivery orders; see `DeliveryPrintInfo`. */
   delivery?: DeliveryPrintInfo
+  /** H-014 / S2: DIAN lines from the payment's fiscal snapshot (`lib/payments/invoice-fiscal`); absent before the payment. */
+  fiscalLines?: string[]
 }
 
 export type PrintableKitchenOrder = {

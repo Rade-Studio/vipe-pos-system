@@ -1,6 +1,7 @@
 import { sql } from '@vipe/db';
 import { reasonOf, staffRef } from '../audit/audit.mappers';
 import { toIso } from '../common/validation';
+import { toInvoiceFiscal } from './invoice-numbering';
 import type {
   LegacyPaymentTransaction,
   OrderBillSummary,
@@ -52,7 +53,10 @@ export const toPaymentMethod = (row: Json): PaymentMethod => ({
 });
 
 /** pay_order result (snake_case jsonb) in camelCase; alreadyPaid mirrors the status. */
-export function toPayOrderResult(row: Json): PayOrderResult {
+export function toPayOrderResult(
+  row: Json,
+  invoice: Pick<PayOrderResult, 'invoiceNumber' | 'invoiceFiscal' | 'invoiceWarnings'> = { invoiceNumber: null, invoiceFiscal: null, invoiceWarnings: [] },
+): PayOrderResult {
   const status = row.status as PayOrderResult['status'];
   return {
     paymentId: String(row.payment_id),
@@ -70,6 +74,7 @@ export function toPayOrderResult(row: Json): PayOrderResult {
       amount: req(tender, 'amount'),
       cashReceived: numOrNull(tender.cash_received),
     })),
+    ...invoice,
   };
 }
 
@@ -98,6 +103,8 @@ export const toPayment = (row: Json): Payment => ({
   idempotencyKey: String(row.idempotency_key),
   createdAt: time(row.created_at)!,
   tenders: ((row.tenders as Json[] | null) ?? []).map(toTender),
+  invoiceNumber: text(row.invoice_number),
+  invoiceFiscal: toInvoiceFiscal(row.invoice_fiscal),
 });
 
 export const toLegacyTransaction = (row: Json): LegacyPaymentTransaction => ({

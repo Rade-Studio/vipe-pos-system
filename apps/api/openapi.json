@@ -12904,6 +12904,54 @@
             ],
             "default": "INC",
             "description": "Tipo de impuesto: INC (impuesto nacional al consumo, what restaurants usually charge) or IVA. Labels bills, slips and the informe Z with taxPercentage; changing it never changes taxPercentage."
+          },
+          "invoicePrefix": {
+            "type": "string",
+            "default": "POS",
+            "pattern": "^[A-Z0-9]{1,10}$",
+            "description": "Prefijo de la factura: the invoice number is prefix-consecutive (POS-000123)."
+          },
+          "invoiceResolution": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "description": "Número de resolución DIAN; printed on the invoice when set."
+          },
+          "invoiceRangeFrom": {
+            "type": "integer",
+            "default": 1,
+            "description": "First number of the authorized range; the consecutive never starts below it."
+          },
+          "invoiceRangeTo": {
+            "type": "integer",
+            "nullable": true,
+            "default": null,
+            "description": "Last number of the authorized range; a payment past it is warned, never blocked."
+          },
+          "invoiceValidFrom": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "default": null,
+            "description": "Start of the resolution validity."
+          },
+          "invoiceValidTo": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "default": null,
+            "description": "End of the resolution validity; a payment after it is warned, never blocked."
+          },
+          "taxRegime": {
+            "type": "string",
+            "enum": [
+              "responsable_iva",
+              "no_responsable_iva",
+              "regimen_simple"
+            ],
+            "nullable": true,
+            "default": null,
+            "description": "Régimen tributario printed on the invoice; null prints none."
           }
         },
         "required": [
@@ -12923,7 +12971,14 @@
           "printingEnabled",
           "desktopUpdateChannel",
           "businessDayCutoffHour",
-          "taxType"
+          "taxType",
+          "invoicePrefix",
+          "invoiceResolution",
+          "invoiceRangeFrom",
+          "invoiceRangeTo",
+          "invoiceValidFrom",
+          "invoiceValidTo",
+          "taxRegime"
         ]
       },
       "UpdateBusinessConfigRequest": {
@@ -13008,6 +13063,47 @@
               "INC",
               "IVA"
             ]
+          },
+          "invoicePrefix": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{1,10}$"
+          },
+          "invoiceResolution": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "null clears it."
+          },
+          "invoiceRangeFrom": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "invoiceRangeTo": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true,
+            "description": "Must be >= invoiceRangeFrom (the sent or the stored one); null clears it."
+          },
+          "invoiceValidFrom": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "invoiceValidTo": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Must be >= invoiceValidFrom; null clears it."
+          },
+          "taxRegime": {
+            "type": "string",
+            "enum": [
+              "responsable_iva",
+              "no_responsable_iva",
+              "regimen_simple"
+            ],
+            "nullable": true,
+            "description": "null clears it."
           }
         }
       },
@@ -13476,6 +13572,55 @@
           "reference"
         ]
       },
+      "InvoiceFiscal": {
+        "type": "object",
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "description": "Prefix used for the number."
+          },
+          "resolution": {
+            "type": "string",
+            "nullable": true,
+            "description": "DIAN resolution number; null when it was not configured."
+          },
+          "rangeFrom": {
+            "type": "integer"
+          },
+          "rangeTo": {
+            "type": "integer",
+            "nullable": true
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "validTo": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "taxRegime": {
+            "type": "string",
+            "enum": [
+              "responsable_iva",
+              "no_responsable_iva",
+              "regimen_simple"
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "prefix",
+          "resolution",
+          "rangeFrom",
+          "rangeTo",
+          "validFrom",
+          "validTo",
+          "taxRegime"
+        ]
+      },
       "Payment": {
         "type": "object",
         "properties": {
@@ -13522,6 +13667,21 @@
             "items": {
               "$ref": "#/components/schemas/PaymentTender"
             }
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true,
+            "description": "Stored invoice number (reprints show it); null before numbering existed."
+          },
+          "invoiceFiscal": {
+            "nullable": true,
+            "description": "DIAN data in force when charged.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InvoiceFiscal"
+              }
+            ]
           }
         },
         "required": [
@@ -13535,7 +13695,9 @@
           "changeGiven",
           "idempotencyKey",
           "createdAt",
-          "tenders"
+          "tenders",
+          "invoiceNumber",
+          "invoiceFiscal"
         ]
       },
       "LegacyPaymentTransaction": {
@@ -15909,6 +16071,34 @@
             "items": {
               "$ref": "#/components/schemas/PayOrderTenderEcho"
             }
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true,
+            "description": "Invoice number assigned when charged (POS-000123); a replay returns the stored one. null only for a payment made before numbering existed."
+          },
+          "invoiceFiscal": {
+            "nullable": true,
+            "description": "DIAN data in force when charged (printed on the invoice).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InvoiceFiscal"
+              }
+            ]
+          },
+          "invoiceWarnings": {
+            "type": "array",
+            "description": "Warn only, the payment is registered: range_ending / range_exceeded (authorized range), resolution_expiring (30 days or less) / resolution_expired.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "range_ending",
+                "range_exceeded",
+                "resolution_expiring",
+                "resolution_expired"
+              ]
+            }
           }
         },
         "required": [
@@ -15921,7 +16111,10 @@
           "changeGiven",
           "drawerWarning",
           "drawerCashBefore",
-          "tenders"
+          "tenders",
+          "invoiceNumber",
+          "invoiceFiscal",
+          "invoiceWarnings"
         ]
       },
       "VoidPaymentRequest": {

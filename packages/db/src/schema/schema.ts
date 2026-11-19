@@ -27,6 +27,14 @@ export const businessConfig = pgTable("business_config", {
 	check("business_config_allow_self_authorization", sql`((key)::text <> 'allow_self_authorization'::text) OR (value = ANY (ARRAY['true'::text, 'false'::text]))`),
 	check("business_config_business_day_cutoff_hour", sql`((key)::text <> 'business_day_cutoff_hour'::text) OR (value = ANY (ARRAY['0'::text, '1'::text, '2'::text, '3'::text, '4'::text, '5'::text, '6'::text]))`),
 	check("business_config_tax_type", sql`((key)::text <> 'tax_type'::text) OR (value = ANY (ARRAY['INC'::text, 'IVA'::text]))`),
+	// 0043: invoice numbering and DIAN data ('' = not set).
+	check("business_config_invoice_prefix", sql`((key)::text <> 'invoice_prefix'::text) OR (value ~ '^[A-Z0-9]{1,10}$'::text)`),
+	check("business_config_invoice_resolution", sql`((key)::text <> 'invoice_resolution'::text) OR (length(value) <= 60)`),
+	check("business_config_invoice_range_from", sql`((key)::text <> 'invoice_range_from'::text) OR (value ~ '^[1-9][0-9]{0,11}$'::text)`),
+	check("business_config_invoice_range_to", sql`((key)::text <> 'invoice_range_to'::text) OR (value ~ '^([1-9][0-9]{0,11})?$'::text)`),
+	check("business_config_invoice_valid_from", sql`((key)::text <> 'invoice_valid_from'::text) OR (value ~ '^([0-9]{4}-[0-9]{2}-[0-9]{2})?$'::text)`),
+	check("business_config_invoice_valid_to", sql`((key)::text <> 'invoice_valid_to'::text) OR (value ~ '^([0-9]{4}-[0-9]{2}-[0-9]{2})?$'::text)`),
+	check("business_config_tax_regime", sql`((key)::text <> 'tax_regime'::text) OR (value = ANY (ARRAY[''::text, 'responsable_iva'::text, 'no_responsable_iva'::text, 'regimen_simple'::text]))`),
 ]);
 
 export const cashRegisters = pgTable("cash_registers", {
@@ -1080,7 +1088,14 @@ export const payments = pgTable("payments", {
 	idempotencyKey: uuid("idempotency_key").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	voidedAt: timestamp("voided_at", { withTimezone: true, mode: 'string' }),
+	/** 0043: invoice consecutive, printed number and fiscal snapshot, set by the payments_assign_invoice_number trigger. */
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	invoiceSeq: bigint("invoice_seq", { mode: "number" }),
+	invoiceNumber: text("invoice_number"),
+	invoiceFiscal: jsonb("invoice_fiscal"),
 }, (table) => [
+	uniqueIndex("payments_restaurant_id_invoice_seq_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.invoiceSeq.asc().nullsLast().op("int8_ops")),
+	check("payments_invoice_seq_check", sql`invoice_seq >= 1`),
 	index("idx_payments_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("payments_order_id_live_key").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")).where(sql`(voided_at IS NULL)`),
 	index("idx_payments_restaurant_id_cash_register_id_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.cashRegisterId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("uuid_ops")),

@@ -29,6 +29,7 @@ import { realtimeService } from "@/lib/api/realtime"
 import { getByStatus, getById as getOrderDto } from "@/lib/api/orders"
 import { listPaymentMethods, listRegisterPayments } from "@/lib/api/payments"
 import { invoiceTendersFromPayment, legacyInvoiceFields } from "@/lib/payments/invoice-tenders"
+import { UNASSIGNED_INVOICE_NUMBER, fiscalLines } from "@/lib/payments/invoice-fiscal"
 import { queryClient } from "@/lib/queryClient"
 import { log } from "@/lib/log"
 import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
@@ -559,7 +560,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     }
 
     const invoice: PrintableInvoice = {
-      invoiceNumber: `INV-${Date.now()}`,
+      // H-014 / S2: an open order has no invoice number yet; the payment assigns it.
+      invoiceNumber: UNASSIGNED_INVOICE_NUMBER,
       date: new Date(),
       businessInfo: {
         name: businessName,
@@ -603,6 +605,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         setInvoiceIsPayment(true)
         setCompletedInvoiceData({
           ...base,
+          invoiceNumber: payment.invoiceNumber ?? base.invoiceNumber,
+          fiscalLines: fiscalLines(payment.invoiceFiscal),
           paymentMethod: legacy.paymentMethod as PrintableInvoice["paymentMethod"],
           cashReceived: legacy.cashReceived ?? undefined,
           cashChange: legacy.cashChange > 0 ? legacy.cashChange : undefined,

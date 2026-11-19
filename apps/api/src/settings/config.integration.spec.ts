@@ -22,6 +22,13 @@ const DEFAULTS = {
   desktopUpdateChannel: 'stable',
   businessDayCutoffHour: 4,
   taxType: 'INC',
+  invoicePrefix: 'POS',
+  invoiceResolution: null,
+  invoiceRangeFrom: 1,
+  invoiceRangeTo: null,
+  invoiceValidFrom: null,
+  invoiceValidTo: null,
+  taxRegime: null,
 };
 
 describe('business config endpoints (Testcontainers, vipe_api)', () => {

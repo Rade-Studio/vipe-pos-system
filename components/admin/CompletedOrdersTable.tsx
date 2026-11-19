@@ -29,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Pagination } from "@/components/ui/pagination"
 import { ItemsPerPage } from "@/components/ui/items-per-page"
 import { usePagination } from "@/hooks/use-pagination"
+import { fiscalLines } from "@/lib/payments/invoice-fiscal"
 
 interface CompletedOrdersTableProps {
   selectedDate?: Date
@@ -192,7 +193,9 @@ export function CompletedOrdersTable({ selectedDate, toolbar }: CompletedOrdersT
 
     // Generar la factura
     const invoice: PrintableInvoice = {
-      invoiceNumber: order.id.substring(0, 8),
+      // H-014 / S2: the stored consecutive; an order paid before numbering keeps its old label.
+      invoiceNumber: order.ledgerPayment?.invoiceNumber ?? order.id.substring(0, 8),
+      fiscalLines: fiscalLines(order.ledgerPayment?.invoiceFiscal),
       date: order.createdAt || new Date(),
       businessInfo: {
         name: businessName,
