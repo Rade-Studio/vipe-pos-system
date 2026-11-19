@@ -133,7 +133,7 @@ describe('invoice numbering and DIAN data (Testcontainers, vipe_api)', () => {
         invoiceResolution: ' 18764000001234 ',
         invoiceRangeTo: 5000,
         invoiceValidFrom: '2026-01-01',
-        invoiceValidTo: '2027-12-31',
+        invoiceValidTo: '2099-12-31',
         taxRegime: 'responsable_iva',
       });
       expect(res.status).toBe(200);
@@ -142,7 +142,7 @@ describe('invoice numbering and DIAN data (Testcontainers, vipe_api)', () => {
         invoiceResolution: '18764000001234',
         invoiceRangeTo: 5000,
         invoiceValidFrom: '2026-01-01',
-        invoiceValidTo: '2027-12-31',
+        invoiceValidTo: '2099-12-31',
         taxRegime: 'responsable_iva',
       });
       const cleared = await admin().put('/api/config', { invoiceResolution: null, taxRegime: null });
@@ -170,7 +170,7 @@ describe('invoice numbering and DIAN data (Testcontainers, vipe_api)', () => {
           rangeFrom: 1,
           rangeTo: 5000,
           validFrom: '2026-01-01',
-          validTo: '2027-12-31',
+          validTo: '2099-12-31',
           taxRegime: 'responsable_iva',
         },
         invoiceWarnings: [],
