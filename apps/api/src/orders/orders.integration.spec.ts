@@ -174,7 +174,14 @@ describe('orders endpoints (Testcontainers, vipe_api)', () => {
         items: [{ dishId: o.retired, quantity: 1, unitPrice: 1000 }],
       });
       expect(retired.status).toBe(422);
-      expect(retired.body.message).toBe('Dish not active');
+      expect(retired.body).toEqual({
+        statusCode: 422,
+        error: 'Unprocessable Entity',
+        message: 'Dish not active',
+        code: 'dish_inactive',
+        dishIds: [o.retired],
+      });
+      expect(await ordersOf(o.t2)).toHaveLength(0);
       const foreignTable = await waiterA().post('/api/orders', {
         tableId: o.otherTable,
         items: [{ dishId: o.arepa, quantity: 1, unitPrice: 5000 }],

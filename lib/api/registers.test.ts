@@ -20,6 +20,7 @@ import {
   getCurrentRegister,
   getOpenRegister,
   getRegisterPaidOrders,
+  getAllRegisterPaidOrders,
   getRegistersByDate,
   getTransactionsByRegisterId,
   getTransactionsByRegisters,
@@ -299,5 +300,36 @@ describe("caja-cierres S7 validateRegister", () => {
   it("surfaces 403 as not-authorized", async () => {
     api.POST.mockRejectedValueOnce(new ApiError(403, "Forbidden", "Forbidden resource", { statusCode: 403 }))
     await expect(validateRegister("r-1")).rejects.toMatchObject({ kind: "not-authorized" })
+  })
+})
+
+describe("H-069 getAllRegisterPaidOrders: every page of a long shift", () => {
+  const row = (n: number) => ({
+    orderId: `o-${n}`, orderNumber: n, orderType: "dine_in", tableNumber: 1, zoneName: null, waiter: { id: "w-1", name: "Ana" },
+    paymentId: `p-${n}`, amountDue: 1000, tip: 0, total: 1000, paidAt: "2026-11-04T15:00:00.000Z", tenders: [],
+  })
+  const page = (from: number, count: number) => Array.from({ length: count }, (_, i) => row(from + i))
+  beforeEach(() => api.GET.mockReset())
+
+  it("reads pages of 200 by offset until a short page and keeps the server order", async () => {
+    api.GET.mockResolvedValueOnce({ data: page(0, 200) }).mockResolvedValueOnce({ data: page(200, 200) }).mockResolvedValueOnce({ data: page(400, 17) })
+    const rows = await getAllRegisterPaidOrders("r-1")
+    expect(api.GET.mock.calls.map(([, init]) => init.params.query)).toEqual([
+      { limit: 200, offset: 0 },
+      { limit: 200, offset: 200 },
+      { limit: 200, offset: 400 },
+    ])
+    expect(rows).toHaveLength(417)
+    expect(rows.map((r) => r.paymentId)).toEqual(page(0, 417).map((r) => r.paymentId))
+    expect(rows[0]!.paidAt).toEqual(new Date("2026-11-04T15:00:00.000Z"))
+  })
+
+  it("stops after one request when the first page is short, and after an empty page", async () => {
+    api.GET.mockResolvedValueOnce({ data: page(0, 3) })
+    expect(await getAllRegisterPaidOrders("r-1")).toHaveLength(3)
+    expect(api.GET).toHaveBeenCalledTimes(1)
+    api.GET.mockReset().mockResolvedValueOnce({ data: page(0, 200) }).mockResolvedValueOnce({ data: [] })
+    expect(await getAllRegisterPaidOrders("r-1")).toHaveLength(200)
+    expect(api.GET).toHaveBeenCalledTimes(2)
   })
 })

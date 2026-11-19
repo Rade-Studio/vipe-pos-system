@@ -305,6 +305,23 @@ describe("CloseRegisterDialog stepper (caja-cierres S3)", () => {
     expect(await screen.findByText("Turno cerrado")).toBeInTheDocument()
   })
 
+  it("H-063: Confirmar and the closed summary show the cash list that adds up, and still the count", async () => {
+    payments.closeRegisterRpc.mockResolvedValue(closed)
+    render(<CloseRegisterDialog open onOpenChange={() => {}} />)
+    await waitFor(() => expect(orders.getByStatus).toHaveBeenCalled())
+    quickCount("50000")
+    goTo("Confirmar")
+    const cash = screen.getByRole("region", { name: "Efectivo en caja" })
+    expect(cash).toHaveTextContent("= Efectivo esperado después de propinas$ 50.000")
+    expect(screen.getByRole("region", { name: "Ventas del turno" })).toHaveTextContent("+ Propinas$ 30.000")
+    expect(screen.queryByText("Fondo de caja")).toBeNull()
+    expect(screen.getByText("Contado").parentElement).toHaveTextContent("$ 50.000")
+    fireEvent.click(closeButton())
+    expect(await screen.findByText("Turno cerrado")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Efectivo en caja" })).toHaveTextContent("Efectivo inicial$ 0")
+    expect(screen.queryByText("Total facturado")).toBeNull()
+  })
+
   it("requires a note of 3+ characters when the count differs", async () => {
     payments.closeRegisterRpc.mockResolvedValue(closed)
     render(<CloseRegisterDialog open onOpenChange={() => {}} />)

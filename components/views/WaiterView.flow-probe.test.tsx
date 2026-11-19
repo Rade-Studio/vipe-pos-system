@@ -383,3 +383,131 @@ describe("T10 order flow: undo, rules and lifecycle", () => {
     expect(cart()).toEqual([["Bandeja", 3, null]])
   })
 })
+
+// ---- Lote 2 T4: cart safety (H-052), inactive dish (H-084), another waiter's table (H-044) ----
+describe("T4 waiter cart and table ownership", () => {
+  const A = "aaaaaaaa-1111-4111-8111-111111111111"
+  const B = "bbbbbbbb-2222-4222-8222-222222222222"
+  const line = (id: string, name: string, quantity: number) => ({ id: `${id}-line`, name, price: 10000, quantity, categoryId: "cat-1", image: "" })
+  const cart = () => (useCartStore.getState().cartItems["t-1"] ?? []).map((l) => [l.name, l.quantity])
+  const toastTitled = (title: string) => env.toastFn.mock.calls.map(([arg]: any) => arg).find((arg: any) => arg.title === title)
+  const openTable = async () => {
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+  }
+
+  beforeEach(() => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
+    env.waiterGetAll.mockResolvedValue([...waiterRows, { id: "w-2", name: "María López", username: "maria" }])
+  })
+
+  it("H-052 '-' at quantity 1 removes the line with Deshacer, which puts it back", async () => {
+    useCartStore.setState({ cartItems: { "t-1": [line(A, "Bandeja", 1), line(B, "Sopa", 2)] } })
+    await openTable()
+    await tap("Quitar uno a Bandeja")
+    expect(cart()).toEqual([["Sopa", 2]])
+    const removed = toastTitled("Quitaste 1× Bandeja")
+    expect(removed.action.props.altText).toBe("Deshacer")
+    await act(async () => removed.action.props.onClick())
+    await flush()
+    expect(cart()).toEqual([["Bandeja", 1], ["Sopa", 2]])
+  })
+
+  it("H-052 '-' above quantity 1 still only lowers it, with no toast", async () => {
+    useCartStore.setState({ cartItems: { "t-1": [line(B, "Sopa", 2)] } })
+    await openTable()
+    await tap("Quitar uno a Sopa")
+    expect(cart()).toEqual([["Sopa", 1]])
+    expect(env.toastFn).not.toHaveBeenCalled()
+  })
+
+  it("H-052 Limpiar empties the cart with Deshacer, which restores every line in order", async () => {
+    useCartStore.setState({ cartItems: { "t-1": [line(A, "Bandeja", 1), line(B, "Sopa", 2)] } })
+    await openTable()
+    await tap("Limpiar")
+    expect(cart()).toEqual([])
+    const cleared = toastTitled("Vaciaste el carrito de la mesa 1")
+    expect(cleared.description).toBe("Quitaste 2 productos.")
+    await act(async () => cleared.action.props.onClick())
+    await flush()
+    expect(cart()).toEqual([["Bandeja", 1], ["Sopa", 2]])
+  })
+
+  it("H-084 a 422 dish_inactive names the dish and keeps the cart", async () => {
+    useCartStore.setState({ cartItems: { "t-1": [line(A, "Bandeja", 1), line(B, "Sopa", 2)] } })
+    env.orderCreate.mockRejectedValue(
+      new ApiError(422, "Unprocessable Entity", "Dish not active", {
+        statusCode: 422,
+        error: "Unprocessable Entity",
+        message: "Dish not active",
+        code: "dish_inactive",
+        dishIds: [B],
+      }),
+    )
+    await openTable()
+    await tap("Enviar")
+    expect(env.toastFn).toHaveBeenCalledWith({
+      title: "Plato no disponible",
+      description: "Sopa ya no está disponible. Quítalo del pedido y envía de nuevo.",
+      variant: "destructive",
+    })
+    expect(cart()).toEqual([["Bandeja", 1], ["Sopa", 2]])
+  })
+
+  it("H-044 another waiter's table asks first; Cancelar leaves it closed, Abrir mesa opens it", async () => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-2")])
+    await openTable()
+    const dialog = screen.getByRole("alertdialog", { name: "Esta mesa es de María López" })
+    expect(within(dialog).getByText("¿Quieres abrirla igual? Lo que agregues queda registrado a tu nombre.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Agregar productos" })).not.toBeInTheDocument()
+    await tap("Cancelar")
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Agregar productos" })).not.toBeInTheDocument()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await tap("Abrir mesa")
+    expect(screen.getByRole("button", { name: "Agregar productos" })).toBeInTheDocument()
+    expect(env.assignWaiter).not.toHaveBeenCalled()
+    expect(useTableStore.getState().tables.find((t) => t.id === "t-1")?.waiter).toBe("w-2")
+  })
+
+  it("H-044 the waiter's own table opens with no question", async () => {
+    await openTable()
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Agregar productos" })).toBeInTheDocument()
+  })
+})
+
+describe("T4 dish search in the waiter's order flow (H-054)", () => {
+  const A = "aaaaaaaa-1111-4111-8111-111111111111"
+  beforeEach(() => {
+    env.tableGetAll.mockResolvedValue([tableRow("t-1", 1, "occupied", "w-1")])
+    env.menuTree.mockResolvedValue({
+      categories: [
+        menuCategory({ id: "cat-0", name: "Vacía", dishes: [] }),
+        menuCategory({ id: "cat-1", name: "Platos", dishes: [menuDish({ id: A, name: "Bandeja", price: 30000 })] }),
+      ],
+    })
+  })
+
+  it("hides the empty category and adds a dish found with Buscar plato", async () => {
+    renderView()
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await openOrderFlow()
+    expect(screen.queryByRole("button", { name: /^Vacía/ })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar plato" }), { target: { value: "band" } })
+    await tap(/^Bandeja, .*, Platos$/)
+    await tap(/^Agregar 1 ·/)
+    expect((useCartStore.getState().cartItems["t-1"] ?? []).map((l) => [l.name, l.quantity])).toEqual([["Bandeja", 1]])
+  })
+})

@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
 import { v4 as uuidv4 } from "uuid"
 import { cartLineKey } from "@/lib/modifiers/cart"
 import type { CartItem, OrderBill } from "@/types"
@@ -20,144 +21,164 @@ interface CartState {
   calculateOrderBill: (items: CartItem[], tipPercentage?: number, taxPercentage?: number) => OrderBill
 }
 
-export const useCartStore = create<CartState>((set, get) => ({
-  cartItems: {},
+/** localStorage key of the saved table carts; signing out removes it (lib/api/auth). */
+export const CART_STORAGE_KEY = "vipe-cart"
 
-  addToCart: (tableId, newItem) =>
-    set((state) => {
-      const tableCart = state.cartItems[tableId] || []
+/** Without a browser storage (server render, node tests) nothing is kept. */
+const noStorage: StateStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
 
-      // One line per dish + options + note (F7); anything else is a new line.
-      const newKey = cartLineKey(newItem)
-      const existingItemIndex = tableCart.findIndex((item) => cartLineKey(item) === newKey)
+/**
+ * H-052: the table carts are kept in localStorage ("vipe-cart"), so a reload
+ * or a phone that drops the tab does not lose what the waiter has not sent.
+ * Only `cartItems` is stored; sending or "Limpiar" stores the table empty.
+ */
+export const useCartStore = create<CartState>()(
+  persist(
+    (set, get) => ({
+      cartItems: {},
 
-      if (existingItemIndex !== -1) {
-        const updatedCart = [...tableCart]
-        updatedCart[existingItemIndex] = {
-          ...updatedCart[existingItemIndex],
-          quantity: updatedCart[existingItemIndex].quantity + newItem.quantity,
-        }
-        return {
-          cartItems: {
-            ...state.cartItems,
-            [tableId]: updatedCart,
-          },
-        }
-      } else {
-        return {
-          cartItems: {
-            ...state.cartItems,
-            [tableId]: [...tableCart, { ...newItem, id: `${newItem.id}-${uuidv4()}` }],
-          },
-        }
-      }
-    }),
+      addToCart: (tableId, newItem) =>
+        set((state) => {
+          const tableCart = state.cartItems[tableId] || []
 
-  addCombo: (tableId, item) => {
-    const id = `combo-${uuidv4()}`
-    set((state) => ({
-      cartItems: { ...state.cartItems, [tableId]: [...(state.cartItems[tableId] || []), { ...item, id }] },
-    }))
-    return id
-  },
+          // One line per dish + options + note (F7); anything else is a new line.
+          const newKey = cartLineKey(newItem)
+          const existingItemIndex = tableCart.findIndex((item) => cartLineKey(item) === newKey)
 
-  updateQuantity: (tableId, itemId, quantity) =>
-    set((state) => {
-      const tableCart = state.cartItems[tableId] || []
-      if (quantity <= 0) {
-        return {
-          cartItems: {
-            ...state.cartItems,
-            [tableId]: tableCart.filter((item) => item.id !== itemId),
-          },
-        }
-      }
-      return {
-        cartItems: {
-          ...state.cartItems,
-          [tableId]: tableCart.map((item) => (item.id === itemId ? { ...item, quantity } : item)),
-        },
-      }
-    }),
+          if (existingItemIndex !== -1) {
+            const updatedCart = [...tableCart]
+            updatedCart[existingItemIndex] = {
+              ...updatedCart[existingItemIndex],
+              quantity: updatedCart[existingItemIndex].quantity + newItem.quantity,
+            }
+            return {
+              cartItems: {
+                ...state.cartItems,
+                [tableId]: updatedCart,
+              },
+            }
+          } else {
+            return {
+              cartItems: {
+                ...state.cartItems,
+                [tableId]: [...tableCart, { ...newItem, id: `${newItem.id}-${uuidv4()}` }],
+              },
+            }
+          }
+        }),
 
-  updateItemComments: (tableId, itemId, comments) =>
-    set((state) => {
-      const tableCart = state.cartItems[tableId] || []
-      return {
-        cartItems: {
-          ...state.cartItems,
-          [tableId]: tableCart.map((item) => (item.id === itemId ? { ...item, comments } : item)),
-        },
-      }
-    }),
-
-  replaceLine: (tableId, itemId, edited) =>
-    set((state) => {
-      const tableCart = state.cartItems[tableId] || []
-      const index = tableCart.findIndex((item) => item.id === itemId)
-      if (index === -1) return state
-      const next = { ...edited, id: tableCart[index].id }
-      const key = cartLineKey(next)
-      const twin = tableCart.findIndex((item, at) => at !== index && cartLineKey(item) === key)
-      const updated =
-        twin === -1
-          ? tableCart.map((item, at) => (at === index ? next : item))
-          : tableCart
-              .map((item, at) => (at === twin ? { ...item, quantity: item.quantity + next.quantity } : item))
-              .filter((_, at) => at !== index)
-      return { cartItems: { ...state.cartItems, [tableId]: updated } }
-    }),
-
-  removeFromCart: (tableId, itemId) =>
-    set((state) => {
-      const tableCart = state.cartItems[tableId] || []
-      return {
-        cartItems: {
-          ...state.cartItems,
-          [tableId]: tableCart.filter((item) => item.id !== itemId),
-        },
-      }
-    }),
-
-  clearCart: (tableId) =>
-    set((state) => ({
-      cartItems: {
-        ...state.cartItems,
-        [tableId]: [],
+      addCombo: (tableId, item) => {
+        const id = `combo-${uuidv4()}`
+        set((state) => ({
+          cartItems: { ...state.cartItems, [tableId]: [...(state.cartItems[tableId] || []), { ...item, id }] },
+        }))
+        return id
       },
-    })),
 
-  getCartByTable: (tableId) => {
-    return get().cartItems[tableId] || []
-  },
+      updateQuantity: (tableId, itemId, quantity) =>
+        set((state) => {
+          const tableCart = state.cartItems[tableId] || []
+          if (quantity <= 0) {
+            return {
+              cartItems: {
+                ...state.cartItems,
+                [tableId]: tableCart.filter((item) => item.id !== itemId),
+              },
+            }
+          }
+          return {
+            cartItems: {
+              ...state.cartItems,
+              [tableId]: tableCart.map((item) => (item.id === itemId ? { ...item, quantity } : item)),
+            },
+          }
+        }),
 
-  getCartTotal: (tableId) => {
-    const items = get().cartItems[tableId] || []
-    return items.reduce((total, item) => total + item.price * item.quantity, 0)
-  },
+      updateItemComments: (tableId, itemId, comments) =>
+        set((state) => {
+          const tableCart = state.cartItems[tableId] || []
+          return {
+            cartItems: {
+              ...state.cartItems,
+              [tableId]: tableCart.map((item) => (item.id === itemId ? { ...item, comments } : item)),
+            },
+          }
+        }),
 
-  calculateOrderBill: (items, tipPercentage = 10, taxPercentage = 8): OrderBill => {
-    const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+      replaceLine: (tableId, itemId, edited) =>
+        set((state) => {
+          const tableCart = state.cartItems[tableId] || []
+          const index = tableCart.findIndex((item) => item.id === itemId)
+          if (index === -1) return state
+          const next = { ...edited, id: tableCart[index].id }
+          const key = cartLineKey(next)
+          const twin = tableCart.findIndex((item, at) => at !== index && cartLineKey(item) === key)
+          const updated =
+            twin === -1
+              ? tableCart.map((item, at) => (at === index ? next : item))
+              : tableCart
+                  .map((item, at) => (at === twin ? { ...item, quantity: item.quantity + next.quantity } : item))
+                  .filter((_, at) => at !== index)
+          return { cartItems: { ...state.cartItems, [tableId]: updated } }
+        }),
 
-    const totalDiscounts = items.reduce((sum, item) => {
-      if (item.originalPrice && item.originalPrice > item.price) {
-        return sum + (item.originalPrice - item.price) * item.quantity
-      }
-      return sum
-    }, 0)
+      removeFromCart: (tableId, itemId) =>
+        set((state) => {
+          const tableCart = state.cartItems[tableId] || []
+          return {
+            cartItems: {
+              ...state.cartItems,
+              [tableId]: tableCart.filter((item) => item.id !== itemId),
+            },
+          }
+        }),
 
-    const tax = Math.round(subtotal * (taxPercentage / 100))
-    const tip = Math.round(subtotal * (tipPercentage / 100))
-    const total = subtotal + tax + tip
+      clearCart: (tableId) =>
+        set((state) => ({
+          cartItems: {
+            ...state.cartItems,
+            [tableId]: [],
+          },
+        })),
 
-    return {
-      subtotal,
-      tax,
-      taxPercentage,
-      tip,
-      tipPercentage,
-      total,
-      totalDiscounts,
-    }
-  },
-}))
+      getCartByTable: (tableId) => {
+        return get().cartItems[tableId] || []
+      },
+
+      getCartTotal: (tableId) => {
+        const items = get().cartItems[tableId] || []
+        return items.reduce((total, item) => total + item.price * item.quantity, 0)
+      },
+
+      calculateOrderBill: (items, tipPercentage = 10, taxPercentage = 8): OrderBill => {
+        const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+        const totalDiscounts = items.reduce((sum, item) => {
+          if (item.originalPrice && item.originalPrice > item.price) {
+            return sum + (item.originalPrice - item.price) * item.quantity
+          }
+          return sum
+        }, 0)
+
+        const tax = Math.round(subtotal * (taxPercentage / 100))
+        const tip = Math.round(subtotal * (tipPercentage / 100))
+        const total = subtotal + tax + tip
+
+        return {
+          subtotal,
+          tax,
+          taxPercentage,
+          tip,
+          tipPercentage,
+          total,
+          totalDiscounts,
+        }
+      },
+    }),
+    {
+      name: CART_STORAGE_KEY,
+      storage: createJSONStorage(() => (typeof localStorage === "undefined" ? noStorage : localStorage)),
+      partialize: (state) => ({ cartItems: state.cartItems }),
+    },
+  ),
+)

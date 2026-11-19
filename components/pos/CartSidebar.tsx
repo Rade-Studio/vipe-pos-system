@@ -161,6 +161,7 @@ export function CartSidebar({
                         variant="outline"
                         size="icon"
                         className="h-7 w-7"
+                        aria-label={`Quitar uno a ${item.name}`}
                         onClick={() => onUpdateQuantity(item.id, -1)}
                         disabled={item.quantity < 1}
                       >
@@ -171,6 +172,7 @@ export function CartSidebar({
                         variant="outline"
                         size="icon"
                         className="h-7 w-7"
+                        aria-label={`Sumar uno a ${item.name}`}
                         onClick={() => onUpdateQuantity(item.id, 1)}
                       >
                         <Plus className="h-3 w-3" />

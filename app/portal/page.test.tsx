@@ -108,6 +108,7 @@ import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { emitAuthEvent } from "@/lib/shell/auth-events"
+import { CART_STORAGE_KEY } from "@/store/useCartStore"
 import Home from "./page"
 
 beforeEach(() => {
@@ -332,6 +333,19 @@ describe("shell session through the API", () => {
     expect(await screen.findByText("login-view")).toBeInTheDocument()
     expect(useProfileStore.getState().authProfile).toBeNull()
     expect(useProfileStore.getState().selectedProfile).toBeNull()
+  })
+
+  it("forgets the saved table carts when the session ends, so the next user starts empty (H-052)", async () => {
+    env.role = "admin"
+    await renderShell("admin-view")
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({ state: { cartItems: { t1: [] } }, version: 0 }))
+
+    act(() => {
+      emitAuthEvent("signed_out")
+    })
+
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBeNull()
   })
 
   it("stops listening for signed_out after unmount", async () => {
@@ -626,5 +640,41 @@ describe("shared terminal session (F4, F4b)", () => {
     render(<Home />)
     expect(await screen.findByText("waiter-view")).toBeInTheDocument()
     expect(screen.queryByText(/terminal-view/)).toBeNull()
+  })
+})
+
+describe("saved carts and the session (H-052)", () => {
+  const saved = JSON.stringify({ state: { cartItems: { t1: [{ id: "d-1-x", name: "Arepa", price: 5000, quantity: 1 }] } }, version: 0 })
+
+  it("keeps the saved cart when a reload cannot reach /auth/me (network failure, not a 401)", async () => {
+    window.localStorage.setItem(CART_STORAGE_KEY, saved)
+    env.apiGet.mockImplementation(async (path: string) => {
+      if (path === "/api/auth/me") throw new TypeError("Failed to fetch")
+      throw new Error(`unexpected GET ${path}`)
+    })
+    render(<Home />)
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBe(saved)
+  })
+
+  it("empties the in-memory carts too when the session ends, so the next user in the tab starts empty", async () => {
+    const { useCartStore } = await import("@/store/useCartStore")
+    env.role = "waiter"
+    await renderShell("waiter-view")
+    act(() => useCartStore.getState().addToCart("t1", { id: "d-1", name: "Arepa", price: 5000, quantity: 1, categoryId: "c", image: "" } as never))
+    act(() => emitAuthEvent("signed_out"))
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+    expect(useCartStore.getState().getCartByTable("t1")).toEqual([])
+    expect(window.localStorage.getItem(CART_STORAGE_KEY) ?? "").not.toContain("Arepa")
+  })
+
+  it("keeps the saved cart while the session goes on (no auth event)", async () => {
+    env.role = "waiter"
+    await renderShell("waiter-view")
+    window.localStorage.setItem(CART_STORAGE_KEY, saved)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBe(saved)
   })
 })

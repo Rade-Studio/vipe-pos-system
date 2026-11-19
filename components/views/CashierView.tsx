@@ -531,7 +531,29 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   // Función para mostrar la factura completada
   const showInvoice = (orderId: string) => {
     const order = getOrderById(orderId)
-    if (!order) return
+    if (order) showInvoiceOf(order)
+  }
+
+  // H-069: Transacciones reprints a paid order, which is no longer in the
+  // open-orders list (and the register may be closed): it is read by id.
+  const reprintPaidOrder = async (orderId: string) => {
+    const listed = getOrderById(orderId)
+    if (listed) return showInvoiceOf(listed)
+    // D6 Rule A: handler-only read of the register Transacciones is showing.
+    const { currentRegister: open, lastClose } = useCashRegisterStore.getState()
+    const registerId = open?.id ?? lastClose?.cashRegisterId ?? null
+    try {
+      const invoice = registerId ? await serverPaidInvoice(orderId, registerId) : null
+      if (!invoice) throw new Error("paid order not readable")
+      setInvoiceIsPayment(false)
+      setCompletedInvoiceData(invoice)
+      setShowCompletedInvoice(true)
+    } catch {
+      toast.error("No se pudo cargar la factura. Intenta de nuevo.")
+    }
+  }
+
+  const showInvoiceOf = (order: Order) => {
     const invoice = invoiceForOrder(order)
     if (!invoice) return
     setInvoiceIsPayment(false)
@@ -589,32 +611,43 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     void (async () => {
       try {
         if (!registerId) throw new Error("no register")
-        const [dto, payments, methods] = await Promise.all([
-          getOrderDto(attempt.id),
-          listRegisterPayments([registerId]),
-          listPaymentMethods(),
-        ])
-        const payment = payments.find((row) => row.orderId === attempt.id)
-        const base = payment ? invoiceForOrder(toCashierOrder(dto)) : null
-        if (!payment || !base) throw new Error("paid order not readable")
-        const tenders = invoiceTendersFromPayment(payment, methods)
-        const legacy = legacyInvoiceFields(tenders)
+        const invoice = await serverPaidInvoice(attempt.id, registerId)
+        if (!invoice) throw new Error("paid order not readable")
         toast.success("Pago registrado. La orden quedó pagada; se muestra su factura.")
         setInvoiceIsPayment(true)
-        setCompletedInvoiceData({
-          ...base,
-          paymentMethod: legacy.paymentMethod as PrintableInvoice["paymentMethod"],
-          cashReceived: legacy.cashReceived ?? undefined,
-          cashChange: legacy.cashChange > 0 ? legacy.cashChange : undefined,
-          tenders,
-          change: legacy.cashChange,
-        })
+        setCompletedInvoiceData(invoice)
         setShowCompletedInvoice(true)
       } catch (error) {
         log.error("Pago confirmado por tiempo real sin factura:", { error: String(error) })
         toast.success("Pago registrado. La orden quedó pagada.")
       }
     })()
+  }
+
+  /**
+   * The invoice of a paid order as the server stored it: the order (with its
+   * discounts and waiter) and its payment's tenders (tip, total and methods).
+   * Null when the order has no payment in that register or cannot be printed.
+   */
+  async function serverPaidInvoice(orderId: string, registerId: string): Promise<PrintableInvoice | null> {
+    const [dto, payments, methods] = await Promise.all([
+      getOrderDto(orderId),
+      listRegisterPayments([registerId]),
+      listPaymentMethods(),
+    ])
+    const payment = payments.find((row) => row.orderId === orderId)
+    const base = payment ? invoiceForOrder(toCashierOrder(dto)) : null
+    if (!payment || !base) return null
+    const tenders = invoiceTendersFromPayment(payment, methods)
+    const legacy = legacyInvoiceFields(tenders)
+    return {
+      ...base,
+      paymentMethod: legacy.paymentMethod as PrintableInvoice["paymentMethod"],
+      cashReceived: legacy.cashReceived ?? undefined,
+      cashChange: legacy.cashChange > 0 ? legacy.cashChange : undefined,
+      tenders,
+      change: legacy.cashChange,
+    }
   }
 
   const handlePaid = (invoice: PrintableInvoice) => {
@@ -1024,7 +1057,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         <TabsContent value="transactions" className="mt-0">
           {/* The open register is loaded once, by this screen; the list only
               renders it and keeps a spinner until it is known. */}
-          <TransactionsList registerLoading={!registerSettled} />
+          <TransactionsList registerLoading={!registerSettled} onReprint={(orderId) => void reprintPaidOrder(orderId)} />
         </TabsContent>
       </Tabs>
 

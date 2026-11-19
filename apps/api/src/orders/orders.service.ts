@@ -698,8 +698,16 @@ export class OrdersService {
     if (dishes.some((dish) => !dish)) {
       throw new UnprocessableEntityException('Unknown dish');
     }
-    if (dishes.some((dish) => !dish!.active)) {
-      throw new UnprocessableEntityException('Dish not active');
+    const inactive = dishes.filter((dish) => !dish!.active).map((dish) => dish!.id);
+    if (inactive.length) {
+      // H-084: the ids let the waiter's cart name the dish to remove.
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        error: 'Unprocessable Entity',
+        message: 'Dish not active',
+        code: 'dish_inactive',
+        dishIds: inactive,
+      });
     }
     const modifiers = await resolveLineModifiers(this.uow, all);
     const unitPrices = all.map((line, index) => linePrice(catalog.get(line.dishId)!.price, modifiers[index]));

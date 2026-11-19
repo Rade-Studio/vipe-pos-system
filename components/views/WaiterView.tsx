@@ -5,7 +5,7 @@ import { useTableStore } from "@/store/useTableStore"
 import { useCartStore } from "@/store/useCartStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { useProfileStore } from "@/store/useProfileStore"
-import type { Profile, Order } from "@/types"
+import type { CartItem, Profile, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { AssignedCountsEntry } from "@/components/counts/AssignedCountsEntry"
 import { CartaInbox } from "@/components/carta-inbox/CartaInbox"
@@ -17,6 +17,16 @@ import { CartSidebar } from "@/components/pos/CartSidebar"
 import { StepPicker, type StepPickerItem } from "@/components/order-steps/StepPicker"
 import { OrderColumn, OrderReview, lineCount, lineTotal } from "@/components/order-steps/OrderReview"
 import { ToastAction } from "@/components/ui/toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { AlertTriangle, ArrowLeft, ChevronRight, Send, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WaiterSelectionModal } from "@/components/pos/WaiterSelectionModal"
@@ -141,6 +151,23 @@ interface WaiterViewProps {
 // items/bill/waiter in the React Query cache are preserved by the merge's
 // reference-stable contract) and returns null when the row lacks the minimum
 // id+status shape the merge needs. See its call site in the orders handler.
+
+/**
+ * "Deshacer" of a removal or of "Limpiar": puts `lines` back from `index`; a
+ * line added again meanwhile gets its quantity back instead.
+ */
+function restoreLines(tableId: string, lines: readonly CartItem[], index: number) {
+  useCartStore.setState((state) => {
+    const cart = [...(state.cartItems[tableId] ?? [])]
+    let at = Math.min(index, cart.length)
+    for (const line of lines) {
+      const current = cart.findIndex((entry) => entry.id === line.id)
+      if (current !== -1) cart[current] = { ...cart[current], quantity: cart[current].quantity + line.quantity }
+      else cart.splice(at++, 0, line)
+    }
+    return { cartItems: { ...state.cartItems, [tableId]: cart } }
+  })
+}
 
 export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewProps) {
   // Estados principales
@@ -508,13 +535,22 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   )
 
   // Manejar selección de mesa
+  const [foreignTable, setForeignTable] = useState<{ id: string; waiterName: string } | null>(null)
   const handleTableSelect = useCallback(
-    (tableId: string | null) => {
+    (tableId: string | null, ownerConfirmed = false) => {
       // T22: no new order on an inactive table (the API answers 409 too); an
       // order opened before it was deactivated stays reachable.
       const picked = tableId ? tables.find((t) => t.id === tableId) : undefined
       if (picked && picked.isActive === false && !openByTable.has(picked.id)) {
         toast({ title: "La mesa está inactiva", description: "No se pueden abrir pedidos nuevos en esta mesa." })
+        return
+      }
+
+      // H-044: a waiter opening another waiter's table is asked first.
+      const owner = picked?.waiter
+      if (picked && owner && !ownerConfirmed && tableId !== activeTable && profile.role === "waiter" && owner !== (authProfile?.id ?? profile.id)) {
+        const waiterName = waiters.find((entry) => entry.id === owner)?.name ?? picked.waiter_name ?? "otro mesero"
+        setForeignTable({ id: picked.id, waiterName })
         return
       }
 
@@ -565,7 +601,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         setShowTableSheet(true)
       }
     },
-    [activeTable, checkEmptyCartAndReleaseTable, tables, isMobile, profile, openByTable, toast],
+    [activeTable, checkEmptyCartAndReleaseTable, tables, isMobile, profile, authProfile, waiters, openByTable, toast],
   )
 
   // Takes a free or reserved table (POST assign: occupied, a reservation is
@@ -730,14 +766,38 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     [tables, activeTable, toast, isMobile],
   )
 
+  // Removes a cart line with "Deshacer" putting it back where it was ("Quitar",
+  // and H-052 "-" at quantity 1).
+  const removeLineWithUndo = useCallback(
+    (lineId: string) => {
+      if (!activeTable) return
+      const tableId = activeTable
+      const before = useCartStore.getState().getCartByTable(tableId)
+      const index = before.findIndex((entry) => entry.id === lineId)
+      if (index === -1) return
+      const removed = before[index]
+      updateQuantity(tableId, lineId, 0)
+      toast({
+        title: `Quitaste ${removed.quantity}× ${removed.name}`,
+        action: (
+          <ToastAction altText="Deshacer" className="min-h-11 px-4" onClick={() => restoreLines(tableId, [removed], index)}>
+            Deshacer
+          </ToastAction>
+        ),
+      })
+    },
+    [activeTable, updateQuantity, toast],
+  )
+
   // Actualizar cantidad de producto
   const handleUpdateQuantity = useCallback(
     (itemId: string, change: number) => {
       if (!activeTable) return
       const currentQuantity = cartItems.find((item) => item.id === itemId)?.quantity || 0
-      updateQuantity(activeTable, itemId, currentQuantity + change)
+      if (currentQuantity + change <= 0) removeLineWithUndo(itemId)
+      else updateQuantity(activeTable, itemId, currentQuantity + change)
     },
-    [activeTable, cartItems, updateQuantity],
+    [activeTable, cartItems, updateQuantity, removeLineWithUndo],
   )
 
   // Actualizar comentarios de producto
@@ -749,11 +809,24 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
     [activeTable, updateItemComments],
   )
 
-  // Limpiar carrito
+  // Limpiar carrito (H-052): with "Deshacer", which puts every line back.
   const handleClearCart = useCallback(() => {
     if (!activeTable) return
-    clearCart(activeTable)
-  }, [activeTable, clearCart])
+    const tableId = activeTable
+    const lines = useCartStore.getState().getCartByTable(tableId)
+    if (lines.length === 0) return
+    const number = tables.find((t) => t.id === tableId)?.number
+    clearCart(tableId)
+    toast({
+      title: number != null ? `Vaciaste el carrito de la mesa ${number}` : "Vaciaste el carrito",
+      description: lines.length === 1 ? "Quitaste 1 producto." : `Quitaste ${lines.length} productos.`,
+      action: (
+        <ToastAction altText="Deshacer" className="min-h-11 px-4" onClick={() => restoreLines(tableId, lines, 0)}>
+          Deshacer
+        </ToastAction>
+      ),
+    })
+  }, [activeTable, clearCart, tables, toast])
 
   // The API checked and consumed the stock with the order (T8b). The grid's
   // stock read is cached (staleTime 30 s), so a dish this order just sold out
@@ -944,6 +1017,27 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
         toast({
           title: "Precios actualizados",
           description: "Algunos precios cambiaron. Revise el carrito y envíe de nuevo.",
+          variant: "destructive",
+        })
+      } else if (error instanceof ApiError && error.status === 422 && error.body.code === "dish_inactive") {
+        // H-084: the admin turned the dish off after it went into the cart.
+        const ids = new Set(Array.isArray(error.body.dishIds) ? (error.body.dishIds as string[]) : [])
+        const names = [
+          ...new Set(
+            cartItems.flatMap((item) =>
+              isComboLine(item)
+                ? item.combo.choices.filter((choice) => ids.has(choice.dishId)).map((choice) => choice.name)
+                : ids.has(dishIdFromCartItemId(item.id) ?? "")
+                  ? [item.name]
+                  : [],
+            ),
+          ),
+        ]
+        toast({
+          title: "Plato no disponible",
+          description: names.length
+            ? `${names.join(", ")} ya no ${names.length === 1 ? "está disponible" : "están disponibles"}. Quítalo del pedido y envía de nuevo.`
+            : "Un plato del pedido ya no está disponible. Quítalo y envía de nuevo.",
           variant: "destructive",
         })
       } else {
@@ -1204,36 +1298,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
   }
 
   // "Quitar" in the review, with "Deshacer" putting the line back where it was.
-  const handleRemoveLine = (lineId: string) => {
-    if (!activeTable) return
-    const tableId = activeTable
-    const before = getCartByTable(tableId)
-    const index = before.findIndex((entry) => entry.id === lineId)
-    if (index === -1) return
-    const removed = before[index]
-    updateQuantity(tableId, lineId, 0)
-    toast({
-      title: `Quitaste ${removed.quantity}× ${removed.name}`,
-      action: (
-        <ToastAction
-          altText="Deshacer"
-          className="min-h-11 px-4"
-          onClick={() =>
-            useCartStore.setState((state) => {
-              const cart = [...(state.cartItems[tableId] ?? [])]
-              // The same line added again meanwhile: put the quantity back on it.
-              const current = cart.findIndex((entry) => entry.id === removed.id)
-              if (current !== -1) cart[current] = { ...cart[current], quantity: cart[current].quantity + removed.quantity }
-              else cart.splice(Math.min(index, cart.length), 0, removed)
-              return { cartItems: { ...state.cartItems, [tableId]: cart } }
-            })
-          }
-        >
-          Deshacer
-        </ToastAction>
-      ),
-    })
-  }
+  const handleRemoveLine = removeLineWithUndo
 
   // F7: "Cambiar opciones" reopens the sheet with the line's options, quantity and note.
   const editingLine = editingLineId ? cartItems.find((entry) => entry.id === editingLineId) ?? null : null
@@ -1423,6 +1488,7 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           onAdd={handleAddFromSteps}
           onExit={closeOrderFlow}
           exitLabel="Mapa"
+          searchable
           banner={promotionsToday ? <PromotionStrip state={stripState(promotionsToday)} /> : undefined}
           tags={pickerTags}
           extraTiles={comboTileList}
@@ -1836,6 +1902,28 @@ export function WaiterView({ profile, onChangeProfile, authRole }: WaiterViewPro
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* H-044: another waiter's table is opened only after a confirmation. */}
+      <AlertDialog open={foreignTable !== null} onOpenChange={(open) => !open && setForeignTable(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Esta mesa es de {foreignTable?.waiterName}</AlertDialogTitle>
+            <AlertDialogDescription>¿Quieres abrirla igual? Lo que agregues queda registrado a tu nombre.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const target = foreignTable
+                setForeignTable(null)
+                if (target) handleTableSelect(target.id, true)
+              }}
+            >
+              Abrir mesa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

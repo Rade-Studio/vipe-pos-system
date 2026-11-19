@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { log } from "@/lib/log"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDateTime } from "@/utils/helpers"
 import { useCashRegisterStore } from "@/store/use-cash-register-store"
@@ -22,6 +21,8 @@ import { listPaymentMethods } from "@/lib/api/payments"
 import { usePrintingEnabled } from "@/lib/api/printing"
 import type { PaymentMethodOption } from "@/lib/payments/types"
 import type { PaymentTransaction } from "@/types/cash-register"
+import { getAllRegisterPaidOrders } from "@/lib/api/registers"
+import { registerPaidOrdersQueryKey } from "./PaidOrdersList"
 
 interface TransactionsListProps {
   /**
@@ -30,11 +31,13 @@ interface TransactionsListProps {
    * loading the register a second time when the tab mounts (S1).
    */
   registerLoading?: boolean
+  /** H-069: reprints the invoice of a paid order (the order id action). */
+  onReprint?: (orderId: string) => void
 }
 
-export function TransactionsList({ registerLoading = false }: TransactionsListProps = {}) {
+export function TransactionsList({ registerLoading = false, onReprint }: TransactionsListProps = {}) {
   const [searchTerm, setSearchTerm] = useState("")
-  const { currentRegister } = useCashRegisterStore()
+  const { currentRegister, lastClose } = useCashRegisterStore()
   const { profiles } = useProfileStore()
   const { toast } = useToast()
   const [legacyOpen, setLegacyOpen] = useState(false)
@@ -54,11 +57,25 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
 
   // New payments ledger is the source of truth. Empty ids short-circuit the
   // query, so the cashier screen is safe before a register is opened.
-  const paymentIds = useMemo(
-    () => (currentRegister ? [currentRegister.id] : []),
-    [currentRegister],
-  )
+  // H-069: once the register closes, the shift just closed stays listed.
+  const registerId = currentRegister?.id ?? lastClose?.cashRegisterId ?? null
+  const showingClosed = !currentRegister && registerId !== null
+  const paymentIds = useMemo(() => (registerId ? [registerId] : []), [registerId])
   const { data: payments = [], isLoading: loadingPayments } = useRegisterPayments(paymentIds)
+
+  // H-069: the waiter is the order's (the payment only knows the cashier).
+  const { data: paidOrders = [], isLoading: loadingWaiters } = useQuery({
+    // Every page (H-069): the payments list has no cap, one page does. Under the
+    // "Pagadas" key, so the invalidation after a payment refreshes it too.
+    queryKey: [...registerPaidOrdersQueryKey(registerId ?? ""), "all"],
+    queryFn: () => getAllRegisterPaidOrders(registerId!),
+    enabled: registerId !== null,
+  })
+  const waiterByPayment = useMemo(
+    () => new Map(paidOrders.map((row) => [row.paymentId, row.waiter?.name ?? null] as const)),
+    [paidOrders],
+  )
+  const waiterOf = (payment: PaymentRow) => waiterByPayment.get(payment.id) ?? null
 
   // Catalog is shared with the checkout picker (PaymentMethodDialog). Loaded
   // for the method label and the "Efectivo" badge so we don't hardcode the
@@ -102,18 +119,21 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
     [payments],
   )
 
-  // Filter new payments by the search term.
+  // Filter new payments by the search term: the order, the waiter, or any
+  // tender's method (H-069: "Nequi" finds a Nequi + Efectivo payment).
   const filteredPayments = useMemo(() => {
-    if (!searchTerm) return payments
-    const lower = searchTerm.toLowerCase()
+    const lower = searchTerm.trim().toLowerCase()
+    if (!lower) return payments
     return payments.filter(
       (p) =>
         p.orderId.toLowerCase().includes(lower) ||
-        (p.cashierProfileId ?? "").toLowerCase().includes(lower) ||
-        getWaiterName(p.cashierProfileId).toLowerCase().includes(lower) ||
-        methodLabel(p, catalog).toLowerCase().includes(lower),
+        (waiterByPayment.get(p.id) ?? "").toLowerCase().includes(lower) ||
+        methodLabel(p, catalog).toLowerCase().includes(lower) ||
+        p.tenders.some((t) =>
+          [methodById.get(t.paymentMethodId)?.name ?? "", t.methodCode].some((name) => name.toLowerCase().includes(lower)),
+        ),
     )
-  }, [payments, searchTerm, catalog])
+  }, [payments, searchTerm, catalog, methodById, waiterByPayment])
 
   // Filter legacy transactions by the search term (kept for the legacy block).
   const filteredLegacyTransactions = useMemo(() => {
@@ -209,20 +229,15 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
     document.body.removeChild(link)
   }
 
-  const reprintInvoice = async (orderId: string) => {
-    try {
-      toast({
-        title: "Reimpresión de factura",
-        description: `Reimprimiendo factura para la orden ${orderId.substring(0, 8)}`,
-      })
-    } catch (error) {
-      log.error("Error al reimprimir factura:", { error: String(error) })
-      toast({
-        title: "Error",
-        description: "No se pudo reimprimir la factura",
-        variant: "destructive",
-      })
+  const reprintInvoice = (orderId: string) => {
+    if (onReprint) {
+      onReprint(orderId)
+      return
     }
+    toast({
+      title: "Reimpresión de factura",
+      description: `Reimprimiendo factura para la orden ${orderId.substring(0, 8)}`,
+    })
   }
 
   const isLoadingAnything = registerLoading || loadingPayments
@@ -290,6 +305,9 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
           <Card>
             <CardHeader>
               <CardTitle>Transacciones de Venta</CardTitle>
+              {showingClosed && (
+                <p className="text-sm text-muted-foreground">Caja cerrada: estas son las ventas del último turno.</p>
+              )}
             </CardHeader>
             <CardContent>
               {isLoadingAnything ? (
@@ -344,7 +362,7 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
                                 payment.orderId.substring(0, 8)
                               )}
                             </TableCell>
-                            <TableCell>{getWaiterName(payment.cashierProfileId)}</TableCell>
+                            <TableCell>{waiterOf(payment) ?? (loadingWaiters ? "…" : "Sin mesero")}</TableCell>
                             <TableCell>
                               <Badge variant={badgeVariant}>{label}</Badge>
                             </TableCell>
