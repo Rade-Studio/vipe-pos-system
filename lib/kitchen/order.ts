@@ -13,11 +13,29 @@
  * and `orderType` is carried so a delivery keeps its DOMICILIO banner and
  * heading instead of falling back to "Mesa ?".
  */
-import type { Order } from "@/types"
+import type { KitchenStatus, Order } from "@/types"
 
 const addedAtMs = (item: Order["items"][number]) => item.addedAt?.getTime() ?? 0
 
 export const isServedItem = (item: Order["items"][number]) => item.status !== "kitchen"
+
+/** H-057 (S4): what a line shows, on the kitchen ticket and on the waiter's table. */
+export type LineStage = KitchenStatus | "served"
+
+/** Served (any non-kitchen status) wins; a kitchen line without a step is pending. */
+export const lineStage = (item: Order["items"][number]): LineStage =>
+  isServedItem(item) ? "served" : (item.kitchenStatus ?? "pending")
+
+export const LINE_STAGE_LABEL: Record<LineStage, string> = {
+  pending: "Pendiente",
+  preparing: "En preparación",
+  ready: "Listo",
+  served: "Servido",
+}
+
+/** The kitchen's next tap on a line: pending -> preparing -> ready; serving stays its own ✓. */
+export const nextKitchenStatus = (step: KitchenStatus): KitchenStatus | null =>
+  step === "pending" ? "preparing" : step === "preparing" ? "ready" : null
 
 /** What is still to cook: the only items the board counts, serves and lists. */
 export const pendingItems = (order: Order) => order.items.filter((item) => !isServedItem(item))

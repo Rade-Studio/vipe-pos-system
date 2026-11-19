@@ -19,8 +19,14 @@ import type { CartItem, Order, OrderItem, OrderStatus } from "@/types"
  */
 
 type Schemas = components["schemas"]
-export type OrderDto = Schemas["Order"]
-export type OrderItemDto = Schemas["OrderItem"]
+/** H-057: the cooking step of a line still in the kitchen ("served" stays `status`). */
+export type KitchenStatus = Schemas["OrderItem"]["kitchenStatus"]
+/**
+ * kitchenStatus is optional on the web side: an API (or a realtime row) from
+ * before migration 0045 does not send it, and that line reads as pending.
+ */
+export type OrderItemDto = Omit<Schemas["OrderItem"], "kitchenStatus"> & { kitchenStatus?: KitchenStatus }
+export type OrderDto = Omit<Schemas["Order"], "items"> & { items: OrderItemDto[] }
 export type OrderItemInput = Schemas["OrderItemInput"]
 /** S5: one combo line: the promotion and one dish per group. */
 export type ComboLineInput = Schemas["ComboLineRequest"]
@@ -89,6 +95,7 @@ function toOrderItem(item: OrderItemDto): ApiOrderItem {
     categoryId: "",
     image: ITEM_IMAGE,
     status: item.status,
+    ...(item.kitchenStatus ? { kitchenStatus: item.kitchenStatus } : {}),
     addedAt: toDate(item.addedAt ?? item.createdAt),
     ...(item.discounts?.length
       ? {
@@ -142,6 +149,7 @@ const num = (value: unknown): number => (typeof value === "number" && Number.isF
 
 const STATION_SOURCES = ["dish", "category", "fallback"] as const
 const ORDER_TYPES = ["dine_in", "takeaway", "delivery"] as const
+const KITCHEN_STATUSES = ["pending", "preparing", "ready"] as const
 
 function itemDtoFromWire(row: WireRow): OrderItemDto {
   return {
@@ -153,6 +161,9 @@ function itemDtoFromWire(row: WireRow): OrderItemDto {
     quantity: num(row.quantity) || 1,
     comments: str(row.comments),
     status: row.status === "served" ? "served" : "kitchen",
+    ...(KITCHEN_STATUSES.some((step) => step === row.kitchen_status)
+      ? { kitchenStatus: row.kitchen_status as KitchenStatus }
+      : {}),
     stationId: str(row.station_id),
     stationSource: STATION_SOURCES.find((source) => source === row.station_source) ?? null,
     addedAt: str(row.added_at),
@@ -319,6 +330,15 @@ export async function updateStatus(orderId: string, status: "delivered"): Promis
 /** Kitchen: items served. With no kitchen item left the order is delivered and its table served. */
 export async function serveItems(orderId: string, itemIds: string[]): Promise<OrderDto> {
   const { data } = await api.POST("/api/orders/{id}/items/served", { ...byId(orderId), body: { itemIds } })
+  return required(data)
+}
+
+/**
+ * H-057 (S4): kitchen lines take a cooking step (pending, preparing, ready).
+ * Nothing else changes; the waiter sees it through the orders realtime, with no notice.
+ */
+export async function setKitchenStatus(orderId: string, itemIds: string[], kitchenStatus: KitchenStatus): Promise<OrderDto> {
+  const { data } = await api.POST("/api/orders/{id}/items/kitchen-status", { ...byId(orderId), body: { itemIds, kitchenStatus } })
   return required(data)
 }
 

@@ -1,5 +1,5 @@
-import { render, screen, within } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
 import { KitchenTicket } from "@/components/kitchen/KitchenTicket"
 import { kitchenThresholds } from "@/lib/kitchen/ticket"
 import type { Order, OrderItem, OrderItemModifier } from "@/types"
@@ -110,5 +110,75 @@ describe("takeaway ticket (S8)", () => {
     expect(within(ticket).queryByText("Mesa")).toBeNull()
     expect(within(ticket).getByRole("heading", { name: "PARA LLEVAR · Ana" })).toBeInTheDocument()
     expect(within(ticket).getByText("Luis")).toBeInTheDocument()
+  })
+})
+
+describe("kitchen steps per line (H-057, S4)", () => {
+  const renderWithSteps = (items: OrderItem[]) => {
+    const onSetKitchenStatus = vi.fn()
+    const onServeItem = vi.fn()
+    render(
+      <KitchenTicket
+        order={order(items)}
+        place="Mesa 1"
+        waiterName="Ana"
+        address={null}
+        note={null}
+        now={Date.now()}
+        thresholds={kitchenThresholds()}
+        onServeItem={onServeItem}
+        onServeAll={() => {}}
+        onSetKitchenStatus={onSetKitchenStatus}
+      />,
+    )
+    return { onSetKitchenStatus, onServeItem }
+  }
+
+  it("a pending line offers Preparar, a preparing one Listo, a ready one shows Listo; every row keeps its ✓", () => {
+    renderWithSteps([
+      line("i-1", { name: "Sopa", quantity: 2 }),
+      line("i-2", { name: "Bandeja", kitchenStatus: "preparing" }),
+      line("i-3", { name: "Jugo", kitchenStatus: "ready" }),
+    ])
+    const [sopa, bandeja, jugo] = rows()
+    expect(within(sopa).getByRole("button", { name: "Marcar en preparación 2 Sopa" })).toHaveTextContent("Preparar")
+    expect(within(bandeja).getByText("En preparación")).toBeInTheDocument()
+    expect(within(bandeja).getByRole("button", { name: "Marcar listo 1 Bandeja" })).toHaveTextContent("Listo")
+    expect(within(jugo).queryByRole("button", { name: /Marcar/ })).toBeNull()
+    expect(within(jugo).getByText("Listo")).toBeInTheDocument()
+    for (const row of [sopa, bandeja, jugo]) expect(within(row).getByRole("button", { name: /^Entregar / })).toBeInTheDocument()
+  })
+
+  it("the step button is a large touch target and sends every line of the row with the next step", async () => {
+    const { onSetKitchenStatus, onServeItem } = renderWithSteps([
+      line("i-1", { name: "Sopa" }),
+      line("i-2", { name: "Sopa" }),
+      line("i-3", { name: "Bandeja", kitchenStatus: "preparing" }),
+    ])
+    const prepare = screen.getByRole("button", { name: "Marcar en preparación 2 Sopa" })
+    expect(prepare.className).toContain("h-[52px]")
+    await act(async () => fireEvent.click(prepare))
+    expect(onSetKitchenStatus).toHaveBeenLastCalledWith(["i-1", "i-2"], "preparing")
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Marcar listo 1 Bandeja" })))
+    expect(onSetKitchenStatus).toHaveBeenLastCalledWith(["i-3"], "ready")
+    expect(onServeItem).not.toHaveBeenCalled()
+  })
+
+  it("lines of one dish in different steps are separate rows; served lines show no step", () => {
+    renderWithSteps([
+      line("i-1", { name: "Sopa" }),
+      line("i-2", { name: "Sopa", kitchenStatus: "ready" }),
+      line("i-3", { name: "Sopa", status: "served", kitchenStatus: "ready" }),
+    ])
+    expect(rows()).toHaveLength(3)
+    const served = rows()[2]
+    expect(served).toHaveTextContent("Entregado")
+    expect(within(served).queryByRole("button")).toBeNull()
+    expect(within(served).queryByText("Listo")).toBeNull()
+  })
+
+  it("without onSetKitchenStatus the ticket is as before: only the ✓ per row", () => {
+    renderTicket([line("i-1", { name: "Sopa" })])
+    expect(within(rows()[0]).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Entregar 1 Sopa"])
   })
 })

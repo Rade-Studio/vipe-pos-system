@@ -4,13 +4,18 @@ import { Check } from "lucide-react"
 import type { Order } from "@/types"
 import { cn } from "@/lib/utils"
 import { sentGroups } from "@/lib/order-steps/details"
+import { LINE_STAGE_LABEL, lineStage, type LineStage } from "@/lib/kitchen/order"
 import { lineTotal } from "@/components/order-steps/OrderReview"
 import { formatCurrency } from "@/utils/helpers"
 
-const LINE_STATE = {
-  kitchen: { label: "En cocina", className: "border-status-kitchen-line bg-status-kitchen-bg text-status-kitchen-fg" },
-  served: { label: "Servido", className: "border-status-served-line bg-status-served-bg text-status-served-fg" },
-} as const
+// H-057 (S4): the kitchen's step of each line, shown read only. No toast,
+// sound or notice: the waiter sees it when looking at the table.
+const STAGE_CLASS: Record<LineStage, string> = {
+  pending: "border-line bg-surface-2 text-fg-2",
+  preparing: "border-status-kitchen-line bg-status-kitchen-bg text-status-kitchen-fg",
+  ready: "border-status-ok-line bg-status-ok-bg text-status-ok-fg",
+  served: "border-status-served-line bg-status-served-bg text-status-served-fg",
+}
 
 /**
  * "Pedido en curso" of the table panel (T29): what the kitchen already has,
@@ -30,7 +35,8 @@ export function OrderInProgress({ order }: { order: Order }) {
             </p>
             <ul>
               {group.lines.map((line) => {
-                const state = LINE_STATE[line.status] ?? LINE_STATE.kitchen
+                // Any other status falls back to the kitchen look, as before (pending).
+                const stage = line.status === "served" || line.status === "kitchen" ? lineStage(line) : "pending"
                 return (
                   <li key={line.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 py-1 text-sm">
                     <span className="min-w-0 [overflow-wrap:anywhere]">
@@ -40,10 +46,10 @@ export function OrderInProgress({ order }: { order: Order }) {
                     <span
                       className={cn(
                         "inline-flex h-5 items-center whitespace-nowrap rounded-pill border px-2 text-[11px] font-medium",
-                        state.className,
+                        STAGE_CLASS[stage],
                       )}
                     >
-                      {state.label}
+                      {LINE_STAGE_LABEL[stage]}
                     </span>
                   </li>
                 )

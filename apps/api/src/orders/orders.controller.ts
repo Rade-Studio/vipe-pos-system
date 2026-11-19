@@ -45,6 +45,8 @@ import {
   removeOrderDiscountSchema,
   ServeOrderItemsRequest,
   serveOrderItemsSchema,
+  KitchenStatusRequest,
+  kitchenStatusSchema,
   StockShortageResponse,
   TableHasOpenOrderResponse,
   UpdateOrderDetailsRequest,
@@ -200,6 +202,21 @@ export class OrdersController {
   @ApiNotFoundResponse()
   serve(@Param('id') id: string, @Body() body: unknown): Promise<Order> {
     return this.orders.serveItems(parseInput(idParamSchema, id), parseInput(serveOrderItemsSchema, body).itemIds);
+  }
+
+  @Post(':id/items/kitchen-status')
+  @Roles('admin', 'kitchen')
+  @HttpCode(200)
+  @ApiBody({ type: KitchenStatusRequest })
+  @ApiOkResponse({
+    type: Order,
+    description: 'H-057: the lines take the cooking step (pending, preparing, ready); order, table and line status are unchanged. The order row is touched so its realtime UPDATE carries the lines; no notice is sent.',
+  })
+  @ApiConflictResponse({ description: 'Order is closed, or Item is not in kitchen (a served or cancelled line).' })
+  @ApiNotFoundResponse()
+  setKitchenStatus(@Param('id') id: string, @Body() body: unknown): Promise<Order> {
+    const input = parseInput(kitchenStatusSchema, body);
+    return this.orders.setKitchenStatus(parseInput(idParamSchema, id), input.itemIds, input.kitchenStatus);
   }
 
   @Post(':id/cancel')

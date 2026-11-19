@@ -67,6 +67,8 @@ export type Table = {
 // Order types
 export type OrderStatus = "active" | "cancelled" | "paid" | "delivered" | "kitchen"
 export type OrderItemStatus = "kitchen" | "served"
+/** H-057 (S4): the cooking step of a line still in the kitchen; "served" stays `status`. */
+export type KitchenStatus = "pending" | "preparing" | "ready"
 /** orders.order_type: delivery and takeaway ("para llevar", S8) orders have no table (table_id NULL). */
 export type OrderType = "dine_in" | "takeaway" | "delivery"
 
@@ -101,6 +103,8 @@ export type OrderItem = {
   /** F7: the chosen options; absent or empty on a plain line. */
   modifiers?: OrderItemModifier[]
   status: OrderItemStatus
+  /** Absent on a line from an API before migration 0045: read it as pending. */
+  kitchenStatus?: KitchenStatus
   addedAt?: Date
 }
 

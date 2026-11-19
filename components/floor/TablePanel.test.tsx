@@ -79,3 +79,42 @@ describe("TablePanel — release (QA S1, L3)", () => {
     expect(screen.getByText("Se libera sola cuando caja cobra o cancela la orden.")).toBeInTheDocument()
   })
 })
+
+describe("TablePanel — the kitchen step of each sent line (H-057, S4)", () => {
+  const sent = (id: string, name: string, extra: Partial<Order["items"][number]> = {}): Order["items"][number] => ({
+    id,
+    name,
+    price: 1000,
+    quantity: 1,
+    categoryId: "",
+    image: "",
+    status: "kitchen",
+    addedAt: new Date("2026-11-18T12:00:00.000Z"),
+    ...extra,
+  })
+  const withLines = (items: Order["items"]) =>
+    ({ id: "o-1", tableId: "t-7", status: "kitchen", items, bill: { total: 0 } } as unknown as Order)
+  const stateOf = (name: string) => screen.getByText(name).closest("li")?.lastElementChild?.textContent
+
+  it("shows Pendiente, En preparación, Listo and Servido, read only, with no notice", () => {
+    renderPanel(
+      table({ status: "kitchen", waiter: "w-1" }),
+      withLines([
+        sent("i-1", "Sopa", { kitchenStatus: "pending" }),
+        sent("i-2", "Bandeja", { kitchenStatus: "preparing" }),
+        sent("i-3", "Jugo", { kitchenStatus: "ready" }),
+        sent("i-4", "Arepa", { status: "served", kitchenStatus: "ready" }),
+      ]),
+    )
+    expect(["Sopa", "Bandeja", "Jugo", "Arepa"].map(stateOf)).toEqual(["Pendiente", "En preparación", "Listo", "Servido"])
+    const section = screen.getByRole("region", { name: "Pedido en curso" })
+    expect(section.querySelectorAll("button")).toHaveLength(0)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  it("a line without kitchenStatus (older API or realtime row): unserved reads Pendiente, served still reads Servido", () => {
+    renderPanel(table({ status: "kitchen", waiter: "w-1" }), withLines([sent("i-1", "Sopa"), sent("i-2", "Jugo", { status: "served" })]))
+    expect(["Sopa", "Jugo"].map(stateOf)).toEqual(["Pendiente", "Servido"])
+  })
+})

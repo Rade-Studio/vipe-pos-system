@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import type { Profile, Order } from "@/types"
+import type { KitchenStatus, Profile, Order } from "@/types"
 import { Header } from "@/components/layout/Header"
 import { AssignedCountsEntry } from "@/components/counts/AssignedCountsEntry"
 import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getByStatus, serveItems, toOrder, type OrderDto } from "@/lib/api/orders"
+import { getByStatus, serveItems, setKitchenStatus, toOrder, type OrderDto } from "@/lib/api/orders"
 import { realtimeService, type ChangeEvent } from "@/lib/api/realtime"
 import { log } from "@/lib/log"
 import { useToast } from "@/hooks/use-toast"
@@ -527,6 +527,19 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
     }
   }
 
+  // H-057 (S4): a line's cooking step. The ticket stays on the board; the
+  // waiter sees it on the table through the orders realtime, with no notice,
+  // and the kitchen gets no toast either: the ticket itself shows it.
+  const handleSetKitchenStatus = async (orderId: string, itemIds: string[], kitchenStatus: KitchenStatus) => {
+    try {
+      const remaining = kitchenOrderOf(toOrder(await setKitchenStatus(orderId, itemIds, kitchenStatus)))
+      if (remaining && useOrderStore.getState().orders.some((o) => o.id === orderId)) updateOrder(orderId, remaining)
+    } catch (error) {
+      log.error("Error al marcar el paso de cocina:", { error: String(error) })
+      toast({ title: "Error", description: "No se pudo marcar el plato. Inténtalo de nuevo.", variant: "destructive" })
+    }
+  }
+
   // Handle marking all items as delivered
   const handleMarkAllAsDelivered = async (orderId: string) => {
     // Guardar la orden para el diálogo de confirmación
@@ -914,6 +927,7 @@ export function KitchenView({ profile, onChangeProfile, authRole }: KitchenViewP
                       thresholds={thresholds}
                       onServeItem={(itemId) => handleMarkAsDelivered(order.id, itemId)}
                       onServeAll={() => handleMarkAllAsDelivered(order.id)}
+                      onSetKitchenStatus={(itemIds, kitchenStatus) => handleSetKitchenStatus(order.id, itemIds, kitchenStatus)}
                     />
                   ),
                 }

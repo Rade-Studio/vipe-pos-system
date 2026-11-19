@@ -1523,7 +1523,8 @@ describe("WaiterView — guests, order note, sent time and order number (T22)", 
     expect(groups[0]).toHaveTextContent("Servido")
     expect(groups[1]).toHaveTextContent("2× Arroz con leche")
     expect(groups[1]).toHaveTextContent("“Sin canela”")
-    expect(groups[1]).toHaveTextContent("En cocina")
+    // H-057: an unserved line shows its kitchen step; without one it is pending.
+    expect(groups[1]).toHaveTextContent("Pendiente")
     expect(current).toHaveTextContent("Cumpleaños")
     expect(current).toHaveTextContent(/Total\s*\$\s?49\.560/)
     // Read only: no quantity controls in the panel.
@@ -1745,6 +1746,44 @@ describe("WaiterView — F3 anular plato y cancelar orden", () => {
     await flush()
     const cached = queryClient.getQueryData(["orders"]) as { id: string; items: { id: string }[] }[]
     expect(cached.find((order) => order.id === "o-1")?.items.map((item) => item.id)).toEqual(["i-1"])
+  })
+
+  it("H-057: the kitchen's step reaches the open table live through the orders UPDATE, with no toast", async () => {
+    env.zoneGetAll.mockResolvedValue([zoneRow("z-1", "Salón principal", 0)])
+    env.tableGetAll.mockResolvedValue([placedRow("t-1", 1, "z-1", "kitchen", "w-1")])
+    env.waiterGetAll.mockResolvedValue(waiterRows)
+    env.orderGetByStatus.mockResolvedValue([
+      { ...orderDto("o-1", "t-1"), items: [sentItem("i-1", "Bandeja paisa", 2), sentItem("i-2", "Limonada", 1)] },
+    ])
+    renderView()
+    await flush()
+    await tap(/^Mesa 1,/)
+    const panel = screen.getByRole("region", { name: "Pedido en curso" })
+    const stateOf = (name: string) => within(panel).getByText(name).closest("li")?.lastElementChild?.textContent
+    expect([stateOf("Bandeja paisa"), stateOf("Limonada")]).toEqual(["Pendiente", "Pendiente"])
+    env.toastFn.mockClear()
+    await act(async () => {
+      for (const cb of env.orderCallbacks) {
+        await cb({
+          eventType: "UPDATE",
+          new: {
+            id: "o-1",
+            status: "kitchen",
+            table_id: "t-1",
+            order_items: [
+              { ...sentItem("i-1", "Bandeja paisa", 2), order_id: "o-1", kitchen_status: "ready" },
+              { ...sentItem("i-2", "Limonada", 1), order_id: "o-1", kitchen_status: "preparing" },
+            ],
+          },
+          old: {},
+        })
+      }
+    })
+    await flush()
+    const live = screen.getByRole("region", { name: "Pedido en curso" })
+    expect(within(live).getByText("Bandeja paisa").closest("li")?.lastElementChild?.textContent).toBe("Listo")
+    expect(within(live).getByText("Limonada").closest("li")?.lastElementChild?.textContent).toBe("En preparación")
+    expect(env.toastFn).not.toHaveBeenCalled()
   })
 
   it("a realtime UPDATE without lines keeps the loaded ones (PRESERVE)", async () => {

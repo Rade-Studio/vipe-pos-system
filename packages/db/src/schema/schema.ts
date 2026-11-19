@@ -828,6 +828,8 @@ export const orderItems = pgTable("order_items", {
 	promotionId: uuid("promotion_id"),
 	promotionSnapshot: jsonb("promotion_snapshot"),
 	comboId: uuid("combo_id"),
+	// 0045 (H-057): the cooking step of a line still in the kitchen.
+	kitchenStatus: text("kitchen_status").default('pending').notNull(),
 }, (table) => [
 	index("idx_order_items_promotion_id").using("btree", table.promotionId.asc().nullsLast().op("uuid_ops")).where(sql`(promotion_id IS NOT NULL)`),
 	index("idx_order_items_combo_id").using("btree", table.comboId.asc().nullsLast().op("uuid_ops")).where(sql`(combo_id IS NOT NULL)`),
@@ -868,6 +870,7 @@ export const orderItems = pgTable("order_items", {
 	unique("order_items_restaurant_id_id_key").on(table.restaurantId, table.id),
 	check("order_items_quantity_check", sql`quantity >= 0`),
 	check("order_items_cancelled_quantity_check", sql`((status)::text = 'cancelled'::text) = (quantity = 0)`),
+	check("order_items_kitchen_status_check", sql`kitchen_status = ANY (ARRAY['pending'::text, 'preparing'::text, 'ready'::text])`),
 ]);
 
 export const orders = pgTable("orders", {
